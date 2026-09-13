@@ -10,6 +10,9 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "yarn workspace @mtg/web dev",
+    "build": "yarn workspaces foreach -Apt run build",
+    "lint": "yarn workspaces foreach -Apt run lint",
     "typecheck": "yarn workspaces foreach -Apt run typecheck",
     "test": "yarn workspaces foreach -Apt run test"
   }
