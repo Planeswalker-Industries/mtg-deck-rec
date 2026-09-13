@@ -1,0 +1,40 @@
+# deps
+node_modules/
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+
+# build
+.next/
+dist/
+out/
+*.tsbuildinfo
+coverage/
+
+# env
+.env
+.env.*
+!.env.example
+
+# supabase
+supabase/.temp/
+supabase/.branches/
+
+# spikes: downloaded bulk files and crawl output never committed
+spikes/**/data/
+
+# local-only: agent config, plans, outreach drafts
+.claude/
+CLAUDE.local.md
+docs/outreach/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
