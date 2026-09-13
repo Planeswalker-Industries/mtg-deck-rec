@@ -35,6 +35,18 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 - UI is shadcn/ui (`radix-nova` style, Radix primitives). Generated components import `cn` from the `cn` package (shadcn's clsx + tailwind-merge replacement), pinned to an exact version.
 - `components/layout/ad-slot.tsx` marks future ad positions; it renders nothing until a slot is enabled. `/deck` is `noindex` — indexable content belongs on card/commander pages.
 
+## Frontend
+
+- Mobile-first is the top priority, and every card shown must show its image. Design direction is "Pocket binder": cool blue-grey page, white sleeves, 1px seams, binder blue (`--primary`) as the only interactive accent, mana colors only for color identity. Tokens live in `apps/web/src/app/globals.css`; fonts are Atkinson Hyperlegible Next (UI/body) and Sofia Sans Condensed (headings).
+- Card images are hotlinked from Scryfall's CDN via `components/cards/card-image.tsx` (`unoptimized`; Scryfall already serves sized variants). Never overlay badges or UI on the lower part of a card image — Scryfall requires the artist/copyright line to stay visible; put badges below the image.
+- `packages/core/src/contract/mocks/scryfall-cards.json` is real Scryfall data for the mock card pool (regenerate from the Scryfall collection endpoint, don't hand-edit images or prices).
+
+## Local data
+
+C: has little free space. Put large local data — Scryfall bulk downloads, caches, screenshots, Docker/Postgres storage — under `X:\mtg_proj`. Local Supabase requires Docker Desktop's disk image to be on X:.
+
+`X:\mtg_proj\tools\shoot.mjs` captures phone (390px) and desktop screenshots of landing, `/deck` states, and the swap sheet with the locally installed Chrome: start the app on :3100, then `node X:\mtg_proj\tools\shoot.mjs`. Output goes to `X:\mtg_proj\screens`.
+
 ## Domain conventions
 
 - `CardId` is an int surrogate 1:1 with Scryfall `oracle_id`. Decks and recommendations are oracle-level; collections are printing-level (`PrintingId` = Scryfall card id).

@@ -31,7 +31,7 @@ describe('mock parseDeck', () => {
     const { analysis } = await setup();
     expect(analysis.deck.commanders).toEqual([idOf('Chulane, Teller of Tales')]);
     expect(analysis.colorIdentity).toBe('WUG');
-    expect(analysis.gameChangerIds).toEqual([idOf('Cyclonic Rift')]);
+    expect(analysis.gameChangerIds).toEqual([idOf('Cyclonic Rift'), idOf('Rhystic Study')]);
     expect(analysis.estimatedBracket).toBe(3);
     expect(analysis.issues.map((i) => i.code)).toContain('OUTSIDE_COLOR_IDENTITY');
   });
@@ -81,12 +81,12 @@ describe('mock swap', () => {
 
   it('restricts to owned cards and prices the swap as a saving', async () => {
     const { apis, context } = await setup();
-    const ownership = { kind: 'session' as const, catalogEpoch: 'mock-1', ownedCardIds: [idOf('Beast Within')] };
+    const ownership = { kind: 'session' as const, catalogEpoch: 'mock-1', ownedCardIds: [idOf('Generous Gift')] };
     const r = await apis.recs.swap({ context: context({ ownership }), targetCardId: idOf('Swords to Plowshares') });
     if (!r.ok) throw new Error(r.error.message);
     expect(r.data.mode).toBe('collection_aware');
-    expect(r.data.suggestions.map((s) => s.card.name)).toEqual(['Beast Within']);
-    expect(r.data.suggestions[0]?.costDelta).toMatchObject({ basis: 'owned_replacement', usd: -1.9 });
+    expect(r.data.suggestions.map((s) => s.card.name)).toEqual(['Generous Gift']);
+    expect(r.data.suggestions[0]?.costDelta).toMatchObject({ basis: 'owned_replacement', usd: -1.52 });
   });
 
   it('reports NOTHING_OWNED_FITS when no owned card matches', async () => {
@@ -104,8 +104,8 @@ describe('mock cut and votes', () => {
     const { apis, context } = await setup();
     const r = await apis.recs.cut({ context: context({ includeGameChangers: false }) });
     if (!r.ok) throw new Error(r.error.message);
-    const top = r.data.suggestions.slice(0, 2).map((s) => s.card.name).sort();
-    expect(top).toEqual(['Cyclonic Rift', 'Lightning Bolt']);
+    const top = r.data.suggestions.slice(0, 3).map((s) => s.card.name).sort();
+    expect(top).toEqual(['Cyclonic Rift', 'Lightning Bolt', 'Rhystic Study']);
   });
 
   it('records a vote and shifts the Bayesian score', async () => {

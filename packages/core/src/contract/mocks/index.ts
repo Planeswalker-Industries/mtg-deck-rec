@@ -34,6 +34,7 @@ import type {
 } from '../recs';
 import type { ActionsApi, DataApi, RecsApi } from '../transport';
 import {
+  frontFaceName,
   MOCK_AS_OF,
   MOCK_COMMANDER_ID,
   mockCardTags,
@@ -57,7 +58,12 @@ const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.45, manaValue: 0.1, cor
 const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'corpus', 'votes'];
 
 const byId = new Map<number, CardSummary>(mockCards.map((c) => [c.id, c]));
-const byName = new Map<string, CardSummary>(mockCards.map((c) => [c.name.toLowerCase(), c]));
+const byName = new Map<string, CardSummary>(
+  mockCards.flatMap((c) => [
+    [c.name.toLowerCase(), c] as const,
+    [frontFaceName(c.name).toLowerCase(), c] as const,
+  ]),
+);
 
 class MockNotFound extends Error {}
 

@@ -26,11 +26,11 @@ export function DeckControls({
   onIncludeGameChangersChange: (include: boolean) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="flex min-w-0 items-center gap-2">
         <Label htmlFor="bracket">Bracket</Label>
         <Select value={String(bracket)} onValueChange={(value) => onBracketChange(Number(value) as Bracket)}>
-          <SelectTrigger id="bracket" size="sm">
+          <SelectTrigger id="bracket" size="sm" className="bg-sleeve">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -43,7 +43,7 @@ export function DeckControls({
           </SelectContent>
         </Select>
         {bracketSource === "inferred" && (
-          <span className="text-xs text-muted-foreground">
+          <span className="hidden text-xs text-muted-foreground sm:inline">
             Estimated from {gameChangerCount} Game Changer{gameChangerCount === 1 ? "" : "s"}
           </span>
         )}
@@ -51,7 +51,6 @@ export function DeckControls({
       <div className="flex items-center gap-2">
         <Switch
           id="include-game-changers"
-          size="sm"
           checked={includeGameChangers}
           onCheckedChange={onIncludeGameChangersChange}
         />

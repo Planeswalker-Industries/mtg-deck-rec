@@ -1,13 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { findResolvedCard } from "@/lib/cards";
 import { AddPanel } from "./add-panel";
-import { ColorIdentity } from "./color-identity";
 import { CutPanel } from "./cut-panel";
-import { DeckControls } from "./deck-controls";
+import { DeckBar } from "./deck-bar";
 import { DeckListPanel } from "./deck-list-panel";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
@@ -24,76 +25,101 @@ Deck
 
 export function DeckTool() {
   const tool = useDeckTool();
+  const [editing, setEditing] = useState(true);
   const { analysis, context, swap } = tool;
+  const showInput = editing || !analysis;
   const selectedCardId = swap?.targetCardId ?? null;
-  const targetName =
-    tool.lines.find((l) => l.resolution.status === "resolved" && l.resolution.card.id === selectedCardId)?.line.name ??
-    null;
+  const swapTarget = selectedCardId === null ? null : findResolvedCard(tool.lines, selectedCardId);
+  const cardCount = analysis
+    ? analysis.deck.commanders.length +
+      analysis.deck.cards.filter((c) => c.section === "main").reduce((n, c) => n + c.quantity, 0)
+    : 0;
+
+  async function analyze() {
+    await tool.submit();
+    setEditing(false);
+  }
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">Deck tool</h1>
-        <p className="text-sm text-muted-foreground">
-          Paste a Commander decklist. Nothing is saved — this runs on sample data until the card database is connected.
-        </p>
-      </header>
-
-      <form
-        className="flex flex-col gap-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void tool.submit();
-        }}
-      >
-        <Label htmlFor="decklist" className="sr-only">
-          Decklist
-        </Label>
-        <Textarea
-          id="decklist"
-          rows={10}
-          value={tool.text}
-          onChange={(e) => tool.setText(e.target.value)}
-          placeholder={PLACEHOLDER}
-          className="font-mono text-sm"
-        />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={!tool.text.trim() || tool.parse.status === "loading"}>
-            {tool.parse.status === "loading" ? "Analyzing…" : "Analyze deck"}
-          </Button>
-          <Button type="button" variant="outline" onClick={tool.loadSample}>
-            Use sample deck
+    <div className="flex flex-col gap-5">
+      {showInput ? (
+        <section aria-labelledby="deck-input-heading" className="flex flex-col gap-4">
+          <div>
+            <h1 id="deck-input-heading" className="font-heading text-4xl leading-none font-extrabold tracking-tight">
+              Upgrade a deck
+            </h1>
+            <p className="mt-2 max-w-prose text-muted-foreground">
+              Paste your Commander decklist to see cards to cut, cards to add, and replacements that do the same job.
+              Card data is a small sample for now.
+            </p>
+          </div>
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void analyze();
+            }}
+          >
+            <Label htmlFor="decklist" className="sr-only">
+              Decklist
+            </Label>
+            <Textarea
+              id="decklist"
+              rows={8}
+              value={tool.text}
+              onChange={(e) => tool.setText(e.target.value)}
+              placeholder={PLACEHOLDER}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              className="bg-sleeve text-base sm:text-sm"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" size="lg" disabled={!tool.text.trim() || tool.parse.status === "loading"}>
+                {tool.parse.status === "loading" ? "Reading decklist…" : "Analyze deck"}
+              </Button>
+              <Button type="button" size="lg" variant="outline" onClick={tool.loadSample}>
+                Use sample deck
+              </Button>
+              {analysis && (
+                <Button type="button" size="lg" variant="ghost" onClick={() => setEditing(false)}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </form>
+        </section>
+      ) : (
+        <div className="flex justify-end">
+          <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
+            Edit decklist
           </Button>
         </div>
-      </form>
+      )}
 
       {tool.parse.status === "error" && <PanelError message={tool.parse.message} />}
       <ResolutionIssues unresolved={tool.unresolvedLines} issues={analysis?.issues ?? []} />
 
       {analysis && context && (
-        <section className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="font-heading text-lg font-medium">
-              {analysis.commanderKey.commanders.map((c) => c.name).join(" + ")}
-            </h2>
-            <ColorIdentity identity={analysis.colorIdentity} />
-          </div>
-
-          <DeckControls
-            bracket={context.bracket}
-            bracketSource={context.bracketSource}
-            estimatedBracket={analysis.estimatedBracket}
-            gameChangerCount={analysis.gameChangerIds.length}
-            includeGameChangers={context.includeGameChangers}
+        <section aria-label="Recommendations" className="flex flex-col gap-4">
+          <DeckBar
+            analysis={analysis}
+            context={context}
+            cardCount={cardCount}
             onBracketChange={tool.changeBracket}
             onIncludeGameChangersChange={tool.changeIncludeGameChangers}
           />
-
-          <Tabs defaultValue="cut">
-            <TabsList>
-              <TabsTrigger value="cut">Cards to cut</TabsTrigger>
-              <TabsTrigger value="add">Cards to add</TabsTrigger>
-              <TabsTrigger value="deck">Whole deck</TabsTrigger>
+          <Tabs defaultValue="cut" className="gap-4">
+            <TabsList className="h-10 w-full sm:w-fit">
+              <TabsTrigger value="cut" className="px-3">
+                Cards to cut
+              </TabsTrigger>
+              <TabsTrigger value="add" className="px-3">
+                Cards to add
+              </TabsTrigger>
+              <TabsTrigger value="deck" className="px-3">
+                Your deck
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="cut">
               <CutPanel
@@ -113,7 +139,7 @@ export function DeckTool() {
         </section>
       )}
 
-      <SwapSheet swap={swap} targetName={targetName} onClose={tool.closeSwap} />
+      <SwapSheet swap={swap} target={swapTarget} onClose={tool.closeSwap} />
     </div>
   );
 }

@@ -1,0 +1,780 @@
+{
+  "source": "Scryfall API /cards/collection (fixture subset)",
+  "pricesAsOf": "2026-09-13T22:27:23.887Z",
+  "cards": [
+    {
+      "name": "Chulane, Teller of Tales",
+      "oracleId": "ebf7ce9b-9e5e-4557-9e28-76556997f0ee",
+      "scryfallId": "d1499a4b-1af1-4913-8e26-57d0707264db",
+      "layout": "normal",
+      "manaValue": 5,
+      "typeLine": "Legendary Creature — Human Druid",
+      "colorIdentity": "WUG",
+      "gameChanger": false,
+      "releasedAt": "2024-02-09",
+      "price": {
+        "usd": 6.2,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/d/1/d1499a4b-1af1-4913-8e26-57d0707264db.jpg?1783912982",
+          "normal": "https://cards.scryfall.io/normal/front/d/1/d1499a4b-1af1-4913-8e26-57d0707264db.jpg?1783912982",
+          "large": "https://cards.scryfall.io/large/front/d/1/d1499a4b-1af1-4913-8e26-57d0707264db.jpg?1783912982",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/d/1/d1499a4b-1af1-4913-8e26-57d0707264db.jpg?1783912982"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/mkc/202/chulane-teller-of-tales?utm_source=api"
+    },
+    {
+      "name": "Sol Ring",
+      "oracleId": "6ad8011d-3471-4369-9d68-b264cc027487",
+      "scryfallId": "91fdb56b-54d5-4272-8319-505ff987fe9b",
+      "layout": "normal",
+      "manaValue": 1,
+      "typeLine": "Artifact",
+      "colorIdentity": "",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 1.57,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/9/1/91fdb56b-54d5-4272-8319-505ff987fe9b.jpg?1783903215",
+          "normal": "https://cards.scryfall.io/normal/front/9/1/91fdb56b-54d5-4272-8319-505ff987fe9b.jpg?1783903215",
+          "large": "https://cards.scryfall.io/large/front/9/1/91fdb56b-54d5-4272-8319-505ff987fe9b.jpg?1783903215",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/9/1/91fdb56b-54d5-4272-8319-505ff987fe9b.jpg?1783903215"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/211/sol-ring?utm_source=api"
+    },
+    {
+      "name": "Arcane Signet",
+      "oracleId": "0bc7f093-bef0-4f1a-852c-4b75ebf54838",
+      "scryfallId": "1cad1bd2-7c56-4ce0-99a6-b2a49c1288dd",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Artifact",
+      "colorIdentity": "",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 0.6,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/1/c/1cad1bd2-7c56-4ce0-99a6-b2a49c1288dd.jpg?1783903222",
+          "normal": "https://cards.scryfall.io/normal/front/1/c/1cad1bd2-7c56-4ce0-99a6-b2a49c1288dd.jpg?1783903222",
+          "large": "https://cards.scryfall.io/large/front/1/c/1cad1bd2-7c56-4ce0-99a6-b2a49c1288dd.jpg?1783903222",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/1/c/1cad1bd2-7c56-4ce0-99a6-b2a49c1288dd.jpg?1783903222"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/191/arcane-signet?utm_source=api"
+    },
+    {
+      "name": "Mind Stone",
+      "oracleId": "c97361b5-af16-4a7b-af85-a429dbaf4ad2",
+      "scryfallId": "b30a8f92-ce42-4b27-a893-bcf97fde228d",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Artifact",
+      "colorIdentity": "",
+      "gameChanger": false,
+      "releasedAt": "2026-11-09",
+      "price": null,
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/b/3/b30a8f92-ce42-4b27-a893-bcf97fde228d.jpg?1785759375",
+          "normal": "https://cards.scryfall.io/normal/front/b/3/b30a8f92-ce42-4b27-a893-bcf97fde228d.jpg?1785759375",
+          "large": "https://cards.scryfall.io/large/front/b/3/b30a8f92-ce42-4b27-a893-bcf97fde228d.jpg?1785759375",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/b/3/b30a8f92-ce42-4b27-a893-bcf97fde228d.jpg?1785759375"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/mbc/76/mind-stone?utm_source=api"
+    },
+    {
+      "name": "Fellwar Stone",
+      "oracleId": "95560508-7ac9-4be9-8a3f-3c7d5b52807b",
+      "scryfallId": "3ef87948-0ad9-4757-a692-2262c8e24367",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Artifact",
+      "colorIdentity": "",
+      "gameChanger": false,
+      "releasedAt": "2026-11-09",
+      "price": null,
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/3/e/3ef87948-0ad9-4757-a692-2262c8e24367.jpg?1785759354",
+          "normal": "https://cards.scryfall.io/normal/front/3/e/3ef87948-0ad9-4757-a692-2262c8e24367.jpg?1785759354",
+          "large": "https://cards.scryfall.io/large/front/3/e/3ef87948-0ad9-4757-a692-2262c8e24367.jpg?1785759354",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/3/e/3ef87948-0ad9-4757-a692-2262c8e24367.jpg?1785759354"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/mbc/74/fellwar-stone?utm_source=api"
+    },
+    {
+      "name": "Talisman of Unity",
+      "oracleId": "e5fcc5d7-6a60-4a5b-9d02-6c30041a95b9",
+      "scryfallId": "89e8443d-daf4-4cef-9080-d7568b5c540e",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Artifact",
+      "colorIdentity": "WG",
+      "gameChanger": false,
+      "releasedAt": "2024-02-09",
+      "price": {
+        "usd": 3.1,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/8/9/89e8443d-daf4-4cef-9080-d7568b5c540e.jpg?1783912968",
+          "normal": "https://cards.scryfall.io/normal/front/8/9/89e8443d-daf4-4cef-9080-d7568b5c540e.jpg?1783912968",
+          "large": "https://cards.scryfall.io/large/front/8/9/89e8443d-daf4-4cef-9080-d7568b5c540e.jpg?1783912968",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/8/9/89e8443d-daf4-4cef-9080-d7568b5c540e.jpg?1783912968"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/mkc/244/talisman-of-unity?utm_source=api"
+    },
+    {
+      "name": "Cultivate",
+      "oracleId": "8b755881-a72d-4e21-a369-d2924eb4585a",
+      "scryfallId": "e60deb92-f7dd-4f4e-9036-e47dd586f985",
+      "layout": "normal",
+      "manaValue": 3,
+      "typeLine": "Sorcery",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 0.39,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/e/6/e60deb92-f7dd-4f4e-9036-e47dd586f985.jpg?1783903229",
+          "normal": "https://cards.scryfall.io/normal/front/e/6/e60deb92-f7dd-4f4e-9036-e47dd586f985.jpg?1783903229",
+          "large": "https://cards.scryfall.io/large/front/e/6/e60deb92-f7dd-4f4e-9036-e47dd586f985.jpg?1783903229",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/e/6/e60deb92-f7dd-4f4e-9036-e47dd586f985.jpg?1783903229"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/172/cultivate?utm_source=api"
+    },
+    {
+      "name": "Kodama's Reach",
+      "oracleId": "1593ea18-2f2f-4ab4-83fb-6ccc0bec8a90",
+      "scryfallId": "90c423cc-1264-4067-9c50-e7c88c68ef2d",
+      "layout": "normal",
+      "manaValue": 3,
+      "typeLine": "Sorcery — Arcane",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2026-01-23",
+      "price": {
+        "usd": 1.85,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/9/0/90c423cc-1264-4067-9c50-e7c88c68ef2d.jpg?1783904544",
+          "normal": "https://cards.scryfall.io/normal/front/9/0/90c423cc-1264-4067-9c50-e7c88c68ef2d.jpg?1783904544",
+          "large": "https://cards.scryfall.io/large/front/9/0/90c423cc-1264-4067-9c50-e7c88c68ef2d.jpg?1783904544",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/9/0/90c423cc-1264-4067-9c50-e7c88c68ef2d.jpg?1783904544"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/ecc/113/kodamas-reach?utm_source=api"
+    },
+    {
+      "name": "Farseek",
+      "oracleId": "495e52e6-4c2b-4574-9474-eadbdcc8b4ac",
+      "scryfallId": "c1aac0f5-1d01-4673-b8d3-878d9a1d423c",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Sorcery",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 0.45,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/c/1/c1aac0f5-1d01-4673-b8d3-878d9a1d423c.jpg?1783903231",
+          "normal": "https://cards.scryfall.io/normal/front/c/1/c1aac0f5-1d01-4673-b8d3-878d9a1d423c.jpg?1783903231",
+          "large": "https://cards.scryfall.io/large/front/c/1/c1aac0f5-1d01-4673-b8d3-878d9a1d423c.jpg?1783903231",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/c/1/c1aac0f5-1d01-4673-b8d3-878d9a1d423c.jpg?1783903231"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/173/farseek?utm_source=api"
+    },
+    {
+      "name": "Nature's Lore",
+      "oracleId": "78826359-fe63-44ad-adc4-a17ffcd710e4",
+      "scryfallId": "7afc4a15-5ff8-457a-aa62-803b2d78d912",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Sorcery",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 3.09,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/7/a/7afc4a15-5ff8-457a-aa62-803b2d78d912.jpg?1783903228",
+          "normal": "https://cards.scryfall.io/normal/front/7/a/7afc4a15-5ff8-457a-aa62-803b2d78d912.jpg?1783903228",
+          "large": "https://cards.scryfall.io/large/front/7/a/7afc4a15-5ff8-457a-aa62-803b2d78d912.jpg?1783903228",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/7/a/7afc4a15-5ff8-457a-aa62-803b2d78d912.jpg?1783903228"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/177/natures-lore?utm_source=api"
+    },
+    {
+      "name": "Three Visits",
+      "oracleId": "1b882a0e-0ede-4d1a-bd1a-9b7cffbcde8e",
+      "scryfallId": "99bf792f-963e-4509-8d3c-7db129c6a77f",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Sorcery",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 5.83,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/9/9/99bf792f-963e-4509-8d3c-7db129c6a77f.jpg?1783903227",
+          "normal": "https://cards.scryfall.io/normal/front/9/9/99bf792f-963e-4509-8d3c-7db129c6a77f.jpg?1783903227",
+          "large": "https://cards.scryfall.io/large/front/9/9/99bf792f-963e-4509-8d3c-7db129c6a77f.jpg?1783903227",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/9/9/99bf792f-963e-4509-8d3c-7db129c6a77f.jpg?1783903227"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/181/three-visits?utm_source=api"
+    },
+    {
+      "name": "Rampant Growth",
+      "oracleId": "8539f295-5d58-4436-a73a-b9277c4c7795",
+      "scryfallId": "b7c47024-5e08-4b17-b41a-7647f8b814b9",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Sorcery",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2025-04-11",
+      "price": {
+        "usd": 0.63,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/b/7/b7c47024-5e08-4b17-b41a-7647f8b814b9.jpg?1783907042",
+          "normal": "https://cards.scryfall.io/normal/front/b/7/b7c47024-5e08-4b17-b41a-7647f8b814b9.jpg?1783907042",
+          "large": "https://cards.scryfall.io/large/front/b/7/b7c47024-5e08-4b17-b41a-7647f8b814b9.jpg?1783907042",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/b/7/b7c47024-5e08-4b17-b41a-7647f8b814b9.jpg?1783907042"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/tdc/265/rampant-growth?utm_source=api"
+    },
+    {
+      "name": "Birds of Paradise",
+      "oracleId": "d3a0b660-358c-41bd-9cd2-41fbf3491b1a",
+      "scryfallId": "492c2f9a-51e7-4e0f-9899-23bf43ea988b",
+      "layout": "normal",
+      "manaValue": 1,
+      "typeLine": "Creature — Bird",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 9.78,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/4/9/492c2f9a-51e7-4e0f-9899-23bf43ea988b.jpg?1783903230",
+          "normal": "https://cards.scryfall.io/normal/front/4/9/492c2f9a-51e7-4e0f-9899-23bf43ea988b.jpg?1783903230",
+          "large": "https://cards.scryfall.io/large/front/4/9/492c2f9a-51e7-4e0f-9899-23bf43ea988b.jpg?1783903230",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/4/9/492c2f9a-51e7-4e0f-9899-23bf43ea988b.jpg?1783903230"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/170/birds-of-paradise?utm_source=api"
+    },
+    {
+      "name": "Llanowar Elves",
+      "oracleId": "68954295-54e3-4303-a6bc-fc4547a4e3a3",
+      "scryfallId": "6a0b230b-d391-4998-a3f7-7b158a0ec2cd",
+      "layout": "normal",
+      "manaValue": 1,
+      "typeLine": "Creature — Elf Druid",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2024-11-15",
+      "price": {
+        "usd": 0.33,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/6/a/6a0b230b-d391-4998-a3f7-7b158a0ec2cd.jpg?1783909057",
+          "normal": "https://cards.scryfall.io/normal/front/6/a/6a0b230b-d391-4998-a3f7-7b158a0ec2cd.jpg?1783909057",
+          "large": "https://cards.scryfall.io/large/front/6/a/6a0b230b-d391-4998-a3f7-7b158a0ec2cd.jpg?1783909057",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/6/a/6a0b230b-d391-4998-a3f7-7b158a0ec2cd.jpg?1783909057"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/fdn/227/llanowar-elves?utm_source=api"
+    },
+    {
+      "name": "Elvish Mystic",
+      "oracleId": "3f3b2c10-21f8-4e13-be83-4ef3fa36e123",
+      "scryfallId": "08b9a296-3b76-4f8f-9d71-7c9af92bb3b4",
+      "layout": "normal",
+      "manaValue": 1,
+      "typeLine": "Creature — Elf Druid",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2026-08-14",
+      "price": {
+        "usd": 5.26,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/0/8/08b9a296-3b76-4f8f-9d71-7c9af92bb3b4.jpg?1785647413",
+          "normal": "https://cards.scryfall.io/normal/front/0/8/08b9a296-3b76-4f8f-9d71-7c9af92bb3b4.jpg?1785647413",
+          "large": "https://cards.scryfall.io/large/front/0/8/08b9a296-3b76-4f8f-9d71-7c9af92bb3b4.jpg?1785647413",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/0/8/08b9a296-3b76-4f8f-9d71-7c9af92bb3b4.jpg?1785647413"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/hoc/205/elvish-mystic?utm_source=api"
+    },
+    {
+      "name": "Swords to Plowshares",
+      "oracleId": "b1544f21-7e98-461b-aed5-e748b0168c52",
+      "scryfallId": "b4e9c870-23c0-413a-ae39-265f09da16d1",
+      "layout": "normal",
+      "manaValue": 1,
+      "typeLine": "Instant",
+      "colorIdentity": "W",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 1.52,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/b/4/b4e9c870-23c0-413a-ae39-265f09da16d1.jpg?1783903243",
+          "normal": "https://cards.scryfall.io/normal/front/b/4/b4e9c870-23c0-413a-ae39-265f09da16d1.jpg?1783903243",
+          "large": "https://cards.scryfall.io/large/front/b/4/b4e9c870-23c0-413a-ae39-265f09da16d1.jpg?1783903243",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/b/4/b4e9c870-23c0-413a-ae39-265f09da16d1.jpg?1783903243"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/143/swords-to-plowshares?utm_source=api"
+    },
+    {
+      "name": "Path to Exile",
+      "oracleId": "d683d985-9888-4d21-8b5f-69e69ce4a03b",
+      "scryfallId": "95ca89ea-1200-4bb4-ae4b-af35d3ccd35b",
+      "layout": "normal",
+      "manaValue": 1,
+      "typeLine": "Instant",
+      "colorIdentity": "W",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 1.43,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/9/5/95ca89ea-1200-4bb4-ae4b-af35d3ccd35b.jpg?1783903242",
+          "normal": "https://cards.scryfall.io/normal/front/9/5/95ca89ea-1200-4bb4-ae4b-af35d3ccd35b.jpg?1783903242",
+          "large": "https://cards.scryfall.io/large/front/9/5/95ca89ea-1200-4bb4-ae4b-af35d3ccd35b.jpg?1783903242",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/9/5/95ca89ea-1200-4bb4-ae4b-af35d3ccd35b.jpg?1783903242"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/141/path-to-exile?utm_source=api"
+    },
+    {
+      "name": "Generous Gift",
+      "oracleId": "fae37e28-e137-4177-b973-fa8b4dd8f409",
+      "scryfallId": "c3f9b454-97e9-4c77-b37a-e974221ae385",
+      "layout": "normal",
+      "manaValue": 3,
+      "typeLine": "Instant",
+      "colorIdentity": "W",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 0.93,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/c/3/c3f9b454-97e9-4c77-b37a-e974221ae385.jpg?1783903247",
+          "normal": "https://cards.scryfall.io/normal/front/c/3/c3f9b454-97e9-4c77-b37a-e974221ae385.jpg?1783903247",
+          "large": "https://cards.scryfall.io/large/front/c/3/c3f9b454-97e9-4c77-b37a-e974221ae385.jpg?1783903247",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/c/3/c3f9b454-97e9-4c77-b37a-e974221ae385.jpg?1783903247"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/133/generous-gift?utm_source=api"
+    },
+    {
+      "name": "Beast Within",
+      "oracleId": "7735eeba-693b-47e2-bd51-414379cf1016",
+      "scryfallId": "400b43aa-c1d2-4435-b863-061f43889422",
+      "layout": "normal",
+      "manaValue": 3,
+      "typeLine": "Instant",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 0.73,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/4/0/400b43aa-c1d2-4435-b863-061f43889422.jpg?1783903232",
+          "normal": "https://cards.scryfall.io/normal/front/4/0/400b43aa-c1d2-4435-b863-061f43889422.jpg?1783903232",
+          "large": "https://cards.scryfall.io/large/front/4/0/400b43aa-c1d2-4435-b863-061f43889422.jpg?1783903232",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/4/0/400b43aa-c1d2-4435-b863-061f43889422.jpg?1783903232"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/169/beast-within?utm_source=api"
+    },
+    {
+      "name": "Lightning Bolt",
+      "oracleId": "4457ed35-7c10-48c8-9776-456485fdf070",
+      "scryfallId": "7673784e-db4b-43a1-8d55-1bb9fc1e284f",
+      "layout": "normal",
+      "manaValue": 1,
+      "typeLine": "Instant",
+      "colorIdentity": "R",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 0.98,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/7/6/7673784e-db4b-43a1-8d55-1bb9fc1e284f.jpg?1783903008",
+          "normal": "https://cards.scryfall.io/normal/front/7/6/7673784e-db4b-43a1-8d55-1bb9fc1e284f.jpg?1783903008",
+          "large": "https://cards.scryfall.io/large/front/7/6/7673784e-db4b-43a1-8d55-1bb9fc1e284f.jpg?1783903008",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/7/6/7673784e-db4b-43a1-8d55-1bb9fc1e284f.jpg?1783903008"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/806/lightning-bolt?utm_source=api"
+    },
+    {
+      "name": "Counterspell",
+      "oracleId": "cc187110-1148-4090-bbb8-e205694a39f5",
+      "scryfallId": "4f616706-ec97-4923-bb1e-11a69fbaa1f8",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Instant",
+      "colorIdentity": "U",
+      "gameChanger": false,
+      "releasedAt": "2024-09-27",
+      "price": {
+        "usd": 3.57,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/4/f/4f616706-ec97-4923-bb1e-11a69fbaa1f8.jpg?1783909630",
+          "normal": "https://cards.scryfall.io/normal/front/4/f/4f616706-ec97-4923-bb1e-11a69fbaa1f8.jpg?1783909630",
+          "large": "https://cards.scryfall.io/large/front/4/f/4f616706-ec97-4923-bb1e-11a69fbaa1f8.jpg?1783909630",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/4/f/4f616706-ec97-4923-bb1e-11a69fbaa1f8.jpg?1783909630"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/dsc/114/counterspell?utm_source=api"
+    },
+    {
+      "name": "Arcane Denial",
+      "oracleId": "ab1cc360-b9de-48d9-9983-4dfe4a7d2a37",
+      "scryfallId": "5eb843ef-b223-40d0-a461-54b16d188d0e",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Instant",
+      "colorIdentity": "U",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 2.1,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/5/e/5eb843ef-b223-40d0-a461-54b16d188d0e.jpg?1783903242",
+          "normal": "https://cards.scryfall.io/normal/front/5/e/5eb843ef-b223-40d0-a461-54b16d188d0e.jpg?1783903242",
+          "large": "https://cards.scryfall.io/large/front/5/e/5eb843ef-b223-40d0-a461-54b16d188d0e.jpg?1783903242",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/5/e/5eb843ef-b223-40d0-a461-54b16d188d0e.jpg?1783903242"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/147/arcane-denial?utm_source=api"
+    },
+    {
+      "name": "Swan Song",
+      "oracleId": "8ddfc283-c9b4-41a5-af88-cf0068e986cc",
+      "scryfallId": "83d0b761-d694-4232-9f40-5bd8c82a05f1",
+      "layout": "normal",
+      "manaValue": 1,
+      "typeLine": "Instant",
+      "colorIdentity": "U",
+      "gameChanger": false,
+      "releasedAt": "2025-08-01",
+      "price": {
+        "usd": 10.17,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/8/3/83d0b761-d694-4232-9f40-5bd8c82a05f1.jpg?1783906053",
+          "normal": "https://cards.scryfall.io/normal/front/8/3/83d0b761-d694-4232-9f40-5bd8c82a05f1.jpg?1783906053",
+          "large": "https://cards.scryfall.io/large/front/8/3/83d0b761-d694-4232-9f40-5bd8c82a05f1.jpg?1783906053",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/8/3/83d0b761-d694-4232-9f40-5bd8c82a05f1.jpg?1783906053"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/eoc/46/swan-song?utm_source=api"
+    },
+    {
+      "name": "Rhystic Study",
+      "oracleId": "53236dd7-845a-444c-96d5-f41ed7325d8f",
+      "scryfallId": "9f37c5b6-a59c-45cd-9a99-e9357fe9ea1b",
+      "layout": "normal",
+      "manaValue": 3,
+      "typeLine": "Enchantment",
+      "colorIdentity": "U",
+      "gameChanger": true,
+      "releasedAt": "2022-12-02",
+      "price": {
+        "usd": 71.11,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/9/f/9f37c5b6-a59c-45cd-9a99-e9357fe9ea1b.jpg?1783919146",
+          "normal": "https://cards.scryfall.io/normal/front/9/f/9f37c5b6-a59c-45cd-9a99-e9357fe9ea1b.jpg?1783919146",
+          "large": "https://cards.scryfall.io/large/front/9/f/9f37c5b6-a59c-45cd-9a99-e9357fe9ea1b.jpg?1783919146",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/9/f/9f37c5b6-a59c-45cd-9a99-e9357fe9ea1b.jpg?1783919146"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/j22/114/rhystic-study?utm_source=api"
+    },
+    {
+      "name": "Guardian Project",
+      "oracleId": "4f9e07ae-6341-4b46-9f77-f17ab659d266",
+      "scryfallId": "2c523ef7-d6c4-4887-9a4e-0c2bc6f63676",
+      "layout": "normal",
+      "manaValue": 4,
+      "typeLine": "Enchantment",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2024-01-12",
+      "price": {
+        "usd": 15.17,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/2/c/2c523ef7-d6c4-4887-9a4e-0c2bc6f63676.jpg?1783913302",
+          "normal": "https://cards.scryfall.io/normal/front/2/c/2c523ef7-d6c4-4887-9a4e-0c2bc6f63676.jpg?1783913302",
+          "large": "https://cards.scryfall.io/large/front/2/c/2c523ef7-d6c4-4887-9a4e-0c2bc6f63676.jpg?1783913302",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/2/c/2c523ef7-d6c4-4887-9a4e-0c2bc6f63676.jpg?1783913302"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/rvr/146/guardian-project?utm_source=api"
+    },
+    {
+      "name": "Beast Whisperer",
+      "oracleId": "5da7eea8-bb9e-47ce-a554-8a1ee058bd7a",
+      "scryfallId": "daf4bcd2-3ae4-4803-9ea1-3bcc3de5ca59",
+      "layout": "normal",
+      "manaValue": 4,
+      "typeLine": "Creature — Elf Druid",
+      "colorIdentity": "G",
+      "gameChanger": false,
+      "releasedAt": "2024-02-23",
+      "price": {
+        "usd": 8.8,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/d/a/daf4bcd2-3ae4-4803-9ea1-3bcc3de5ca59.jpg?1783912531",
+          "normal": "https://cards.scryfall.io/normal/front/d/a/daf4bcd2-3ae4-4803-9ea1-3bcc3de5ca59.jpg?1783912531",
+          "large": "https://cards.scryfall.io/large/front/d/a/daf4bcd2-3ae4-4803-9ea1-3bcc3de5ca59.jpg?1783912531",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/d/a/daf4bcd2-3ae4-4803-9ea1-3bcc3de5ca59.jpg?1783912531"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/clu/158/beast-whisperer?utm_source=api"
+    },
+    {
+      "name": "Fact or Fiction",
+      "oracleId": "437b2dab-15e0-4b9a-a204-58622d37a3b3",
+      "scryfallId": "04588d2f-9e90-4f83-b85e-67e4bc222a62",
+      "layout": "normal",
+      "manaValue": 4,
+      "typeLine": "Instant",
+      "colorIdentity": "U",
+      "gameChanger": false,
+      "releasedAt": "2023-08-04",
+      "price": {
+        "usd": 0.28,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/0/4/04588d2f-9e90-4f83-b85e-67e4bc222a62.jpg?1783915701",
+          "normal": "https://cards.scryfall.io/normal/front/0/4/04588d2f-9e90-4f83-b85e-67e4bc222a62.jpg?1783915701",
+          "large": "https://cards.scryfall.io/large/front/0/4/04588d2f-9e90-4f83-b85e-67e4bc222a62.jpg?1783915701",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/0/4/04588d2f-9e90-4f83-b85e-67e4bc222a62.jpg?1783915701"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/cmm/91/fact-or-fiction?utm_source=api"
+    },
+    {
+      "name": "Cyclonic Rift",
+      "oracleId": "d75b9c82-1b49-4c3e-a1b5-aeef57d6644b",
+      "scryfallId": "dfb7c4b9-f2f4-4d4e-baf2-86551c8150fe",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Instant",
+      "colorIdentity": "U",
+      "gameChanger": true,
+      "releasedAt": "2024-01-12",
+      "price": {
+        "usd": 39.46,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/d/f/dfb7c4b9-f2f4-4d4e-baf2-86551c8150fe.jpg?1783913339",
+          "normal": "https://cards.scryfall.io/normal/front/d/f/dfb7c4b9-f2f4-4d4e-baf2-86551c8150fe.jpg?1783913339",
+          "large": "https://cards.scryfall.io/large/front/d/f/dfb7c4b9-f2f4-4d4e-baf2-86551c8150fe.jpg?1783913339",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/d/f/dfb7c4b9-f2f4-4d4e-baf2-86551c8150fe.jpg?1783913339"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/rvr/40/cyclonic-rift?utm_source=api"
+    },
+    {
+      "name": "Command Tower",
+      "oracleId": "0895c9b7-ae7d-4bb3-af17-3b75deb50a25",
+      "scryfallId": "0548fb60-c843-4f8f-a029-6f10efc63a41",
+      "layout": "normal",
+      "manaValue": 0,
+      "typeLine": "Land",
+      "colorIdentity": "",
+      "gameChanger": false,
+      "releasedAt": "2026-06-26",
+      "price": {
+        "usd": 0.3,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/0/5/0548fb60-c843-4f8f-a029-6f10efc63a41.jpg?1783903206",
+          "normal": "https://cards.scryfall.io/normal/front/0/5/0548fb60-c843-4f8f-a029-6f10efc63a41.jpg?1783903206",
+          "large": "https://cards.scryfall.io/large/front/0/5/0548fb60-c843-4f8f-a029-6f10efc63a41.jpg?1783903206",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/0/5/0548fb60-c843-4f8f-a029-6f10efc63a41.jpg?1783903206"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/msc/233/command-tower?utm_source=api"
+    },
+    {
+      "name": "Growth Spiral",
+      "oracleId": "34bcc217-dd91-45a0-90d7-a94d02f1f317",
+      "scryfallId": "1e10e2b4-9639-41ae-8b8e-253224d3d513",
+      "layout": "normal",
+      "manaValue": 2,
+      "typeLine": "Instant",
+      "colorIdentity": "UG",
+      "gameChanger": false,
+      "releasedAt": "2024-09-27",
+      "price": {
+        "usd": 0.32,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/1/e/1e10e2b4-9639-41ae-8b8e-253224d3d513.jpg?1783909637",
+          "normal": "https://cards.scryfall.io/normal/front/1/e/1e10e2b4-9639-41ae-8b8e-253224d3d513.jpg?1783909637",
+          "large": "https://cards.scryfall.io/large/front/1/e/1e10e2b4-9639-41ae-8b8e-253224d3d513.jpg?1783909637",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/1/e/1e10e2b4-9639-41ae-8b8e-253224d3d513.jpg?1783909637"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/dsc/88/growth-spiral?utm_source=api"
+    },
+    {
+      "name": "Sea Gate Restoration // Sea Gate, Reborn",
+      "oracleId": "4a8d41fe-e04d-484b-a7d1-19be311e6ca7",
+      "scryfallId": "193071fe-180b-4d35-ba78-9c16675c29fc",
+      "layout": "modal_dfc",
+      "manaValue": 7,
+      "typeLine": "Sorcery // Land",
+      "colorIdentity": "U",
+      "gameChanger": false,
+      "releasedAt": "2020-09-25",
+      "price": {
+        "usd": 37.15,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396",
+          "normal": "https://cards.scryfall.io/normal/front/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396",
+          "large": "https://cards.scryfall.io/large/front/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396"
+        },
+        "back": {
+          "small": "https://cards.scryfall.io/small/back/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396",
+          "normal": "https://cards.scryfall.io/normal/back/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396",
+          "large": "https://cards.scryfall.io/large/back/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396",
+          "artCrop": "https://cards.scryfall.io/art_crop/back/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396"
+        }
+      },
+      "scryfallUri": "https://scryfall.com/card/znr/76/sea-gate-restoration-sea-gate-reborn?utm_source=api"
+    }
+  ]
+}

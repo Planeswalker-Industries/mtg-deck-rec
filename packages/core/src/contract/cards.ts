@@ -8,6 +8,24 @@ export interface PriceEstimate {
   source: 'scryfall';
 }
 
+/** Scryfall CDN image URLs for one card face (hotlinked, never mirrored). */
+export interface CardImageSet {
+  /** 146×204 */
+  small: string;
+  /** 488×680 — default for grids */
+  normal: string;
+  /** 672×936 */
+  large: string;
+  /** art only, variable size */
+  artCrop: string;
+}
+
+export interface CardImages {
+  front: CardImageSet;
+  /** Double-faced cards only. */
+  back: CardImageSet | null;
+}
+
 export interface CardSummary {
   id: CardId;
   oracleId: OracleId;
@@ -16,7 +34,8 @@ export interface CardSummary {
   manaValue: number;
   typeLine: string;
   colorIdentity: ColorIdentity;
-  imageUri: string | null;
+  /** null when Scryfall has no image for the card */
+  images: CardImages | null;
   gameChanger: boolean;
   /** false for preview cards from unreleased sets */
   released: boolean;

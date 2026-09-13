@@ -1,20 +1,11 @@
-import type { CardSummary } from "@mtg/core/contract";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "cn";
 
-export function GameChangerBadge() {
-  return (
-    <Badge variant="outline" className="border-amber-300 text-amber-800 dark:border-amber-700 dark:text-amber-300">
-      Game Changer
-    </Badge>
-  );
+const PILL = "inline-flex h-5 items-center rounded-full px-2 text-xs font-bold whitespace-nowrap";
+
+export function GameChangerBadge({ className }: { className?: string }) {
+  return <span className={cn(PILL, "bg-gc-bg text-gc", className)}>Game Changer</span>;
 }
 
-export function CardLabel({ card }: { card: CardSummary }) {
-  return (
-    <span className="flex min-w-0 items-center gap-2">
-      <span className="truncate font-medium">{card.name}</span>
-      {card.gameChanger && <GameChangerBadge />}
-      {!card.released && <Badge variant="secondary">Preview</Badge>}
-    </span>
-  );
+export function OwnedBadge({ className }: { className?: string }) {
+  return <span className={cn(PILL, "bg-primary/10 text-primary", className)}>Owned</span>;
 }
