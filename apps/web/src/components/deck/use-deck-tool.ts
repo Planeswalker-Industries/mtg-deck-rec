@@ -17,6 +17,7 @@ import type {
 import { mockDecklistText } from "@mtg/core/mocks";
 import { getApis } from "@/lib/api/client";
 import { defaultIncludeGameChangers } from "@/lib/labels";
+import { clearSavedDeck, loadSavedDeck, saveDeck, updateSavedDeck, type SavedDeck } from "@/lib/saved-deck";
 
 export type Async<T> =
   | { status: "idle" }
@@ -101,43 +102,82 @@ export function useDeckTool() {
     setCut(toAsync(cutResult));
   }
 
-  async function submit() {
+  /**
+   * Parses (or imports) the decklist and loads recommendations, then remembers the deck in this browser. `restore`
+   * replays a deck saved on an earlier visit, with its bracket and Game Changer choices. Resolves true when it parsed.
+   */
+  async function submit(restore?: SavedDeck): Promise<boolean> {
     setParse({ status: "loading" });
-    const input = text.trim();
+    const deckText = restore?.text ?? text;
+    const input = deckText.trim();
     const { actions } = getApis();
     const r: Result<ParseDeckResult | ImportDeckUrlResult> = DECK_LINK.test(input)
       ? await actions.importDeckFromUrl({ url: input })
-      : await actions.parseDeck({ text });
+      : await actions.parseDeck({ text: deckText });
     if (!r.ok) {
       setParse({ status: "error", message: r.error.message });
-      return;
+      return false;
     }
-    const imported = "sourceUrl" in r.data ? r.data : null;
-    setImportedFrom(imported ? { source: imported.source, url: imported.sourceUrl } : null);
-    if (imported) setText(decklistText(imported.lines));
+    const wasImported = "sourceUrl" in r.data;
+    const source = "sourceUrl" in r.data ? { source: r.data.source, url: r.data.sourceUrl } : (restore?.importedFrom ?? null);
+    const finalText = wasImported ? decklistText(r.data.lines) : deckText;
+    const bracket = restore?.bracketOverride ?? null;
+    const includeGameChangers = restore?.gameChangerOverride ?? null;
+
     recsRequest.current++;
     swapRequest.current++;
+    setText(finalText);
+    setImportedFrom(source);
     setParse({ status: "ready", data: null });
     setLines(r.data.lines);
     setAnalysis(r.data.analysis);
-    setBracketOverride(null);
-    setGameChangerOverride(null);
+    setBracketOverride(bracket);
+    setGameChangerOverride(includeGameChangers);
     setSwap(null);
+    saveDeck({ text: finalText, bracketOverride: bracket, gameChangerOverride: includeGameChangers, importedFrom: source });
     if (r.data.analysis) {
-      void loadRecs(buildContext(r.data.analysis, null, null), null);
+      void loadRecs(buildContext(r.data.analysis, bracket, includeGameChangers), null);
     } else {
       setAdd({ status: "idle" });
       setCut({ status: "idle" });
     }
+    return true;
+  }
+
+  /** Brings back the deck from the last visit and analyzes it again. Resolves true when there was one to restore. */
+  async function restoreLastDeck(): Promise<boolean> {
+    const saved = loadSavedDeck();
+    if (!saved) return false;
+    setText(saved.text);
+    return submit(saved);
+  }
+
+  /** Forgets the deck here and in this browser's storage. */
+  function clearDeck() {
+    clearSavedDeck();
+    recsRequest.current++;
+    swapRequest.current++;
+    setText("");
+    setParse({ status: "idle" });
+    setLines([]);
+    setAnalysis(null);
+    setImportedFrom(null);
+    setBracketOverride(null);
+    setGameChangerOverride(null);
+    setAdd({ status: "idle" });
+    setCut({ status: "idle" });
+    setSwap(null);
   }
 
   function changeBracket(bracket: Bracket) {
     setBracketOverride(bracket);
+    updateSavedDeck({ bracketOverride: bracket });
     if (analysis) void loadRecs(buildContext(analysis, bracket, gameChangerOverride), swap?.targetCardId ?? null);
   }
 
   function changeIncludeGameChangers(include: boolean) {
     setGameChangerOverride(include);
+    updateSavedDeck({ gameChangerOverride: include });
     if (analysis) void loadRecs(buildContext(analysis, bracketOverride, include), swap?.targetCardId ?? null);
   }
 
@@ -155,6 +195,8 @@ export function useDeckTool() {
     setText,
     loadSample: () => setText(mockDecklistText),
     submit,
+    restoreLastDeck,
+    clearDeck,
     parse,
     importedFrom,
     lines,

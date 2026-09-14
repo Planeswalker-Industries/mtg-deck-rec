@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,7 +26,17 @@ Deck
 export function DeckTool() {
   const tool = useDeckTool();
   const [editing, setEditing] = useState(true);
+  const restoreStarted = useRef(false);
   const { analysis, context, swap } = tool;
+
+  // Open where the player left off: the deck from their last visit, analyzed again.
+  useEffect(() => {
+    if (restoreStarted.current) return;
+    restoreStarted.current = true;
+    void tool.restoreLastDeck().then((restored) => {
+      if (restored) setEditing(false);
+    });
+  }, [tool]);
   const showInput = editing || !analysis;
   const selectedCardId = swap?.targetCardId ?? null;
   const swapTarget = selectedCardId === null ? null : findResolvedCard(tool.lines, selectedCardId);
@@ -81,6 +91,19 @@ export function DeckTool() {
               <Button type="button" size="lg" variant="outline" onClick={tool.loadSample}>
                 Use sample deck
               </Button>
+              {tool.text && (
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="ghost"
+                  onClick={() => {
+                    tool.clearDeck();
+                    setEditing(true);
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
               {analysis && (
                 <Button type="button" size="lg" variant="ghost" onClick={() => setEditing(false)}>
                   Cancel
