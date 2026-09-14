@@ -1,4 +1,5 @@
 import type { ActionsApi, ApiError, RecsApi, Result } from "@mtg/core/contract";
+import { deleteCollectionAction, saveCollectionBatchAction } from "@/app/collection/actions";
 import {
   analyzeDeckAction,
   getCommanderCoverageAction,
@@ -47,8 +48,8 @@ export const realActions: ActionsApi = {
   requestCommanderDecks: (input) => requestCommanderDecksAction(input),
   getCommanderRequest: (input) => getCommanderRequestAction(input),
   resolveCollectionRows: (input) => resolveCollectionRowsAction(input),
-  saveCollectionBatch: notYet,
-  deleteCollection: notYet,
+  saveCollectionBatch: (input) => saveCollectionBatchAction(input),
+  deleteCollection: () => deleteCollectionAction(),
   saveDeck: notYet,
   deleteDeck: notYet,
   exportDeck: notYet,

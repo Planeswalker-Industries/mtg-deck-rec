@@ -14,7 +14,7 @@ import { DeckListPanel } from "./deck-list-panel";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
 import { SwapSheet } from "./swap-sheet";
-import { useStoredCollection } from "@/components/collection/use-stored-collection";
+import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckTool } from "./use-deck-tool";
 
@@ -27,9 +27,9 @@ Deck
 …`;
 
 export function DeckTool() {
-  const stored = useStoredCollection();
-  const collectionLoaded = stored.state.status === "ready";
-  const tool = useDeckTool(stored.state.status === "ready" ? stored.state.collection : null);
+  const { source } = useCollectionSource();
+  const collectionLoaded = source.kind !== "loading";
+  const tool = useDeckTool(source);
   const lookup = useCommanderLookup(tool.refreshRecommendations);
   const [editing, setEditing] = useState(true);
   const restoreStarted = useRef(false);

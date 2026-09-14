@@ -1,21 +1,5 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
-
-// Needs the local Supabase mail catcher (Mailpit), e.g. E2E_MAILPIT_URL=http://127.0.0.1:56324. CI doesn't run it.
-const mailpit = process.env.E2E_MAILPIT_URL;
-
-async function latestCode(request: APIRequestContext, email: string): Promise<string> {
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const search = await request.get(`${mailpit}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}&limit=1`);
-    const id = (await search.json()).messages?.[0]?.ID as string | undefined;
-    if (id) {
-      const message = await (await request.get(`${mailpit}/api/v1/message/${id}`)).json();
-      const code = String(message.Text ?? message.HTML ?? "").match(/\b(\d{6})\b/)?.[1];
-      if (code) return code;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  throw new Error(`No sign-in email arrived for ${email}`);
-}
+import { expect, test } from "@playwright/test";
+import { latestSignInCode as latestCode, mailpit } from "./mailpit";
 
 test("signs in with an emailed code and signs out", async ({ page, request }) => {
   test.skip(!mailpit, "needs the local mail catcher (E2E_MAILPIT_URL)");
