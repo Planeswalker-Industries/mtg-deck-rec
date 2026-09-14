@@ -1,9 +1,13 @@
 import type { MetadataRoute } from "next";
+import { connection } from "next/server";
 import { getSitemapSlugs } from "@/lib/server/recs-cache";
 import { SITE_URL } from "@/lib/site";
 
 /** Indexable pages: the home page, commander pages and card pages. The deck tool is noindex, so it's left out. */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Built on request, not at build time: listing every card can exceed the hosted database's statement timeout, and
+  // a slow sitemap query must never fail a deploy. The slugs themselves stay cached for days.
+  await connection();
   const { cards, commanders } = await getSitemapSlugs();
   return [
     { url: SITE_URL, changeFrequency: "weekly", priority: 1 },
