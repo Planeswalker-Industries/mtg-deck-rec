@@ -1,19 +1,14 @@
+import { slugify } from '../../parse/normalize';
 import type { CardSummary, TagRef } from '../cards';
 import type { CardId, Finish, OracleId, TagId } from '../ids';
 import scryfall from './scryfall-cards.json';
+
+export { slugify };
 
 /** When the fixture prices were fetched from Scryfall. */
 export const MOCK_AS_OF = scryfall.pricesAsOf;
 
 const uuid = (prefix: string, n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, '0')}`;
-
-export const slugify = (name: string) =>
-  name
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
 
 /** "Sea Gate Restoration // Sea Gate, Reborn" → "Sea Gate Restoration" */
 export const frontFaceName = (name: string) => name.split(' // ')[0] ?? name;
