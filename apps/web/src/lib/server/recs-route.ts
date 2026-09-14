@@ -1,5 +1,7 @@
-import type { ApiError, RecContext, Result } from "@mtg/core/contract";
+import type { ApiError, CardId, RecContext, Result } from "@mtg/core/contract";
 import { parseInput, type InputSchema } from "@mtg/core/schemas";
+import { accountOwnedCardIds } from "./account-collection";
+import { createAuthClient } from "./auth";
 import { checkRateLimit } from "./rate-limit";
 import { NotFoundError } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
@@ -24,9 +26,17 @@ function failure(error: ApiError): Response {
 /** Requested limits are capped rather than rejected. */
 export const capLimit = (value: number | undefined, max: number) => (value === undefined ? undefined : Math.min(value, max));
 
+/** Card ids in the signed-in visitor's saved collection, or null when nobody is signed in. */
+async function accountOwnedIds(): Promise<CardId[] | null> {
+  const db = await createAuthClient();
+  const { data } = await db.auth.getClaims();
+  if (!data?.claims?.sub) return null;
+  return accountOwnedCardIds(db);
+}
+
 /**
- * The shared flow for POST /api/recs/*: count the request against the visitor's budget, validate the body, refuse
- * account collections (there's no sign-in yet), run, and map failures to status codes.
+ * The shared flow for POST /api/recs/*: count the request against the visitor's budget, validate the body, swap an
+ * account collection for the signed-in user's owned card ids, run, and map failures to status codes.
  */
 export async function handleRecsRequest<I extends { context: RecContext }, T>(
   request: Request,
@@ -40,12 +50,15 @@ export async function handleRecsRequest<I extends { context: RecContext }, T>(
 
   const input = parseInput(schema, await request.json().catch(() => null));
   if (!input.ok) return failure(input.error);
-  if (input.data.context.ownership?.kind === "account") {
-    return failure({ code: "UNAUTHENTICATED", message: "Sign in to use your saved collection." });
-  }
 
   try {
-    return Response.json({ ok: true, data: await run(db, input.data) } satisfies Result<T>);
+    let data = input.data;
+    if (data.context.ownership?.kind === "account") {
+      const ownedCardIds = await accountOwnedIds();
+      if (!ownedCardIds) return failure({ code: "UNAUTHENTICATED", message: "Sign in to use your saved collection." });
+      data = { ...data, context: { ...data.context, ownership: { kind: "session", catalogEpoch: "account", ownedCardIds } } };
+    }
+    return Response.json({ ok: true, data: await run(db, data) } satisfies Result<T>);
   } catch (err) {
     if (err instanceof NotFoundError) return failure({ code: "NOT_FOUND", message: err.message });
     console.error(err);

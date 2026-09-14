@@ -16,8 +16,9 @@ import type {
   SwapResult,
 } from "@mtg/core/contract";
 import { mockDecklistText } from "@mtg/core/mocks";
+import type { CollectionSource } from "@/components/collection/use-collection-source";
 import { getApis } from "@/lib/api/client";
-import { ownedCardIds, type StoredCollection } from "@/lib/collection-store";
+import { ownedCardIds } from "@/lib/collection-store";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 import { clearSavedDeck, loadSavedDeck, saveDeck, updateSavedDeck, type SavedDeck } from "@/lib/saved-deck";
 import { SAMPLE_DECKLIST } from "@/lib/sample-deck";
@@ -102,7 +103,7 @@ function writeOwnedOnly(on: boolean) {
  * State for the deck tool. Requests fire from event handlers (not effects);
  * request counters drop responses that arrive after a newer request started.
  */
-export function useDeckTool(collection: StoredCollection | null) {
+export function useDeckTool(source: CollectionSource) {
   const [text, setText] = useState("");
   const [parse, setParse] = useState<Async<null>>({ status: "idle" });
   const [lines, setLines] = useState<ResolvedLine[]>([]);
@@ -117,10 +118,18 @@ export function useDeckTool(collection: StoredCollection | null) {
   const swapRequest = useRef(0);
 
   const [ownedOnlyChosen, setOwnedOnlyChosen] = useState(readOwnedOnly);
-  const ownedIds = useMemo(() => (collection ? ownedCardIds(collection) : null), [collection]);
-  /** Owned-only suggestions need a collection; without one the choice is kept but not applied. */
-  const ownershipFor = (on: boolean): OwnershipInput | null =>
-    on && collection && ownedIds ? { kind: "session", catalogEpoch: collection.catalogEpoch, ownedCardIds: ownedIds } : null;
+  const browserCollection = source.kind === "browser" ? source.collection : null;
+  const ownedIds = useMemo(() => (browserCollection ? ownedCardIds(browserCollection) : null), [browserCollection]);
+  const hasCollection = source.kind === "browser" || source.kind === "account";
+  /**
+   * Owned-only suggestions need a collection; without one the choice is kept but not applied. A browser collection
+   * sends its card ids; an account collection is read on the server.
+   */
+  const ownershipFor = (on: boolean): OwnershipInput | null => {
+    if (!on) return null;
+    if (browserCollection && ownedIds) return { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: ownedIds };
+    return source.kind === "account" ? { kind: "account" } : null;
+  };
   const ownership = ownershipFor(ownedOnlyChosen);
 
   const context = analysis ? buildContext(analysis, bracketOverride, gameChangerOverride, ownership) : null;
@@ -284,7 +293,7 @@ export function useDeckTool(collection: StoredCollection | null) {
     changeBracket,
     changeIncludeGameChangers,
     /** null when there's no collection to limit suggestions to. */
-    ownedOnly: collection ? ownedOnlyChosen : null,
+    ownedOnly: hasCollection ? ownedOnlyChosen : null,
     changeOwnedOnly,
     add,
     cut,

@@ -9,7 +9,8 @@ Companion to [`execution-plan.md`](execution-plan.md) (the phased roadmap) and [
 | 0 — Spike | Passed (go). Open: the blind swap-quality eval (2 raters, 50 cases × 5 commanders, precision@5 + MRR); no rater tool yet. |
 | 1 — Data foundation + public pages | Catalog, printings and tag syncs; corpus aggregation; card and commander pages; sitemap, robots, real 404s. Not done: always-on Archidekt crawler with a queue table, precon import, admin (tag kill switch, sync status), typeahead. |
 | 2 — Deck tool | Paste or Archidekt link, cuts, adds, swaps, bracket and Game Changer controls, commander deck lookups, rate limits, input schemas, CI with e2e. Not measured: load tests, parser fixture count. |
-| 3, 4 | Not started (accounts, collections, votes, saved decks, export). |
+| 3 — Accounts and collections | Sign-in with an emailed code or link (Google is wired but off until OAuth credentials exist); pasted collection imports kept in the browser or on the account; a browser collection moves to the account right after sign-in; owned-only suggestions from either. Not done: collection imports from share links (needs one sample link per site), CSV file import in a Web Worker, pgTAP tests, the 10k-row timing check. |
+| 4 | Not started (votes, saved decks, export). |
 
 ## Live setup
 
@@ -43,4 +44,5 @@ The deck tool offers "Pull decks" for commanders without data, but no `serve:com
 - Partner pairs fragment across many pairings (e.g. Rograkh); pairs below `minDecks` borrow solo decks.
 - Play rate can lift a weak tag match (Reliquary Tower tops Sea Gate Restoration swaps).
 - Invalid commander-pair `commander_keys` rows remain without stats.
-- Storage: repeated syncs level off around 346 MB of the 500 MB free tier; commander stats grow with each looked-up commander.
+- Storage: repeated syncs level off around 346 MB of the 500 MB free tier; commander stats grow with each looked-up commander. Account collections add roughly one row per owned printing.
+- Before accounts go live on the hosted site: add `<site>/auth/confirm` and `<site>/auth/callback` to the Auth redirect allow list and paste `supabase/templates/sign-in.html` into the dashboard's magic link and confirmation templates. Vercel also needs `SUPABASE_SECRET_KEY` for the share-link kill switch.
