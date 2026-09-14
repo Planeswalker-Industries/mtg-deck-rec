@@ -18,6 +18,10 @@ import { mockDecklistText } from "@mtg/core/mocks";
 import { getApis } from "@/lib/api/client";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 import { clearSavedDeck, loadSavedDeck, saveDeck, updateSavedDeck, type SavedDeck } from "@/lib/saved-deck";
+import { SAMPLE_DECKLIST } from "@/lib/sample-deck";
+
+/** Mock mode's card pool only covers the mock sample, so real data gets a sample with play-rate data behind it. */
+const sampleDecklist = process.env.NEXT_PUBLIC_USE_MOCKS === "1" ? mockDecklistText : SAMPLE_DECKLIST;
 
 export type Async<T> =
   | { status: "idle" }
@@ -230,7 +234,7 @@ export function useDeckTool() {
   return {
     text,
     setText,
-    loadSample: () => setText(mockDecklistText),
+    loadSample: () => setText(sampleDecklist),
     submit,
     restoreLastDeck,
     refreshRecommendations,
