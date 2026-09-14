@@ -824,22 +824,6 @@ export type Database = {
       }
     }
     Views: {
-      card_tag_vectors: {
-        Row: {
-          card_id: number | null
-          direct_tag_ids: string[] | null
-          expanded_tag_ids: string[] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "card_tags_card_id_fkey"
-            columns: ["card_id"]
-            isOneToOne: false
-            referencedRelation: "cards"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       functional_tags: {
         Row: {
           tag_id: string | null
