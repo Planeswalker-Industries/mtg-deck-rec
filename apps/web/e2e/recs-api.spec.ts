@@ -60,6 +60,10 @@ test("limits each visitor's recommendation requests", async ({ request }) => {
   expect(body.error.code).toBe("RATE_LIMITED");
   expect(body.error.message).toMatch(/^Too many requests\. Try again in \d+ seconds?\.$/);
 
-  const someoneElse = await post(request, "/api/recs/cut", {}, visitor("other"));
-  expect(someoneElse.status()).toBe(400);
+  // Hosts like Vercel replace x-forwarded-for with the caller's real address, so a made-up second visitor can only be
+  // told apart on a server this suite runs itself.
+  if (!/^https:\/\//.test(process.env.E2E_BASE_URL ?? "")) {
+    const someoneElse = await post(request, "/api/recs/cut", {}, visitor("other"));
+    expect(someoneElse.status()).toBe(400);
+  }
 });

@@ -12,8 +12,9 @@ export async function proxy(request: NextRequest) {
 
   try {
     if (!(await pageExists(section, decodeURIComponent(slug)))) {
-      // Underscore folders are never routes, so this renders app/not-found.tsx with a 404 status.
-      return NextResponse.rewrite(new URL("/_not-found", request.url));
+      // A path no route matches renders app/not-found.tsx with a 404 status. Not /_not-found itself: Vercel serves that
+      // prerendered page with 200. Underscore folders are private in the app router, so /_missing never becomes a route.
+      return NextResponse.rewrite(new URL("/_missing", request.url));
     }
   } catch (err) {
     console.error(err);
