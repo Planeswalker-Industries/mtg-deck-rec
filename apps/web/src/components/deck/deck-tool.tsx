@@ -14,6 +14,7 @@ import { DeckListPanel } from "./deck-list-panel";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
 import { SwapSheet } from "./swap-sheet";
+import { useStoredCollection } from "@/components/collection/use-stored-collection";
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckTool } from "./use-deck-tool";
 
@@ -26,22 +27,25 @@ Deck
 …`;
 
 export function DeckTool() {
-  const tool = useDeckTool();
+  const stored = useStoredCollection();
+  const collectionLoaded = stored.state.status === "ready";
+  const tool = useDeckTool(stored.state.status === "ready" ? stored.state.collection : null);
   const lookup = useCommanderLookup(tool.refreshRecommendations);
   const [editing, setEditing] = useState(true);
   const restoreStarted = useRef(false);
   const { analysis, context, swap } = tool;
 
-  // Open where the player left off: the deck from their last visit, analyzed again.
+  // Open where the player left off: the deck from their last visit, analyzed again. Waits for the saved collection so
+  // owned-only suggestions apply from the first load.
   useEffect(() => {
-    if (restoreStarted.current) return;
+    if (restoreStarted.current || !collectionLoaded) return;
     restoreStarted.current = true;
     void tool.restoreLastDeck().then((restored) => {
       if (!restored.parsed) return;
       setEditing(false);
       void lookup.check(restored.analysis);
     });
-  }, [tool, lookup]);
+  }, [tool, lookup, collectionLoaded]);
   const showInput = editing || !analysis;
   const selectedCardId = swap?.targetCardId ?? null;
   const swapTarget = selectedCardId === null ? null : findResolvedCard(tool.lines, selectedCardId);
@@ -147,6 +151,8 @@ export function DeckTool() {
             cardCount={cardCount}
             onBracketChange={tool.changeBracket}
             onIncludeGameChangersChange={tool.changeIncludeGameChangers}
+            ownedOnly={tool.ownedOnly}
+            onOwnedOnlyChange={tool.changeOwnedOnly}
           />
           <CommanderLookupBar lookup={lookup} />
           <Tabs defaultValue="cut" className="gap-4">

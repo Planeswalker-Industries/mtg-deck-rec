@@ -14,12 +14,17 @@ export function DeckBar({
   cardCount,
   onBracketChange,
   onIncludeGameChangersChange,
+  ownedOnly,
+  onOwnedOnlyChange,
 }: {
   analysis: DeckAnalysis;
   context: RecContext;
   cardCount: number;
   onBracketChange: (bracket: Bracket) => void;
   onIncludeGameChangersChange: (include: boolean) => void;
+  /** null when there's no saved collection. */
+  ownedOnly: boolean | null;
+  onOwnedOnlyChange: (on: boolean) => void;
 }) {
   const commanders = analysis.commanderKey.commanders;
   const art = commanders[0]?.images?.front.artCrop;
@@ -65,6 +70,8 @@ export function DeckBar({
           includeGameChangers={context.includeGameChangers}
           onBracketChange={onBracketChange}
           onIncludeGameChangersChange={onIncludeGameChangersChange}
+          ownedOnly={ownedOnly}
+          onOwnedOnlyChange={onOwnedOnlyChange}
         />
       </div>
     </div>

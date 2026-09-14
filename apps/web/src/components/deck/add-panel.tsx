@@ -25,15 +25,17 @@ export function AddPanel({ state }: { state: Async<AddResult> }) {
   if (state.status === "loading") return <PanelLoading label="Finding cards to add" />;
   if (state.status === "error") return <PanelError message={state.message} />;
 
-  const { groups, confidence, commanderKey } = state.data;
+  const { groups, confidence, commanderKey, mode } = state.data;
   const asOf = groups.flatMap((g) => g.suggestions).find((s) => s.card.price)?.card.price?.asOf;
 
   if (groups.length === 0) {
     return (
       <p className="max-w-prose text-sm">
-        {confidence === "none"
-          ? "Cards to add come from what other players run. That deck data isn't loaded yet, so there's nothing to suggest here for now."
-          : "No additions to suggest."}
+        {mode === "collection_aware"
+          ? "Nothing in your collection fits this deck's colors that it doesn't already run. Switch off Only cards I own to see everything."
+          : confidence === "none"
+            ? "Cards to add come from what other players run. That deck data isn't loaded yet, so there's nothing to suggest here for now."
+            : "No additions to suggest."}
       </p>
     );
   }
