@@ -1,0 +1,19 @@
+{
+  "name": "@mtg/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cli": "tsx src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mtg/core": "workspace:*",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "tsx": "4.23.13",
+    "typescript": "~6.0.3"
+  }
+}

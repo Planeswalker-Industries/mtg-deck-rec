@@ -1,0 +1,106 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-display), var(--font-body), ui-sans-serif, sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Pocket binder */
+  --color-sleeve: var(--sleeve);
+  --color-seam: var(--seam);
+  --color-save: var(--save);
+  --color-gc: var(--gc);
+  --color-gc-bg: var(--gc-bg);
+
+  /* Mana colors: color identity only */
+  --color-mana-w: #f4ebc6;
+  --color-mana-u: #a9cdeb;
+  --color-mana-b: #bfb5b0;
+  --color-mana-r: #efa98c;
+  --color-mana-g: #9fcbaa;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 2.6);
+  --radius-3xl: calc(var(--radius) * 3.2);
+  --radius-4xl: calc(var(--radius) * 4);
+}
+
+:root {
+  --radius: 0.375rem;
+
+  --background: #e9eef3; /* binder page */
+  --foreground: #18212e; /* ink */
+  --sleeve: #ffffff;
+  --seam: #ccd5df;
+
+  --card: var(--sleeve);
+  --card-foreground: var(--foreground);
+  --popover: var(--sleeve);
+  --popover-foreground: var(--foreground);
+
+  --primary: #2b4c9b; /* binder blue: the only interactive accent */
+  --primary-foreground: #ffffff;
+  --secondary: #dce3eb;
+  --secondary-foreground: var(--foreground);
+  --muted: #dce3eb;
+  --muted-foreground: #5a6577; /* graphite */
+  --accent: #dce3eb;
+  --accent-foreground: var(--foreground);
+
+  --destructive: #b42318;
+  --save: #1e7a4c;
+  --gc: #7a4f00;
+  --gc-bg: #fff1cc;
+
+  --border: var(--seam);
+  --input: #b9c3cf;
+  --ring: var(--primary);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
