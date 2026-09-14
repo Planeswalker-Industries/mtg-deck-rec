@@ -108,6 +108,50 @@ export type Database = {
           },
         ]
       }
+      card_stats: {
+        Row: {
+          card_id: number
+          cheapest_finish: string | null
+          cheapest_usd: number | null
+          commander_products: number
+          computed_at: string
+          first_printed_at: string | null
+          paper_printings: number
+          paper_sets: number
+          staple_score: number
+        }
+        Insert: {
+          card_id: number
+          cheapest_finish?: string | null
+          cheapest_usd?: number | null
+          commander_products: number
+          computed_at?: string
+          first_printed_at?: string | null
+          paper_printings: number
+          paper_sets: number
+          staple_score?: number
+        }
+        Update: {
+          card_id?: number
+          cheapest_finish?: string | null
+          cheapest_usd?: number | null
+          commander_products?: number
+          computed_at?: string
+          first_printed_at?: string | null
+          paper_printings?: number
+          paper_sets?: number
+          staple_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_stats_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: true
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_tags: {
         Row: {
           card_id: number
@@ -152,6 +196,7 @@ export type Database = {
           content_hash: string
           copy_limit: number | null
           deleted_at: string | null
+          equivalence_base_id: number | null
           game_changer: boolean
           id: number
           images: Json | null
@@ -171,6 +216,7 @@ export type Database = {
           reference_price_finish: string | null
           reference_price_usd: number | null
           released_at: string | null
+          rules_hash: string | null
           scryfall_uri: string
           slug: string
           type_line: string
@@ -183,6 +229,7 @@ export type Database = {
           content_hash: string
           copy_limit?: number | null
           deleted_at?: string | null
+          equivalence_base_id?: number | null
           game_changer?: boolean
           id?: never
           images?: Json | null
@@ -202,6 +249,7 @@ export type Database = {
           reference_price_finish?: string | null
           reference_price_usd?: number | null
           released_at?: string | null
+          rules_hash?: string | null
           scryfall_uri: string
           slug: string
           type_line: string
@@ -214,6 +262,7 @@ export type Database = {
           content_hash?: string
           copy_limit?: number | null
           deleted_at?: string | null
+          equivalence_base_id?: number | null
           game_changer?: boolean
           id?: never
           images?: Json | null
@@ -233,12 +282,21 @@ export type Database = {
           reference_price_finish?: string | null
           reference_price_usd?: number | null
           released_at?: string | null
+          rules_hash?: string | null
           scryfall_uri?: string
           slug?: string
           type_line?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cards_equivalence_base_id_fkey"
+            columns: ["equivalence_base_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       formats: {
         Row: {
@@ -568,7 +626,9 @@ export type Database = {
         }
         Returns: {
           card_id: number
+          is_functional_twin: boolean
           matches: Json
+          staple_score: number
           tag_similarity: number
         }[]
       }
@@ -591,6 +651,7 @@ export type Database = {
         | "corpus_aggregate"
         | "precon_import"
         | "vote_aggregate"
+        | "scryfall_printings"
       sync_status:
         | "running"
         | "succeeded"
@@ -735,6 +796,7 @@ export const Constants = {
         "corpus_aggregate",
         "precon_import",
         "vote_aggregate",
+        "scryfall_printings",
       ],
       sync_status: [
         "running",

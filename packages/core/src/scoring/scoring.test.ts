@@ -5,15 +5,21 @@ import { blendScore, manaValueProximity, SWAP_WEIGHTS } from './swap';
 
 describe('blendScore', () => {
   it('renormalizes weights over the components that have data', () => {
-    const score = blendScore({ tag: 1, manaValue: 0.5, corpus: null, votes: null }, SWAP_WEIGHTS.collection_less);
+    const score = blendScore({ tag: 1, manaValue: 0.5, staple: 0.8, corpus: null, votes: null }, SWAP_WEIGHTS.collection_less);
     expect(score.effectiveWeights.corpus).toBe(0);
     expect(score.effectiveWeights.votes).toBe(0);
-    expect(score.effectiveWeights.tag + score.effectiveWeights.manaValue).toBeCloseTo(1);
-    expect(score.total).toBeCloseTo((0.45 * 1 + 0.1 * 0.5) / 0.55);
+    expect(score.effectiveWeights.tag + score.effectiveWeights.manaValue + score.effectiveWeights.staple).toBeCloseTo(1);
+    expect(score.total).toBeCloseTo((0.4 * 1 + 0.1 * 0.5 + 0.2 * 0.8) / 0.7);
+  });
+
+  it('ranks a widely reprinted staple above an obscure card with the same function', () => {
+    const staple = blendScore({ tag: 0.5, manaValue: 1, staple: 1, corpus: null, votes: null }, SWAP_WEIGHTS.collection_less);
+    const obscure = blendScore({ tag: 1, manaValue: 1, staple: 0, corpus: null, votes: null }, SWAP_WEIGHTS.collection_less);
+    expect(staple.total).toBeGreaterThan(obscure.total * 0.75);
   });
 
   it('gives votes no weight without votes and ramps them up with volume', () => {
-    const base = { tag: 0.5, manaValue: 0.5, corpus: 0.5, votes: 1 };
+    const base = { tag: 0.5, manaValue: 0.5, staple: 0.5, corpus: 0.5, votes: 1 };
     expect(blendScore(base, SWAP_WEIGHTS.collection_less, 0).effectiveWeights.votes).toBe(0);
     const few = blendScore(base, SWAP_WEIGHTS.collection_less, 5).effectiveWeights.votes;
     const many = blendScore(base, SWAP_WEIGHTS.collection_less, 500).effectiveWeights.votes;
@@ -22,7 +28,7 @@ describe('blendScore', () => {
   });
 
   it('stays within 0..1 even with out-of-range inputs', () => {
-    const score = blendScore({ tag: 3, manaValue: -1, corpus: null, votes: null }, SWAP_WEIGHTS.collection_aware);
+    const score = blendScore({ tag: 3, manaValue: -1, staple: null, corpus: null, votes: null }, SWAP_WEIGHTS.collection_aware);
     expect(score.total).toBeGreaterThanOrEqual(0);
     expect(score.total).toBeLessThanOrEqual(1);
   });

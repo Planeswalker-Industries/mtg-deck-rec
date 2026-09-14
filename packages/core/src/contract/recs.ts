@@ -19,7 +19,11 @@ export interface RecContext {
   ownership: OwnershipInput | null;
 }
 
-export type ScoreComponent = 'tag' | 'manaValue' | 'corpus' | 'votes';
+/**
+ * tag: does the same job (functional tag similarity) · manaValue: similar cost · staple: how widely the card is
+ * reprinted, especially in Commander precons · corpus: play rate with this commander · votes: community votes.
+ */
+export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes';
 
 export interface ScoreBreakdown {
   /** 0..1 */
@@ -73,6 +77,8 @@ export interface OwnedInfo {
 
 export interface SwapSuggestion {
   card: CardSummary;
+  /** Rules-identical to the target under a different name (e.g. a Universes Beyond rename). */
+  functionalTwin: boolean;
   score: ScoreBreakdown;
   matchedTags: TagMatch[];
   corpus: CorpusEvidence | null;

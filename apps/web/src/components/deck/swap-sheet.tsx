@@ -120,7 +120,13 @@ function Comparison({ target, selected }: { target: CardSummary; selected: SwapS
             : "No deck data yet"}
         </span>
       </div>
-      {jobs.length > 0 && <p className="mt-2 text-sm">Does the same job: {jobs.join(", ")}</p>}
+      {selected.functionalTwin ? (
+        <p className="mt-2 text-sm font-bold text-primary">
+          Same rules as {displayName(target)}, under a different name. You can run both in one deck.
+        </p>
+      ) : (
+        jobs.length > 0 && <p className="mt-2 text-sm">Does the same job: {jobs.join(", ")}</p>
+      )}
     </div>
   );
 }

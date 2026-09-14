@@ -123,6 +123,7 @@ export async function getSwapSuggestions(
       return [
         {
           card,
+          functionalTwin: candidate.is_functional_twin,
           matchedTags,
           corpus: null,
           votes: { score: 0.5, voteCount: 0, myVote: null },
@@ -132,6 +133,7 @@ export async function getSwapSuggestions(
             {
               tag: round2(candidate.tag_similarity),
               manaValue: round2(manaValueProximity(card.manaValue, target.manaValue)),
+              staple: round2(candidate.staple_score),
               corpus: null,
               votes: null,
             },
