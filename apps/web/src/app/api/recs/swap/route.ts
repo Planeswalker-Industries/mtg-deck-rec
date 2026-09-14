@@ -1,5 +1,6 @@
 import type { Result, SwapResult } from "@mtg/core/contract";
-import { getSwapSuggestions, MAX_SWAP_LIMIT, NotFoundError } from "@/lib/server/recs";
+import { MAX_SWAP_LIMIT, NotFoundError } from "@/lib/server/recs";
+import { getCachedSwapSuggestions } from "@/lib/server/recs-cache";
 import { createPublicClient } from "@/lib/server/supabase";
 import { parseOptionalLimit, parseRecContext } from "@/lib/server/validate";
 
@@ -15,7 +16,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const data = await getSwapSuggestions(createPublicClient(), {
+    const data = await getCachedSwapSuggestions(createPublicClient(), {
       context: context.data,
       targetCardId: targetCardId as number,
       limit: parseOptionalLimit(body?.limit, MAX_SWAP_LIMIT),

@@ -35,11 +35,13 @@ import {
   type RoleTarget,
 } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
-import { loadCardCorpus, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
+import { loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
 
 /** How many tag-similar candidates the database returns before blending and trimming. */
 const CANDIDATE_POOL = 120;
+/** A pool shared across decks can't leave out any one deck's cards up front, so it holds more candidates. */
+export const SHARED_SWAP_POOL = CANDIDATE_POOL + 100;
 /** How many widely played candidates the database returns before scoring and grouping cards to add. */
 const ADD_POOL = 400;
 export const MAX_SWAP_LIMIT = 20;
@@ -130,117 +132,185 @@ async function loadCardRoles(db: PublicClient, cardIds: readonly number[], roleT
   return rolesByCard;
 }
 
-export async function getSwapSuggestions(
-  db: PublicClient,
-  { context, targetCardId, limit = 10 }: { context: RecContext; targetCardId: number; limit?: number },
-): Promise<SwapResult> {
-  const deckIds = [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])];
-  const deckRows = await fetchCardsById(db, [...deckIds, targetCardId]);
-  const targetRow = deckRows.get(targetCardId);
-  if (!targetRow) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
+export interface SwapPoolCandidate {
+  cardId: number;
+  row: CardRow;
+  tagSimilarity: number;
+  stapleScore: number;
+  functionalTwin: boolean;
+  matchedTags: TagMatch[];
+  rates: CardCorpus | null;
+}
 
-  const owned = ownedIds(context);
-  const mode = modeOf(context);
-  const target = toCardSummary(targetRow);
+/** Everything a swap needs that doesn't depend on the rest of the deck, so it can be shared across decks and cached. */
+export interface SwapPool {
+  target: CardRow;
+  tagCount: number;
+  corpus: CommanderCorpus;
+  candidates: SwapPoolCandidate[];
+}
+
+/** Loads replacement candidates for a card under a commander (or pair). Null when the card isn't in the catalog. */
+export async function loadSwapPool(
+  db: PublicClient,
+  {
+    targetCardId,
+    commanderIds,
+    includeGameChangers,
+    excludeIds,
+    ownedIds: owned,
+    poolSize,
+  }: {
+    targetCardId: number;
+    commanderIds: readonly number[];
+    includeGameChangers: boolean;
+    excludeIds: readonly number[];
+    ownedIds: readonly number[] | null;
+    poolSize: number;
+  },
+): Promise<SwapPool | null> {
+  const rows = await fetchCardsById(db, [...commanderIds, targetCardId]);
+  const targetRow = rows.get(targetCardId);
+  if (!targetRow) return null;
+  const identityMask = commanderIds.reduce((mask, id) => mask | (rows.get(id)?.color_identity ?? 0), 0);
 
   const [candidatesResult, tagCountResult, corpus] = await Promise.all([
     db.rpc("rec_swap_candidates", {
       p_target: targetCardId,
-      p_exclude: deckIds,
-      p_identity_mask: identityMaskOf(context, deckRows),
-      p_allow_game_changers: context.includeGameChangers,
+      p_exclude: [...excludeIds],
+      p_identity_mask: identityMask,
+      p_allow_game_changers: includeGameChangers,
       p_owned: owned ? [...owned] : undefined,
-      p_limit: CANDIDATE_POOL,
+      p_limit: poolSize,
     }),
     db.rpc("rec_functional_tag_count", { p_card_id: targetCardId }),
-    loadCommanderCorpus(db, context.deck.commanders),
+    loadCommanderCorpus(db, commanderIds),
   ]);
   if (candidatesResult.error) throw new Error(`Swap candidates failed: ${candidatesResult.error.message}`);
   if (tagCountResult.error) throw new Error(`Tag count failed: ${tagCountResult.error.message}`);
 
-  const candidates = (candidatesResult.data ?? []).map((r) => ({ ...r, matches: r.matches as unknown as RawMatch[] }));
+  const raw = (candidatesResult.data ?? []).map((r) => ({ ...r, matches: r.matches as unknown as RawMatch[] }));
+  const ids = raw.map((c) => c.card_id);
   const [candidateRows, tags, cardCorpus] = await Promise.all([
-    fetchCardsById(
-      db,
-      candidates.map((c) => c.card_id),
-    ),
+    fetchCardsById(db, ids),
     fetchTags(
       db,
-      candidates.flatMap((c) => c.matches.flatMap((m) => [m.targetTagId, m.candidateTagId, ...(m.viaTagId ? [m.viaTagId] : [])])),
+      raw.flatMap((c) => c.matches.flatMap((m) => [m.targetTagId, m.candidateTagId, ...(m.viaTagId ? [m.viaTagId] : [])])),
     ),
-    loadCardCorpus(
-      db,
-      corpus,
-      candidates.map((c) => c.card_id),
-    ),
+    loadCardCorpus(db, corpus, ids),
   ]);
 
-  const baseWeights = SWAP_WEIGHTS[mode];
-  const corpusScores = new Map(
-    candidates.map((c) => {
-      const rates = cardCorpus.get(c.card_id);
-      const score = rates
-        ? corpusComponent(
-            {
-              commanderRate: rates.commanderRate,
-              commanderDeckCount: rates.commanderDeckCount,
-              baseline: rates.baseline,
-              baselineDeckCount: rates.baselineDeckCount,
-            },
-            corpus.settings,
-          )
-        : undefined;
-      return [c.card_id, score] as const;
-    }),
-  );
-  // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
-  const neutralCorpus = neutralCorpusValue([...corpusScores.values()].flatMap((s) => (s ? [s.value] : [])));
-  const suggestions = candidates
-    .flatMap((candidate): SwapSuggestion[] => {
-      const row = candidateRows.get(candidate.card_id);
-      if (!row || candidate.tag_similarity < TAG_SIMILARITY_FLOOR) return [];
-      const card = toCardSummary(row);
-      const matchedTags = candidate.matches.flatMap((m): TagMatch[] => {
+  return {
+    target: targetRow,
+    tagCount: tagCountResult.data ?? 0,
+    corpus,
+    candidates: raw.flatMap((c): SwapPoolCandidate[] => {
+      const row = candidateRows.get(c.card_id);
+      if (!row) return [];
+      const matchedTags = c.matches.flatMap((m): TagMatch[] => {
         const targetTag = tags.get(m.targetTagId);
         const candidateTag = tags.get(m.candidateTagId);
         if (!targetTag || !candidateTag) return [];
         return [{ targetTag, candidateTag, via: m.viaTagId ? (tags.get(m.viaTagId) ?? null) : null, distance: m.distance }];
       });
-      const cardRates = cardCorpus.get(candidate.card_id);
-      // undefined: no corpus loaded at all. null: too new to judge, so it gets the neutral score at baseline weight.
-      const known = corpusScores.get(candidate.card_id);
-      const corpusScore = known === null ? { value: neutralCorpus, weightScale: BASELINE_CORPUS_WEIGHT } : (known ?? null);
       return [
         {
-          card,
-          functionalTwin: candidate.is_functional_twin,
+          cardId: c.card_id,
+          row,
+          tagSimilarity: c.tag_similarity,
+          stapleScore: c.staple_score,
+          functionalTwin: c.is_functional_twin,
           matchedTags,
-          corpus: cardRates?.evidence ?? null,
-          votes: { score: 0.5, voteCount: 0, myVote: null },
-          costDelta: costDelta(target, card, owned),
-          owned: owned?.has(card.id) ? { quantity: 1 } : null,
-          score: blendScore(
-            {
-              tag: round2(candidate.tag_similarity),
-              manaValue: round2(manaValueProximity(card.manaValue, target.manaValue)),
-              staple: round2(candidate.staple_score),
-              corpus: corpusScore ? round2(corpusScore.value) : null,
-              votes: null,
-              role: null,
-            },
-            corpusScore ? { ...baseWeights, corpus: baseWeights.corpus * corpusScore.weightScale } : baseWeights,
-          ),
+          rates: cardCorpus.get(c.card_id) ?? null,
         },
       ];
+    }),
+  };
+}
+
+/** Ranks a swap pool for one deck: leaves out the deck's own cards (and unowned cards in collection mode), then blends scores. */
+export function rankSwaps(pool: SwapPool, { context, limit = 10 }: { context: RecContext; limit?: number }): SwapResult {
+  const owned = ownedIds(context);
+  const mode = modeOf(context);
+  const target = toCardSummary(pool.target);
+  const inDeck = new Set<number>([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)]);
+  const candidates = pool.candidates.filter(
+    (c) => !inDeck.has(c.cardId) && (!owned || owned.has(c.cardId)) && c.tagSimilarity >= TAG_SIMILARITY_FLOOR,
+  );
+
+  // undefined: no corpus loaded at all. null: too new to judge by play rates.
+  const corpusScores = new Map(
+    candidates.map((c) => {
+      const score = c.rates
+        ? corpusComponent(
+            {
+              commanderRate: c.rates.commanderRate,
+              commanderDeckCount: c.rates.commanderDeckCount,
+              baseline: c.rates.baseline,
+              baselineDeckCount: c.rates.baselineDeckCount,
+            },
+            pool.corpus.settings,
+          )
+        : undefined;
+      return [c.cardId, score] as const;
+    }),
+  );
+  // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
+  const neutralCorpus = neutralCorpusValue([...corpusScores.values()].flatMap((s) => (s ? [s.value] : [])));
+  const baseWeights = SWAP_WEIGHTS[mode];
+
+  const suggestions = candidates
+    .map((c): SwapSuggestion => {
+      const card = toCardSummary(c.row);
+      const known = corpusScores.get(c.cardId);
+      const corpusScore = known === null ? { value: neutralCorpus, weightScale: BASELINE_CORPUS_WEIGHT } : (known ?? null);
+      return {
+        card,
+        functionalTwin: c.functionalTwin,
+        matchedTags: c.matchedTags,
+        corpus: c.rates?.evidence ?? null,
+        votes: { score: 0.5, voteCount: 0, myVote: null },
+        costDelta: costDelta(target, card, owned),
+        owned: owned?.has(card.id) ? { quantity: 1 } : null,
+        score: blendScore(
+          {
+            tag: round2(c.tagSimilarity),
+            manaValue: round2(manaValueProximity(card.manaValue, target.manaValue)),
+            staple: round2(c.stapleScore),
+            corpus: corpusScore ? round2(corpusScore.value) : null,
+            votes: null,
+            role: null,
+          },
+          corpusScore ? { ...baseWeights, corpus: baseWeights.corpus * corpusScore.weightScale } : baseWeights,
+        ),
+      };
     })
     .sort((a, b) => b.score.total - a.score.total)
     .slice(0, limit);
 
-  const result: SwapResult = { mode, target, confidence: corpus.confidence, suggestions };
+  const result: SwapResult = { mode, target, confidence: pool.corpus.confidence, suggestions };
   if (suggestions.length === 0) {
-    result.emptyReason = (tagCountResult.data ?? 0) === 0 ? "NO_TAGS_ON_TARGET" : owned ? "NOTHING_OWNED_FITS" : "NO_CANDIDATES";
+    result.emptyReason = pool.tagCount === 0 ? "NO_TAGS_ON_TARGET" : owned ? "NOTHING_OWNED_FITS" : "NO_CANDIDATES";
   }
   return result;
+}
+
+/** Replacements for one card, computed for this deck alone. The swap route caches through getCachedSwapSuggestions instead. */
+export async function getSwapSuggestions(
+  db: PublicClient,
+  { context, targetCardId, limit = 10 }: { context: RecContext; targetCardId: number; limit?: number },
+): Promise<SwapResult> {
+  const owned = ownedIds(context);
+  const pool = await loadSwapPool(db, {
+    targetCardId,
+    commanderIds: context.deck.commanders,
+    includeGameChangers: context.includeGameChangers,
+    excludeIds: [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])],
+    ownedIds: owned ? [...owned] : null,
+    poolSize: CANDIDATE_POOL,
+  });
+  if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
+  return rankSwaps(pool, { context, limit });
 }
 
 export async function getCutSuggestions(
