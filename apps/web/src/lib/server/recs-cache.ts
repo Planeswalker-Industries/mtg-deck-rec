@@ -1,5 +1,6 @@
-import type { RecContext, SwapResult } from "@mtg/core/contract";
+import type { CommanderPageData, RecContext, SwapResult } from "@mtg/core/contract";
 import { cacheLife, cacheTag } from "next/cache";
+import { loadCommanderPage } from "./commander-page";
 import { getSwapSuggestions, loadSwapPool, NotFoundError, rankSwaps, SHARED_SWAP_POOL, type SwapPool } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
 
@@ -19,6 +20,14 @@ async function sharedSwapPool(targetCardId: number, commanderIds: number[], incl
     ownedIds: null,
     poolSize: SHARED_SWAP_POOL,
   });
+}
+
+/** Public commander page data. It only changes when the deck corpus is rebuilt (tag "corpus"). */
+export async function getCommanderPage(slug: string): Promise<CommanderPageData | null> {
+  "use cache";
+  cacheLife("days");
+  cacheTag("corpus", `commander:${slug}`);
+  return loadCommanderPage(createPublicClient(), slug);
 }
 
 /**

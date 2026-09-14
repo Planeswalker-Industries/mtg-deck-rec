@@ -1,22 +1,12 @@
 "use client";
 
-import type { AddResult, CardCategory, CorpusConfidence } from "@mtg/core/contract";
+import type { AddResult, CorpusConfidence } from "@mtg/core/contract";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
+import { cardCategoryLabel } from "@/lib/labels";
 import { GameChangerBadge, OwnedBadge } from "./card-label";
 import { PanelError, PanelLoading } from "./panel-state";
 import type { Async } from "./use-deck-tool";
-
-const CATEGORY_LABEL: Record<CardCategory, string> = {
-  creature: "Creatures",
-  instant: "Instants",
-  sorcery: "Sorceries",
-  artifact: "Artifacts",
-  enchantment: "Enchantments",
-  planeswalker: "Planeswalkers",
-  battle: "Battles",
-  land: "Lands",
-};
 
 function introFor(confidence: CorpusConfidence, deckCount: number): string {
   const decks = `${deckCount.toLocaleString("en-US")} deck${deckCount === 1 ? "" : "s"}`;
@@ -54,11 +44,11 @@ export function AddPanel({ state }: { state: Async<AddResult> }) {
       {groups.map((group) => (
         <section key={group.category} aria-labelledby={`add-${group.category}`} className="flex flex-col gap-2">
           <h3 id={`add-${group.category}`} className="font-heading text-xl font-extrabold tracking-tight">
-            {CATEGORY_LABEL[group.category]}{" "}
+            {cardCategoryLabel[group.category]}{" "}
             <span className="font-sans text-sm font-normal text-muted-foreground tabular-nums">{group.suggestions.length}</span>
           </h3>
           <PocketGrid
-            label={CATEGORY_LABEL[group.category]}
+            label={cardCategoryLabel[group.category]}
             items={group.suggestions.map((s) => ({
               card: s.card,
               caption: (

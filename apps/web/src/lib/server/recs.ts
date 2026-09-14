@@ -83,7 +83,7 @@ function costDelta(target: CardSummary, replacement: CardSummary, owned: Readonl
   return { usd: round2(replacementUsd - targetUsd), basis: "buy_replacement_vs_buy_target", asOf };
 }
 
-async function fetchTags(db: PublicClient, ids: readonly string[]): Promise<Map<string, TagRef>> {
+export async function fetchTags(db: PublicClient, ids: readonly string[]): Promise<Map<string, TagRef>> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return new Map();
   const { data, error } = await db.from("tags").select("id, slug, label").in("id", unique);
@@ -115,7 +115,7 @@ function roleTargetsFor(generic: readonly RoleTarget[], corpus: CommanderCorpus)
   });
 }
 
-async function loadRoleTargets(db: PublicClient): Promise<RoleTarget[]> {
+export async function loadRoleTargets(db: PublicClient): Promise<RoleTarget[]> {
   const { data, error } = await db.rpc("get_public_config", { p_key: "deck_role_targets" });
   if (error) throw new Error(`Loading role targets failed: ${error.message}`);
   return parseRoleTargets(data);

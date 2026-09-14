@@ -1,4 +1,15 @@
-import type { Bracket, CorpusConfidence, CutReason, SwapResult } from "@mtg/core/contract";
+import type { Bracket, CardCategory, CorpusConfidence, CutReason, SwapResult } from "@mtg/core/contract";
+
+export const cardCategoryLabel: Record<CardCategory, string> = {
+  creature: "Creatures",
+  instant: "Instants",
+  sorcery: "Sorceries",
+  artifact: "Artifacts",
+  enchantment: "Enchantments",
+  planeswalker: "Planeswalkers",
+  battle: "Battles",
+  land: "Lands",
+};
 
 export const cutReasonLabel: Record<CutReason, string> = {
   NOT_LEGAL: "Not legal in Commander",
