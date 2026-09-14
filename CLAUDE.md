@@ -40,7 +40,9 @@ yarn workspace @mtg/worker cli spike:archidekt:crawl --commander "Liesa, Forgott
 yarn workspace @mtg/worker cli spike:archidekt:crawl --commanders 50 --per-commander 300 --order views   # most viewed first (or --order updated); resumable, 1 req/s; report → X:\mtg_proj\reports
 ```
 
-CI (`.github/workflows/ci.yml`, pushes to main and `phase*/**`, PRs): install, typecheck, lint, unit tests, then `supabase start` on an empty database (proves migrations apply from scratch), a build with `NEXT_PUBLIC_USE_MOCKS=1`, and the e2e suite. Checks that need the real catalog, corpus or user decklists (regression harness, `E2E_LOCAL_DATA` tests, `X:\mtg_proj\tools` scripts) stay local: third-party decklists can't be public.
+**Branches:** `develop` is the working branch. Start every branch from `develop` and merge it back into `develop` (PRs with `--base develop`); `main` is merged from `develop` manually, and it's what Vercel production and the Supabase GitHub integration deploy. Until the hosted Supabase capacity issue is sorted, work locally: no hosted database, Vercel or production changes.
+
+CI (`.github/workflows/ci.yml`, pushes to main, develop and `phase*/**`, PRs): install, typecheck, lint, unit tests, then `supabase start` on an empty database (proves migrations apply from scratch), a build with `NEXT_PUBLIC_USE_MOCKS=1`, and the e2e suite. Checks that need the real catalog, corpus or user decklists (regression harness, `E2E_LOCAL_DATA` tests, `X:\mtg_proj\tools` scripts) stay local: third-party decklists can't be public.
 
 psql isn't installed locally; query the database with `docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres`.
 
