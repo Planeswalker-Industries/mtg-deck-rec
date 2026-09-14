@@ -90,6 +90,11 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - `loadSwapPool` (candidates, card rows, tags, play rates) doesn't depend on the rest of the deck; `rankSwaps` removes the deck's own cards and blends scores.
   - The swap route calls `getCachedSwapSuggestions` in `lib/server/recs-cache.ts`: `use cache` + `cacheLife("hours")` + `cacheTag("recs")`, keyed by target, commander ids and the Game Changer setting. Collection-aware requests skip the cache.
   - Keep `next/cache` imports out of `recs.ts` so `yarn workspace @mtg/web regress` can run the recommendation code outside Next.js.
+- **Share-link fetches and the kill switch:** every deck or collection link import goes through `fetchShareLink` (`lib/server/share-import.ts`).
+  - It only fetches URLs the app builds for that source's own hosts, never follows redirects, and sends the honest User-Agent.
+  - `classifyShareResponse` (`@mtg/core/parse`) decides what came back. A Cloudflare challenge, or a 403/409 outside the site's usual format, switches that source off in `share_import_sources` (via `SUPABASE_SECRET_KEY`, `lib/server/supabase-admin.ts`) and writes an `audit_log` row. A 403 in the usual format just means the list isn't public.
+  - A switched-off source makes no requests until someone deliberately sets `enabled` back to true. `yarn workspace @mtg/web tsx --env-file=.env.local scripts/share-kill-switch-check.ts` checks this with a faked fetch.
+- **Collections (Phase 3, in progress):** `parseCollectionText` reads pasted exports; `resolveCollectionRowsAction` matches up to 2,000 rows per call through `resolve_collection_rows` (Scryfall id, TCGplayer id, set + number + language, set + number, then name) and returns `catalog_epoch()`. `scripts/collection-resolve-check.ts` checks it against the local database.
 - **Deck import by link:**
   - A lone URL in the decklist box goes to `importDeckFromUrlAction`.
   - Archidekt: one request to `/api/decks/:id/`, converted by `@mtg/core/parse` `archidektDecklist` (primary category decides; sideboard, maybeboard and considering excluded), then resolved like pasted text.
@@ -158,6 +163,7 @@ C: has little free space. Put large local data — Scryfall bulk downloads, cach
 ## Hard constraints
 
 - No bot-detection circumvention anywhere: no cloudscraper-class libraries, fingerprint spoofing, UA rotation, or proxies. Every outbound request sends an accurate descriptive `User-Agent` (and `Accept` for Scryfall).
-- Data sources qualify only by documented API, published terms, or direct operator permission. Do not add Deckstats, Aetherhub, MTGGoldfish, TappedOut, or EDHREC `json.edhrec.com`. Moxfield only if authorization is granted.
+- Data sources qualify only by documented API, published terms, or direct operator permission. Do not add Deckstats, Aetherhub, MTGGoldfish, TappedOut, or EDHREC `json.edhrec.com`. Background crawling of Moxfield still needs its authorization.
+- Share-link imports are allowed (owner decision, 2026-09-14): a deck or collection link a user pastes from Archidekt, ManaBox, Moxfield, TCGplayer or similar sites may be fetched, since those links exist to move lists between platforms. One request per user action, honest User-Agent, and if the site blocks automated requests (bot challenge, 403) show the paste-text fallback; never work around it.
 - Third-party decklists are used for aggregates only and never exposed.
 - The repo is public: anti-abuse thresholds and scoring weights belong in database config, not code.

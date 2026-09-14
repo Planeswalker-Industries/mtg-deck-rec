@@ -639,6 +639,33 @@ export type Database = {
         }
         Relationships: []
       }
+      share_import_sources: {
+        Row: {
+          disabled_at: string | null
+          disabled_reason: string | null
+          enabled: boolean
+          last_blocked_status: number | null
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          enabled?: boolean
+          last_blocked_status?: number | null
+          source: string
+          updated_at?: string
+        }
+        Update: {
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          enabled?: boolean
+          last_blocked_status?: number | null
+          source?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       slug_redirects: {
         Row: {
           kind: string
@@ -852,6 +879,7 @@ export type Database = {
           slug: string
         }[]
       }
+      catalog_epoch: { Args: never; Returns: string }
       commander_collector_online: { Args: never; Returns: boolean }
       commander_request_config: { Args: never; Returns: Json }
       commander_request_json: {
@@ -952,6 +980,17 @@ export type Database = {
           input: string
           rank: number
           score: number
+          via: string
+        }[]
+      }
+      resolve_collection_rows: {
+        Args: { p_rows: Json }
+        Returns: {
+          card_id: number
+          finishes: string[]
+          lang: string
+          printing_id: string
+          row_no: number
           via: string
         }[]
       }

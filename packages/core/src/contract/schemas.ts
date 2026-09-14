@@ -92,6 +92,30 @@ export const commanderRequestInputSchema = z.object(
   request,
 );
 
+export const MAX_COLLECTION_ROWS_PER_CALL = 2_000;
+
+const collectionRow = z.object({
+  rowNo: z.int().min(0),
+  name: z.string().max(200).optional(),
+  scryfallId: z.string().max(64).optional(),
+  tcgplayerId: z.int().min(1).optional(),
+  setCode: z.string().max(10).optional(),
+  collectorNumber: z.string().max(16).optional(),
+  lang: z.string().max(8).optional(),
+  finish: z.enum(['nonfoil', 'foil', 'etched']).optional(),
+  condition: z.string().max(32).optional(),
+  quantity: z.int().min(1, 'Quantities must be at least 1.').max(100_000),
+});
+
+export const resolveCollectionRowsInputSchema = z.object(
+  {
+    rows: z
+      .array(collectionRow)
+      .max(MAX_COLLECTION_ROWS_PER_CALL, `Send at most ${MAX_COLLECTION_ROWS_PER_CALL.toLocaleString('en-US')} rows per call.`),
+  },
+  request,
+);
+
 /**
  * Validates untrusted input against a schema. Text or lists over their size limit are PAYLOAD_TOO_LARGE; anything else
  * invalid is VALIDATION. The first problem becomes the message, and every problem is listed by field.
