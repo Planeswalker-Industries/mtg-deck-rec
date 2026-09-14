@@ -6,3 +6,4 @@ export type * from './recs';
 export type * from './collection';
 export type * from './account';
 export type * from './transport';
+export { CONTRACT_VERSION } from './version';

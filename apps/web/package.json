@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "regress": "tsx --env-file=.env.local scripts/rec-regress.ts"
   },
   "dependencies": {
     "@mtg/core": "workspace:*",
@@ -30,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
+    "tsx": "4.23.13",
     "typescript": "~6.0.3"
   }
 }

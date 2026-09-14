@@ -1149,6 +1149,7 @@ __metadata:
     react-dom: "npm:19.2.8"
     shadcn: "npm:^4.21.0"
     tailwindcss: "npm:^4"
+    tsx: "npm:4.23.13"
     tw-animate-css: "npm:^1.4.0"
     typescript: "npm:~6.0.3"
   languageName: unknown
