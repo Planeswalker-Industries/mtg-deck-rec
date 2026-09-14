@@ -16,6 +16,7 @@ import type {
 } from "@mtg/core/contract";
 import {
   blendScore,
+  corpusComponent,
   manaValueProximity,
   scoreCuts,
   SWAP_WEIGHTS,
@@ -23,6 +24,7 @@ import {
   type RoleTarget,
 } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
+import { loadCardCorpus, loadCommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
 
 /** How many tag-similar candidates the database returns before blending and trimming. */
@@ -82,7 +84,7 @@ export async function getSwapSuggestions(
   const mode = modeOf(context);
   const target = toCardSummary(targetRow);
 
-  const [candidatesResult, tagCountResult] = await Promise.all([
+  const [candidatesResult, tagCountResult, corpus] = await Promise.all([
     db.rpc("rec_swap_candidates", {
       p_target: targetCardId,
       p_exclude: deckIds,
@@ -92,12 +94,13 @@ export async function getSwapSuggestions(
       p_limit: CANDIDATE_POOL,
     }),
     db.rpc("rec_functional_tag_count", { p_card_id: targetCardId }),
+    loadCommanderCorpus(db, context.deck.commanders),
   ]);
   if (candidatesResult.error) throw new Error(`Swap candidates failed: ${candidatesResult.error.message}`);
   if (tagCountResult.error) throw new Error(`Tag count failed: ${tagCountResult.error.message}`);
 
   const candidates = (candidatesResult.data ?? []).map((r) => ({ ...r, matches: r.matches as unknown as RawMatch[] }));
-  const [candidateRows, tags] = await Promise.all([
+  const [candidateRows, tags, cardCorpus] = await Promise.all([
     fetchCardsById(
       db,
       candidates.map((c) => c.card_id),
@@ -106,9 +109,14 @@ export async function getSwapSuggestions(
       db,
       candidates.flatMap((c) => c.matches.flatMap((m) => [m.targetTagId, m.candidateTagId, ...(m.viaTagId ? [m.viaTagId] : [])])),
     ),
+    loadCardCorpus(
+      db,
+      corpus,
+      candidates.map((c) => c.card_id),
+    ),
   ]);
 
-  const weights = SWAP_WEIGHTS[mode];
+  const baseWeights = SWAP_WEIGHTS[mode];
   const suggestions = candidates
     .flatMap((candidate): SwapSuggestion[] => {
       const row = candidateRows.get(candidate.card_id);
@@ -120,12 +128,19 @@ export async function getSwapSuggestions(
         if (!targetTag || !candidateTag) return [];
         return [{ targetTag, candidateTag, via: m.viaTagId ? (tags.get(m.viaTagId) ?? null) : null, distance: m.distance }];
       });
+      const cardRates = cardCorpus.get(candidate.card_id);
+      const corpusScore = cardRates
+        ? corpusComponent(
+            { commanderRate: cardRates.commanderRate, commanderDeckCount: corpus.deckCount, baseline: cardRates.baseline },
+            corpus.settings,
+          )
+        : null;
       return [
         {
           card,
           functionalTwin: candidate.is_functional_twin,
           matchedTags,
-          corpus: null,
+          corpus: cardRates?.evidence ?? null,
           votes: { score: 0.5, voteCount: 0, myVote: null },
           costDelta: costDelta(target, card, owned),
           owned: owned?.has(card.id) ? { quantity: 1 } : null,
@@ -134,10 +149,10 @@ export async function getSwapSuggestions(
               tag: round2(candidate.tag_similarity),
               manaValue: round2(manaValueProximity(card.manaValue, target.manaValue)),
               staple: round2(candidate.staple_score),
-              corpus: null,
+              corpus: corpusScore ? round2(corpusScore.value) : null,
               votes: null,
             },
-            weights,
+            corpusScore ? { ...baseWeights, corpus: baseWeights.corpus * corpusScore.weightScale } : baseWeights,
           ),
         },
       ];
@@ -145,7 +160,7 @@ export async function getSwapSuggestions(
     .sort((a, b) => b.score.total - a.score.total)
     .slice(0, limit);
 
-  const result: SwapResult = { mode, target, confidence: "none", suggestions };
+  const result: SwapResult = { mode, target, confidence: corpus.confidence, suggestions };
   if (suggestions.length === 0) {
     result.emptyReason = (tagCountResult.data ?? 0) === 0 ? "NO_TAGS_ON_TARGET" : owned ? "NOTHING_OWNED_FITS" : "NO_CANDIDATES";
   }

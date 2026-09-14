@@ -1,43 +1,25 @@
 import { stat } from 'node:fs/promises';
-import path from 'node:path';
-import { DATA_DIR } from '../lib/config';
+import {
+  DEFAULT_CORPUS_FILE,
+  EXCLUSIONS,
+  IDENTITIES,
+  loadCatalog,
+  loadCorpusConfig,
+  resolveDeck,
+  shrunkInclusion,
+  type CatalogCard,
+  type Exclusion,
+} from '../lib/corpus';
 import { connect } from '../lib/db';
 import { readJsonl, type JsonlStats } from '../lib/jsonl';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 import type { SlimDeck } from '../sources/archidekt/deck';
-
-export const DEFAULT_CORPUS_FILE = path.join(DATA_DIR, 'archidekt', 'spike', 'decks.jsonl');
 
 const BATCH_SIZE = 2000;
 const HEARTBEAT_EVERY = 2000;
 /** A rebuild must keep at least this share of the previous run's decks, so a truncated file can't wipe the stats. */
 const MIN_DECK_SHARE = 0.8;
 const MAX_PARSE_ERROR_RATE = 0.01;
-const MAX_COMMANDERS = 2;
-const IDENTITIES = 32;
-
-const DEFAULT_CONFIG = { shrinkAlpha: 20, maxUnresolvedCards: 3 };
-type CorpusConfig = typeof DEFAULT_CONFIG;
-
-interface CatalogCard {
-  id: number;
-  colorIdentity: number;
-  canBeCommander: boolean;
-  legal: boolean;
-  isBasicLand: boolean;
-  slug: string;
-}
-
-const EXCLUSIONS = [
-  'duplicate',
-  'too_many_commanders',
-  'commander_not_in_catalog',
-  'commander_not_legal',
-  'no_eligible_commander',
-  'outside_identity',
-  'unresolved_cards',
-] as const;
-type Exclusion = (typeof EXCLUSIONS)[number];
 
 interface KeyAggregate {
   commanders: CatalogCard[];
@@ -53,9 +35,9 @@ const increment = <K>(map: Map<K, number>, key: K) => map.set(key, (map.get(key)
 /**
  * Deck corpus → commander_keys, commander_stats, card_global_stats, commander_card_stats.
  *
- * A deck counts when its commanders (at most two, at least one able to lead) are in the catalog and legal, every card
- * fits their color identity, and no more than `maxUnresolvedCards` cards are missing from the catalog. Basic lands
- * are left out of the stats. Same failure model as the other syncs: stage, sanity-check, merge in one transaction.
+ * Decks are filtered by `resolveDeck` (legal catalogued commanders, cards within their identity, few unknown cards).
+ * Basic lands are left out of the stats. Same failure model as the other syncs: stage, sanity-check, merge in one
+ * transaction.
  */
 export async function aggregateCorpus({
   file = DEFAULT_CORPUS_FILE,
@@ -75,38 +57,9 @@ export async function aggregateCorpus({
     }
     runId = start.runId;
 
-    const [configRow] = await sql<{ value: Partial<CorpusConfig> }[]>`select value from public.app_config where key = 'corpus'`;
-    const config: CorpusConfig = { ...DEFAULT_CONFIG, ...configRow?.value };
-
-    const catalogRows = await sql<
-      {
-        id: number;
-        oracle_id: string;
-        color_identity: number;
-        can_be_commander: boolean;
-        legal_commander: string;
-        is_basic_land: boolean;
-        slug: string;
-      }[]
-    >`
-      select id, oracle_id::text, color_identity, can_be_commander, legal_commander, is_basic_land, slug
-      from public.cards
-      where deleted_at is null
-    `;
-    const catalog = new Map<string, CatalogCard>();
-    const identityById = new Map<number, number>();
-    for (const r of catalogRows) {
-      catalog.set(r.oracle_id, {
-        id: r.id,
-        colorIdentity: r.color_identity,
-        canBeCommander: r.can_be_commander,
-        legal: r.legal_commander === 'legal',
-        isBasicLand: r.is_basic_land,
-        slug: r.slug,
-      });
-      identityById.set(r.id, r.color_identity);
-    }
-    if (catalog.size === 0) throw new Error('The card catalog is empty. Run sync:catalog first.');
+    const config = await loadCorpusConfig(sql);
+    const catalog = await loadCatalog(sql);
+    const identityById = new Map([...catalog.values()].map((c) => [c.id, c.colorIdentity]));
 
     const keys = new Map<string, KeyAggregate>();
     const globalWith = new Map<number, number>();
@@ -117,64 +70,24 @@ export async function aggregateCorpus({
 
     for await (const deck of readJsonl<SlimDeck>(file, stats)) {
       if (stats.lines % HEARTBEAT_EVERY === 0) await heartbeat(sql, runId, stats.lines);
-      const exclusion = ((): Exclusion | null => {
-        if (seen.has(deck.id)) return 'duplicate';
-        seen.add(deck.id);
-        if (deck.commanders.length > MAX_COMMANDERS) return 'too_many_commanders';
-        return null;
-      })();
-      if (exclusion) {
-        excluded[exclusion]++;
+      if (seen.has(deck.id)) {
+        excluded.duplicate++;
+        continue;
+      }
+      seen.add(deck.id);
+      const resolved = resolveDeck(deck, catalog, config);
+      if (!resolved.ok) {
+        excluded[resolved.reason]++;
         continue;
       }
 
-      const commanders = deck.commanders.map((oracleId) => catalog.get(oracleId));
-      if (!commanders.every((c): c is CatalogCard => c !== undefined)) {
-        excluded.commander_not_in_catalog++;
-        continue;
-      }
-      if (!commanders.every((c) => c.legal)) {
-        excluded.commander_not_legal++;
-        continue;
-      }
-      if (!commanders.some((c) => c.canBeCommander)) {
-        excluded.no_eligible_commander++;
-        continue;
-      }
-
-      const identity = commanders.reduce((mask, c) => mask | c.colorIdentity, 0);
-      const cardIds = new Set<number>();
-      let unresolved = 0;
-      let outsideIdentity = false;
-      for (const [oracleId] of deck.cards) {
-        const card = catalog.get(oracleId);
-        if (!card) {
-          unresolved++;
-        } else if ((card.colorIdentity & ~identity) !== 0) {
-          outsideIdentity = true;
-          break;
-        } else if (!card.isBasicLand) {
-          cardIds.add(card.id);
-        }
-      }
-      if (outsideIdentity) {
-        excluded.outside_identity++;
-        continue;
-      }
-      if (unresolved > config.maxUnresolvedCards) {
-        excluded.unresolved_cards++;
-        continue;
-      }
-
-      commanders.sort((a, b) => a.id - b.id);
-      const key = commanders.map((c) => c.id).join(':');
+      const { key, commanders, identity, bracket, cardIds } = resolved.deck;
       let aggregate = keys.get(key);
       if (!aggregate) {
         aggregate = { commanders, identity, decks: 0, brackets: {}, cards: new Map() };
         keys.set(key, aggregate);
       }
       aggregate.decks++;
-      const bracket = deck.edhBracket === null ? 'unset' : String(deck.edhBracket);
       aggregate.brackets[bracket] = (aggregate.brackets[bracket] ?? 0) + 1;
       for (const id of cardIds) {
         increment(aggregate.cards, id);
@@ -205,11 +118,10 @@ export async function aggregateCorpus({
       deck_count: a.decks,
       bracket_counts: JSON.stringify(a.brackets),
     }));
-    const alpha = config.shrinkAlpha;
     const cardStatRows = [...keys].flatMap(([key, a]) =>
       [...a.cards].map(([card_id, decks_with]) => {
         const p0 = baseline.get(card_id) ?? 0;
-        const inclusion_shrunk = (decks_with + alpha * p0) / (a.decks + alpha);
+        const inclusion_shrunk = shrunkInclusion(decks_with, a.decks, p0, config.shrinkAlpha);
         return { key, card_id, decks_with, inclusion_shrunk, synergy: inclusion_shrunk - p0 };
       }),
     );
@@ -320,9 +232,9 @@ export async function aggregateCorpus({
         `${keyRows.length} commander keys, ${cardStatRows.length} commander-card rows, baselines for ${globalRows.length} cards`,
     );
 
-    const sample = await sql<{ slug: string; deck_count: number; name: string; decks_with: number; inclusion: number; synergy: number }[]>`
+    const sample = await sql<{ slug: string; deck_count: number; name: string; decks_with: number; synergy: number }[]>`
       with biggest as (select commander_key_id, deck_count from public.commander_stats order by deck_count desc limit 1)
-      select k.slug, b.deck_count, c.name, s.decks_with, s.inclusion_shrunk as inclusion, s.synergy
+      select k.slug, b.deck_count, c.name, s.decks_with, s.synergy
       from biggest b
       join public.commander_keys k on k.id = b.commander_key_id
       join public.commander_card_stats s on s.commander_key_id = b.commander_key_id
