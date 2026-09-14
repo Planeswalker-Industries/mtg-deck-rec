@@ -1,5 +1,6 @@
 import os from 'node:os';
 import type { Sql } from './db';
+import { refreshWebCaches } from './web-app';
 
 export type SyncJob = 'scryfall_catalog' | 'scryfall_printings' | 'oracle_tags' | 'corpus_aggregate';
 export type SyncMetrics = Record<string, number>;
@@ -69,7 +70,7 @@ export async function finishRun(
   status: 'succeeded' | 'failed' | 'failed_sanity',
   result: { rowsRead: number; rowsChanged?: number; metrics?: SyncMetrics; error?: string },
 ): Promise<void> {
-  await sql`
+  const [run] = await sql<{ job: SyncJob }[]>`
     update public.sync_runs
     set status = ${status},
         finished_at = now(),
@@ -79,5 +80,8 @@ export async function finishRun(
         metrics = ${result.metrics ? sql.json(result.metrics) : null},
         error = ${result.error ?? null}
     where id = ${runId}
+    returning job
   `;
+  // Jobs report success only after their transaction commits, so the web app re-renders from the new data.
+  if (status === 'succeeded' && run) await refreshWebCaches(run.job);
 }
