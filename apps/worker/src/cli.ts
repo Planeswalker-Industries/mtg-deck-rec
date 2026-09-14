@@ -22,8 +22,8 @@ Commands:
   spike:archidekt:rank      Rank our legal commanders by how often their 100-card Archidekt decks are updated (1 request each, resumable)
   spike:archidekt:verify [--top N]
                             Discount the top ranked commanders by how many of their listed decks they actually lead
-  spike:archidekt:crawl [--commanders N] [--per-commander N] [--order views|updated]
-                            Collect qualifying decks for the top ranked commanders at 1 request/second (resumable)`;
+  spike:archidekt:crawl [--commanders N] [--commander "Exact Name"]... [--per-commander N] [--order views|updated]
+                            Collect qualifying decks for the top ranked commanders, or the named ones (resumable)`;
 
 /** Reads `--name N` as a positive whole number, or undefined when the flag is absent. */
 function numberFlag(args: string[], name: string): number | undefined {
@@ -73,6 +73,7 @@ async function main(): Promise<void> {
       if (order !== undefined && !isCrawlOrder(order)) throw new Error('--order must be views or updated');
       return crawlCommanders({
         commanders: numberFlag(args, 'commanders'),
+        names: args.flatMap((arg, i) => (arg === '--commander' && args[i + 1] ? [args[i + 1] as string] : [])),
         perCommander: numberFlag(args, 'per-commander'),
         order,
       });

@@ -50,7 +50,6 @@ export function DeckTool() {
             </h1>
             <p className="mt-2 max-w-prose text-muted-foreground">
               Paste your Commander decklist to see cards to cut, cards to add, and replacements that do the same job.
-              Card data is a small sample for now.
             </p>
           </div>
           <form

@@ -49,7 +49,11 @@ export function parseDecklist(text: string): ParseDecklistResult {
   rawLines.forEach((raw, index) => {
     const trimmed = raw.trim();
     if (!trimmed) {
-      if ((blocks.at(-1) ?? []).length > 0) blocks.push([]);
+      if ((blocks.at(-1) ?? []).length > 0) {
+        blocks.push([]);
+        // "// Commander" exports (Moxfield) end the commander block with a blank line, not a "Deck" header.
+        if (section === 'commander' || section === 'companion') section = 'main';
+      }
       return;
     }
 

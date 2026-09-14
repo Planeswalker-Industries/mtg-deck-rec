@@ -120,7 +120,9 @@ export async function loadCardCorpus(
           {
             baseline,
             commanderRate: null,
-            evidence: g ? { decksWith: g.decks_with, commanderDeckCount: g.eligible_decks, inclusionRate: round3(baseline), synergy: 0 } : null,
+            evidence: g
+              ? { scope: "colors", decksWith: g.decks_with, commanderDeckCount: g.eligible_decks, inclusionRate: round3(baseline), synergy: 0 }
+              : null,
           },
         ];
       }
@@ -132,6 +134,7 @@ export async function loadCardCorpus(
           baseline,
           commanderRate: { inclusion, synergy: inclusion - baseline },
           evidence: {
+            scope: "commander",
             decksWith,
             commanderDeckCount: corpus.deckCount,
             inclusionRate: round3(decksWith / corpus.deckCount),

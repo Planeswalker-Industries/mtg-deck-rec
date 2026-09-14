@@ -81,4 +81,14 @@ describe('parseDecklist: sections', () => {
   it('records 1-based line numbers', () => {
     expect(parseDecklist('Commander\n1 Chulane, Teller of Tales').lines[0]?.lineNo).toBe(2);
   });
+
+  it('ends a commander block at its blank line when no Deck header follows (Moxfield "// COMMANDER" export)', () => {
+    const { lines } = parseDecklist('// COMMANDER\n1 Liesa, Forgotten Archangel\n\n1 Sol Ring\n12 Plains');
+    expect(lines.map((l) => l.section)).toEqual(['commander', 'main', 'main']);
+  });
+
+  it('keeps partner commanders together when a blank line follows the header', () => {
+    const { lines } = parseDecklist('Commander:\n\n1 Thrasios, Triton Hero\n1 Tymna the Weaver\n\nDeck\n1 Sol Ring');
+    expect(lines.map((l) => l.section)).toEqual(['commander', 'commander', 'main']);
+  });
 });

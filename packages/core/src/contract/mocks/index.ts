@@ -54,8 +54,8 @@ export interface MockApis {
 
 const MOCK_DECK_COUNT = 1204;
 const MOCK_ACCOUNT_OWNED = new Set<number>([2, 3, 5, 9, 12, 16, 17]);
-const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1 };
-const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes'];
+const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 };
+const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
 
 const byId = new Map<number, CardSummary>(mockCards.map((c) => [c.id, c]));
 const byName = new Map<string, CardSummary>(
@@ -97,6 +97,7 @@ const categoryOf = (typeLine: string): CardCategory => {
 const corpusFor = (id: number): CorpusEvidence => {
   const inclusionRate = (((id * 37) % 60) + 5) / 100;
   return {
+    scope: 'commander',
     decksWith: Math.round(inclusionRate * MOCK_DECK_COUNT),
     commanderDeckCount: MOCK_DECK_COUNT,
     inclusionRate,
@@ -300,6 +301,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
                   staple: null,
                   corpus: corpusScore(corpus),
                   votes: votesFor.score,
+                  role: null,
                 },
                 votesFor.voteCount,
               ),
@@ -339,7 +341,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             card: c,
             category,
             corpus,
-            score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null }, 0),
+            score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null, role: null }, 0),
             fillsRoles: (mockCardTags[c.id] ?? []).map((tag): TagRef => mockTagParent[tag.id] ?? tag),
             owned: ownedInfo(owned, c.id),
           };

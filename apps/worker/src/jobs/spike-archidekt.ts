@@ -280,26 +280,47 @@ export async function verifyCommanders({
   }
 }
 
+/** Looks up commanders by exact card name, for crawling specific commanders instead of the ranking. */
+async function commandersByName(names: readonly string[]): Promise<RankedCommander[]> {
+  const sql = connect();
+  const rows = await sql<{ oracleId: string; name: string }[]>`
+    select oracle_id::text as "oracleId", name
+    from public.cards
+    where name = any (${[...names]}) and can_be_commander and deleted_at is null
+  `.finally(() => sql.end({ timeout: 5 }));
+  const missing = names.filter((n) => !rows.some((r) => r.name === n));
+  if (missing.length > 0) throw new Error(`Not commanders in the catalog (use the exact card name): ${missing.join('; ')}`);
+  return rows.map((r) => ({ oracleId: r.oracleId, name: r.name, queryName: r.name, decks: 0, listed: 0, decksPerDay: 0 }));
+}
+
 /**
- * Collects up to `perCommander` qualifying decks for each of the top ranked commanders, most viewed first by default.
- * Every deck outcome is appended as it happens, so an interrupted run resumes where it stopped.
+ * Collects up to `perCommander` qualifying decks for each of the top ranked commanders (or the named ones), most viewed
+ * first by default. Every deck outcome is appended as it happens, so an interrupted run resumes where it stopped.
  */
 export async function crawlCommanders({
   commanders: limit = 50,
+  names,
   perCommander = 300,
   maxPages = 80,
   order = 'views',
 }: {
   commanders?: number | undefined;
+  names?: readonly string[] | undefined;
   perCommander?: number | undefined;
   maxPages?: number | undefined;
   order?: CrawlOrder | undefined;
 } = {}): Promise<void> {
-  const ranking = readRanking();
-  if (!ranking || ranking.method !== VERIFIED_METHOD) {
-    throw new Error(`Run spike:archidekt:rank and spike:archidekt:verify first (${COMMANDERS_FILE} is missing or unverified)`);
+  let targets: RankedCommander[];
+  if (names && names.length > 0) {
+    targets = await commandersByName(names);
+  } else {
+    const ranking = readRanking();
+    if (!ranking || ranking.method !== VERIFIED_METHOD) {
+      throw new Error(`Run spike:archidekt:rank and spike:archidekt:verify first (${COMMANDERS_FILE} is missing or unverified)`);
+    }
+    targets = ranking.commanders.slice(0, limit);
   }
-  const targets = ranking.commanders.slice(0, limit);
+  const reportLabel = names && names.length > 0 ? targets.map((t) => t.name).join(' ') : undefined;
   const targetIds = new Set(targets.map((t) => t.oracleId));
 
   const decks = readJsonl<SlimDeck>(DECKS_FILE);
@@ -359,7 +380,7 @@ export async function crawlCommanders({
       );
     }
   } finally {
-    writeReport({ targets, decks, run, perCommander, order, started, acceptedThisRun });
+    writeReport({ targets, decks, run, perCommander, order, started, acceptedThisRun, label: reportLabel });
   }
 }
 
@@ -371,6 +392,7 @@ function writeReport({
   order,
   started,
   acceptedThisRun,
+  label,
 }: {
   targets: RankedCommander[];
   decks: SlimDeck[];
@@ -379,6 +401,8 @@ function writeReport({
   order: CrawlOrder;
   started: number;
   acceptedThisRun: number;
+  /** Set for crawls of named commanders, so their report doesn't replace the ranked crawl's. */
+  label?: string | undefined;
 }): void {
   const rejects = readJsonl<{ id: number; listedFor: string; reason: string }>(REJECTS_FILE);
   const hours = Math.max((Date.now() - started) / 3_600_000, 1 / 3600);
@@ -422,7 +446,8 @@ function writeReport({
   ].join('\n');
 
   mkdirSync(REPORTS_DIR, { recursive: true });
-  const file = path.join(REPORTS_DIR, `archidekt-spike-${date}.md`);
+  const suffix = label ? `-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}` : '';
+  const file = path.join(REPORTS_DIR, `archidekt-spike-${date}${suffix}.md`);
   writeFileSync(file, report);
   console.log(`report → ${file}`);
 }

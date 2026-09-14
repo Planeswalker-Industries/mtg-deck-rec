@@ -1,7 +1,7 @@
 import type { AddResult, Result } from "@mtg/core/contract";
-import { getAddSuggestions } from "@/lib/server/recs";
+import { getAddSuggestions, MAX_ADD_PER_CATEGORY } from "@/lib/server/recs";
 import { createPublicClient } from "@/lib/server/supabase";
-import { parseRecContext } from "@/lib/server/validate";
+import { parseOptionalLimit, parseRecContext } from "@/lib/server/validate";
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -9,7 +9,10 @@ export async function POST(request: Request): Promise<Response> {
   if (!context.ok) return Response.json(context, { status: 400 });
 
   try {
-    const data = await getAddSuggestions(createPublicClient(), { context: context.data });
+    const data = await getAddSuggestions(createPublicClient(), {
+      context: context.data,
+      limitPerCategory: parseOptionalLimit(body?.limitPerCategory, MAX_ADD_PER_CATEGORY),
+    });
     return Response.json({ ok: true, data } satisfies Result<AddResult>);
   } catch (err) {
     console.error(err);

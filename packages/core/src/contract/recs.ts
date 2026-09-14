@@ -23,7 +23,8 @@ export interface RecContext {
  * tag: does the same job (functional tag similarity) · manaValue: similar cost · staple: how widely the card is
  * reprinted, especially in Commander precons · corpus: play rate with this commander · votes: community votes.
  */
-export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes';
+/** `role`: the card fills a role the deck is short on (cards to add). */
+export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes' | 'role';
 
 export interface ScoreBreakdown {
   /** 0..1 */
@@ -44,7 +45,10 @@ export interface TagMatch {
 }
 
 export interface CorpusEvidence {
+  /** 'commander': counted over the commander's decks. 'colors': over every corpus deck the card's colors allow, when the commander has no decks yet. */
+  scope: 'commander' | 'colors';
   decksWith: number;
+  /** Decks counted: the commander's, or every deck the card's colors allow (see scope). */
   commanderDeckCount: number;
   inclusionRate: number;
   synergy: number;

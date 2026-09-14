@@ -116,7 +116,7 @@ function Comparison({ target, selected }: { target: CardSummary; selected: SwapS
         {selected.owned && <OwnedBadge />}
         <span className="tabular-nums">
           {selected.corpus
-            ? `Played in ${formatPercent(selected.corpus.inclusionRate)} of ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} decks with this commander`
+            ? `Played in ${formatPercent(selected.corpus.inclusionRate)} of ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} decks ${selected.corpus.scope === "commander" ? "with this commander" : "in these colors"}`
             : "No deck data yet"}
         </span>
       </div>

@@ -752,6 +752,23 @@ export type Database = {
     Functions: {
       get_public_config: { Args: { p_key: string }; Returns: Json }
       rebuild_tag_closure: { Args: never; Returns: undefined }
+      rec_add_candidates: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_alpha: number
+          p_deck_count: number
+          p_exclude: number[]
+          p_identity_mask: number
+          p_key_ids: number[]
+          p_limit?: number
+          p_owned?: number[]
+        }
+        Returns: {
+          baseline: number
+          card_id: number
+          decks_with: number
+        }[]
+      }
       rec_card_roles: {
         Args: { p_card_ids: number[]; p_role_ids: string[] }
         Returns: {

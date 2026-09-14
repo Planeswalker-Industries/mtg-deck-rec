@@ -3,7 +3,7 @@ import type { RecMode, ScoreBreakdown, ScoreComponent } from '../contract';
 export type ComponentValues = Record<ScoreComponent, number | null>;
 export type ComponentWeights = Record<ScoreComponent, number>;
 
-const COMPONENTS: readonly ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes'];
+const COMPONENTS: readonly ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
 
 /**
  * Starting weights per mode; tuned later against the recommendation regression set.
@@ -11,8 +11,8 @@ const COMPONENTS: readonly ScoreComponent[] = ['tag', 'manaValue', 'staple', 'co
  * rec_swap_candidates orders its candidate pool with the same no-corpus weights; change both together.
  */
 export const SWAP_WEIGHTS: Record<RecMode, ComponentWeights> = {
-  collection_less: { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1 },
-  collection_aware: { tag: 0.55, manaValue: 0.1, staple: 0.1, corpus: 0.15, votes: 0.1 },
+  collection_less: { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 },
+  collection_aware: { tag: 0.55, manaValue: 0.1, staple: 0.1, corpus: 0.15, votes: 0.1, role: 0 },
 };
 
 /** Candidates below this functional tag similarity don't do the same job and are dropped. */

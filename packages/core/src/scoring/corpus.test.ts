@@ -58,7 +58,7 @@ describe('corpusComponent', () => {
     const weightsFor = (scale: number) => ({ ...SWAP_WEIGHTS.collection_less, corpus: SWAP_WEIGHTS.collection_less.corpus * scale });
     const score = (baseline: number) => {
       const corpus = corpusComponent({ commanderRate: null, commanderDeckCount: 0, baseline }, thresholds);
-      return blendScore({ tag: 0.6, manaValue: 0.5, staple: 0.5, corpus: corpus.value, votes: null }, weightsFor(corpus.weightScale)).total;
+      return blendScore({ tag: 0.6, manaValue: 0.5, staple: 0.5, corpus: corpus.value, votes: null, role: null }, weightsFor(corpus.weightScale)).total;
     };
     expect(score(0.087) - score(0.001)).toBeGreaterThan(0.03);
   });
