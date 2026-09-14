@@ -7,7 +7,9 @@
     ".": "./src/index.ts",
     "./contract": "./src/contract/index.ts",
     "./mocks": "./src/contract/mocks/index.ts",
-    "./parse": "./src/parse/index.ts"
+    "./parse": "./src/parse/index.ts",
+    "./commander": "./src/formats/commander/index.ts",
+    "./scoring": "./src/scoring/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

@@ -28,11 +28,12 @@ export function CutPanel({
   return (
     <div className="flex flex-col gap-3">
       <p className="max-w-prose text-sm text-muted-foreground">
-        Cards that do the least for this deck, most urgent first. Tap one to compare replacements.{" "}
-        {confidenceMessage(confidence, commanderDeckCount)}
+        {confidence === "none"
+          ? "Cards that break deck rules, cost a lot, or overlap with plenty of others doing the same job. Tap one to compare replacements."
+          : `Cards that do the least for this deck, most urgent first. Tap one to compare replacements. ${confidenceMessage(confidence, commanderDeckCount)}`}
       </p>
       {suggestions.length === 0 ? (
-        <p className="text-sm">Nothing stands out to cut.</p>
+        <p className="text-sm">Nothing stands out to cut. Open Your deck to compare replacements for any card.</p>
       ) : (
         <PocketGrid
           label="Cards to cut"
