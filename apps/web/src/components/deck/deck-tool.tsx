@@ -18,7 +18,7 @@ import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckTool } from "./use-deck-tool";
 
 const PLACEHOLDER = `Commander
-1 Chulane, Teller of Tales
+1 Liesa, Forgotten Archangel
 
 Deck
 1 Sol Ring
