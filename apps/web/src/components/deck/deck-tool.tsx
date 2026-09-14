@@ -49,7 +49,8 @@ export function DeckTool() {
               Upgrade a deck
             </h1>
             <p className="mt-2 max-w-prose text-muted-foreground">
-              Paste your Commander decklist to see cards to cut, cards to add, and replacements that do the same job.
+              Paste your Commander decklist, or a link to a public Archidekt deck, to see cards to cut, cards to add, and
+              replacements that do the same job.
             </p>
           </div>
           <form
@@ -96,6 +97,15 @@ export function DeckTool() {
         </div>
       )}
 
+      {tool.importedFrom && tool.parse.status === "ready" && (
+        <p className="text-sm text-muted-foreground">
+          Imported from{" "}
+          <a href={tool.importedFrom.url} target="_blank" rel="noreferrer" className="font-medium text-primary underline underline-offset-2">
+            Archidekt
+          </a>
+          . Edit the decklist to change it here.
+        </p>
+      )}
       {tool.parse.status === "error" && <PanelError message={tool.parse.message} />}
       <ResolutionIssues unresolved={tool.unresolvedLines} issues={analysis?.issues ?? []} />
 

@@ -1,5 +1,5 @@
 import type { ActionsApi, ApiError, RecsApi, Result } from "@mtg/core/contract";
-import { analyzeDeckAction, parseDeckAction } from "@/app/deck/actions";
+import { analyzeDeckAction, importDeckFromUrlAction, parseDeckAction } from "@/app/deck/actions";
 
 const offline: ApiError = {
   code: "UPSTREAM_UNAVAILABLE",
@@ -34,7 +34,7 @@ export const realRecs: RecsApi = {
 export const realActions: ActionsApi = {
   parseDeck: (input) => parseDeckAction(input),
   analyzeDeck: (input) => analyzeDeckAction(input),
-  importDeckFromUrl: notYet,
+  importDeckFromUrl: (input) => importDeckFromUrlAction(input),
   resolveCollectionRows: notYet,
   saveCollectionBatch: notYet,
   deleteCollection: notYet,

@@ -7,6 +7,8 @@ import type {
   CardId,
   CutResult,
   DeckAnalysis,
+  ImportDeckUrlResult,
+  ParseDeckResult,
   RecContext,
   ResolvedLine,
   Result,
@@ -29,6 +31,21 @@ export interface SwapState {
 
 const toAsync = <T>(r: Result<T>): Async<T> =>
   r.ok ? { status: "ready", data: r.data } : { status: "error", message: r.error.message };
+
+/** A lone link in the decklist box is imported instead of parsed. */
+const DECK_LINK = /^https?:\/\/\S+$/i;
+
+export interface ImportedFrom {
+  source: ImportDeckUrlResult["source"];
+  url: string;
+}
+
+/** Decklist text for resolved lines, so an imported deck can be edited like a pasted one. */
+function decklistText(lines: readonly ResolvedLine[]): string {
+  const raw = (commander: boolean) =>
+    lines.filter((l) => (l.line.section === "commander") === commander).map((l) => l.line.raw.trim());
+  return ["Commander", ...raw(true), "", "Deck", ...raw(false), ""].join("\n");
+}
 
 function buildContext(
   analysis: DeckAnalysis,
@@ -59,6 +76,7 @@ export function useDeckTool() {
   const [add, setAdd] = useState<Async<AddResult>>({ status: "idle" });
   const [cut, setCut] = useState<Async<CutResult>>({ status: "idle" });
   const [swap, setSwap] = useState<SwapState | null>(null);
+  const [importedFrom, setImportedFrom] = useState<ImportedFrom | null>(null);
   const recsRequest = useRef(0);
   const swapRequest = useRef(0);
 
@@ -85,11 +103,18 @@ export function useDeckTool() {
 
   async function submit() {
     setParse({ status: "loading" });
-    const r = await getApis().actions.parseDeck({ text });
+    const input = text.trim();
+    const { actions } = getApis();
+    const r: Result<ParseDeckResult | ImportDeckUrlResult> = DECK_LINK.test(input)
+      ? await actions.importDeckFromUrl({ url: input })
+      : await actions.parseDeck({ text });
     if (!r.ok) {
       setParse({ status: "error", message: r.error.message });
       return;
     }
+    const imported = "sourceUrl" in r.data ? r.data : null;
+    setImportedFrom(imported ? { source: imported.source, url: imported.sourceUrl } : null);
+    if (imported) setText(decklistText(imported.lines));
     recsRequest.current++;
     swapRequest.current++;
     setParse({ status: "ready", data: null });
@@ -131,6 +156,7 @@ export function useDeckTool() {
     loadSample: () => setText(mockDecklistText),
     submit,
     parse,
+    importedFrom,
     lines,
     unresolvedLines: lines.filter((l) => l.resolution.status !== "resolved"),
     analysis,
