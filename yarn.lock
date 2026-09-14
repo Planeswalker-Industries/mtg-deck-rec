@@ -1134,6 +1134,7 @@ __metadata:
   dependencies:
     "@mtg/core": "workspace:*"
     "@playwright/test": "npm:^1.63.0"
+    "@supabase/ssr": "npm:0.12.7"
     "@supabase/supabase-js": "npm:^2.116.0"
     "@tailwindcss/postcss": "npm:^4"
     "@types/node": "npm:^24"
@@ -2776,6 +2777,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@supabase/ssr@npm:0.12.7":
+  version: 0.12.7
+  resolution: "@supabase/ssr@npm:0.12.7"
+  dependencies:
+    cookie: "npm:^1.0.2"
+  peerDependencies:
+    "@supabase/supabase-js": ^2.114.0
+  checksum: 10c0/d1c02a6a5bb49f138c10c13e465b3d35d0abac779702c234bbd0fb7c46af73ba792202c33a0d11875bb77cab8284da40c4c0d5cde6b4942bd262bcd8e163b635
+  languageName: node
+  linkType: hard
+
 "@supabase/storage-js@npm:2.116.0":
   version: 2.116.0
   resolution: "@supabase/storage-js@npm:2.116.0"
@@ -4037,6 +4049,13 @@ __metadata:
   version: 0.7.2
   resolution: "cookie@npm:0.7.2"
   checksum: 10c0/9596e8ccdbf1a3a88ae02cf5ee80c1c50959423e1022e4e60b91dd87c622af1da309253d8abdb258fb5e3eacb4f08e579dc58b4897b8087574eee0fd35dfa5d2
+  languageName: node
+  linkType: hard
+
+"cookie@npm:^1.0.2":
+  version: 1.1.1
+  resolution: "cookie@npm:1.1.1"
+  checksum: 10c0/79c4ddc0fcad9c4f045f826f42edf54bcc921a29586a4558b0898277fa89fb47be95bc384c2253f493af7b29500c830da28341274527328f18eba9f58afa112c
   languageName: node
   linkType: hard
 

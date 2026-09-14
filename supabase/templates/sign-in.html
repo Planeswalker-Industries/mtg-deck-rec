@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#e9eef3;font-family:Arial,Helvetica,sans-serif;color:#18212b;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #cfd8e1;border-radius:12px;">
+      <tr>
+        <td style="padding:24px;">
+          <h1 style="margin:0 0 12px;font-size:22px;">Sign in to MTG Deck Rec</h1>
+          <p style="margin:0 0 8px;font-size:15px;">Enter this code on the sign-in page:</p>
+          <p style="margin:0 0 20px;font-size:32px;font-weight:700;letter-spacing:6px;">{{ .Token }}</p>
+          <p style="margin:0 0 20px;font-size:15px;">
+            Or <a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email" style="color:#27509b;font-weight:700;">sign in with this link</a>. It works on
+            any device.
+          </p>
+          <p style="margin:0;font-size:13px;color:#5b6773;">
+            The code and link work once and expire in an hour. If you didn't ask to sign in, you can ignore this email.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
