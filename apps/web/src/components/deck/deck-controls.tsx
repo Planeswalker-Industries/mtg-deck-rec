@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { Bracket } from "@mtg/core/contract";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,6 +17,8 @@ export function DeckControls({
   includeGameChangers,
   onBracketChange,
   onIncludeGameChangersChange,
+  ownedOnly,
+  onOwnedOnlyChange,
 }: {
   bracket: Bracket;
   bracketSource: "inferred" | "user";
@@ -24,6 +27,9 @@ export function DeckControls({
   includeGameChangers: boolean;
   onBracketChange: (bracket: Bracket) => void;
   onIncludeGameChangersChange: (include: boolean) => void;
+  /** null when there's no saved collection; the control then links to the collection page. */
+  ownedOnly: boolean | null;
+  onOwnedOnlyChange: (on: boolean) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -48,13 +54,21 @@ export function DeckControls({
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        <Switch
-          id="include-game-changers"
-          checked={includeGameChangers}
-          onCheckedChange={onIncludeGameChangersChange}
-        />
-        <Label htmlFor="include-game-changers">Suggest Game Changers</Label>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex items-center gap-2">
+          <Switch id="include-game-changers" checked={includeGameChangers} onCheckedChange={onIncludeGameChangersChange} />
+          <Label htmlFor="include-game-changers">Suggest Game Changers</Label>
+        </div>
+        {ownedOnly === null ? (
+          <Link href="/collection" className="text-sm font-bold text-primary underline-offset-4 hover:underline">
+            Add your collection
+          </Link>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Switch id="owned-only" checked={ownedOnly} onCheckedChange={onOwnedOnlyChange} />
+            <Label htmlFor="owned-only">Only cards I own</Label>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,10 +2,10 @@
 
 import { CircleCheck, LoaderCircle } from "lucide-react";
 import type { CardSummary, CommanderRequest } from "@mtg/core/contract";
-import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { displayName } from "@/lib/cards";
 import type { CommanderLookup, LookupState } from "./use-commander-lookup";
@@ -64,27 +64,6 @@ function progressValue(state: LookupState): number | null {
   if (request.status !== "collecting") return null;
   const total = Math.max(1, Math.min(request.decksTarget, request.decksListed ?? request.decksTarget));
   return Math.round(5 + 75 * Math.min(request.decksCollected / total, 1));
-}
-
-function ProgressBar({ value, label, className }: { value: number | null; label: string; className?: string }) {
-  return (
-    <div
-      role="progressbar"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={value ?? undefined}
-      className={cn("h-2 w-full overflow-hidden rounded-full bg-seam", className)}
-    >
-      <div
-        className={cn(
-          "h-full rounded-full bg-primary transition-[width] duration-500 ease-out",
-          value === null && "w-1/3 motion-safe:animate-pulse",
-        )}
-        style={value === null ? undefined : { width: `${value}%` }}
-      />
-    </div>
-  );
 }
 
 function notEnoughMessage(request: CommanderRequest): string {
