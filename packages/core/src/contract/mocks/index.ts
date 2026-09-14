@@ -102,6 +102,7 @@ const corpusFor = (id: number): CorpusEvidence => {
     commanderDeckCount: MOCK_DECK_COUNT,
     inclusionRate,
     synergy: round(inclusionRate - 0.2),
+    limited: false,
   };
 };
 

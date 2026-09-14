@@ -52,6 +52,8 @@ export interface CorpusEvidence {
   commanderDeckCount: number;
   inclusionRate: number;
   synergy: number;
+  /** Too few decks could have run the card yet (usually a new card): its play rate isn't used, and it's scored like a typical option. */
+  limited: boolean;
 }
 
 export interface VoteSummary {

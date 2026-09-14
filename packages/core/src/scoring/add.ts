@@ -2,8 +2,11 @@ import type { CardCategory } from '../contract';
 import type { RoleTarget } from './cut';
 import type { ComponentWeights } from './swap';
 
-/** Cards to add: mostly how decks with this commander play the card, then whether it fills a role the deck is short on. */
-export const ADD_WEIGHTS: ComponentWeights = { tag: 0, manaValue: 0, staple: 0, corpus: 0.7, votes: 0, role: 0.3 };
+/**
+ * Cards to add: mostly how decks with this commander play the card, then whether it fills a role the deck is short on.
+ * At 0.3, role gaps lifted rarely played cards (Cosmic Intervention, 3% of Liesa decks) over staples (Despark, 31%).
+ */
+export const ADD_WEIGHTS: ComponentWeights = { tag: 0, manaValue: 0, staple: 0, corpus: 0.8, votes: 0, role: 0.2 };
 
 /** The type a card is filed under when it has several (an artifact creature is a creature). */
 const CATEGORY_PRECEDENCE: readonly CardCategory[] = [

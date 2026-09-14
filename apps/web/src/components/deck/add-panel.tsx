@@ -67,7 +67,9 @@ export function AddPanel({ state }: { state: Async<AddResult> }) {
                   {s.owned && <OwnedBadge />}
                   {s.fillsRoles.length > 0 && <span className="font-bold">Adds {s.fillsRoles.map((r) => r.label.toLowerCase()).join(", ")}</span>}
                   {s.corpus && (
-                    <span className="text-muted-foreground tabular-nums">In {formatPercent(s.corpus.inclusionRate)} of decks</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {s.corpus.limited ? "New card, little play data yet" : `In ${formatPercent(s.corpus.inclusionRate)} of decks`}
+                    </span>
                   )}
                   <span className="text-muted-foreground tabular-nums">
                     {s.card.price ? `About ${formatUsd(s.card.price.usd)}` : "No price"}

@@ -335,6 +335,7 @@ export type Database = {
           card_id: number
           commander_key_id: number
           decks_with: number
+          eligible_decks: number | null
           inclusion_shrunk: number
           synergy: number
         }
@@ -342,6 +343,7 @@ export type Database = {
           card_id: number
           commander_key_id: number
           decks_with: number
+          eligible_decks?: number | null
           inclusion_shrunk: number
           synergy: number
         }
@@ -349,6 +351,7 @@ export type Database = {
           card_id?: number
           commander_key_id?: number
           decks_with?: number
+          eligible_decks?: number | null
           inclusion_shrunk?: number
           synergy?: number
         }
@@ -417,6 +420,7 @@ export type Database = {
           commander_key_id: number
           computed_at: string
           deck_count: number
+          deck_months: Json
           source_counts: Json
         }
         Insert: {
@@ -424,6 +428,7 @@ export type Database = {
           commander_key_id: number
           computed_at?: string
           deck_count: number
+          deck_months?: Json
           source_counts: Json
         }
         Update: {
@@ -431,6 +436,7 @@ export type Database = {
           commander_key_id?: number
           computed_at?: string
           deck_count?: number
+          deck_months?: Json
           source_counts?: Json
         }
         Relationships: [
@@ -442,6 +448,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      corpus_identity_stats: {
+        Row: {
+          color_identity: number
+          computed_at: string
+          deck_months: Json
+        }
+        Insert: {
+          color_identity: number
+          computed_at?: string
+          deck_months: Json
+        }
+        Update: {
+          color_identity?: number
+          computed_at?: string
+          deck_months?: Json
+        }
+        Relationships: []
       }
       formats: {
         Row: {

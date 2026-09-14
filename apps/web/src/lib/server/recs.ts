@@ -19,12 +19,14 @@ import type {
 } from "@mtg/core/contract";
 import {
   ADD_WEIGHTS,
+  BASELINE_CORPUS_WEIGHT,
   blendScore,
   cardCategory,
   commanderCorpusScore,
   commanderShare,
   corpusComponent,
   manaValueProximity,
+  neutralCorpusValue,
   roleGap,
   roleShortfalls,
   scoreCuts,
@@ -161,6 +163,25 @@ export async function getSwapSuggestions(
   ]);
 
   const baseWeights = SWAP_WEIGHTS[mode];
+  const corpusScores = new Map(
+    candidates.map((c) => {
+      const rates = cardCorpus.get(c.card_id);
+      const score = rates
+        ? corpusComponent(
+            {
+              commanderRate: rates.commanderRate,
+              commanderDeckCount: rates.commanderDeckCount,
+              baseline: rates.baseline,
+              baselineDeckCount: rates.baselineDeckCount,
+            },
+            corpus.settings,
+          )
+        : undefined;
+      return [c.card_id, score] as const;
+    }),
+  );
+  // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
+  const neutralCorpus = neutralCorpusValue([...corpusScores.values()].flatMap((s) => (s ? [s.value] : [])));
   const suggestions = candidates
     .flatMap((candidate): SwapSuggestion[] => {
       const row = candidateRows.get(candidate.card_id);
@@ -173,12 +194,9 @@ export async function getSwapSuggestions(
         return [{ targetTag, candidateTag, via: m.viaTagId ? (tags.get(m.viaTagId) ?? null) : null, distance: m.distance }];
       });
       const cardRates = cardCorpus.get(candidate.card_id);
-      const corpusScore = cardRates
-        ? corpusComponent(
-            { commanderRate: cardRates.commanderRate, commanderDeckCount: corpus.deckCount, baseline: cardRates.baseline },
-            corpus.settings,
-          )
-        : null;
+      // undefined: no corpus loaded at all. null: too new to judge, so it gets the neutral score at baseline weight.
+      const known = corpusScores.get(candidate.card_id);
+      const corpusScore = known === null ? { value: neutralCorpus, weightScale: BASELINE_CORPUS_WEIGHT } : (known ?? null);
       return [
         {
           card,
@@ -224,14 +242,18 @@ export async function getCutSuggestions(
   ]);
   const [rolesByCard, cardCorpus] = await Promise.all([loadCardRoles(db, mainIds, roleTargets), loadCardCorpus(db, corpus, mainIds)]);
 
-  // Play rates judge cuts only once the commander's own decks count; broad popularity says little about fit.
-  const useCorpus = commanderShare(corpus.deckCount, corpus.settings) > 0;
+  // Play rates judge a cut only once enough of the commander's decks could have run the card (updated since its
+  // release); broad popularity says little about fit, and new cards aren't judged by older decks.
+  const commanderRateFor = (id: number) => {
+    const rates = cardCorpus.get(id);
+    return rates?.commanderRate && commanderShare(rates.commanderDeckCount, corpus.settings) > 0 ? rates : null;
+  };
   const identityMask = identityMaskOf(context, rows);
   const scored = scoreCuts(
     mainIds.flatMap((id) => {
       const row = rows.get(id);
       if (!row) return [];
-      const rate = cardCorpus.get(id)?.commanderRate;
+      const rate = commanderRateFor(id)?.commanderRate;
       return [
         {
           cardId: id,
@@ -242,7 +264,7 @@ export async function getCutSuggestions(
           gameChanger: row.game_changer,
           roleIds: rolesByCard.get(id) ?? [],
           // Basic lands aren't in the corpus stats, so they'd all look unplayed.
-          corpusScore: useCorpus && rate && !row.is_basic_land ? commanderCorpusScore(rate) : null,
+          corpusScore: rate && !row.is_basic_land ? commanderCorpusScore(rate) : null,
         },
       ];
     }),
@@ -259,7 +281,7 @@ export async function getCutSuggestions(
         card: toCardSummary(row),
         cutScore: s.cutScore,
         reasons: notOwned ? [...s.reasons, "NOT_OWNED"] : s.reasons,
-        corpus: useCorpus ? (cardCorpus.get(s.cardId)?.evidence ?? null) : null,
+        corpus: commanderRateFor(s.cardId)?.evidence ?? null,
         owned: owned?.has(s.cardId) ? { quantity: 1 } : null,
       },
     ];
@@ -326,22 +348,33 @@ export async function getAddSuggestions(
   const shortfalls = roleShortfalls(deckRoleCounts, roleTargets);
   const roleLabels = new Map(roleTargets.map((t) => [t.roleId, t.label]));
 
-  const suggestions = (pool ?? []).flatMap((candidate): AddSuggestion[] => {
+  const scoredPool = (pool ?? []).map((candidate) => {
+    const rates = cardCorpus.get(candidate.card_id);
+    const corpusScore = corpusComponent(
+      {
+        commanderRate: rates?.commanderRate ?? null,
+        commanderDeckCount: rates?.commanderDeckCount ?? 0,
+        baseline: rates?.baseline ?? candidate.baseline,
+        baselineDeckCount: rates?.baselineDeckCount ?? 0,
+      },
+      corpus.settings,
+    );
+    return { candidate, rates, corpusScore };
+  });
+  // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
+  const neutralCorpus = neutralCorpusValue(scoredPool.flatMap((p) => (p.corpusScore ? [p.corpusScore.value] : [])));
+
+  const suggestions = scoredPool.flatMap(({ candidate, rates, corpusScore }): AddSuggestion[] => {
     const row = candidateRows.get(candidate.card_id);
     if (!row) return [];
     const card = toCardSummary(row);
-    const rates = cardCorpus.get(candidate.card_id);
-    const corpusScore = corpusComponent(
-      { commanderRate: rates?.commanderRate ?? null, commanderDeckCount: corpus.deckCount, baseline: rates?.baseline ?? candidate.baseline },
-      corpus.settings,
-    );
     const { gap, roleIds } = roleGap(rolesByCard.get(candidate.card_id) ?? [], shortfalls);
     return [
       {
         card,
         category: cardCategory(row.type_line),
         score: blendScore(
-          { tag: null, manaValue: null, staple: null, corpus: round2(corpusScore.value), votes: null, role: round2(gap) },
+          { tag: null, manaValue: null, staple: null, corpus: round2(corpusScore?.value ?? neutralCorpus), votes: null, role: round2(gap) },
           ADD_WEIGHTS,
         ),
         corpus: rates?.evidence ?? null,

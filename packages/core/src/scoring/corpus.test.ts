@@ -5,6 +5,8 @@ import {
   commanderShare,
   corpusComponent,
   corpusConfidence,
+  decksSinceRelease,
+  neutralCorpusValue,
   shrunkInclusion,
 } from './corpus';
 import { blendScore, SWAP_WEIGHTS } from './swap';
@@ -15,6 +17,19 @@ describe('shrunkInclusion', () => {
   it('pulls small samples toward the baseline and leaves large ones near their raw rate', () => {
     expect(shrunkInclusion(2, 2, 0.1, 20)).toBeCloseTo((2 + 2) / 22);
     expect(shrunkInclusion(900, 1000, 0.1, 20)).toBeCloseTo(0.884, 2);
+  });
+});
+
+describe('decksSinceRelease', () => {
+  const months = { '2024-05': 10, '2026-03': 5, '2026-04': 7, '2026-08': 3 };
+
+  it('counts only decks updated in or after the release month', () => {
+    expect(decksSinceRelease(months, '2026-04')).toBe(10);
+    expect(decksSinceRelease(months, '2027-01')).toBe(0);
+  });
+
+  it('counts every deck when the release date is unknown', () => {
+    expect(decksSinceRelease(months, null)).toBe(25);
   });
 });
 
@@ -40,26 +55,48 @@ describe('commanderCorpusScore', () => {
 });
 
 describe('corpusComponent', () => {
+  const rate = { inclusion: 0.5, synergy: 0.4 };
+
   it('uses the baseline at half weight without enough commander decks', () => {
-    const c = corpusComponent({ commanderRate: { inclusion: 0.5, synergy: 0.4 }, commanderDeckCount: 10, baseline: 0.25 }, thresholds);
-    expect(c.value).toBeCloseTo(0.5);
-    expect(c.weightScale).toBe(BASELINE_CORPUS_WEIGHT);
+    const c = corpusComponent({ commanderRate: rate, commanderDeckCount: 10, baseline: 0.25, baselineDeckCount: 5000 }, thresholds);
+    expect(c?.value).toBeCloseTo(0.5);
+    expect(c?.weightScale).toBe(BASELINE_CORPUS_WEIGHT);
   });
 
   it('uses the commander score at full weight with enough decks', () => {
-    const rate = { inclusion: 0.5, synergy: 0.4 };
-    const c = corpusComponent({ commanderRate: rate, commanderDeckCount: 100, baseline: 0.25 }, thresholds);
-    expect(c.value).toBeCloseTo(commanderCorpusScore(rate));
-    expect(c.weightScale).toBe(1);
+    const c = corpusComponent({ commanderRate: rate, commanderDeckCount: 100, baseline: 0.25, baselineDeckCount: 5000 }, thresholds);
+    expect(c?.value).toBeCloseTo(commanderCorpusScore(rate));
+    expect(c?.weightScale).toBe(1);
+  });
+
+  it('has no score when too few decks anywhere could have run the card, instead of a low one', () => {
+    const newCard = { commanderRate: { inclusion: 0.02, synergy: -0.05 }, commanderDeckCount: 12, baseline: 0, baselineDeckCount: 30 };
+    expect(corpusComponent(newCard, thresholds)).toBeNull();
+    expect(corpusComponent({ ...newCard, commanderDeckCount: 80 }, thresholds)).not.toBeNull();
   });
 
   // Real baselines from the Archidekt spike: Lightning Bolt 8.7% of red decks, Viridian Longbow 0.1% of all decks.
   it('lets play rates separate a staple from a rarely played card with the same tags', () => {
     const weightsFor = (scale: number) => ({ ...SWAP_WEIGHTS.collection_less, corpus: SWAP_WEIGHTS.collection_less.corpus * scale });
     const score = (baseline: number) => {
-      const corpus = corpusComponent({ commanderRate: null, commanderDeckCount: 0, baseline }, thresholds);
-      return blendScore({ tag: 0.6, manaValue: 0.5, staple: 0.5, corpus: corpus.value, votes: null, role: null }, weightsFor(corpus.weightScale)).total;
+      const corpus = corpusComponent({ commanderRate: null, commanderDeckCount: 0, baseline, baselineDeckCount: 9000 }, thresholds);
+      if (!corpus) throw new Error('expected a corpus score');
+      return blendScore(
+        { tag: 0.6, manaValue: 0.5, staple: 0.5, corpus: corpus.value, votes: null, role: null },
+        weightsFor(corpus.weightScale),
+      ).total;
     };
     expect(score(0.087) - score(0.001)).toBeGreaterThan(0.03);
+  });
+});
+
+describe('neutralCorpusValue', () => {
+  it('scores a card too new to judge like the typical candidate beside it', () => {
+    expect(neutralCorpusValue([0.2, 0.9, 0.5])).toBe(0.5);
+    expect(neutralCorpusValue([0.2, 0.4, 0.6, 0.9])).toBeCloseTo(0.5);
+  });
+
+  it('falls back to the middle of the scale when nothing else is known', () => {
+    expect(neutralCorpusValue([])).toBe(0.5);
   });
 });

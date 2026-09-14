@@ -44,6 +44,12 @@ describe('roleShortfalls and roleGap', () => {
     const fills = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.6, votes: null, role: 0.75 }, ADD_WEIGHTS);
     const doesNot = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.6, votes: null, role: 0 }, ADD_WEIGHTS);
     expect(fills.total).toBeGreaterThan(doesNot.total);
-    expect(fills.effectiveWeights.corpus).toBeCloseTo(0.7);
+    expect(fills.effectiveWeights.corpus).toBeCloseTo(0.8);
+  });
+
+  it('keeps a widely played card above a rarely played one that fills the most needed role', () => {
+    const staple = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.68, votes: null, role: 0 }, ADD_WEIGHTS);
+    const niche = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.38, votes: null, role: 1 }, ADD_WEIGHTS);
+    expect(staple.total).toBeGreaterThan(niche.total);
   });
 });

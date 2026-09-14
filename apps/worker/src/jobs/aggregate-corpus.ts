@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises';
 import {
+  decksSinceRelease,
   DEFAULT_CORPUS_FILE,
   EXCLUSIONS,
   IDENTITIES,
@@ -26,18 +27,23 @@ interface KeyAggregate {
   identity: number;
   decks: number;
   brackets: Record<string, number>;
+  /** Decks by last-updated month ('YYYY-MM'). */
+  months: Record<string, number>;
   /** card id → decks running it */
   cards: Map<number, number>;
 }
 
 const increment = <K>(map: Map<K, number>, key: K) => map.set(key, (map.get(key) ?? 0) + 1);
+const bump = (record: Record<string, number>, key: string) => {
+  record[key] = (record[key] ?? 0) + 1;
+};
 
 /**
- * Deck corpus → commander_keys, commander_stats, card_global_stats, commander_card_stats.
+ * Deck corpus → commander_keys, commander_stats, card_global_stats, commander_card_stats, corpus_identity_stats.
  *
- * Decks are filtered by `resolveDeck` (legal catalogued commanders, cards within their identity, few unknown cards).
- * Basic lands are left out of the stats. Same failure model as the other syncs: stage, sanity-check, merge in one
- * transaction.
+ * Decks are filtered by `resolveDeck` (legal catalogued commanders or pairs, cards within their identity, few unknown
+ * cards). Basic lands are left out of the stats. A card's play rates count only decks updated in or after its release
+ * month. Same failure model as the other syncs: stage, sanity-check, merge in one transaction.
  */
 export async function aggregateCorpus({
   file = DEFAULT_CORPUS_FILE,
@@ -59,11 +65,11 @@ export async function aggregateCorpus({
 
     const config = await loadCorpusConfig(sql);
     const catalog = await loadCatalog(sql);
-    const identityById = new Map([...catalog.values()].map((c) => [c.id, c.colorIdentity]));
+    const cardById = new Map([...catalog.values()].map((c) => [c.id, c]));
 
     const keys = new Map<string, KeyAggregate>();
     const globalWith = new Map<number, number>();
-    const decksByIdentity = new Array<number>(IDENTITIES).fill(0);
+    const monthsByIdentity = Array.from({ length: IDENTITIES }, (): Record<string, number> => ({}));
     const excluded = Object.fromEntries(EXCLUSIONS.map((e) => [e, 0])) as Record<Exclusion, number>;
     const seen = new Set<number>();
     let eligibleDecks = 0;
@@ -81,29 +87,42 @@ export async function aggregateCorpus({
         continue;
       }
 
-      const { key, commanders, identity, bracket, cardIds } = resolved.deck;
+      const { key, commanders, identity, bracket, month, cardIds } = resolved.deck;
       let aggregate = keys.get(key);
       if (!aggregate) {
-        aggregate = { commanders, identity, decks: 0, brackets: {}, cards: new Map() };
+        aggregate = { commanders, identity, decks: 0, brackets: {}, months: {}, cards: new Map() };
         keys.set(key, aggregate);
       }
       aggregate.decks++;
-      aggregate.brackets[bracket] = (aggregate.brackets[bracket] ?? 0) + 1;
+      bump(aggregate.brackets, bracket);
+      bump(aggregate.months, month);
       for (const id of cardIds) {
         increment(aggregate.cards, id);
         increment(globalWith, id);
       }
-      decksByIdentity[identity] = (decksByIdentity[identity] ?? 0) + 1;
+      const identityMonths = monthsByIdentity[identity];
+      if (identityMonths) bump(identityMonths, month);
       eligibleDecks++;
     }
 
-    // A card's baseline counts only decks its color identity could appear in.
-    const eligibleByIdentity = Array.from({ length: IDENTITIES }, (_, cardIdentity) =>
-      decksByIdentity.reduce((sum, n, deckIdentity) => ((cardIdentity & ~deckIdentity) === 0 ? sum + n : sum), 0),
-    );
+    // A card's baseline counts decks its color identity allows that were updated since the card's release.
+    const eligibleMemo = new Map<string, number>();
+    const baselineDecksFor = (cardIdentity: number, releaseMonth: string | null) => {
+      const memoKey = `${cardIdentity}:${releaseMonth ?? ''}`;
+      let n = eligibleMemo.get(memoKey);
+      if (n === undefined) {
+        n = monthsByIdentity.reduce(
+          (sum, months, deckIdentity) => ((cardIdentity & ~deckIdentity) === 0 ? sum + decksSinceRelease(months, releaseMonth) : sum),
+          0,
+        );
+        eligibleMemo.set(memoKey, n);
+      }
+      return n;
+    };
     const baseline = new Map<number, number>();
     const globalRows = [...globalWith].map(([card_id, decks_with]) => {
-      const eligible_decks = eligibleByIdentity[identityById.get(card_id) ?? 0] ?? eligibleDecks;
+      const card = cardById.get(card_id);
+      const eligible_decks = Math.max(baselineDecksFor(card?.colorIdentity ?? 0, card?.releaseMonth ?? null), decks_with);
       const rate = decks_with / Math.max(eligible_decks, 1);
       baseline.set(card_id, rate);
       return { card_id, decks_with, eligible_decks, rate };
@@ -117,14 +136,24 @@ export async function aggregateCorpus({
       slug: a.commanders.map((c) => c.slug).join('--'),
       deck_count: a.decks,
       bracket_counts: JSON.stringify(a.brackets),
+      deck_months: JSON.stringify(a.months),
     }));
-    const cardStatRows = [...keys].flatMap(([key, a]) =>
-      [...a.cards].map(([card_id, decks_with]) => {
+    const cardStatRows = [...keys].flatMap(([key, a]) => {
+      const sinceRelease = new Map<string | null, number>();
+      return [...a.cards].map(([card_id, decks_with]) => {
+        const releaseMonth = cardById.get(card_id)?.releaseMonth ?? null;
+        let since = sinceRelease.get(releaseMonth);
+        if (since === undefined) {
+          since = decksSinceRelease(a.months, releaseMonth);
+          sinceRelease.set(releaseMonth, since);
+        }
+        const eligible_decks = Math.max(since, decks_with);
         const p0 = baseline.get(card_id) ?? 0;
-        const inclusion_shrunk = shrunkInclusion(decks_with, a.decks, p0, config.shrinkAlpha);
-        return { key, card_id, decks_with, inclusion_shrunk, synergy: inclusion_shrunk - p0 };
-      }),
-    );
+        const inclusion_shrunk = shrunkInclusion(decks_with, eligible_decks, p0, config.shrinkAlpha);
+        return { key, card_id, decks_with, eligible_decks, inclusion_shrunk, synergy: inclusion_shrunk - p0 };
+      });
+    });
+    const identityRows = monthsByIdentity.map((months, color_identity) => ({ color_identity, deck_months: JSON.stringify(months) }));
 
     const errorRate = stats.lines > 0 ? stats.parseErrors / stats.lines : 1;
     const previousDecks = start.previousMetrics?.eligibleDecks;
@@ -156,7 +185,8 @@ export async function aggregateCorpus({
           color_identity smallint not null,
           slug text not null,
           deck_count integer not null,
-          bracket_counts text not null
+          bracket_counts text not null,
+          deck_months text not null
         )
       `;
       await db`
@@ -164,6 +194,7 @@ export async function aggregateCorpus({
           key text not null,
           card_id integer not null,
           decks_with integer not null,
+          eligible_decks integer not null,
           inclusion_shrunk real not null,
           synergy real not null
         )
@@ -176,17 +207,19 @@ export async function aggregateCorpus({
           rate real not null
         )
       `;
+      await db`create temp table stg_identity (color_identity smallint primary key, deck_months text not null)`;
 
       for (let i = 0; i < keyRows.length; i += BATCH_SIZE) {
-        await db`insert into stg_keys ${db(keyRows.slice(i, i + BATCH_SIZE), 'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'bracket_counts')}`;
+        await db`insert into stg_keys ${db(keyRows.slice(i, i + BATCH_SIZE), 'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'bracket_counts', 'deck_months')}`;
       }
       for (let i = 0; i < cardStatRows.length; i += BATCH_SIZE) {
-        await db`insert into stg_card_stats ${db(cardStatRows.slice(i, i + BATCH_SIZE), 'key', 'card_id', 'decks_with', 'inclusion_shrunk', 'synergy')}`;
+        await db`insert into stg_card_stats ${db(cardStatRows.slice(i, i + BATCH_SIZE), 'key', 'card_id', 'decks_with', 'eligible_decks', 'inclusion_shrunk', 'synergy')}`;
         await heartbeat(sql, runId, stats.lines);
       }
       for (let i = 0; i < globalRows.length; i += BATCH_SIZE) {
         await db`insert into stg_global ${db(globalRows.slice(i, i + BATCH_SIZE), 'card_id', 'decks_with', 'eligible_decks', 'rate')}`;
       }
+      await db`insert into stg_identity ${db(identityRows, 'color_identity', 'deck_months')}`;
 
       await db`begin`;
       try {
@@ -199,15 +232,16 @@ export async function aggregateCorpus({
         await db`delete from public.commander_card_stats`;
         await db`delete from public.commander_stats`;
         await db`delete from public.card_global_stats`;
+        await db`delete from public.corpus_identity_stats`;
         await db`
-          insert into public.commander_stats (commander_key_id, deck_count, source_counts, bracket_counts)
-          select k.id, s.deck_count, jsonb_build_object(${source}::text, s.deck_count), s.bracket_counts::jsonb
+          insert into public.commander_stats (commander_key_id, deck_count, source_counts, bracket_counts, deck_months)
+          select k.id, s.deck_count, jsonb_build_object(${source}::text, s.deck_count), s.bracket_counts::jsonb, s.deck_months::jsonb
           from stg_keys s
           join public.commander_keys k on k.commander_1 = s.commander_1 and coalesce(k.commander_2, 0) = coalesce(s.commander_2, 0)
         `;
         await db`
-          insert into public.commander_card_stats (commander_key_id, card_id, decks_with, inclusion_shrunk, synergy)
-          select k.id, s.card_id, s.decks_with, s.inclusion_shrunk, s.synergy
+          insert into public.commander_card_stats (commander_key_id, card_id, decks_with, eligible_decks, inclusion_shrunk, synergy)
+          select k.id, s.card_id, s.decks_with, s.eligible_decks, s.inclusion_shrunk, s.synergy
           from stg_card_stats s
           join stg_keys sk on sk.key = s.key
           join public.commander_keys k on k.commander_1 = sk.commander_1 and coalesce(k.commander_2, 0) = coalesce(sk.commander_2, 0)
@@ -215,6 +249,10 @@ export async function aggregateCorpus({
         await db`
           insert into public.card_global_stats (card_id, decks_with, eligible_decks, rate)
           select card_id, decks_with, eligible_decks, least(rate, 1) from stg_global
+        `;
+        await db`
+          insert into public.corpus_identity_stats (color_identity, deck_months)
+          select color_identity, deck_months::jsonb from stg_identity
         `;
         await db`commit`;
       } catch (err) {

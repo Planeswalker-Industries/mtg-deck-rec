@@ -26,6 +26,18 @@ export function shrunkInclusion(decksWith: number, deckCount: number, baseline: 
 }
 
 /**
+ * Decks last updated in or after the card's release month ('YYYY-MM'; null counts every deck). A deck last touched
+ * before a card existed says nothing about whether players run it.
+ */
+export function decksSinceRelease(deckMonths: Readonly<Record<string, number>>, releaseMonth: string | null): number {
+  let total = 0;
+  for (const [month, count] of Object.entries(deckMonths)) {
+    if (releaseMonth === null || month >= releaseMonth) total += count;
+  }
+  return total;
+}
+
+/**
  * 0..1 score from a commander's decks. Mostly synergy (cards this commander's decks run more than decks in general),
  * partly inclusion, so proven staples still score: 0.6·(0.5 + 0.5·clip(synergy / 0.3)) + 0.4·√inclusion.
  */
@@ -54,15 +66,38 @@ export function corpusConfidence(deckCount: number, { minDecks, fullDecks }: Cor
 /**
  * The corpus score component for one card, blending commander and baseline scores by `commanderShare`, and the
  * share of the corpus weight it has earned: half on baseline play rates alone, all of it with enough commander decks.
+ * Deck counts are the decks that could have run the card (updated since its release). When too few could have, anywhere,
+ * the result is null: an unknown play rate, not a low one (usually a brand-new card).
  */
 export function corpusComponent(
-  { commanderRate, commanderDeckCount, baseline }: { commanderRate: CommanderCardRate | null; commanderDeckCount: number; baseline: number },
+  {
+    commanderRate,
+    commanderDeckCount,
+    baseline,
+    baselineDeckCount,
+  }: { commanderRate: CommanderCardRate | null; commanderDeckCount: number; baseline: number; baselineDeckCount: number },
   thresholds: CorpusThresholds,
-): { value: number; weightScale: number } {
+): { value: number; weightScale: number } | null {
   const share = commanderRate ? commanderShare(commanderDeckCount, thresholds) : 0;
+  if (share === 0 && baselineDeckCount < thresholds.minDecks) return null;
   const fromCommander = commanderRate ? commanderCorpusScore(commanderRate) : 0;
   return {
     value: share * fromCommander + (1 - share) * baselineCorpusScore(baseline),
     weightScale: BASELINE_CORPUS_WEIGHT + (1 - BASELINE_CORPUS_WEIGHT) * share,
   };
+}
+
+/** Stand-in when no other candidate has a play-rate score either. */
+const DEFAULT_NEUTRAL_CORPUS_VALUE = 0.5;
+
+/**
+ * Play-rate score for cards too new to judge (`corpusComponent` returned null): the median of the other candidates'
+ * scores. A new card then ranks like a typical option, so what it does and costs decide; being new neither buries it
+ * nor promotes it.
+ */
+export function neutralCorpusValue(knownValues: readonly number[]): number {
+  if (knownValues.length === 0) return DEFAULT_NEUTRAL_CORPUS_VALUE;
+  const sorted = [...knownValues].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? (sorted[mid] ?? 0) : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
 }

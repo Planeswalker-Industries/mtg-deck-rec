@@ -115,9 +115,11 @@ function Comparison({ target, selected }: { target: CardSummary; selected: SwapS
         {selected.card.gameChanger && <GameChangerBadge />}
         {selected.owned && <OwnedBadge />}
         <span className="tabular-nums">
-          {selected.corpus
-            ? `Played in ${formatPercent(selected.corpus.inclusionRate)} of ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} decks ${selected.corpus.scope === "commander" ? "with this commander" : "in these colors"}`
-            : "No deck data yet"}
+          {!selected.corpus
+            ? "No deck data yet"
+            : selected.corpus.limited
+              ? `New card: only ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} deck${selected.corpus.commanderDeckCount === 1 ? "" : "s"} could have played it so far`
+              : `Played in ${formatPercent(selected.corpus.inclusionRate)} of ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} decks ${selected.corpus.scope === "commander" ? "with this commander" : "in these colors"}`}
         </span>
       </div>
       {selected.functionalTwin ? (
