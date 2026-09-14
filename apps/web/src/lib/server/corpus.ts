@@ -20,6 +20,8 @@ export interface CommanderCorpus {
   deckCount: number;
   /** Those decks by last-updated month, to count only decks updated since a card's release. */
   deckMonths: DeckMonths;
+  /** Average cards per deck in each tracked role (by role tag id), across those decks. */
+  roleProfile: Record<string, number>;
   confidence: CorpusConfidence;
 }
 
@@ -46,7 +48,7 @@ function parseSettings(value: unknown): CorpusSettings {
   return { shrinkAlpha: read("shrinkAlpha"), minDecks: read("minDecks"), fullDecks: read("fullDecks") };
 }
 
-function parseMonths(value: unknown): DeckMonths {
+function parseNumberRecord(value: unknown): DeckMonths {
   if (typeof value !== "object" || value === null) return {};
   return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, number] => typeof entry[1] === "number"));
 }
@@ -81,6 +83,7 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
     sourceKeyIds: [],
     deckCount: 0,
     deckMonths: {},
+    roleProfile: {},
     confidence: "none",
   };
   const keys = keysResult.data ?? [];
@@ -91,7 +94,7 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
 
   const { data: statRows, error } = await db
     .from("commander_stats")
-    .select("commander_key_id, deck_count, deck_months")
+    .select("commander_key_id, deck_count, deck_months, role_profile")
     .in(
       "commander_key_id",
       candidates.map((k) => k.id),
@@ -105,7 +108,15 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
   const sources = exact && exactDecks >= settings.minDecks ? [exact] : candidates;
   const sourceKeyIds = sources.map((k) => k.id).filter((id) => decksOf(id) > 0);
   const deckCount = sourceKeyIds.reduce((sum, id) => sum + decksOf(id), 0);
-  const deckMonths = sourceKeyIds.reduce((total, id) => addMonths(total, parseMonths(statsByKey.get(id)?.deck_months)), {} as DeckMonths);
+  const deckMonths = sourceKeyIds.reduce((total, id) => addMonths(total, parseNumberRecord(statsByKey.get(id)?.deck_months)), {} as DeckMonths);
+  // Each key's averages weighted by its decks, so a pair's own decks and each partner's solo decks count fairly.
+  const roleTotals: Record<string, number> = {};
+  for (const id of sourceKeyIds) {
+    for (const [role, average] of Object.entries(parseNumberRecord(statsByKey.get(id)?.role_profile))) {
+      roleTotals[role] = (roleTotals[role] ?? 0) + average * decksOf(id);
+    }
+  }
+  const roleProfile = Object.fromEntries(Object.entries(roleTotals).map(([role, total]) => [role, total / Math.max(deckCount, 1)]));
   return {
     available,
     settings,
@@ -114,6 +125,7 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
     sourceKeyIds,
     deckCount,
     deckMonths,
+    roleProfile,
     confidence: corpusConfidence(deckCount, settings),
   };
 }
@@ -154,7 +166,7 @@ export async function loadCardCorpus(
       { releaseMonth: (firstPrinted.get(r.id) ?? r.released_at)?.slice(0, 7) ?? null, identity: r.color_identity },
     ]),
   );
-  const monthsByIdentity = new Map(identityResult.data.map((r) => [r.color_identity, parseMonths(r.deck_months)]));
+  const monthsByIdentity = new Map(identityResult.data.map((r) => [r.color_identity, parseNumberRecord(r.deck_months)]));
   const commanderDecks = new Map<number, number>();
   for (const r of commanderResult.data ?? []) commanderDecks.set(r.card_id, (commanderDecks.get(r.card_id) ?? 0) + r.decks_with);
 

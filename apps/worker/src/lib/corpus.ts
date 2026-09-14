@@ -109,6 +109,28 @@ export async function loadCatalog(sql: Sql): Promise<Map<string, CatalogCard>> {
   return catalog;
 }
 
+/**
+ * Which tracked roles (deck_role_targets) each card fills, through the tag hierarchy and skipping disabled tags.
+ * Mirrors public.rec_card_roles, which the app uses for the deck being analyzed.
+ */
+export async function loadRoleCards(sql: Sql): Promise<Map<number, string[]>> {
+  const [config] = await sql<{ value: { roles?: { tagId?: unknown }[] } }[]>`
+    select value from public.app_config where key = 'deck_role_targets'
+  `;
+  const roleIds = (config?.value.roles ?? []).flatMap((r) => (typeof r.tagId === 'string' ? [r.tagId] : []));
+  if (roleIds.length === 0) return new Map();
+  const rows = await sql<{ card_id: number; role_id: string }[]>`
+    select distinct ct.card_id, tc.ancestor_id::text as role_id
+    from public.card_tags ct
+    join public.tags t on t.id = ct.tag_id and not t.disabled and t.deleted_at is null
+    join public.tag_closure tc on tc.descendant_id = ct.tag_id
+    where tc.ancestor_id = any (${roleIds}::uuid[])
+  `;
+  const rolesByCard = new Map<number, string[]>();
+  for (const r of rows) rolesByCard.set(r.card_id, [...(rolesByCard.get(r.card_id) ?? []), r.role_id]);
+  return rolesByCard;
+}
+
 const commanderFacts = (c: CatalogCard): CommanderCardFacts => ({
   id: c.id as CardId,
   name: c.name,

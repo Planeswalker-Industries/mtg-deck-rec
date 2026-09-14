@@ -6,6 +6,7 @@ import {
   IDENTITIES,
   loadCatalog,
   loadCorpusConfig,
+  loadRoleCards,
   resolveDeck,
   shrunkInclusion,
   type CatalogCard,
@@ -29,6 +30,8 @@ interface KeyAggregate {
   brackets: Record<string, number>;
   /** Decks by last-updated month ('YYYY-MM'). */
   months: Record<string, number>;
+  /** Role tag id → cards in that role, summed over the decks. */
+  roleCounts: Record<string, number>;
   /** card id → decks running it */
   cards: Map<number, number>;
 }
@@ -66,6 +69,7 @@ export async function aggregateCorpus({
     const config = await loadCorpusConfig(sql);
     const catalog = await loadCatalog(sql);
     const cardById = new Map([...catalog.values()].map((c) => [c.id, c]));
+    const rolesByCard = await loadRoleCards(sql);
 
     const keys = new Map<string, KeyAggregate>();
     const globalWith = new Map<number, number>();
@@ -90,7 +94,7 @@ export async function aggregateCorpus({
       const { key, commanders, identity, bracket, month, cardIds } = resolved.deck;
       let aggregate = keys.get(key);
       if (!aggregate) {
-        aggregate = { commanders, identity, decks: 0, brackets: {}, months: {}, cards: new Map() };
+        aggregate = { commanders, identity, decks: 0, brackets: {}, months: {}, roleCounts: {}, cards: new Map() };
         keys.set(key, aggregate);
       }
       aggregate.decks++;
@@ -99,6 +103,7 @@ export async function aggregateCorpus({
       for (const id of cardIds) {
         increment(aggregate.cards, id);
         increment(globalWith, id);
+        for (const role of rolesByCard.get(id) ?? []) bump(aggregate.roleCounts, role);
       }
       const identityMonths = monthsByIdentity[identity];
       if (identityMonths) bump(identityMonths, month);
@@ -137,6 +142,9 @@ export async function aggregateCorpus({
       deck_count: a.decks,
       bracket_counts: JSON.stringify(a.brackets),
       deck_months: JSON.stringify(a.months),
+      role_profile: JSON.stringify(
+        Object.fromEntries(Object.entries(a.roleCounts).map(([role, cards]) => [role, Math.round((cards / a.decks) * 100) / 100])),
+      ),
     }));
     const cardStatRows = [...keys].flatMap(([key, a]) => {
       const sinceRelease = new Map<string | null, number>();
@@ -186,7 +194,8 @@ export async function aggregateCorpus({
           slug text not null,
           deck_count integer not null,
           bracket_counts text not null,
-          deck_months text not null
+          deck_months text not null,
+          role_profile text not null
         )
       `;
       await db`
@@ -210,7 +219,7 @@ export async function aggregateCorpus({
       await db`create temp table stg_identity (color_identity smallint primary key, deck_months text not null)`;
 
       for (let i = 0; i < keyRows.length; i += BATCH_SIZE) {
-        await db`insert into stg_keys ${db(keyRows.slice(i, i + BATCH_SIZE), 'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'bracket_counts', 'deck_months')}`;
+        await db`insert into stg_keys ${db(keyRows.slice(i, i + BATCH_SIZE), 'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'bracket_counts', 'deck_months', 'role_profile')}`;
       }
       for (let i = 0; i < cardStatRows.length; i += BATCH_SIZE) {
         await db`insert into stg_card_stats ${db(cardStatRows.slice(i, i + BATCH_SIZE), 'key', 'card_id', 'decks_with', 'eligible_decks', 'inclusion_shrunk', 'synergy')}`;
@@ -234,8 +243,9 @@ export async function aggregateCorpus({
         await db`delete from public.card_global_stats`;
         await db`delete from public.corpus_identity_stats`;
         await db`
-          insert into public.commander_stats (commander_key_id, deck_count, source_counts, bracket_counts, deck_months)
-          select k.id, s.deck_count, jsonb_build_object(${source}::text, s.deck_count), s.bracket_counts::jsonb, s.deck_months::jsonb
+          insert into public.commander_stats (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile)
+          select k.id, s.deck_count, jsonb_build_object(${source}::text, s.deck_count), s.bracket_counts::jsonb, s.deck_months::jsonb,
+                 s.role_profile::jsonb
           from stg_keys s
           join public.commander_keys k on k.commander_1 = s.commander_1 and coalesce(k.commander_2, 0) = coalesce(s.commander_2, 0)
         `;

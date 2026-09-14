@@ -421,6 +421,7 @@ export type Database = {
           computed_at: string
           deck_count: number
           deck_months: Json
+          role_profile: Json
           source_counts: Json
         }
         Insert: {
@@ -429,6 +430,7 @@ export type Database = {
           computed_at?: string
           deck_count: number
           deck_months?: Json
+          role_profile?: Json
           source_counts: Json
         }
         Update: {
@@ -437,6 +439,7 @@ export type Database = {
           computed_at?: string
           deck_count?: number
           deck_months?: Json
+          role_profile?: Json
           source_counts?: Json
         }
         Relationships: [

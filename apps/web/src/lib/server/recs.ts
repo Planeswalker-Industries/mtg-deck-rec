@@ -35,7 +35,7 @@ import {
   type RoleTarget,
 } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
-import { loadCardCorpus, loadCommanderCorpus } from "./corpus";
+import { loadCardCorpus, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
 
 /** How many tag-similar candidates the database returns before blending and trimming. */
@@ -97,6 +97,19 @@ function parseRoleTargets(value: unknown): RoleTarget[] {
     return typeof tagId === "string" && typeof label === "string" && typeof target === "number"
       ? [{ roleId: tagId, label, target }]
       : [];
+  });
+}
+
+/**
+ * Role targets for this deck: the generic targets, moved toward how many cards the commander's decks actually run in
+ * each role as those decks gain weight. Liesa decks, for one, run far more removal than a generic deck.
+ */
+function roleTargetsFor(generic: readonly RoleTarget[], corpus: CommanderCorpus): RoleTarget[] {
+  const share = commanderShare(corpus.deckCount, corpus.settings);
+  if (share === 0) return [...generic];
+  return generic.map((t) => {
+    const typical = corpus.roleProfile[t.roleId];
+    return typical === undefined ? t : { ...t, target: Math.round((share * typical + (1 - share) * t.target) * 10) / 10 };
   });
 }
 
@@ -268,7 +281,11 @@ export async function getCutSuggestions(
         },
       ];
     }),
-    { includeGameChangers: context.includeGameChangers, gameChangerLimit: gameChangerLimit(context.bracket), roleTargets },
+    {
+      includeGameChangers: context.includeGameChangers,
+      gameChangerLimit: gameChangerLimit(context.bracket),
+      roleTargets: roleTargetsFor(roleTargets, corpus),
+    },
   );
 
   const owned = ownedIds(context);
@@ -345,7 +362,7 @@ export async function getAddSuggestions(
 
   const deckRoleCounts = new Map<string, number>();
   for (const id of mainIds) for (const role of rolesByCard.get(id) ?? []) deckRoleCounts.set(role, (deckRoleCounts.get(role) ?? 0) + 1);
-  const shortfalls = roleShortfalls(deckRoleCounts, roleTargets);
+  const shortfalls = roleShortfalls(deckRoleCounts, roleTargetsFor(roleTargets, corpus));
   const roleLabels = new Map(roleTargets.map((t) => [t.roleId, t.label]));
 
   const scoredPool = (pool ?? []).map((candidate) => {
