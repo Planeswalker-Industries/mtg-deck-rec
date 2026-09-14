@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "cli": "tsx src/cli.ts",
+    "cli:hosted": "tsx --env-file=.env.hosted src/cli.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

@@ -1,0 +1,56 @@
+name: Scryfall sync
+
+# Daily catalog, printings and tag syncs against the hosted database. Disabled until the repository variable
+# SYNC_ENABLED is "true". Secrets:
+#   DATABASE_URL       Supabase session pooler connection string (IPv4; the jobs use temp tables, so not the transaction pooler)
+#   WEB_APP_URL        the deployed site, so finished syncs refresh its cached pages
+#   REVALIDATE_SECRET  the web app's REVALIDATE_SECRET
+on:
+  schedule:
+    - cron: "23 10 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Re-run even when Scryfall's files haven't changed
+        type: boolean
+        default: false
+
+concurrency:
+  group: scryfall-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: vars.SYNC_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
+      REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+      FORCE: ${{ inputs.force && '--force' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: |
+          corepack enable
+          yarn install --immutable
+          echo "MTG_DATA_DIR=$RUNNER_TEMP/mtg" >> "$GITHUB_ENV"
+
+      # Each job skips on its own when Scryfall's bulk file is unchanged since its last successful run.
+      - name: Catalog
+        run: yarn workspace @mtg/worker cli sync:catalog $FORCE
+
+      - name: Printings
+        run: yarn workspace @mtg/worker cli sync:printings $FORCE
+
+      - name: Tags
+        run: yarn workspace @mtg/worker cli sync:tags $FORCE
