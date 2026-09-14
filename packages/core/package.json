@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./contract": "./src/contract/index.ts",
     "./mocks": "./src/contract/mocks/index.ts",
+    "./schemas": "./src/contract/schemas.ts",
     "./parse": "./src/parse/index.ts",
     "./commander": "./src/formats/commander/index.ts",
     "./scoring": "./src/scoring/index.ts"

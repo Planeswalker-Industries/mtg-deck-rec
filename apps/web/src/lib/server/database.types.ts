@@ -910,6 +910,10 @@ export type Database = {
         Returns: Json
       }
       get_public_config: { Args: { p_key: string }; Returns: Json }
+      hit_rate_limit: {
+        Args: { p_bucket: string; p_visitor: string }
+        Returns: number
+      }
       rebuild_tag_closure: { Args: never; Returns: undefined }
       rec_add_candidates: {
         Args: {
