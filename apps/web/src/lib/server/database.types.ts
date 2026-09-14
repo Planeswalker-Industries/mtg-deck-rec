@@ -79,6 +79,38 @@ export type Database = {
         }
         Relationships: []
       }
+      card_global_stats: {
+        Row: {
+          card_id: number
+          computed_at: string
+          decks_with: number
+          eligible_decks: number
+          rate: number
+        }
+        Insert: {
+          card_id: number
+          computed_at?: string
+          decks_with: number
+          eligible_decks: number
+          rate: number
+        }
+        Update: {
+          card_id?: number
+          computed_at?: string
+          decks_with?: number
+          eligible_decks?: number
+          rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_global_stats_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: true
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_names: {
         Row: {
           card_id: number
@@ -294,6 +326,119 @@ export type Database = {
             columns: ["equivalence_base_id"]
             isOneToOne: false
             referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_card_stats: {
+        Row: {
+          card_id: number
+          commander_key_id: number
+          decks_with: number
+          inclusion_shrunk: number
+          synergy: number
+        }
+        Insert: {
+          card_id: number
+          commander_key_id: number
+          decks_with: number
+          inclusion_shrunk: number
+          synergy: number
+        }
+        Update: {
+          card_id?: number
+          commander_key_id?: number
+          decks_with?: number
+          inclusion_shrunk?: number
+          synergy?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_card_stats_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commander_card_stats_commander_key_id_fkey"
+            columns: ["commander_key_id"]
+            isOneToOne: false
+            referencedRelation: "commander_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_keys: {
+        Row: {
+          color_identity: number
+          commander_1: number
+          commander_2: number | null
+          created_at: string
+          id: number
+          slug: string
+        }
+        Insert: {
+          color_identity: number
+          commander_1: number
+          commander_2?: number | null
+          created_at?: string
+          id?: never
+          slug: string
+        }
+        Update: {
+          color_identity?: number
+          commander_1?: number
+          commander_2?: number | null
+          created_at?: string
+          id?: never
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_keys_commander_1_fkey"
+            columns: ["commander_1"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commander_keys_commander_2_fkey"
+            columns: ["commander_2"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_stats: {
+        Row: {
+          bracket_counts: Json
+          commander_key_id: number
+          computed_at: string
+          deck_count: number
+          source_counts: Json
+        }
+        Insert: {
+          bracket_counts: Json
+          commander_key_id: number
+          computed_at?: string
+          deck_count: number
+          source_counts: Json
+        }
+        Update: {
+          bracket_counts?: Json
+          commander_key_id?: number
+          computed_at?: string
+          deck_count?: number
+          source_counts?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_stats_commander_key_id_fkey"
+            columns: ["commander_key_id"]
+            isOneToOne: true
+            referencedRelation: "commander_keys"
             referencedColumns: ["id"]
           },
         ]
@@ -644,6 +789,7 @@ export type Database = {
       }
     }
     Enums: {
+      deck_source: "archidekt" | "moxfield" | "user" | "precon"
       sync_job:
         | "scryfall_catalog"
         | "oracle_tags"
@@ -789,6 +935,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      deck_source: ["archidekt", "moxfield", "user", "precon"],
       sync_job: [
         "scryfall_catalog",
         "oracle_tags",

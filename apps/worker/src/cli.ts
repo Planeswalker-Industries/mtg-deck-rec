@@ -1,3 +1,4 @@
+import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { profileTags } from './jobs/profile-tags';
 import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
 import { syncCatalog } from './jobs/sync-catalog';
@@ -13,6 +14,8 @@ Commands:
   sync:catalog [--force]    Oracle Cards → cards, name aliases, functional twins (skips if the file is unchanged)
   sync:printings [--force]  All Cards → printings, card stats (staple score), cheapest prices, flavor names (after sync:catalog)
   sync:tags [--force]       Oracle Tags → tags, hierarchy, card taggings (after sync:catalog)
+  aggregate:corpus [--file path] [--force]
+                            Deck corpus (JSONL of slim decks; default: the Archidekt spike) → commander and card play-rate stats
   spike:archidekt:rank      Rank our legal commanders by how often their 100-card Archidekt decks are updated (1 request each, resumable)
   spike:archidekt:verify [--top N]
                             Discount the top ranked commanders by how many of their listed decks they actually lead
@@ -51,6 +54,10 @@ async function main(): Promise<void> {
       return syncPrintings({ force });
     case 'sync:tags':
       return syncTags({ force });
+    case 'aggregate:corpus': {
+      const fileIndex = args.indexOf('--file');
+      return aggregateCorpus({ file: fileIndex === -1 ? undefined : args[fileIndex + 1], force });
+    }
     case 'spike:archidekt:rank':
       return rankCommanders();
     case 'spike:archidekt:verify':

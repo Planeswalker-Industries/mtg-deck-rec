@@ -1,7 +1,7 @@
 import os from 'node:os';
 import type { Sql } from './db';
 
-export type SyncJob = 'scryfall_catalog' | 'scryfall_printings' | 'oracle_tags';
+export type SyncJob = 'scryfall_catalog' | 'scryfall_printings' | 'oracle_tags' | 'corpus_aggregate';
 export type SyncMetrics = Record<string, number>;
 
 export const WORKER_ID = `${os.hostname()}:${process.pid}`;
