@@ -30,9 +30,8 @@ supabase/.branches/
 # spikes: downloaded bulk files and crawl output never committed
 spikes/**/data/
 
-# local-only: agent config, agent instructions, plans, outreach drafts
+# local-only: agent config, personal agent notes, outreach drafts (CLAUDE.md and docs/roadmap are shared)
 .claude/
-CLAUDE.md
 CLAUDE.local.md
 docs/outreach/
 
