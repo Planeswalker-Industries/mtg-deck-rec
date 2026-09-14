@@ -26,12 +26,40 @@ jobs:
         with:
           version: 2.110.0
 
+      # Reports what's wrong with the connection string without printing any part of it.
       - name: Check the secret
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "::error::Add the DATABASE_URL repository secret first."
             exit 1
           fi
+          python3 - <<'PY'
+          import os, re, sys, urllib.parse
+          url = os.environ["DATABASE_URL"]
+          problems = []
+          if not re.match(r"^postgres(ql)?://", url):
+              problems.append("It must start with postgresql:// (paste only the URI: no quotes, no DATABASE_URL= prefix).")
+          if "[YOUR-PASSWORD]" in url or "[" in url or "]" in url:
+              problems.append("Replace [YOUR-PASSWORD], brackets included, with the database password.")
+          if re.search(r"[\s\"']", url):
+              problems.append("Remove spaces, line breaks or quotes.")
+          if url.count("@") != 1:
+              problems.append(f"Found {url.count('@')} '@' characters; exactly one separates the password from the host. Write @ in the password as %40.")
+          parts = urllib.parse.urlsplit(url)
+          try:
+              port = parts.port
+          except ValueError:
+              port = None
+              problems.append("The port isn't a number: encode special characters in the password (# as %23, / as %2F, ? as %3F, : as %3A).")
+          for name, present in [("user", parts.username), ("password", parts.password), ("host", parts.hostname), ("database name", parts.path.strip("/"))]:
+              if not present:
+                  problems.append(f"The {name} is missing.")
+          host = parts.hostname or ""
+          print(f"Supabase pooler host: {host.endswith('.pooler.supabase.com')}, port: {port} (session pooler is 5432, transaction pooler 6543)")
+          for problem in problems:
+              print(f"::error::{problem}")
+          sys.exit(1 if problems else 0)
+          PY
 
       - name: Migrations before
         run: supabase migration list --db-url "$DATABASE_URL"
