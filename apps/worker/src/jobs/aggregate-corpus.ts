@@ -52,7 +52,7 @@ export async function aggregateCorpus({
   file = DEFAULT_CORPUS_FILE,
   source = 'archidekt',
   force = false,
-}: { file?: string | undefined; source?: 'archidekt' | undefined; force?: boolean } = {}): Promise<void> {
+}: { file?: string | undefined; source?: 'archidekt' | undefined; force?: boolean } = {}): Promise<'succeeded' | 'skipped' | 'failed_sanity'> {
   const fileStat = await stat(file);
   const sql = connect();
   let runId: number | null = null;
@@ -62,7 +62,7 @@ export async function aggregateCorpus({
     const start = await startRun(sql, 'corpus_aggregate', { uri: `file://${file}`, updatedAt: fileStat.mtime.toISOString() }, force);
     if (start.kind === 'skipped') {
       console.log(`corpus_aggregate: ${file} is unchanged since the last successful run. Use --force to re-run.`);
-      return;
+      return 'skipped';
     }
     runId = start.runId;
 
@@ -180,7 +180,7 @@ export async function aggregateCorpus({
       await finishRun(sql, runId, 'failed_sanity', { rowsRead: stats.lines, metrics, error });
       console.error(`corpus_aggregate: ${error}. Live tables unchanged; re-run with --force if this is expected.`);
       process.exitCode = 1;
-      return;
+      return 'failed_sanity';
     }
 
     const db = await sql.reserve();
@@ -294,6 +294,7 @@ export async function aggregateCorpus({
     for (const row of sample) {
       console.log(`  ${row.synergy.toFixed(2).padStart(5)}  in ${String(row.decks_with).padStart(3)} decks  ${row.name}`);
     }
+    return 'succeeded';
   } catch (err) {
     if (runId !== null) {
       await finishRun(sql, runId, 'failed', { rowsRead: stats.lines, error: err instanceof Error ? err.message : String(err) }).catch(

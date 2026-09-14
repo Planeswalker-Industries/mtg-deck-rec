@@ -1,7 +1,26 @@
 "use server";
 
-import type { ApiError, DeckAnalysis, DeckInput, ImportDeckUrlResult, ParseDeckResult, Result } from "@mtg/core/contract";
+import { createHash } from "node:crypto";
+import { updateTag } from "next/cache";
+import { headers } from "next/headers";
+import type {
+  ApiError,
+  CommanderCoverage,
+  CommanderRequest,
+  DeckAnalysis,
+  DeckInput,
+  ImportDeckUrlResult,
+  ParseDeckResult,
+  Result,
+} from "@mtg/core/contract";
 import { archidektDeckId, archidektDecklist } from "@mtg/core/parse";
+import {
+  CommanderRequestRefused,
+  getCommanderCoverage,
+  getCommanderRequest,
+  requestCommanderDecks,
+  type CommanderRequestRefusal,
+} from "@/lib/server/commander-requests";
 import { analyzeDeckById, resolveDecklist } from "@/lib/server/deck";
 import { createPublicClient } from "@/lib/server/supabase";
 
@@ -81,6 +100,73 @@ export async function analyzeDeckAction(input: { deck: DeckInput }): Promise<Res
   }
   try {
     return { ok: true, data: await analyzeDeckById(createPublicClient(), deck) };
+  } catch (err) {
+    return unavailable(err);
+  }
+}
+
+/**
+ * Identifies a visitor for deck lookup rate limits without storing their address: a salted hash of the first
+ * forwarded address (set by the hosting proxy).
+ */
+async function visitorKey(): Promise<string> {
+  const salt = process.env.RATE_LIMIT_SALT;
+  if (!salt && process.env.NODE_ENV === "production") throw new Error("RATE_LIMIT_SALT is not set.");
+  const h = await headers();
+  const address = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
+  return createHash("sha256").update(`${salt ?? "development"}:${address}`).digest("base64url");
+}
+
+/** Lookups this server instance has already refreshed cached pages and swap data for. */
+const refreshedLookups = new Set<string>();
+
+/** A finished lookup rebuilt the play-rate stats, so cached commander and card pages and swap pools are out of date. */
+function refreshCachesAfter(request: CommanderRequest | null) {
+  if (request?.status !== "done" || refreshedLookups.has(request.id)) return;
+  refreshedLookups.add(request.id);
+  updateTag("corpus");
+  updateTag("recs");
+}
+
+const isCardId = (id: unknown): id is number => typeof id === "number" && Number.isInteger(id) && id > 0;
+
+const refusalMessages: Record<CommanderRequestRefusal, Result<never>> = {
+  RATE_LIMITED: failure("RATE_LIMITED", "You've started several deck lookups in the last hour. Try again later."),
+  QUEUE_FULL: failure("RATE_LIMITED", "Lots of deck lookups are waiting right now. Try again in a few minutes."),
+  NOT_A_COMMANDER: failure("VALIDATION", "That card can't lead a Commander deck."),
+};
+
+export async function getCommanderCoverageAction(input: { commanderId: number }): Promise<Result<CommanderCoverage>> {
+  if (!isCardId(input?.commanderId)) return failure("VALIDATION", "That commander isn't valid.");
+  try {
+    const coverage = await getCommanderCoverage(createPublicClient(), input.commanderId, await visitorKey());
+    refreshCachesAfter(coverage.request);
+    return { ok: true, data: coverage };
+  } catch (err) {
+    return unavailable(err);
+  }
+}
+
+export async function requestCommanderDecksAction(input: { commanderId: number }): Promise<Result<CommanderRequest>> {
+  if (!isCardId(input?.commanderId)) return failure("VALIDATION", "That commander isn't valid.");
+  try {
+    const request = await requestCommanderDecks(createPublicClient(), input.commanderId, await visitorKey());
+    refreshCachesAfter(request);
+    return { ok: true, data: request };
+  } catch (err) {
+    if (err instanceof CommanderRequestRefused) return refusalMessages[err.reason];
+    return unavailable(err);
+  }
+}
+
+export async function getCommanderRequestAction(input: { requestId: string }): Promise<Result<CommanderRequest>> {
+  const requestId = typeof input?.requestId === "string" && /^\d{1,15}$/.test(input.requestId) ? Number(input.requestId) : null;
+  if (requestId === null) return failure("VALIDATION", "That deck lookup isn't valid.");
+  try {
+    const request = await getCommanderRequest(createPublicClient(), requestId, await visitorKey());
+    if (!request) return failure("NOT_FOUND", "That deck lookup doesn't exist.");
+    refreshCachesAfter(request);
+    return { ok: true, data: request };
   } catch (err) {
     return unavailable(err);
   }

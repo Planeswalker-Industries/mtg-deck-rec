@@ -414,6 +414,62 @@ export type Database = {
           },
         ]
       }
+      commander_requests: {
+        Row: {
+          client_key: string | null
+          commander_card_id: number
+          created_at: string
+          decks_collected: number
+          decks_listed: number | null
+          decks_target: number
+          error: string | null
+          finished_at: string | null
+          heartbeat_at: string | null
+          id: number
+          started_at: string | null
+          status: Database["public"]["Enums"]["commander_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          client_key?: string | null
+          commander_card_id: number
+          created_at?: string
+          decks_collected?: number
+          decks_listed?: number | null
+          decks_target: number
+          error?: string | null
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          id?: never
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["commander_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          client_key?: string | null
+          commander_card_id?: number
+          created_at?: string
+          decks_collected?: number
+          decks_listed?: number | null
+          decks_target?: number
+          error?: string | null
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          id?: never
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["commander_request_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_requests_commander_card_id_fkey"
+            columns: ["commander_card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commander_stats: {
         Row: {
           bracket_counts: Json
@@ -751,6 +807,21 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_status: {
+        Row: {
+          heartbeat_at: string
+          name: string
+        }
+        Insert: {
+          heartbeat_at: string
+          name: string
+        }
+        Update: {
+          heartbeat_at?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       card_tag_vectors: {
@@ -797,6 +868,47 @@ export type Database = {
           slug: string
         }[]
       }
+      commander_collector_online: { Args: never; Returns: boolean }
+      commander_request_config: { Args: never; Returns: Json }
+      commander_request_json: {
+        Args: {
+          p_client_key: string
+          r: Database["public"]["Tables"]["commander_requests"]["Row"]
+        }
+        Returns: Json
+      }
+      commander_request_recent: {
+        Args: { p_card_id: number }
+        Returns: {
+          client_key: string | null
+          commander_card_id: number
+          created_at: string
+          decks_collected: number
+          decks_listed: number | null
+          decks_target: number
+          error: string | null
+          finished_at: string | null
+          heartbeat_at: string | null
+          id: number
+          started_at: string | null
+          status: Database["public"]["Enums"]["commander_request_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "commander_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_commander_request: {
+        Args: { p_card_id: number; p_client_key: string }
+        Returns: Json
+      }
+      get_commander_request_status: {
+        Args: { p_client_key: string; p_request_id: number }
+        Returns: Json
+      }
       get_public_config: { Args: { p_key: string }; Returns: Json }
       rebuild_tag_closure: { Args: never; Returns: undefined }
       rec_add_candidates: {
@@ -841,6 +953,10 @@ export type Database = {
           tag_similarity: number
         }[]
       }
+      request_commander_decks: {
+        Args: { p_card_id: number; p_client_key: string }
+        Returns: Json
+      }
       resolve_card_names: {
         Args: { p_names: string[] }
         Returns: {
@@ -854,6 +970,14 @@ export type Database = {
       sitemap_slugs: { Args: never; Returns: Json }
     }
     Enums: {
+      commander_request_status:
+        | "queued"
+        | "checking"
+        | "collecting"
+        | "aggregating"
+        | "done"
+        | "not_enough_decks"
+        | "failed"
       deck_source: "archidekt" | "moxfield" | "user" | "precon"
       sync_job:
         | "scryfall_catalog"
@@ -1000,6 +1124,15 @@ export const Constants = {
   },
   public: {
     Enums: {
+      commander_request_status: [
+        "queued",
+        "checking",
+        "collecting",
+        "aggregating",
+        "done",
+        "not_enough_decks",
+        "failed",
+      ],
       deck_source: ["archidekt", "moxfield", "user", "precon"],
       sync_job: [
         "scryfall_catalog",

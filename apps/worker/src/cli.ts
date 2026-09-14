@@ -1,6 +1,7 @@
 import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { measureCorpusStability } from './jobs/corpus-stability';
 import { profileTags } from './jobs/profile-tags';
+import { serveCommanderRequests } from './jobs/serve-commander-requests';
 import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
 import { syncCatalog } from './jobs/sync-catalog';
 import { syncPrintings } from './jobs/sync-printings';
@@ -17,6 +18,8 @@ Commands:
   sync:tags [--force]       Oracle Tags → tags, hierarchy, card taggings (after sync:catalog)
   aggregate:corpus [--file path] [--force]
                             Deck corpus (JSONL of slim decks; default: the Archidekt spike) → commander and card play-rate stats
+  serve:commander-requests [--once]
+                            Serve deck lookups the web app queues for commanders with too few decks (--once: until the queue is empty)
   spike:corpus:stability [--repeats N]
                             How many decks a commander needs for stable card rankings (split-half resampling report)
   spike:archidekt:rank      Rank our legal commanders by how often their 100-card Archidekt decks are updated (1 request each, resumable)
@@ -59,8 +62,11 @@ async function main(): Promise<void> {
       return syncTags({ force });
     case 'aggregate:corpus': {
       const fileIndex = args.indexOf('--file');
-      return aggregateCorpus({ file: fileIndex === -1 ? undefined : args[fileIndex + 1], force });
+      await aggregateCorpus({ file: fileIndex === -1 ? undefined : args[fileIndex + 1], force });
+      return;
     }
+    case 'serve:commander-requests':
+      return serveCommanderRequests({ once: args.includes('--once') });
     case 'spike:corpus:stability':
       return measureCorpusStability({ repeats: numberFlag(args, 'repeats') });
     case 'spike:archidekt:rank':

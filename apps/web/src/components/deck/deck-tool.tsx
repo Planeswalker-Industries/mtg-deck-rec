@@ -7,12 +7,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { findResolvedCard } from "@/lib/cards";
 import { AddPanel } from "./add-panel";
+import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { CutPanel } from "./cut-panel";
 import { DeckBar } from "./deck-bar";
 import { DeckListPanel } from "./deck-list-panel";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
 import { SwapSheet } from "./swap-sheet";
+import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckTool } from "./use-deck-tool";
 
 const PLACEHOLDER = `Commander
@@ -25,6 +27,7 @@ Deck
 
 export function DeckTool() {
   const tool = useDeckTool();
+  const lookup = useCommanderLookup(tool.refreshRecommendations);
   const [editing, setEditing] = useState(true);
   const restoreStarted = useRef(false);
   const { analysis, context, swap } = tool;
@@ -34,9 +37,11 @@ export function DeckTool() {
     if (restoreStarted.current) return;
     restoreStarted.current = true;
     void tool.restoreLastDeck().then((restored) => {
-      if (restored) setEditing(false);
+      if (!restored.parsed) return;
+      setEditing(false);
+      void lookup.check(restored.analysis);
     });
-  }, [tool]);
+  }, [tool, lookup]);
   const showInput = editing || !analysis;
   const selectedCardId = swap?.targetCardId ?? null;
   const swapTarget = selectedCardId === null ? null : findResolvedCard(tool.lines, selectedCardId);
@@ -46,8 +51,9 @@ export function DeckTool() {
     : 0;
 
   async function analyze() {
-    await tool.submit();
+    const outcome = await tool.submit();
     setEditing(false);
+    if (outcome.parsed) void lookup.check(outcome.analysis);
   }
 
   return (
@@ -98,6 +104,7 @@ export function DeckTool() {
                   variant="ghost"
                   onClick={() => {
                     tool.clearDeck();
+                    lookup.reset();
                     setEditing(true);
                   }}
                 >
@@ -141,6 +148,7 @@ export function DeckTool() {
             onBracketChange={tool.changeBracket}
             onIncludeGameChangersChange={tool.changeIncludeGameChangers}
           />
+          <CommanderLookupBar lookup={lookup} />
           <Tabs defaultValue="cut" className="gap-4">
             <TabsList className="h-10 w-full sm:w-fit">
               <TabsTrigger value="cut" className="px-3">
@@ -172,6 +180,7 @@ export function DeckTool() {
       )}
 
       <SwapSheet swap={swap} target={swapTarget} onClose={tool.closeSwap} />
+      <CommanderLookupSheet lookup={lookup} />
     </div>
   );
 }

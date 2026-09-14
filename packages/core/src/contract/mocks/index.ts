@@ -32,6 +32,7 @@ import type {
   TagMatch,
   VoteSummary,
 } from '../recs';
+import type { CommanderRequest, CommanderRequestStatus } from '../commander-requests';
 import type { ActionsApi, DataApi, RecsApi } from '../transport';
 import {
   frontFaceName,
@@ -393,7 +394,55 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     },
   };
 
+  // Commander deck lookups advance with the clock, so the deck tool's progress UI runs without the worker.
+  const lookups = new Map<string, { commanderId: CardId; startedAt: number }>();
+  const LOOKUP_DECKS = 100;
+  const lookupProgress = (id: string): CommanderRequest => {
+    const lookup = lookups.get(id);
+    if (!lookup) throw new MockNotFound(`Unknown lookup ${id}`);
+    const elapsed = Date.now() - lookup.startedAt;
+    const collected = clamp(Math.floor((elapsed - 3_500) / 120), 0, LOOKUP_DECKS);
+    const status: CommanderRequestStatus =
+      elapsed < 1_500 ? 'checking' : elapsed < 15_500 ? 'collecting' : elapsed < 19_500 ? 'aggregating' : 'done';
+    const etaSeconds = status === 'done' ? null : Math.max(Math.round((19_500 - elapsed) / 1000), 1);
+    return {
+      id,
+      commander: getCard(lookup.commanderId),
+      status,
+      decksListed: status === 'checking' ? null : 240,
+      decksCollected: status === 'checking' ? 0 : status === 'collecting' ? collected : LOOKUP_DECKS,
+      decksTarget: LOOKUP_DECKS,
+      queuePosition: 0,
+      etaSeconds,
+      joined: false,
+      collectorOnline: true,
+      error: null,
+      updatedAt: new Date(lookup.startedAt + Math.min(elapsed, 19_500)).toISOString(),
+    };
+  };
+  const activeLookupFor = (commanderId: CardId) =>
+    [...lookups.entries()].find(([id, l]) => l.commanderId === commanderId && lookupProgress(id).status !== 'done')?.[0];
+
   const actions: ActionsApi = {
+    async getCommanderCoverage({ commanderId }) {
+      if (!byId.has(commanderId)) return delay(fail('NOT_FOUND', 'Unknown commander.'));
+      const active = activeLookupFor(commanderId);
+      return delay(ok({ request: active ? lookupProgress(active) : null, estimatedSeconds: 20, collectorOnline: true }));
+    },
+
+    async requestCommanderDecks({ commanderId }) {
+      if (!byId.has(commanderId)) return delay(fail('VALIDATION', "That card can't lead a Commander deck."));
+      const active = activeLookupFor(commanderId);
+      const id = active ?? String(lookups.size + 1);
+      if (!active) lookups.set(id, { commanderId, startedAt: Date.now() });
+      return delay(ok(lookupProgress(id)));
+    },
+
+    async getCommanderRequest({ requestId }) {
+      if (!lookups.has(requestId)) return delay(fail('NOT_FOUND', "That deck lookup doesn't exist."));
+      return delay(ok(lookupProgress(requestId)));
+    },
+
     async parseDeck({ text }) {
       if (text.length > 20_000) return delay(fail('PAYLOAD_TOO_LARGE', 'Decklist exceeds 20 KB.'));
       const lines = mockParse(text);

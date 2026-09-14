@@ -8,6 +8,8 @@ import type { Sql } from './db';
 /** Shared by the corpus jobs so aggregation and measurement always count the same decks. */
 
 export const DEFAULT_CORPUS_FILE = path.join(DATA_DIR, 'archidekt', 'spike', 'decks.jsonl');
+/** Decks fetched but not kept (wrong commander, not 100 cards, ...), so they aren't fetched again. */
+export const DEFAULT_REJECTS_FILE = path.join(DATA_DIR, 'archidekt', 'spike', 'rejects.jsonl');
 export const IDENTITIES = 32;
 const MAX_COMMANDERS = 2;
 

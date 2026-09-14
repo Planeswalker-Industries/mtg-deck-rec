@@ -1,5 +1,6 @@
 import type { ExportFormat, FavoriteRef, SyncStatusRow, TagAdminRow } from './account';
 import type { CardDetail, CardSummary, TagRef } from './cards';
+import type { CommanderCoverage, CommanderRequest } from './commander-requests';
 import type {
   CollectionRowInput,
   CollectionTotals,
@@ -36,6 +37,12 @@ export interface ActionsApi {
   importDeckFromUrl(input: { url: string }): Promise<Result<ImportDeckUrlResult>>;
   /** Re-run after the user resolves ambiguous lines or picks a commander. */
   analyzeDeck(input: { deck: DeckInput }): Promise<Result<DeckAnalysis>>;
+
+  /** Deck data lookups for commanders with too few decks. Checking coverage never starts a lookup. */
+  getCommanderCoverage(input: { commanderId: CardId }): Promise<Result<CommanderCoverage>>;
+  /** Starts a lookup, or joins the one already running for the same commander. */
+  requestCommanderDecks(input: { commanderId: CardId }): Promise<Result<CommanderRequest>>;
+  getCommanderRequest(input: { requestId: string }): Promise<Result<CommanderRequest>>;
 
   /** ≤ 2,000 rows per call. Works anonymously. */
   resolveCollectionRows(input: { rows: CollectionRowInput[] }): Promise<Result<ResolveCollectionResult>>;
