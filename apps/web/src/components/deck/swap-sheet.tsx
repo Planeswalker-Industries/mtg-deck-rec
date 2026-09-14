@@ -115,12 +115,20 @@ function Comparison({ target, selected }: { target: CardSummary; selected: SwapS
         {selected.card.gameChanger && <GameChangerBadge />}
         {selected.owned && <OwnedBadge />}
         <span className="tabular-nums">
-          {selected.corpus
-            ? `Played in ${formatPercent(selected.corpus.inclusionRate)} of ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} decks with this commander`
-            : "No deck data yet"}
+          {!selected.corpus
+            ? "No deck data yet"
+            : selected.corpus.limited
+              ? `New card: only ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} deck${selected.corpus.commanderDeckCount === 1 ? "" : "s"} could have played it so far`
+              : `Played in ${formatPercent(selected.corpus.inclusionRate)} of ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} decks ${selected.corpus.scope === "commander" ? "with this commander" : "in these colors"}`}
         </span>
       </div>
-      {jobs.length > 0 && <p className="mt-2 text-sm">Does the same job: {jobs.join(", ")}</p>}
+      {selected.functionalTwin ? (
+        <p className="mt-2 text-sm font-bold text-primary">
+          Same rules as {displayName(target)}, under a different name. You can run both in one deck.
+        </p>
+      ) : (
+        jobs.length > 0 && <p className="mt-2 text-sm">Does the same job: {jobs.join(", ")}</p>
+      )}
     </div>
   );
 }

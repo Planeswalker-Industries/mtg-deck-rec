@@ -79,6 +79,38 @@ export type Database = {
         }
         Relationships: []
       }
+      card_global_stats: {
+        Row: {
+          card_id: number
+          computed_at: string
+          decks_with: number
+          eligible_decks: number
+          rate: number
+        }
+        Insert: {
+          card_id: number
+          computed_at?: string
+          decks_with: number
+          eligible_decks: number
+          rate: number
+        }
+        Update: {
+          card_id?: number
+          computed_at?: string
+          decks_with?: number
+          eligible_decks?: number
+          rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_global_stats_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: true
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_names: {
         Row: {
           card_id: number
@@ -103,6 +135,50 @@ export type Database = {
             foreignKeyName: "card_names_card_id_fkey"
             columns: ["card_id"]
             isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      card_stats: {
+        Row: {
+          card_id: number
+          cheapest_finish: string | null
+          cheapest_usd: number | null
+          commander_products: number
+          computed_at: string
+          first_printed_at: string | null
+          paper_printings: number
+          paper_sets: number
+          staple_score: number
+        }
+        Insert: {
+          card_id: number
+          cheapest_finish?: string | null
+          cheapest_usd?: number | null
+          commander_products: number
+          computed_at?: string
+          first_printed_at?: string | null
+          paper_printings: number
+          paper_sets: number
+          staple_score?: number
+        }
+        Update: {
+          card_id?: number
+          cheapest_finish?: string | null
+          cheapest_usd?: number | null
+          commander_products?: number
+          computed_at?: string
+          first_printed_at?: string | null
+          paper_printings?: number
+          paper_sets?: number
+          staple_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_stats_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: true
             referencedRelation: "cards"
             referencedColumns: ["id"]
           },
@@ -152,6 +228,7 @@ export type Database = {
           content_hash: string
           copy_limit: number | null
           deleted_at: string | null
+          equivalence_base_id: number | null
           game_changer: boolean
           id: number
           images: Json | null
@@ -171,6 +248,7 @@ export type Database = {
           reference_price_finish: string | null
           reference_price_usd: number | null
           released_at: string | null
+          rules_hash: string | null
           scryfall_uri: string
           slug: string
           type_line: string
@@ -183,6 +261,7 @@ export type Database = {
           content_hash: string
           copy_limit?: number | null
           deleted_at?: string | null
+          equivalence_base_id?: number | null
           game_changer?: boolean
           id?: never
           images?: Json | null
@@ -202,6 +281,7 @@ export type Database = {
           reference_price_finish?: string | null
           reference_price_usd?: number | null
           released_at?: string | null
+          rules_hash?: string | null
           scryfall_uri: string
           slug: string
           type_line: string
@@ -214,6 +294,7 @@ export type Database = {
           content_hash?: string
           copy_limit?: number | null
           deleted_at?: string | null
+          equivalence_base_id?: number | null
           game_changer?: boolean
           id?: never
           images?: Json | null
@@ -233,10 +314,215 @@ export type Database = {
           reference_price_finish?: string | null
           reference_price_usd?: number | null
           released_at?: string | null
+          rules_hash?: string | null
           scryfall_uri?: string
           slug?: string
           type_line?: string
           updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cards_equivalence_base_id_fkey"
+            columns: ["equivalence_base_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_card_stats: {
+        Row: {
+          card_id: number
+          commander_key_id: number
+          decks_with: number
+          eligible_decks: number | null
+          inclusion_shrunk: number
+          synergy: number
+        }
+        Insert: {
+          card_id: number
+          commander_key_id: number
+          decks_with: number
+          eligible_decks?: number | null
+          inclusion_shrunk: number
+          synergy: number
+        }
+        Update: {
+          card_id?: number
+          commander_key_id?: number
+          decks_with?: number
+          eligible_decks?: number | null
+          inclusion_shrunk?: number
+          synergy?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_card_stats_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commander_card_stats_commander_key_id_fkey"
+            columns: ["commander_key_id"]
+            isOneToOne: false
+            referencedRelation: "commander_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_keys: {
+        Row: {
+          color_identity: number
+          commander_1: number
+          commander_2: number | null
+          created_at: string
+          id: number
+          slug: string
+        }
+        Insert: {
+          color_identity: number
+          commander_1: number
+          commander_2?: number | null
+          created_at?: string
+          id?: never
+          slug: string
+        }
+        Update: {
+          color_identity?: number
+          commander_1?: number
+          commander_2?: number | null
+          created_at?: string
+          id?: never
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_keys_commander_1_fkey"
+            columns: ["commander_1"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commander_keys_commander_2_fkey"
+            columns: ["commander_2"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_requests: {
+        Row: {
+          client_key: string | null
+          commander_card_id: number
+          created_at: string
+          decks_collected: number
+          decks_listed: number | null
+          decks_target: number
+          error: string | null
+          finished_at: string | null
+          heartbeat_at: string | null
+          id: number
+          started_at: string | null
+          status: Database["public"]["Enums"]["commander_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          client_key?: string | null
+          commander_card_id: number
+          created_at?: string
+          decks_collected?: number
+          decks_listed?: number | null
+          decks_target: number
+          error?: string | null
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          id?: never
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["commander_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          client_key?: string | null
+          commander_card_id?: number
+          created_at?: string
+          decks_collected?: number
+          decks_listed?: number | null
+          decks_target?: number
+          error?: string | null
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          id?: never
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["commander_request_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_requests_commander_card_id_fkey"
+            columns: ["commander_card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_stats: {
+        Row: {
+          bracket_counts: Json
+          commander_key_id: number
+          computed_at: string
+          deck_count: number
+          deck_months: Json
+          role_profile: Json
+          source_counts: Json
+        }
+        Insert: {
+          bracket_counts: Json
+          commander_key_id: number
+          computed_at?: string
+          deck_count: number
+          deck_months?: Json
+          role_profile?: Json
+          source_counts: Json
+        }
+        Update: {
+          bracket_counts?: Json
+          commander_key_id?: number
+          computed_at?: string
+          deck_count?: number
+          deck_months?: Json
+          role_profile?: Json
+          source_counts?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_stats_commander_key_id_fkey"
+            columns: ["commander_key_id"]
+            isOneToOne: true
+            referencedRelation: "commander_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      corpus_identity_stats: {
+        Row: {
+          color_identity: number
+          computed_at: string
+          deck_months: Json
+        }
+        Insert: {
+          color_identity: number
+          computed_at?: string
+          deck_months: Json
+        }
+        Update: {
+          color_identity?: number
+          computed_at?: string
+          deck_months?: Json
         }
         Relationships: []
       }
@@ -521,24 +807,23 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_status: {
+        Row: {
+          heartbeat_at: string
+          name: string
+        }
+        Insert: {
+          heartbeat_at: string
+          name: string
+        }
+        Update: {
+          heartbeat_at?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      card_tag_vectors: {
-        Row: {
-          card_id: number | null
-          direct_tag_ids: string[] | null
-          expanded_tag_ids: string[] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "card_tags_card_id_fkey"
-            columns: ["card_id"]
-            isOneToOne: false
-            referencedRelation: "cards"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       functional_tags: {
         Row: {
           tag_id: string | null
@@ -547,8 +832,90 @@ export type Database = {
       }
     }
     Functions: {
+      card_functional_tags: {
+        Args: { p_card_id: number }
+        Returns: {
+          depth: number
+          label: string
+          slug: string
+          tag_id: string
+        }[]
+      }
+      card_top_commanders: {
+        Args: { p_card_id: number; p_limit?: number; p_min_decks: number }
+        Returns: {
+          commander_1: number
+          commander_2: number
+          commander_key_id: number
+          decks_with: number
+          eligible_decks: number
+          slug: string
+        }[]
+      }
+      commander_collector_online: { Args: never; Returns: boolean }
+      commander_request_config: { Args: never; Returns: Json }
+      commander_request_json: {
+        Args: {
+          p_client_key: string
+          r: Database["public"]["Tables"]["commander_requests"]["Row"]
+        }
+        Returns: Json
+      }
+      commander_request_recent: {
+        Args: { p_card_id: number }
+        Returns: {
+          client_key: string | null
+          commander_card_id: number
+          created_at: string
+          decks_collected: number
+          decks_listed: number | null
+          decks_target: number
+          error: string | null
+          finished_at: string | null
+          heartbeat_at: string | null
+          id: number
+          started_at: string | null
+          status: Database["public"]["Enums"]["commander_request_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "commander_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_commander_request: {
+        Args: { p_card_id: number; p_client_key: string }
+        Returns: Json
+      }
+      get_commander_request_status: {
+        Args: { p_client_key: string; p_request_id: number }
+        Returns: Json
+      }
       get_public_config: { Args: { p_key: string }; Returns: Json }
+      hit_rate_limit: {
+        Args: { p_bucket: string; p_visitor: string }
+        Returns: number
+      }
       rebuild_tag_closure: { Args: never; Returns: undefined }
+      rec_add_candidates: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_alpha: number
+          p_deck_count: number
+          p_exclude: number[]
+          p_identity_mask: number
+          p_key_ids: number[]
+          p_limit?: number
+          p_owned?: number[]
+        }
+        Returns: {
+          baseline: number
+          card_id: number
+          decks_with: number
+        }[]
+      }
       rec_card_roles: {
         Args: { p_card_ids: number[]; p_role_ids: string[] }
         Returns: {
@@ -568,9 +935,15 @@ export type Database = {
         }
         Returns: {
           card_id: number
+          is_functional_twin: boolean
           matches: Json
+          staple_score: number
           tag_similarity: number
         }[]
+      }
+      request_commander_decks: {
+        Args: { p_card_id: number; p_client_key: string }
+        Returns: Json
       }
       resolve_card_names: {
         Args: { p_names: string[] }
@@ -582,8 +955,18 @@ export type Database = {
           via: string
         }[]
       }
+      sitemap_slugs: { Args: never; Returns: Json }
     }
     Enums: {
+      commander_request_status:
+        | "queued"
+        | "checking"
+        | "collecting"
+        | "aggregating"
+        | "done"
+        | "not_enough_decks"
+        | "failed"
+      deck_source: "archidekt" | "moxfield" | "user" | "precon"
       sync_job:
         | "scryfall_catalog"
         | "oracle_tags"
@@ -591,6 +974,7 @@ export type Database = {
         | "corpus_aggregate"
         | "precon_import"
         | "vote_aggregate"
+        | "scryfall_printings"
       sync_status:
         | "running"
         | "succeeded"
@@ -728,6 +1112,16 @@ export const Constants = {
   },
   public: {
     Enums: {
+      commander_request_status: [
+        "queued",
+        "checking",
+        "collecting",
+        "aggregating",
+        "done",
+        "not_enough_decks",
+        "failed",
+      ],
+      deck_source: ["archidekt", "moxfield", "user", "precon"],
       sync_job: [
         "scryfall_catalog",
         "oracle_tags",
@@ -735,6 +1129,7 @@ export const Constants = {
         "corpus_aggregate",
         "precon_import",
         "vote_aggregate",
+        "scryfall_printings",
       ],
       sync_status: [
         "running",

@@ -14,8 +14,12 @@ export interface ScryfallFace {
   mana_cost?: string;
   type_line?: string;
   oracle_text?: string;
+  power?: string;
+  toughness?: string;
+  loyalty?: string;
+  defense?: string;
+  color_indicator?: string[];
   flavor_name?: string;
-  printed_name?: string;
   image_uris?: ScryfallImageUris;
 }
 
@@ -29,6 +33,12 @@ export interface ScryfallCard {
   mana_cost?: string;
   type_line?: string;
   oracle_text?: string;
+  power?: string;
+  toughness?: string;
+  loyalty?: string;
+  defense?: string;
+  colors?: string[];
+  color_indicator?: string[];
   color_identity: string[];
   legalities: Record<string, string>;
   games?: string[];
@@ -39,7 +49,6 @@ export interface ScryfallCard {
   scryfall_uri: string;
   game_changer?: boolean;
   flavor_name?: string;
-  printed_name?: string;
 }
 
 // A type alias, not an interface: postgres.js only accepts JSON-compatible values, and interfaces
@@ -51,7 +60,7 @@ type CardImageSet = {
   artCrop: string;
 };
 
-/** Row shape of the stg_cards staging table (mirrors public.cards without id/updated_at/deleted_at). */
+/** Row shape of the stg_cards staging table (mirrors public.cards without id/updated_at/deleted_at/equivalence_base_id). */
 export interface CardRow {
   oracle_id: string;
   name: string;
@@ -79,12 +88,13 @@ export interface CardRow {
   reference_price_finish: 'nonfoil' | 'foil' | 'etched' | null;
   prices_as_of: string;
   content_hash: Buffer;
+  rules_hash: Buffer;
 }
 
 export interface CardNameRow {
   oracle_id: string;
   name_normalized: string;
-  kind: 'full' | 'face' | 'flavor' | 'printed' | 'alchemy';
+  kind: 'full' | 'face' | 'printed' | 'alchemy';
 }
 
 export const CARD_COLUMNS = [
@@ -114,10 +124,27 @@ export const CARD_COLUMNS = [
   'reference_price_finish',
   'prices_as_of',
   'content_hash',
+  'rules_hash',
 ] as const satisfies readonly (keyof CardRow)[];
 
 /** Layouts that are not cards you put in a deck. */
-const NON_DECK_LAYOUTS = new Set(['token', 'double_faced_token', 'emblem', 'art_series', 'planar', 'scheme', 'vanguard']);
+export const NON_DECK_LAYOUTS: ReadonlySet<string> = new Set([
+  'token',
+  'double_faced_token',
+  'emblem',
+  'art_series',
+  'planar',
+  'scheme',
+  'vanguard',
+]);
+
+/**
+ * Jumpstart and Commander theme cards (type line "Card", text like "(Theme color: {W})") come with normal layouts
+ * but aren't playable. Left in, dozens of them group as rules-identical "twins".
+ */
+export function isThemeCard(typeLine: string | undefined): boolean {
+  return typeLine === 'Card';
+}
 
 const COLOR_BITS: Record<string, number> = { W: 1, U: 2, B: 4, R: 8, G: 16 };
 
@@ -135,6 +162,63 @@ const NUMBER_WORDS: Record<string, number> = {
 
 const toImageSet = (u: ScryfallImageUris | undefined): CardImageSet | null =>
   u ? { small: u.small, normal: u.normal, large: u.large, artCrop: u.art_crop } : null;
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Replaces a card's own names in its rules text with CARDNAME, so renamed twins produce identical text.
+ * Covers the full name, each face name, and the short name legendary cards use in their text ("Rick" for
+ * "Rick, Steadfast Leader"). Matches whole words only, so a short name inside another word is left alone.
+ */
+export function maskOwnNames(text: string, names: readonly string[]): string {
+  const variants = new Set<string>();
+  for (const name of names) {
+    variants.add(name);
+    const short = name.split(',')[0]?.trim();
+    if (short && short !== name && short.length >= 3) variants.add(short);
+  }
+  let masked = text;
+  for (const variant of [...variants].sort((a, b) => b.length - a.length)) {
+    masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(variant)}(?![\\p{L}\\p{N}])`, 'gu'), 'CARDNAME');
+  }
+  return masked;
+}
+
+/** Identifies rules-identical cards regardless of name: cost, type line, masked text, stats and colors, per face. */
+function rulesHashOf(card: ScryfallCard, faces: readonly ScryfallFace[], typeLine: string, text: string): Buffer {
+  const names = [card.name, ...faces.map((f) => f.name)];
+  const faceRules =
+    faces.length > 1
+      ? faces.map((f) => [
+          f.mana_cost ?? '',
+          f.type_line ?? '',
+          maskOwnNames(f.oracle_text ?? '', names),
+          f.power ?? null,
+          f.toughness ?? null,
+          f.loyalty ?? null,
+          f.defense ?? null,
+          f.color_indicator ?? null,
+        ])
+      : null;
+  return createHash('sha1')
+    .update(
+      JSON.stringify([
+        card.mana_cost ?? null,
+        card.cmc ?? 0,
+        typeLine,
+        maskOwnNames(text, names),
+        card.power ?? null,
+        card.toughness ?? null,
+        card.loyalty ?? null,
+        card.defense ?? null,
+        card.colors ?? null,
+        card.color_indicator ?? null,
+        card.color_identity,
+        faceRules,
+      ]),
+    )
+    .digest();
+}
 
 function partnerOf(text: string, frontType: string): { kind: string | null; qualifier: string | null } {
   const partnerWith = /Partner with ([^(\n]+?)(?:\s*\(|$)/m.exec(text);
@@ -159,7 +243,8 @@ function copyLimitOf(text: string, isBasicLand: boolean): number | null {
 /**
  * Maps one Oracle Cards bulk entry to a catalog row plus its name aliases.
  * Returns null for things that aren't deck cards (tokens, art cards, planes…).
- * `reference_price_*` comes from Scryfall's representative printing until All Cards ingestion computes the cheapest printing.
+ * Prices here come from Scryfall's representative printing; sync:printings replaces them with the cheapest printing.
+ * Flavor-name aliases come from sync:printings too, since flavor names live on individual printings.
  */
 export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: CardRow; names: CardNameRow[] } | null {
   if (NON_DECK_LAYOUTS.has(card.layout)) return null;
@@ -168,6 +253,7 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
   if (!oracleId) return null;
 
   const typeLine = card.type_line ?? faces.map((f) => f.type_line ?? '').join(' // ');
+  if (isThemeCard(typeLine)) return null;
   const frontType = faces[0]?.type_line ?? typeLine;
   const text = card.oracle_text ?? faces.map((f) => f.oracle_text ?? '').join('\n');
   const isBasicLand = /\bBasic\b/.test(frontType) && /\bLand\b/.test(frontType);
@@ -231,6 +317,7 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
     reference_price_finish: priced ? priced[0] : null,
     prices_as_of: pricesAsOf,
     content_hash: contentHash,
+    rules_hash: rulesHashOf(card, faces, typeLine, text),
   };
 
   const aliases = new Map<string, CardNameRow['kind']>();
@@ -241,9 +328,6 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
   };
   add(card.name, 'full');
   if (faces.length > 1) for (const f of faces) add(f.name, 'face');
-  add(card.flavor_name, 'flavor');
-  for (const f of faces) add(f.flavor_name, 'flavor');
-  add(card.printed_name, 'printed');
   if (card.name.startsWith('A-')) add(card.name.slice(2), 'alchemy');
 
   return {

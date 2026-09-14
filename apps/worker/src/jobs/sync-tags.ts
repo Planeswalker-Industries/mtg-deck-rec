@@ -41,7 +41,7 @@ const MIN_TAG_RATIO = 0.9;
 const MIN_TAGGING_RATIO = 0.8;
 
 /**
- * Oracle Tags → public.tags, tag_edges, card_tags, tag_closure (+ card_count, idf, card_tag_vectors).
+ * Oracle Tags → public.tags, tag_edges, card_tags, tag_closure (+ card_count, idf).
  * Requires the catalog to be synced first (taggings join on cards.oracle_id).
  *
  * Weights in the bulk file are strings. The 2026-09-13 profile found 99.7% "median", 612 "very_strong",
@@ -202,8 +202,6 @@ export async function syncTags({ force = false }: { force?: boolean } = {}): Pro
           where p.id = t.id
         `;
         await db`commit`;
-
-        await db`refresh materialized view concurrently public.card_tag_vectors`;
 
         const result = { ...metrics, changed: changed?.n ?? 0, cardTags: linked?.n ?? 0 };
         await finishRun(sql, runId, 'succeeded', { rowsRead: stats.lines, rowsChanged: result.changed, metrics: result });

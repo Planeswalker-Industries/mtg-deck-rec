@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import type { Bracket, DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { displayName } from "@/lib/cards";
 import { ColorIdentity } from "./color-identity";
@@ -38,7 +39,16 @@ export function DeckBar({
         )}
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-heading text-2xl leading-tight font-extrabold tracking-tight">
-            {commanders.map(displayName).join(" and ")}
+            {analysis.commanderKey.slug && analysis.commanderKey.deckCount > 0 ? (
+              <Link
+                href={`/commander/${analysis.commanderKey.slug}`}
+                className="underline decoration-seam decoration-2 underline-offset-4 hover:decoration-primary"
+              >
+                {commanders.map(displayName).join(" and ")}
+              </Link>
+            ) : (
+              commanders.map(displayName).join(" and ")
+            )}
           </h2>
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <ColorIdentity identity={analysis.colorIdentity} />

@@ -1,6 +1,7 @@
 import { deckIdentityMask, estimateBracket, maskToIdentity, validateCommanderDeck } from "@mtg/core/commander";
 import type {
   CardId,
+  CommanderKeyId,
   DeckAnalysis,
   DeckCardEntry,
   DeckInput,
@@ -10,6 +11,7 @@ import type {
 } from "@mtg/core/contract";
 import { normalizeName, parseDecklist } from "@mtg/core/parse";
 import { fetchCardsById, toCardSummary, toCommanderFacts, type CardRow } from "./cards";
+import { loadCommanderCorpus, type CommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
 
 /** Typo matches at or above this trigram similarity are accepted and flagged; below it the line stays unresolved. */
@@ -87,11 +89,18 @@ export async function resolveDecklist(db: PublicClient, text: string): Promise<P
   });
 
   if (!resolved.every((l) => l.resolution.status === "resolved")) return { lines: resolved, analysis: null };
-  return { lines: resolved, analysis: analyzeDeck(deckFromLines(resolved), cards, today) };
+  const deck = deckFromLines(resolved);
+  const corpus = await loadCommanderCorpus(db, deck.commanders);
+  return { lines: resolved, analysis: analyzeDeck(deck, cards, today, corpus) };
 }
 
-/** Commander analysis for a resolved deck. The deck corpus doesn't exist yet, so commander stats report no decks. */
-export function analyzeDeck(deck: DeckInput, cards: ReadonlyMap<number, CardRow>, today = new Date().toISOString().slice(0, 10)): DeckAnalysis {
+/** Commander analysis for a resolved deck. Without corpus data, the commander key reports no decks. */
+export function analyzeDeck(
+  deck: DeckInput,
+  cards: ReadonlyMap<number, CardRow>,
+  today = new Date().toISOString().slice(0, 10),
+  corpus: CommanderCorpus | null = null,
+): DeckAnalysis {
   const row = (id: number) => {
     const found = cards.get(id);
     if (!found) throw new Error(`Card ${id} is not in the catalog.`);
@@ -109,11 +118,11 @@ export function analyzeDeck(deck: DeckInput, cards: ReadonlyMap<number, CardRow>
     deck,
     colorIdentity: maskToIdentity(deckIdentityMask(commanders)),
     commanderKey: {
-      id: null,
-      slug: null,
+      id: (corpus?.keyId ?? null) as CommanderKeyId | null,
+      slug: corpus?.slug ?? null,
       commanders: commanderRows.map((r) => toCardSummary(r, today)),
-      deckCount: 0,
-      confidence: "none",
+      deckCount: corpus?.deckCount ?? 0,
+      confidence: corpus?.confidence ?? "none",
     },
     estimatedBracket,
     gameChangerIds,
@@ -130,6 +139,9 @@ export function analyzeDeck(deck: DeckInput, cards: ReadonlyMap<number, CardRow>
 
 /** Loads the cards for a deck the client already resolved, then analyzes it. */
 export async function analyzeDeckById(db: PublicClient, deck: DeckInput): Promise<DeckAnalysis> {
-  const cards = await fetchCardsById(db, [...deck.commanders, ...deck.cards.map((c) => c.cardId)]);
-  return analyzeDeck(deck, cards);
+  const [cards, corpus] = await Promise.all([
+    fetchCardsById(db, [...deck.commanders, ...deck.cards.map((c) => c.cardId)]),
+    loadCommanderCorpus(db, deck.commanders),
+  ]);
+  return analyzeDeck(deck, cards, undefined, corpus);
 }

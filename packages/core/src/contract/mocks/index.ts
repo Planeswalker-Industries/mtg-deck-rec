@@ -32,6 +32,7 @@ import type {
   TagMatch,
   VoteSummary,
 } from '../recs';
+import type { CommanderRequest, CommanderRequestStatus } from '../commander-requests';
 import type { ActionsApi, DataApi, RecsApi } from '../transport';
 import {
   frontFaceName,
@@ -54,8 +55,8 @@ export interface MockApis {
 
 const MOCK_DECK_COUNT = 1204;
 const MOCK_ACCOUNT_OWNED = new Set<number>([2, 3, 5, 9, 12, 16, 17]);
-const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.45, manaValue: 0.1, corpus: 0.3, votes: 0.15 };
-const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'corpus', 'votes'];
+const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 };
+const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
 
 const byId = new Map<number, CardSummary>(mockCards.map((c) => [c.id, c]));
 const byName = new Map<string, CardSummary>(
@@ -97,10 +98,12 @@ const categoryOf = (typeLine: string): CardCategory => {
 const corpusFor = (id: number): CorpusEvidence => {
   const inclusionRate = (((id * 37) % 60) + 5) / 100;
   return {
+    scope: 'commander',
     decksWith: Math.round(inclusionRate * MOCK_DECK_COUNT),
     commanderDeckCount: MOCK_DECK_COUNT,
     inclusionRate,
     synergy: round(inclusionRate - 0.2),
+    limited: false,
   };
 };
 
@@ -290,14 +293,17 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             const votesFor = voteSummary(target.id, c.id);
             return {
               card: c,
+              functionalTwin: false,
               matchedTags,
               corpus,
               score: blend(
                 {
                   tag: tagScore(matchedTags),
                   manaValue: round(Math.exp(-Math.abs(c.manaValue - target.manaValue) / 1.5)),
+                  staple: null,
                   corpus: corpusScore(corpus),
                   votes: votesFor.score,
+                  role: null,
                 },
                 votesFor.voteCount,
               ),
@@ -337,7 +343,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             card: c,
             category,
             corpus,
-            score: blend({ tag: null, manaValue: null, corpus: corpusScore(corpus), votes: null }, 0),
+            score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null, role: null }, 0),
             fillsRoles: (mockCardTags[c.id] ?? []).map((tag): TagRef => mockTagParent[tag.id] ?? tag),
             owned: ownedInfo(owned, c.id),
           };
@@ -388,7 +394,55 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     },
   };
 
+  // Commander deck lookups advance with the clock, so the deck tool's progress UI runs without the worker.
+  const lookups = new Map<string, { commanderId: CardId; startedAt: number }>();
+  const LOOKUP_DECKS = 100;
+  const lookupProgress = (id: string): CommanderRequest => {
+    const lookup = lookups.get(id);
+    if (!lookup) throw new MockNotFound(`Unknown lookup ${id}`);
+    const elapsed = Date.now() - lookup.startedAt;
+    const collected = clamp(Math.floor((elapsed - 3_500) / 120), 0, LOOKUP_DECKS);
+    const status: CommanderRequestStatus =
+      elapsed < 1_500 ? 'checking' : elapsed < 15_500 ? 'collecting' : elapsed < 19_500 ? 'aggregating' : 'done';
+    const etaSeconds = status === 'done' ? null : Math.max(Math.round((19_500 - elapsed) / 1000), 1);
+    return {
+      id,
+      commander: getCard(lookup.commanderId),
+      status,
+      decksListed: status === 'checking' ? null : 240,
+      decksCollected: status === 'checking' ? 0 : status === 'collecting' ? collected : LOOKUP_DECKS,
+      decksTarget: LOOKUP_DECKS,
+      queuePosition: 0,
+      etaSeconds,
+      joined: false,
+      collectorOnline: true,
+      error: null,
+      updatedAt: new Date(lookup.startedAt + Math.min(elapsed, 19_500)).toISOString(),
+    };
+  };
+  const activeLookupFor = (commanderId: CardId) =>
+    [...lookups.entries()].find(([id, l]) => l.commanderId === commanderId && lookupProgress(id).status !== 'done')?.[0];
+
   const actions: ActionsApi = {
+    async getCommanderCoverage({ commanderId }) {
+      if (!byId.has(commanderId)) return delay(fail('NOT_FOUND', 'Unknown commander.'));
+      const active = activeLookupFor(commanderId);
+      return delay(ok({ request: active ? lookupProgress(active) : null, estimatedSeconds: 20, collectorOnline: true }));
+    },
+
+    async requestCommanderDecks({ commanderId }) {
+      if (!byId.has(commanderId)) return delay(fail('VALIDATION', "That card can't lead a Commander deck."));
+      const active = activeLookupFor(commanderId);
+      const id = active ?? String(lookups.size + 1);
+      if (!active) lookups.set(id, { commanderId, startedAt: Date.now() });
+      return delay(ok(lookupProgress(id)));
+    },
+
+    async getCommanderRequest({ requestId }) {
+      if (!lookups.has(requestId)) return delay(fail('NOT_FOUND', "That deck lookup doesn't exist."));
+      return delay(ok(lookupProgress(requestId)));
+    },
+
     async parseDeck({ text }) {
       if (text.length > 20_000) return delay(fail('PAYLOAD_TOO_LARGE', 'Decklist exceeds 20 KB.'));
       const lines = mockParse(text);

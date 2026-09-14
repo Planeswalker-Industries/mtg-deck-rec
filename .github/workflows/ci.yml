@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "phase*/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: |
+          corepack enable
+          yarn install --immutable
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Unit tests
+        run: yarn test
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.110.0
+
+      # Applies every migration to an empty database, so a migration that only works on top of local data fails here.
+      - name: Start Supabase
+        run: supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,mailpit
+
+      - name: App environment
+        run: |
+          supabase status -o env \
+            | sed -n 's/^API_URL=/NEXT_PUBLIC_SUPABASE_URL=/p; s/^PUBLISHABLE_KEY=/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=/p' \
+            | tr -d '"' >> "$GITHUB_ENV"
+          echo "RATE_LIMIT_SALT=ci-only-not-secret" >> "$GITHUB_ENV"
+          # The catalog is empty here, so the deck tool runs on mock recommendations; routes, proxy and pages stay real.
+          echo "NEXT_PUBLIC_USE_MOCKS=1" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: yarn workspace @mtg/web build
+
+      - name: Install Playwright browser
+        run: yarn workspace @mtg/web exec playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: yarn workspace @mtg/web e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: apps/web/test-results
+          retention-days: 7

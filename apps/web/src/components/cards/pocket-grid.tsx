@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
+import type { Route } from "next";
+import Link from "next/link";
 import { displayName } from "@/lib/cards";
 import { CardImage } from "./card-image";
 
@@ -9,6 +11,8 @@ export interface PocketItem {
   /** Shown under the card name; keep it to one or two short lines. */
   caption?: ReactNode;
   selected?: boolean;
+  /** Makes the pocket a link, e.g. to the card's page. */
+  href?: string;
 }
 
 const GRID_SIZES = "(min-width: 1024px) 180px, (min-width: 768px) 20vw, (min-width: 640px) 25vw, 33vw";
@@ -34,7 +38,7 @@ export function PocketGrid({
           </>
         );
         return (
-          <li key={item.card.id} className="min-w-0">
+          <li key={item.href ?? item.card.id} className="min-w-0">
             {onSelect ? (
               <button
                 type="button"
@@ -48,6 +52,13 @@ export function PocketGrid({
               >
                 {content}
               </button>
+            ) : item.href ? (
+              <Link
+                href={item.href as Route}
+                className="block rounded-lg p-1 transition-colors hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                {content}
+              </Link>
             ) : (
               <div className="p-1">{content}</div>
             )}

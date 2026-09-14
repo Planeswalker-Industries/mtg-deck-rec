@@ -26,6 +26,28 @@ const setup = async () => {
   return { apis, analysis, context };
 };
 
+describe('mock commander deck lookups', () => {
+  it('starts one lookup per commander, shares it, and reports it as coverage', async () => {
+    const apis = createMockApis({ latencyMs: 0 });
+    const commanderId = idOf('Chulane, Teller of Tales');
+    const before = await apis.actions.getCommanderCoverage({ commanderId });
+    expect(before.ok && before.data.request).toBeNull();
+
+    const started = await apis.actions.requestCommanderDecks({ commanderId });
+    const joined = await apis.actions.requestCommanderDecks({ commanderId });
+    if (!started.ok || !joined.ok) throw new Error('lookup request failed');
+    expect(started.data.status).toBe('checking');
+    expect(joined.data.id).toBe(started.data.id);
+
+    const coverage = await apis.actions.getCommanderCoverage({ commanderId });
+    expect(coverage.ok && coverage.data.request?.id).toBe(started.data.id);
+    const progress = await apis.actions.getCommanderRequest({ requestId: started.data.id });
+    expect(progress.ok && progress.data.commander.id).toBe(commanderId);
+    const missing = await apis.actions.getCommanderRequest({ requestId: '999' });
+    expect(!missing.ok && missing.error.code).toBe('NOT_FOUND');
+  });
+});
+
 describe('mock parseDeck', () => {
   it('resolves the sample deck and analyzes it', async () => {
     const { analysis } = await setup();

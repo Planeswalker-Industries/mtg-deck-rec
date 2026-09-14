@@ -19,7 +19,12 @@ export interface RecContext {
   ownership: OwnershipInput | null;
 }
 
-export type ScoreComponent = 'tag' | 'manaValue' | 'corpus' | 'votes';
+/**
+ * tag: does the same job (functional tag similarity) · manaValue: similar cost · staple: how widely the card is
+ * reprinted, especially in Commander precons · corpus: play rate with this commander · votes: community votes.
+ */
+/** `role`: the card fills a role the deck is short on (cards to add). */
+export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes' | 'role';
 
 export interface ScoreBreakdown {
   /** 0..1 */
@@ -40,10 +45,15 @@ export interface TagMatch {
 }
 
 export interface CorpusEvidence {
+  /** 'commander': counted over the commander's decks. 'colors': over every corpus deck the card's colors allow, when the commander has no decks yet. */
+  scope: 'commander' | 'colors';
   decksWith: number;
+  /** Decks counted: the commander's, or every deck the card's colors allow (see scope). */
   commanderDeckCount: number;
   inclusionRate: number;
   synergy: number;
+  /** Too few decks could have run the card yet (usually a new card): its play rate isn't used, and it's scored like a typical option. */
+  limited: boolean;
 }
 
 export interface VoteSummary {
@@ -73,6 +83,8 @@ export interface OwnedInfo {
 
 export interface SwapSuggestion {
   card: CardSummary;
+  /** Rules-identical to the target under a different name (e.g. a Universes Beyond rename). */
+  functionalTwin: boolean;
   score: ScoreBreakdown;
   matchedTags: TagMatch[];
   corpus: CorpusEvidence | null;

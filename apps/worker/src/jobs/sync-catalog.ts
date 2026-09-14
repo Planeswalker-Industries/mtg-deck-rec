@@ -65,7 +65,8 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
           reference_price_usd numeric(10, 2),
           reference_price_finish text,
           prices_as_of timestamptz,
-          content_hash bytea not null
+          content_hash bytea not null,
+          rules_hash bytea not null
         )
       `;
       await db`create temp table stg_card_names (oracle_id uuid not null, name_normalized text not null, kind text not null)`;
@@ -146,15 +147,19 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
               images = excluded.images,
               scryfall_uri = excluded.scryfall_uri,
               content_hash = excluded.content_hash,
+              rules_hash = excluded.rules_hash,
               updated_at = now(),
               deleted_at = null
-            where c.content_hash is distinct from excluded.content_hash or c.deleted_at is not null
+            where c.content_hash is distinct from excluded.content_hash
+               or c.rules_hash is distinct from excluded.rules_hash
+               or c.deleted_at is not null
             returning 1
           )
           select count(*)::int as n from upserted
         `;
 
-        // Prices refresh on every run, independent of card changes.
+        // Prices refresh on every run, independent of card changes. Once sync:printings has computed the cheapest
+        // printing (card_stats), that price wins; the representative printing's price only fills in until then.
         await db`
           update public.cards c
           set reference_price_usd = s.reference_price_usd,
@@ -162,6 +167,7 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
               prices_as_of = s.prices_as_of
           from stg_cards s
           where s.oracle_id = c.oracle_id
+            and not exists (select 1 from public.card_stats st where st.card_id = c.id)
         `;
 
         const [removed] = await db<{ n: number }[]>`
@@ -174,19 +180,65 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
           select count(*)::int as n from gone
         `;
 
-        await db`delete from public.card_names`;
+        // Flavor-name aliases belong to sync:printings; this job owns every other alias kind.
+        await db`delete from public.card_names where kind <> 'flavor'`;
         await db`
           insert into public.card_names (card_id, name_normalized, kind)
           select distinct c.id, n.name_normalized, n.kind
           from stg_card_names n
           join public.cards c on c.oracle_id = n.oracle_id
+          on conflict do nothing
+        `;
+
+        // Functional twins: rules-identical cards with different names link to the first-printed member.
+        // First printing comes from card_stats (sync:printings); until that exists, the representative release date.
+        await db`
+          with groups as (
+            select
+              c.rules_hash,
+              (array_agg(c.id order by coalesce(st.first_printed_at, c.released_at) nulls last, c.id))[1] as base_id
+            from public.cards c
+            left join public.card_stats st on st.card_id = c.id
+            where c.deleted_at is null and c.rules_hash is not null
+            group by c.rules_hash
+            having count(*) > 1
+          )
+          update public.cards c
+          set equivalence_base_id = g.base_id
+          from groups g
+          where c.rules_hash = g.rules_hash
+            and c.deleted_at is null
+            and c.equivalence_base_id is distinct from g.base_id
+        `;
+        await db`
+          update public.cards c
+          set equivalence_base_id = null
+          where c.equivalence_base_id is not null
+            and (
+              c.deleted_at is not null
+              or not exists (
+                select 1 from public.cards o
+                where o.rules_hash = c.rules_hash and o.id <> c.id and o.deleted_at is null
+              )
+            )
+        `;
+        const [twins] = await db<{ groups: number; cards: number }[]>`
+          select count(distinct equivalence_base_id)::int as groups, count(*)::int as cards
+          from public.cards
+          where equivalence_base_id is not null and deleted_at is null
         `;
         await db`commit`;
 
-        const result = { ...metrics, changed: changed?.n ?? 0, removed: removed?.n ?? 0 };
+        const result = {
+          ...metrics,
+          changed: changed?.n ?? 0,
+          removed: removed?.n ?? 0,
+          twinGroups: twins?.groups ?? 0,
+          twinCards: twins?.cards ?? 0,
+        };
         await finishRun(sql, runId, 'succeeded', { rowsRead: stats.lines, rowsChanged: result.changed, metrics: result });
         console.log(
-          `scryfall_catalog: ${result.cards} cards (${result.changed} new or changed, ${result.removed} removed), ${result.names} name aliases, ${nonDeckCards} non-deck entries skipped`,
+          `scryfall_catalog: ${result.cards} cards (${result.changed} new or changed, ${result.removed} removed), ${result.names} name aliases, ${result.twinGroups} twin groups (${result.twinCards} cards), ${nonDeckCards} non-deck entries skipped`,
         );
       } catch (err) {
         await db`rollback`;

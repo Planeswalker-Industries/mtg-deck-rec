@@ -3,6 +3,7 @@ import { Atkinson_Hyperlegible_Next, Sofia_Sans_Condensed } from "next/font/goog
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 // Legible at small sizes: card names and badges on phones.
@@ -25,6 +26,7 @@ const display = Sofia_Sans_Condensed({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: { default: "MTG Deck Rec", template: "%s | MTG Deck Rec" },
   description:
     "Commander deck recommendations: cards to cut, cards to add, and replacements that do the same job, with card images and price differences.",

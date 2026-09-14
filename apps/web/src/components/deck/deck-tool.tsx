@@ -1,18 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { findResolvedCard } from "@/lib/cards";
 import { AddPanel } from "./add-panel";
+import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { CutPanel } from "./cut-panel";
 import { DeckBar } from "./deck-bar";
 import { DeckListPanel } from "./deck-list-panel";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
 import { SwapSheet } from "./swap-sheet";
+import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckTool } from "./use-deck-tool";
 
 const PLACEHOLDER = `Commander
@@ -25,8 +27,21 @@ Deck
 
 export function DeckTool() {
   const tool = useDeckTool();
+  const lookup = useCommanderLookup(tool.refreshRecommendations);
   const [editing, setEditing] = useState(true);
+  const restoreStarted = useRef(false);
   const { analysis, context, swap } = tool;
+
+  // Open where the player left off: the deck from their last visit, analyzed again.
+  useEffect(() => {
+    if (restoreStarted.current) return;
+    restoreStarted.current = true;
+    void tool.restoreLastDeck().then((restored) => {
+      if (!restored.parsed) return;
+      setEditing(false);
+      void lookup.check(restored.analysis);
+    });
+  }, [tool, lookup]);
   const showInput = editing || !analysis;
   const selectedCardId = swap?.targetCardId ?? null;
   const swapTarget = selectedCardId === null ? null : findResolvedCard(tool.lines, selectedCardId);
@@ -36,8 +51,9 @@ export function DeckTool() {
     : 0;
 
   async function analyze() {
-    await tool.submit();
+    const outcome = await tool.submit();
     setEditing(false);
+    if (outcome.parsed) void lookup.check(outcome.analysis);
   }
 
   return (
@@ -49,8 +65,8 @@ export function DeckTool() {
               Upgrade a deck
             </h1>
             <p className="mt-2 max-w-prose text-muted-foreground">
-              Paste your Commander decklist to see cards to cut, cards to add, and replacements that do the same job.
-              Card data is a small sample for now.
+              Paste your Commander decklist, or a link to a public Archidekt deck, to see cards to cut, cards to add, and
+              replacements that do the same job.
             </p>
           </div>
           <form
@@ -81,6 +97,20 @@ export function DeckTool() {
               <Button type="button" size="lg" variant="outline" onClick={tool.loadSample}>
                 Use sample deck
               </Button>
+              {tool.text && (
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="ghost"
+                  onClick={() => {
+                    tool.clearDeck();
+                    lookup.reset();
+                    setEditing(true);
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
               {analysis && (
                 <Button type="button" size="lg" variant="ghost" onClick={() => setEditing(false)}>
                   Cancel
@@ -97,6 +127,15 @@ export function DeckTool() {
         </div>
       )}
 
+      {tool.importedFrom && tool.parse.status === "ready" && (
+        <p className="text-sm text-muted-foreground">
+          Imported from{" "}
+          <a href={tool.importedFrom.url} target="_blank" rel="noreferrer" className="font-medium text-primary underline underline-offset-2">
+            Archidekt
+          </a>
+          . Edit the decklist to change it here.
+        </p>
+      )}
       {tool.parse.status === "error" && <PanelError message={tool.parse.message} />}
       <ResolutionIssues unresolved={tool.unresolvedLines} issues={analysis?.issues ?? []} />
 
@@ -109,6 +148,7 @@ export function DeckTool() {
             onBracketChange={tool.changeBracket}
             onIncludeGameChangersChange={tool.changeIncludeGameChangers}
           />
+          <CommanderLookupBar lookup={lookup} />
           <Tabs defaultValue="cut" className="gap-4">
             <TabsList className="h-10 w-full sm:w-fit">
               <TabsTrigger value="cut" className="px-3">
@@ -140,6 +180,7 @@ export function DeckTool() {
       )}
 
       <SwapSheet swap={swap} target={swapTarget} onClose={tool.closeSwap} />
+      <CommanderLookupSheet lookup={lookup} />
     </div>
   );
 }
