@@ -160,6 +160,7 @@ export async function loadSwapPool(
     excludeIds,
     ownedIds: owned,
     poolSize,
+    identityMask: identityOverride,
   }: {
     targetCardId: number;
     commanderIds: readonly number[];
@@ -167,12 +168,14 @@ export async function loadSwapPool(
     excludeIds: readonly number[];
     ownedIds: readonly number[] | null;
     poolSize: number;
+    /** Colors candidates must fit. Defaults to the commanders' combined identity. */
+    identityMask?: number | undefined;
   },
 ): Promise<SwapPool | null> {
   const rows = await fetchCardsById(db, [...commanderIds, targetCardId]);
   const targetRow = rows.get(targetCardId);
   if (!targetRow) return null;
-  const identityMask = commanderIds.reduce((mask, id) => mask | (rows.get(id)?.color_identity ?? 0), 0);
+  const identityMask = identityOverride ?? commanderIds.reduce((mask, id) => mask | (rows.get(id)?.color_identity ?? 0), 0);
 
   const [candidatesResult, tagCountResult, corpus] = await Promise.all([
     db.rpc("rec_swap_candidates", {

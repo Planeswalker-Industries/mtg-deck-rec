@@ -777,6 +777,26 @@ export type Database = {
       }
     }
     Functions: {
+      card_functional_tags: {
+        Args: { p_card_id: number }
+        Returns: {
+          depth: number
+          label: string
+          slug: string
+          tag_id: string
+        }[]
+      }
+      card_top_commanders: {
+        Args: { p_card_id: number; p_limit?: number; p_min_decks: number }
+        Returns: {
+          commander_1: number
+          commander_2: number
+          commander_key_id: number
+          decks_with: number
+          eligible_decks: number
+          slug: string
+        }[]
+      }
       get_public_config: { Args: { p_key: string }; Returns: Json }
       rebuild_tag_closure: { Args: never; Returns: undefined }
       rec_add_candidates: {
@@ -831,6 +851,7 @@ export type Database = {
           via: string
         }[]
       }
+      sitemap_slugs: { Args: never; Returns: Json }
     }
     Enums: {
       deck_source: "archidekt" | "moxfield" | "user" | "precon"

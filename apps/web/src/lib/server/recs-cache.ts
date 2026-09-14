@@ -1,5 +1,6 @@
 import type { CommanderPageData, RecContext, SwapResult } from "@mtg/core/contract";
 import { cacheLife, cacheTag } from "next/cache";
+import { loadCardPage, type CardPageData } from "./card-page";
 import { loadCommanderPage } from "./commander-page";
 import { getSwapSuggestions, loadSwapPool, NotFoundError, rankSwaps, SHARED_SWAP_POOL, type SwapPool } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
@@ -20,6 +21,26 @@ async function sharedSwapPool(targetCardId: number, commanderIds: number[], incl
     ownedIds: null,
     poolSize: SHARED_SWAP_POOL,
   });
+}
+
+/** Public card page data. It changes when the catalog, tags or deck corpus are rebuilt. */
+export async function getCardPage(slug: string): Promise<CardPageData | null> {
+  "use cache";
+  cacheLife("days");
+  cacheTag("catalog", "corpus", `card:${slug}`);
+  return loadCardPage(createPublicClient(), slug);
+}
+
+/** Every card and commander page slug, for the sitemap. */
+export async function getSitemapSlugs(): Promise<{ cards: string[]; commanders: string[] }> {
+  "use cache";
+  cacheLife("days");
+  cacheTag("catalog", "corpus");
+  const { data, error } = await createPublicClient().rpc("sitemap_slugs");
+  if (error) throw new Error(`Loading sitemap slugs failed: ${error.message}`);
+  const value = (data ?? {}) as { cards?: unknown; commanders?: unknown };
+  const strings = (list: unknown) => (Array.isArray(list) ? list.filter((s): s is string => typeof s === "string") : []);
+  return { cards: strings(value.cards), commanders: strings(value.commanders) };
 }
 
 /** Public commander page data. It only changes when the deck corpus is rebuilt (tag "corpus"). */
