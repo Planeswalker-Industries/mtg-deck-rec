@@ -1,0 +1,43 @@
+name: Push database migrations
+
+# Applies supabase/migrations to the hosted database. Run it from the Actions tab (or `gh workflow run db-push.yml`)
+# after adding the DATABASE_URL repository secret: the Supabase session pooler connection string, password included
+# (URL-encode special characters in the password).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: db-push
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.110.0
+
+      - name: Check the secret
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Add the DATABASE_URL repository secret first."
+            exit 1
+          fi
+
+      - name: Migrations before
+        run: supabase migration list --db-url "$DATABASE_URL"
+
+      - name: Push
+        run: supabase db push --db-url "$DATABASE_URL" --yes
+
+      - name: Migrations after
+        run: supabase migration list --db-url "$DATABASE_URL"
