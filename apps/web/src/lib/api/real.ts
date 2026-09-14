@@ -6,6 +6,7 @@ import {
   importDeckFromUrlAction,
   parseDeckAction,
   requestCommanderDecksAction,
+  resolveCollectionRowsAction,
 } from "@/app/deck/actions";
 
 const offline: ApiError = {
@@ -45,7 +46,7 @@ export const realActions: ActionsApi = {
   getCommanderCoverage: (input) => getCommanderCoverageAction(input),
   requestCommanderDecks: (input) => requestCommanderDecksAction(input),
   getCommanderRequest: (input) => getCommanderRequestAction(input),
-  resolveCollectionRows: notYet,
+  resolveCollectionRows: (input) => resolveCollectionRowsAction(input),
   saveCollectionBatch: notYet,
   deleteCollection: notYet,
   saveDeck: notYet,
