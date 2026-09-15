@@ -174,7 +174,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - Picked swaps go into the decklist (`useDeckTool.applySwaps`, which edits the player's own lines) when the sitting ends or the view changes.
   - Drag, flick and fling use Motion (`motion/react`, pinned).
   - Swipe is the default view on a first visit; the Swipe/List choice is remembered in localStorage (`lib/review-view.ts`). e2e tests that need the tabs click List first.
-  - While the deck is read and cuts or the first replacements load, `ShuffleDeck` shuffles sleeved card backs (`CardBack`, drawn in CSS, no card back art). The first pair of a sitting is drawn from it (`DrawnCard`: slide out and flip); later cards just appear. Reduced motion shows a still stack and no draw.
+  - While the deck is read and cuts or the first replacements load, `ShuffleDeck` shuffles card backs (`CardBack`: `public/card_lg.png` through `next/image`, cropped to card proportions; the shuffling deck loads them eagerly, since lazy backs start as empty outlines). The first pair of a sitting is drawn from it (`DrawnCard`: slide out and flip); later cards just appear. Reduced motion shows a still stack and no draw.
 - Card images are hotlinked from Scryfall's CDN via `components/cards/card-image.tsx` (`unoptimized`; Scryfall already serves sized variants). Never overlay badges or UI on the lower part of a card image — Scryfall requires the artist/copyright line to stay visible; put badges below the image.
 - `packages/core/src/contract/mocks/scryfall-cards.json` is real Scryfall data for the mock card pool (regenerate from the Scryfall collection endpoint, don't hand-edit images or prices).
 

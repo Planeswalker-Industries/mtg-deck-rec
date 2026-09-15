@@ -38,7 +38,7 @@ export function ShuffleDeck({ label, id, className }: { label: string; id?: stri
                 reduceMotion ? { duration: 0 } : { duration: 1.1, ease: "easeInOut", repeat: Infinity, delay: i * 0.07, times: [0, 0.45, 1] }
               }
             >
-              <CardBack />
+              <CardBack sizes="112px" eager />
             </motion.div>
           );
         })}
