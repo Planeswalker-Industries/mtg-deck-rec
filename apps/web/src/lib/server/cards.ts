@@ -66,10 +66,34 @@ export function toCommanderFacts(row: CardRow): CommanderCardFacts {
   };
 }
 
+const PRICE_CHECK_TTL_MS = 10 * 60 * 1000;
+let priceCheck: { at: string | null; loadedAt: number } | null = null;
+
+/**
+ * When prices were last checked against Scryfall (prices_checked_at()). A card's prices_as_of only moves when its price
+ * changes, so this is the as-of date to show. Cached briefly per server instance; null when it can't be read.
+ */
+async function pricesCheckedAt(db: PublicClient): Promise<string | null> {
+  if (priceCheck && Date.now() - priceCheck.loadedAt < PRICE_CHECK_TTL_MS) return priceCheck.at;
+  const { data, error } = await db.rpc("prices_checked_at");
+  if (error) return priceCheck?.at ?? null;
+  priceCheck = { at: data ?? null, loadedAt: Date.now() };
+  return priceCheck.at;
+}
+
+/** A price is as current as the newest price check, even when it hasn't moved since. */
+function withPriceCheck(row: CardRow, checkedAt: string | null): CardRow {
+  if (!checkedAt || !row.prices_as_of || Date.parse(checkedAt) <= Date.parse(row.prices_as_of)) return row;
+  return { ...row, prices_as_of: checkedAt };
+}
+
 export async function fetchCardsById(db: PublicClient, ids: readonly number[]): Promise<Map<number, CardRow>> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return new Map();
-  const { data, error } = await db.from("cards").select(CARD_COLUMNS).in("id", unique).is("deleted_at", null);
+  const [{ data, error }, checkedAt] = await Promise.all([
+    db.from("cards").select(CARD_COLUMNS).in("id", unique).is("deleted_at", null),
+    pricesCheckedAt(db),
+  ]);
   if (error) throw new Error(`Loading cards failed: ${error.message}`);
-  return new Map((data as CardRow[]).map((row) => [row.id, row]));
+  return new Map((data as CardRow[]).map((row) => [row.id, withPriceCheck(row, checkedAt)]));
 }
