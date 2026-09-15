@@ -330,6 +330,138 @@ export type Database = {
           },
         ]
       }
+      collection_import_rows: {
+        Row: {
+          card_id: number
+          condition: string
+          finish: string
+          import_id: number
+          lang: string
+          printing_id: string | null
+          quantity: number
+        }
+        Insert: {
+          card_id: number
+          condition: string
+          finish: string
+          import_id: number
+          lang: string
+          printing_id?: string | null
+          quantity: number
+        }
+        Update: {
+          card_id?: number
+          condition?: string
+          finish?: string
+          import_id?: number
+          lang?: string
+          printing_id?: string | null
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_import_rows_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "collection_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_imports: {
+        Row: {
+          committed_at: string | null
+          created_at: string
+          id: number
+          mode: string
+          rows_total: number
+          source_app: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          committed_at?: string | null
+          created_at?: string
+          id?: never
+          mode: string
+          rows_total?: number
+          source_app: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          committed_at?: string | null
+          created_at?: string
+          id?: never
+          mode?: string
+          rows_total?: number
+          source_app?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      collection_items: {
+        Row: {
+          card_id: number
+          condition: string
+          finish: string
+          id: number
+          import_id: number | null
+          lang: string
+          printing_id: string | null
+          quantity: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          card_id: number
+          condition: string
+          finish: string
+          id?: never
+          import_id?: number | null
+          lang: string
+          printing_id?: string | null
+          quantity: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          card_id?: number
+          condition?: string
+          finish?: string
+          id?: never
+          import_id?: number | null
+          lang?: string
+          printing_id?: string | null
+          quantity?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_items_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_items_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "collection_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_items_printing_id_fkey"
+            columns: ["printing_id"]
+            isOneToOne: false
+            referencedRelation: "printings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commander_card_stats: {
         Row: {
           card_id: number
@@ -621,6 +753,27 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       rate_limit_hits: {
         Row: {
           hits: number
@@ -636,6 +789,33 @@ export type Database = {
           hits?: number
           key?: string
           window_start?: string
+        }
+        Relationships: []
+      }
+      share_import_sources: {
+        Row: {
+          disabled_at: string | null
+          disabled_reason: string | null
+          enabled: boolean
+          last_blocked_status: number | null
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          enabled?: boolean
+          last_blocked_status?: number | null
+          source: string
+          updated_at?: string
+        }
+        Update: {
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          enabled?: boolean
+          last_blocked_status?: number | null
+          source?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -824,6 +1004,22 @@ export type Database = {
       }
     }
     Views: {
+      collection_cards: {
+        Row: {
+          card_id: number | null
+          quantity: number | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_items_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       functional_tags: {
         Row: {
           tag_id: string | null
@@ -852,6 +1048,7 @@ export type Database = {
           slug: string
         }[]
       }
+      catalog_epoch: { Args: never; Returns: string }
       commander_collector_online: { Args: never; Returns: boolean }
       commander_request_config: { Args: never; Returns: Json }
       commander_request_json: {
@@ -885,6 +1082,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      commit_collection_import: { Args: { p_import_id: number }; Returns: Json }
       get_commander_request: {
         Args: { p_card_id: number; p_client_key: string }
         Returns: Json
@@ -898,24 +1096,44 @@ export type Database = {
         Args: { p_bucket: string; p_visitor: string }
         Returns: number
       }
+      my_collection_totals: { Args: never; Returns: Json }
+      my_owned_card_ids: { Args: never; Returns: number[] }
       rebuild_tag_closure: { Args: never; Returns: undefined }
-      rec_add_candidates: {
-        Args: {
-          p_allow_game_changers: boolean
-          p_alpha: number
-          p_deck_count: number
-          p_exclude: number[]
-          p_identity_mask: number
-          p_key_ids: number[]
-          p_limit?: number
-          p_owned?: number[]
-        }
-        Returns: {
-          baseline: number
-          card_id: number
-          decks_with: number
-        }[]
-      }
+      rec_add_candidates:
+        | {
+            Args: {
+              p_allow_game_changers: boolean
+              p_alpha: number
+              p_deck_count: number
+              p_exclude: number[]
+              p_identity_mask: number
+              p_key_ids: number[]
+              p_limit?: number
+              p_owned?: number[]
+            }
+            Returns: {
+              baseline: number
+              card_id: number
+              decks_with: number
+            }[]
+          }
+        | {
+            Args: {
+              p_allow_game_changers: boolean
+              p_alpha: number
+              p_exclude: number[]
+              p_identity_mask: number
+              p_key_ids: number[]
+              p_key_weights: number[]
+              p_limit?: number
+              p_owned?: number[]
+            }
+            Returns: {
+              baseline: number
+              card_id: number
+              decks_with: number
+            }[]
+          }
       rec_card_roles: {
         Args: { p_card_ids: number[]; p_role_ids: string[] }
         Returns: {
@@ -955,7 +1173,26 @@ export type Database = {
           via: string
         }[]
       }
+      resolve_collection_rows: {
+        Args: { p_rows: Json }
+        Returns: {
+          card_id: number
+          finishes: string[]
+          lang: string
+          printing_id: string
+          row_no: number
+          via: string
+        }[]
+      }
+      save_collection_rows: {
+        Args: { p_import_id: number; p_rows: Json }
+        Returns: number
+      }
       sitemap_slugs: { Args: never; Returns: Json }
+      start_collection_import: {
+        Args: { p_mode: string; p_source_app: string }
+        Returns: number
+      }
     }
     Enums: {
       commander_request_status:

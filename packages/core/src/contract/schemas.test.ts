@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_COLLECTION_ROWS_PER_CALL,
   MAX_DECK_ENTRIES,
   MAX_DECKLIST_CHARS,
   commanderRequestInputSchema,
   parseDeckInputSchema,
   parseInput,
   recContextSchema,
+  saveCollectionBatchInputSchema,
   swapInputSchema,
 } from './schemas';
 
@@ -75,5 +77,46 @@ describe('action and route inputs', () => {
   it('accepts only numeric lookup ids', () => {
     expect(parseInput(commanderRequestInputSchema, { requestId: '12' }).ok).toBe(true);
     expect(parseInput(commanderRequestInputSchema, { requestId: '12; drop' }).ok).toBe(false);
+  });
+});
+
+describe('saveCollectionBatchInputSchema', () => {
+  const row = (overrides: Record<string, unknown> = {}) => ({
+    rowNo: 1,
+    printingId: '0000579f-7b35-4ed3-b44c-db2a538066fe',
+    cardId: 7,
+    finish: 'foil',
+    condition: 'NM',
+    lang: 'en',
+    quantity: 2,
+    via: 'scryfall_id',
+    ...overrides,
+  });
+  const batch = (overrides: Record<string, unknown> = {}) => ({
+    importId: null,
+    sourceApp: 'text',
+    mode: 'merge',
+    rows: [row()],
+    final: true,
+    ...overrides,
+  });
+
+  it('accepts a first batch and a follow-up with an import id', () => {
+    expect(parseInput(saveCollectionBatchInputSchema, batch()).ok).toBe(true);
+    expect(parseInput(saveCollectionBatchInputSchema, batch({ importId: '42', rows: [row({ printingId: null, via: 'name_only' })] })).ok).toBe(true);
+  });
+
+  it('rejects bad import ids, printings, finishes and quantities', () => {
+    expect(parseInput(saveCollectionBatchInputSchema, batch({ importId: '42 or 1=1' })).ok).toBe(false);
+    expect(parseInput(saveCollectionBatchInputSchema, batch({ rows: [row({ printingId: 'not-a-uuid' })] })).ok).toBe(false);
+    expect(parseInput(saveCollectionBatchInputSchema, batch({ rows: [row({ finish: 'gold' })] })).ok).toBe(false);
+    expect(parseInput(saveCollectionBatchInputSchema, batch({ rows: [row({ quantity: 0 })] })).ok).toBe(false);
+    expect(parseInput(saveCollectionBatchInputSchema, batch({ mode: 'append' })).ok).toBe(false);
+  });
+
+  it('treats more than 2,000 rows as too large', () => {
+    const rows = Array.from({ length: MAX_COLLECTION_ROWS_PER_CALL + 1 }, (_, i) => row({ rowNo: i }));
+    const r = parseInput(saveCollectionBatchInputSchema, batch({ rows }));
+    expect(!r.ok && r.error.code).toBe('PAYLOAD_TOO_LARGE');
   });
 });

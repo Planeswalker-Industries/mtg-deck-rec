@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { DeckInput } from './decks';
 import type { ApiError, Result } from './errors';
-import type { CardId } from './ids';
+import type { CardId, PrintingId } from './ids';
 import type { RecContext } from './recs';
 
 /**
@@ -89,6 +89,53 @@ export const analyzeDeckInputSchema = z.object({ deck: deckInputSchema }, reques
 export const commanderInputSchema = z.object({ commanderId: cardId("That commander isn't valid.") }, request);
 export const commanderRequestInputSchema = z.object(
   { requestId: z.string({ error: "That deck lookup isn't valid." }).regex(/^\d{1,15}$/, "That deck lookup isn't valid.") },
+  request,
+);
+
+export const MAX_COLLECTION_ROWS_PER_CALL = 2_000;
+
+const collectionRow = z.object({
+  rowNo: z.int().min(0),
+  name: z.string().max(200).optional(),
+  scryfallId: z.string().max(64).optional(),
+  tcgplayerId: z.int().min(1).optional(),
+  setCode: z.string().max(10).optional(),
+  collectorNumber: z.string().max(16).optional(),
+  lang: z.string().max(8).optional(),
+  finish: z.enum(['nonfoil', 'foil', 'etched']).optional(),
+  condition: z.string().max(32).optional(),
+  quantity: z.int().min(1, 'Quantities must be at least 1.').max(100_000),
+});
+
+const rowsPerCall = `Send at most ${MAX_COLLECTION_ROWS_PER_CALL.toLocaleString('en-US')} rows per call.`;
+
+export const resolveCollectionRowsInputSchema = z.object(
+  { rows: z.array(collectionRow).max(MAX_COLLECTION_ROWS_PER_CALL, rowsPerCall) },
+  request,
+);
+
+const resolvedCollectionRow = z.object({
+  rowNo: z.int().min(0),
+  printingId: z
+    .guid('Invalid printing in the collection.')
+    .nullable()
+    .transform((id) => id as PrintingId | null),
+  cardId: cardId('Invalid card in the collection.'),
+  finish: z.enum(['nonfoil', 'foil', 'etched']),
+  condition: z.string().min(1).max(32),
+  lang: z.string().min(1).max(8),
+  quantity: z.int().min(1, 'Quantities must be at least 1.').max(100_000),
+  via: z.enum(['scryfall_id', 'tcgplayer_id', 'set_cn_lang', 'set_cn', 'name_only']),
+});
+
+export const saveCollectionBatchInputSchema = z.object(
+  {
+    importId: z.string().regex(/^\d{1,15}$/, "That import isn't valid.").nullable(),
+    sourceApp: z.enum(['manabox', 'moxfield', 'tcgplayer', 'generic_csv', 'generic_json', 'text']),
+    mode: z.enum(['replace', 'merge']),
+    rows: z.array(resolvedCollectionRow).max(MAX_COLLECTION_ROWS_PER_CALL, rowsPerCall),
+    final: z.boolean(),
+  },
   request,
 );
 

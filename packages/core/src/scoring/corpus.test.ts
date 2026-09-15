@@ -7,7 +7,11 @@ import {
   corpusConfidence,
   decksSinceRelease,
   neutralCorpusValue,
+  pickCorpusSources,
   shrunkInclusion,
+  sourceDecksSinceRelease,
+  sourcesConfidence,
+  type CorpusKey,
 } from './corpus';
 import { blendScore, SWAP_WEIGHTS } from './swap';
 
@@ -41,6 +45,78 @@ describe('commanderShare and corpusConfidence', () => {
     expect(corpusConfidence(49, thresholds)).toBe('none');
     expect(corpusConfidence(50, thresholds)).toBe('low');
     expect(corpusConfidence(100, thresholds)).toBe('full');
+  });
+});
+
+describe('pickCorpusSources', () => {
+  // Card ids: Rograkh 1 (R), Thrasios 2 (UG), Ardenn 3 (W), Liesa 4 (WB).
+  const R = 8;
+  const W = 1;
+  const UG = 2 | 16;
+  const key = (id: number, commander1: number, commander2: number | null, identity: number, deckCount: number): CorpusKey => ({
+    id,
+    commander1,
+    commander2,
+    identity,
+    deckCount,
+    deckMonths: { '2026-01': deckCount },
+  });
+  const keys = [
+    key(10, 1, 2, R | UG, 30), // Rograkh + Thrasios
+    key(11, 1, 3, R | W, 86), // Rograkh + Ardenn
+    key(12, 1, null, R, 2), // Rograkh alone
+    key(13, 2, 3, UG | W, 0), // a stale pairing with no decks
+    key(14, 4, null, W | 4, 400), // Liesa, unrelated
+  ];
+  const settings = { minDecks: 50, partnerPoolWeight: 0.25 };
+
+  it('lets a key with enough decks of its own stand alone', () => {
+    const picked = pickCorpusSources([3, 1], keys, settings);
+    expect(picked.own?.id).toBe(11);
+    expect(picked.sources.map((s) => s.id)).toEqual([11]);
+    expect(picked.borrowedDeckCount).toBe(0);
+    expect(picked.effectiveDeckCount).toBe(86);
+  });
+
+  it("borrows a pair's other pairings and solo decks at reduced weight when it has too few", () => {
+    const picked = pickCorpusSources([2, 1], keys, settings);
+    expect(picked.own?.id).toBe(10);
+    expect(picked.sources.map((s) => [s.id, s.weight, s.borrowed])).toEqual([
+      [10, 1, false],
+      [11, 0.25, true],
+      [12, 0.25, true],
+    ]);
+    expect(picked.ownDeckCount).toBe(30);
+    expect(picked.borrowedDeckCount).toBe(88);
+    expect(picked.effectiveDeckCount).toBeCloseTo(30 + 0.25 * 88);
+  });
+
+  it("gives a single partner commander its pairings' decks", () => {
+    const picked = pickCorpusSources([1], keys, settings);
+    expect(picked.own?.id).toBe(12);
+    expect(picked.borrowedDeckCount).toBe(116);
+  });
+
+  it('borrows even when the commanders have no decks together, and never from keys without decks', () => {
+    const picked = pickCorpusSources([2, 3], keys, settings);
+    expect(picked.own).toBeNull();
+    expect(picked.sources.map((s) => s.id)).toEqual([10, 11]);
+  });
+
+  it('borrows nothing when the weight is 0', () => {
+    expect(pickCorpusSources([1, 2], keys, { ...settings, partnerPoolWeight: 0 }).sources.map((s) => s.id)).toEqual([10]);
+  });
+
+  it('counts only weighted decks whose colors allow the card, and caps confidence at low while borrowing', () => {
+    const picked = pickCorpusSources([1, 2], keys, settings);
+    // A red card fits all three sources; a white card only Rograkh + Ardenn; a blue card only Rograkh + Thrasios.
+    expect(sourceDecksSinceRelease(picked.sources, R, null)).toBeCloseTo(30 + 0.25 * 86 + 0.25 * 2);
+    expect(sourceDecksSinceRelease(picked.sources, W, null)).toBeCloseTo(0.25 * 86);
+    expect(sourceDecksSinceRelease(picked.sources, 2, '2026-02')).toBe(0);
+    expect(sourcesConfidence(picked, thresholds)).toBe('low'); // 30 + 0.25 × 88 = 52 decks
+    expect(sourcesConfidence({ ...picked, effectiveDeckCount: 40 }, thresholds)).toBe('none');
+    expect(sourcesConfidence({ ...picked, effectiveDeckCount: 150 }, thresholds)).toBe('low');
+    expect(sourcesConfidence(pickCorpusSources([4], keys, settings), thresholds)).toBe('full');
   });
 });
 

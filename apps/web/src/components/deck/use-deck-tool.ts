@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type {
   AddResult,
   Bracket,
@@ -8,6 +8,7 @@ import type {
   CutResult,
   DeckAnalysis,
   ImportDeckUrlResult,
+  OwnershipInput,
   ParseDeckResult,
   RecContext,
   ResolvedLine,
@@ -15,7 +16,9 @@ import type {
   SwapResult,
 } from "@mtg/core/contract";
 import { mockDecklistText } from "@mtg/core/mocks";
+import type { CollectionSource } from "@/components/collection/use-collection-source";
 import { getApis } from "@/lib/api/client";
+import { ownedCardIds } from "@/lib/collection-store";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 import { clearSavedDeck, loadSavedDeck, saveDeck, updateSavedDeck, type SavedDeck } from "@/lib/saved-deck";
 import { SAMPLE_DECKLIST } from "@/lib/sample-deck";
@@ -65,6 +68,7 @@ function buildContext(
   analysis: DeckAnalysis,
   bracketOverride: Bracket | null,
   gameChangerOverride: boolean | null,
+  ownership: OwnershipInput | null,
 ): RecContext {
   const bracket = bracketOverride ?? analysis.estimatedBracket;
   return {
@@ -72,15 +76,34 @@ function buildContext(
     bracket,
     bracketSource: bracketOverride === null ? "inferred" : "user",
     includeGameChangers: gameChangerOverride ?? defaultIncludeGameChangers(bracket),
-    ownership: null,
+    ownership,
   };
+}
+
+/** Whether the player last chose owned-only suggestions, remembered in this browser. */
+const OWNED_ONLY_KEY = "mtg-deck-rec:owned-only";
+
+function readOwnedOnly(): boolean {
+  try {
+    return typeof window !== "undefined" && localStorage.getItem(OWNED_ONLY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeOwnedOnly(on: boolean) {
+  try {
+    localStorage.setItem(OWNED_ONLY_KEY, on ? "1" : "0");
+  } catch {
+    // Storage is blocked; the choice just won't be remembered.
+  }
 }
 
 /**
  * State for the deck tool. Requests fire from event handlers (not effects);
  * request counters drop responses that arrive after a newer request started.
  */
-export function useDeckTool() {
+export function useDeckTool(source: CollectionSource) {
   const [text, setText] = useState("");
   const [parse, setParse] = useState<Async<null>>({ status: "idle" });
   const [lines, setLines] = useState<ResolvedLine[]>([]);
@@ -94,7 +117,22 @@ export function useDeckTool() {
   const recsRequest = useRef(0);
   const swapRequest = useRef(0);
 
-  const context = analysis ? buildContext(analysis, bracketOverride, gameChangerOverride) : null;
+  const [ownedOnlyChosen, setOwnedOnlyChosen] = useState(readOwnedOnly);
+  const browserCollection = source.kind === "browser" ? source.collection : null;
+  const ownedIds = useMemo(() => (browserCollection ? ownedCardIds(browserCollection) : null), [browserCollection]);
+  const hasCollection = source.kind === "browser" || source.kind === "account";
+  /**
+   * Owned-only suggestions need a collection; without one the choice is kept but not applied. A browser collection
+   * sends its card ids; an account collection is read on the server.
+   */
+  const ownershipFor = (on: boolean): OwnershipInput | null => {
+    if (!on) return null;
+    if (browserCollection && ownedIds) return { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: ownedIds };
+    return source.kind === "account" ? { kind: "account" } : null;
+  };
+  const ownership = ownershipFor(ownedOnlyChosen);
+
+  const context = analysis ? buildContext(analysis, bracketOverride, gameChangerOverride, ownership) : null;
 
   async function loadSwap(ctx: RecContext, targetCardId: CardId) {
     const id = ++swapRequest.current;
@@ -149,7 +187,7 @@ export function useDeckTool() {
     setSwap(null);
     saveDeck({ text: finalText, bracketOverride: bracket, gameChangerOverride: includeGameChangers, importedFrom: source });
     if (r.data.analysis) {
-      void loadRecs(buildContext(r.data.analysis, bracket, includeGameChangers), null);
+      void loadRecs(buildContext(r.data.analysis, bracket, includeGameChangers, ownership), null);
     } else {
       setAdd({ status: "idle" });
       setCut({ status: "idle" });
@@ -180,7 +218,7 @@ export function useDeckTool() {
     // A newer deck or setting change owns the panels now; the analysis still tells the caller what the lookup found.
     if (id !== recsRequest.current) return analyzed.data;
     setAnalysis(analyzed.data);
-    const ctx = buildContext(analyzed.data, bracketOverride, gameChangerOverride);
+    const ctx = buildContext(analyzed.data, bracketOverride, gameChangerOverride, ownership);
     setCut({ status: "loading" });
     setAdd({ status: "loading" });
     const [cutResult] = await Promise.all([recs.cut({ context: ctx }), onStage("cuts")]);
@@ -213,13 +251,20 @@ export function useDeckTool() {
   function changeBracket(bracket: Bracket) {
     setBracketOverride(bracket);
     updateSavedDeck({ bracketOverride: bracket });
-    if (analysis) void loadRecs(buildContext(analysis, bracket, gameChangerOverride), swap?.targetCardId ?? null);
+    if (analysis) void loadRecs(buildContext(analysis, bracket, gameChangerOverride, ownership), swap?.targetCardId ?? null);
   }
 
   function changeIncludeGameChangers(include: boolean) {
     setGameChangerOverride(include);
     updateSavedDeck({ gameChangerOverride: include });
-    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, include), swap?.targetCardId ?? null);
+    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, include, ownership), swap?.targetCardId ?? null);
+  }
+
+  /** Switches owned-only suggestions on or off and reloads cuts, adds and any open swap with the new pool. */
+  function changeOwnedOnly(on: boolean) {
+    setOwnedOnlyChosen(on);
+    writeOwnedOnly(on);
+    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, gameChangerOverride, ownershipFor(on)), swap?.targetCardId ?? null);
   }
 
   function openSwap(targetCardId: CardId) {
@@ -247,6 +292,9 @@ export function useDeckTool() {
     context,
     changeBracket,
     changeIncludeGameChangers,
+    /** null when there's no collection to limit suggestions to. */
+    ownedOnly: hasCollection ? ownedOnlyChosen : null,
+    changeOwnedOnly,
     add,
     cut,
     swap,

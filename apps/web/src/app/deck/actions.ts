@@ -4,12 +4,14 @@ import { updateTag } from "next/cache";
 import { headers } from "next/headers";
 import type {
   ApiError,
+  CollectionRowInput,
   CommanderCoverage,
   CommanderRequest,
   DeckAnalysis,
   DeckInput,
   ImportDeckUrlResult,
   ParseDeckResult,
+  ResolveCollectionResult,
   Result,
 } from "@mtg/core/contract";
 import { archidektDeckId, archidektDecklist } from "@mtg/core/parse";
@@ -20,6 +22,7 @@ import {
   importDeckInputSchema,
   parseDeckInputSchema,
   parseInput,
+  resolveCollectionRowsInputSchema,
 } from "@mtg/core/schemas";
 import {
   CommanderRequestRefused,
@@ -28,14 +31,12 @@ import {
   requestCommanderDecks,
   type CommanderRequestRefusal,
 } from "@/lib/server/commander-requests";
+import { resolveCollectionRows } from "@/lib/server/collections";
 import { analyzeDeckById, resolveDecklist } from "@/lib/server/deck";
+import { fetchShareLink } from "@/lib/server/share-import";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/server/rate-limit";
 import { createPublicClient, type PublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
-
-/** Identifies the app honestly on every outbound request (the worker sends the same). */
-const USER_AGENT = "MTGDeckRec/0.1 (+https://github.com/wuddat/mtg-deck-rec)";
-const IMPORT_TIMEOUT_MS = 10_000;
 
 const failure = (code: ApiError["code"], message: string): Result<never> => ({ ok: false, error: { code, message } });
 
@@ -98,18 +99,12 @@ export async function importDeckFromUrlAction(input: { url: string }): Promise<R
 
   let body: unknown;
   try {
-    const res = await fetch(`https://archidekt.com/api/decks/${id}/`, {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-      signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
-      cache: "no-store",
-    });
-    if (res.status === 403 || res.status === 404) return failure("NOT_FOUND", "That Archidekt deck doesn't exist or isn't public.");
-    if (res.status === 429) return failure("RATE_LIMITED", "Archidekt is busy right now. Wait a minute and try the link again.");
-    if (!res.ok) return failure("UPSTREAM_UNAVAILABLE", "Couldn't reach Archidekt. Try again in a moment.");
-    body = await res.json();
+    const fetched = await fetchShareLink(scope.db, { source: "archidekt", url: `https://archidekt.com/api/decks/${id}/`, expects: "json", what: "deck" });
+    if (!fetched.ok) return { ok: false, error: fetched.error };
+    body = JSON.parse(fetched.body);
   } catch (err) {
     console.error(err);
-    return failure("UPSTREAM_UNAVAILABLE", "Couldn't reach Archidekt. Try again in a moment.");
+    return failure("UPSTREAM_UNAVAILABLE", "Couldn't load that Archidekt deck. Try again in a moment.");
   }
 
   const decklist = archidektDecklist(body);
@@ -129,6 +124,19 @@ export async function analyzeDeckAction(input: { deck: DeckInput }): Promise<Res
     const { db, limited } = await begin("deck");
     if (limited) return limited;
     return { ok: true, data: await analyzeDeckById(db, parsed.data.deck) };
+  } catch (err) {
+    return unavailable(err);
+  }
+}
+
+/** Matches up to 2,000 exported collection rows to printings and cards. Works without an account. */
+export async function resolveCollectionRowsAction(input: { rows: CollectionRowInput[] }): Promise<Result<ResolveCollectionResult>> {
+  const parsed = parseInput(resolveCollectionRowsInputSchema, input);
+  if (!parsed.ok) return parsed;
+  try {
+    const { db, limited } = await begin("collection");
+    if (limited) return limited;
+    return { ok: true, data: await resolveCollectionRows(db, parsed.data.rows) };
   } catch (err) {
     return unavailable(err);
   }

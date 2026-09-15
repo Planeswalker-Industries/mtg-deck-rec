@@ -35,7 +35,7 @@ import {
   type RoleTarget,
 } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
-import { loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
+import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
 
 /** How many tag-similar candidates the database returns before blending and trimming. */
@@ -107,7 +107,7 @@ function parseRoleTargets(value: unknown): RoleTarget[] {
  * each role as those decks gain weight. Liesa decks, for one, run far more removal than a generic deck.
  */
 function roleTargetsFor(generic: readonly RoleTarget[], corpus: CommanderCorpus): RoleTarget[] {
-  const share = commanderShare(corpus.deckCount, corpus.settings);
+  const share = commanderShare(corpus.effectiveDeckCount, corpus.settings);
   if (share === 0) return [...generic];
   return generic.map((t) => {
     const typical = corpus.roleProfile[t.roleId];
@@ -404,15 +404,14 @@ export async function getAddSuggestions(
       const row = rows.get(id);
       return row ? [toCardSummary(row)] : [];
     }),
-    deckCount: corpus.deckCount,
-    confidence: corpus.confidence,
+    ...commanderKeyCounts(corpus),
   };
   if (!corpus.available) return { mode, commanderKey, confidence: "none", groups: [] };
 
-  const useCommander = commanderShare(corpus.deckCount, corpus.settings) > 0;
+  const useCommander = commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
   const { data: pool, error } = await db.rpc("rec_add_candidates", {
     p_key_ids: useCommander ? corpus.sourceKeyIds : [],
-    p_deck_count: useCommander ? corpus.deckCount : 0,
+    p_key_weights: useCommander ? corpus.sources.map((s) => s.weight) : [],
     p_alpha: corpus.settings.shrinkAlpha,
     p_identity_mask: identityMaskOf(context, rows),
     p_exclude: deckIds,
