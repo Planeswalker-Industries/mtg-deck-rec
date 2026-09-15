@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,9 +12,11 @@ import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { CutPanel } from "./cut-panel";
 import { DeckBar } from "./deck-bar";
 import { DeckListPanel } from "./deck-list-panel";
-import { PanelError } from "./panel-state";
+import { PanelError, PanelLoading } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
 import { SwapSheet } from "./swap-sheet";
+import { SWIPE_VIEW_ID, SwipeRater, SwipeSummary } from "./swipe-rater";
+import type { PickedSwap } from "./use-swipe-rater";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckTool } from "./use-deck-tool";
@@ -32,6 +35,9 @@ export function DeckTool() {
   const tool = useDeckTool(source);
   const lookup = useCommanderLookup(tool.refreshRecommendations);
   const [editing, setEditing] = useState(true);
+  const [view, setView] = useState<"swipe" | "list">("list");
+  const [pendingSwaps, setPendingSwaps] = useState<PickedSwap[]>([]);
+  const [summary, setSummary] = useState<PickedSwap[] | null>(null);
   const restoreStarted = useRef(false);
   const { analysis, context, swap } = tool;
 
@@ -53,6 +59,29 @@ export function DeckTool() {
     ? analysis.deck.commanders.length +
       analysis.deck.cards.filter((c) => c.section === "main").reduce((n, c) => n + c.quantity, 0)
     : 0;
+
+  /** Brings the swipe view up just below the sticky deck bar once it has rendered. */
+  function scrollToSwipeView() {
+    requestAnimationFrame(() => document.getElementById(SWIPE_VIEW_ID)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  }
+
+  /** Ends a swipe sitting: shows what was picked and writes the swaps into the decklist. */
+  function finishSwiping() {
+    setSummary(pendingSwaps);
+    if (pendingSwaps.length > 0) void tool.applySwaps(pendingSwaps);
+    setPendingSwaps([]);
+    scrollToSwipeView();
+  }
+
+  function changeView(next: "swipe" | "list") {
+    if (next === view) return;
+    // Leaving the swipe view mid-sitting still puts the picked swaps in the deck.
+    if (view === "swipe" && pendingSwaps.length > 0) void tool.applySwaps(pendingSwaps);
+    setPendingSwaps([]);
+    setSummary(null);
+    setView(next);
+    if (next === "swipe") scrollToSwipeView();
+  }
 
   async function analyze() {
     const outcome = await tool.submit();
@@ -155,33 +184,81 @@ export function DeckTool() {
             onOwnedOnlyChange={tool.changeOwnedOnly}
           />
           <CommanderLookupBar lookup={lookup} />
-          <Tabs defaultValue="cut" className="gap-4">
-            <TabsList className="h-10 w-full sm:w-fit">
-              <TabsTrigger value="cut" className="px-3">
-                Cards to cut
-              </TabsTrigger>
-              <TabsTrigger value="add" className="px-3">
-                Cards to add
-              </TabsTrigger>
-              <TabsTrigger value="deck" className="px-3">
-                Your deck
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="cut">
-              <CutPanel
-                state={tool.cut}
-                commanderKey={analysis.commanderKey}
-                selectedCardId={selectedCardId}
-                onSelectCard={tool.openSwap}
+          <div role="group" aria-label="How to review cards" className="inline-flex w-fit rounded-lg bg-muted p-0.5">
+            {(["swipe", "list"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={view === v}
+                onClick={() => changeView(v)}
+                className={cn(
+                  "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  view === v ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {v === "swipe" ? "Swipe" : "List"}
+              </button>
+            ))}
+          </div>
+          {view === "swipe" ? (
+            summary ? (
+              <SwipeSummary
+                swaps={summary}
+                updating={tool.parse.status === "loading"}
+                onSwipeAgain={() => {
+                  setSummary(null);
+                  scrollToSwipeView();
+                }}
+                onShowList={() => changeView("list")}
               />
-            </TabsContent>
-            <TabsContent value="add">
-              <AddPanel state={tool.add} />
-            </TabsContent>
-            <TabsContent value="deck">
-              <DeckListPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
-            </TabsContent>
-          </Tabs>
+            ) : tool.cut.status === "ready" ? (
+              tool.cut.data.suggestions.length > 0 ? (
+                <SwipeRater
+                  targets={tool.cut.data.suggestions}
+                  context={context}
+                  commanderKeyId={analysis.commanderKey.id}
+                  picked={pendingSwaps}
+                  onPick={(swap) => setPendingSwaps((prev) => [...prev, swap])}
+                  onFinish={finishSwiping}
+                />
+              ) : (
+                <p className="text-sm">Nothing stands out to cut. Switch to the list to compare replacements for any card.</p>
+              )
+            ) : tool.cut.status === "error" ? (
+              <PanelError message={tool.cut.message} />
+            ) : (
+              <PanelLoading label="Finding cards to cut" />
+            )
+          ) : (
+            <Tabs defaultValue="cut" className="gap-4">
+              <TabsList className="h-10 w-full sm:w-fit">
+                <TabsTrigger value="cut" className="px-3">
+                  Cards to cut
+                </TabsTrigger>
+                <TabsTrigger value="add" className="px-3">
+                  Cards to add
+                </TabsTrigger>
+                <TabsTrigger value="deck" className="px-3">
+                  Your deck
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="cut">
+                <CutPanel
+                  state={tool.cut}
+                  commanderKey={analysis.commanderKey}
+                  selectedCardId={selectedCardId}
+                  onSelectCard={tool.openSwap}
+                />
+              </TabsContent>
+              <TabsContent value="add">
+                <AddPanel state={tool.add} />
+              </TabsContent>
+              <TabsContent value="deck">
+                <DeckListPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
+              </TabsContent>
+            </Tabs>
+          )}
         </section>
       )}
 
