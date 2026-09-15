@@ -151,37 +151,58 @@ export async function syncTags({ force = false }: { force?: boolean } = {}): Pro
           where t.deleted_at is null and not exists (select 1 from stg_tags s where s.id = t.id)
         `;
 
-        await db`delete from public.tag_edges`;
+        // Edges and taggings are resolved in full, but only rows that appear, disappear or change are written: deleting
+        // and reinserting all ~230k card_tags rows doubled the table on disk for a two-tag change.
         await db`
-          insert into public.tag_edges (parent_id, child_id)
+          create temp table stg_edges_resolved as
           select distinct e.parent_id, e.child_id
           from stg_tag_edges e
           join public.tags p on p.id = e.parent_id and p.deleted_at is null
           join public.tags c on c.id = e.child_id and c.deleted_at is null
           where e.parent_id <> e.child_id
         `;
+        await db`
+          delete from public.tag_edges e
+          where not exists (select 1 from stg_edges_resolved s where s.parent_id = e.parent_id and s.child_id = e.child_id)
+        `;
+        await db`insert into public.tag_edges (parent_id, child_id) select parent_id, child_id from stg_edges_resolved on conflict do nothing`;
 
-        await db`delete from public.card_tags`;
-        const [linked] = await db<{ n: number }[]>`
-          with inserted as (
-            insert into public.card_tags (card_id, tag_id, weight_raw, weight)
-            select distinct on (c.id, s.tag_id)
-              c.id,
-              s.tag_id,
-              s.weight_raw,
-              case s.weight_raw when 'very_strong' then 1.0 when 'strong' then 0.75 else 0.5 end
-            from stg_taggings s
-            join public.cards c on c.oracle_id = s.oracle_id and c.deleted_at is null
-            join public.tags t on t.id = s.tag_id and t.deleted_at is null
-            order by c.id, s.tag_id, s.weight_raw desc
+        await db`
+          create temp table stg_card_tags_resolved as
+          select distinct on (c.id, s.tag_id)
+            c.id as card_id,
+            s.tag_id,
+            s.weight_raw,
+            (case s.weight_raw when 'very_strong' then 1.0 when 'strong' then 0.75 else 0.5 end)::real as weight
+          from stg_taggings s
+          join public.cards c on c.oracle_id = s.oracle_id and c.deleted_at is null
+          join public.tags t on t.id = s.tag_id and t.deleted_at is null
+          order by c.id, s.tag_id, s.weight_raw desc
+        `;
+        const [removedTaggings] = await db<{ n: number }[]>`
+          with removed as (
+            delete from public.card_tags ct
+            where not exists (select 1 from stg_card_tags_resolved s where s.card_id = ct.card_id and s.tag_id = ct.tag_id)
             returning 1
           )
-          select count(*)::int as n from inserted
+          select count(*)::int as n from removed
         `;
+        const [writtenTaggings] = await db<{ n: number }[]>`
+          with written as (
+            insert into public.card_tags as ct (card_id, tag_id, weight_raw, weight)
+            select card_id, tag_id, weight_raw, weight from stg_card_tags_resolved
+            on conflict (card_id, tag_id) do update set weight_raw = excluded.weight_raw, weight = excluded.weight
+            where ct.weight_raw is distinct from excluded.weight_raw or ct.weight is distinct from excluded.weight
+            returning 1
+          )
+          select count(*)::int as n from written
+        `;
+        const [linked] = await db<{ n: number }[]>`select count(*)::int as n from stg_card_tags_resolved`;
 
         await db`select public.rebuild_tag_closure()`;
 
-        // card_count covers the tag and its descendants; idf is ln(N / count) scaled to 0..1.
+        // card_count covers the tag and its descendants; idf is ln(N / count) scaled to 0..1. A handful of new cards
+        // nudges every tag's idf, so only moves of 0.0001 or more are written.
         await db`
           with counts as (
             select tc.ancestor_id as tag_id, count(distinct ct.card_id)::float8 as n
@@ -192,21 +213,33 @@ export async function syncTags({ force = false }: { force?: boolean } = {}): Pro
           total as (
             select greatest(count(*), 2)::float8 as n from public.cards where deleted_at is null
           ),
-          per_tag as (
-            select tg.id, coalesce(c.n, 0) as n from public.tags tg left join counts c on c.tag_id = tg.id
+          computed as (
+            select
+              tg.id,
+              coalesce(c.n, 0)::int as card_count,
+              (case when coalesce(c.n, 0) = 0 then 0 else ln((select n from total) / c.n) / ln((select n from total)) end)::real as idf
+            from public.tags tg
+            left join counts c on c.tag_id = tg.id
           )
           update public.tags t
-          set card_count = p.n::int,
-              idf = case when p.n = 0 then 0 else (ln((select n from total) / p.n) / ln((select n from total)))::real end
-          from per_tag p
-          where p.id = t.id
+          set card_count = c.card_count, idf = c.idf
+          from computed c
+          where c.id = t.id
+            and (t.card_count is distinct from c.card_count or abs(t.idf - c.idf) >= 0.0001)
         `;
         await db`commit`;
 
-        const result = { ...metrics, changed: changed?.n ?? 0, cardTags: linked?.n ?? 0 };
+        const result = {
+          ...metrics,
+          changed: changed?.n ?? 0,
+          cardTags: linked?.n ?? 0,
+          cardTagsWritten: writtenTaggings?.n ?? 0,
+          cardTagsRemoved: removedTaggings?.n ?? 0,
+        };
         await finishRun(sql, runId, 'succeeded', { rowsRead: stats.lines, rowsChanged: result.changed, metrics: result });
         console.log(
-          `oracle_tags: ${result.tags} tags (${result.changed} new or changed), ${result.cardTags} card taggings linked of ${taggingCount} in the file`,
+          `oracle_tags: ${result.tags} tags (${result.changed} new or changed), ${result.cardTags} card taggings linked of ${taggingCount} in the file ` +
+            `(${result.cardTagsWritten} written, ${result.cardTagsRemoved} removed)`,
         );
       } catch (err) {
         await db`rollback`.catch(() => {});
