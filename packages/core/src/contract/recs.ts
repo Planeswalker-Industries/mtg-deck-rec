@@ -1,6 +1,6 @@
 import type { CardSummary, TagRef } from './cards';
 import type { CommanderKeyRef, CorpusConfidence, DeckInput } from './decks';
-import type { Bracket, CardId, IsoDateTime } from './ids';
+import type { Bracket, CardId, IsoDateTime, TagId } from './ids';
 
 export type RecMode = 'collection_less' | 'collection_aware';
 
@@ -65,8 +65,29 @@ export interface VoteSummary {
   /** Bayesian average, 0..1; equals the global prior when voteCount is 0. */
   score: number;
   voteCount: number;
-  /** null when anonymous */
+  /** The caller's own vote on this pair (0 when they haven't voted); null when unknown. Signed-out voters are identified per visitor. */
   myVote: -1 | 0 | 1 | null;
+}
+
+/** Where a vote was cast: the deck tool's swipe view, or the standalone card rater with no decklist. */
+export type VoteSource = 'deck' | 'rater';
+
+/**
+ * What the voter saw when they voted, so votes can later be weighed per shared tag and against the other candidates
+ * shown for the same card.
+ */
+export interface VoteContext {
+  source: VoteSource;
+  /** Client-generated UUID grouping the votes from one sitting. */
+  sessionId: string;
+  /** The deck's commanders (at most 2); empty when rating without a commander. */
+  commanderIds: CardId[];
+  /** This candidate's position in the order shown, 0 first. */
+  position: number;
+  /** Every candidate shown for this target in the sitting, in order. */
+  shownCardIds: CardId[];
+  /** Tags shown as the job both cards do (TagMatch.candidateTag ids). */
+  matchedTagIds: TagId[];
 }
 
 export type CostBasis =

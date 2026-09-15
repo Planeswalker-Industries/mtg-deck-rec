@@ -837,6 +837,82 @@ export type Database = {
         }
         Relationships: []
       }
+      swap_votes: {
+        Row: {
+          commander_ids: number[]
+          commander_key_id: number | null
+          created_at: string
+          id: number
+          matched_tag_ids: string[]
+          replacement_card_id: number
+          session_id: string | null
+          shown_card_ids: number[]
+          shown_position: number | null
+          source: string
+          target_card_id: number
+          updated_at: string
+          user_id: string | null
+          value: number
+          voter_key: string
+        }
+        Insert: {
+          commander_ids?: number[]
+          commander_key_id?: number | null
+          created_at?: string
+          id?: never
+          matched_tag_ids?: string[]
+          replacement_card_id: number
+          session_id?: string | null
+          shown_card_ids?: number[]
+          shown_position?: number | null
+          source: string
+          target_card_id: number
+          updated_at?: string
+          user_id?: string | null
+          value: number
+          voter_key: string
+        }
+        Update: {
+          commander_ids?: number[]
+          commander_key_id?: number | null
+          created_at?: string
+          id?: never
+          matched_tag_ids?: string[]
+          replacement_card_id?: number
+          session_id?: string | null
+          shown_card_ids?: number[]
+          shown_position?: number | null
+          source?: string
+          target_card_id?: number
+          updated_at?: string
+          user_id?: string | null
+          value?: number
+          voter_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "swap_votes_commander_key_id_fkey"
+            columns: ["commander_key_id"]
+            isOneToOne: false
+            referencedRelation: "commander_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swap_votes_replacement_card_id_fkey"
+            columns: ["replacement_card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swap_votes_target_card_id_fkey"
+            columns: ["target_card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sync_runs: {
         Row: {
           checkpoint: Json | null
@@ -1047,6 +1123,22 @@ export type Database = {
           eligible_decks: number
           slug: string
         }[]
+      }
+      cast_swap_vote: {
+        Args: {
+          p_commander_ids?: number[]
+          p_commander_key_id?: number
+          p_matched_tag_ids?: string[]
+          p_position?: number
+          p_replacement: number
+          p_session_id?: string
+          p_shown_card_ids?: number[]
+          p_source?: string
+          p_target: number
+          p_value: number
+          p_visitor_key: string
+        }
+        Returns: Json
       }
       catalog_epoch: { Args: never; Returns: string }
       commander_collector_online: { Args: never; Returns: boolean }
