@@ -1,7 +1,7 @@
 import type { AddSuggestion, CardCategory, CardSummary, CommanderKeyId, CommanderPageData } from "@mtg/core/contract";
 import { ADD_WEIGHTS, blendScore, cardCategory, commanderCorpusScore } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary } from "./cards";
-import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus } from "./corpus";
+import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
 import { fetchTags, loadRoleTargets } from "./recs";
 import type { PublicClient } from "./supabase";
 
@@ -12,6 +12,42 @@ const CATEGORY_ORDER: readonly CardCategory[] = ["creature", "instant", "sorcery
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * The cards to rank for a commander page. A commander with enough decks of its own reads its stored play rates through an
+ * index; rec_add_candidates is only needed to combine borrowed keys, and it can pass the API role's 3 s statement timeout
+ * while the hosted database is cold.
+ */
+async function loadTopCardIds(
+  db: PublicClient,
+  corpus: CommanderCorpus,
+  identityMask: number,
+  commanderIds: readonly number[],
+): Promise<number[]> {
+  if (corpus.borrowedDeckCount === 0) {
+    const { data, error } = await db
+      .from("commander_card_stats")
+      .select("card_id")
+      .in("commander_key_id", corpus.sourceKeyIds)
+      .order("inclusion_shrunk", { ascending: false })
+      .limit(TOP_POOL);
+    if (error) throw new Error(`Loading commander cards failed: ${error.message}`);
+    return [...new Set(data.map((r) => r.card_id))].filter((id) => !commanderIds.includes(id));
+  }
+
+  // Ordered by the same play-rate score as cards to add, over own and borrowed decks at their weights.
+  const { data, error } = await db.rpc("rec_add_candidates", {
+    p_key_ids: corpus.sourceKeyIds,
+    p_key_weights: corpus.sources.map((s) => s.weight),
+    p_alpha: corpus.settings.shrinkAlpha,
+    p_identity_mask: identityMask,
+    p_exclude: [...commanderIds],
+    p_allow_game_changers: true,
+    p_limit: TOP_POOL,
+  });
+  if (error) throw new Error(`Loading commander cards failed: ${error.message}`);
+  return (data ?? []).map((p) => p.card_id);
+}
 
 /**
  * Data for a public commander page: what that commander's corpus decks run most, by card type and ranked by play rate
@@ -38,18 +74,7 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
   // Borrowed decks only fill in: a page for commanders nobody has run together would describe other decks.
   if (corpus.ownDeckCount === 0) return null;
 
-  // Ordered by the same play-rate score as cards to add, over own and borrowed decks at their weights.
-  const { data: pool, error: poolError } = await db.rpc("rec_add_candidates", {
-    p_key_ids: corpus.sourceKeyIds,
-    p_key_weights: corpus.sources.map((s) => s.weight),
-    p_alpha: corpus.settings.shrinkAlpha,
-    p_identity_mask: key.color_identity,
-    p_exclude: commanderIds,
-    p_allow_game_changers: true,
-    p_limit: TOP_POOL,
-  });
-  if (poolError) throw new Error(`Loading commander cards failed: ${poolError.message}`);
-  const cardIds = (pool ?? []).map((p) => p.card_id);
+  const cardIds = await loadTopCardIds(db, corpus, key.color_identity, commanderIds);
 
   const [cardRows, cardCorpus, roleTags] = await Promise.all([
     fetchCardsById(db, cardIds),
