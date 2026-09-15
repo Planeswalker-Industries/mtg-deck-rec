@@ -1,7 +1,7 @@
 import type { AddSuggestion, CardCategory, CardSummary, CommanderKeyId, CommanderPageData } from "@mtg/core/contract";
 import { ADD_WEIGHTS, blendScore, cardCategory, commanderCorpusScore } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary } from "./cards";
-import { loadCardCorpus, loadCommanderCorpus } from "./corpus";
+import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus } from "./corpus";
 import { fetchTags, loadRoleTargets } from "./recs";
 import type { PublicClient } from "./supabase";
 
@@ -15,11 +15,15 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Data for a public commander page: what that commander's corpus decks run most, by card type and ranked by play rate
- * (the same release-aware rates the deck tool uses), plus how many cards those decks run in each role. Null when the
- * slug is unknown or the commander has no decks.
+ * (the same release-aware rates the deck tool uses, including decks borrowed from other pairings), plus how many cards
+ * those decks run in each role. Null when the slug is unknown or no deck has exactly these commanders.
  */
 export async function loadCommanderPage(db: PublicClient, slug: string): Promise<CommanderPageData | null> {
-  const { data: key, error } = await db.from("commander_keys").select("id, slug, commander_1, commander_2").eq("slug", slug).maybeSingle();
+  const { data: key, error } = await db
+    .from("commander_keys")
+    .select("id, slug, commander_1, commander_2, color_identity")
+    .eq("slug", slug)
+    .maybeSingle();
   if (error) throw new Error(`Loading commander failed: ${error.message}`);
   if (!key) return null;
 
@@ -31,16 +35,21 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
     db.from("commander_stats").select("computed_at").eq("commander_key_id", key.id).maybeSingle(),
   ]);
   if (statsResult.error) throw new Error(`Loading commander stats failed: ${statsResult.error.message}`);
-  if (corpus.deckCount === 0 || corpus.sourceKeyIds.length === 0) return null;
+  // Borrowed decks only fill in: a page for commanders nobody has run together would describe other decks.
+  if (corpus.ownDeckCount === 0) return null;
 
-  const { data: topRows, error: topError } = await db
-    .from("commander_card_stats")
-    .select("card_id")
-    .in("commander_key_id", corpus.sourceKeyIds)
-    .order("inclusion_shrunk", { ascending: false })
-    .limit(TOP_POOL);
-  if (topError) throw new Error(`Loading commander cards failed: ${topError.message}`);
-  const cardIds = [...new Set(topRows.map((r) => r.card_id))].filter((id) => !commanderIds.includes(id));
+  // Ordered by the same play-rate score as cards to add, over own and borrowed decks at their weights.
+  const { data: pool, error: poolError } = await db.rpc("rec_add_candidates", {
+    p_key_ids: corpus.sourceKeyIds,
+    p_key_weights: corpus.sources.map((s) => s.weight),
+    p_alpha: corpus.settings.shrinkAlpha,
+    p_identity_mask: key.color_identity,
+    p_exclude: commanderIds,
+    p_allow_game_changers: true,
+    p_limit: TOP_POOL,
+  });
+  if (poolError) throw new Error(`Loading commander cards failed: ${poolError.message}`);
+  const cardIds = (pool ?? []).map((p) => p.card_id);
 
   const [cardRows, cardCorpus, roleTags] = await Promise.all([
     fetchCardsById(db, cardIds),
@@ -79,8 +88,7 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
     id: key.id as CommanderKeyId,
     slug: key.slug,
     commanders,
-    deckCount: corpus.deckCount,
-    confidence: corpus.confidence,
+    ...commanderKeyCounts(corpus),
   };
 
   return {

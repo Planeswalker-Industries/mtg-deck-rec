@@ -41,7 +41,7 @@ The deck tool offers "Pull decks" for commanders without data, but no `serve:com
 
 ### 4. Smaller items
 
-- Partner pairs fragment across many pairings (e.g. Rograkh); pairs below `minDecks` borrow solo decks.
+- Partner pairs now borrow decks from their other pairings at `partnerPoolWeight` 0.25 (2026-09-15). The weight rests on four pairs, all with Rograkh; retune once more pair decks or the swap-quality eval exist.
 - Play rate can lift a weak tag match (Reliquary Tower tops Sea Gate Restoration swaps).
 - Invalid commander-pair `commander_keys` rows remain without stats.
 - Storage: repeated syncs level off around 346 MB of the 500 MB free tier; commander stats grow with each looked-up commander. Account collections add roughly one row per owned printing.

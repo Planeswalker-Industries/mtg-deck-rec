@@ -1099,23 +1099,41 @@ export type Database = {
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
       rebuild_tag_closure: { Args: never; Returns: undefined }
-      rec_add_candidates: {
-        Args: {
-          p_allow_game_changers: boolean
-          p_alpha: number
-          p_deck_count: number
-          p_exclude: number[]
-          p_identity_mask: number
-          p_key_ids: number[]
-          p_limit?: number
-          p_owned?: number[]
-        }
-        Returns: {
-          baseline: number
-          card_id: number
-          decks_with: number
-        }[]
-      }
+      rec_add_candidates:
+        | {
+            Args: {
+              p_allow_game_changers: boolean
+              p_alpha: number
+              p_deck_count: number
+              p_exclude: number[]
+              p_identity_mask: number
+              p_key_ids: number[]
+              p_limit?: number
+              p_owned?: number[]
+            }
+            Returns: {
+              baseline: number
+              card_id: number
+              decks_with: number
+            }[]
+          }
+        | {
+            Args: {
+              p_allow_game_changers: boolean
+              p_alpha: number
+              p_exclude: number[]
+              p_identity_mask: number
+              p_key_ids: number[]
+              p_key_weights: number[]
+              p_limit?: number
+              p_owned?: number[]
+            }
+            Returns: {
+              baseline: number
+              card_id: number
+              decks_with: number
+            }[]
+          }
       rec_card_roles: {
         Args: { p_card_ids: number[]; p_role_ids: string[] }
         Returns: {

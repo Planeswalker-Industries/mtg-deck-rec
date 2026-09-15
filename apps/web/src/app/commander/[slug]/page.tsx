@@ -3,13 +3,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { buttonVariants } from "@/components/ui/button";
 import { GameChangerBadge } from "@/components/deck/card-label";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { displayName } from "@/lib/cards";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
-import { cardCategoryLabel } from "@/lib/labels";
+import { cardCategoryLabel, commanderDecksPhrase, fewDecksPhrase, formatDeckCount } from "@/lib/labels";
 import { getCommanderPage } from "@/lib/server/recs-cache";
 
 const WUBRG = "WUBRG";
@@ -43,7 +44,6 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
   const names = key.commanders.map(displayName).join(" and ");
   const identity = [...WUBRG].filter((color) => key.commanders.some((c) => c.colorIdentity.includes(color))).join("");
   const art = key.commanders[0]?.images?.front.artCrop;
-  const decks = `${key.deckCount.toLocaleString("en-US")} deck${key.deckCount === 1 ? "" : "s"}`;
 
   return (
     <article className="flex flex-col gap-8">
@@ -64,15 +64,16 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
             <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight text-balance sm:text-5xl">{names}</h1>
             <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <ColorIdentity identity={identity} />
-              <span>What {decks} with this commander run</span>
+              <span>What {commanderDecksPhrase(key)} run</span>
             </p>
           </div>
         </div>
         {key.confidence !== "full" && (
-          <p className="max-w-prose text-sm">Only {decks} so far, so these rankings can still shift as more decks come in.</p>
+          <p className="max-w-prose text-sm">{fewDecksPhrase(key)}, so these rankings can still shift as more decks come in.</p>
         )}
         <div>
-          <Link href="/deck" className={buttonVariants({ size: "lg" })}>
+          {/* Pair names run long, so the label wraps instead of running off a phone screen. */}
+          <Link href="/deck" className={cn(buttonVariants({ size: "lg" }), "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}>
             Upgrade your {names} deck
           </Link>
         </div>
@@ -117,7 +118,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
 
       <footer className="flex max-w-prose flex-col gap-1 text-xs text-muted-foreground">
         <p>
-          Based on {decks} shared publicly on{" "}
+          Based on {formatDeckCount(key.deckCount + (key.borrowedDeckCount ?? 0))} shared publicly on{" "}
           <a href="https://archidekt.com" className="underline underline-offset-2">
             Archidekt
           </a>

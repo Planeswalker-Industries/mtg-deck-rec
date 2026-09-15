@@ -7,5 +7,9 @@
  *
  * v2 (2026-09-14): commander deck lookups. CommanderRequest and CommanderCoverage types, and ActionsApi
  * getCommanderCoverage, requestCommanderDecks and getCommanderRequest.
+ *
+ * v3 (2026-09-15): partner decks borrowed across pairings. Optional CommanderKeyRef.borrowedDeckCount and
+ * CorpusEvidence.pooled. CommanderKeyRef.deckCount now counts only decks with exactly these commanders (a pair used to
+ * include each partner's solo decks when it had too few of its own).
  */
-export const CONTRACT_VERSION = 2;
+export const CONTRACT_VERSION = 3;

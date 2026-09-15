@@ -54,6 +54,11 @@ export interface CorpusEvidence {
   synergy: number;
   /** Too few decks could have run the card yet (usually a new card): its play rate isn't used, and it's scored like a typical option. */
   limited: boolean;
+  /**
+   * Counted partly over borrowed decks (CommanderKeyRef.borrowedDeckCount) at their reduced weight, so decksWith and
+   * commanderDeckCount are weighted estimates rather than deck counts. Absent otherwise.
+   */
+  pooled?: boolean;
 }
 
 export interface VoteSummary {
