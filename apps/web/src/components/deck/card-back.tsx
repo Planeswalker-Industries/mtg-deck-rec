@@ -1,19 +1,34 @@
+import Image from "next/image";
 import { cn } from "cn";
 
+/** The card back art in public/, at its own pixel size. Next resizes it per `sizes`, so one source covers every use. */
+const CARD_BACK = { src: "/card_lg.png", width: 671, height: 970 } as const;
+
 /**
- * A sleeved card seen from the back: a binder-blue sleeve with a white inner border and a faint weave. Drawn in CSS, so
- * no card back art is used.
+ * A card seen from the back. The art is slightly taller than a real card, so it's cropped to card proportions and
+ * rounded like one.
  */
-export function CardBack({ className }: { className?: string }) {
+export function CardBack({
+  sizes = "112px",
+  /** For backs that show the moment they mount, like the shuffling deck: lazy ones start as empty card outlines. */
+  eager = false,
+  className,
+}: {
+  sizes?: string;
+  eager?: boolean;
+  className?: string;
+}) {
   return (
-    <div
+    <Image
+      src={CARD_BACK.src}
+      alt=""
       aria-hidden
-      className={cn(
-        "aspect-[488/680] w-full rounded-[4.75%/3.4%] bg-primary p-[7%] shadow-[0_1px_0_color-mix(in_oklch,var(--primary),black_40%)]",
-        className,
-      )}
-    >
-      <div className="size-full rounded-[3%/2.2%] border-2 border-white/70 bg-[repeating-linear-gradient(135deg,rgb(255_255_255/0.12)_0_5px,transparent_5px_11px)]" />
-    </div>
+      width={CARD_BACK.width}
+      height={CARD_BACK.height}
+      sizes={sizes}
+      loading={eager ? "eager" : "lazy"}
+      fetchPriority={eager ? "high" : "auto"}
+      className={cn("aspect-[488/680] w-full rounded-[4.75%/3.4%] object-cover shadow-[0_1px_0_rgb(0_0_0/0.35)]", className)}
+    />
   );
 }
