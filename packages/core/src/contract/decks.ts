@@ -48,7 +48,14 @@ export interface CommanderKeyRef {
   id: CommanderKeyId | null;
   slug: string | null;
   commanders: CardSummary[];
+  /** Decks with exactly these commanders. */
   deckCount: number;
+  /**
+   * Other decks led by one of these commanders (a partner's solo decks or its other pairings), borrowed because deckCount
+   * is below N_min. Each counts for less than one of these commanders' own decks. Absent when none were borrowed.
+   */
+  borrowedDeckCount?: number;
+  /** From deckCount plus the borrowed decks at their reduced weight; never 'full' while borrowing. */
   confidence: CorpusConfidence;
 }
 

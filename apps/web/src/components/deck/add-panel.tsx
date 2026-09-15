@@ -1,22 +1,21 @@
 "use client";
 
-import type { AddResult, CorpusConfidence } from "@mtg/core/contract";
+import type { AddResult, CommanderKeyRef, CorpusConfidence } from "@mtg/core/contract";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
-import { cardCategoryLabel } from "@/lib/labels";
+import { cardCategoryLabel, commanderDecksPhrase, fewDecksPhrase } from "@/lib/labels";
 import { GameChangerBadge, OwnedBadge } from "./card-label";
 import { PanelError, PanelLoading } from "./panel-state";
 import type { Async } from "./use-deck-tool";
 
-function introFor(confidence: CorpusConfidence, deckCount: number): string {
-  const decks = `${deckCount.toLocaleString("en-US")} deck${deckCount === 1 ? "" : "s"}`;
+function introFor(confidence: CorpusConfidence, key: CommanderKeyRef): string {
   switch (confidence) {
     case "full":
-      return `Cards that ${decks} with this commander play and yours doesn't.`;
+      return `Cards that ${commanderDecksPhrase(key)} play and yours doesn't.`;
     case "low":
-      return `Cards that ${decks} with this commander play and yours doesn't. That's limited data, so cards played widely in these colors count for more.`;
+      return `Cards that ${commanderDecksPhrase(key)} play and yours doesn't. That's limited data, so cards played widely in these colors count for more.`;
     case "none":
-      return `Cards widely played in Commander decks of these colors that yours doesn't run. ${deckCount === 0 ? "No decks" : `Only ${decks}`} with this commander so far, so these aren't specific to it.`;
+      return `Cards widely played in Commander decks of these colors that yours doesn't run. ${fewDecksPhrase(key)}, so these aren't specific to it.`;
   }
 }
 
@@ -42,7 +41,7 @@ export function AddPanel({ state }: { state: Async<AddResult> }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="max-w-prose text-sm text-muted-foreground">{introFor(confidence, commanderKey.deckCount)}</p>
+      <p className="max-w-prose text-sm text-muted-foreground">{introFor(confidence, commanderKey)}</p>
       {groups.map((group) => (
         <section key={group.category} aria-labelledby={`add-${group.category}`} className="flex flex-col gap-2">
           <h3 id={`add-${group.category}`} className="font-heading text-xl font-extrabold tracking-tight">

@@ -1,4 +1,4 @@
-import type { Bracket, CardCategory, CorpusConfidence, CutReason, SwapResult } from "@mtg/core/contract";
+import type { Bracket, CardCategory, CommanderKeyRef, CorpusConfidence, CutReason, SwapResult } from "@mtg/core/contract";
 
 export const cardCategoryLabel: Record<CardCategory, string> = {
   creature: "Creatures",
@@ -56,15 +56,37 @@ export const bracketLabel: Record<Bracket, string> = {
   5: "5 cEDH",
 };
 
-export function confidenceMessage(confidence: CorpusConfidence, deckCount: number): string {
-  const decks = `${deckCount.toLocaleString("en-US")} deck${deckCount === 1 ? "" : "s"}`;
+type DeckCounts = Pick<CommanderKeyRef, "commanders" | "deckCount" | "borrowedDeckCount">;
+
+export const formatDeckCount = (count: number) => `${count.toLocaleString("en-US")} deck${count === 1 ? "" : "s"}`;
+
+const withCommanders = (key: DeckCounts) => (key.commanders.length > 1 ? "these commanders" : "this commander");
+
+/** " (plus 88 more with one of them)" when decks were borrowed from other pairings, otherwise empty. */
+function borrowedNote(key: DeckCounts): string {
+  if (!key.borrowedDeckCount) return "";
+  const more = key.borrowedDeckCount.toLocaleString("en-US");
+  return key.commanders.length > 1 ? ` (plus ${more} more with one of them)` : ` (plus ${more} more with it and a partner)`;
+}
+
+/** "30 decks with these commanders (plus 88 more with one of them)". */
+export function commanderDecksPhrase(key: DeckCounts): string {
+  return `${formatDeckCount(key.deckCount)} with ${withCommanders(key)}${borrowedNote(key)}`;
+}
+
+/** "Only 30 decks with this commander so far", or "No decks with this commander yet". */
+export function fewDecksPhrase(key: DeckCounts): string {
+  return key.deckCount === 0 ? `No decks with ${withCommanders(key)} yet${borrowedNote(key)}` : `Only ${commanderDecksPhrase(key)} so far`;
+}
+
+export function confidenceMessage(confidence: CorpusConfidence, key: DeckCounts): string {
   switch (confidence) {
     case "full":
-      return `Based on ${decks} with this commander and what each card does.`;
+      return `Based on ${commanderDecksPhrase(key)} and what each card does.`;
     case "low":
-      return `Based on ${decks} with this commander. That's limited data, so card function counts for more.`;
+      return `Based on ${commanderDecksPhrase(key)}. That's limited data, so card function counts for more.`;
     case "none":
-      return `Based on what each card does. ${deckCount === 0 ? "No decks" : `Only ${decks}`} with this commander so far.`;
+      return `Based on what each card does. ${fewDecksPhrase(key)}.`;
   }
 }
 

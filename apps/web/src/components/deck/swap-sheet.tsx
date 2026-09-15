@@ -23,10 +23,13 @@ function jobLabels(matches: TagMatch[]): string[] {
 export function SwapSheet({
   swap,
   target,
+  commanderCount,
   onClose,
 }: {
   swap: SwapState | null;
   target: CardSummary | null;
+  /** How many commanders lead the deck, for wording play-rate evidence. */
+  commanderCount: number;
   onClose: () => void;
 }) {
   return (
@@ -36,13 +39,13 @@ export function SwapSheet({
         className="mx-auto max-h-[92dvh] w-full max-w-xl gap-0 overflow-y-auto rounded-t-2xl border-seam bg-sleeve p-0"
       >
         {/* Keyed by target so the chosen replacement resets when another card is opened. */}
-        {swap && <SwapBody key={swap.targetCardId} swap={swap} target={target} />}
+        {swap && <SwapBody key={swap.targetCardId} swap={swap} target={target} commanderCount={commanderCount} />}
       </SheetContent>
     </Sheet>
   );
 }
 
-function SwapBody({ swap, target }: { swap: SwapState; target: CardSummary | null }) {
+function SwapBody({ swap, target, commanderCount }: { swap: SwapState; target: CardSummary | null; commanderCount: number }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const { result } = swap;
   const targetCard = result.status === "ready" ? result.data.target : target;
@@ -66,7 +69,7 @@ function SwapBody({ swap, target }: { swap: SwapState; target: CardSummary | nul
         )}
         {result.status === "ready" && selected && targetCard && (
           <>
-            <Comparison target={targetCard} selected={selected} />
+            <Comparison target={targetCard} selected={selected} commanderCount={commanderCount} />
             {suggestions.length > 1 && (
               <Alternatives suggestions={suggestions} selectedIndex={selectedIndex} onSelect={setSelectedIndex} />
             )}
@@ -82,7 +85,7 @@ function SwapBody({ swap, target }: { swap: SwapState; target: CardSummary | nul
   );
 }
 
-function Comparison({ target, selected }: { target: CardSummary; selected: SwapSuggestion }) {
+function Comparison({ target, selected, commanderCount }: { target: CardSummary; selected: SwapSuggestion; commanderCount: number }) {
   const saves = selected.costDelta.usd !== null && selected.costDelta.usd < 0;
   const jobs = jobLabels(selected.matchedTags);
 
@@ -119,7 +122,9 @@ function Comparison({ target, selected }: { target: CardSummary; selected: SwapS
             ? "No deck data yet"
             : selected.corpus.limited
               ? `New card: only ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} deck${selected.corpus.commanderDeckCount === 1 ? "" : "s"} could have played it so far`
-              : `Played in ${formatPercent(selected.corpus.inclusionRate)} of ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} decks ${selected.corpus.scope === "commander" ? "with this commander" : "in these colors"}`}
+              : selected.corpus.pooled
+                ? `Played in ${formatPercent(selected.corpus.inclusionRate)} of decks with ${commanderCount > 1 ? "these commanders, counting decks that share one" : "this commander, counting its other pairings"}`
+                : `Played in ${formatPercent(selected.corpus.inclusionRate)} of ${selected.corpus.commanderDeckCount.toLocaleString("en-US")} decks ${selected.corpus.scope === "commander" ? "with this commander" : "in these colors"}`}
         </span>
       </div>
       {selected.functionalTwin ? (

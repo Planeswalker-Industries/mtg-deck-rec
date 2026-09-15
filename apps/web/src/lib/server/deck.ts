@@ -11,7 +11,7 @@ import type {
 } from "@mtg/core/contract";
 import { normalizeName, parseDecklist } from "@mtg/core/parse";
 import { fetchCardsById, toCardSummary, toCommanderFacts, type CardRow } from "./cards";
-import { loadCommanderCorpus, type CommanderCorpus } from "./corpus";
+import { commanderKeyCounts, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
 
 /** Typo matches at or above this trigram similarity are accepted and flagged; below it the line stays unresolved. */
@@ -121,8 +121,7 @@ export function analyzeDeck(
       id: (corpus?.keyId ?? null) as CommanderKeyId | null,
       slug: corpus?.slug ?? null,
       commanders: commanderRows.map((r) => toCardSummary(r, today)),
-      deckCount: corpus?.deckCount ?? 0,
-      confidence: corpus?.confidence ?? "none",
+      ...commanderKeyCounts(corpus),
     },
     estimatedBracket,
     gameChangerIds,

@@ -1,8 +1,18 @@
-import type { CorpusConfidence, CorpusEvidence } from "@mtg/core/contract";
-import { commanderShare, corpusConfidence, decksSinceRelease, shrunkInclusion, type CommanderCardRate } from "@mtg/core/scoring";
+import type { CommanderKeyRef, CorpusConfidence, CorpusEvidence } from "@mtg/core/contract";
+import {
+  commanderShare,
+  decksSinceRelease,
+  pickCorpusSources,
+  shrunkInclusion,
+  sourceDecksSinceRelease,
+  sourcesConfidence,
+  type CommanderCardRate,
+  type CorpusKey,
+  type CorpusSource,
+} from "@mtg/core/scoring";
 import type { PublicClient } from "./supabase";
 
-const DEFAULT_SETTINGS = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100 };
+const DEFAULT_SETTINGS = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100, partnerPoolWeight: 0.25 };
 type CorpusSettings = typeof DEFAULT_SETTINGS;
 type DeckMonths = Record<string, number>;
 
@@ -15,12 +25,16 @@ export interface CommanderCorpus {
   /** The deck's own commander key, when that commander (or pair) has corpus decks. */
   keyId: number | null;
   slug: string | null;
-  /** Keys whose decks count for this deck: the exact key, plus each partner's own decks when the pair has too few. */
+  /** Keys whose decks count for this deck, with their weights: see `pickCorpusSources`. */
+  sources: CorpusSource[];
   sourceKeyIds: number[];
-  deckCount: number;
-  /** Those decks by last-updated month, to count only decks updated since a card's release. */
-  deckMonths: DeckMonths;
-  /** Average cards per deck in each tracked role (by role tag id), across those decks. */
+  /** Decks with exactly these commanders. */
+  ownDeckCount: number;
+  /** Other decks led by one of these commanders, borrowed at `settings.partnerPoolWeight` each. */
+  borrowedDeckCount: number;
+  /** Own decks plus borrowed decks at their weight: what confidence and the commander share are judged on. */
+  effectiveDeckCount: number;
+  /** Average cards per deck in each tracked role (by role tag id), across those decks at their weights. */
   roleProfile: Record<string, number>;
   confidence: CorpusConfidence;
 }
@@ -29,7 +43,7 @@ export interface CardCorpus {
   /** Share of eligible corpus decks (the card's colors allow it, updated since its release) that run it. */
   baseline: number;
   baselineDeckCount: number;
-  /** The commander's decks updated since the card's release. */
+  /** The commander's decks that could have run the card (colors allow it, updated since its release), at their weights. */
   commanderDeckCount: number;
   /** The commander's decks, shrunk toward the baseline; null when none could have run the card. */
   commanderRate: CommanderCardRate | null;
@@ -45,7 +59,12 @@ function parseSettings(value: unknown): CorpusSettings {
     const v = raw[key];
     return typeof v === "number" && Number.isFinite(v) ? v : DEFAULT_SETTINGS[key];
   };
-  return { shrinkAlpha: read("shrinkAlpha"), minDecks: read("minDecks"), fullDecks: read("fullDecks") };
+  return {
+    shrinkAlpha: read("shrinkAlpha"),
+    minDecks: read("minDecks"),
+    fullDecks: read("fullDecks"),
+    partnerPoolWeight: read("partnerPoolWeight"),
+  };
 }
 
 function parseNumberRecord(value: unknown): DeckMonths {
@@ -53,12 +72,17 @@ function parseNumberRecord(value: unknown): DeckMonths {
   return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, number] => typeof entry[1] === "number"));
 }
 
-function addMonths(total: DeckMonths, months: DeckMonths): DeckMonths {
-  for (const [month, count] of Object.entries(months)) total[month] = (total[month] ?? 0) + count;
-  return total;
+/** The deck counts and confidence a CommanderKeyRef reports for this corpus. */
+export function commanderKeyCounts(corpus: CommanderCorpus | null): Pick<CommanderKeyRef, "deckCount" | "borrowedDeckCount" | "confidence"> {
+  if (!corpus) return { deckCount: 0, confidence: "none" };
+  return {
+    deckCount: corpus.ownDeckCount,
+    ...(corpus.borrowedDeckCount > 0 ? { borrowedDeckCount: corpus.borrowedDeckCount } : {}),
+    confidence: corpus.confidence,
+  };
 }
 
-/** Finds the corpus decks that describe a deck's commander (or partner pair). */
+/** Finds the corpus decks that describe a deck's commander (or partner pair), borrowing from other pairings when it has too few. */
 export async function loadCommanderCorpus(db: PublicClient, commanderIds: readonly number[]): Promise<CommanderCorpus> {
   const ids = [...new Set(commanderIds)].sort((a, b) => a - b);
   const idList = ids.join(",");
@@ -66,7 +90,10 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
     db.rpc("get_public_config", { p_key: "corpus" }),
     db.from("card_global_stats").select("card_id").limit(1),
     ids.length > 0 && ids.length <= 2
-      ? db.from("commander_keys").select("id, slug, commander_1, commander_2").or(`commander_1.in.(${idList}),commander_2.in.(${idList})`)
+      ? db
+          .from("commander_keys")
+          .select("id, slug, commander_1, commander_2, color_identity")
+          .or(`commander_1.in.(${idList}),commander_2.in.(${idList})`)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (configResult.error) throw new Error(`Loading corpus settings failed: ${configResult.error.message}`);
@@ -80,59 +107,68 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
     settings,
     keyId: null,
     slug: null,
+    sources: [],
     sourceKeyIds: [],
-    deckCount: 0,
-    deckMonths: {},
+    ownDeckCount: 0,
+    borrowedDeckCount: 0,
+    effectiveDeckCount: 0,
     roleProfile: {},
     confidence: "none",
   };
   const keys = keysResult.data ?? [];
-  const exact = keys.find((k) => k.commander_1 === ids[0] && k.commander_2 === (ids[1] ?? null)) ?? null;
-  const singles = ids.length === 2 ? keys.filter((k) => k.commander_2 === null && ids.includes(k.commander_1)) : [];
-  const candidates = [...(exact ? [exact] : []), ...singles];
-  if (!available || candidates.length === 0) return none;
+  if (!available || keys.length === 0) return none;
 
   const { data: statRows, error } = await db
     .from("commander_stats")
     .select("commander_key_id, deck_count, deck_months, role_profile")
     .in(
       "commander_key_id",
-      candidates.map((k) => k.id),
+      keys.map((k) => k.id),
     );
   if (error) throw new Error(`Loading commander stats failed: ${error.message}`);
   const statsByKey = new Map(statRows.map((r) => [r.commander_key_id, r]));
-  const decksOf = (id: number) => statsByKey.get(id)?.deck_count ?? 0;
-  const exactDecks = exact ? decksOf(exact.id) : 0;
+  const corpusKeys = keys.map(
+    (k): CorpusKey => ({
+      id: k.id,
+      commander1: k.commander_1,
+      commander2: k.commander_2,
+      identity: k.color_identity,
+      deckCount: statsByKey.get(k.id)?.deck_count ?? 0,
+      deckMonths: parseNumberRecord(statsByKey.get(k.id)?.deck_months),
+    }),
+  );
+  const picked = pickCorpusSources(ids, corpusKeys, settings);
+  if (picked.sources.length === 0) return none;
 
-  // A pair with enough decks of its own stands alone; otherwise each partner's single-commander decks fill in.
-  const sources = exact && exactDecks >= settings.minDecks ? [exact] : candidates;
-  const sourceKeyIds = sources.map((k) => k.id).filter((id) => decksOf(id) > 0);
-  const deckCount = sourceKeyIds.reduce((sum, id) => sum + decksOf(id), 0);
-  const deckMonths = sourceKeyIds.reduce((total, id) => addMonths(total, parseNumberRecord(statsByKey.get(id)?.deck_months)), {} as DeckMonths);
-  // Each key's averages weighted by its decks, so a pair's own decks and each partner's solo decks count fairly.
+  // Each key's averages weighted by its decks at their weight, so own and borrowed decks count as they do for play rates.
   const roleTotals: Record<string, number> = {};
-  for (const id of sourceKeyIds) {
-    for (const [role, average] of Object.entries(parseNumberRecord(statsByKey.get(id)?.role_profile))) {
-      roleTotals[role] = (roleTotals[role] ?? 0) + average * decksOf(id);
+  for (const source of picked.sources) {
+    for (const [role, average] of Object.entries(parseNumberRecord(statsByKey.get(source.id)?.role_profile))) {
+      roleTotals[role] = (roleTotals[role] ?? 0) + average * source.deckCount * source.weight;
     }
   }
-  const roleProfile = Object.fromEntries(Object.entries(roleTotals).map(([role, total]) => [role, total / Math.max(deckCount, 1)]));
+  const roleProfile = Object.fromEntries(
+    Object.entries(roleTotals).map(([role, total]) => [role, total / Math.max(picked.effectiveDeckCount, 1)]),
+  );
   return {
     available,
     settings,
-    keyId: exact && exactDecks > 0 ? exact.id : null,
-    slug: exact && exactDecks > 0 ? exact.slug : null,
-    sourceKeyIds,
-    deckCount,
-    deckMonths,
+    keyId: picked.own?.id ?? null,
+    slug: keys.find((k) => k.id === picked.own?.id)?.slug ?? null,
+    sources: picked.sources,
+    sourceKeyIds: picked.sources.map((s) => s.id),
+    ownDeckCount: picked.ownDeckCount,
+    borrowedDeckCount: picked.borrowedDeckCount,
+    effectiveDeckCount: picked.effectiveDeckCount,
     roleProfile,
-    confidence: corpusConfidence(deckCount, settings),
+    confidence: sourcesConfidence(picked, settings),
   };
 }
 
 /**
  * Play rates for candidate cards: the baseline everywhere, plus the commander's own decks when it has any. Both count
- * only decks updated since the card's release, so new cards aren't judged by decks built before they existed.
+ * only decks updated since the card's release, so new cards aren't judged by decks built before they existed. Borrowed
+ * decks count at their weight, and only where their colors allow the card.
  */
 export async function loadCardCorpus(
   db: PublicClient,
@@ -145,8 +181,12 @@ export async function loadCardCorpus(
   const [globalResult, commanderResult, cardsResult, printingsResult, identityResult] = await Promise.all([
     db.from("card_global_stats").select("card_id, decks_with, eligible_decks, rate").in("card_id", ids),
     corpus.sourceKeyIds.length > 0
-      ? db.from("commander_card_stats").select("card_id, decks_with").in("commander_key_id", corpus.sourceKeyIds).in("card_id", ids)
-      : Promise.resolve({ data: [] as { card_id: number; decks_with: number }[], error: null }),
+      ? db
+          .from("commander_card_stats")
+          .select("commander_key_id, card_id, decks_with")
+          .in("commander_key_id", corpus.sourceKeyIds)
+          .in("card_id", ids)
+      : Promise.resolve({ data: [] as { commander_key_id: number; card_id: number; decks_with: number }[], error: null }),
     db.from("cards").select("id, released_at, color_identity").in("id", ids),
     db.from("card_stats").select("card_id, first_printed_at").in("card_id", ids),
     db.from("corpus_identity_stats").select("color_identity, deck_months"),
@@ -167,8 +207,12 @@ export async function loadCardCorpus(
     ]),
   );
   const monthsByIdentity = new Map(identityResult.data.map((r) => [r.color_identity, parseNumberRecord(r.deck_months)]));
+  const weightByKey = new Map(corpus.sources.map((s) => [s.id, s.weight]));
   const commanderDecks = new Map<number, number>();
-  for (const r of commanderResult.data ?? []) commanderDecks.set(r.card_id, (commanderDecks.get(r.card_id) ?? 0) + r.decks_with);
+  for (const r of commanderResult.data ?? []) {
+    commanderDecks.set(r.card_id, (commanderDecks.get(r.card_id) ?? 0) + (weightByKey.get(r.commander_key_id) ?? 0) * r.decks_with);
+  }
+  const pooled = corpus.borrowedDeckCount > 0;
 
   // Cards no deck runs have no baseline row; count the decks that could have run them from the identity histograms.
   const baselineDecksFor = (identity: number, releaseMonth: string | null) => {
@@ -191,7 +235,7 @@ export async function loadCardCorpus(
       const baseline = g?.rate ?? 0;
       const baselineDeckCount = g?.eligible_decks ?? baselineDecksFor(facts?.identity ?? 0, releaseMonth);
       const decksWith = commanderDecks.get(id) ?? 0;
-      const commanderDeckCount = corpus.deckCount > 0 ? Math.max(decksSinceRelease(corpus.deckMonths, releaseMonth), decksWith) : 0;
+      const commanderDeckCount = Math.max(sourceDecksSinceRelease(corpus.sources, facts?.identity ?? 0, releaseMonth), decksWith);
 
       if (commanderDeckCount > 0) {
         const inclusion = shrunkInclusion(decksWith, commanderDeckCount, baseline, corpus.settings.shrinkAlpha);
@@ -204,11 +248,12 @@ export async function loadCardCorpus(
             commanderRate: { inclusion, synergy: inclusion - baseline },
             evidence: {
               scope: "commander",
-              decksWith,
-              commanderDeckCount,
+              decksWith: Math.round(decksWith),
+              commanderDeckCount: Math.round(commanderDeckCount),
               inclusionRate: round3(decksWith / commanderDeckCount),
               synergy: round3(inclusion - baseline),
               limited: isLimited(commanderDeckCount, baselineDeckCount),
+              ...(pooled ? { pooled: true } : {}),
             },
           },
         ];

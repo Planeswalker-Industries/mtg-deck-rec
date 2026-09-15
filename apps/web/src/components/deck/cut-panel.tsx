@@ -1,6 +1,6 @@
 "use client";
 
-import type { CardId, CardSummary, CutResult } from "@mtg/core/contract";
+import type { CardId, CardSummary, CommanderKeyRef, CutResult } from "@mtg/core/contract";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { formatPercent } from "@/lib/format";
@@ -11,12 +11,12 @@ import type { Async } from "./use-deck-tool";
 
 export function CutPanel({
   state,
-  commanderDeckCount,
+  commanderKey,
   selectedCardId,
   onSelectCard,
 }: {
   state: Async<CutResult>;
-  commanderDeckCount: number;
+  commanderKey: CommanderKeyRef;
   selectedCardId: CardId | null;
   onSelectCard: (cardId: CardId) => void;
 }) {
@@ -30,7 +30,7 @@ export function CutPanel({
       <p className="max-w-prose text-sm text-muted-foreground">
         {confidence === "none"
           ? "Cards that break deck rules, cost a lot, or overlap with plenty of others doing the same job. Tap one to compare replacements."
-          : `Cards that do the least for this deck, most urgent first. Tap one to compare replacements. ${confidenceMessage(confidence, commanderDeckCount)}`}
+          : `Cards that do the least for this deck, most urgent first. Tap one to compare replacements. ${confidenceMessage(confidence, commanderKey)}`}
       </p>
       {suggestions.length === 0 ? (
         <p className="text-sm">Nothing stands out to cut. Open Your deck to compare replacements for any card.</p>

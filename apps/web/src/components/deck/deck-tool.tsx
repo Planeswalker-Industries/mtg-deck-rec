@@ -170,7 +170,7 @@ export function DeckTool() {
             <TabsContent value="cut">
               <CutPanel
                 state={tool.cut}
-                commanderDeckCount={analysis.commanderKey.deckCount}
+                commanderKey={analysis.commanderKey}
                 selectedCardId={selectedCardId}
                 onSelectCard={tool.openSwap}
               />
@@ -185,7 +185,12 @@ export function DeckTool() {
         </section>
       )}
 
-      <SwapSheet swap={swap} target={swapTarget} onClose={tool.closeSwap} />
+      <SwapSheet
+        swap={swap}
+        target={swapTarget}
+        commanderCount={tool.analysis?.commanderKey.commanders.length ?? 0}
+        onClose={tool.closeSwap}
+      />
       <CommanderLookupSheet lookup={lookup} />
     </div>
   );
