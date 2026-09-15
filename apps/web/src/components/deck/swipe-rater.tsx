@@ -11,7 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
 import { describeCostDelta } from "@/lib/format";
 import { cutReasonShortLabel } from "@/lib/labels";
+import { CardBack } from "./card-back";
 import { PanelError } from "./panel-state";
+import { ShuffleDeck } from "./shuffle-deck";
 import { useSwipeRater, type PickedSwap } from "./use-swipe-rater";
 
 /** How far, as a share of the card's width, a drag has to travel to count as a swipe. */
@@ -22,9 +24,6 @@ const FLICK_VELOCITY = 600;
 const FLING_SECONDS = 0.22;
 
 type Direction = 1 | -1;
-
-/** The swipe view's element id; the deck tool scrolls it just below the sticky deck bar when it opens. */
-export const SWIPE_VIEW_ID = "swipe-view";
 
 interface SwipeHandle {
   fling: (direction: Direction) => void;
@@ -92,6 +91,46 @@ function SwipeCard({
   );
 }
 
+/**
+ * The first pair of a sitting is drawn from the deck: each card slides out from the middle of the screen face down and
+ * flips over. Later cards just appear. `play` only counts when the card first mounts.
+ */
+function DrawnCard({
+  play,
+  delay,
+  fromY,
+  className,
+  children,
+}: {
+  play: boolean;
+  delay: number;
+  /** Where the card starts, in px from its resting place: toward the deck in the middle of the screen. */
+  fromY: number;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <motion.div
+      className={cn("relative [perspective:1400px]", className)}
+      initial={play ? { y: fromY, scale: 0.55, opacity: 0 } : false}
+      animate={{ y: 0, scale: 1, opacity: 1 }}
+      transition={{ delay, duration: 0.42, ease: [0.22, 0.9, 0.3, 1] }}
+    >
+      <motion.div
+        className="relative [transform-style:preserve-3d]"
+        initial={play ? { rotateY: 180 } : false}
+        animate={{ rotateY: 0 }}
+        transition={{ delay: delay + 0.24, duration: 0.38, ease: "easeInOut" }}
+      >
+        <div className="[backface-visibility:hidden]">{children}</div>
+        <div aria-hidden className="absolute inset-0 [transform:rotateY(180deg)] [backface-visibility:hidden]">
+          <CardBack className="h-full" />
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 /** The ❌ and ✅ buttons beside the replacement: they swell as the card is dragged toward them. */
 function SideButton({
   kind,
@@ -136,6 +175,7 @@ export function SwipeRater({
   picked,
   onPick,
   onFinish,
+  viewRef,
 }: {
   targets: readonly CutSuggestion[];
   context: RecContext;
@@ -143,8 +183,11 @@ export function SwipeRater({
   picked: readonly PickedSwap[];
   onPick: (swap: PickedSwap) => void;
   onFinish: () => void;
+  /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
+  viewRef?: (element: HTMLElement | null) => void;
 }) {
   const rater = useSwipeRater({ targets, context, commanderKeyId, picked, onPick, onFinish });
+  const reduceMotion = useReducedMotion();
   const card = useRef<SwipeHandle>(null);
   const [drag, setDrag] = useState(0);
   const { target, loaded, candidate } = rater;
@@ -171,6 +214,11 @@ export function SwipeRater({
   });
 
   if (!target) return null;
+  // Until the first card's replacements arrive, the deck keeps shuffling; then the first pair is drawn from it.
+  if (rater.targetIndex === 0 && !loaded) {
+    return <ShuffleDeck label="Finding replacements" />;
+  }
+  const drawing = !reduceMotion && rater.targetIndex === 0 && rater.candidateIndex === 0;
   const targetName = displayName(target.card);
   const reasons = target.reasons.map((r) => cutReasonShortLabel[r]).slice(0, 2);
   const jobs = candidate
@@ -178,7 +226,7 @@ export function SwipeRater({
     : [];
 
   return (
-    <section id={SWIPE_VIEW_ID} aria-label="Swipe through cards to cut" className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col">
+    <section ref={viewRef} aria-label="Swipe through cards to cut" className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground tabular-nums">
           Card {rater.targetIndex + 1} of {rater.targetCount} to cut
@@ -190,13 +238,14 @@ export function SwipeRater({
 
       <figure className="mt-1 flex flex-col items-center text-center">
         {/* Both cards scale with the screen's height so the whole sitting fits on a phone below the deck bar. */}
-        <div className="w-[clamp(5.5rem,calc((100dvh_-_35rem)*0.32),11rem)]">
+        <DrawnCard play={drawing} delay={0} fromY={140} className="w-[clamp(5.5rem,calc((100dvh_-_35rem)*0.32),11rem)]">
           <CardImage card={target.card} alt={`In your deck: ${target.card.name}`} sizes="176px" eager className="opacity-80 saturate-50" />
-        </div>
-        <figcaption className="mt-1.5">
+        </DrawnCard>
+        {/* While the first pair is being drawn, the names wait until the cards have turned over. */}
+        <motion.figcaption className="mt-1.5" initial={drawing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ delay: 0.55, duration: 0.25 }}>
           <span className="block font-heading text-lg leading-tight font-extrabold">{targetName}</span>
           {reasons.length > 0 && <span className="block text-xs text-muted-foreground">{reasons.join(", ")}</span>}
-        </figcaption>
+        </motion.figcaption>
       </figure>
 
       <div aria-hidden className="my-3 h-px bg-seam" />
@@ -228,13 +277,19 @@ export function SwipeRater({
           <div className="grid grid-cols-[3.5rem_1fr_3.5rem] items-center gap-2">
             <SideButton kind="pass" label={`Pass on ${candidate.card.name}`} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
             <SwipeCard key={candidate.card.id} ref={card} onDrag={setDrag} onSwipe={(d) => (d === 1 ? rater.swapIn() : rater.pass())}>
-              <div className="mx-auto w-[clamp(7rem,calc((100dvh_-_35rem)*0.72),16rem)]">
+              <DrawnCard play={drawing} delay={0.12} fromY={-170} className="mx-auto w-[clamp(7rem,calc((100dvh_-_35rem)*0.72),16rem)]">
                 <CardImage card={candidate.card} variant="large" alt={`Replacement: ${candidate.card.name}`} sizes="256px" eager className="shadow-[0_0_0_2px_var(--color-primary)]" />
-              </div>
+              </DrawnCard>
             </SwipeCard>
             <SideButton kind="swap" label={`Swap in ${candidate.card.name}`} pull={Math.max(0, drag)} disabled={false} onClick={() => act(1)} />
           </div>
-          <div aria-live="polite" className="mt-3 text-center">
+          <motion.div
+            aria-live="polite"
+            className="mt-3 text-center"
+            initial={drawing ? { opacity: 0 } : false}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7, duration: 0.25 }}
+          >
             <p className="font-heading text-xl leading-tight font-extrabold">{displayName(candidate.card)}</p>
             <p className="text-sm text-muted-foreground tabular-nums">
               {describeCostDelta(candidate.costDelta)} · {rater.candidateIndex + 1} of {rater.candidateCount}
@@ -244,7 +299,7 @@ export function SwipeRater({
             ) : (
               jobs.length > 0 && <p className="mt-1 line-clamp-2 text-sm">Does the same job: {jobs.join(", ")}</p>
             )}
-          </div>
+          </motion.div>
           <div className="mt-2 flex justify-center">
             <Button type="button" size="sm" variant="link" onClick={rater.keep}>
               Keep {targetName}
@@ -265,15 +320,17 @@ export function SwipeSummary({
   updating,
   onSwipeAgain,
   onShowList,
+  viewRef,
 }: {
   swaps: readonly PickedSwap[];
   updating: boolean;
   onSwipeAgain: () => void;
   onShowList: () => void;
+  viewRef?: (element: HTMLElement | null) => void;
 }) {
   const heading = swaps.length === 0 ? "No swaps picked" : `${swaps.length} swap${swaps.length === 1 ? "" : "s"} picked`;
   return (
-    <section id={SWIPE_VIEW_ID} aria-labelledby="swipe-summary-heading" className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col gap-4">
+    <section ref={viewRef} aria-labelledby="swipe-summary-heading" className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col gap-4">
       <div>
         <h2 id="swipe-summary-heading" className="font-heading text-3xl leading-none font-extrabold tracking-tight">
           {heading}

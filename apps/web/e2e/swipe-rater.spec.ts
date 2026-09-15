@@ -10,7 +10,8 @@ test("swipes through cards to cut and puts a picked replacement in the deck", as
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
 
-  await recs.getByRole("button", { name: "Swipe" }).click();
+  // Swiping is the default on a first visit.
+  await expect(recs.getByRole("button", { name: "Swipe" })).toHaveAttribute("aria-pressed", "true");
   const rater = page.getByRole("region", { name: "Swipe through cards to cut" });
   await expect(rater.getByText(/^Card 1 of \d+ to cut$/)).toBeVisible({ timeout: 60_000 });
 
