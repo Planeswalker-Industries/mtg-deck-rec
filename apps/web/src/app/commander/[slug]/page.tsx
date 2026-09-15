@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { buttonVariants } from "@/components/ui/button";
 import { GameChangerBadge } from "@/components/deck/card-label";
@@ -71,7 +72,8 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
           <p className="max-w-prose text-sm">{fewDecksPhrase(key)}, so these rankings can still shift as more decks come in.</p>
         )}
         <div>
-          <Link href="/deck" className={buttonVariants({ size: "lg" })}>
+          {/* Pair names run long, so the label wraps instead of running off a phone screen. */}
+          <Link href="/deck" className={cn(buttonVariants({ size: "lg" }), "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}>
             Upgrade your {names} deck
           </Link>
         </div>
