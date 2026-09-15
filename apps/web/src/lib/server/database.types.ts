@@ -1281,6 +1281,12 @@ export type Database = {
         Args: { p_import_id: number; p_rows: Json }
         Returns: number
       }
+      search_cards: {
+        Args: { p_commander_only?: boolean; p_limit?: number; p_query: string }
+        Returns: {
+          card_id: number
+        }[]
+      }
       sitemap_slugs: { Args: never; Returns: Json }
       start_collection_import: {
         Args: { p_mode: string; p_source_app: string }
@@ -1472,4 +1478,3 @@ export const Constants = {
     },
   },
 } as const
-

@@ -2,7 +2,7 @@ import type { ApiError } from "@mtg/core/contract";
 import type { PublicClient } from "./supabase";
 
 /** Request budgets per visitor. Limits and windows live in app_config.rate_limits. */
-export type RateLimitBucket = "recs" | "deck" | "import" | "lookup" | "collection" | "auth" | "vote";
+export type RateLimitBucket = "recs" | "deck" | "import" | "lookup" | "collection" | "auth" | "vote" | "search";
 
 /**
  * Counts one request against the visitor's budget for `bucket`. Returns a RATE_LIMITED error once the budget is spent,

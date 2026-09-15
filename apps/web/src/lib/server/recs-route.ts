@@ -16,7 +16,8 @@ const STATUS: Partial<Record<ApiError["code"], number>> = {
   UPSTREAM_UNAVAILABLE: 503,
 };
 
-function failure(error: ApiError): Response {
+/** A failed Result as a JSON response, with the status code (and Retry-After) that fits the error. */
+export function errorResponse(error: ApiError): Response {
   return Response.json({ ok: false, error } satisfies Result<never>, {
     status: STATUS[error.code] ?? 500,
     headers: error.retryAfterSec ? { "Retry-After": String(error.retryAfterSec) } : undefined,
@@ -46,22 +47,22 @@ export async function handleRecsRequest<I extends { context: RecContext }, T>(
 ): Promise<Response> {
   const db = createPublicClient();
   const limited = await checkRateLimit(db, "recs", visitorKey(request.headers));
-  if (limited) return failure(limited);
+  if (limited) return errorResponse(limited);
 
   const input = parseInput(schema, await request.json().catch(() => null));
-  if (!input.ok) return failure(input.error);
+  if (!input.ok) return errorResponse(input.error);
 
   try {
     let data = input.data;
     if (data.context.ownership?.kind === "account") {
       const ownedCardIds = await accountOwnedIds();
-      if (!ownedCardIds) return failure({ code: "UNAUTHENTICATED", message: "Sign in to use your saved collection." });
+      if (!ownedCardIds) return errorResponse({ code: "UNAUTHENTICATED", message: "Sign in to use your saved collection." });
       data = { ...data, context: { ...data.context, ownership: { kind: "session", catalogEpoch: "account", ownedCardIds } } };
     }
     return Response.json({ ok: true, data: await run(db, data) } satisfies Result<T>);
   } catch (err) {
-    if (err instanceof NotFoundError) return failure({ code: "NOT_FOUND", message: err.message });
+    if (err instanceof NotFoundError) return errorResponse({ code: "NOT_FOUND", message: err.message });
     console.error(err);
-    return failure({ code: "UPSTREAM_UNAVAILABLE", message: unavailableMessage });
+    return errorResponse({ code: "UPSTREAM_UNAVAILABLE", message: unavailableMessage });
   }
 }

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -71,10 +71,16 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
         {key.confidence !== "full" && (
           <p className="max-w-prose text-sm">{fewDecksPhrase(key)}, so these rankings can still shift as more decks come in.</p>
         )}
-        <div>
+        <div className="flex flex-wrap gap-2">
           {/* Pair names run long, so the label wraps instead of running off a phone screen. */}
           <Link href="/deck" className={cn(buttonVariants({ size: "lg" }), "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}>
             Upgrade your {names} deck
+          </Link>
+          <Link
+            href={`/rate?commander=${key.slug ?? slug}` as Route}
+            className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}
+          >
+            Rate cards for this commander
           </Link>
         </div>
       </header>

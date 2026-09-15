@@ -130,7 +130,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - Anyone can vote until OAuth ships. The action uses `createAuthClient`, so a signed-in vote is keyed to `auth.uid()`; everyone else by the salted visitor hash (people behind one address share it). Rate limit bucket `vote`.
 - **Rate limits and input validation:**
   - `@mtg/core/schemas` (`contract/schemas.ts`) holds zod schemas for every network input; `parseInput` maps oversized text/lists to PAYLOAD_TOO_LARGE, other problems to VALIDATION (first message plus `fieldErrors`).
-  - `public.hit_rate_limit(bucket, visitor)` counts fixed windows in `rate_limit_hits`; budgets per bucket (`recs`, `deck`, `import`, `lookup`, `collection`, `auth`) live in `app_config.rate_limits`. `lib/server/rate-limit.ts` fails open if the check errors.
+  - `public.hit_rate_limit(bucket, visitor)` counts fixed windows in `rate_limit_hits`; budgets per bucket (`recs`, `deck`, `import`, `lookup`, `collection`, `auth`, `vote`, `search`) live in `app_config.rate_limits`. `lib/server/rate-limit.ts` fails open if the check errors.
   - The recs routes share `handleRecsRequest` (`lib/server/recs-route.ts`): rate limit, validate, turn an account collection into the signed-in user's owned card ids, run, map errors to status codes (429 with `Retry-After`). Server actions use `begin(bucket)` in `app/deck/actions.ts`. Visitor keys come from `lib/server/visitor.ts`.
 - **Remembered deck:** `lib/saved-deck.ts` keeps the last deck in localStorage for 30 days: text, bracket and Game Changer choices, import source. The deck tool restores and re-analyzes it on mount; Clear forgets it. It's browser-only; nothing goes to the server.
 - **Commander pages** (`/commander/[slug]`):
@@ -175,6 +175,10 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - Drag, flick and fling use Motion (`motion/react`, pinned).
   - Swipe is the default view on a first visit; the Swipe/List choice is remembered in localStorage (`lib/review-view.ts`). e2e tests that need the tabs click List first.
   - While the deck is read and cuts or the first replacements load, `ShuffleDeck` shuffles sleeved card backs (`CardBack`, drawn in CSS, no card back art). The first pair of a sitting is drawn from it (`DrawnCard`: slide out and flip); later cards just appear. Reduced motion shows a still stack and no draw.
+- **Card rater** (`/rate`, swipe rater slice 4; `components/rater/`):
+  - The player picks a commander by name (`CommanderPicker` → `GET /api/cards/search` → SQL `search_cards`: prefix, then contains, then trigram typos, more-played commanders first; rate limit bucket `search`), or arrives from a commander page at `/rate?commander=<slug>`.
+  - `dealRaterCardsAction` deals what the commander's decks play (`rec_add_candidates`, borrowing partner decks like the deck tool), or cards widely played in its colors when it has no decks. Lands are left out. Rounds of 10 cards.
+  - `SwipeRater mode="rater"`: a card's top 6 replacements come shuffled with our ranking hidden (honest data for the swap-quality eval), every swipe rates one (votes with source `rater`), and the next card comes up once all are rated.
 - Card images are hotlinked from Scryfall's CDN via `components/cards/card-image.tsx` (`unoptimized`; Scryfall already serves sized variants). Never overlay badges or UI on the lower part of a card image — Scryfall requires the artist/copyright line to stay visible; put badges below the image.
 - `packages/core/src/contract/mocks/scryfall-cards.json` is real Scryfall data for the mock card pool (regenerate from the Scryfall collection endpoint, don't hand-edit images or prices).
 

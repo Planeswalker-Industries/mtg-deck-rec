@@ -3,7 +3,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { Check, X } from "lucide-react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
-import type { CommanderKeyId, CutSuggestion, RecContext } from "@mtg/core/contract";
+import type { CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { cutReasonShortLabel } from "@/lib/labels";
 import { CardBack } from "./card-back";
 import { PanelError } from "./panel-state";
 import { ShuffleDeck } from "./shuffle-deck";
-import { useSwipeRater, type PickedSwap } from "./use-swipe-rater";
+import { useSwipeRater, type PickedSwap, type RaterTarget, type SwipeMode, type SwipeVote } from "./use-swipe-rater";
 
 /** How far, as a share of the card's width, a drag has to travel to count as a swipe. */
 const SWIPE_SHARE = 0.3;
@@ -172,25 +172,31 @@ export function SwipeRater({
   targets,
   context,
   commanderKeyId,
+  mode = "deck",
   picked,
   onPick,
+  onVote,
   onFinish,
   viewRef,
 }: {
-  targets: readonly CutSuggestion[];
+  targets: readonly RaterTarget[];
   context: RecContext;
   commanderKeyId: CommanderKeyId | null;
-  picked: readonly PickedSwap[];
-  onPick: (swap: PickedSwap) => void;
+  mode?: SwipeMode;
+  /** Deck tool: swaps already picked in this sitting, and where new picks go. */
+  picked?: readonly PickedSwap[];
+  onPick?: (swap: PickedSwap) => void;
+  onVote?: (vote: SwipeVote) => void;
   onFinish: () => void;
   /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
   viewRef?: (element: HTMLElement | null) => void;
 }) {
-  const rater = useSwipeRater({ targets, context, commanderKeyId, picked, onPick, onFinish });
+  const rater = useSwipeRater({ targets, context, commanderKeyId, mode, picked, onPick, onVote, onFinish });
   const reduceMotion = useReducedMotion();
   const card = useRef<SwipeHandle>(null);
   const [drag, setDrag] = useState(0);
   const { target, loaded, candidate } = rater;
+  const inRater = mode === "rater";
 
   const act = (direction: Direction) => {
     if (!candidate) return;
@@ -220,26 +226,31 @@ export function SwipeRater({
   }
   const drawing = !reduceMotion && rater.targetIndex === 0 && rater.candidateIndex === 0;
   const targetName = displayName(target.card);
-  const reasons = target.reasons.map((r) => cutReasonShortLabel[r]).slice(0, 2);
+  const reasons = (target.reasons ?? []).map((r) => cutReasonShortLabel[r]).slice(0, 2);
   const jobs = candidate
     ? [...new Set(candidate.matchedTags.map((m) => (m.distance === 0 || !m.via ? m.candidateTag.label : m.via.label)))]
     : [];
 
   return (
-    <section ref={viewRef} aria-label="Swipe through cards to cut" className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col">
+    <section
+      ref={viewRef}
+      aria-label={inRater ? "Rate replacements" : "Swipe through cards to cut"}
+      className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col"
+    >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground tabular-nums">
-          Card {rater.targetIndex + 1} of {rater.targetCount} to cut
+          Card {rater.targetIndex + 1} of {rater.targetCount}
+          {inRater ? "" : " to cut"}
         </p>
         <Button type="button" size="sm" variant="ghost" onClick={onFinish}>
-          Finish
+          {inRater ? "Done" : "Finish"}
         </Button>
       </div>
 
       <figure className="mt-1 flex flex-col items-center text-center">
         {/* Both cards scale with the screen's height so the whole sitting fits on a phone below the deck bar. */}
         <DrawnCard play={drawing} delay={0} fromY={140} className="w-[clamp(5.5rem,calc((100dvh_-_35rem)*0.32),11rem)]">
-          <CardImage card={target.card} alt={`In your deck: ${target.card.name}`} sizes="176px" eager className="opacity-80 saturate-50" />
+          <CardImage card={target.card} alt={`${inRater ? "Card being replaced" : "In your deck"}: ${target.card.name}`} sizes="176px" eager className={inRater ? undefined : "opacity-80 saturate-50"} />
         </DrawnCard>
         {/* While the first pair is being drawn, the names wait until the cards have turned over. */}
         <motion.figcaption className="mt-1.5" initial={drawing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ delay: 0.55, duration: 0.25 }}>
@@ -260,7 +271,7 @@ export function SwipeRater({
         <div className="flex flex-col items-center gap-3">
           <PanelError message={loaded.message} />
           <Button type="button" variant="outline" onClick={rater.keep}>
-            Keep {targetName}
+            {inRater ? "Skip" : "Keep"} {targetName}
           </Button>
         </div>
       ) : !candidate ? (
@@ -269,19 +280,19 @@ export function SwipeRater({
             {rater.candidateCount === 0 ? `No replacements do the same job as ${targetName}.` : `That's every replacement for ${targetName}.`}
           </p>
           <Button type="button" onClick={rater.keep}>
-            Keep {targetName}
+            {inRater ? "Skip" : "Keep"} {targetName}
           </Button>
         </div>
       ) : (
         <>
           <div className="grid grid-cols-[3.5rem_1fr_3.5rem] items-center gap-2">
-            <SideButton kind="pass" label={`Pass on ${candidate.card.name}`} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
+            <SideButton kind="pass" label={inRater ? `Not a fit: ${candidate.card.name}` : `Pass on ${candidate.card.name}`} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
             <SwipeCard key={candidate.card.id} ref={card} onDrag={setDrag} onSwipe={(d) => (d === 1 ? rater.swapIn() : rater.pass())}>
               <DrawnCard play={drawing} delay={0.12} fromY={-170} className="mx-auto w-[clamp(7rem,calc((100dvh_-_35rem)*0.72),16rem)]">
                 <CardImage card={candidate.card} variant="large" alt={`Replacement: ${candidate.card.name}`} sizes="256px" eager className="shadow-[0_0_0_2px_var(--color-primary)]" />
               </DrawnCard>
             </SwipeCard>
-            <SideButton kind="swap" label={`Swap in ${candidate.card.name}`} pull={Math.max(0, drag)} disabled={false} onClick={() => act(1)} />
+            <SideButton kind="swap" label={inRater ? `Good fit: ${candidate.card.name}` : `Swap in ${candidate.card.name}`} pull={Math.max(0, drag)} disabled={false} onClick={() => act(1)} />
           </div>
           <motion.div
             aria-live="polite"
@@ -302,7 +313,7 @@ export function SwipeRater({
           </motion.div>
           <div className="mt-2 flex justify-center">
             <Button type="button" size="sm" variant="link" onClick={rater.keep}>
-              Keep {targetName}
+              {inRater ? "Skip" : "Keep"} {targetName}
             </Button>
           </div>
         </>
