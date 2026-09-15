@@ -3,6 +3,7 @@
 import { updateTag } from "next/cache";
 import { headers } from "next/headers";
 import type {
+  ActionsApi,
   ApiError,
   CollectionRowInput,
   CommanderCoverage,
@@ -13,10 +14,12 @@ import type {
   ParseDeckResult,
   ResolveCollectionResult,
   Result,
+  VoteSummary,
 } from "@mtg/core/contract";
 import { archidektDeckId, archidektDecklist } from "@mtg/core/parse";
 import {
   analyzeDeckInputSchema,
+  castVoteInputSchema,
   commanderInputSchema,
   commanderRequestInputSchema,
   importDeckInputSchema,
@@ -35,8 +38,10 @@ import { resolveCollectionRows } from "@/lib/server/collections";
 import { analyzeDeckById, resolveDecklist } from "@/lib/server/deck";
 import { fetchShareLink } from "@/lib/server/share-import";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/server/rate-limit";
+import { createAuthClient } from "@/lib/server/auth";
 import { createPublicClient, type PublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
+import { castSwapVote, VoteRefused, type VoteRefusal } from "@/lib/server/votes";
 
 const failure = (code: ApiError["code"], message: string): Result<never> => ({ ok: false, error: { code, message } });
 
@@ -184,6 +189,31 @@ export async function requestCommanderDecksAction(input: { commanderId: number }
     return { ok: true, data: request };
   } catch (err) {
     if (err instanceof CommanderRequestRefused) return refusalMessages[err.reason];
+    return unavailable(err);
+  }
+}
+
+const voteRefusals: Record<VoteRefusal, Result<never>> = {
+  VOTER_REQUIRED: failure("VALIDATION", "Couldn't tell who's voting. Reload the page and try again."),
+  INVALID_VOTE: failure("VALIDATION", "That vote isn't valid."),
+  UNKNOWN_CARD: failure("NOT_FOUND", "One of those cards isn't in the catalog anymore."),
+};
+
+/**
+ * Records a swipe vote: whether the replacement is a good swap for the target. Works signed out; the session client goes
+ * along so the database can key a signed-in vote to the account.
+ */
+export async function castVoteAction(input: Parameters<ActionsApi["castVote"]>[0]): Promise<Result<VoteSummary>> {
+  const parsed = parseInput(castVoteInputSchema, input);
+  if (!parsed.ok) return parsed;
+  try {
+    const db = await createAuthClient();
+    const visitor = visitorKey(await headers());
+    const limited = await checkRateLimit(db, "vote", visitor);
+    if (limited) return { ok: false, error: limited };
+    return { ok: true, data: await castSwapVote(db, parsed.data, visitor) };
+  } catch (err) {
+    if (err instanceof VoteRefused) return voteRefusals[err.reason];
     return unavailable(err);
   }
 }

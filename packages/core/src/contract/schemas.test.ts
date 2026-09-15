@@ -3,6 +3,8 @@ import {
   MAX_COLLECTION_ROWS_PER_CALL,
   MAX_DECK_ENTRIES,
   MAX_DECKLIST_CHARS,
+  MAX_VOTE_CANDIDATES_SHOWN,
+  castVoteInputSchema,
   commanderRequestInputSchema,
   parseDeckInputSchema,
   parseInput,
@@ -77,6 +79,43 @@ describe('action and route inputs', () => {
   it('accepts only numeric lookup ids', () => {
     expect(parseInput(commanderRequestInputSchema, { requestId: '12' }).ok).toBe(true);
     expect(parseInput(commanderRequestInputSchema, { requestId: '12; drop' }).ok).toBe(false);
+  });
+});
+
+describe('castVoteInputSchema', () => {
+  const uuid = '0000579f-7b35-4ed3-b44c-db2a538066fe';
+  const vote = (overrides: Record<string, unknown> = {}) => ({ targetCardId: 10, replacementCardId: 11, value: 1, ...overrides });
+  const swipe = (overrides: Record<string, unknown> = {}) => ({
+    source: 'deck',
+    sessionId: uuid,
+    commanderIds: [1],
+    position: 0,
+    shownCardIds: [11, 12],
+    matchedTagIds: [uuid],
+    ...overrides,
+  });
+
+  it('accepts a plain vote, a cleared vote and a vote with what the voter saw', () => {
+    expect(parseInput(castVoteInputSchema, vote()).ok).toBe(true);
+    expect(parseInput(castVoteInputSchema, vote({ value: 0, commanderKeyId: 7 })).ok).toBe(true);
+    const r = parseInput(castVoteInputSchema, vote({ value: -1, context: swipe({ source: 'rater', commanderIds: [] }) }));
+    expect(r.ok && r.data.context?.source).toBe('rater');
+  });
+
+  it("rejects a card replacing itself, other vote values and bad sittings or tags", () => {
+    const self = parseInput(castVoteInputSchema, vote({ replacementCardId: 10 }));
+    expect(!self.ok && self.error.message).toBe("A card can't replace itself.");
+    expect(parseInput(castVoteInputSchema, vote({ value: 2 })).ok).toBe(false);
+    expect(parseInput(castVoteInputSchema, vote({ context: swipe({ sessionId: 'abc' }) })).ok).toBe(false);
+    expect(parseInput(castVoteInputSchema, vote({ context: swipe({ matchedTagIds: ['not-a-tag'] }) })).ok).toBe(false);
+    expect(parseInput(castVoteInputSchema, vote({ context: swipe({ commanderIds: [1, 2, 3] }) })).ok).toBe(false);
+    expect(parseInput(castVoteInputSchema, vote({ context: swipe({ source: 'bot' }) })).ok).toBe(false);
+  });
+
+  it('treats too many shown candidates as too large', () => {
+    const shownCardIds = Array.from({ length: MAX_VOTE_CANDIDATES_SHOWN + 1 }, (_, i) => i + 1);
+    const r = parseInput(castVoteInputSchema, vote({ context: swipe({ shownCardIds }) }));
+    expect(!r.ok && r.error.code).toBe('PAYLOAD_TOO_LARGE');
   });
 });
 

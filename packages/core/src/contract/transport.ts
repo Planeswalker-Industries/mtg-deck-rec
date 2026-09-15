@@ -18,7 +18,7 @@ import type {
 } from './decks';
 import type { Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
-import type { AddResult, CutResult, RecContext, SwapResult, VoteSummary } from './recs';
+import type { AddResult, CutResult, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
 
 /**
  * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut}
@@ -60,12 +60,14 @@ export interface ActionsApi {
   deleteDeck(input: { deckId: DeckId }): Promise<Result<null>>;
   exportDeck(input: { deckId: DeckId; format: ExportFormat }): Promise<Result<{ filename: string; content: string }>>;
 
-  /** value 0 clears the vote. */
+  /** Whether replacementCardId is a good replacement for targetCardId. value 0 clears the vote. Works without an account. */
   castVote(input: {
     targetCardId: CardId;
     replacementCardId: CardId;
     value: -1 | 0 | 1;
     commanderKeyId?: CommanderKeyId;
+    /** What the voter saw; send it from the swipe view and the rater. */
+    context?: VoteContext;
   }): Promise<Result<VoteSummary>>;
   setFavorite(input: FavoriteRef & { on: boolean }): Promise<Result<null>>;
 

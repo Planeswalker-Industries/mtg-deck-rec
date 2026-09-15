@@ -2,6 +2,7 @@ import type { ActionsApi, ApiError, RecsApi, Result } from "@mtg/core/contract";
 import { deleteCollectionAction, saveCollectionBatchAction } from "@/app/collection/actions";
 import {
   analyzeDeckAction,
+  castVoteAction,
   getCommanderCoverageAction,
   getCommanderRequestAction,
   importDeckFromUrlAction,
@@ -53,7 +54,7 @@ export const realActions: ActionsApi = {
   saveDeck: notYet,
   deleteDeck: notYet,
   exportDeck: notYet,
-  castVote: notYet,
+  castVote: (input) => castVoteAction(input),
   setFavorite: notYet,
   adminSetTagDisabled: notYet,
 };

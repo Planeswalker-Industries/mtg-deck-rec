@@ -11,5 +11,8 @@
  * v3 (2026-09-15): partner decks borrowed across pairings. Optional CommanderKeyRef.borrowedDeckCount and
  * CorpusEvidence.pooled. CommanderKeyRef.deckCount now counts only decks with exactly these commanders (a pair used to
  * include each partner's solo decks when it had too few of its own).
+ *
+ * v4 (2026-09-15): swap votes for the swipe rater. ActionsApi.castVote takes an optional VoteContext (source, sitting,
+ * position, candidates shown, matched tags); VoteSummary.myVote also covers signed-out voters.
  */
-export const CONTRACT_VERSION = 3;
+export const CONTRACT_VERSION = 4;

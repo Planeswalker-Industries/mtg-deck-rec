@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { DeckInput } from './decks';
 import type { ApiError, Result } from './errors';
-import type { CardId, PrintingId } from './ids';
-import type { RecContext } from './recs';
+import type { CardId, CommanderKeyId, PrintingId, TagId } from './ids';
+import type { RecContext, VoteContext } from './recs';
 
 /**
  * Runtime validation for contract inputs that arrive over the network (Route Handler bodies, Server Action arguments).
@@ -91,6 +91,45 @@ export const commanderRequestInputSchema = z.object(
   { requestId: z.string({ error: "That deck lookup isn't valid." }).regex(/^\d{1,15}$/, "That deck lookup isn't valid.") },
   request,
 );
+
+export const MAX_VOTE_CANDIDATES_SHOWN = 50;
+const MAX_VOTE_MATCHED_TAGS = 50;
+
+const voteContextSchema: InputSchema<VoteContext> = z.object(
+  {
+    source: z.enum(['deck', 'rater'], { error: 'Invalid vote source.' }),
+    sessionId: z.guid('Invalid vote session.'),
+    commanderIds: z.array(cardId('Invalid commander.')).max(2, 'A deck has at most two commanders.'),
+    position: z.int().min(0).max(MAX_VOTE_CANDIDATES_SHOWN - 1),
+    shownCardIds: z
+      .array(cardId('Invalid card shown.'))
+      .max(MAX_VOTE_CANDIDATES_SHOWN, `At most ${MAX_VOTE_CANDIDATES_SHOWN} candidates can be shown for a card.`),
+    matchedTagIds: z
+      .array(z.guid('Invalid tag.').transform((id) => id as TagId))
+      .max(MAX_VOTE_MATCHED_TAGS, `At most ${MAX_VOTE_MATCHED_TAGS} matched tags.`),
+  },
+  { error: 'Invalid vote details.' },
+);
+
+export const castVoteInputSchema = z
+  .object(
+    {
+      targetCardId: cardId('Pick the card being replaced.'),
+      replacementCardId: cardId('Pick the replacement card.'),
+      value: z.literal([-1, 0, 1], { error: 'A vote is -1, 0 or 1.' }),
+      commanderKeyId: z
+        .int()
+        .min(1)
+        .transform((id) => id as CommanderKeyId)
+        .optional(),
+      context: voteContextSchema.optional(),
+    },
+    request,
+  )
+  .refine((vote) => vote.targetCardId !== vote.replacementCardId, {
+    message: "A card can't replace itself.",
+    path: ['replacementCardId'],
+  });
 
 export const MAX_COLLECTION_ROWS_PER_CALL = 2_000;
 
