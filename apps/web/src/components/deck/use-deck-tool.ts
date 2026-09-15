@@ -5,6 +5,7 @@ import type {
   AddResult,
   Bracket,
   CardId,
+  CardSummary,
   CutResult,
   DeckAnalysis,
   ImportDeckUrlResult,
@@ -231,6 +232,28 @@ export function useDeckTool(source: CollectionSource) {
     return analyzed.data;
   }
 
+  /**
+   * Puts picked replacements into the decklist, each on its cut card's line, then analyzes the deck again. Edits the
+   * player's own text where the line can be found, so their sections and notes survive.
+   */
+  async function applySwaps(swaps: readonly { target: CardSummary; replacement: CardSummary }[]): Promise<SubmitOutcome> {
+    const byTarget = new Map(swaps.map((s) => [s.target.id, s.replacement]));
+    const textLines = text.split("\n");
+    let editedInPlace = true;
+    const nextLines = lines.map((l) => {
+      const replacement = l.resolution.status === "resolved" && l.line.section === "main" ? byTarget.get(l.resolution.card.id) : undefined;
+      if (!replacement) return l;
+      const raw = `1 ${replacement.name}`;
+      const at = [l.line.lineNo - 1, l.line.lineNo].find((i) => textLines[i]?.trim() === l.line.raw.trim());
+      if (at === undefined) editedInPlace = false;
+      else textLines[at] = raw;
+      return { ...l, line: { ...l.line, raw } };
+    });
+    const nextText = editedInPlace ? textLines.join("\n") : decklistText(nextLines);
+    setText(nextText);
+    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom });
+  }
+
   /** Forgets the deck here and in this browser's storage. */
   function clearDeck() {
     clearSavedDeck();
@@ -283,6 +306,7 @@ export function useDeckTool(source: CollectionSource) {
     submit,
     restoreLastDeck,
     refreshRecommendations,
+    applySwaps,
     clearDeck,
     parse,
     importedFrom,
