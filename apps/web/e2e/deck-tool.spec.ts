@@ -7,12 +7,15 @@ test("analyzes the sample deck and opens replacements for a card", async ({ page
 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
-  await expect(recs.getByRole("tab", { name: "Cards to cut" })).toBeVisible();
+  // Swiping is the default on a first visit; the list keeps the tabs.
+  await expect(recs.getByRole("button", { name: "Swipe" })).toHaveAttribute("aria-pressed", "true");
 
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
   const notNow = page.getByRole("dialog").getByRole("button", { name: "Not now" });
   await notNow.click({ timeout: 3_000 }).catch(() => undefined);
 
+  await recs.getByRole("button", { name: "List" }).click();
+  await expect(recs.getByRole("tab", { name: "Cards to cut" })).toBeVisible();
   await recs.getByRole("tab", { name: "Cards to add" }).click();
   await recs.getByRole("tab", { name: "Your deck" }).click();
   const deckCards = recs.getByRole("list", { name: "Your deck" }).getByRole("button");
@@ -22,4 +25,20 @@ test("analyzes the sample deck and opens replacements for a card", async ({ page
   const sheet = page.getByRole("dialog");
   await expect(sheet.getByRole("heading", { name: /^Replace / })).toBeVisible();
   await expect(sheet.getByText("Cards that do the same job, best fit first.")).toBeVisible();
+});
+
+test("remembers the list view for the next visit", async ({ page }) => {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  await recs.getByRole("button", { name: "List" }).click();
+
+  // The deck and the view both come back after a reload.
+  await page.reload();
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+  await expect(recs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+  await expect(recs.getByRole("tab", { name: "Cards to cut" })).toBeVisible();
 });
