@@ -124,7 +124,7 @@ function DrawnCard({
       >
         <div className="[backface-visibility:hidden]">{children}</div>
         <div aria-hidden className="absolute inset-0 [transform:rotateY(180deg)] [backface-visibility:hidden]">
-          <CardBack className="h-full" />
+          <CardBack sizes="256px" className="h-full" />
         </div>
       </motion.div>
     </motion.div>

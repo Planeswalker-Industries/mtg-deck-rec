@@ -174,7 +174,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - Picked swaps go into the decklist (`useDeckTool.applySwaps`, which edits the player's own lines) when the sitting ends or the view changes.
   - Drag, flick and fling use Motion (`motion/react`, pinned).
   - Swipe is the default view on a first visit; the Swipe/List choice is remembered in localStorage (`lib/review-view.ts`). e2e tests that need the tabs click List first.
-  - While the deck is read and cuts or the first replacements load, `ShuffleDeck` shuffles sleeved card backs (`CardBack`, drawn in CSS, no card back art). The first pair of a sitting is drawn from it (`DrawnCard`: slide out and flip); later cards just appear. Reduced motion shows a still stack and no draw.
+  - While the deck is read and cuts or the first replacements load, `ShuffleDeck` shuffles card backs (`CardBack`: `public/card_lg.png` through `next/image`, cropped to card proportions; the shuffling deck loads them eagerly, since lazy backs start as empty outlines). The first pair of a sitting is drawn from it (`DrawnCard`: slide out and flip); later cards just appear. Reduced motion shows a still stack and no draw.
 - **Card rater** (`/rate`, swipe rater slice 4; `components/rater/`):
   - The player picks a commander by name (`CommanderPicker` → `GET /api/cards/search` → SQL `search_cards`: prefix, then contains, then trigram typos, more-played commanders first; rate limit bucket `search`), or arrives from a commander page at `/rate?commander=<slug>`.
   - `dealRaterCardsAction` deals what the commander's decks play (`rec_add_candidates`, borrowing partner decks like the deck tool), or cards widely played in its colors when it has no decks. Lands are left out. Rounds of 10 cards.
