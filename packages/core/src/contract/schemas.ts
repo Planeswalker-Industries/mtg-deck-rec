@@ -131,6 +131,37 @@ export const castVoteInputSchema = z
     path: ['replacementCardId'],
   });
 
+export const MAX_SEARCH_QUERY_CHARS = 100;
+export const MAX_SEARCH_LIMIT = 20;
+
+export const searchCardsInputSchema = z.object(
+  {
+    q: z
+      .string({ error: 'Type part of a card name.' })
+      .trim()
+      .min(2, 'Type at least 2 letters.')
+      .max(MAX_SEARCH_QUERY_CHARS, `Searches can be at most ${MAX_SEARCH_QUERY_CHARS} characters.`),
+    commanderEligible: z.boolean().optional(),
+    limit: z.int().min(1).max(MAX_SEARCH_LIMIT).optional(),
+  },
+  request,
+);
+
+export const dealRaterCardsInputSchema = z
+  .object(
+    {
+      commanderIds: z.array(cardId("That commander isn't valid.")).min(1).max(2, 'A deck has at most two commanders.').optional(),
+      commanderSlug: z
+        .string()
+        .trim()
+        .max(200)
+        .regex(/^[a-z0-9-]+$/, "That commander isn't valid.")
+        .optional(),
+    },
+    request,
+  )
+  .refine((input) => (input.commanderIds === undefined) !== (input.commanderSlug === undefined), { message: 'Pick a commander.' });
+
 export const MAX_COLLECTION_ROWS_PER_CALL = 2_000;
 
 const collectionRow = z.object({

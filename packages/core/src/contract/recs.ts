@@ -90,6 +90,13 @@ export interface VoteContext {
   matchedTagIds: TagId[];
 }
 
+/** Cards dealt for the standalone card rater, for a commander or partner pair. */
+export interface RaterDeal {
+  commanderKey: CommanderKeyRef;
+  /** Cards to rate replacements for, most played first (the rater shuffles them): what the commander's decks play, or cards widely played in its colors when it has no decks. Lands are left out. */
+  cards: CardSummary[];
+}
+
 export type CostBasis =
   | 'buy_replacement_vs_buy_target'
   | 'owned_replacement'

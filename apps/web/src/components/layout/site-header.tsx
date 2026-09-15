@@ -24,6 +24,10 @@ export function SiteHeader() {
             <span className="sm:hidden">Deck tool</span>
             <span className="hidden sm:inline">Upgrade a deck</span>
           </Link>
+          <Link href="/rate" className={NAV_LINK}>
+            <span className="sm:hidden">Rate</span>
+            <span className="hidden sm:inline">Rate cards</span>
+          </Link>
           <Suspense fallback={<SignInIcon />}>
             <AccountLink />
           </Suspense>

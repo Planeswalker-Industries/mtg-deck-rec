@@ -33,7 +33,7 @@ import type {
   VoteSummary,
 } from '../recs';
 import type { CommanderRequest, CommanderRequestStatus } from '../commander-requests';
-import type { ActionsApi, DataApi, RecsApi } from '../transport';
+import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
 import {
   frontFaceName,
   MOCK_AS_OF,
@@ -50,6 +50,7 @@ export * from './fixtures';
 export interface MockApis {
   recs: RecsApi;
   actions: ActionsApi;
+  catalog: CatalogApi;
   data: DataApi;
 }
 
@@ -561,6 +562,35 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       }
       return delay(ok({ affected }));
     },
+
+    async dealRaterCards({ commanderIds, commanderSlug }) {
+      const commanders = commanderIds
+        ? commanderIds.flatMap((id) => byId.get(id) ?? [])
+        : (commanderSlug ?? '').split('--').flatMap((slug) => mockCards.find((c) => c.slug === slug) ?? []);
+      if (commanders.length === 0 || !commanders.every(isCommanderEligible)) {
+        return delay(fail('NOT_FOUND', "That card can't lead a Commander deck."));
+      }
+      const ids = commanders.map((c) => c.id);
+      const identity = unionIdentity(commanders);
+      const cards = mockCards
+        .filter((c) => !ids.includes(c.id) && !c.typeLine.includes('Land') && withinIdentity(c, identity))
+        .sort((a, b) => corpusScore(corpusFor(b.id)) - corpusScore(corpusFor(a.id)))
+        .slice(0, 40);
+      return delay(ok({ commanderKey: commanderKeyRef(ids), cards }), 400);
+    },
+  };
+
+  const catalog: CatalogApi = {
+    async searchCards({ q, commanderEligible, limit = 8 }) {
+      const needle = q.trim().toLowerCase();
+      if (needle.length < 2) return delay(fail('VALIDATION', 'Type at least 2 letters.'));
+      const hits = mockCards
+        .filter((c) => c.name.toLowerCase().includes(needle))
+        .filter((c) => !commanderEligible || isCommanderEligible(c))
+        .sort((a, b) => Number(b.name.toLowerCase().startsWith(needle)) - Number(a.name.toLowerCase().startsWith(needle)))
+        .slice(0, limit);
+      return delay(ok(hits), 50);
+    },
   };
 
   const unwrap = <T>(r: Result<T>): T | null => (r.ok ? r.data : null);
@@ -697,5 +727,5 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     },
   };
 
-  return { recs, actions, data };
+  return { recs, actions, catalog, data };
 }

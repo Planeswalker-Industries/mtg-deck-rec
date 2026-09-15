@@ -14,5 +14,8 @@
  *
  * v4 (2026-09-15): swap votes for the swipe rater. ActionsApi.castVote takes an optional VoteContext (source, sitting,
  * position, candidates shown, matched tags); VoteSummary.myVote also covers signed-out voters.
+ *
+ * v5 (2026-09-15): the card rater. CatalogApi.searchCards (GET /api/cards/search), ActionsApi.dealRaterCards and
+ * RaterDeal.
  */
-export const CONTRACT_VERSION = 4;
+export const CONTRACT_VERSION = 5;
