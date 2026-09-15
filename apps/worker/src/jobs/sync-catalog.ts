@@ -158,8 +158,10 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
           select count(*)::int as n from upserted
         `;
 
-        // Prices refresh on every run, independent of card changes. Once sync:printings has computed the cheapest
-        // printing (card_stats), that price wins; the representative printing's price only fills in until then.
+        // Prices are checked on every run, independent of card changes. Once sync:printings has computed the cheapest
+        // printing (card_stats), that price wins; the representative printing's price only fills in until then. Only
+        // changed prices are written, so prices_as_of records when a price last changed; the app shows
+        // prices_checked_at() as the as-of date.
         await db`
           update public.cards c
           set reference_price_usd = s.reference_price_usd,
@@ -168,6 +170,11 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
           from stg_cards s
           where s.oracle_id = c.oracle_id
             and not exists (select 1 from public.card_stats st where st.card_id = c.id)
+            and (
+              c.reference_price_usd is distinct from s.reference_price_usd
+              or c.reference_price_finish is distinct from s.reference_price_finish
+              or c.prices_as_of is null
+            )
         `;
 
         const [removed] = await db<{ n: number }[]>`
@@ -180,13 +187,25 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
           select count(*)::int as n from gone
         `;
 
-        // Flavor-name aliases belong to sync:printings; this job owns every other alias kind.
-        await db`delete from public.card_names where kind <> 'flavor'`;
+        // Flavor-name aliases belong to sync:printings; this job owns every other alias kind. Only aliases that appear or
+        // disappear are written.
         await db`
-          insert into public.card_names (card_id, name_normalized, kind)
-          select distinct c.id, n.name_normalized, n.kind
+          create temp table stg_card_names_resolved as
+          select distinct c.id as card_id, n.name_normalized, n.kind
           from stg_card_names n
           join public.cards c on c.oracle_id = n.oracle_id
+        `;
+        await db`
+          delete from public.card_names n
+          where n.kind <> 'flavor'
+            and not exists (
+              select 1 from stg_card_names_resolved s
+              where s.card_id = n.card_id and s.name_normalized = n.name_normalized and s.kind = n.kind
+            )
+        `;
+        await db`
+          insert into public.card_names (card_id, name_normalized, kind)
+          select card_id, name_normalized, kind from stg_card_names_resolved
           on conflict do nothing
         `;
 

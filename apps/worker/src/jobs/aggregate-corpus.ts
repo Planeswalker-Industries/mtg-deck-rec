@@ -232,38 +232,113 @@ export async function aggregateCorpus({
 
       await db`begin`;
       try {
+        // Only rows that change are written; every rewritten row leaves a dead version behind. Rates are floats rebuilt
+        // from scratch, and a few new decks nudge every card's baseline, so shrunk inclusion and synergy moving by less
+        // than 0.001 don't count as changes (0.3% of the synergy scale).
         await db`
-          insert into public.commander_keys (commander_1, commander_2, color_identity, slug)
+          insert into public.commander_keys as k (commander_1, commander_2, color_identity, slug)
           select commander_1, commander_2, color_identity, slug from stg_keys
           on conflict (commander_1, (coalesce(commander_2, 0))) do update
             set color_identity = excluded.color_identity, slug = excluded.slug
+            where k.color_identity is distinct from excluded.color_identity or k.slug is distinct from excluded.slug
         `;
-        await db`delete from public.commander_card_stats`;
-        await db`delete from public.commander_stats`;
-        await db`delete from public.card_global_stats`;
-        await db`delete from public.corpus_identity_stats`;
         await db`
-          insert into public.commander_stats (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile)
-          select k.id, s.deck_count, jsonb_build_object(${source}::text, s.deck_count), s.bracket_counts::jsonb, s.deck_months::jsonb,
-                 s.role_profile::jsonb
+          create temp table stg_key_ids as
+          select s.key, k.id
           from stg_keys s
           join public.commander_keys k on k.commander_1 = s.commander_1 and coalesce(k.commander_2, 0) = coalesce(s.commander_2, 0)
         `;
+
         await db`
-          insert into public.commander_card_stats (commander_key_id, card_id, decks_with, eligible_decks, inclusion_shrunk, synergy)
-          select k.id, s.card_id, s.decks_with, s.eligible_decks, s.inclusion_shrunk, s.synergy
+          delete from public.commander_stats cs
+          where not exists (select 1 from stg_key_ids i where i.id = cs.commander_key_id)
+        `;
+        await db`
+          insert into public.commander_stats as cs (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile)
+          select i.id, s.deck_count, jsonb_build_object(${source}::text, s.deck_count), s.bracket_counts::jsonb, s.deck_months::jsonb,
+                 s.role_profile::jsonb
+          from stg_keys s
+          join stg_key_ids i on i.key = s.key
+          on conflict (commander_key_id) do update set
+            deck_count = excluded.deck_count,
+            source_counts = excluded.source_counts,
+            bracket_counts = excluded.bracket_counts,
+            deck_months = excluded.deck_months,
+            role_profile = excluded.role_profile,
+            computed_at = now()
+          where (cs.deck_count, cs.source_counts, cs.bracket_counts, cs.deck_months, cs.role_profile)
+            is distinct from (excluded.deck_count, excluded.source_counts, excluded.bracket_counts, excluded.deck_months, excluded.role_profile)
+        `;
+
+        await db`
+          create temp table stg_commander_card_rows (
+            commander_key_id integer not null,
+            card_id integer not null,
+            decks_with integer not null,
+            eligible_decks integer not null,
+            inclusion_shrunk real not null,
+            synergy real not null,
+            primary key (commander_key_id, card_id)
+          )
+        `;
+        await db`
+          insert into stg_commander_card_rows
+          select i.id, s.card_id, s.decks_with, s.eligible_decks, s.inclusion_shrunk, s.synergy
           from stg_card_stats s
-          join stg_keys sk on sk.key = s.key
-          join public.commander_keys k on k.commander_1 = sk.commander_1 and coalesce(k.commander_2, 0) = coalesce(sk.commander_2, 0)
+          join stg_key_ids i on i.key = s.key
+        `;
+        const [cardRowsRemoved] = await db<{ n: number }[]>`
+          with removed as (
+            delete from public.commander_card_stats cc
+            where not exists (
+              select 1 from stg_commander_card_rows s where s.commander_key_id = cc.commander_key_id and s.card_id = cc.card_id
+            )
+            returning 1
+          )
+          select count(*)::int as n from removed
+        `;
+        const [cardRowsWritten] = await db<{ n: number }[]>`
+          with written as (
+            insert into public.commander_card_stats as cc (commander_key_id, card_id, decks_with, eligible_decks, inclusion_shrunk, synergy)
+            select commander_key_id, card_id, decks_with, eligible_decks, inclusion_shrunk, synergy from stg_commander_card_rows
+            on conflict (commander_key_id, card_id) do update set
+              decks_with = excluded.decks_with,
+              eligible_decks = excluded.eligible_decks,
+              inclusion_shrunk = excluded.inclusion_shrunk,
+              synergy = excluded.synergy
+            where cc.decks_with is distinct from excluded.decks_with
+               or cc.eligible_decks is distinct from excluded.eligible_decks
+               or abs(cc.inclusion_shrunk - excluded.inclusion_shrunk) >= 0.001
+               or abs(cc.synergy - excluded.synergy) >= 0.001
+            returning 1
+          )
+          select count(*)::int as n from written
+        `;
+
+        await db`
+          delete from public.card_global_stats g
+          where not exists (select 1 from stg_global s where s.card_id = g.card_id)
         `;
         await db`
-          insert into public.card_global_stats (card_id, decks_with, eligible_decks, rate)
+          insert into public.card_global_stats as g (card_id, decks_with, eligible_decks, rate)
           select card_id, decks_with, eligible_decks, least(rate, 1) from stg_global
+          on conflict (card_id) do update set
+            decks_with = excluded.decks_with,
+            eligible_decks = excluded.eligible_decks,
+            rate = excluded.rate,
+            computed_at = now()
+          where g.decks_with is distinct from excluded.decks_with or g.eligible_decks is distinct from excluded.eligible_decks
         `;
+
         await db`
-          insert into public.corpus_identity_stats (color_identity, deck_months)
+          insert into public.corpus_identity_stats as ci (color_identity, deck_months)
           select color_identity, deck_months::jsonb from stg_identity
+          on conflict (color_identity) do update set deck_months = excluded.deck_months, computed_at = now()
+          where ci.deck_months is distinct from excluded.deck_months
         `;
+        console.log(
+          `corpus_aggregate: ${cardRowsWritten?.n ?? 0} commander-card rows written, ${cardRowsRemoved?.n ?? 0} removed (of ${cardStatRows.length})`,
+        );
         await db`commit`;
       } catch (err) {
         await db`rollback`.catch(() => {});
