@@ -13,24 +13,30 @@ export interface HeroArt {
 }
 
 /**
- * Art for the landing hero. The landing page otherwise has no database dependency and so cannot fail,
- * which is worth keeping: any error here returns null and the page renders without a backdrop rather
- * than erroring. Null also covers a build with no catalog, which is how CI runs.
+ * Art for the landing hero, taking the first of `slugs` that resolves. Lands come first: their art is
+ * painted as scenery, so it works as a wide banner where a creature portrait does not.
+ *
+ * The landing page otherwise has no database dependency and so cannot fail, which is worth keeping:
+ * any error here returns null and the page renders without a backdrop rather than erroring. Null also
+ * covers a build with no catalog, which is how CI runs.
  */
-export async function getHeroArt(slug: string): Promise<HeroArt | null> {
+export async function getHeroArt(slugs: readonly string[]): Promise<HeroArt | null> {
   "use cache";
   cacheLife("days");
-  cacheTag("catalog", `hero:${slug}`);
+  cacheTag("catalog", `hero:${slugs.join(",")}`);
   try {
     const { data, error } = await createPublicClient()
       .from("cards")
       .select("name, slug, images, artist")
-      .eq("slug", slug)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (error || !data?.artist) return null;
-    const art = (data.images as { front?: { artCrop?: string } } | null)?.front?.artCrop;
-    return art ? { art, artist: data.artist, name: data.name, slug: data.slug } : null;
+      .in("slug", [...slugs])
+      .is("deleted_at", null);
+    if (error || !data) return null;
+    for (const slug of slugs) {
+      const row = data.find((r) => r.slug === slug);
+      const art = (row?.images as { front?: { artCrop?: string } } | null)?.front?.artCrop;
+      if (row?.artist && art) return { art, artist: row.artist, name: row.name, slug: row.slug };
+    }
+    return null;
   } catch {
     return null;
   }
