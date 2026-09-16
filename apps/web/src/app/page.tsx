@@ -157,16 +157,16 @@ export default function Home() {
           <div className="mx-auto flex w-full max-w-6xl px-4">
             <ul
               aria-label="What the deck tool shows you"
-              className="grid grid-cols-3 gap-3 sm:flex sm:flex-wrap sm:justify-end sm:gap-x-6 sm:gap-y-4 md:ml-auto md:max-w-[28.5rem]"
+              className="grid grid-cols-3 gap-2.5 sm:flex sm:flex-wrap sm:justify-end sm:gap-x-6 sm:gap-y-4 md:ml-auto md:max-w-[25rem]"
             >
               {jobs.map(({ name, summary, Icon, tone, ring }) => (
                 <li key={name} className="flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-3 sm:text-left">
-                  <span className={`flex size-11 shrink-0 items-center justify-center rounded-full border ${ring} ${tone}`}>
-                    <Icon aria-hidden className="size-5" strokeWidth={2.5} />
+                  <span className={`flex size-9 shrink-0 items-center justify-center rounded-full border ${ring} ${tone}`}>
+                    <Icon aria-hidden className="size-4" strokeWidth={2.5} />
                   </span>
                   <span className="min-w-0">
-                    <span className="block font-heading text-lg leading-none font-semibold">{name}</span>
-                    <span className="mt-1 block text-sm text-muted-foreground">{summary}</span>
+                    <span className="block font-heading text-base leading-none font-semibold">{name}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{summary}</span>
                   </span>
                 </li>
               ))}
