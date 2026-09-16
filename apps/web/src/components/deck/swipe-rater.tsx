@@ -6,6 +6,7 @@ import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 
 import type { CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
+import { ZoomableCard } from "@/components/cards/card-zoom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
@@ -14,6 +15,7 @@ import { cutReasonShortLabel } from "@/lib/labels";
 import { CardBack } from "./card-back";
 import { PanelError } from "./panel-state";
 import { ShuffleDeck } from "./shuffle-deck";
+import { TagPills } from "./tag-pills";
 import { useSwipeRater, type PickedSwap, type RaterTarget, type SwipeMode, type SwipeVote } from "./use-swipe-rater";
 
 /** How far, as a share of the card's width, a drag has to travel to count as a swipe. */
@@ -47,6 +49,8 @@ function SwipeCard({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const leaving = useRef(false);
+  // A drag ends in a click too, which would open the enlarged card the player was only trying to swipe.
+  const dragged = useRef(false);
   const reduceMotion = useReducedMotion();
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-260, 0, 260], [-14, 0, 14]);
@@ -73,7 +77,17 @@ function SwipeCard({
       drag={reduceMotion ? false : "x"}
       dragMomentum={false}
       style={{ x, rotate, opacity, touchAction: "pan-y" }}
-      onDrag={(_, info) => onDrag(Math.max(-1, Math.min(1, info.offset.x / (width() * SWIPE_SHARE))))}
+      onPointerDown={() => (dragged.current = false)}
+      onClickCapture={(e) => {
+        if (!dragged.current) return;
+        dragged.current = false;
+        e.stopPropagation();
+        e.preventDefault();
+      }}
+      onDrag={(_, info) => {
+        if (Math.abs(info.offset.x) > 5 || Math.abs(info.offset.y) > 5) dragged.current = true;
+        onDrag(Math.max(-1, Math.min(1, info.offset.x / (width() * SWIPE_SHARE))));
+      }}
       onDragEnd={(_, info) => {
         const flicked = Math.abs(info.velocity.x) >= FLICK_VELOCITY && Math.sign(info.velocity.x) === Math.sign(info.offset.x);
         if (Math.abs(info.offset.x) >= width() * SWIPE_SHARE || flicked) {
@@ -230,6 +244,10 @@ export function SwipeRater({
   const jobs = candidate
     ? [...new Set(candidate.matchedTags.map((m) => (m.distance === 0 || !m.via ? m.candidateTag.label : m.via.label)))]
     : [];
+  // The same jobs, named as the card being replaced has them: they flank its image, half on each side.
+  const targetJobs = candidate
+    ? [...new Set(candidate.matchedTags.map((m) => (m.distance === 0 || !m.via ? m.targetTag.label : m.via.label)))].slice(0, 6)
+    : [];
 
   return (
     <section
@@ -249,9 +267,15 @@ export function SwipeRater({
 
       <figure className="mt-1 flex flex-col items-center text-center">
         {/* Both cards scale with the screen's height so the whole sitting fits on a phone below the deck bar. */}
-        <DrawnCard play={drawing} delay={0} fromY={140} className="w-[clamp(5.5rem,calc((100dvh_-_35rem)*0.32),11rem)]">
-          <CardImage card={target.card} alt={`${inRater ? "Card being replaced" : "In your deck"}: ${target.card.name}`} sizes="176px" eager className={inRater ? undefined : "opacity-80 saturate-50"} />
-        </DrawnCard>
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
+          <TagPills labels={targetJobs.filter((_, i) => i % 2 === 0)} label={`What ${targetName} does`} align="end" />
+          <DrawnCard play={drawing} delay={0} fromY={140} className="w-[clamp(5.5rem,calc((100dvh_-_35rem)*0.32),11rem)]">
+            <ZoomableCard card={target.card}>
+              <CardImage card={target.card} alt={`${inRater ? "Card being replaced" : "In your deck"}: ${target.card.name}`} sizes="176px" eager className={inRater ? undefined : "opacity-80 saturate-50"} />
+            </ZoomableCard>
+          </DrawnCard>
+          <TagPills labels={targetJobs.filter((_, i) => i % 2 === 1)} label={`More of what ${targetName} does`} align="start" />
+        </div>
         {/* While the first pair is being drawn, the names wait until the cards have turned over. */}
         <motion.figcaption className="mt-1.5" initial={drawing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ delay: 0.55, duration: 0.25 }}>
           <span className="block font-heading text-lg leading-tight font-extrabold">{targetName}</span>
@@ -289,7 +313,9 @@ export function SwipeRater({
             <SideButton kind="pass" label={inRater ? `Not a fit: ${candidate.card.name}` : `Pass on ${candidate.card.name}`} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
             <SwipeCard key={candidate.card.id} ref={card} onDrag={setDrag} onSwipe={(d) => (d === 1 ? rater.swapIn() : rater.pass())}>
               <DrawnCard play={drawing} delay={0.12} fromY={-170} className="mx-auto w-[clamp(7rem,calc((100dvh_-_35rem)*0.72),16rem)]">
-                <CardImage card={candidate.card} variant="large" alt={`Replacement: ${candidate.card.name}`} sizes="256px" eager className="shadow-[0_0_0_2px_var(--color-primary)]" />
+                <ZoomableCard card={candidate.card}>
+                  <CardImage card={candidate.card} variant="large" alt={`Replacement: ${candidate.card.name}`} sizes="256px" eager className="shadow-[0_0_0_2px_var(--color-primary)]" />
+                </ZoomableCard>
               </DrawnCard>
             </SwipeCard>
             <SideButton kind="swap" label={inRater ? `Good fit: ${candidate.card.name}` : `Swap in ${candidate.card.name}`} pull={Math.max(0, drag)} disabled={false} onClick={() => act(1)} />
@@ -308,7 +334,7 @@ export function SwipeRater({
             {candidate.functionalTwin ? (
               <p className="mt-1 text-sm font-bold text-primary">Same rules as {targetName}, under a different name.</p>
             ) : (
-              jobs.length > 0 && <p className="mt-1 line-clamp-2 text-sm">Does the same job: {jobs.join(", ")}</p>
+              <TagPills labels={jobs} label={`What ${displayName(candidate.card)} does too`} className="mt-1.5" />
             )}
           </motion.div>
           <div className="mt-2 flex justify-center">

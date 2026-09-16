@@ -38,3 +38,34 @@ test("swipes through cards to cut and puts a picked replacement in the deck", as
   const pickedName = picked.split(" // ")[0] ?? picked;
   await expect(recs.getByRole("list", { name: "Your deck" }).getByText(pickedName, { exact: true })).toBeVisible({ timeout: 60_000 });
 });
+
+test("enlarges a card on tap and dismisses it without swiping the card underneath", async ({ page }) => {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog", { name: /deck lookup|decks/i }).getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+
+  const rater = page.getByRole("region", { name: "Swipe through cards to cut" });
+  const swapIn = rater.getByRole("button", { name: /^Swap in / });
+  await expect(swapIn).toBeVisible({ timeout: 60_000 });
+  const progress = rater.getByText(/^Card \d+ of \d+ to cut$/);
+  const before = await progress.innerText();
+  const candidateBefore = await swapIn.getAttribute("aria-label");
+
+  await rater.getByRole("button", { name: /^Enlarge / }).last().click();
+  const enlarged = page.getByRole("dialog", { name: /, enlarged$/ });
+  await expect(enlarged).toBeVisible();
+  // The layer covers the page, so dismissing it can't reach the buttons or the card below.
+  await enlarged.click({ position: { x: 10, y: 10 } });
+  await expect(enlarged).toBeHidden();
+  await expect(progress).toHaveText(before);
+  await expect(swapIn).toHaveAttribute("aria-label", candidateBefore ?? "");
+
+  // Escape closes it too. The wait clears the guard that stops a dismissing click from reopening the card.
+  await page.waitForTimeout(500);
+  await rater.getByRole("button", { name: /^Enlarge / }).last().click();
+  await expect(enlarged).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(enlarged).toBeHidden();
+  await expect(progress).toHaveText(before);
+});
