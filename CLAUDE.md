@@ -168,7 +168,11 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 
 ## Frontend
 
-- Mobile-first is the top priority, and every card shown must show its image. Design direction is "Pocket binder": cool blue-grey page, white sleeves, 1px seams, binder blue (`--primary`) as the only interactive accent, mana colors only for color identity. Tokens live in `apps/web/src/app/globals.css`; fonts are Atkinson Hyperlegible Next (UI/body) and Sofia Sans Condensed (headings).
+- Mobile-first is the top priority, and every card shown must show its image. Design direction is **"Table at night"**: the page is a dark table lit by one warm source above it. Tokens live in `apps/web/src/app/globals.css`; fonts are Atkinson Hyperlegible Next (UI/body, kept for small-size legibility on phones) and Fraunces (headings, `font-heading`).
+  - The site is dark by default: `:root` holds the dark values and `<html>` carries `dark`, so shadcn's `dark:` variants apply. There is no light theme.
+  - `--primary` (gold) is the light, so it marks the one action that matters on a screen, not every link. Nav links are `text-muted-foreground` until hovered.
+  - Light falls from the top: the `lit` utility gives a surface a warm top edge and a shadow below. No outer glows on hover, and no gradient used as decoration — the hero's radial sits behind the card fan because it is what lights it.
+  - `--cut` (rose), `--add` (jade) and `--replace` (violet) name the three jobs. They are deliberately off the mana wheel: `--color-mana-*` stays reserved for color identity, so a role pill can never be mistaken for a mana color.
 - **Swipe view** (swipe rater slice 2; `components/deck/swipe-rater.tsx`, `use-swipe-rater.ts`):
   - The card to cut sits on top; the replacement sits below between a ❌ button (left) and a ✅ button (right) that never overlap a card.
   - Right swipe, ✅ or → votes +1 and picks the swap; left swipe, ❌ or ← votes −1 and shows the next replacement. Every vote carries `VoteContext`.
