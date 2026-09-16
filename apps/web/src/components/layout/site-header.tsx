@@ -8,7 +8,7 @@ const NAV_LINK =
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b border-seam bg-sleeve/85 backdrop-blur-sm">
+    <header className="border-b border-seam bg-sleeve">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3 px-4">
         <Link
           href="/"
