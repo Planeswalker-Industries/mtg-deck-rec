@@ -1,9 +1,12 @@
+import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Plus, Repeat2, Scissors } from "lucide-react";
 import { mockCards } from "@mtg/core/mocks";
 import type { CardSummary } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { buttonVariants } from "@/components/ui/button";
+import { getHeroArt } from "@/lib/server/recs-cache";
 
 function sampleCard(name: string): CardSummary {
   const card = mockCards.find((c) => c.name === name);
@@ -33,6 +36,8 @@ const FAN: FanCard[] = [
   { card: sampleCard("Birds of Paradise"), rotate: 22, x: "64%", y: "10%", scale: 0.86, wide: true },
 ];
 const FAN_SIZES = "(min-width: 768px) 220px, 42vw";
+/** The card at the centre of the fan, so the credit names what people are actually looking at. */
+const HERO_SLUG = "chulane-teller-of-tales";
 
 const jobs = [
   {
@@ -61,6 +66,29 @@ const jobs = [
   },
 ];
 
+async function HeroArt() {
+  const hero = await getHeroArt(HERO_SLUG);
+  if (!hero) return null;
+  return (
+    <>
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <Image src={hero.art} alt="" fill unoptimized priority className="object-cover object-center" />
+        {/* The headline sits on the left, so the wash is heaviest there and thins out under the cards. */}
+        <div className="absolute inset-0 bg-background/35" />
+        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/75 to-background/45" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/40" />
+      </div>
+      <p className="relative mt-8 text-xs text-muted-foreground">
+        Art from{" "}
+        <Link href={`/card/${hero.slug}`} className="underline underline-offset-2 hover:text-foreground">
+          {hero.name}
+        </Link>{" "}
+        by {hero.artist}
+      </p>
+    </>
+  );
+}
+
 export default function Home() {
   return (
     <div className="flex flex-col gap-10 pb-6 md:gap-12">
@@ -71,7 +99,6 @@ export default function Home() {
           {/* Cards come first on a phone: they say what this is faster than any sentence. */}
           <div aria-hidden className="order-first md:order-last">
             <div className="relative mx-auto h-[15.5rem] w-[10.5rem] sm:h-[18rem] sm:w-[10rem] md:h-[18.5rem] md:w-[10.5rem]">
-              <div className="pointer-events-none absolute top-1/2 left-1/2 -z-10 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(closest-side,color-mix(in_oklch,var(--primary)_17%,transparent),transparent)]" />
               {FAN.map((pocket, i) => (
                 <div
                   key={pocket.card.name}
@@ -129,6 +156,11 @@ export default function Home() {
             <p className="mt-4 text-sm text-muted-foreground">No account needed.</p>
           </div>
         </div>
+
+        {/* Null while it loads and null if it fails, so the landing page never waits on the database. */}
+        <Suspense fallback={null}>
+          <HeroArt />
+        </Suspense>
       </section>
 
       <section aria-label="What the deck tool shows you" className="grid gap-px overflow-hidden rounded-xl bg-seam sm:grid-cols-3">

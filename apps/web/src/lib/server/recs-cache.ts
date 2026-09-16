@@ -5,6 +5,37 @@ import { loadCommanderPage, type CommanderPage } from "./commander-page";
 import { getSwapSuggestions, loadSwapPool, NotFoundError, rankSwaps, SHARED_SWAP_POOL, type SwapPool } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
 
+export interface HeroArt {
+  art: string;
+  artist: string;
+  name: string;
+  slug: string;
+}
+
+/**
+ * Art for the landing hero. The landing page otherwise has no database dependency and so cannot fail,
+ * which is worth keeping: any error here returns null and the page renders without a backdrop rather
+ * than erroring. Null also covers a build with no catalog, which is how CI runs.
+ */
+export async function getHeroArt(slug: string): Promise<HeroArt | null> {
+  "use cache";
+  cacheLife("days");
+  cacheTag("catalog", `hero:${slug}`);
+  try {
+    const { data, error } = await createPublicClient()
+      .from("cards")
+      .select("name, slug, images, artist")
+      .eq("slug", slug)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (error || !data?.artist) return null;
+    const art = (data.images as { front?: { artCrop?: string } } | null)?.front?.artCrop;
+    return art ? { art, artist: data.artist, name: data.name, slug: data.slug } : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The deck-independent part of a swap (candidates, card data, tags, play rates), cached per target card, commander(s)
  * and Game Changer setting. It changes only when the catalog, tags or corpus are rebuilt (tag "recs").
