@@ -34,6 +34,8 @@ export interface CardPageData {
   playedWith: CardPageCommander[];
   /** The card's own commander page, when it leads decks in the corpus. */
   commanderSlug: string | null;
+  /** Artist of the printing the images come from, for crediting art shown as a backdrop. */
+  artist: string | null;
 }
 
 function toFaces(value: unknown): CardFace[] | null {
@@ -133,5 +135,6 @@ export async function loadCardPage(db: PublicClient, slug: string): Promise<Card
       : { mode: "collection_less", target: summary, confidence: "none", suggestions: [], emptyReason: "NO_CANDIDATES" },
     playedWith,
     commanderSlug: (keyStats.data?.deck_count ?? 0) > 0 ? slug : null,
+    artist: row.artist,
   };
 }

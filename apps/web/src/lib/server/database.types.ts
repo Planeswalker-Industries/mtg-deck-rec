@@ -222,6 +222,7 @@ export type Database = {
       }
       cards: {
         Row: {
+          artist: string | null
           can_be_commander: boolean
           card_faces: Json | null
           color_identity: number
@@ -255,6 +256,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          artist?: string | null
           can_be_commander: boolean
           card_faces?: Json | null
           color_identity: number
@@ -288,6 +290,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          artist?: string | null
           can_be_commander?: boolean
           card_faces?: Json | null
           color_identity?: number
@@ -1478,3 +1481,4 @@ export const Constants = {
     },
   },
 } as const
+

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { ArtBackdrop } from "@/components/cards/art-backdrop";
 import { FlippableCardImage } from "@/components/cards/flippable-card-image";
 import { PocketGrid, type PocketItem } from "@/components/cards/pocket-grid";
 import { GameChangerBadge } from "@/components/deck/card-label";
@@ -45,7 +46,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
   const page = await getCardPage(slug);
   if (!page) notFound();
 
-  const { card, alternatives, playedWith, commanderSlug } = page;
+  const { card, alternatives, playedWith, commanderSlug, artist } = page;
   const name = displayName(card);
   const faces = card.faces ?? [{ name: card.name, manaCost: "", typeLine: card.typeLine, oracleText: card.oracleText ?? "" }];
   const priceAsOf = card.price?.asOf ?? alternatives.suggestions.find((s) => s.costDelta.asOf)?.costDelta.asOf ?? null;
@@ -71,6 +72,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
 
   return (
     <article className="flex flex-col gap-8">
+      <ArtBackdrop art={card.images?.front.artCrop} artist={artist} cardName={name} cardSlug={card.slug}>
       <div className="grid gap-6 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
         <figure className="mx-auto w-full max-w-72 sm:mx-0">
           <FlippableCardImage card={card} variant="large" sizes="(min-width: 640px) 288px, 80vw" eager />
@@ -130,6 +132,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
           </div>
         </div>
       </div>
+      </ArtBackdrop>
 
       <section aria-labelledby="alternatives-heading" className="flex flex-col gap-2">
         <h2 id="alternatives-heading" className="font-heading text-2xl font-extrabold tracking-tight">
