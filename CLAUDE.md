@@ -28,7 +28,7 @@ supabase migration up                            # apply new migrations to the r
 supabase gen types typescript --local            # regenerate apps/web/src/lib/server/database.types.ts after schema changes (write UTF-8 without BOM, LF line endings; PowerShell's Out-String adds CRLF)
 yarn workspace @mtg/worker cli sync:tags         # Oracle Tags → tags, tag_edges, tag_closure, card_tags (run after sync:catalog)
 yarn workspace @mtg/worker cli profile:tags      # tag data profile → X:\mtg_proj\reports
-yarn workspace @mtg/web e2e                      # Playwright (apps/web/e2e) on a production build at :3300; E2E_BASE_URL=http://localhost:3100 to reuse a running server (installed Chrome), E2E_LOCAL_DATA=1 when it has the real catalog and corpus
+yarn workspace @mtg/web e2e                      # Playwright (apps/web/e2e) on a production build at :3300 (runs `next start`, so `build` first or it tests a stale bundle); E2E_BASE_URL=http://localhost:3100 to reuse a running server (installed Chrome), E2E_LOCAL_DATA=1 when it has the real catalog and corpus
 yarn workspace @mtg/web regress                  # recommendation regression fixtures (JSON in X:\mtg_proj\regression, local DB) → pass/FAIL per check
 yarn workspace @mtg/worker cli aggregate:corpus          # slim decks JSONL (default X:\mtg_proj\archidekt\spike\decks.jsonl) → commander_keys, commander_stats, card_global_stats, commander_card_stats (--force to rebuild unchanged file)
 yarn workspace @mtg/worker cli:hosted <command>          # any worker command against the hosted database: loads apps/worker/.env.hosted (copy .env.example); plain `cli` always means local
@@ -185,6 +185,10 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
     - A hover-opened layer is `pointer-events-none`, or covering the card would fire `pointerleave` and close it again at once. A click- or tap-opened one is solid, closes on the click (never on pointerdown, whose click would then go to whatever was below), and swallows arrow keys so the swipe view can't vote while it's up.
     - Swipes don't open it: `SwipeCard` suppresses the click a drag ends with, and a card ignores a click within 400 ms of a dismissal.
   - The jobs both cards do show as pills (`TagPills`): the target's wording flanks its image left and right, the replacement's sits under its name.
+- **Site search** (`components/search/site-search.tsx`): a header combobox over `GET /api/cards/search`, debounced 180 ms, stale responses dropped by a request counter.
+  - The header is full at 390px, so phones get a button that opens a full-screen layer and `sm` up gets the input inline.
+  - Results show the **full** card name, not `displayName`: a card can match on its back face ("Emeritus of Truce // Swords to Plowshares" prefix-matches "swords"), and the front face alone hides why it matched.
+  - Every result goes to `/card/[slug]`, which links on to the commander page when the card has one, so a card without a `commander_keys` row can't send anyone to a 404.
 - **Card rater** (`/rate`, swipe rater slice 4; `components/rater/`):
   - The player picks a commander by name (`CommanderPicker` → `GET /api/cards/search` → SQL `search_cards`: prefix, then contains, then trigram typos, more-played commanders first; rate limit bucket `search`), or arrives from a commander page at `/rate?commander=<slug>`.
   - `dealRaterCardsAction` deals what the commander's decks play (`rec_add_candidates`, borrowing partner decks like the deck tool), or cards widely played in its colors when it has no decks. Lands are left out. Rounds of 10 cards.
