@@ -1,7 +1,7 @@
-import type { CommanderPageData, RecContext, SwapResult } from "@mtg/core/contract";
+import type { RecContext, SwapResult } from "@mtg/core/contract";
 import { cacheLife, cacheTag } from "next/cache";
 import { loadCardPage, type CardPageData } from "./card-page";
-import { loadCommanderPage } from "./commander-page";
+import { loadCommanderPage, type CommanderPage } from "./commander-page";
 import { getSwapSuggestions, loadSwapPool, NotFoundError, rankSwaps, SHARED_SWAP_POOL, type SwapPool } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
 
@@ -44,7 +44,7 @@ export async function getSitemapSlugs(): Promise<{ cards: string[]; commanders: 
 }
 
 /** Public commander page data. It only changes when the deck corpus is rebuilt (tag "corpus"). */
-export async function getCommanderPage(slug: string): Promise<CommanderPageData | null> {
+export async function getCommanderPage(slug: string): Promise<CommanderPage | null> {
   "use cache";
   cacheLife("days");
   cacheTag("corpus", `commander:${slug}`);

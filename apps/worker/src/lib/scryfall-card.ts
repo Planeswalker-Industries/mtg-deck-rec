@@ -49,6 +49,7 @@ export interface ScryfallCard {
   scryfall_uri: string;
   game_changer?: boolean;
   flavor_name?: string;
+  artist?: string;
 }
 
 // A type alias, not an interface: postgres.js only accepts JSON-compatible values, and interfaces
@@ -83,6 +84,8 @@ export interface CardRow {
   is_digital_only: boolean;
   released_at: string | null;
   images: { front: CardImageSet; back: CardImageSet | null } | null;
+  /** Artist of the representative printing, so an art crop can carry its credit. */
+  artist: string | null;
   scryfall_uri: string;
   reference_price_usd: string | null;
   reference_price_finish: 'nonfoil' | 'foil' | 'etched' | null;
@@ -119,6 +122,7 @@ export const CARD_COLUMNS = [
   'is_digital_only',
   'released_at',
   'images',
+  'artist',
   'scryfall_uri',
   'reference_price_usd',
   'reference_price_finish',
@@ -286,7 +290,20 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
   // Prices are excluded so a price-only change doesn't count as a card change.
   const contentHash = createHash('sha1')
     .update(
-      JSON.stringify([card.name, card.layout, card.cmc, typeLine, text, slimFaces, colorIdentity, legalities, gameChanger, images, card.released_at]),
+      JSON.stringify([
+        card.name,
+        card.layout,
+        card.cmc,
+        typeLine,
+        text,
+        slimFaces,
+        colorIdentity,
+        legalities,
+        gameChanger,
+        images,
+        card.released_at,
+        card.artist ?? null,
+      ]),
     )
     .digest();
 
@@ -312,6 +329,7 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
     is_digital_only: !(card.games ?? []).includes('paper'),
     released_at: card.released_at ?? null,
     images,
+    artist: card.artist ?? null,
     scryfall_uri: card.scryfall_uri,
     reference_price_usd: priced ? priced[1] : null,
     reference_price_finish: priced ? priced[0] : null,

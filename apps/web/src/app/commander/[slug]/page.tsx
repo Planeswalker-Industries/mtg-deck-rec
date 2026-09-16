@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { cn } from "cn";
+import { ArtBackdrop } from "@/components/cards/art-backdrop";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { buttonVariants } from "@/components/ui/button";
 import { GameChangerBadge } from "@/components/deck/card-label";
@@ -40,13 +41,20 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
   const page = await getCommanderPage(slug);
   if (!page) notFound();
 
-  const { key, top, roleProfile, computedAt } = page;
+  const { key, top, roleProfile, computedAt, artists } = page;
   const names = key.commanders.map(displayName).join(" and ");
   const identity = [...WUBRG].filter((color) => key.commanders.some((c) => c.colorIdentity.includes(color))).join("");
-  const art = key.commanders[0]?.images?.front.artCrop;
+  const lead = key.commanders[0];
+  const art = lead?.images?.front.artCrop;
 
   return (
     <article className="flex flex-col gap-8">
+      <ArtBackdrop
+        art={art}
+        artist={lead ? artists[lead.id] : null}
+        cardName={lead ? displayName(lead) : ""}
+        cardSlug={lead?.slug ?? ""}
+      >
       <header className="flex flex-col gap-4">
         <div className="flex items-center gap-4">
           {art && (
@@ -84,6 +92,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
           </Link>
         </div>
       </header>
+      </ArtBackdrop>
 
       {roleProfile.length > 0 && (
         <section aria-labelledby="roles-heading" className="flex flex-col gap-3">
