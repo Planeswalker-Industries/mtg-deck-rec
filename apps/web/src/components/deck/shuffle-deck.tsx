@@ -7,14 +7,24 @@ import { CardBack } from "./card-back";
 const CARDS = 5;
 
 /**
- * A small stack of sleeved cards shuffling while the database is working: alternate cards split left and right and
- * settle back. It shows only as long as the work takes; with reduced motion it's a still, fanned stack.
+ * A small stack of cards shuffling while the database is working: alternate cards split left and right and settle
+ * back. It sits in the middle of a dimmed screen, so the thinking phase is the only thing on show and nothing
+ * underneath can be tapped or swiped by accident. It lasts only as long as the work takes; with reduced motion it's a
+ * still, fanned stack.
  */
 export function ShuffleDeck({ label, id, className }: { label: string; id?: string; className?: string }) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <div id={id} role="status" aria-label={label} className={cn("flex flex-col items-center gap-4 py-10", className)}>
+    <div
+      id={id}
+      role="status"
+      aria-label={label}
+      className={cn(
+        "fixed inset-0 z-[60] flex touch-none flex-col items-center justify-center gap-4 overscroll-contain bg-background/80 backdrop-blur-sm",
+        className,
+      )}
+    >
       <div className="relative w-28">
         {Array.from({ length: CARDS }, (_, i) => {
           const side = i % 2 === 0 ? -1 : 1;
@@ -43,7 +53,7 @@ export function ShuffleDeck({ label, id, className }: { label: string; id?: stri
           );
         })}
       </div>
-      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-sm font-bold text-muted-foreground">{label}</p>
     </div>
   );
 }
