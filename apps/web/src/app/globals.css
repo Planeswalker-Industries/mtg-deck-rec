@@ -100,9 +100,17 @@
   html {
     @apply font-sans;
     color-scheme: dark;
+    /* Both html and body: 100vw counts the scrollbar, so a full-bleed section overflows by its width
+       unless the root clips too. clip, not hidden — hidden makes a scroll container and breaks the
+       deck tool's sticky bar. overflow-y stays visible. */
+    overflow-x: clip;
   }
   body {
     @apply bg-background text-foreground antialiased;
+    /* Lets a full-bleed section use 50vw margins without adding a horizontal scrollbar. Must be
+       clip, not hidden: hidden would make body a scroll container and break sticky children
+       like the deck tool's bar. overflow-y stays visible. */
+    overflow-x: clip;
   }
 }
 
