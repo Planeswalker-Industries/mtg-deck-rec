@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible_Next, Sofia_Sans_Condensed } from "next/font/google";
+import { Atkinson_Hyperlegible_Next, Fraunces } from "next/font/google";
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
@@ -17,11 +17,11 @@ const body = Atkinson_Hyperlegible_Next({
   fallback: ["ui-sans-serif", "system-ui", "sans-serif"],
 });
 
-// Condensed display face for headings and long card names.
-const display = Sofia_Sans_Condensed({
+// Headings are set in a serif with some grain to it: the page is a table, not a dashboard.
+const display = Fraunces({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["600", "800"],
+  axes: ["SOFT", "WONK", "opsz"],
   display: "swap",
 });
 
@@ -33,12 +33,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#e9eef3",
+  themeColor: "#10131a",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${body.variable} ${display.variable} h-full`}>
+    <html lang="en" className={`dark ${body.variable} ${display.variable} h-full`}>
       <body className="flex min-h-full flex-col">
         <SiteHeader />
         <AdSlot slot="leaderboard" />

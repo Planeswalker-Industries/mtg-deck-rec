@@ -2,8 +2,9 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { AccountLink, SignInIcon } from "@/components/auth/account-link";
 
+// Quiet until you reach for them: gold is the lamp, and it belongs on the one action that matters.
 const NAV_LINK =
-  "whitespace-nowrap rounded-md px-1.5 py-2 text-sm font-bold text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary sm:px-3";
+  "whitespace-nowrap rounded-md px-1.5 py-2 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:px-3";
 
 export function SiteHeader() {
   return (
@@ -11,9 +12,10 @@ export function SiteHeader() {
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3 px-4">
         <Link
           href="/"
-          className="whitespace-nowrap font-heading text-xl leading-none font-extrabold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary sm:text-2xl"
+          className="group flex items-center gap-2 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
         >
-          MTG Deck Rec
+          <span aria-hidden className="size-2.5 rounded-full bg-primary shadow-[0_0_12px_color-mix(in_oklch,var(--primary)_60%,transparent)]" />
+          <span className="font-heading text-xl leading-none font-semibold tracking-tight sm:text-2xl">MTG Deck Rec</span>
         </Link>
         <nav aria-label="Main" className="flex items-center gap-0.5 sm:gap-1">
           <Link href="/collection" className={NAV_LINK}>
