@@ -32,7 +32,7 @@ const FAN: FanCard[] = [
   { card: sampleCard("Counterspell"), rotate: 11, x: "33%", y: "3%", scale: 0.93 },
   { card: sampleCard("Birds of Paradise"), rotate: 22, x: "64%", y: "10%", scale: 0.86, wide: true },
 ];
-const FAN_SIZES = "(min-width: 1024px) 224px, (min-width: 768px) 200px, 42vw";
+const FAN_SIZES = "(min-width: 768px) 176px, 42vw";
 
 /**
  * Lands, in preference order: their art is painted as scenery, which is what a wide banner needs.
@@ -44,7 +44,7 @@ const HERO_SLUGS = ["cavern-of-souls", "path-of-ancestry", "boseiju-who-endures"
 const jobs = [
   { name: "Cut", summary: "Weak links", Icon: Scissors, tone: "text-cut", ring: "border-cut/50 bg-cut/15" },
   { name: "Add", summary: "Missing pieces", Icon: Plus, tone: "text-add", ring: "border-add/50 bg-add/15" },
-  { name: "Replace", summary: "Another way to do the job", Icon: Repeat2, tone: "text-replace", ring: "border-replace/50 bg-replace/15" },
+  { name: "Replace", summary: "Same job", Icon: Repeat2, tone: "text-replace", ring: "border-replace/50 bg-replace/15" },
 ];
 
 async function HeroArtLayer() {
@@ -83,17 +83,17 @@ export default function Home() {
        * needs `overflow-x: clip` on html and body (globals.css) so 100vw can't add a horizontal scrollbar.
        * The section is `relative` and the inner container is not, so the art layer sizes against the bleed.
        */}
-      <section className="relative mx-[calc(50%-50vw)] w-[100vw] overflow-x-clip md:min-h-[36rem] lg:min-h-[40rem]">
+      <section className="relative isolate mx-[calc(50%-50vw)] w-[100vw] overflow-hidden md:min-h-[21rem] lg:min-h-[23rem]">
         {/* Null while it loads and null if it fails, so the landing page never waits on the database. */}
         <Suspense fallback={null}>
           <HeroArtLayer />
         </Suspense>
 
-        <div className="mx-auto flex w-full max-w-6xl flex-col justify-center px-4 pt-8 pb-6 md:min-h-[36rem] md:pt-14 md:pb-36 lg:min-h-[40rem]">
+        <div className="mx-auto w-full max-w-6xl px-4 pt-8 pb-6 md:pt-12 md:pb-8">
           <div className="grid gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-center md:gap-8">
             {/* Cards come first on a phone: they say what this is faster than any sentence. */}
-            <div aria-hidden className="order-first md:order-last md:translate-y-14 lg:translate-y-24">
-              <div className="relative mx-auto h-[15.5rem] w-[10.5rem] sm:h-[18rem] sm:w-[10rem] md:h-[21rem] md:w-[13rem] lg:h-[24rem] lg:w-[15rem]">
+            <div aria-hidden className="order-first md:order-last md:origin-top md:scale-[1.28]">
+              <div className="relative mx-auto h-[14rem] w-[9.5rem] sm:h-[16rem] sm:w-[9rem] md:h-[14rem] md:w-[10rem] lg:h-[15rem] lg:w-[10.75rem]">
                 {FAN.map((pocket, i) => (
                   <div
                     key={pocket.card.name}
@@ -116,7 +116,7 @@ export default function Home() {
             </div>
 
             <div className="max-w-3xl">
-              <h1 className="font-heading text-[2.15rem] leading-[1.08] font-semibold tracking-[-0.015em] sm:text-[2.5rem] lg:text-[2.85rem]">
+              <h1 className="font-heading text-[2rem] leading-[1.08] font-semibold tracking-[-0.015em] sm:text-[2.25rem] lg:text-[2.5rem]">
                 Tune your Commander deck.
                 <span className="block text-primary/85">Using the cards you actually own.</span>
               </h1>
@@ -143,35 +143,43 @@ export default function Home() {
         </div>
 
         {/*
-         * The three jobs sit at the foot of the banner, in front of the cards and justified to its end.
-         * The gradient is what makes them readable: the art behind them is arbitrary and often bright.
+         * Layer 1 of 2 over the content: a shadow that darkens the foot of the banner so the jobs stay
+         * readable over whatever art is behind them. Its own layer, not the jobs' background, so it
+         * washes over the cards and the lower headline too.
          */}
-        <div className="relative z-20 mt-6 md:absolute md:inset-x-0 md:bottom-10 md:mt-0">
-          <div className="bg-gradient-to-t from-black/85 via-black/55 to-transparent pt-16 pb-6">
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 md:flex-row md:items-end">
-              <Suspense fallback={null}>
-                <HeroCredit />
-              </Suspense>
-              <ul
-                aria-label="What the deck tool shows you"
-                className="grid grid-cols-3 gap-3 sm:flex sm:flex-wrap sm:justify-end sm:gap-x-9 sm:gap-y-4 md:ml-auto"
-              >
-                {jobs.map(({ name, summary, Icon, tone, ring }) => (
-                  <li key={name} className="flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-3 sm:text-left">
-                    <span className={`flex size-11 shrink-0 items-center justify-center rounded-full border ${ring} ${tone}`}>
-                      <Icon aria-hidden className="size-5" strokeWidth={2.5} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block font-heading text-lg leading-none font-semibold">{name}</span>
-                      <span className="mt-1 block text-sm text-muted-foreground">{summary}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-48 bg-gradient-to-t from-black via-black/70 to-transparent md:h-3/5"
+        />
+
+        {/* Layer 2: the three jobs, in front of the cards and justified to the end of the frame. */}
+        <div className="relative z-20 mt-6 pb-6 md:absolute md:inset-x-0 md:bottom-0 md:mt-0 md:pb-5">
+          <div className="mx-auto flex w-full max-w-6xl px-4">
+            <ul
+              aria-label="What the deck tool shows you"
+              className="grid grid-cols-3 gap-3 sm:flex sm:flex-wrap sm:justify-end sm:gap-x-6 sm:gap-y-4 md:ml-auto md:max-w-[28.5rem]"
+            >
+              {jobs.map(({ name, summary, Icon, tone, ring }) => (
+                <li key={name} className="flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-3 sm:text-left">
+                  <span className={`flex size-11 shrink-0 items-center justify-center rounded-full border ${ring} ${tone}`}>
+                    <Icon aria-hidden className="size-5" strokeWidth={2.5} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block font-heading text-lg leading-none font-semibold">{name}</span>
+                    <span className="mt-1 block text-sm text-muted-foreground">{summary}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
+
+      <div className="-mt-6 px-4 md:-mt-10">
+        <Suspense fallback={null}>
+          <HeroCredit />
+        </Suspense>
+      </div>
 
       <section className="rounded-xl border border-seam bg-sleeve/60 p-5 sm:p-7">
         <h2 className="font-heading text-2xl leading-tight font-semibold">Ranked from decks people actually built.</h2>
