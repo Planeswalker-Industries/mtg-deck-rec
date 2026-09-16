@@ -115,7 +115,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="max-w-3xl">
+            <div className="relative z-20 max-w-3xl">
               <h1 className="font-heading text-[2rem] leading-[1.08] font-semibold tracking-[-0.015em] sm:text-[2.25rem] lg:text-[2.5rem]">
                 Tune your Commander deck.
                 <span className="block text-primary/85">Using the cards you actually own.</span>
