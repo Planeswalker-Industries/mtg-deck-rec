@@ -101,7 +101,13 @@ export interface SavedDeckSummary {
   id: DeckId;
   name: string;
   commanderKey: CommanderKeyRef;
+  /**
+   * New decks are public. This controls the shared page only: a private deck is hidden from others but its card
+   * choices still count toward play rates, and the control that sets it has to say so.
+   */
   isPublic: boolean;
   cardCount: number;
+  /** The stored bracket, estimated or overridden, when one is known. */
+  bracket?: Bracket;
   updatedAt: IsoDateTime;
 }
