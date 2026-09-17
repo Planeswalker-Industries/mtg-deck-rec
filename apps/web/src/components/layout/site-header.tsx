@@ -21,7 +21,10 @@ export function SiteHeader() {
         <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
           <SiteSearch />
           <nav aria-label="Main" className="flex items-center gap-0.5 sm:gap-1">
-            <Link href="/collection" className={NAV_LINK}>
+            <Link href="/decks" className={NAV_LINK}>
+            Decks
+          </Link>
+          <Link href="/collection" className={NAV_LINK}>
               <span className="sm:hidden">Collection</span>
               <span className="hidden sm:inline">My collection</span>
             </Link>

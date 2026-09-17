@@ -15,6 +15,7 @@ import { DeckListPanel } from "./deck-list-panel";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
+import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
 import { SwapSheet } from "./swap-sheet";
 import { SwipeRater, SwipeSummary } from "./swipe-rater";
@@ -170,7 +171,8 @@ export function DeckTool() {
           {!analysis && view === "swipe" && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
         </section>
       ) : (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {analysis && <SaveDeckButton analysis={analysis} />}
           <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
             Edit decklist
           </Button>
