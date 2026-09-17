@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { DeckAnalysis, DeckId } from "@mtg/core/contract";
+import type { Bracket, DeckAnalysis, DeckId } from "@mtg/core/contract";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,25 +12,25 @@ import { displayName } from "@/lib/cards";
 /**
  * Saves the analysed deck to the signed-in user's account. Saving is deliberately explicit: a new deck is public,
  * so a throwaway paste must never become a page on its own.
+ *
+ * Once it has been saved the tool goes on editing that deck, so this hands the deck over through `onSaved` and has
+ * nothing more to say.
  */
-export function SaveDeckButton({ analysis }: { analysis: DeckAnalysis }) {
+export function SaveDeckButton({
+  analysis,
+  bracket,
+  onSaved,
+}: {
+  analysis: DeckAnalysis;
+  /** The bracket on screen, stored with the deck so reopening it comes back the same. */
+  bracket: Bracket | null;
+  onSaved: (deck: { deckId: DeckId; code: string; name: string }) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(() => suggestedName(analysis));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedId, setSavedId] = useState<DeckId | null>(null);
   const [needsAccount, setNeedsAccount] = useState(false);
-
-  if (savedId) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Saved.{" "}
-        <Link href="/decks" className="font-medium text-primary underline underline-offset-2">
-          Your decks
-        </Link>
-      </p>
-    );
-  }
 
   if (needsAccount) {
     return (
@@ -61,10 +61,15 @@ export function SaveDeckButton({ analysis }: { analysis: DeckAnalysis }) {
         setBusy(true);
         setError(null);
         void getApis()
-          .actions.saveDeck({ name: trimmed, deck: analysis.deck, isPublic: true })
+          .actions.saveDeck({
+            name: trimmed,
+            deck: analysis.deck,
+            isPublic: true,
+            ...(bracket === null ? {} : { bracket }),
+          })
           .then((result) => {
             setBusy(false);
-            if (result.ok) setSavedId(result.data.deckId);
+            if (result.ok) onSaved({ ...result.data, name: trimmed });
             else if (result.error.code === "UNAUTHENTICATED") setNeedsAccount(true);
             else setError(result.error.message);
           });

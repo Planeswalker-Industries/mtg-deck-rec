@@ -27,5 +27,10 @@
  * v8 (2026-09-17): the deck workspace groups a deck by card type, keyword and tag. CardSummary.keywords carries
  * Scryfall's rules keywords, and CatalogApi.cardTags returns functional tags per card. Keywords ride on the card
  * because the tool already holds one for every card; tags are fetched separately because most views never need them.
+ *
+ * v9 (2026-09-17): reopening a saved deck. ActionsApi.openSavedDeck returns SavedDeckContents (the deck as decklist
+ * text), and saveDeck takes an optional bracket, so a deck comes back with the bracket it was saved at. saveDeck also
+ * returns the deck's code beside its id, so the deck just saved can be linked to and gone on editing; it already
+ * accepted a deckId, which is what makes the tool's auto-save an update rather than a new deck.
  */
-export const CONTRACT_VERSION = 8;
+export const CONTRACT_VERSION = 9;

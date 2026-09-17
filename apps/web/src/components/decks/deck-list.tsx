@@ -88,6 +88,13 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    <Link
+                      href={`/deck?deck=${deck.code}` as Route}
+                      aria-label={`Open ${deck.name} in the deck tool`}
+                      className="rounded-md px-2 py-1.5 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    >
+                      Open
+                    </Link>
                     <RowButton label={`Rename ${deck.name}`} onClick={() => setRenaming(deck.id)}>
                       <Pencil aria-hidden className="size-4" />
                     </RowButton>

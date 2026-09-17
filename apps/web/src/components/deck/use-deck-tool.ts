@@ -8,12 +8,14 @@ import type {
   CardSummary,
   CutResult,
   DeckAnalysis,
+  DeckId,
   ImportDeckUrlResult,
   OwnershipInput,
   ParseDeckResult,
   RecContext,
   ResolvedLine,
   Result,
+  SavedDeckContents,
   SwapResult,
 } from "@mtg/core/contract";
 import { mockDecklistText } from "@mtg/core/mocks";
@@ -53,6 +55,21 @@ export interface ImportedFrom {
 export interface SubmitOutcome {
   parsed: boolean;
   analysis: DeckAnalysis | null;
+}
+
+/**
+ * The account deck the tool is editing, if any, and how its last write went.
+ *
+ * "dirty" is the window between a change and the write that follows it; the deck on the server is a version behind
+ * until it clears, which is what the status line in the header is telling the player.
+ */
+export interface OpenDeck {
+  deckId: DeckId;
+  code: string;
+  name: string;
+  status: "saved" | "saving" | "dirty" | "error";
+  /** Why the last write failed, so the player is told rather than losing work silently. */
+  message?: string;
 }
 
 /** Steps of reloading recommendations after new play-rate data arrives. */
@@ -115,6 +132,13 @@ export function useDeckTool(source: CollectionSource) {
   const [cut, setCut] = useState<Async<CutResult>>({ status: "idle" });
   const [swap, setSwap] = useState<SwapState | null>(null);
   const [importedFrom, setImportedFrom] = useState<ImportedFrom | null>(null);
+  const [openDeck, setOpenDeck] = useState<OpenDeck | null>(null);
+  /*
+   * The open deck is read inside submit(), which the caller may run before a setState from the same handler has been
+   * applied, so the ref is what the writes go by and the state is what the screen shows.
+   */
+  const openDeckRef = useRef<OpenDeck | null>(null);
+  const saveRequest = useRef(0);
   const recsRequest = useRef(0);
   const swapRequest = useRef(0);
 
@@ -154,6 +178,52 @@ export function useDeckTool(source: CollectionSource) {
     setCut(toAsync(cutResult));
   }
 
+  function trackOpenDeck(next: OpenDeck | null) {
+    openDeckRef.current = next;
+    setOpenDeck(next);
+  }
+
+  /**
+   * Writes the deck back to the account deck it was opened from.
+   *
+   * Only the cards and the bracket go: visibility is the deck page's to set, and save_deck deliberately leaves it
+   * alone, so auto-saving can never republish a deck its owner has hidden. A stale write is dropped by the counter,
+   * so the last edit wins rather than whichever request happens to land last.
+   */
+  async function persist(analysis: DeckAnalysis, bracket: Bracket | null) {
+    const deck = openDeckRef.current;
+    if (!deck) return;
+    const id = ++saveRequest.current;
+    trackOpenDeck({ ...deck, status: "saving" });
+    const r = await getApis().actions.saveDeck({
+      deckId: deck.deckId,
+      name: deck.name,
+      deck: analysis.deck,
+      isPublic: true,
+      ...(bracket === null ? {} : { bracket }),
+    });
+    if (id !== saveRequest.current) return;
+    const current = openDeckRef.current;
+    if (!current || current.deckId !== deck.deckId) return;
+    trackOpenDeck(r.ok ? { ...current, status: "saved" } : { ...current, status: "error", message: r.error.message });
+  }
+
+  /**
+   * Opens one of the signed-in player's saved decks and analyzes it, so editing carries on where they left off.
+   * Every later change is written back to the same deck.
+   */
+  async function openSavedDeck(code: string): Promise<Result<SubmitOutcome>> {
+    const r = await getApis().actions.openSavedDeck({ code });
+    if (!r.ok) return r;
+    const { deckId, name, bracket, text: deckText } = r.data;
+    trackOpenDeck({ deckId, code: r.data.code, name, status: "saved" });
+    setText(deckText);
+    return {
+      ok: true,
+      data: await submit({ text: deckText, bracketOverride: bracket ?? null, gameChangerOverride: null, importedFrom: null }),
+    };
+  }
+
   /**
    * Parses (or imports) the decklist and loads recommendations, then remembers the deck in this browser. `restore`
    * replays a deck saved on an earlier visit, with its bracket and Game Changer choices.
@@ -189,6 +259,8 @@ export function useDeckTool(source: CollectionSource) {
     saveDeck({ text: finalText, bracketOverride: bracket, gameChangerOverride: includeGameChangers, importedFrom: source });
     if (r.data.analysis) {
       void loadRecs(buildContext(r.data.analysis, bracket, includeGameChangers, ownership), null);
+      // Every path that changes the deck goes through here, so this is the one place auto-save has to hang off.
+      if (openDeckRef.current) void persist(r.data.analysis, bracket);
     } else {
       setAdd({ status: "idle" });
       setCut({ status: "idle" });
@@ -257,6 +329,9 @@ export function useDeckTool(source: CollectionSource) {
   /** Forgets the deck here and in this browser's storage. */
   function clearDeck() {
     clearSavedDeck();
+    // Let go of the account deck rather than emptying it: Clear means "not working on this now", not "delete it".
+    trackOpenDeck(null);
+    saveRequest.current++;
     recsRequest.current++;
     swapRequest.current++;
     setText("");
@@ -274,7 +349,10 @@ export function useDeckTool(source: CollectionSource) {
   function changeBracket(bracket: Bracket) {
     setBracketOverride(bracket);
     updateSavedDeck({ bracketOverride: bracket });
-    if (analysis) void loadRecs(buildContext(analysis, bracket, gameChangerOverride, ownership), swap?.targetCardId ?? null);
+    if (!analysis) return;
+    void loadRecs(buildContext(analysis, bracket, gameChangerOverride, ownership), swap?.targetCardId ?? null);
+    // The bracket is stored on the deck, so it is a change to write back; the cards are unchanged.
+    if (openDeckRef.current) void persist(analysis, bracket);
   }
 
   function changeIncludeGameChangers(include: boolean) {
@@ -299,11 +377,26 @@ export function useDeckTool(source: CollectionSource) {
     setSwap(null);
   }
 
+  /** Stops editing the account deck but keeps the decklist on screen: Clear is what empties the tool. */
+  function closeSavedDeck() {
+    saveRequest.current++;
+    trackOpenDeck(null);
+  }
+
+  /** Remembers the deck a fresh save created, so later edits update it instead of making another one. */
+  function trackSavedDeck(saved: Pick<SavedDeckContents, "deckId" | "code" | "name">) {
+    trackOpenDeck({ ...saved, status: "saved" });
+  }
+
   return {
     text,
     setText,
     loadSample: () => setText(sampleDecklist),
     submit,
+    openSavedDeck,
+    openDeck,
+    closeSavedDeck,
+    trackSavedDeck,
     restoreLastDeck,
     refreshRecommendations,
     applySwaps,

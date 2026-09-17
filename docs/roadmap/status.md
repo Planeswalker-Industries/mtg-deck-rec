@@ -8,9 +8,9 @@ Companion to [`execution-plan.md`](execution-plan.md) (the phased roadmap) and [
 |---|---|
 | 0 — Spike | Passed (go). **Open: the blind swap-quality eval** (2 raters, 50 cases × 5 commanders, precision@5 + MRR). `/rate` is built and waiting; the gate needs two humans, not more code. |
 | 1 — Data foundation + public pages | Catalog, printings and tag syncs; corpus aggregation; card and commander pages; header search; sitemap, robots, real 404s. Not done: always-on Archidekt crawler with a queue table, precon import, admin pages (tag kill switch, sync status). |
-| 2 — Deck tool | Paste or Archidekt link, cuts, adds, swaps, bracket and Game Changer controls, commander deck lookups, rate limits, input schemas, CI with e2e. Not measured: k6 load targets, parser fixture count. |
+| 2 — Deck tool | Paste or Archidekt link, cuts, adds, swaps, bracket and Game Changer controls, commander deck lookups, rate limits, input schemas, CI with e2e. The workspace layout landed: Cut/Add/Replace as a drill-down on a phone and a rail on a wide screen, a section nav over the deck's own groups, and each job's top suggestion in the rail. Not measured: k6 load targets, parser fixture count. |
 | 3 — Accounts and collections | Email-code and link sign-in (Google wired, off until credentials exist); pasted collection imports in the browser or on the account; browser collection moves to the account after sign-in; owned-only suggestions. Not done: collection imports from share links, CSV file import in a Web Worker, pgTAP tests, the 10k-row timing check. |
-| 4 — Votes, saved decks, export | Partly built, ahead of the plan's order. Saved decks have schema, write functions, contract v7, `/decks` list and `/decks/[commander]/[code]`. Votes are recorded with full context but **nothing reads them for scoring**. Not started: export, favorites, reopening a saved deck in the tool. |
+| 4 — Votes, saved decks, export | Partly built, ahead of the plan's order. Saved decks have schema, write functions, contract v9, `/decks` list, `/decks/[commander]/[code]`, and reopening in the tool with auto-save. Votes are recorded with full context but **nothing reads them for scoring**. Not started: export, favorites. |
 
 ## Live setup
 
@@ -21,15 +21,11 @@ Companion to [`execution-plan.md`](execution-plan.md) (the phased roadmap) and [
 
 ## Open work
 
-### 1. Reopening a saved deck in the tool (highest priority)
-
-Saved decks are write-once. A deck can be saved, viewed, shared and hidden, but not reopened for editing, so the feature does not yet close its loop. `useDeckTool.submit()` already accepts a seed (`SavedDeck`: text, bracket, Game Changer, import source), so this is mostly regenerating a decklist from `deck_cards` and passing it in.
-
-### 2. The deck lookup collector isn't running anywhere
+### 1. The deck lookup collector isn't running anywhere
 
 The deck tool offers "Pull decks" for commanders without data, but no `serve:commander-requests` worker is running, so requests wait in `commander_requests` and the UI reports the collector offline. It needs the corpus files, so it runs from this PC (`cli:hosted serve:commander-requests`) until there is another plan.
 
-### 3. Swap timeouts on the hosted database — mitigated, watch it
+### 2. Swap timeouts on the hosted database — mitigated, watch it
 
 Was the top item. Two changes shipped:
 
@@ -46,7 +42,7 @@ from public.rec_timeouts t left join public.cards c on c.id = t.target_card_id
 order by t.hits desc limit 20;
 ```
 
-### 4. Smaller items
+### 3. Smaller items
 
 - **`collections.maxEntries` is 100,000**, about 23 MB per account. Six maxed accounts would exhaust the free tier's headroom. It lives in `app_config.collections`, so lowering it is a SQL update with no deploy.
 - **`artist` is not populated on hosted** yet, so no art backdrops render there. The column shipped after the last sync; the next daily run fills it, because `artist` is part of `content_hash`. `cli:hosted sync:catalog --force` does it sooner.
@@ -64,7 +60,7 @@ order by t.hits desc limit 20;
 
 ## Release process, and a trap to avoid
 
-`develop` is the working branch; `main` is merged from `develop` manually and is what Vercel production and the Supabase integration deploy. **`main` is currently 9 commits behind `develop`.**
+`develop` is the working branch; `main` is merged from `develop` manually and is what Vercel production and the Supabase integration deploy. **`main` is currently well behind `develop`** — check with `git log --oneline main..develop` before assuming a preview runs on the schema you just wrote.
 
 Merging a migration to `develop` publishes a preview that still runs against **`main`'s** schema. A migration adding a column to a shared read path therefore breaks the develop preview until `main` catches up — this happened with `cards.artist`.
 

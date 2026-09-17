@@ -262,7 +262,9 @@ const ownedInfo = (owned: Set<number> | null, id: number) => (owned?.has(id) ? {
 /** In-memory implementations of the contract for frontend work (NEXT_PUBLIC_USE_MOCKS=1). */
 export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {}): MockApis {
   const delay = <T>(value: T, ms = latencyMs) => wait(value, ms);
-  const decks = new Map<string, { name: string; deck: DeckInput; isPublic: boolean; updatedAt: string }>();
+  const decks = new Map<string, { name: string; deck: DeckInput; isPublic: boolean; bracket?: Bracket; updatedAt: string }>();
+  /** Mock codes stand in for the database's random ones, and match the shape openSavedDeckInputSchema accepts. */
+  const deckCode = (id: string) => `mockdeck${id.replace(/\D/g, '') || '1'}`;
   const favorites = new Set<string>();
   const votes = new Map<string, -1 | 1>();
   const disabledTags = new Map<string, { reason: string; at: string }>();
@@ -510,10 +512,33 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       return delay(ok(null));
     },
 
-    async saveDeck({ deckId, name, deck, isPublic }) {
+    async saveDeck({ deckId, name, deck, isPublic, bracket }) {
       const id = deckId ?? (`mock-deck-${nextDeckId++}` as DeckId);
-      decks.set(id, { name, deck, isPublic, updatedAt: new Date().toISOString() });
-      return delay(ok({ deckId: id }));
+      decks.set(id, { name, deck, isPublic, ...(bracket === undefined ? {} : { bracket }), updatedAt: new Date().toISOString() });
+      return delay(ok({ deckId: id, code: deckCode(id) }));
+    },
+
+    async openSavedDeck({ code }) {
+      const found = [...decks].find(([id]) => deckCode(id) === code);
+      if (!found) return delay(fail('NOT_FOUND', 'That deck no longer exists.'));
+      const [id, saved] = found;
+      const line = (cardId: number, qty: number) => `${qty} ${getCard(cardId).name}`;
+      return delay(
+        ok({
+          deckId: id as DeckId,
+          code,
+          name: saved.name,
+          ...(saved.bracket === undefined ? {} : { bracket: saved.bracket }),
+          text: [
+            'Commander',
+            ...saved.deck.commanders.map((cardId) => line(cardId, 1)),
+            '',
+            'Deck',
+            ...saved.deck.cards.filter((c) => c.section === 'main').map((c) => line(c.cardId, c.quantity)),
+            '',
+          ].join('\n'),
+        }),
+      );
     },
 
     async renameDeck({ deckId, name }) {
@@ -700,11 +725,12 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     async getMySavedDecks() {
       const list: SavedDeckSummary[] = [...decks].map(([id, d]) => ({
         id: id as DeckId,
-        code: `code${String(id).replace(/\D/g, "") || "1"}`,
+        code: deckCode(id),
         name: d.name,
         commanderKey: commanderKeyRef(d.deck.commanders),
         isPublic: d.isPublic,
         cardCount: d.deck.commanders.length + d.deck.cards.reduce((n, c) => n + c.quantity, 0),
+        ...(d.bracket === undefined ? {} : { bracket: d.bracket }),
         updatedAt: d.updatedAt,
       }));
       return delay(list);
