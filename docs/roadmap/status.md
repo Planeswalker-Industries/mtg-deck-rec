@@ -1,4 +1,4 @@
-# Status and open backend work (2026-09-14)
+# Status and open work (2026-09-17)
 
 Companion to [`execution-plan.md`](execution-plan.md) (the phased roadmap) and [`phase0-report.md`](phase0-report.md). Day-to-day commands and conventions live in the root `CLAUDE.md`.
 
@@ -6,43 +6,66 @@ Companion to [`execution-plan.md`](execution-plan.md) (the phased roadmap) and [
 
 | Phase | State |
 |---|---|
-| 0 — Spike | Passed (go). Open: the blind swap-quality eval (2 raters, 50 cases × 5 commanders, precision@5 + MRR); no rater tool yet. |
-| 1 — Data foundation + public pages | Catalog, printings and tag syncs; corpus aggregation; card and commander pages; sitemap, robots, real 404s. Not done: always-on Archidekt crawler with a queue table, precon import, admin (tag kill switch, sync status), typeahead. |
-| 2 — Deck tool | Paste or Archidekt link, cuts, adds, swaps, bracket and Game Changer controls, commander deck lookups, rate limits, input schemas, CI with e2e. Not measured: load tests, parser fixture count. |
-| 3 — Accounts and collections | Sign-in with an emailed code or link (Google is wired but off until OAuth credentials exist); pasted collection imports kept in the browser or on the account; a browser collection moves to the account right after sign-in; owned-only suggestions from either. Not done: collection imports from share links (needs one sample link per site), CSV file import in a Web Worker, pgTAP tests, the 10k-row timing check. |
-| 4 | Not started (votes, saved decks, export). |
+| 0 — Spike | Passed (go). **Open: the blind swap-quality eval** (2 raters, 50 cases × 5 commanders, precision@5 + MRR). `/rate` is built and waiting; the gate needs two humans, not more code. |
+| 1 — Data foundation + public pages | Catalog, printings and tag syncs; corpus aggregation; card and commander pages; header search; sitemap, robots, real 404s. Not done: always-on Archidekt crawler with a queue table, precon import, admin pages (tag kill switch, sync status). |
+| 2 — Deck tool | Paste or Archidekt link, cuts, adds, swaps, bracket and Game Changer controls, commander deck lookups, rate limits, input schemas, CI with e2e. Not measured: k6 load targets, parser fixture count. |
+| 3 — Accounts and collections | Email-code and link sign-in (Google wired, off until credentials exist); pasted collection imports in the browser or on the account; browser collection moves to the account after sign-in; owned-only suggestions. Not done: collection imports from share links, CSV file import in a Web Worker, pgTAP tests, the 10k-row timing check. |
+| 4 — Votes, saved decks, export | Partly built, ahead of the plan's order. Saved decks have schema, write functions, contract v7, `/decks` list and `/decks/[commander]/[code]`. Votes are recorded with full context but **nothing reads them for scoring**. Not started: export, favorites, reopening a saved deck in the tool. |
 
 ## Live setup
 
-- **Site:** https://mtg-app-psi.vercel.app, Vercel project `mtg-app` (root `apps/web`, functions in `cle1` via `apps/web/vercel.json`).
-- **Database:** Supabase Free, `us-east-2`. Migrations in `supabase/migrations` are applied by Supabase's GitHub integration when `main` changes; `.github/workflows/db-push.yml` is the manual fallback (secret `DATABASE_URL` = session pooler string).
-- **Scryfall data:** `.github/workflows/sync.yml` runs daily (repo variable `SYNC_ENABLED`, secrets `DATABASE_URL`, `WEB_APP_URL`, `REVALIDATE_SECRET`). First load: 34,717 cards, 525,064 printings, 4,533 tags. Each sync refreshes the site's caches.
-- **Vercel env:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL`, `RATE_LIMIT_SALT`, `REVALIDATE_SECRET`, `ENABLE_EXPERIMENTAL_COREPACK=1`.
+- **Site:** https://mtg-app-psi.vercel.app, Vercel project `mtg-app` (root `apps/web`, functions in `cle1`).
+- **Database:** Supabase Free, `us-east-2`, **372 MB of 500 MB**. Migrations in `supabase/migrations` are applied by Supabase's GitHub integration when **`main`** changes; `.github/workflows/db-push.yml` is the manual fallback.
+- **Scryfall data:** `.github/workflows/sync.yml` runs daily (repo variable `SYNC_ENABLED`, currently `true`). Catalog 34,765 cards, 525k printings.
+- **Corpus on hosted:** 129 commanders have stats. Aggregates are rebuilt from this PC with `cli:hosted aggregate:corpus`.
 
-## Open backend items
+## Open work
 
-### 1. Swap candidates time out on the hosted database (highest priority)
+### 1. Reopening a saved deck in the tool (highest priority)
 
-- **Symptom:** "Replace this card" in the deck tool shows "Couldn't load replacements" for heavy targets (Vanquish the Horde, Sol Ring, Swords to Plowshares). Card pages for those cards are slow or render without alternatives.
-- **Logs:** `Swap candidates failed: canceling statement due to statement timeout` on `POST /api/recs/swap` (503) and `GET /card/<slug>`. Supabase's `anon` role has `statement_timeout = 3s`.
-- **Local baseline** (`rec_swap_candidates(target, '{}', identity, true, null, 120)` as `anon`): Sol Ring 414 ms cold / 66 ms warm, Swords to Plowshares 113 ms, Cultivate 79 ms. The function runs with `SET enable_nestloop = off`; the hosted copy has it too.
-- **Ruled out:** region latency (functions moved to `cle1`, next to the database; the query itself exceeds 3 s).
-- **Suspects:** planner statistics after the bulk load (no explicit `ANALYZE` in the sync jobs); Supabase Free's memory and IO reading `card_tags`, `tag_closure` and `cards`.
-- **Check first:** `EXPLAIN (ANALYZE, BUFFERS)` of the call above on the hosted database; `pg_stat_user_tables.last_analyze` / `last_autoanalyze` for `cards`, `card_tags`, `tag_closure`, `printings`.
-- **Candidate fixes:** `ANALYZE` after syncs; query or index changes from the plan; `'use cache: remote'` for card page data and swap pools (plain `use cache` doesn't persist across serverless instances, so pages recompute on most visits); a modestly higher `anon` statement timeout as a stopgap.
+Saved decks are write-once. A deck can be saved, viewed, shared and hidden, but not reopened for editing, so the feature does not yet close its loop. `useDeckTool.submit()` already accepts a seed (`SavedDeck`: text, bracket, Game Changer, import source), so this is mostly regenerating a decklist from `deck_cards` and passing it in.
 
-### 2. Deck play-rate stats aren't on the hosted database
+### 2. The deck lookup collector isn't running anywhere
 
-The hosted database has no `commander_keys` / `commander_stats` / `commander_card_stats`, so every commander shows "isn't in our database yet" and adds are thin. The stats come from the Archidekt corpus (third-party decklists), which stays on the owner's machine and must never be committed or uploaded. From that machine: create `apps/worker/.env.hosted` (see `.env.example`), then `yarn workspace @mtg/worker cli:hosted aggregate:corpus`.
+The deck tool offers "Pull decks" for commanders without data, but no `serve:commander-requests` worker is running, so requests wait in `commander_requests` and the UI reports the collector offline. It needs the corpus files, so it runs from this PC (`cli:hosted serve:commander-requests`) until there is another plan.
 
-### 3. The deck lookup collector isn't running anywhere
+### 3. Swap timeouts on the hosted database — mitigated, watch it
 
-The deck tool offers "Pull decks" for commanders without data, but no `serve:commander-requests` worker is running, so requests wait in `commander_requests` and the UI says the collector is offline. It needs the corpus files too, so it runs from the owner's machine (`cli:hosted serve:commander-requests`) until there's another plan.
+Was the top item. Two changes shipped:
+
+- `cards_rec_pool` covering index, so the recommendation functions stop sweeping the whole `cards` heap.
+- `retryOnTimeout` on all four recommendation call sites, retrying up to three attempts but only on SQLSTATE 57014, plus `public.rec_timeouts` recording the queries that exhaust their retries.
+
+Measured on hosted before the retry landed (Sol Ring, WUBRG, limit 120): first call cancelled at 3.0 s, second 2.02 s, third 0.27 s — cold `shared_buffers`, warming as it goes.
+
+**Still a mitigation, not a fix.** The real fix is caching the swap pool somewhere that survives between serverless instances; plain `use cache` does not. Check `rec_timeouts` for which cards still exhaust their retries:
+
+```sql
+select t.fn, c.name, t.commander_ids, t.hits, t.last_seen
+from public.rec_timeouts t left join public.cards c on c.id = t.target_card_id
+order by t.hits desc limit 20;
+```
 
 ### 4. Smaller items
 
-- Partner pairs now borrow decks from their other pairings at `partnerPoolWeight` 0.25 (2026-09-15). The weight rests on four pairs, all with Rograkh; retune once more pair decks or the swap-quality eval exist.
+- **`collections.maxEntries` is 100,000**, about 23 MB per account. Six maxed accounts would exhaust the free tier's headroom. It lives in `app_config.collections`, so lowering it is a SQL update with no deploy.
+- **`artist` is not populated on hosted** yet, so no art backdrops render there. The column shipped after the last sync; the next daily run fills it, because `artist` is part of `content_hash`. `cli:hosted sync:catalog --force` does it sooner.
+- `partnerPoolWeight` 0.25 rests on four pairs, all including Rograkh. Retune once more pair decks or the swap-quality eval exist.
 - Play rate can lift a weak tag match (Reliquary Tower tops Sea Gate Restoration swaps).
 - Invalid commander-pair `commander_keys` rows remain without stats.
-- Storage: repeated syncs level off around 346 MB of the 500 MB free tier; commander stats grow with each looked-up commander. Account collections add roughly one row per owned printing.
-- Before accounts go live on the hosted site: add `<site>/auth/confirm` and `<site>/auth/callback` to the Auth redirect allow list and paste `supabase/templates/sign-in.html` into the dashboard's magic link and confirmation templates. Vercel also needs `SUPABASE_SECRET_KEY` for the share-link kill switch.
+- Parser tests hold 26 cases against a Phase 2 goal of 60 fixtures; either write more or restate the goal.
+- Before accounts go live on the hosted site: add `<site>/auth/confirm` and `<site>/auth/callback` to the Auth redirect allow list, paste `supabase/templates/sign-in.html` into the dashboard's templates, and set `SUPABASE_SECRET_KEY` on Vercel for the share-link kill switch.
+
+## Before any launch
+
+- Delete `supabase/seed.sql` and `apps/web/scripts/dev-sign-in.ts`, or prove they still cannot reach the hosted project. They create `anon@test.local` and `admin@test.local`.
+- Decide where deck reports go. The report link on a public deck currently opens a prefilled GitHub issue.
+- Decide whether public deck pages should be indexed. They are `noindex` today because deck names are user-written and the only moderation is that report link.
+
+## Release process, and a trap to avoid
+
+`develop` is the working branch; `main` is merged from `develop` manually and is what Vercel production and the Supabase integration deploy. **`main` is currently 9 commits behind `develop`.**
+
+Merging a migration to `develop` publishes a preview that still runs against **`main`'s** schema. A migration adding a column to a shared read path therefore breaks the develop preview until `main` catches up — this happened with `cards.artist`.
+
+Stacked PRs need the base branch **deleted** on merge, or the child retargeted by hand. A child merged into a base that has already merged elsewhere lands in a dead branch: that happened to #32 and needed #35 to rescue it.
