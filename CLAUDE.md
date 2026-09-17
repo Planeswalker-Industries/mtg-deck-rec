@@ -25,6 +25,7 @@ supabase db reset                                # re-apply supabase/migrations 
 yarn workspace @mtg/worker cli sync:catalog      # Oracle Cards → cards, card_names, functional twins (skips if Scryfall's file is unchanged; --force)
 yarn workspace @mtg/worker cli sync:printings    # All Cards → printings, card_stats (staple score), cheapest prices, flavor names (after sync:catalog)
 supabase migration up                            # apply new migrations to the running local database
+docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/tests/saved-decks.sql   # saved-deck function and isolation checks (needs the local catalog; rolls back)
 supabase gen types typescript --local            # regenerate apps/web/src/lib/server/database.types.ts after schema changes (write UTF-8 without BOM, LF line endings; PowerShell's Out-String adds CRLF)
 yarn workspace @mtg/worker cli sync:tags         # Oracle Tags → tags, tag_edges, tag_closure, card_tags (run after sync:catalog)
 yarn workspace @mtg/worker cli profile:tags      # tag data profile → X:\mtg_proj\reports
@@ -111,6 +112,15 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - `public.profiles` gets a row per new user via the `on_auth_user_created` trigger. Sign-in attempts use the `auth` rate-limit bucket.
   - The email link is `{{ .RedirectTo }}&token_hash=...`: `sendSignInEmailAction` always passes `/auth/confirm?next=...` as the redirect, so the template appends with `&`. That redirect must be on the Auth redirect allow list (`additional_redirect_urls` locally, the dashboard for a hosted project); otherwise Supabase falls back to the site URL and the link breaks.
   - Locally, sign-in emails land in Mailpit (http://127.0.0.1:56324); `E2E_MAILPIT_URL=http://127.0.0.1:56324` enables `e2e/sign-in.spec.ts` and `e2e/account-collection.spec.ts`. After editing auth settings in `config.toml`, run `supabase stop && supabase start`.
+- **Saved decks (Phase 4):** `public.decks` and `public.deck_cards`, with limits in `app_config.decks` (`maxDecks` 100, `maxCards` 250, `maxNameChars` 80).
+  - A deck is its **name and its list of cards**. The pasted text is not stored; a clean decklist is regenerated when a deck is opened, so comments, personal formatting and unresolvable lines do not survive a save.
+  - Deck ids are **uuid**: they appear in shared URLs, so they must not be enumerable, and they must survive a rename.
+  - Owners read and delete their own decks directly; anyone reads public ones. Every write goes through `save_deck`, `rename_deck`, `set_deck_visibility` and `duplicate_deck`, which are security definer, act only on `auth.uid()` and apply the caps.
+  - **`include_in_corpus` is set from legality alone, never from `is_public`.** A private deck is hidden from others but still counts toward play rates, and the visibility control in the editor has to say so.
+  - New decks are public. Saving is always explicit; never auto-save an analysed deck, or a throwaway paste becomes a public page.
+  - `save_deck` writes only the card rows that differ, like the sync jobs.
+  - Signed out there is no deck list: `lib/saved-deck.ts` keeps one deck in the browser for 30 days and stays single-deck.
+  - Checks: `supabase/tests/saved-decks.sql`, 35 assertions including that one user cannot read, rename, expose, duplicate, overwrite or delete another user's deck. Needs the local catalog, so it stays out of CI.
 - **Collections (browser or account) and owned-only mode:**
   - `/collection` (`components/collection/collection-tool.tsx`) parses pasted text in the browser and matches it 2,000 rows per call. Signed out, the result stays in IndexedDB for 7 days (`lib/collection-store.ts`; localStorage can't hold large collections). Signed in, it replaces the account's collection through `saveCollectionBatchAction` (`app/collection/actions.ts`).
   - Account storage (migration `20260914002400_account_collections.sql`): `collection_items` (one row per card, printing or none, finish, condition and language), staged `collection_import_rows`, and `collection_imports`. Signed-in users can only read and delete their own rows directly. Writes go through the security-definer functions `start_collection_import`, `save_collection_rows` and `commit_collection_import`, which act on `auth.uid()` only and apply `app_config.collections` (`maxImportRows`, `maxEntries`, `maxOpenImports`). Nothing changes until commit; merge adds quantities, replace swaps the collection.
