@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Plus, Repeat2, Scissors } from "lucide-react";
 import { cn } from "cn";
 
@@ -35,11 +36,17 @@ export function JobSelector({
   selected,
   onSelect,
   counts,
+  previews,
 }: {
   selected: Job | null;
   onSelect: (job: Job | null) => void;
   /** Suggestions found per job, shown on the buttons so the deck's state is legible before drilling in. */
   counts: Partial<Record<Job, number>>;
+  /**
+   * What each job has to show for itself, under its button. Wide screens only: a phone puts its height into the
+   * cards, and the deck is one tap away there anyway.
+   */
+  previews?: Partial<Record<Job, ReactNode>>;
 }) {
   const open = selected === null ? undefined : jobFor(selected);
 
@@ -68,18 +75,18 @@ export function JobSelector({
       >
         {JOBS.map(({ value, name, blurb, Icon, tone, ring }) => {
           const showing = value === selected;
+          const preview = previews?.[value];
           return (
-            <li key={value}>
+            <li
+              key={value}
+              className={cn("rounded-xl border transition-colors", ring, showing ? "bg-sleeve" : "bg-sleeve/60")}
+            >
               <button
                 type="button"
                 aria-current={showing ? "true" : undefined}
                 // Picking the job already showing goes back to the deck, which is the only way back in the rail.
                 onClick={() => onSelect(showing ? null : value)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  ring,
-                  showing ? "bg-sleeve" : "bg-sleeve/60",
-                )}
+                className="flex w-full items-center gap-3 rounded-xl p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border border-current/40", tone)}>
                   <Icon aria-hidden className="size-4" strokeWidth={2.5} />
@@ -96,6 +103,8 @@ export function JobSelector({
                   className={cn("size-4 shrink-0 transition-transform", showing ? "rotate-90 text-foreground" : "text-muted-foreground")}
                 />
               </button>
+              {/* Nothing to preview once the middle column is showing the job itself. */}
+              {preview && !showing && <div className="hidden lg:block">{preview}</div>}
             </li>
           );
         })}

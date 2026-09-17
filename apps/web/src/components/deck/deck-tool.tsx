@@ -11,7 +11,7 @@ import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { CutPanel } from "./cut-panel";
 import { DeckBar } from "./deck-bar";
 import { DeckGroupsPanel } from "./deck-groups-panel";
-import { JobSelector, type Job } from "./job-selector";
+import type { Job } from "./job-selector";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
@@ -20,6 +20,7 @@ import { ShuffleDeck } from "./shuffle-deck";
 import { SwapSheet } from "./swap-sheet";
 import { SwipeRater, SwipeSummary } from "./swipe-rater";
 import { WorkspaceNav } from "./workspace-nav";
+import { WorkspaceRail } from "./workspace-rail";
 import type { PickedSwap } from "./use-swipe-rater";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
@@ -269,14 +270,7 @@ export function DeckTool() {
               </aside>
 
               <div className="flex flex-col gap-4 lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
-                <JobSelector
-                  selected={job}
-                  onSelect={setJob}
-                  counts={{
-                    cut: tool.cut.status === "ready" ? tool.cut.data.suggestions.length : undefined,
-                    add: tool.add.status === "ready" ? tool.add.data.groups.reduce((n, g) => n + g.suggestions.length, 0) : undefined,
-                  }}
-                />
+                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} />
               </div>
 
               <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">
