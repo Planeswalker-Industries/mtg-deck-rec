@@ -134,6 +134,18 @@ export const castVoteInputSchema = z
 export const MAX_SEARCH_QUERY_CHARS = 100;
 export const MAX_SEARCH_LIMIT = 20;
 
+export const MAX_CARD_TAG_IDS = 400;
+
+export const cardTagsInputSchema = z.object(
+  {
+    cardIds: z
+      .array(cardId("That card is not valid."))
+      .min(1, "Ask for at least one card.")
+      .max(MAX_CARD_TAG_IDS, "Too many cards in one request."),
+  },
+  request,
+);
+
 export const searchCardsInputSchema = z.object(
   {
     q: z

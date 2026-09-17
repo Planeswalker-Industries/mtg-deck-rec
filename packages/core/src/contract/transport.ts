@@ -34,6 +34,8 @@ export interface RecsApi {
 export interface CatalogApi {
   /** Cards whose name matches `q` (at least 2 characters), best match first; `commanderEligible` keeps only cards that can lead a deck. */
   searchCards(input: { q: string; commanderEligible?: boolean; limit?: number }): Promise<Result<CardSummary[]>>;
+  /** Functional tags per card, for grouping a deck by what its cards do. Cards with no tags are omitted. */
+  cardTags(input: { cardIds: CardId[] }): Promise<Result<{ cardId: CardId; tags: TagRef[] }[]>>;
 }
 
 /** Mutations and user-triggered operations. Transport: Server Actions. */

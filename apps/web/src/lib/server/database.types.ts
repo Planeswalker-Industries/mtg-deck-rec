@@ -1273,6 +1273,16 @@ export type Database = {
           slug: string
         }[]
       }
+      cards_functional_tags: {
+        Args: { p_card_ids: number[] }
+        Returns: {
+          card_id: number
+          depth: number
+          label: string
+          slug: string
+          tag_id: string
+        }[]
+      }
       cast_swap_vote: {
         Args: {
           p_commander_ids?: number[]

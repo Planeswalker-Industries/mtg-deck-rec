@@ -39,6 +39,8 @@ export interface CardSummary {
   gameChanger: boolean;
   /** false for preview cards from unreleased sets */
   released: boolean;
+  /** Scryfall rules keywords (Deathtouch, Menace). Empty for most cards. Not Tagger tags: those come from cardTags. */
+  keywords: string[];
   price: PriceEstimate | null;
 }
 

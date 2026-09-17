@@ -228,6 +228,12 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - The header is full at 390px, so phones get a button that opens a full-screen layer and `sm` up gets the input inline.
   - Results show the **full** card name, not `displayName`: a card can match on its back face ("Emeritus of Truce // Swords to Plowshares" prefix-matches "swords"), and the front face alone hides why it matched.
   - Every result goes to `/card/[slug]`, which links on to the commander page when the card has one, so a card without a `commander_keys` row can't send anyone to a 404.
+- **Deck grouping** (`components/deck/deck-groups-panel.tsx`, `@mtg/core/scoring` `groupDeck`): the deck shows under three pills — Card Type, Keyword, Tags.
+  - **Card Type** splits Legendary Creature out from Creature and keeps decklist order; an unrecognised type lands in Other rather than vanishing.
+  - **Keyword** uses `CardSummary.keywords` (Scryfall rules keywords), so it needs no request.
+  - **Tags** fetches `CatalogApi.cardTags` on first use only. A card counts in **every** tag it carries, so the counts deliberately do not sum to the deck size and the panel says so.
+  - **Tag groups are capped at 12.** A hundred-card deck produced **150** tag groups unguarded, which is not a view of anything. Whatever falls outside the kept groups is swept into Other, so no card disappears — the ceiling is tested.
+  - The panel is one `region` named "Your deck" containing a list per group. e2e scopes to a list inside it, because the pills are buttons in the same region.
 - **Card rater** (`/rate`, swipe rater slice 4; `components/rater/`):
   - The player picks a commander by name (`CommanderPicker` → `GET /api/cards/search` → SQL `search_cards`: prefix, then contains, then trigram typos, more-played commanders first; rate limit bucket `search`), or arrives from a commander page at `/rate?commander=<slug>`.
   - `dealRaterCardsAction` deals what the commander's decks play (`rec_add_candidates`, borrowing partner decks like the deck tool), or cards widely played in its colors when it has no decks. Lands are left out. Rounds of 10 cards.

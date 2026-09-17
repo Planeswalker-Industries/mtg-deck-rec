@@ -613,6 +613,13 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         .slice(0, limit);
       return delay(ok(hits), 50);
     },
+
+    async cardTags({ cardIds }) {
+      const rows = cardIds
+        .map((id) => ({ cardId: id, tags: mockCardTags[id] ?? [] }))
+        .filter((row) => row.tags.length > 0);
+      return delay(ok(rows), 40);
+    },
   };
 
   const unwrap = <T>(r: Result<T>): T | null => (r.ok ? r.data : null);
