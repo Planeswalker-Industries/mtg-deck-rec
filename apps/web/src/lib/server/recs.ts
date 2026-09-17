@@ -37,7 +37,7 @@ import {
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
 import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
-import { retryOnTimeout } from "./retry-timeout";
+import { isStatementTimeout, recordRecTimeout, retryOnTimeout } from "./retry-timeout";
 
 /** How many tag-similar candidates the database returns before blending and trimming. */
 const CANDIDATE_POOL = 120;
@@ -192,7 +192,12 @@ export async function loadSwapPool(
     db.rpc("rec_functional_tag_count", { p_card_id: targetCardId }),
     loadCommanderCorpus(db, commanderIds),
   ]);
-  if (candidatesResult.error) throw new Error(`Swap candidates failed: ${candidatesResult.error.message}`);
+  if (candidatesResult.error) {
+    if (isStatementTimeout(candidatesResult.error)) {
+      recordRecTimeout(db, { fn: "swap", targetCardId, commanderIds, identityMask, ownedOnly: owned !== undefined });
+    }
+    throw new Error(`Swap candidates failed: ${candidatesResult.error.message}`);
+  }
   if (tagCountResult.error) throw new Error(`Tag count failed: ${tagCountResult.error.message}`);
 
   const raw = (candidatesResult.data ?? []).map((r) => ({ ...r, matches: r.matches as unknown as RawMatch[] }));
@@ -424,7 +429,17 @@ export async function getAddSuggestions(
       p_limit: ADD_POOL,
     }),
   );
-  if (error) throw new Error(`Add candidates failed: ${error.message}`);
+  if (error) {
+    if (isStatementTimeout(error)) {
+      recordRecTimeout(db, {
+        fn: "add",
+        commanderIds: context.deck.commanders,
+        identityMask: identityMaskOf(context, rows),
+        ownedOnly: owned !== undefined,
+      });
+    }
+    throw new Error(`Add candidates failed: ${error.message}`);
+  }
 
   const candidateIds = (pool ?? []).map((p) => p.card_id);
   const [candidateRows, cardCorpus, rolesByCard, roleTags] = await Promise.all([

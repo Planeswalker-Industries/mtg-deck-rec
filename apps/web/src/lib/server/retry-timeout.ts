@@ -12,6 +12,8 @@
  * would stop the cold query happening at all; see docs/roadmap/status.md.
  */
 
+import type { PublicClient } from "./supabase";
+
 /** Postgres cancels a statement that overruns statement_timeout with SQLSTATE 57014. */
 const STATEMENT_TIMEOUT = "57014";
 
@@ -46,4 +48,34 @@ export async function retryOnTimeout<T extends { error: Failure | null }>(
     result = await call();
   }
   return result;
+}
+
+/** What was being asked for, so the aggregate says which cards and commanders are slow. */
+export interface TimeoutShape {
+  fn: "swap" | "add";
+  /** The swap target. Omitted for cards to add, which has no single target. */
+  targetCardId?: number;
+  commanderIds?: readonly number[];
+  identityMask?: number;
+  ownedOnly?: boolean;
+}
+
+/**
+ * Records a query that ran out of retries, so the slow ones can be found rather than guessed at.
+ *
+ * Deliberately fire-and-forget and silent: the request that got here is already slow, and bookkeeping must never
+ * turn it into a failure. The database function swallows its own errors too.
+ */
+export function recordRecTimeout(db: PublicClient, shape: TimeoutShape): void {
+  void db
+    .rpc("log_rec_timeout", {
+      p_fn: shape.fn,
+      p_target_card_id: shape.targetCardId,
+      p_commander_ids: shape.commanderIds ? [...shape.commanderIds] : [],
+      p_identity_mask: shape.identityMask ?? 0,
+      p_owned_only: shape.ownedOnly ?? false,
+    })
+    .then(({ error }) => {
+      if (error) console.warn(`Recording a ${shape.fn} timeout failed: ${error.message}`);
+    });
 }

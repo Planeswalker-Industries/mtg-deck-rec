@@ -1,4 +1,4 @@
-import { retryOnTimeout } from "./retry-timeout";
+import { isStatementTimeout, recordRecTimeout, retryOnTimeout } from "./retry-timeout";
 import type { CardSummary, CommanderKeyId, RaterDeal } from "@mtg/core/contract";
 import { fetchCardsById, toCardSummary } from "./cards";
 import { commanderKeyCounts, loadCommanderCorpus } from "./corpus";
@@ -50,7 +50,10 @@ export async function dealRaterCards(
       p_limit: DEAL_POOL,
     }),
   );
-  if (error) throw new Error(`Dealing rater cards failed: ${error.message}`);
+  if (error) {
+    if (isStatementTimeout(error)) recordRecTimeout(db, { fn: "add", commanderIds, identityMask });
+    throw new Error(`Dealing rater cards failed: ${error.message}`);
+  }
   const poolIds = (pool ?? []).map((p) => p.card_id);
   const rows = await fetchCardsById(db, poolIds);
   const cards = poolIds
