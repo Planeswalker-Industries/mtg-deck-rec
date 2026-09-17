@@ -235,6 +235,7 @@ export type Database = {
           images: Json | null
           is_basic_land: boolean
           is_digital_only: boolean
+          keywords: string[]
           layout: string
           legal_commander: string
           legalities: Json
@@ -269,6 +270,7 @@ export type Database = {
           images?: Json | null
           is_basic_land: boolean
           is_digital_only: boolean
+          keywords?: string[]
           layout: string
           legal_commander: string
           legalities: Json
@@ -303,6 +305,7 @@ export type Database = {
           images?: Json | null
           is_basic_land?: boolean
           is_digital_only?: boolean
+          keywords?: string[]
           layout?: string
           legal_commander?: string
           legalities?: Json

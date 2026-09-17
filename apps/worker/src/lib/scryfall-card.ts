@@ -50,6 +50,7 @@ export interface ScryfallCard {
   game_changer?: boolean;
   flavor_name?: string;
   artist?: string;
+  keywords?: string[];
 }
 
 // A type alias, not an interface: postgres.js only accepts JSON-compatible values, and interfaces
@@ -86,6 +87,8 @@ export interface CardRow {
   images: { front: CardImageSet; back: CardImageSet | null } | null;
   /** Artist of the representative printing, so an art crop can carry its credit. */
   artist: string | null;
+  /** Scryfall rules keywords (Deathtouch, Menace). Not Tagger tags: those are card_tags. */
+  keywords: string[];
   scryfall_uri: string;
   reference_price_usd: string | null;
   reference_price_finish: 'nonfoil' | 'foil' | 'etched' | null;
@@ -123,6 +126,7 @@ export const CARD_COLUMNS = [
   'released_at',
   'images',
   'artist',
+  'keywords',
   'scryfall_uri',
   'reference_price_usd',
   'reference_price_finish',
@@ -303,6 +307,7 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
         images,
         card.released_at,
         card.artist ?? null,
+        card.keywords ?? null,
       ]),
     )
     .digest();
@@ -330,6 +335,7 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
     released_at: card.released_at ?? null,
     images,
     artist: card.artist ?? null,
+    keywords: card.keywords ?? [],
     scryfall_uri: card.scryfall_uri,
     reference_price_usd: priced ? priced[1] : null,
     reference_price_finish: priced ? priced[0] : null,
