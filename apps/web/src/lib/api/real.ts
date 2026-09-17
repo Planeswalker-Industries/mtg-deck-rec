@@ -14,6 +14,7 @@ import {
 import {
   deleteDeckAction,
   duplicateDeckAction,
+  openSavedDeckAction,
   renameDeckAction,
   saveDeckAction,
   setDeckVisibilityAction,
@@ -60,6 +61,7 @@ export const realActions: ActionsApi = {
   saveCollectionBatch: (input) => saveCollectionBatchAction(input),
   deleteCollection: () => deleteCollectionAction(),
   saveDeck: (input) => saveDeckAction(input),
+  openSavedDeck: (input) => openSavedDeckAction(input),
   renameDeck: (input) => renameDeckAction(input),
   duplicateDeck: (input) => duplicateDeckAction(input),
   setDeckVisibility: (input) => setDeckVisibilityAction(input),

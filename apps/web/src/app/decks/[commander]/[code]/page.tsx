@@ -81,6 +81,9 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
 
         {deck.isOwner && (
           <div className="flex flex-wrap gap-2">
+            <Link href={{ pathname: "/deck", query: { deck: deck.code } }} className={buttonVariants({ size: "sm" })}>
+              Open in the deck tool
+            </Link>
             <Link href="/decks" className={buttonVariants({ variant: "outline", size: "sm" })}>
               All your decks
             </Link>

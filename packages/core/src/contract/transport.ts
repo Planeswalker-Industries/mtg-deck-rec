@@ -14,10 +14,11 @@ import type {
   DeckInput,
   ImportDeckUrlResult,
   ParseDeckResult,
+  SavedDeckContents,
   SavedDeckSummary,
 } from './decks';
 import type { Result } from './errors';
-import type { CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
+import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
 import type { AddResult, CutResult, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
 
 /**
@@ -64,7 +65,16 @@ export interface ActionsApi {
   }): Promise<Result<{ importId: string; totals: CollectionTotals | null }>>;
   deleteCollection(): Promise<Result<null>>;
 
-  saveDeck(input: { deckId?: DeckId; name: string; deck: DeckInput; isPublic: boolean }): Promise<Result<{ deckId: DeckId }>>;
+  /** Returns the deck's code as well as its id, so a deck just saved can be linked to and gone on editing. */
+  saveDeck(input: {
+    deckId?: DeckId;
+    name: string;
+    deck: DeckInput;
+    isPublic: boolean;
+    bracket?: Bracket;
+  }): Promise<Result<{ deckId: DeckId; code: string }>>;
+  /** The caller's own saved deck, as decklist text to go on editing. NOT_FOUND for anyone else's. */
+  openSavedDeck(input: { code: string }): Promise<Result<SavedDeckContents>>;
   /** Name only, without sending the card list. */
   renameDeck(input: { deckId: DeckId; name: string }): Promise<Result<null>>;
   /** Copies a deck the caller owns, subject to the same per-account cap as a new one. */

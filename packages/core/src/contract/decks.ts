@@ -97,6 +97,22 @@ export interface ImportDeckUrlResult extends ParseDeckResult {
   sourceUrl: string;
 }
 
+/**
+ * A saved deck as its owner's decklist, so the tool can open one and go on editing it.
+ *
+ * Text rather than card ids: the deck tool's decklist box is what the player edits, and re-parsing the text is what
+ * produces the resolved lines, the analysis and the recommendations.
+ */
+export interface SavedDeckContents {
+  deckId: DeckId;
+  code: string;
+  name: string;
+  /** The stored bracket, when the deck has one. */
+  bracket?: Bracket;
+  /** Decklist text, commanders first, in the format the tool's box takes. */
+  text: string;
+}
+
 export interface SavedDeckSummary {
   id: DeckId;
   /** Short random code used in the URL. Never derived from the name, and stable across renames. */

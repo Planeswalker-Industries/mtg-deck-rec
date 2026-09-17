@@ -246,7 +246,14 @@ export const saveDeckInputSchema = z.object(
     name: deckName,
     deck: deckInputSchema,
     isPublic: z.boolean({ error: 'Choose whether the deck is public.' }),
+    bracket: z.literal([1, 2, 3, 4, 5], { error: 'Pick a bracket from 1 to 5.' }).optional(),
   },
+  request,
+);
+
+/** Deck codes are generated, so anything that isn't one of ours is a bad request rather than a missing deck. */
+export const openSavedDeckInputSchema = z.object(
+  { code: z.string({ error: 'That deck is not valid.' }).regex(/^[A-Za-z0-9]{8,32}$/, 'That deck is not valid.') },
   request,
 );
 

@@ -7,16 +7,18 @@ import {
   deckVisibilityInputSchema,
   deleteDeckInputSchema,
   duplicateDeckInputSchema,
+  openSavedDeckInputSchema,
   parseInput,
   renameDeckInputSchema,
   saveDeckInputSchema,
 } from "@mtg/core/schemas";
-import { createAuthClient } from "@/lib/server/auth";
+import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 import {
   DeckRefused,
   deleteDeck,
   duplicateDeck,
+  openSavedDeck,
   renameDeck,
   saveDeck,
   setDeckVisibility,
@@ -60,11 +62,31 @@ export async function saveDeckAction(
   const blocked = await limited();
   if (blocked) return blocked;
   try {
-    const deckId = await saveDeck(await createAuthClient(), parsed.data);
+    const saved = await saveDeck(await createAuthClient(), parsed.data);
     refreshList();
-    return { ok: true, data: { deckId } };
+    return { ok: true, data: saved };
   } catch (err) {
     return failed(err, "Couldn't save that deck. Try again in a moment.");
+  }
+}
+
+/**
+ * Reopens one of the caller's decks in the tool. A read, but a Server Action rather than a page read: the tool is a
+ * client component that decides what to open after it mounts, and /deck stays a static shell.
+ */
+export async function openSavedDeckAction(
+  input: Parameters<ActionsApi["openSavedDeck"]>[0],
+): ReturnType<ActionsApi["openSavedDeck"]> {
+  const parsed = parseInput(openSavedDeckInputSchema, input);
+  if (!parsed.ok) return parsed;
+  const blocked = await limited();
+  if (blocked) return blocked;
+  try {
+    const user = await getCurrentUser();
+    if (!user) return refusals.NOT_SIGNED_IN;
+    return { ok: true, data: await openSavedDeck(await createAuthClient(), parsed.data.code, user.id) };
+  } catch (err) {
+    return failed(err, "Couldn't open that deck. Try again in a moment.");
   }
 }
 

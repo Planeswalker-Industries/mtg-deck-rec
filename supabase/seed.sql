@@ -41,3 +41,10 @@ on conflict (id) do nothing;
 -- on_auth_user_created gives each one a profile row; name them so they are obvious in the UI.
 update public.profiles set display_name = 'Test anon' where id = '00000000-0000-4000-8000-000000000a01';
 update public.profiles set display_name = 'Test admin' where id = '00000000-0000-4000-8000-0000000000ad';
+
+-- The e2e suite signs in several times per run, and every run comes from one address, so all of it lands in one
+-- rate-limit bucket: six sign-ins at two calls each is past the production budget of 10 per 10 minutes. Real
+-- visitors don't share a key this way. Local only, like the rest of this file.
+update public.app_config
+set value = value || '{"auth": {"limit": 100, "windowSeconds": 600}}'::jsonb, updated_at = now()
+where key = 'rate_limits';

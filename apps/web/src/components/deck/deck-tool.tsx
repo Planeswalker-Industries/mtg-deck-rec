@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -15,6 +16,7 @@ import type { Job } from "./job-selector";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
+import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
 import { SwapSheet } from "./swap-sheet";
@@ -36,12 +38,15 @@ Deck
 …`;
 
 export function DeckTool() {
+  // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
+  const openCode = useSearchParams().get("deck");
   const { source } = useCollectionSource();
   const collectionLoaded = source.kind !== "loading";
   const tool = useDeckTool(source);
   const lookup = useCommanderLookup(tool.refreshRecommendations);
   const deckGroups = useDeckGroups(tool.lines);
   const [editing, setEditing] = useState(true);
+  const [openError, setOpenError] = useState<string | null>(null);
   const [view, setView] = useState<ReviewView>(readReviewView);
   const [pendingSwaps, setPendingSwaps] = useState<PickedSwap[]>([]);
   // null is the deck itself, which is where the workspace starts.
@@ -51,17 +56,25 @@ export function DeckTool() {
   const swipeScrollWanted = useRef(false);
   const { analysis, context, swap } = tool;
 
-  // Open where the player left off: the deck from their last visit, analyzed again. Waits for the saved collection so
-  // owned-only suggestions apply from the first load.
+  /*
+   * Open where the player left off: a saved deck when the link named one, otherwise the deck from their last visit,
+   * analyzed again. Waits for the saved collection so owned-only suggestions apply from the first load.
+   */
   useEffect(() => {
     if (restoreStarted.current || !collectionLoaded) return;
     restoreStarted.current = true;
-    void tool.restoreLastDeck().then((restored) => {
+    const opened = openCode === null ? tool.restoreLastDeck() : tool.openSavedDeck(openCode).then((r) => {
+      if (r.ok) return r.data;
+      setOpenError(r.error.message);
+      // Fall back to the remembered deck rather than an empty box: the link failing shouldn't cost them their work.
+      return tool.restoreLastDeck();
+    });
+    void opened.then((restored) => {
       if (!restored.parsed) return;
       setEditing(false);
       void lookup.check(restored.analysis);
     });
-  }, [tool, lookup, collectionLoaded]);
+  }, [tool, lookup, collectionLoaded, openCode]);
   const showInput = editing || !analysis;
   const selectedCardId = swap?.targetCardId ?? null;
   const swapTarget = selectedCardId === null ? null : findResolvedCard(tool.lines, selectedCardId);
@@ -114,6 +127,10 @@ export function DeckTool() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* The open deck stays named while its decklist is being edited: it is still the deck being worked on. */}
+      {tool.openDeck && (
+        <OpenDeckBar deck={tool.openDeck} editing={showInput} onEdit={() => setEditing(true)} onClose={tool.closeSavedDeck} />
+      )}
       {showInput ? (
         <section aria-labelledby="deck-input-heading" className="flex flex-col gap-4">
           <div>
@@ -176,13 +193,20 @@ export function DeckTool() {
           </form>
           {!analysis && view === "swipe" && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
         </section>
-      ) : (
+      ) : tool.openDeck ? null : (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {analysis && <SaveDeckButton analysis={analysis} />}
+          {analysis && (
+            <SaveDeckButton analysis={analysis} bracket={context?.bracket ?? null} onSaved={tool.trackSavedDeck} />
+          )}
           <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
             Edit decklist
           </Button>
         </div>
+      )}
+      {openError && (
+        <p role="alert" className="text-sm text-destructive">
+          {openError}
+        </p>
       )}
 
       {tool.importedFrom && tool.parse.status === "ready" && (

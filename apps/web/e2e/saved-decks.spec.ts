@@ -1,5 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mailpit, signIn } from "./mailpit";
+
+/** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */
+const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved deck" }).getByRole("status");
 
 // Saving needs an account, so these run only where the local mail catcher is up.
 test.skip(!mailpit, "set E2E_MAILPIT_URL to run the saved deck checks");
@@ -31,8 +34,8 @@ test("saves a deck, then renames, duplicates and deletes it from the list", asyn
   // The name is prefilled from the commander, so saving is one click.
   await expect(name).not.toHaveValue("");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  // Fail here, not on the list, if the save itself was refused.
-  await expect(page.getByText("Saved.")).toBeVisible({ timeout: 30_000 });
+  // Fail here, not on the list, if the save itself was refused. Saving hands the deck to the tool, which says so.
+  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 30_000 });
 
   await page.goto("/decks");
   const list = page.getByRole("listitem");
@@ -43,12 +46,12 @@ test("saves a deck, then renames, duplicates and deletes it from the list", asyn
   const rename = page.getByRole("textbox", { name: /^New name for / });
   await rename.fill("Renamed Deck");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("link", { name: "Renamed Deck" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Renamed Deck", exact: true })).toBeVisible();
 
   // Duplicate.
   await page.getByRole("button", { name: /^Duplicate / }).first().click();
   await expect(page.getByRole("listitem")).toHaveCount(2);
-  await expect(page.getByRole("link", { name: "Renamed Deck (copy)" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Renamed Deck (copy)", exact: true })).toBeVisible();
 
   // Delete, which confirms first.
   page.once("dialog", (d) => void d.accept());
@@ -66,7 +69,7 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
   await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText("Saved.")).toBeVisible({ timeout: 30_000 });
+  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 30_000 });
 
   await page.goto("/decks");
   await page.getByRole("listitem").getByRole("link").first().click();
@@ -99,4 +102,45 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   // The owner still sees it.
   await page.reload();
   await expect(page.getByText("Only you can see this deck")).toBeVisible();
+});
+
+test("reopens a saved deck in the tool, and edits go back to it", async ({ page, request }) => {
+  const email = `reopen-${Date.now()}@test.invalid`;
+  await signIn(page, request, email, "/decks");
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  const decklist = await page.getByRole("textbox", { name: "Decklist" }).inputValue();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 30_000 });
+
+  // Come back to it from the list, by its own link rather than the deck page.
+  await page.goto("/decks");
+  await page.getByRole("link", { name: /^Open .* in the deck tool$/ }).click();
+  await page.waitForURL(/\/deck\?deck=[A-Za-z0-9]{8,32}$/);
+
+  const bar = page.getByRole("region", { name: "Saved deck" });
+  await expect(bar).toBeVisible({ timeout: 60_000 });
+  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 60_000 });
+  // The deck came back analysed, not as an empty box.
+  await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 60_000 });
+
+  // An edit is written back to the same deck, without another Save.
+  await page.getByRole("button", { name: "Edit decklist" }).click();
+  const box = page.getByRole("textbox", { name: "Decklist" });
+  await box.fill(decklist.split("\n").filter((line) => line.trim() !== "1 Sol Ring").join("\n"));
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 60_000 });
+
+  // And the stored deck really did change: the deck page is a card short, and no longer has the cut card.
+  await bar.getByRole("link", { name: "Deck page" }).click();
+  await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
+  // Scoped to the deck page itself: a client navigation keeps the tool it came from in the DOM for a moment.
+  const deckPage = page.getByRole("article");
+  await expect(deckPage.getByText("99 cards", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(deckPage.getByText("Sol Ring")).toHaveCount(0);
 });
