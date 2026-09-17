@@ -661,6 +661,102 @@ export type Database = {
         }
         Relationships: []
       }
+      deck_cards: {
+        Row: {
+          card_id: number
+          deck_id: string
+          quantity: number
+          section: string
+        }
+        Insert: {
+          card_id: number
+          deck_id: string
+          quantity: number
+          section: string
+        }
+        Update: {
+          card_id?: number
+          deck_id?: string
+          quantity?: number
+          section?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deck_cards_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deck_cards_deck_id_fkey"
+            columns: ["deck_id"]
+            isOneToOne: false
+            referencedRelation: "decks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      decks: {
+        Row: {
+          bracket: number | null
+          card_count: number
+          color_identity: number
+          commander_1: number | null
+          commander_2: number | null
+          created_at: string
+          id: string
+          include_in_corpus: boolean
+          is_public: boolean
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bracket?: number | null
+          card_count?: number
+          color_identity?: number
+          commander_1?: number | null
+          commander_2?: number | null
+          created_at?: string
+          id?: string
+          include_in_corpus?: boolean
+          is_public?: boolean
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bracket?: number | null
+          card_count?: number
+          color_identity?: number
+          commander_1?: number | null
+          commander_2?: number | null
+          created_at?: string
+          id?: string
+          include_in_corpus?: boolean
+          is_public?: boolean
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decks_commander_1_fkey"
+            columns: ["commander_1"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decks_commander_2_fkey"
+            columns: ["commander_2"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       formats: {
         Row: {
           code: string
@@ -1144,6 +1240,10 @@ export type Database = {
         Returns: Json
       }
       catalog_epoch: { Args: never; Returns: string }
+      clean_deck_name: {
+        Args: { p_max: number; p_name: string }
+        Returns: string
+      }
       commander_collector_online: { Args: never; Returns: boolean }
       commander_request_config: { Args: never; Returns: Json }
       commander_request_json: {
@@ -1178,6 +1278,10 @@ export type Database = {
         }
       }
       commit_collection_import: { Args: { p_import_id: number }; Returns: Json }
+      duplicate_deck: {
+        Args: { p_deck_id: string; p_name?: string }
+        Returns: string
+      }
       get_commander_request: {
         Args: { p_card_id: number; p_client_key: string }
         Returns: Json
@@ -1255,6 +1359,10 @@ export type Database = {
           tag_similarity: number
         }[]
       }
+      rename_deck: {
+        Args: { p_deck_id: string; p_name: string }
+        Returns: undefined
+      }
       request_commander_decks: {
         Args: { p_card_id: number; p_client_key: string }
         Returns: Json
@@ -1284,11 +1392,24 @@ export type Database = {
         Args: { p_import_id: number; p_rows: Json }
         Returns: number
       }
+      save_deck: {
+        Args: {
+          p_bracket?: number
+          p_cards: Json
+          p_deck_id: string
+          p_name: string
+        }
+        Returns: string
+      }
       search_cards: {
         Args: { p_commander_only?: boolean; p_limit?: number; p_query: string }
         Returns: {
           card_id: number
         }[]
+      }
+      set_deck_visibility: {
+        Args: { p_deck_id: string; p_is_public: boolean }
+        Returns: undefined
       }
       sitemap_slugs: { Args: never; Returns: Json }
       start_collection_import: {
