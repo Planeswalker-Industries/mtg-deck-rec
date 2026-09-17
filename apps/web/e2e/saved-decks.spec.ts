@@ -70,7 +70,8 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
 
   await page.goto("/decks");
   await page.getByRole("listitem").getByRole("link").first().click();
-  await page.waitForURL(/\/decks\/[0-9a-f-]{36}/);
+  // /decks/<commander-slug>/<code>: the code identifies the deck, the slug is decoration.
+  await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
   const url = page.url();
 
   // The deck's cards are on the page, grouped by type.

@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function DeckPage({ params }: PageProps<"/decks/[id]">) {
+export default function DeckPage({ params }: PageProps<"/decks/[commander]/[code]">) {
   return (
     <Suspense
       fallback={
@@ -37,11 +37,15 @@ export default function DeckPage({ params }: PageProps<"/decks/[id]">) {
   );
 }
 
-async function DeckDetails({ params }: Pick<PageProps<"/decks/[id]">, "params">) {
-  const { id } = await params;
+async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]">, "params">) {
+  const { code } = await params;
   const user = await getCurrentUser();
-  const deck = await loadDeckPage(await createAuthClient(), id, user?.id ?? null);
+  const deck = await loadDeckPage(await createAuthClient(), code, user?.id ?? null);
   if (!deck) notFound();
+  // The commander segment is decoration: the code alone resolves the deck, so a stale segment (the deck was
+  // renamed to a different commander, or someone hand-edited the URL) still works. Deliberately not redirected to
+  // the canonical path — redirect() inside this <Suspense> runs after the shell has streamed, which leaves the
+  // visitor on a loading page rather than moving them. The page is noindex, so duplicate paths cost nothing.
 
   const lead = deck.commanders[0];
   const art = lead?.images?.front.artCrop;

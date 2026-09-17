@@ -18,9 +18,10 @@ export async function proxy(request: NextRequest) {
   // cannot be probed. Only for signed-out visitors: the anon client cannot tell a private deck from a missing one,
   // and an owner has every right to their own hidden deck. A signed-in visitor falls through to the page, which
   // renders the not-found body without leaking anything.
-  if (section === "decks" && slug && UUID.test(slug) && !hasSessionCookie(request)) {
+  const code = request.nextUrl.pathname.split("/")[3];
+  if (section === "decks" && code && DECK_CODE.test(code) && !hasSessionCookie(request)) {
     try {
-      if (!(await publicDeckExists(slug))) {
+      if (!(await publicDeckExists(code))) {
         return NextResponse.rewrite(new URL("/_missing", request.url));
       }
     } catch (err) {
@@ -43,12 +44,13 @@ export async function proxy(request: NextRequest) {
   return hasSessionCookie(request) ? refreshSession(request) : NextResponse.next();
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Matches decks_code_shape in the database, so a path that could never be a code costs no query. */
+const DECK_CODE = /^[A-Za-z0-9]{8,32}$/;
 
 /** Row-level security limits the anon client to public decks, which is exactly the question being asked. */
-async function publicDeckExists(id: string): Promise<boolean> {
-  const { data, error } = await createPublicClient().from("decks").select("id").eq("id", id).limit(1);
-  if (error) throw new Error(`Checking deck page ${id} failed: ${error.message}`);
+async function publicDeckExists(code: string): Promise<boolean> {
+  const { data, error } = await createPublicClient().from("decks").select("id").eq("code", code).limit(1);
+  if (error) throw new Error(`Checking deck page ${code} failed: ${error.message}`);
   return data.length > 0;
 }
 

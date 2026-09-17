@@ -75,7 +75,7 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
                   <DeckArt deck={deck} />
                   <div className="min-w-0 flex-1">
                     <Link
-                      href={`/decks/${deck.id}` as Route}
+                      href={deckHref(deck)}
                       className="block truncate font-heading text-lg leading-tight font-semibold hover:text-primary"
                     >
                       {deck.name}
@@ -203,6 +203,12 @@ function DeckArt({ deck }: { deck: SavedDeckSummary }) {
 function commanderLabel(deck: SavedDeckSummary): string {
   const names = deck.commanderKey.commanders.map(displayName);
   return names.length === 0 ? "No commander" : names.join(" and ");
+}
+
+/** The commander segment is decoration; the code is what resolves the deck. */
+function deckHref(deck: SavedDeckSummary): Route {
+  const commander = deck.commanderKey.commanders[0]?.slug ?? "deck";
+  return `/decks/${commander}/${deck.code}` as Route;
 }
 
 const WUBRG = "WUBRG";

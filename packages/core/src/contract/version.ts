@@ -20,5 +20,8 @@
  *
  * v6 (2026-09-16): saved decks. ActionsApi renameDeck, duplicateDeck and setDeckVisibility, plus optional
  * SavedDeckSummary.bracket. saveDeck, deleteDeck and getMySavedDecks were already in v1 and are unchanged.
+ *
+ * v7 (2026-09-17): SavedDeckSummary.code, the short random code a deck URL uses. The name is user-written and
+ * can change, so it must never appear in the path; `id` stays the key the write actions take.
  */
-export const CONTRACT_VERSION = 6;
+export const CONTRACT_VERSION = 7;

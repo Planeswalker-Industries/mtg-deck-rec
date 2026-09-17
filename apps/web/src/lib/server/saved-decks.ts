@@ -35,6 +35,7 @@ function rethrow(message: string | undefined): never {
 
 interface DeckRow {
   id: string;
+  code: string;
   name: string;
   is_public: boolean;
   commander_1: number | null;
@@ -44,7 +45,7 @@ interface DeckRow {
   updated_at: string;
 }
 
-const DECK_COLUMNS = "id, name, is_public, commander_1, commander_2, card_count, bracket, updated_at" as const;
+const DECK_COLUMNS = "id, code, name, is_public, commander_1, commander_2, card_count, bracket, updated_at" as const;
 
 /**
  * The caller's decks, newest change first.
@@ -73,6 +74,7 @@ export async function listMyDecks(db: AuthClient, userId: string): Promise<Saved
       });
     return {
       id: row.id as DeckId,
+      code: row.code,
       name: row.name,
       // A saved deck is not a corpus key, so it carries no deck counts of its own; the commander page has those.
       commanderKey: { id: null, slug: null, commanders, deckCount: 0, confidence: "none" },

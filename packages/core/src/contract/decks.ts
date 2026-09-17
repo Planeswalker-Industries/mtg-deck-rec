@@ -99,6 +99,8 @@ export interface ImportDeckUrlResult extends ParseDeckResult {
 
 export interface SavedDeckSummary {
   id: DeckId;
+  /** Short random code used in the URL. Never derived from the name, and stable across renames. */
+  code: string;
   name: string;
   commanderKey: CommanderKeyRef;
   /**

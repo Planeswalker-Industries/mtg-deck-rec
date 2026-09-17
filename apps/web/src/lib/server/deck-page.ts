@@ -11,6 +11,9 @@ export interface DeckPageCard {
 
 export interface DeckPageData {
   id: DeckId;
+  code: string;
+  /** The commander's slug, or "deck" when there is none. The path segment beside the code. */
+  commanderSlug: string;
   name: string;
   isPublic: boolean;
   isOwner: boolean;
@@ -40,11 +43,11 @@ const CATEGORY_ORDER: readonly CardCategory[] = [
  * from a missing one and its id cannot be probed. Row-level security already hides other people's private decks;
  * `viewerId` is what tells an owner's view apart from a stranger's.
  */
-export async function loadDeckPage(db: PublicClient, deckId: string, viewerId: string | null): Promise<DeckPageData | null> {
+export async function loadDeckPage(db: PublicClient, code: string, viewerId: string | null): Promise<DeckPageData | null> {
   const { data: deck, error } = await db
     .from("decks")
-    .select("id, user_id, name, is_public, card_count, bracket, updated_at")
-    .eq("id", deckId)
+    .select("id, code, user_id, name, is_public, card_count, bracket, updated_at")
+    .eq("code", code)
     .maybeSingle();
   if (error) throw new Error(`Loading the deck failed: ${error.message}`);
   if (!deck) return null;
@@ -55,7 +58,7 @@ export async function loadDeckPage(db: PublicClient, deckId: string, viewerId: s
   const { data: rows, error: cardsError } = await db
     .from("deck_cards")
     .select("card_id, section, quantity")
-    .eq("deck_id", deckId);
+    .eq("deck_id", deck.id);
   if (cardsError) throw new Error(`Loading the deck's cards failed: ${cardsError.message}`);
 
   const cards = await fetchCardsById(
@@ -85,6 +88,8 @@ export async function loadDeckPage(db: PublicClient, deckId: string, viewerId: s
 
   return {
     id: deck.id as DeckId,
+    code: deck.code,
+    commanderSlug: commanders[0]?.slug ?? "deck",
     name: deck.name,
     isPublic: deck.is_public,
     isOwner,
