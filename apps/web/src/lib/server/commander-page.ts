@@ -1,3 +1,4 @@
+import { retryOnTimeout } from "./retry-timeout";
 import type { AddSuggestion, CardCategory, CardSummary, CommanderKeyId, CommanderPageData } from "@mtg/core/contract";
 import { ADD_WEIGHTS, blendScore, cardCategory, commanderCorpusScore } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary } from "./cards";
@@ -36,15 +37,17 @@ async function loadTopCardIds(
   }
 
   // Ordered by the same play-rate score as cards to add, over own and borrowed decks at their weights.
-  const { data, error } = await db.rpc("rec_add_candidates", {
-    p_key_ids: corpus.sourceKeyIds,
-    p_key_weights: corpus.sources.map((s) => s.weight),
-    p_alpha: corpus.settings.shrinkAlpha,
-    p_identity_mask: identityMask,
-    p_exclude: [...commanderIds],
-    p_allow_game_changers: true,
-    p_limit: TOP_POOL,
-  });
+  const { data, error } = await retryOnTimeout("Loading commander cards", () =>
+    db.rpc("rec_add_candidates", {
+      p_key_ids: corpus.sourceKeyIds,
+      p_key_weights: corpus.sources.map((s) => s.weight),
+      p_alpha: corpus.settings.shrinkAlpha,
+      p_identity_mask: identityMask,
+      p_exclude: [...commanderIds],
+      p_allow_game_changers: true,
+      p_limit: TOP_POOL,
+    }),
+  );
   if (error) throw new Error(`Loading commander cards failed: ${error.message}`);
   return (data ?? []).map((p) => p.card_id);
 }

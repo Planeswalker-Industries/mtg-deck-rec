@@ -37,6 +37,7 @@ import {
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
 import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
+import { retryOnTimeout } from "./retry-timeout";
 
 /** How many tag-similar candidates the database returns before blending and trimming. */
 const CANDIDATE_POOL = 120;
@@ -178,14 +179,16 @@ export async function loadSwapPool(
   const identityMask = identityOverride ?? commanderIds.reduce((mask, id) => mask | (rows.get(id)?.color_identity ?? 0), 0);
 
   const [candidatesResult, tagCountResult, corpus] = await Promise.all([
-    db.rpc("rec_swap_candidates", {
-      p_target: targetCardId,
-      p_exclude: [...excludeIds],
-      p_identity_mask: identityMask,
-      p_allow_game_changers: includeGameChangers,
-      p_owned: owned ? [...owned] : undefined,
-      p_limit: poolSize,
-    }),
+    retryOnTimeout("Swap candidates", () =>
+      db.rpc("rec_swap_candidates", {
+        p_target: targetCardId,
+        p_exclude: [...excludeIds],
+        p_identity_mask: identityMask,
+        p_allow_game_changers: includeGameChangers,
+        p_owned: owned ? [...owned] : undefined,
+        p_limit: poolSize,
+      }),
+    ),
     db.rpc("rec_functional_tag_count", { p_card_id: targetCardId }),
     loadCommanderCorpus(db, commanderIds),
   ]);
@@ -409,16 +412,18 @@ export async function getAddSuggestions(
   if (!corpus.available) return { mode, commanderKey, confidence: "none", groups: [] };
 
   const useCommander = commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
-  const { data: pool, error } = await db.rpc("rec_add_candidates", {
-    p_key_ids: useCommander ? corpus.sourceKeyIds : [],
-    p_key_weights: useCommander ? corpus.sources.map((s) => s.weight) : [],
-    p_alpha: corpus.settings.shrinkAlpha,
-    p_identity_mask: identityMaskOf(context, rows),
-    p_exclude: deckIds,
-    p_allow_game_changers: context.includeGameChangers,
-    p_owned: owned ? [...owned] : undefined,
-    p_limit: ADD_POOL,
-  });
+  const { data: pool, error } = await retryOnTimeout("Add candidates", () =>
+    db.rpc("rec_add_candidates", {
+      p_key_ids: useCommander ? corpus.sourceKeyIds : [],
+      p_key_weights: useCommander ? corpus.sources.map((s) => s.weight) : [],
+      p_alpha: corpus.settings.shrinkAlpha,
+      p_identity_mask: identityMaskOf(context, rows),
+      p_exclude: deckIds,
+      p_allow_game_changers: context.includeGameChangers,
+      p_owned: owned ? [...owned] : undefined,
+      p_limit: ADD_POOL,
+    }),
+  );
   if (error) throw new Error(`Add candidates failed: ${error.message}`);
 
   const candidateIds = (pool ?? []).map((p) => p.card_id);
