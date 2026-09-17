@@ -55,3 +55,47 @@ test("saves a deck, then renames, duplicates and deletes it from the list", asyn
   await page.getByRole("button", { name: "Delete Renamed Deck (copy)" }).click();
   await expect(page.getByRole("listitem")).toHaveCount(1);
 });
+
+test("a saved deck has its own page, and hiding it keeps strangers out", async ({ page, request, browser }) => {
+  const email = `deckpage-${Date.now()}@test.invalid`;
+  await signIn(page, request, email, "/decks");
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Saved.")).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/decks");
+  await page.getByRole("listitem").getByRole("link").first().click();
+  await page.waitForURL(/\/decks\/[0-9a-f-]{36}/);
+  const url = page.url();
+
+  // The deck's cards are on the page, grouped by type.
+  await expect(page.getByRole("heading", { name: "Lands" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Creatures" })).toBeVisible();
+
+  // A new deck is public, so a signed-out visitor can read it.
+  const stranger = await browser.newContext();
+  const strangerPage = await stranger.newPage();
+  const asPublic = await strangerPage.goto(url);
+  expect(asPublic?.status()).toBe(200);
+  await expect(strangerPage.getByRole("link", { name: "Report it" })).toBeVisible();
+
+  // Hiding it takes the page away from everyone else.
+  await page.getByRole("switch").click();
+  await expect(page.getByText("Only you can see this deck")).toBeVisible({ timeout: 30_000 });
+  const asPrivate = await strangerPage.goto(url);
+  expect(asPrivate?.status()).toBe(404);
+  // And the content must not leak either way.
+  await expect(strangerPage.getByRole("heading", { name: "Lands" })).toBeHidden();
+  const leaked = await strangerPage.evaluate(() => document.body.innerText);
+  expect(leaked).not.toContain("Sol Ring");
+  await stranger.close();
+
+  // The owner still sees it.
+  await page.reload();
+  await expect(page.getByText("Only you can see this deck")).toBeVisible();
+});
