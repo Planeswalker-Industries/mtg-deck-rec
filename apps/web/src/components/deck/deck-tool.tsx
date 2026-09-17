@@ -19,9 +19,11 @@ import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
 import { SwapSheet } from "./swap-sheet";
 import { SwipeRater, SwipeSummary } from "./swipe-rater";
+import { WorkspaceNav } from "./workspace-nav";
 import type { PickedSwap } from "./use-swipe-rater";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
+import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
 
 const PLACEHOLDER = `Commander
@@ -37,6 +39,7 @@ export function DeckTool() {
   const collectionLoaded = source.kind !== "loading";
   const tool = useDeckTool(source);
   const lookup = useCommanderLookup(tool.refreshRecommendations);
+  const deckGroups = useDeckGroups(tool.lines);
   const [editing, setEditing] = useState(true);
   const [view, setView] = useState<ReviewView>(readReviewView);
   const [pendingSwaps, setPendingSwaps] = useState<PickedSwap[]>([]);
@@ -254,39 +257,54 @@ export function DeckTool() {
               <ShuffleDeck label="Finding cards to cut" />
             )
           ) : (
-            <div className="flex flex-col gap-4">
-              <JobSelector
-                selected={job}
-                onSelect={setJob}
-                counts={{
-                  cut: tool.cut.status === "ready" ? tool.cut.data.suggestions.length : undefined,
-                  add: tool.add.status === "ready" ? tool.add.data.groups.reduce((n, g) => n + g.suggestions.length, 0) : undefined,
-                }}
-              />
-              {job === null && (
-                <DeckGroupsPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
-              )}
-              {job === "cut" && (
-                <CutPanel
-                  state={tool.cut}
-                  commanderKey={analysis.commanderKey}
-                  selectedCardId={selectedCardId}
-                  onSelectCard={tool.openSwap}
+            /*
+             * The workspace: where you are (left), what you're working on (middle) and the three jobs (right).
+             *
+             * One grid rather than three nested columns, so the same markup is a single stack on a phone in the
+             * order the mock asks for — jobs, then cards — and three columns from `lg` up.
+             */
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[11rem_minmax(0,1fr)_17rem] lg:gap-6">
+              <aside className="hidden lg:col-start-1 lg:row-start-1 lg:block">
+                <WorkspaceNav deckGroups={deckGroups} showSections={job === null || job === "replace"} />
+              </aside>
+
+              <div className="flex flex-col gap-4 lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
+                <JobSelector
+                  selected={job}
+                  onSelect={setJob}
+                  counts={{
+                    cut: tool.cut.status === "ready" ? tool.cut.data.suggestions.length : undefined,
+                    add: tool.add.status === "ready" ? tool.add.data.groups.reduce((n, g) => n + g.suggestions.length, 0) : undefined,
+                  }}
                 />
-              )}
-              {job === "add" && <AddPanel state={tool.add} />}
-              {job === "replace" && (
-                <div className="flex flex-col gap-3">
-                  {/*
-                   * Replacements are per card rather than a list of their own: the question is always "what else
-                   * does this card's job", so the deck is the way in.
-                   */}
-                  <p className="text-sm text-muted-foreground">
-                    Tap any card to see what else does its job, how the two compare and what the swap costs.
-                  </p>
-                  <DeckGroupsPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
-                </div>
-              )}
+              </div>
+
+              <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">
+                {job === null && (
+                  <DeckGroupsPanel deckGroups={deckGroups} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
+                )}
+                {job === "cut" && (
+                  <CutPanel
+                    state={tool.cut}
+                    commanderKey={analysis.commanderKey}
+                    selectedCardId={selectedCardId}
+                    onSelectCard={tool.openSwap}
+                  />
+                )}
+                {job === "add" && <AddPanel state={tool.add} />}
+                {job === "replace" && (
+                  <>
+                    {/*
+                     * Replacements are per card rather than a list of their own: the question is always "what else
+                     * does this card's job", so the deck is the way in.
+                     */}
+                    <p className="text-sm text-muted-foreground">
+                      Tap any card to see what else does its job, how the two compare and what the swap costs.
+                    </p>
+                    <DeckGroupsPanel deckGroups={deckGroups} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
+                  </>
+                )}
+              </div>
             </div>
           )}
         </section>

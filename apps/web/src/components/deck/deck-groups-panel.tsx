@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CardId, CardSummary, ResolvedLine, TagRef } from "@mtg/core/contract";
-import { groupDeck, type DeckEntry, type DeckGrouping } from "@mtg/core/scoring";
+import type { CardId, CardSummary } from "@mtg/core/contract";
+import type { DeckGrouping } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
-import { getApis } from "@/lib/api/client";
 import { GameChangerBadge } from "./card-label";
-
-/** Tagger labels are lowercase ("spot removal"); a heading reads better capitalised. */
-const heading = (label: string) => label.charAt(0).toUpperCase() + label.slice(1);
+import { groupHeading, groupId } from "./deck-group-id";
+import type { DeckGroups } from "./use-deck-groups";
 
 const PILLS: { value: DeckGrouping; label: string }[] = [
   { value: "type", label: "Card Type" },
@@ -17,58 +14,17 @@ const PILLS: { value: DeckGrouping; label: string }[] = [
   { value: "tag", label: "Tags" },
 ];
 
-/**
- * The deck, grouped by card type, Scryfall keyword or functional tag.
- *
- * Tags are fetched only when that pill is first chosen: most visits never ask for them, and a Commander deck is a
- * hundred cards. Type and keyword need no request at all, because both ride on the cards the tool already holds.
- */
+/** The deck, grouped by card type, Scryfall keyword or functional tag. The grouping itself lives in `useDeckGroups`. */
 export function DeckGroupsPanel({
-  lines,
+  deckGroups,
   selectedCardId,
   onSelectCard,
 }: {
-  lines: ResolvedLine[];
+  deckGroups: DeckGroups;
   selectedCardId: CardId | null;
   onSelectCard: (cardId: CardId) => void;
 }) {
-  const [grouping, setGrouping] = useState<DeckGrouping>("type");
-  const [tags, setTags] = useState<Map<number, TagRef[]> | null>(null);
-  const [tagsError, setTagsError] = useState<string | null>(null);
-  const asked = useRef(false);
-
-  const entries: DeckEntry[] = useMemo(
-    () =>
-      lines.flatMap(({ line, resolution }) =>
-        resolution.status === "resolved" && line.section === "main"
-          ? [{ card: resolution.card, quantity: line.quantity }]
-          : [],
-      ),
-    [lines],
-  );
-
-  useEffect(() => {
-    if (grouping !== "tag" || asked.current || entries.length === 0) return;
-    asked.current = true;
-    setTagsError(null);
-    void getApis()
-      .catalog.cardTags({ cardIds: entries.map((e) => e.card.id) })
-      .then((result) => {
-        if (result.ok) setTags(new Map(result.data.map((row) => [row.cardId as number, row.tags])));
-        else {
-          // Let it be asked for again rather than leaving the pill permanently broken.
-          asked.current = false;
-          setTagsError(result.error.message);
-        }
-      });
-  }, [grouping, entries]);
-
-  // Tags are far finer-grained than card types, so the list needs a ceiling; see groupDeck.
-  const groups = useMemo(
-    () => groupDeck(entries, grouping, tags ?? new Map(), { maxGroups: grouping === "type" ? undefined : 12 }),
-    [entries, grouping, tags],
-  );
-  const loadingTags = grouping === "tag" && tags === null && tagsError === null;
+  const { grouping, setGrouping, groups, loadingTags, tagsError } = deckGroups;
 
   return (
     <section aria-label="Your deck" className="flex flex-col gap-4">
@@ -111,13 +67,14 @@ export function DeckGroupsPanel({
       )}
 
       {groups.map((group) => (
-        <section key={group.key} aria-labelledby={`deck-group-${group.key}`} className="flex flex-col gap-2">
-          <h3 id={`deck-group-${group.key}`} className="font-heading text-xl leading-none font-semibold">
-            {heading(group.label)}{" "}
+        <section key={group.key} aria-labelledby={groupId(group)} className="flex flex-col gap-2">
+          {/* scroll-mt clears the sticky deck bar when the sidebar's section nav jumps here. */}
+          <h3 id={groupId(group)} className="scroll-mt-24 font-heading text-xl leading-none font-semibold">
+            {groupHeading(group.label)}{" "}
             <span className="font-sans text-sm font-normal text-muted-foreground tabular-nums">{group.count}</span>
           </h3>
           <PocketGrid
-            label={heading(group.label)}
+            label={groupHeading(group.label)}
             onSelect={(card: CardSummary) => onSelectCard(card.id)}
             items={group.entries.map(({ card, quantity }) => ({
               card,
