@@ -1,8 +1,12 @@
+import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
+import { ClipboardPaste, Library, Plus, Repeat2, Scissors } from "lucide-react";
 import { mockCards } from "@mtg/core/mocks";
 import type { CardSummary } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { buttonVariants } from "@/components/ui/button";
+import { getHeroArt } from "@/lib/server/recs-cache";
 
 function sampleCard(name: string): CardSummary {
   const card = mockCards.find((c) => c.name === name);
@@ -10,85 +14,185 @@ function sampleCard(name: string): CardSummary {
   return card;
 }
 
-// A binder page from a Chulane deck, with one pocket mid-swap.
-const POCKETS: (CardSummary | "swap")[] = [
-  sampleCard("Chulane, Teller of Tales"),
-  sampleCard("Rhystic Study"),
-  sampleCard("Cultivate"),
-  sampleCard("Birds of Paradise"),
-  "swap",
-  sampleCard("Counterspell"),
-  sampleCard("Sol Ring"),
-  sampleCard("Beast Whisperer"),
-  sampleCard("Arcane Signet"),
-];
-const SWAP_FROM = sampleCard("Swords to Plowshares");
-const SWAP_TO = sampleCard("Path to Exile");
-const POCKET_SIZES = "(min-width: 768px) 140px, 30vw";
+/** A hand fanned out on the table, commander in the middle and lit from above. */
+type FanCard = {
+  card: CardSummary;
+  rotate: number;
+  x: string;
+  y: string;
+  scale: number;
+  /** Hidden on phones, where only the middle three fit. */
+  wide?: boolean;
+};
 
-const jobs = [
-  {
-    title: "Cut",
-    body: "Spot cards that don't pull their weight, fall outside your colors, or push the deck past its bracket.",
-  },
-  {
-    title: "Add",
-    body: "See what decks with your commander play that yours doesn't.",
-  },
-  {
-    title: "Replace",
-    body: "Tap any card to compare it with cards that do the same job, and what the swap costs.",
-  },
+const FAN: FanCard[] = [
+  { card: sampleCard("Cultivate"), rotate: -22, x: "-64%", y: "10%", scale: 0.86, wide: true },
+  { card: sampleCard("Rhystic Study"), rotate: -11, x: "-33%", y: "3%", scale: 0.93 },
+  { card: sampleCard("Chulane, Teller of Tales"), rotate: 0, x: "0%", y: "-4%", scale: 1 },
+  { card: sampleCard("Counterspell"), rotate: 11, x: "33%", y: "3%", scale: 0.93 },
+  { card: sampleCard("Birds of Paradise"), rotate: 22, x: "64%", y: "10%", scale: 0.86, wide: true },
 ];
+const FAN_SIZES = "(min-width: 768px) 176px, 42vw";
+
+/**
+ * Lands, in preference order: their art is painted as scenery, which is what a wide banner needs.
+ * A creature portrait crops to a face and reads as a mistake at this size.
+ */
+const HERO_SLUGS = ["cavern-of-souls", "path-of-ancestry", "boseiju-who-endures", "castle-locthwain", "command-tower"] as const;
+
+/** The three jobs, in the order the deck tool does them. Colors stay off the mana wheel. */
+const jobs = [
+  { name: "Cut", summary: "Weak links", Icon: Scissors, tone: "text-cut", ring: "border-cut/50 bg-cut/15" },
+  { name: "Add", summary: "Missing pieces", Icon: Plus, tone: "text-add", ring: "border-add/50 bg-add/15" },
+  { name: "Replace", summary: "Same job", Icon: Repeat2, tone: "text-replace", ring: "border-replace/50 bg-replace/15" },
+];
+
+async function HeroArtLayer() {
+  const hero = await getHeroArt(HERO_SLUGS);
+  if (!hero) return null;
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+      <Image src={hero.art} alt="" fill unoptimized priority className="object-cover object-center" />
+      {/* The headline sits on the left, so the wash is heaviest there and thins out under the cards. */}
+      <div className="absolute inset-0 bg-background/25" />
+      <div className="absolute inset-0 bg-gradient-to-r from-background via-background/65 to-background/25" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-background/40" />
+    </div>
+  );
+}
+
+async function HeroCredit() {
+  const hero = await getHeroArt(HERO_SLUGS);
+  if (!hero) return null;
+  return (
+    <p className="text-xs text-muted-foreground">
+      Art from{" "}
+      <Link href={`/card/${hero.slug}`} className="underline underline-offset-2 hover:text-foreground">
+        {hero.name}
+      </Link>{" "}
+      by {hero.artist}
+    </p>
+  );
+}
 
 export default function Home() {
   return (
-    <div className="flex flex-col gap-12 py-4 md:py-10">
-      <section className="grid items-center gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,27rem)] md:gap-12">
-        <div className="max-w-xl">
-          <h1 className="font-heading text-5xl leading-[0.92] font-extrabold tracking-tight sm:text-6xl">
-            Better cards for your Commander deck
-          </h1>
-          <p className="mt-4 text-lg text-muted-foreground">
-            Paste a decklist to see what to cut, what to add, and which cards could do the same job. No account needed.
-          </p>
-          <Link href="/deck" className={buttonVariants({ size: "lg", className: "mt-6 h-11 px-5 text-base" })}>
-            Paste a decklist
-          </Link>
+    <div className="flex flex-col gap-10 pb-6 md:gap-14">
+      {/*
+       * Full-bleed: the art has to reach the window edges, not the content column. The negative margin
+       * needs `overflow-x: clip` on html and body (globals.css) so 100vw can't add a horizontal scrollbar.
+       * The section is `relative` and the inner container is not, so the art layer sizes against the bleed.
+       */}
+      <section className="relative isolate mx-[calc(50%-50vw)] w-[100vw] overflow-hidden md:min-h-[21rem] lg:min-h-[23rem]">
+        {/* Null while it loads and null if it fails, so the landing page never waits on the database. */}
+        <Suspense fallback={null}>
+          <HeroArtLayer />
+        </Suspense>
+
+        <div className="mx-auto w-full max-w-6xl px-4 pt-8 pb-6 md:pt-12 md:pb-8">
+          <div className="grid gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-center md:gap-8">
+            {/* Cards come first on a phone: they say what this is faster than any sentence. */}
+            <div aria-hidden className="order-first md:order-last md:origin-top md:scale-[1.28]">
+              <div className="relative mx-auto h-[14rem] w-[9.5rem] sm:h-[16rem] sm:w-[9rem] md:h-[14rem] md:w-[10rem] lg:h-[15rem] lg:w-[10.75rem]">
+                {FAN.map((pocket, i) => (
+                  <div
+                    key={pocket.card.name}
+                    className={`fan-card absolute inset-0 ${pocket.wide ? "hidden sm:block" : ""}`}
+                    style={
+                      {
+                        "--r": `${pocket.rotate}deg`,
+                        "--x": pocket.x,
+                        "--y": pocket.y,
+                        "--s": pocket.scale,
+                        "--delay": `${60 + Math.abs(i - 2) * 90}ms`,
+                        zIndex: 10 - Math.abs(i - 2),
+                      } as React.CSSProperties
+                    }
+                  >
+                    <CardImage card={pocket.card} alt="" sizes={FAN_SIZES} eager className="shadow-[0_18px_40px_-16px_rgb(0_0_0/0.9)]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative z-20 max-w-3xl">
+              <h1 className="font-heading text-[2rem] leading-[1.08] font-semibold tracking-[-0.015em] sm:text-[2.25rem] lg:text-[2.5rem]">
+                Tune your Commander deck.
+                <span className="block text-primary/85">Using the cards you actually own.</span>
+              </h1>
+              <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
+                Find weak links. Discover additions. Compare replacements.
+              </p>
+
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <Link href="/deck" className={buttonVariants({ size: "lg", className: "lit h-12 gap-2 px-6 text-base font-bold" })}>
+                  <ClipboardPaste aria-hidden className="size-5" />
+                  Paste a decklist
+                </Link>
+                <Link
+                  href="/collection"
+                  className={buttonVariants({ variant: "outline", size: "lg", className: "h-12 gap-2 px-6 text-base font-bold" })}
+                >
+                  <Library aria-hidden className="size-5" />
+                  Browse your collection
+                </Link>
+              </div>
+              <p className="mt-4 text-sm text-muted-foreground">No account needed.</p>
+            </div>
+          </div>
         </div>
 
-        {/* Decorative binder page: seams between pockets are the grid gaps. */}
-        <div aria-hidden className="mx-auto w-full max-w-[22rem] rounded-2xl bg-seam p-px md:max-w-none">
-          <ul className="grid grid-cols-3 gap-px overflow-hidden rounded-[calc(1rem-1px)]">
-            {POCKETS.map((pocket, i) => (
-              <li key={i} className="bg-sleeve p-2">
-                {pocket === "swap" ? (
-                  <div className="relative">
-                    <CardImage card={SWAP_FROM} alt="" sizes={POCKET_SIZES} className="-rotate-6 opacity-60 saturate-50" />
-                    <CardImage
-                      card={SWAP_TO}
-                      alt=""
-                      sizes={POCKET_SIZES}
-                      eager
-                      className="absolute inset-0 translate-x-2 -translate-y-2 rotate-3 shadow-[0_0_0_2px_var(--color-primary)]"
-                    />
-                  </div>
-                ) : (
-                  <CardImage card={pocket} alt="" sizes={POCKET_SIZES} eager={i < 3} />
-                )}
-              </li>
-            ))}
-          </ul>
+        {/*
+         * Layer 1 of 2 over the content: a shadow that darkens the foot of the banner so the jobs stay
+         * readable over whatever art is behind them. Its own layer, not the jobs' background, so it
+         * washes over the cards and the lower headline too.
+         */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-48 bg-gradient-to-t from-black via-black/70 to-transparent md:h-3/5"
+        />
+
+        {/* Layer 2: the three jobs, in front of the cards and justified to the end of the frame. */}
+        <div className="relative z-20 mt-6 pb-6 md:absolute md:inset-x-0 md:bottom-0 md:mt-0 md:pb-5">
+          <div className="mx-auto flex w-full max-w-6xl px-4">
+            <ul
+              aria-label="What the deck tool shows you"
+              className="grid grid-cols-3 gap-2.5 sm:flex sm:flex-wrap sm:justify-end sm:gap-x-6 sm:gap-y-4 md:ml-auto md:max-w-[25rem]"
+            >
+              {jobs.map(({ name, summary, Icon, tone, ring }) => (
+                <li key={name} className="flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-3 sm:text-left">
+                  <span className={`flex size-9 shrink-0 items-center justify-center rounded-full border ${ring} ${tone}`}>
+                    <Icon aria-hidden className="size-4" strokeWidth={2.5} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block font-heading text-base leading-none font-semibold">{name}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{summary}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
-      <section aria-label="What you get" className="grid gap-6 border-t border-seam pt-8 sm:grid-cols-3">
-        {jobs.map((job) => (
-          <div key={job.title}>
-            <h2 className="font-heading text-3xl leading-none font-extrabold tracking-tight">{job.title}</h2>
-            <p className="mt-2 max-w-prose text-muted-foreground">{job.body}</p>
-          </div>
-        ))}
+      <div className="-mt-6 px-4 md:-mt-10">
+        <Suspense fallback={null}>
+          <HeroCredit />
+        </Suspense>
+      </div>
+
+      <section className="rounded-xl border border-seam bg-sleeve/60 p-5 sm:p-7">
+        <h2 className="font-heading text-2xl leading-tight font-semibold">Ranked from decks people actually built.</h2>
+        <p className="mt-3 max-w-prose leading-relaxed text-muted-foreground">
+          Cuts are the cards costing more than they give you, sitting outside your colors, or pushing the deck past its
+          bracket. Additions are what decks with your commander play that yours doesn&rsquo;t. Replacements are cards that
+          do the same job, with the price difference shown before you commit.
+        </p>
+        <p className="mt-3 max-w-prose leading-relaxed text-muted-foreground">
+          All of it comes from how often a card turns up in real decks for your commander, and from what each card does on
+          the table, so a swap holds the deck&rsquo;s shape instead of just matching its price. When we don&rsquo;t have
+          enough decks for a commander, the page says so.
+        </p>
       </section>
     </div>
   );

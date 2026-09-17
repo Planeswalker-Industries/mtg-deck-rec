@@ -1,10 +1,11 @@
-import type { ActionsApi, DataApi, RecsApi } from "@mtg/core/contract";
+import type { ActionsApi, CatalogApi, DataApi, RecsApi } from "@mtg/core/contract";
 import { createMockApis } from "@mtg/core/mocks";
-import { realActions, realRecs } from "./real";
+import { realActions, realCatalog, realRecs } from "./real";
 
 export interface Apis {
   recs: RecsApi;
   actions: ActionsApi;
+  catalog: CatalogApi;
   data: DataApi;
 }
 
@@ -21,6 +22,6 @@ export function getApis(): Apis {
   apis =
     process.env.NEXT_PUBLIC_USE_MOCKS === "1"
       ? mocks
-      : { recs: realRecs, actions: realActions, data: mocks.data };
+      : { recs: realRecs, actions: realActions, catalog: realCatalog, data: mocks.data };
   return apis;
 }

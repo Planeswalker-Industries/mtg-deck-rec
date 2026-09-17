@@ -1,7 +1,9 @@
-import type { ActionsApi, ApiError, RecsApi, Result } from "@mtg/core/contract";
+import type { ActionsApi, ApiError, CardSummary, CatalogApi, RecsApi, Result } from "@mtg/core/contract";
 import { deleteCollectionAction, saveCollectionBatchAction } from "@/app/collection/actions";
+import { dealRaterCardsAction } from "@/app/rate/actions";
 import {
   analyzeDeckAction,
+  castVoteAction,
   getCommanderCoverageAction,
   getCommanderRequestAction,
   importDeckFromUrlAction,
@@ -53,7 +55,23 @@ export const realActions: ActionsApi = {
   saveDeck: notYet,
   deleteDeck: notYet,
   exportDeck: notYet,
-  castVote: notYet,
+  castVote: (input) => castVoteAction(input),
   setFavorite: notYet,
   adminSetTagDisabled: notYet,
+  dealRaterCards: (input) => dealRaterCardsAction(input),
+};
+
+/** Card lookups run as GET Route Handlers, so the CDN can keep results and searches don't queue behind actions. */
+export const realCatalog: CatalogApi = {
+  async searchCards({ q, commanderEligible, limit }) {
+    const params = new URLSearchParams({ q });
+    if (commanderEligible) params.set("commander", "1");
+    if (limit !== undefined) params.set("limit", String(limit));
+    try {
+      const res = await fetch(`/api/cards/search?${params.toString()}`);
+      return (await res.json()) as Result<CardSummary[]>;
+    } catch {
+      return { ok: false, error: offline };
+    }
+  },
 };

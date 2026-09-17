@@ -54,7 +54,12 @@ async function loadTopCardIds(
  * (the same release-aware rates the deck tool uses, including decks borrowed from other pairings), plus how many cards
  * those decks run in each role. Null when the slug is unknown or no deck has exactly these commanders.
  */
-export async function loadCommanderPage(db: PublicClient, slug: string): Promise<CommanderPageData | null> {
+export type CommanderPage = CommanderPageData & {
+  /** Artist per commander card id, for crediting art shown as a backdrop. */
+  artists: Record<number, string | null>;
+};
+
+export async function loadCommanderPage(db: PublicClient, slug: string): Promise<CommanderPage | null> {
   const { data: key, error } = await db
     .from("commander_keys")
     .select("id, slug, commander_1, commander_2, color_identity")
@@ -109,6 +114,7 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
     const row = commanderRows.get(id);
     return row ? [toCardSummary(row)] : [];
   });
+  const artists = Object.fromEntries(commanderIds.map((id) => [id, commanderRows.get(id)?.artist ?? null]));
   const keyRef = {
     id: key.id as CommanderKeyId,
     slug: key.slug,
@@ -117,6 +123,7 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
   };
 
   return {
+    artists,
     key: keyRef,
     top: {
       mode: "collection_less",

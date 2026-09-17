@@ -6,7 +6,7 @@
 
 @theme inline {
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-display), var(--font-body), ui-sans-serif, sans-serif;
+  --font-heading: var(--font-display), Georgia, serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -27,12 +27,17 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Pocket binder */
+  /* Table at night: the surface, the sleeve that catches the light, the seam between them. */
   --color-sleeve: var(--sleeve);
   --color-seam: var(--seam);
   --color-save: var(--save);
   --color-gc: var(--gc);
   --color-gc-bg: var(--gc-bg);
+
+  /* The three jobs. Deliberately off the mana wheel so they never read as color identity. */
+  --color-cut: var(--cut);
+  --color-add: var(--add);
+  --color-replace: var(--replace);
 
   /* Mana colors: color identity only */
   --color-mana-w: #f4ebc6;
@@ -53,32 +58,38 @@
 :root {
   --radius: 0.375rem;
 
-  --background: #e9eef3; /* binder page */
-  --foreground: #18212e; /* ink */
-  --sleeve: #ffffff;
-  --seam: #ccd5df;
+  /* The light falls from the top of the page, so surfaces get warmer as they rise. */
+  --background: #10131a; /* the table, in shadow */
+  --foreground: #e9e5dd; /* warm off-white: paper under a lamp, never pure white */
+  --sleeve: #1a1e28; /* a card sleeve lying on the table */
+  --seam: #2a303d; /* where two surfaces meet */
 
   --card: var(--sleeve);
   --card-foreground: var(--foreground);
-  --popover: var(--sleeve);
+  --popover: #1e232e;
   --popover-foreground: var(--foreground);
 
-  --primary: #2b4c9b; /* binder blue: the only interactive accent */
-  --primary-foreground: #ffffff;
-  --secondary: #dce3eb;
+  --primary: #d8a441; /* the lamp: the only thing that is lit */
+  --primary-foreground: #17130a;
+  --secondary: #272d39;
   --secondary-foreground: var(--foreground);
-  --muted: #dce3eb;
-  --muted-foreground: #5a6577; /* graphite */
-  --accent: #dce3eb;
+  --muted: #232936;
+  --muted-foreground: #98a0ae; /* far enough from the surface to stay readable */
+  --accent: #272d39;
   --accent-foreground: var(--foreground);
 
-  --destructive: #b42318;
-  --save: #1e7a4c;
-  --gc: #7a4f00;
-  --gc-bg: #fff1cc;
+  /* Cut, add and replace. Rose, jade and violet sit clear of W/U/B/R/G. */
+  --cut: #e8687c;
+  --add: #3cbd94;
+  --replace: #9d8ef5;
+
+  --destructive: #ef6172;
+  --save: #3cbd94;
+  --gc: #e0b354;
+  --gc-bg: #3a2d13;
 
   --border: var(--seam);
-  --input: #b9c3cf;
+  --input: #39414f;
   --ring: var(--primary);
 }
 
@@ -88,10 +99,27 @@
   }
   html {
     @apply font-sans;
+    color-scheme: dark;
+    /* Both html and body: 100vw counts the scrollbar, so a full-bleed section overflows by its width
+       unless the root clips too. clip, not hidden — hidden makes a scroll container and breaks the
+       deck tool's sticky bar. overflow-y stays visible. */
+    overflow-x: clip;
   }
   body {
     @apply bg-background text-foreground antialiased;
+    /* Lets a full-bleed section use 50vw margins without adding a horizontal scrollbar. Must be
+       clip, not hidden: hidden would make body a scroll container and break sticky children
+       like the deck tool's bar. overflow-y stays visible. */
+    overflow-x: clip;
   }
+}
+
+@utility lit {
+  /* One light source, above. A warm edge where a surface catches it, shadow where it doesn't. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--primary) 18%, transparent),
+    0 1px 2px rgb(0 0 0 / 0.5),
+    0 8px 24px -12px rgb(0 0 0 / 0.7);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -102,5 +130,23 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* The hero deals its cards once, on load. Positions come from the element's own custom
+   properties so the resting layout is correct even if the animation never runs. */
+.fan-card {
+  transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg)) scale(var(--s, 1));
+  animation: deal 0.75s cubic-bezier(0.22, 1, 0.36, 1) var(--delay, 0s) both;
+}
+
+@keyframes deal {
+  from {
+    transform: translate3d(0, 6%, 0) rotate(0deg) scale(0.92);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg)) scale(var(--s, 1));
+    opacity: 1;
   }
 }

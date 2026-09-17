@@ -18,7 +18,7 @@ import type {
 } from './decks';
 import type { Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
-import type { AddResult, CutResult, RecContext, SwapResult, VoteSummary } from './recs';
+import type { AddResult, CutResult, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
 
 /**
  * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut}
@@ -28,6 +28,12 @@ export interface RecsApi {
   swap(input: { context: RecContext; targetCardId: CardId; limit?: number }): Promise<Result<SwapResult>>;
   add(input: { context: RecContext; limitPerCategory?: number }): Promise<Result<AddResult>>;
   cut(input: { context: RecContext; limit?: number }): Promise<Result<CutResult>>;
+}
+
+/** Card lookups for pickers. Transport: GET Route Handlers under /api/cards (cacheable, parallel). */
+export interface CatalogApi {
+  /** Cards whose name matches `q` (at least 2 characters), best match first; `commanderEligible` keeps only cards that can lead a deck. */
+  searchCards(input: { q: string; commanderEligible?: boolean; limit?: number }): Promise<Result<CardSummary[]>>;
 }
 
 /** Mutations and user-triggered operations. Transport: Server Actions. */
@@ -60,14 +66,19 @@ export interface ActionsApi {
   deleteDeck(input: { deckId: DeckId }): Promise<Result<null>>;
   exportDeck(input: { deckId: DeckId; format: ExportFormat }): Promise<Result<{ filename: string; content: string }>>;
 
-  /** value 0 clears the vote. */
+  /** Whether replacementCardId is a good replacement for targetCardId. value 0 clears the vote. Works without an account. */
   castVote(input: {
     targetCardId: CardId;
     replacementCardId: CardId;
     value: -1 | 0 | 1;
     commanderKeyId?: CommanderKeyId;
+    /** What the voter saw; send it from the swipe view and the rater. */
+    context?: VoteContext;
   }): Promise<Result<VoteSummary>>;
   setFavorite(input: FavoriteRef & { on: boolean }): Promise<Result<null>>;
+
+  /** Cards to rate replacements for with a commander or partner pair, given by card ids or by commander page slug (exactly one). */
+  dealRaterCards(input: { commanderIds?: CardId[]; commanderSlug?: string }): Promise<Result<RaterDeal>>;
 
   adminSetTagDisabled(input: {
     tagId: TagId;

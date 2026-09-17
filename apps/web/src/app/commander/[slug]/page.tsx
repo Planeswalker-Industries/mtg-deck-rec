@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { cn } from "cn";
+import { ArtBackdrop } from "@/components/cards/art-backdrop";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { buttonVariants } from "@/components/ui/button";
 import { GameChangerBadge } from "@/components/deck/card-label";
@@ -40,13 +41,20 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
   const page = await getCommanderPage(slug);
   if (!page) notFound();
 
-  const { key, top, roleProfile, computedAt } = page;
+  const { key, top, roleProfile, computedAt, artists } = page;
   const names = key.commanders.map(displayName).join(" and ");
   const identity = [...WUBRG].filter((color) => key.commanders.some((c) => c.colorIdentity.includes(color))).join("");
-  const art = key.commanders[0]?.images?.front.artCrop;
+  const lead = key.commanders[0];
+  const art = lead?.images?.front.artCrop;
 
   return (
     <article className="flex flex-col gap-8">
+      <ArtBackdrop
+        art={art}
+        artist={lead ? artists[lead.id] : null}
+        cardName={lead ? displayName(lead) : ""}
+        cardSlug={lead?.slug ?? ""}
+      >
       <header className="flex flex-col gap-4">
         <div className="flex items-center gap-4">
           {art && (
@@ -71,13 +79,20 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
         {key.confidence !== "full" && (
           <p className="max-w-prose text-sm">{fewDecksPhrase(key)}, so these rankings can still shift as more decks come in.</p>
         )}
-        <div>
+        <div className="flex flex-wrap gap-2">
           {/* Pair names run long, so the label wraps instead of running off a phone screen. */}
           <Link href="/deck" className={cn(buttonVariants({ size: "lg" }), "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}>
             Upgrade your {names} deck
           </Link>
+          <Link
+            href={`/rate?commander=${key.slug ?? slug}` as Route}
+            className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}
+          >
+            Rate cards for this commander
+          </Link>
         </div>
       </header>
+      </ArtBackdrop>
 
       {roleProfile.length > 0 && (
         <section aria-labelledby="roles-heading" className="flex flex-col gap-3">
