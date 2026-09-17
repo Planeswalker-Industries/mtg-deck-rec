@@ -13,6 +13,22 @@ import { createPublicClient } from "@/lib/server/supabase";
  */
 export async function proxy(request: NextRequest) {
   const [, section, slug] = request.nextUrl.pathname.split("/");
+
+  // A deck page a signed-out visitor cannot see should be a real 404, not a 200 with an empty shell, so its id
+  // cannot be probed. Only for signed-out visitors: the anon client cannot tell a private deck from a missing one,
+  // and an owner has every right to their own hidden deck. A signed-in visitor falls through to the page, which
+  // renders the not-found body without leaking anything.
+  const code = request.nextUrl.pathname.split("/")[3];
+  if (section === "decks" && code && DECK_CODE.test(code) && !hasSessionCookie(request)) {
+    try {
+      if (!(await publicDeckExists(code))) {
+        return NextResponse.rewrite(new URL("/_missing", request.url));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   if ((section === "card" || section === "commander") && slug) {
     try {
       if (!(await pageExists(section, decodeURIComponent(slug)))) {
@@ -26,6 +42,16 @@ export async function proxy(request: NextRequest) {
   }
 
   return hasSessionCookie(request) ? refreshSession(request) : NextResponse.next();
+}
+
+/** Matches decks_code_shape in the database, so a path that could never be a code costs no query. */
+const DECK_CODE = /^[A-Za-z0-9]{8,32}$/;
+
+/** Row-level security limits the anon client to public decks, which is exactly the question being asked. */
+async function publicDeckExists(code: string): Promise<boolean> {
+  const { data, error } = await createPublicClient().from("decks").select("id").eq("code", code).limit(1);
+  if (error) throw new Error(`Checking deck page ${code} failed: ${error.message}`);
+  return data.length > 0;
 }
 
 async function pageExists(section: "card" | "commander", slug: string): Promise<boolean> {

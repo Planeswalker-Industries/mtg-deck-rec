@@ -701,6 +701,7 @@ export type Database = {
         Row: {
           bracket: number | null
           card_count: number
+          code: string
           color_identity: number
           commander_1: number | null
           commander_2: number | null
@@ -715,6 +716,7 @@ export type Database = {
         Insert: {
           bracket?: number | null
           card_count?: number
+          code?: string
           color_identity?: number
           commander_1?: number | null
           commander_2?: number | null
@@ -729,6 +731,7 @@ export type Database = {
         Update: {
           bracket?: number | null
           card_count?: number
+          code?: string
           color_identity?: number
           commander_1?: number | null
           commander_2?: number | null
@@ -1351,6 +1354,7 @@ export type Database = {
       }
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
+      new_deck_code: { Args: never; Returns: string }
       prices_checked_at: { Args: never; Returns: string }
       rebuild_tag_closure: { Args: never; Returns: undefined }
       rec_add_candidates:

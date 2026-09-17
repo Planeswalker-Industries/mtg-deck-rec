@@ -693,6 +693,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     async getMySavedDecks() {
       const list: SavedDeckSummary[] = [...decks].map(([id, d]) => ({
         id: id as DeckId,
+        code: `code${String(id).replace(/\D/g, "") || "1"}`,
         name: d.name,
         commanderKey: commanderKeyRef(d.deck.commanders),
         isPublic: d.isPublic,
