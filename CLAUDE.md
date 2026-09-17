@@ -98,6 +98,15 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - `corpusComponent` returns null (unknown, not low) when too few decks anywhere could have run a card. Add skips those cards.
   - `resolveDeck` drops decks whose two "commanders" aren't a legal pair (`isValidPartnerPair`). Archidekt's Commander category also holds companions and misfiled cards.
 - Role checks use `commander_stats.role_profile`: the average cards per deck in each `deck_role_targets` role, from `loadRoleCards`, which mirrors `rec_card_roles`. `roleTargetsFor` in `apps/web/src/lib/server/recs.ts` moves the generic targets toward that profile by `commanderShare`, for both cut redundancy and add role gaps. Liesa decks, for example, average 15.8 removal against a generic target of 9.
+- **Statement-timeout retry:** `lib/server/retry-timeout.ts` wraps `rec_swap_candidates` and `rec_add_candidates` at all four call sites and retries up to three attempts, but only when Postgres cancelled the statement (SQLSTATE 57014).
+  - Why it works rather than just costing time: a cancelled attempt still leaves the pages it read in `shared_buffers`, so the next one has less to fetch. Measured on the hosted database (Sol Ring, WUBRG, limit 120): first call cancelled at 3.0 s, second returned in 2.0 s, third in 0.27 s.
+  - Only a timeout is retried; anything else returns straight away. Three attempts is the cap because each can burn the full 3 s and the serverless function has its own limit.
+  - It is a mitigation, not the fix. Caching the swap pool somewhere that survives between serverless instances would stop the cold query happening at all.
+  - Checked by `yarn workspace @mtg/web tsx scripts/retry-timeout-check.ts` (fake call, no database).
+  - **A query that runs out of retries is recorded in `public.rec_timeouts`** via `log_rec_timeout`, so the slow ones can be found rather than guessed at. One row per query shape (function, target card, commanders, identity, owned-only) with a `hits` counter and `last_seen`, so the table is bounded by distinct shapes rather than growing with traffic.
+    - Nothing reads it through the API: RLS is on with no policies, and `anon`/`authenticated` can execute the function but cannot select the table. Read it with psql or as `service_role`.
+    - Recording is fire-and-forget and the function swallows its own errors. A request that is already slow must never fail because bookkeeping did.
+    - Worst offenders: `select fn, target_card_id, commander_ids, hits, last_seen from public.rec_timeouts order by hits desc limit 20;` — join `cards` on `target_card_id` for names.
 - **Swap caching:**
   - `loadSwapPool` (candidates, card rows, tags, play rates) doesn't depend on the rest of the deck; `rankSwaps` removes the deck's own cards and blends scores.
   - The swap route calls `getCachedSwapSuggestions` in `lib/server/recs-cache.ts`: `use cache` + `cacheLife("hours")` + `cacheTag("recs")`, keyed by target, commander ids and the Game Changer setting. Collection-aware requests skip the cache.
