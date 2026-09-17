@@ -18,7 +18,9 @@ test("analyzes the sample deck and opens replacements for a card", async ({ page
   await expect(recs.getByRole("tab", { name: "Cards to cut" })).toBeVisible();
   await recs.getByRole("tab", { name: "Cards to add" }).click();
   await recs.getByRole("tab", { name: "Your deck" }).click();
-  const deckCards = recs.getByRole("list", { name: "Your deck" }).getByRole("button");
+  // The deck is grouped now: several card lists inside one named region, under the grouping pills.
+  // Scope to a list so the pills themselves are not mistaken for cards.
+  const deckCards = recs.getByRole("region", { name: "Your deck" }).getByRole("list").first().getByRole("button");
   await expect(deckCards.first()).toBeVisible();
   await deckCards.first().click();
 

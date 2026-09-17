@@ -23,5 +23,9 @@
  *
  * v7 (2026-09-17): SavedDeckSummary.code, the short random code a deck URL uses. The name is user-written and
  * can change, so it must never appear in the path; `id` stays the key the write actions take.
+ *
+ * v8 (2026-09-17): the deck workspace groups a deck by card type, keyword and tag. CardSummary.keywords carries
+ * Scryfall's rules keywords, and CatalogApi.cardTags returns functional tags per card. Keywords ride on the card
+ * because the tool already holds one for every card; tags are fetched separately because most views never need them.
  */
-export const CONTRACT_VERSION = 7;
+export const CONTRACT_VERSION = 8;

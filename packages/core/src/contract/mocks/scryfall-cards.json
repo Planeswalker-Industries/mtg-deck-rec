@@ -25,7 +25,10 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/mkc/202/chulane-teller-of-tales?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/mkc/202/chulane-teller-of-tales?utm_source=api",
+      "keywords": [
+        "Vigilance"
+      ]
     },
     {
       "name": "Sol Ring",
@@ -50,7 +53,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/211/sol-ring?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/211/sol-ring?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Arcane Signet",
@@ -75,7 +79,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/191/arcane-signet?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/191/arcane-signet?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Mind Stone",
@@ -97,7 +102,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/mbc/76/mind-stone?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/mbc/76/mind-stone?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Fellwar Stone",
@@ -119,7 +125,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/mbc/74/fellwar-stone?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/mbc/74/fellwar-stone?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Talisman of Unity",
@@ -144,7 +151,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/mkc/244/talisman-of-unity?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/mkc/244/talisman-of-unity?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Cultivate",
@@ -169,7 +177,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/172/cultivate?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/172/cultivate?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Kodama's Reach",
@@ -194,7 +203,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/ecc/113/kodamas-reach?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/ecc/113/kodamas-reach?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Farseek",
@@ -219,7 +229,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/173/farseek?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/173/farseek?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Nature's Lore",
@@ -244,7 +255,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/177/natures-lore?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/177/natures-lore?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Three Visits",
@@ -269,7 +281,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/181/three-visits?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/181/three-visits?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Rampant Growth",
@@ -294,7 +307,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/tdc/265/rampant-growth?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/tdc/265/rampant-growth?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Birds of Paradise",
@@ -319,7 +333,10 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/170/birds-of-paradise?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/170/birds-of-paradise?utm_source=api",
+      "keywords": [
+        "Flying"
+      ]
     },
     {
       "name": "Llanowar Elves",
@@ -344,7 +361,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/fdn/227/llanowar-elves?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/fdn/227/llanowar-elves?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Elvish Mystic",
@@ -369,7 +387,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/hoc/205/elvish-mystic?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/hoc/205/elvish-mystic?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Swords to Plowshares",
@@ -394,7 +413,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/143/swords-to-plowshares?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/143/swords-to-plowshares?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Path to Exile",
@@ -419,7 +439,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/141/path-to-exile?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/141/path-to-exile?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Generous Gift",
@@ -444,7 +465,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/133/generous-gift?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/133/generous-gift?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Beast Within",
@@ -469,7 +491,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/169/beast-within?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/169/beast-within?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Lightning Bolt",
@@ -494,7 +517,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/806/lightning-bolt?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/806/lightning-bolt?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Counterspell",
@@ -519,7 +543,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/dsc/114/counterspell?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/dsc/114/counterspell?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Arcane Denial",
@@ -544,7 +569,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/147/arcane-denial?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/147/arcane-denial?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Swan Song",
@@ -569,7 +595,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/eoc/46/swan-song?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/eoc/46/swan-song?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Rhystic Study",
@@ -594,7 +621,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/j22/114/rhystic-study?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/j22/114/rhystic-study?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Guardian Project",
@@ -619,7 +647,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/rvr/146/guardian-project?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/rvr/146/guardian-project?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Beast Whisperer",
@@ -644,7 +673,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/clu/158/beast-whisperer?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/clu/158/beast-whisperer?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Fact or Fiction",
@@ -669,7 +699,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/cmm/91/fact-or-fiction?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/cmm/91/fact-or-fiction?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Cyclonic Rift",
@@ -694,7 +725,10 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/rvr/40/cyclonic-rift?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/rvr/40/cyclonic-rift?utm_source=api",
+      "keywords": [
+        "Overload"
+      ]
     },
     {
       "name": "Command Tower",
@@ -719,7 +753,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/msc/233/command-tower?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/msc/233/command-tower?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Growth Spiral",
@@ -744,7 +779,8 @@
         },
         "back": null
       },
-      "scryfallUri": "https://scryfall.com/card/dsc/88/growth-spiral?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/dsc/88/growth-spiral?utm_source=api",
+      "keywords": []
     },
     {
       "name": "Sea Gate Restoration // Sea Gate, Reborn",
@@ -774,7 +810,8 @@
           "artCrop": "https://cards.scryfall.io/art_crop/back/1/9/193071fe-180b-4d35-ba78-9c16675c29fc.jpg?1783929396"
         }
       },
-      "scryfallUri": "https://scryfall.com/card/znr/76/sea-gate-restoration-sea-gate-reborn?utm_source=api"
+      "scryfallUri": "https://scryfall.com/card/znr/76/sea-gate-restoration-sea-gate-reborn?utm_source=api",
+      "keywords": []
     }
   ]
 }

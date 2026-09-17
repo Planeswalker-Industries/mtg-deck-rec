@@ -36,7 +36,7 @@ test("swipes through cards to cut and puts a picked replacement in the deck", as
   await page.getByRole("button", { name: "See the list" }).click();
   await recs.getByRole("tab", { name: "Your deck" }).click();
   const pickedName = picked.split(" // ")[0] ?? picked;
-  await expect(recs.getByRole("list", { name: "Your deck" }).getByText(pickedName, { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(recs.getByRole("region", { name: "Your deck" }).getByText(pickedName, { exact: true }).first()).toBeVisible({ timeout: 60_000 });
 });
 
 test("enlarges a card on tap and dismisses it without swiping the card underneath", async ({ page }) => {

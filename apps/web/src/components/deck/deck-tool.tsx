@@ -11,7 +11,7 @@ import { AddPanel } from "./add-panel";
 import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { CutPanel } from "./cut-panel";
 import { DeckBar } from "./deck-bar";
-import { DeckListPanel } from "./deck-list-panel";
+import { DeckGroupsPanel } from "./deck-groups-panel";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
@@ -276,7 +276,7 @@ export function DeckTool() {
                 <AddPanel state={tool.add} />
               </TabsContent>
               <TabsContent value="deck">
-                <DeckListPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
+                <DeckGroupsPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
               </TabsContent>
             </Tabs>
           )}

@@ -5,7 +5,7 @@ import type { PublicClient } from "./supabase";
 
 /** Columns needed to build a CardSummary and run Commander rules. */
 export const CARD_COLUMNS =
-  "id, oracle_id, name, slug, mana_value, type_line, color_identity, images, game_changer, released_at, reference_price_usd, reference_price_finish, prices_as_of, legal_commander, can_be_commander, partner_kind, partner_qualifier, copy_limit, is_basic_land, artist" as const;
+  "id, oracle_id, name, slug, mana_value, type_line, color_identity, images, game_changer, released_at, reference_price_usd, reference_price_finish, prices_as_of, legal_commander, can_be_commander, partner_kind, partner_qualifier, copy_limit, is_basic_land, artist, keywords" as const;
 
 export interface CardRow {
   id: number;
@@ -32,6 +32,7 @@ export interface CardRow {
    * and only Server Components need it, to credit art shown as a page backdrop.
    */
   artist: string | null;
+  keywords: string[] | null;
 }
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -50,6 +51,7 @@ export function toCardSummary(row: CardRow, today = todayIso()): CardSummary {
     images: row.images as CardImages | null,
     gameChanger: row.game_changer,
     released: row.released_at === null || row.released_at <= today,
+    keywords: row.keywords ?? [],
     price:
       row.reference_price_usd !== null && row.prices_as_of !== null
         ? { usd: Number(row.reference_price_usd), finish: toFinish(row.reference_price_finish), asOf: row.prices_as_of, source: "scryfall" }
