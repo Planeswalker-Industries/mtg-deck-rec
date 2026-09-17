@@ -86,6 +86,7 @@ export const mockCards: CardSummary[] = scryfall.cards.map((c, i) => ({
   images: c.images,
   gameChanger: c.gameChanger,
   released: true,
+  keywords: c.keywords ?? [],
   price: c.price ? { usd: c.price.usd, finish: toFinish(c.price.finish), asOf: MOCK_AS_OF, source: 'scryfall' } : null,
 }));
 

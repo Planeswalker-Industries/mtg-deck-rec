@@ -15,9 +15,14 @@ export interface PocketItem {
   href?: string;
 }
 
-const GRID_SIZES = "(min-width: 1024px) 180px, (min-width: 768px) 20vw, (min-width: 640px) 25vw, 33vw";
+const GRID_SIZES = "(min-width: 1024px) 160px, (min-width: 640px) 25vw, 33vw";
 
-/** Card images laid out like a binder page: 3 across on phones, up to 6 on wide screens. */
+/**
+ * Card images laid out like a binder page: 3 across on phones, up to 6 on wide screens.
+ *
+ * The columns answer to the **container**, not the viewport: the deck workspace puts this grid in a middle column
+ * roughly half the page wide, where viewport breakpoints would have asked for six cards in the room for four.
+ */
 export function PocketGrid({
   items,
   label,
@@ -28,43 +33,45 @@ export function PocketGrid({
   onSelect?: (card: CardSummary) => void;
 }) {
   return (
-    <ul aria-label={label} className="grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-      {items.map((item) => {
-        const content = (
-          <>
-            <CardImage card={item.card} alt="" sizes={GRID_SIZES} />
-            <span className="mt-1.5 line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(item.card)}</span>
-            {item.caption && <span className="mt-0.5 block text-xs leading-snug">{item.caption}</span>}
-          </>
-        );
-        return (
-          <li key={item.href ?? item.card.id} className="min-w-0">
-            {onSelect ? (
-              <button
-                type="button"
-                onClick={() => onSelect(item.card)}
-                aria-pressed={item.selected ?? false}
-                className={cn(
-                  "block w-full rounded-lg p-1 text-left transition-colors hover:bg-sleeve/70",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  item.selected && "bg-sleeve ring-2 ring-primary",
-                )}
-              >
-                {content}
-              </button>
-            ) : item.href ? (
-              <Link
-                href={item.href as Route}
-                className="block rounded-lg p-1 transition-colors hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {content}
-              </Link>
-            ) : (
-              <div className="p-1">{content}</div>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+    <div className="@container">
+      <ul aria-label={label} className="grid grid-cols-3 gap-x-2 gap-y-4 @md:grid-cols-4 @xl:grid-cols-5 @3xl:grid-cols-6">
+        {items.map((item) => {
+          const content = (
+            <>
+              <CardImage card={item.card} alt="" sizes={GRID_SIZES} />
+              <span className="mt-1.5 line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(item.card)}</span>
+              {item.caption && <span className="mt-0.5 block text-xs leading-snug">{item.caption}</span>}
+            </>
+          );
+          return (
+            <li key={item.href ?? item.card.id} className="min-w-0">
+              {onSelect ? (
+                <button
+                  type="button"
+                  onClick={() => onSelect(item.card)}
+                  aria-pressed={item.selected ?? false}
+                  className={cn(
+                    "block w-full rounded-lg p-1 text-left transition-colors hover:bg-sleeve/70",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                    item.selected && "bg-sleeve ring-2 ring-primary",
+                  )}
+                >
+                  {content}
+                </button>
+              ) : item.href ? (
+                <Link
+                  href={item.href as Route}
+                  className="block rounded-lg p-1 transition-colors hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  {content}
+                </Link>
+              ) : (
+                <div className="p-1">{content}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

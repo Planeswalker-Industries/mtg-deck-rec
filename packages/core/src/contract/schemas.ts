@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { DeckInput } from './decks';
 import type { ApiError, Result } from './errors';
-import type { CardId, CommanderKeyId, PrintingId, TagId } from './ids';
+import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
 import type { RecContext, VoteContext } from './recs';
 
 /**
@@ -134,6 +134,18 @@ export const castVoteInputSchema = z
 export const MAX_SEARCH_QUERY_CHARS = 100;
 export const MAX_SEARCH_LIMIT = 20;
 
+export const MAX_CARD_TAG_IDS = 400;
+
+export const cardTagsInputSchema = z.object(
+  {
+    cardIds: z
+      .array(cardId("That card is not valid."))
+      .min(1, "Ask for at least one card.")
+      .max(MAX_CARD_TAG_IDS, "Too many cards in one request."),
+  },
+  request,
+);
+
 export const searchCardsInputSchema = z.object(
   {
     q: z
@@ -213,6 +225,52 @@ export const saveCollectionBatchInputSchema = z.object(
  * Validates untrusted input against a schema. Text or lists over their size limit are PAYLOAD_TOO_LARGE; anything else
  * invalid is VALIDATION. The first problem becomes the message, and every problem is listed by field.
  */
+/** Mirrors app_config.decks.maxNameChars. The database is the authority; this is the friendly refusal. */
+export const MAX_DECK_NAME_CHARS = 80;
+
+const deckId = (message: string) =>
+  z
+    .string({ error: message })
+    .uuid(message)
+    .transform((id) => id as DeckId);
+
+const deckName = z
+  .string({ error: 'Give the deck a name.' })
+  .trim()
+  .min(1, 'Give the deck a name.')
+  .max(MAX_DECK_NAME_CHARS, `A deck name is at most ${MAX_DECK_NAME_CHARS} characters.`);
+
+export const saveDeckInputSchema = z.object(
+  {
+    deckId: deckId('That deck is not valid.').optional(),
+    name: deckName,
+    deck: deckInputSchema,
+    isPublic: z.boolean({ error: 'Choose whether the deck is public.' }),
+    bracket: z.literal([1, 2, 3, 4, 5], { error: 'Pick a bracket from 1 to 5.' }).optional(),
+  },
+  request,
+);
+
+/** Deck codes are generated, so anything that isn't one of ours is a bad request rather than a missing deck. */
+export const openSavedDeckInputSchema = z.object(
+  { code: z.string({ error: 'That deck is not valid.' }).regex(/^[A-Za-z0-9]{8,32}$/, 'That deck is not valid.') },
+  request,
+);
+
+export const renameDeckInputSchema = z.object({ deckId: deckId('That deck is not valid.'), name: deckName }, request);
+
+export const duplicateDeckInputSchema = z.object(
+  { deckId: deckId('That deck is not valid.'), name: deckName.optional() },
+  request,
+);
+
+export const deckVisibilityInputSchema = z.object(
+  { deckId: deckId('That deck is not valid.'), isPublic: z.boolean({ error: 'Choose whether the deck is public.' }) },
+  request,
+);
+
+export const deleteDeckInputSchema = z.object({ deckId: deckId('That deck is not valid.') }, request);
+
 export function parseInput<T>(schema: InputSchema<T>, value: unknown): Result<T> {
   const parsed = schema.safeParse(value);
   if (parsed.success) return { ok: true, data: parsed.data };

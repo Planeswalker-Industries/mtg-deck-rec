@@ -235,6 +235,7 @@ export type Database = {
           images: Json | null
           is_basic_land: boolean
           is_digital_only: boolean
+          keywords: string[]
           layout: string
           legal_commander: string
           legalities: Json
@@ -269,6 +270,7 @@ export type Database = {
           images?: Json | null
           is_basic_land: boolean
           is_digital_only: boolean
+          keywords?: string[]
           layout: string
           legal_commander: string
           legalities: Json
@@ -303,6 +305,7 @@ export type Database = {
           images?: Json | null
           is_basic_land?: boolean
           is_digital_only?: boolean
+          keywords?: string[]
           layout?: string
           legal_commander?: string
           legalities?: Json
@@ -701,6 +704,7 @@ export type Database = {
         Row: {
           bracket: number | null
           card_count: number
+          code: string
           color_identity: number
           commander_1: number | null
           commander_2: number | null
@@ -715,6 +719,7 @@ export type Database = {
         Insert: {
           bracket?: number | null
           card_count?: number
+          code?: string
           color_identity?: number
           commander_1?: number | null
           commander_2?: number | null
@@ -729,6 +734,7 @@ export type Database = {
         Update: {
           bracket?: number | null
           card_count?: number
+          code?: string
           color_identity?: number
           commander_1?: number | null
           commander_2?: number | null
@@ -890,6 +896,50 @@ export type Database = {
           window_start?: string
         }
         Relationships: []
+      }
+      rec_timeouts: {
+        Row: {
+          commander_ids: number[]
+          first_seen: string
+          fn: string
+          hits: number
+          id: number
+          identity_mask: number
+          last_seen: string
+          owned_only: boolean
+          target_card_id: number | null
+        }
+        Insert: {
+          commander_ids?: number[]
+          first_seen?: string
+          fn: string
+          hits?: number
+          id?: never
+          identity_mask?: number
+          last_seen?: string
+          owned_only?: boolean
+          target_card_id?: number | null
+        }
+        Update: {
+          commander_ids?: number[]
+          first_seen?: string
+          fn?: string
+          hits?: number
+          id?: never
+          identity_mask?: number
+          last_seen?: string
+          owned_only?: boolean
+          target_card_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rec_timeouts_target_card_id_fkey"
+            columns: ["target_card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       share_import_sources: {
         Row: {
@@ -1223,6 +1273,16 @@ export type Database = {
           slug: string
         }[]
       }
+      cards_functional_tags: {
+        Args: { p_card_ids: number[] }
+        Returns: {
+          card_id: number
+          depth: number
+          label: string
+          slug: string
+          tag_id: string
+        }[]
+      }
       cast_swap_vote: {
         Args: {
           p_commander_ids?: number[]
@@ -1295,8 +1355,19 @@ export type Database = {
         Args: { p_bucket: string; p_visitor: string }
         Returns: number
       }
+      log_rec_timeout: {
+        Args: {
+          p_commander_ids?: number[]
+          p_fn: string
+          p_identity_mask?: number
+          p_owned_only?: boolean
+          p_target_card_id?: number
+        }
+        Returns: undefined
+      }
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
+      new_deck_code: { Args: never; Returns: string }
       prices_checked_at: { Args: never; Returns: string }
       rebuild_tag_closure: { Args: never; Returns: undefined }
       rec_add_candidates:

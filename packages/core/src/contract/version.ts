@@ -17,5 +17,20 @@
  *
  * v5 (2026-09-15): the card rater. CatalogApi.searchCards (GET /api/cards/search), ActionsApi.dealRaterCards and
  * RaterDeal.
+ *
+ * v6 (2026-09-16): saved decks. ActionsApi renameDeck, duplicateDeck and setDeckVisibility, plus optional
+ * SavedDeckSummary.bracket. saveDeck, deleteDeck and getMySavedDecks were already in v1 and are unchanged.
+ *
+ * v7 (2026-09-17): SavedDeckSummary.code, the short random code a deck URL uses. The name is user-written and
+ * can change, so it must never appear in the path; `id` stays the key the write actions take.
+ *
+ * v8 (2026-09-17): the deck workspace groups a deck by card type, keyword and tag. CardSummary.keywords carries
+ * Scryfall's rules keywords, and CatalogApi.cardTags returns functional tags per card. Keywords ride on the card
+ * because the tool already holds one for every card; tags are fetched separately because most views never need them.
+ *
+ * v9 (2026-09-17): reopening a saved deck. ActionsApi.openSavedDeck returns SavedDeckContents (the deck as decklist
+ * text), and saveDeck takes an optional bracket, so a deck comes back with the bracket it was saved at. saveDeck also
+ * returns the deck's code beside its id, so the deck just saved can be linked to and gone on editing; it already
+ * accepted a deckId, which is what makes the tool's auto-save an update rather than a new deck.
  */
-export const CONTRACT_VERSION = 5;
+export const CONTRACT_VERSION = 9;

@@ -7,7 +7,7 @@ test("analyzes the sample deck and opens replacements for a card", async ({ page
 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
-  // Swiping is the default on a first visit; the list keeps the tabs.
+  // Swiping is the default on a first visit; the list keeps the Cut/Add/Replace selector.
   await expect(recs.getByRole("button", { name: "Swipe" })).toHaveAttribute("aria-pressed", "true");
 
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
@@ -15,10 +15,13 @@ test("analyzes the sample deck and opens replacements for a card", async ({ page
   await notNow.click({ timeout: 3_000 }).catch(() => undefined);
 
   await recs.getByRole("button", { name: "List" }).click();
-  await expect(recs.getByRole("tab", { name: "Cards to cut" })).toBeVisible();
-  await recs.getByRole("tab", { name: "Cards to add" }).click();
-  await recs.getByRole("tab", { name: "Your deck" }).click();
-  const deckCards = recs.getByRole("list", { name: "Your deck" }).getByRole("button");
+  await expect(recs.getByRole("button", { name: /^Cut Weak links/ })).toBeVisible();
+  // Drilling into a job collapses the selector to a Back control; the deck is what the workspace shows by default.
+  await recs.getByRole("button", { name: /^Add Missing pieces/ }).click();
+  await recs.getByRole("button", { name: "Back" }).click();
+  // The deck is grouped now: several card lists inside one named region, under the grouping pills.
+  // Scope to a list so the pills themselves are not mistaken for cards.
+  const deckCards = recs.getByRole("region", { name: "Your deck" }).getByRole("list").first().getByRole("button");
   await expect(deckCards.first()).toBeVisible();
   await deckCards.first().click();
 
@@ -40,5 +43,5 @@ test("remembers the list view for the next visit", async ({ page }) => {
   await page.reload();
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await expect(recs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
-  await expect(recs.getByRole("tab", { name: "Cards to cut" })).toBeVisible();
+  await expect(recs.getByRole("button", { name: /^Cut Weak links/ })).toBeVisible();
 });

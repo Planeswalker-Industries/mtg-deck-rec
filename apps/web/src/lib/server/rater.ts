@@ -1,3 +1,4 @@
+import { isStatementTimeout, recordRecTimeout, retryOnTimeout } from "./retry-timeout";
 import type { CardSummary, CommanderKeyId, RaterDeal } from "@mtg/core/contract";
 import { fetchCardsById, toCardSummary } from "./cards";
 import { commanderKeyCounts, loadCommanderCorpus } from "./corpus";
@@ -38,16 +39,21 @@ export async function dealRaterCards(
   }
   const identityMask = commanderIds.reduce((mask, id) => mask | (commanderRows.get(id)?.color_identity ?? 0), 0);
 
-  const { data: pool, error } = await db.rpc("rec_add_candidates", {
-    p_key_ids: corpus.sourceKeyIds,
-    p_key_weights: corpus.sources.map((s) => s.weight),
-    p_alpha: corpus.settings.shrinkAlpha,
-    p_identity_mask: identityMask,
-    p_exclude: commanderIds,
-    p_allow_game_changers: true,
-    p_limit: DEAL_POOL,
-  });
-  if (error) throw new Error(`Dealing rater cards failed: ${error.message}`);
+  const { data: pool, error } = await retryOnTimeout("Dealing rater cards", () =>
+    db.rpc("rec_add_candidates", {
+      p_key_ids: corpus.sourceKeyIds,
+      p_key_weights: corpus.sources.map((s) => s.weight),
+      p_alpha: corpus.settings.shrinkAlpha,
+      p_identity_mask: identityMask,
+      p_exclude: commanderIds,
+      p_allow_game_changers: true,
+      p_limit: DEAL_POOL,
+    }),
+  );
+  if (error) {
+    if (isStatementTimeout(error)) recordRecTimeout(db, { fn: "add", commanderIds, identityMask });
+    throw new Error(`Dealing rater cards failed: ${error.message}`);
+  }
   const poolIds = (pool ?? []).map((p) => p.card_id);
   const rows = await fetchCardsById(db, poolIds);
   const cards = poolIds

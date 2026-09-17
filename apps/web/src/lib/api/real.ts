@@ -11,6 +11,14 @@ import {
   requestCommanderDecksAction,
   resolveCollectionRowsAction,
 } from "@/app/deck/actions";
+import {
+  deleteDeckAction,
+  duplicateDeckAction,
+  openSavedDeckAction,
+  renameDeckAction,
+  saveDeckAction,
+  setDeckVisibilityAction,
+} from "@/app/decks/actions";
 
 const offline: ApiError = {
   code: "UPSTREAM_UNAVAILABLE",
@@ -52,8 +60,12 @@ export const realActions: ActionsApi = {
   resolveCollectionRows: (input) => resolveCollectionRowsAction(input),
   saveCollectionBatch: (input) => saveCollectionBatchAction(input),
   deleteCollection: () => deleteCollectionAction(),
-  saveDeck: notYet,
-  deleteDeck: notYet,
+  saveDeck: (input) => saveDeckAction(input),
+  openSavedDeck: (input) => openSavedDeckAction(input),
+  renameDeck: (input) => renameDeckAction(input),
+  duplicateDeck: (input) => duplicateDeckAction(input),
+  setDeckVisibility: (input) => setDeckVisibilityAction(input),
+  deleteDeck: (input) => deleteDeckAction(input),
   exportDeck: notYet,
   castVote: (input) => castVoteAction(input),
   setFavorite: notYet,
@@ -74,4 +86,8 @@ export const realCatalog: CatalogApi = {
       return { ok: false, error: offline };
     }
   },
+
+  // POST, not GET: a hundred card ids do not belong in a URL. The answer is the same for everyone, so the
+  // route still sets cache headers.
+  cardTags: (input) => post("/api/cards/tags", input),
 };

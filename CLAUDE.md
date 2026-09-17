@@ -45,6 +45,8 @@ yarn workspace @mtg/worker cli spike:archidekt:crawl --commanders 50 --per-comma
 
 CI (`.github/workflows/ci.yml`, pushes to main, develop and `phase*/**`, PRs): install, typecheck, lint, unit tests, then `supabase start` on an empty database (proves migrations apply from scratch), a build with `NEXT_PUBLIC_USE_MOCKS=1`, and the e2e suite. Checks that need the real catalog, corpus or user decklists (regression harness, `E2E_LOCAL_DATA` tests, `X:\mtg_proj\tools` scripts) stay local: third-party decklists can't be public.
 
+**Local test accounts:** `supabase/seed.sql` creates `anon@test.local` and `admin@test.local` on `supabase db reset`. Sign in as either with `yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts anon` (run it from `apps/web/`), which mints a link directly and costs none of the local 30-emails-per-hour budget the Mailpit-gated e2e tests share. "admin" is only a name — there is no admin role yet, and it has the same rights as the other account. Seeds never reach the hosted project, which is built from `supabase/migrations`. **TODO before launch: delete both, or prove they still cannot reach hosted.**
+
 psql isn't installed locally; query the database with `docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres`.
 
 TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS compiler API, which typescript-eslint (via eslint-config-next) needs. Next 16.3 itself type-checks through the `tsc` CLI and would accept TS 7.
@@ -67,6 +69,11 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 - Sync jobs stage rows into temp tables on one reserved connection, check a sanity gate against the previous successful run's `sync_runs.metrics`, then merge in a single transaction. A crash leaves live tables untouched; a stale `running` row is marked `abandoned` by the next run. Prices update every run; card changes are detected by `content_hash`.
 - **Writes touch only the rows that change.** Unless a task explicitly asks for a full rebuild, never delete-and-reinsert or update a whole table for a small change. Diff the new rows against the live ones (`is distinct from`, content hashes, `except`) and insert, update or delete only the differences. This applies to sync jobs, aggregates, migrations and one-off fixes alike.
   - Why: every rewritten row leaves a dead row version behind, so a full rewrite of a big table roughly doubles it on disk until vacuum reclaims the space. The hosted database is on a 500 MB free tier.
+- **`cards.keywords`** holds Scryfall's rules keywords for a card (Deathtouch, Menace, Flying, Trample), so a deck can be grouped by keyword.
+  - Rules keywords only. "Life gain", "removal" and the rest are Tagger tags in `card_tags`; the two groupings stay separate because they come from different sources with different reliability.
+  - Part of `content_hash`, for the same reason `artist` is: the catalog upsert only writes a row when the hash differs, so an unhashed column would stay empty forever.
+  - Indexed with GIN, since grouping asks which cards contain a given keyword.
+  - Adding it rewrote every card row once. Measured: `cards` 147 MB to 151 MB, database 358 MB to 363 MB, of which the `cards_keywords` index is 1.3 MB. 17,507 of 34,829 live cards carry at least one keyword.
 - **`cards.artist`** is the artist of the representative printing, the same one `images` comes from, so the two always match.
   - It is part of `content_hash` on purpose. The catalog upsert only writes a row when `content_hash` or `rules_hash` differs, so a new column that isn't hashed would stay null forever on existing cards.
   - Adding it therefore rewrote every card row once. Measured cost: `cards` 145 MB → 147 MB, database 356 MB → 358 MB — `cards` has fillfactor 80, so the new row versions mostly fit on the existing pages. Expect the same for any future column added to the hash.
@@ -98,6 +105,15 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - `corpusComponent` returns null (unknown, not low) when too few decks anywhere could have run a card. Add skips those cards.
   - `resolveDeck` drops decks whose two "commanders" aren't a legal pair (`isValidPartnerPair`). Archidekt's Commander category also holds companions and misfiled cards.
 - Role checks use `commander_stats.role_profile`: the average cards per deck in each `deck_role_targets` role, from `loadRoleCards`, which mirrors `rec_card_roles`. `roleTargetsFor` in `apps/web/src/lib/server/recs.ts` moves the generic targets toward that profile by `commanderShare`, for both cut redundancy and add role gaps. Liesa decks, for example, average 15.8 removal against a generic target of 9.
+- **Statement-timeout retry:** `lib/server/retry-timeout.ts` wraps `rec_swap_candidates` and `rec_add_candidates` at all four call sites and retries up to three attempts, but only when Postgres cancelled the statement (SQLSTATE 57014).
+  - Why it works rather than just costing time: a cancelled attempt still leaves the pages it read in `shared_buffers`, so the next one has less to fetch. Measured on the hosted database (Sol Ring, WUBRG, limit 120): first call cancelled at 3.0 s, second returned in 2.0 s, third in 0.27 s.
+  - Only a timeout is retried; anything else returns straight away. Three attempts is the cap because each can burn the full 3 s and the serverless function has its own limit.
+  - It is a mitigation, not the fix. Caching the swap pool somewhere that survives between serverless instances would stop the cold query happening at all.
+  - Checked by `yarn workspace @mtg/web tsx scripts/retry-timeout-check.ts` (fake call, no database).
+  - **A query that runs out of retries is recorded in `public.rec_timeouts`** via `log_rec_timeout`, so the slow ones can be found rather than guessed at. One row per query shape (function, target card, commanders, identity, owned-only) with a `hits` counter and `last_seen`, so the table is bounded by distinct shapes rather than growing with traffic.
+    - Nothing reads it through the API: RLS is on with no policies, and `anon`/`authenticated` can execute the function but cannot select the table. Read it with psql or as `service_role`.
+    - Recording is fire-and-forget and the function swallows its own errors. A request that is already slow must never fail because bookkeeping did.
+    - Worst offenders: `select fn, target_card_id, commander_ids, hits, last_seen from public.rec_timeouts order by hits desc limit 20;` — join `cards` on `target_card_id` for names.
 - **Swap caching:**
   - `loadSwapPool` (candidates, card rows, tags, play rates) doesn't depend on the rest of the deck; `rankSwaps` removes the deck's own cards and blends scores.
   - The swap route calls `getCachedSwapSuggestions` in `lib/server/recs-cache.ts`: `use cache` + `cacheLife("hours")` + `cacheTag("recs")`, keyed by target, commander ids and the Game Changer setting. Collection-aware requests skip the cache.
@@ -111,6 +127,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - `lib/server/auth.ts` `createAuthClient()` (`@supabase/ssr`, cookies) and `getCurrentUser()` (uncached, behind `<Suspense>`). `proxy.ts` refreshes the session only when an `sb-*-auth-token` cookie is present. Redirect targets go through `safeNextPath` (`lib/safe-path.ts`).
   - `public.profiles` gets a row per new user via the `on_auth_user_created` trigger. Sign-in attempts use the `auth` rate-limit bucket.
   - The email link is `{{ .RedirectTo }}&token_hash=...`: `sendSignInEmailAction` always passes `/auth/confirm?next=...` as the redirect, so the template appends with `&`. That redirect must be on the Auth redirect allow list (`additional_redirect_urls` locally, the dashboard for a hosted project); otherwise Supabase falls back to the site URL and the link breaks.
+  - `supabase/config.toml` sets `[auth.rate_limit] email_sent = 30` per hour. The Mailpit-gated e2e tests each send sign-in emails, so running the whole suite with `E2E_MAILPIT_URL` repeatedly inside an hour exhausts it and they start failing together. They pass in isolation; CI never sets the variable and skips them.
   - Locally, sign-in emails land in Mailpit (http://127.0.0.1:56324); `E2E_MAILPIT_URL=http://127.0.0.1:56324` enables `e2e/sign-in.spec.ts` and `e2e/account-collection.spec.ts`. After editing auth settings in `config.toml`, run `supabase stop && supabase start`.
 - **Saved decks (Phase 4):** `public.decks` and `public.deck_cards`, with limits in `app_config.decks` (`maxDecks` 100, `maxCards` 250, `maxNameChars` 80).
   - A deck is its **name and its list of cards**. The pasted text is not stored; a clean decklist is regenerated when a deck is opened, so comments, personal formatting and unresolvable lines do not survive a save.
@@ -120,6 +137,14 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - New decks are public. Saving is always explicit; never auto-save an analysed deck, or a throwaway paste becomes a public page.
   - `save_deck` writes only the card rows that differ, like the sync jobs.
   - Signed out there is no deck list: `lib/saved-deck.ts` keeps one deck in the browser for 30 days and stays single-deck.
+  - **`listMyDecks` filters by `user_id` explicitly and must keep doing so.** Row-level security is not enough on its own: `public_decks_read` lets anyone read a public deck and new decks are public, so leaning on RLS alone listed every public deck on the site as "your decks". Caught by e2e, not by the SQL tests, which only checked that a *private* deck stayed hidden.
+  - The deck tool's `SaveDeckButton` is the only way in. The name is prefilled from the commander so saving is one click, and `saveDeck` never changes an existing deck's visibility, so re-saving cannot republish a deck its owner hid.
+  - `/decks` is `noindex` and redirects signed-out visitors to `/sign-in?next=/decks`. Deck writes use the `deck_write` rate-limit bucket and `revalidatePath('/decks')`.
+  - **`/decks/[commander]/[code]`** serves the owner and everyone else from one route. `loadDeckPage` returns null both when the deck does not exist and when the viewer may not see it, so a private deck is indistinguishable from a missing one and its id cannot be probed. It is `noindex`: the names on it are user-written.
+  - The URL carries `decks.code`, a 12-character random string, **never anything derived from the deck name**: the name is user-written, can change, and must not leak into a path. `id` (uuid) stays the key the write actions take. The commander segment beside it is decoration — the code alone resolves the deck, so a stale segment still works and is deliberately **not** redirected to the canonical path: `redirect()` inside the page's `<Suspense>` runs after the shell has streamed and leaves the visitor on a loading page. The page is noindex, so duplicate paths cost nothing.
+  - `proxy.ts` also matches `/decks/:commander/:code`, but **only for signed-out visitors**: `notFound()` inside a `<Suspense>` streams HTTP 200, so a stranger would otherwise get 200 with an empty shell. The anon client cannot tell a private deck from a missing one, and an owner has every right to their own hidden deck, so a request carrying a session cookie falls through to the page. Checked: public 200, private 404, missing 404.
+  - **TODO before launch:** the report link on a public deck points at a prefilled GitHub issue. Fine for a hobby project; decide on a real destination before any launch.
+  - The visibility control's wording is load-bearing. Hiding a deck does **not** remove it from the aggregates, and the copy says so.
   - Checks: `supabase/tests/saved-decks.sql`, 35 assertions including that one user cannot read, rename, expose, duplicate, overwrite or delete another user's deck. Needs the local catalog, so it stays out of CI.
 - **Collections (browser or account) and owned-only mode:**
   - `/collection` (`components/collection/collection-tool.tsx`) parses pasted text in the browser and matches it 2,000 rows per call. Signed out, the result stays in IndexedDB for 7 days (`lib/collection-store.ts`; localStorage can't hold large collections). Signed in, it replaces the account's collection through `saveCollectionBatchAction` (`app/collection/actions.ts`).
@@ -203,6 +228,12 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - The header is full at 390px, so phones get a button that opens a full-screen layer and `sm` up gets the input inline.
   - Results show the **full** card name, not `displayName`: a card can match on its back face ("Emeritus of Truce // Swords to Plowshares" prefix-matches "swords"), and the front face alone hides why it matched.
   - Every result goes to `/card/[slug]`, which links on to the commander page when the card has one, so a card without a `commander_keys` row can't send anyone to a 404.
+- **Deck grouping** (`components/deck/deck-groups-panel.tsx`, `@mtg/core/scoring` `groupDeck`): the deck shows under three pills — Card Type, Keyword, Tags.
+  - **Card Type** splits Legendary Creature out from Creature and keeps decklist order; an unrecognised type lands in Other rather than vanishing.
+  - **Keyword** uses `CardSummary.keywords` (Scryfall rules keywords), so it needs no request.
+  - **Tags** fetches `CatalogApi.cardTags` on first use only. A card counts in **every** tag it carries, so the counts deliberately do not sum to the deck size and the panel says so.
+  - **Tag groups are capped at 12.** A hundred-card deck produced **150** tag groups unguarded, which is not a view of anything. Whatever falls outside the kept groups is swept into Other, so no card disappears — the ceiling is tested.
+  - The panel is one `region` named "Your deck" containing a list per group. e2e scopes to a list inside it, because the pills are buttons in the same region.
 - **Card rater** (`/rate`, swipe rater slice 4; `components/rater/`):
   - The player picks a commander by name (`CommanderPicker` → `GET /api/cards/search` → SQL `search_cards`: prefix, then contains, then trigram typos, more-played commanders first; rate limit bucket `search`), or arrives from a commander page at `/rate?commander=<slug>`.
   - `dealRaterCardsAction` deals what the commander's decks play (`rec_add_candidates`, borrowing partner decks like the deck tool), or cards widely played in its colors when it has no decks. Lands are left out. Rounds of 10 cards.
