@@ -48,7 +48,7 @@ test("a collection imported before signing in moves to the account and drives ow
   await expect(ownedOnly).toBeChecked();
   // The only owned card (Sol Ring) is already in the sample deck, so there's nothing to add.
   await recs.getByRole("button", { name: "List" }).click();
-  await recs.getByRole("tab", { name: "Cards to add" }).click();
+  await recs.getByRole("button", { name: /^Add Missing pieces/ }).click();
   await expect(recs.getByText(/Nothing in your collection fits this deck's colors/)).toBeVisible({ timeout: 60_000 });
 
   await page.goto("/collection");

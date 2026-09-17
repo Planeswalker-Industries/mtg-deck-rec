@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { findResolvedCard } from "@/lib/cards";
 import { AddPanel } from "./add-panel";
@@ -12,6 +11,7 @@ import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { CutPanel } from "./cut-panel";
 import { DeckBar } from "./deck-bar";
 import { DeckGroupsPanel } from "./deck-groups-panel";
+import { JobSelector, type Job } from "./job-selector";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
@@ -40,6 +40,8 @@ export function DeckTool() {
   const [editing, setEditing] = useState(true);
   const [view, setView] = useState<ReviewView>(readReviewView);
   const [pendingSwaps, setPendingSwaps] = useState<PickedSwap[]>([]);
+  // null is the deck itself, which is where the workspace starts.
+  const [job, setJob] = useState<Job | null>(null);
   const [summary, setSummary] = useState<PickedSwap[] | null>(null);
   const restoreStarted = useRef(false);
   const swipeScrollWanted = useRef(false);
@@ -252,33 +254,40 @@ export function DeckTool() {
               <ShuffleDeck label="Finding cards to cut" />
             )
           ) : (
-            <Tabs defaultValue="cut" className="gap-4">
-              <TabsList className="h-10 w-full sm:w-fit">
-                <TabsTrigger value="cut" className="px-3">
-                  Cards to cut
-                </TabsTrigger>
-                <TabsTrigger value="add" className="px-3">
-                  Cards to add
-                </TabsTrigger>
-                <TabsTrigger value="deck" className="px-3">
-                  Your deck
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="cut">
+            <div className="flex flex-col gap-4">
+              <JobSelector
+                selected={job}
+                onSelect={setJob}
+                counts={{
+                  cut: tool.cut.status === "ready" ? tool.cut.data.suggestions.length : undefined,
+                  add: tool.add.status === "ready" ? tool.add.data.groups.reduce((n, g) => n + g.suggestions.length, 0) : undefined,
+                }}
+              />
+              {job === null && (
+                <DeckGroupsPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
+              )}
+              {job === "cut" && (
                 <CutPanel
                   state={tool.cut}
                   commanderKey={analysis.commanderKey}
                   selectedCardId={selectedCardId}
                   onSelectCard={tool.openSwap}
                 />
-              </TabsContent>
-              <TabsContent value="add">
-                <AddPanel state={tool.add} />
-              </TabsContent>
-              <TabsContent value="deck">
-                <DeckGroupsPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
-              </TabsContent>
-            </Tabs>
+              )}
+              {job === "add" && <AddPanel state={tool.add} />}
+              {job === "replace" && (
+                <div className="flex flex-col gap-3">
+                  {/*
+                   * Replacements are per card rather than a list of their own: the question is always "what else
+                   * does this card's job", so the deck is the way in.
+                   */}
+                  <p className="text-sm text-muted-foreground">
+                    Tap any card to see what else does its job, how the two compare and what the swap costs.
+                  </p>
+                  <DeckGroupsPanel lines={tool.lines} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
+                </div>
+              )}
+            </div>
           )}
         </section>
       )}
