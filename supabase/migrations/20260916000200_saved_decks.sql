@@ -84,7 +84,7 @@ $$;
 
 -- Creates or replaces one of the caller's decks. p_deck_id null creates, otherwise the deck must be theirs.
 -- p_cards is [{cardId, quantity, section}]; the whole card list is replaced, and only rows that differ are written.
-create function public.save_deck(p_deck_id uuid, p_name text, p_cards jsonb, p_bracket smallint default null)
+create function public.save_deck(p_deck_id uuid default null, p_name text default null, p_cards jsonb default '[]'::jsonb, p_bracket smallint default null)
 returns uuid
 language plpgsql
 security definer

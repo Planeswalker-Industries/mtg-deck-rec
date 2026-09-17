@@ -1395,9 +1395,9 @@ export type Database = {
       save_deck: {
         Args: {
           p_bracket?: number
-          p_cards: Json
-          p_deck_id: string
-          p_name: string
+          p_cards?: Json
+          p_deck_id?: string
+          p_name?: string
         }
         Returns: string
       }
