@@ -11,6 +11,13 @@ import {
   requestCommanderDecksAction,
   resolveCollectionRowsAction,
 } from "@/app/deck/actions";
+import {
+  deleteDeckAction,
+  duplicateDeckAction,
+  renameDeckAction,
+  saveDeckAction,
+  setDeckVisibilityAction,
+} from "@/app/decks/actions";
 
 const offline: ApiError = {
   code: "UPSTREAM_UNAVAILABLE",
@@ -52,8 +59,11 @@ export const realActions: ActionsApi = {
   resolveCollectionRows: (input) => resolveCollectionRowsAction(input),
   saveCollectionBatch: (input) => saveCollectionBatchAction(input),
   deleteCollection: () => deleteCollectionAction(),
-  saveDeck: notYet,
-  deleteDeck: notYet,
+  saveDeck: (input) => saveDeckAction(input),
+  renameDeck: (input) => renameDeckAction(input),
+  duplicateDeck: (input) => duplicateDeckAction(input),
+  setDeckVisibility: (input) => setDeckVisibilityAction(input),
+  deleteDeck: (input) => deleteDeckAction(input),
   exportDeck: notYet,
   castVote: (input) => castVoteAction(input),
   setFavorite: notYet,

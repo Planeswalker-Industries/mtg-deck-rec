@@ -17,5 +17,8 @@
  *
  * v5 (2026-09-15): the card rater. CatalogApi.searchCards (GET /api/cards/search), ActionsApi.dealRaterCards and
  * RaterDeal.
+ *
+ * v6 (2026-09-16): saved decks. ActionsApi renameDeck, duplicateDeck and setDeckVisibility, plus optional
+ * SavedDeckSummary.bracket. saveDeck, deleteDeck and getMySavedDecks were already in v1 and are unchanged.
  */
-export const CONTRACT_VERSION = 5;
+export const CONTRACT_VERSION = 6;

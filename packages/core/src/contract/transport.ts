@@ -63,6 +63,12 @@ export interface ActionsApi {
   deleteCollection(): Promise<Result<null>>;
 
   saveDeck(input: { deckId?: DeckId; name: string; deck: DeckInput; isPublic: boolean }): Promise<Result<{ deckId: DeckId }>>;
+  /** Name only, without sending the card list. */
+  renameDeck(input: { deckId: DeckId; name: string }): Promise<Result<null>>;
+  /** Copies a deck the caller owns, subject to the same per-account cap as a new one. */
+  duplicateDeck(input: { deckId: DeckId; name?: string }): Promise<Result<{ deckId: DeckId }>>;
+  /** Shows or hides the deck page. Never changes whether the deck feeds play rates. */
+  setDeckVisibility(input: { deckId: DeckId; isPublic: boolean }): Promise<Result<null>>;
   deleteDeck(input: { deckId: DeckId }): Promise<Result<null>>;
   exportDeck(input: { deckId: DeckId; format: ExportFormat }): Promise<Result<{ filename: string; content: string }>>;
 

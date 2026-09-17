@@ -516,6 +516,28 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       return delay(ok({ deckId: id }));
     },
 
+    async renameDeck({ deckId, name }) {
+      const saved = decks.get(deckId);
+      if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
+      decks.set(deckId, { ...saved, name, updatedAt: new Date().toISOString() });
+      return delay(ok(null));
+    },
+
+    async duplicateDeck({ deckId, name }) {
+      const saved = decks.get(deckId);
+      if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
+      const id = `mock-deck-${nextDeckId++}` as DeckId;
+      decks.set(id, { ...saved, name: name ?? `${saved.name} (copy)`, updatedAt: new Date().toISOString() });
+      return delay(ok({ deckId: id }));
+    },
+
+    async setDeckVisibility({ deckId, isPublic }) {
+      const saved = decks.get(deckId);
+      if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
+      decks.set(deckId, { ...saved, isPublic, updatedAt: new Date().toISOString() });
+      return delay(ok(null));
+    },
+
     async deleteDeck({ deckId }) {
       if (!decks.delete(deckId)) return delay(fail('NOT_FOUND', 'Deck not found.'));
       return delay(ok(null));
