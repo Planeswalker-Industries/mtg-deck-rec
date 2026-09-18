@@ -37,12 +37,16 @@ test("imports a collection and limits suggestions to owned cards", async ({ page
 test("imports a CSV export from a file, keeping its Scryfall ids", async ({ page }) => {
   await page.goto("/collection");
 
-  // A ManaBox CSV: a name with a comma in it, a Scryfall id, and a quantity above one.
+  /*
+   * A ManaBox-shaped CSV. Both real cards are in the mock pool as well as the real catalog, so the counts below hold
+   * whether CI runs this against mocks or a laptop runs it against the catalog. Chulane earns its place by having a
+   * comma in its name: unquoted, the CSV reader would split it into two broken fields.
+   */
   const csv = [
     "Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,Purchase price,Condition,Language",
-    '"Page, Loose Leaf",SOS,Secrets of Strixhaven,250,normal,common,1,112642,8c6fecfd-8241-4cf0-b1eb-19472b99e0ed,0.24,near_mint,en',
-    "Sol Ring,C21,Commander 2021,263,normal,uncommon,3,1,,0.99,near_mint,en",
-    "Definitely Not A Real Card,ZZZ,Nowhere,1,normal,common,1,2,,0.00,near_mint,en",
+    '"Chulane, Teller of Tales",ELD,Throne of Eldraine,326,normal,mythic,1,1,8c6fecfd-8241-4cf0-b1eb-19472b99e0ed,4.20,near_mint,en',
+    "Sol Ring,C21,Commander 2021,263,normal,uncommon,3,2,,0.99,near_mint,en",
+    "Definitely Not A Real Card,ZZZ,Nowhere,1,normal,common,1,3,,0.00,near_mint,en",
   ].join("\n");
 
   await page.locator("input[type=file]").setInputFiles({ name: "manabox_export.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
@@ -52,7 +56,8 @@ test("imports a CSV export from a file, keeping its Scryfall ids", async ({ page
   await page.getByRole("button", { name: "Import collection" }).click();
   const summary = page.getByRole("region", { name: "Saved collection" });
   await expect(summary).toBeVisible({ timeout: 30_000 });
-  // Two of the three rows are real cards, and Sol Ring's quantity of 3 survives the CSV.
+  // Two of the three rows are cards, and Sol Ring's quantity of 3 survived the CSV: 1 + 3 copies.
+  await expect(summary.getByText("2", { exact: true })).toBeVisible();
   await expect(summary.getByText("4", { exact: true })).toBeVisible();
   await expect(summary.getByText("1 line didn't match a card")).toBeVisible();
 });
