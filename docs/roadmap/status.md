@@ -53,7 +53,26 @@ from public.rec_timeouts t left join public.cards c on c.id = t.target_card_id
 order by t.hits desc limit 20;
 ```
 
-### 4. Smaller items
+### 4. Recommendation direction: Collection Fit (decided 2026-09-18)
+
+A recommendation should answer *"given the deck I want and the cards I actually own, what should my version look like?"* — not *"what do Commander players generally play?"*. That means a weighted blend of several signals rather than one play-rate ranking, which is already the shape of `blendScore`: a weighted sum over named components that renormalizes when data is missing. `ScoreBreakdown` already returns per-component values **and** effective weights, so the "why this card" panel needs no new plumbing, only a renderer.
+
+Where the signals stand:
+
+| Signal | State |
+|---|---|
+| Commander synergy | Built. `commander_card_stats.synergy` is shrunk inclusion − baseline p0 — the same formula EDHREC documents, from our own corpus, with shrinkage they don't appear to apply. |
+| Deck role fit | Built (`role`). |
+| Collection | **Stays a hard filter, not a weighted term** (owner decision 2026-09-18). An owned card cannot outrank a better unowned one; owned-only removes everything else from the pool instead. Revisit if people ask why a cheap card they own never shows up beside an expensive one they don't. |
+| Price | To build: a weighted component, with a toggle to turn cost weighting off. Suppressed while owned-only is on, where everything already costs nothing. |
+| Deck-internal synergy | To build, approximated from functional tag overlap with the rest of the deck — "fits the sacrifice theme you're already on". Real card-pair co-occurrence is an N² aggregate over ~15k decks and the hosted database is at 381 MB of 500 MB, so measure whether tags are enough before paying for it. |
+| User preference | Wired (`votes`, 0.1 swap / 0 add) with no data. Waits on the swap-quality eval. |
+
+**EDHREC, pinned.** The intent is to compare our synergy against theirs as a check on our own corpus, and only then consider ingesting it as one more signal — a comparison, never a source of truth. They aggregate from the same public deck sites we do.
+
+**Before any ingestion happens, the terms question has to be settled and written down here with the permitting language.** The hard constraints in `CLAUDE.md` currently forbid `json.edhrec.com`, and a note from 2026-09-15 records that their terms forbid automated queries. A one-off manual comparison needs none of that; a live dependency does.
+
+### 5. Smaller items
 
 - **`collections.maxEntries` is 100,000**, about 23 MB per account. Six maxed accounts would exhaust the free tier's headroom. It lives in `app_config.collections`, so lowering it is a SQL update with no deploy.
 - `partnerPoolWeight` 0.25 rests on four pairs, all including Rograkh. Retune once more pair decks or the swap-quality eval exist.
