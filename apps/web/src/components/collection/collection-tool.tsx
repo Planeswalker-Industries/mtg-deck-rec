@@ -229,6 +229,7 @@ export function CollectionTool() {
           {hasCollection ? "Replace with a new export" : "Collection export"}
         </Label>
         <FileDrop
+          note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. It stays in your browser."
           disabled={importing}
           onFile={(contents, name) => {
             setProblem(null);

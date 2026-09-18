@@ -13,18 +13,22 @@ const MAX_BYTES = 32 * 1024 * 1024;
 const mb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 
 /**
- * Takes a collection export as a file, by drop or by picker.
+ * Takes a collection or deck export as a file, by drop or by picker.
  *
  * Pasting a 50,000-row CSV is not something anyone will do, so a file is the real path for a real collection. The
- * file is read in the browser and never uploaded: only the matched card ids go to the server, which is also why the
- * error for an unreadable file has to be specific rather than "something went wrong".
+ * file is read in the browser, which is why the error for an unreadable one has to be specific rather than
+ * "something went wrong" — nothing has left the machine yet to blame. Where the contents go next is the caller's
+ * business, and its `note` has to say so.
  */
 export function FileDrop({
   onFile,
+  note,
   disabled = false,
 }: {
   /** Called with the file's text and its name, once it has been read. */
   onFile: (text: string, fileName: string) => void;
+  /** The line under the control. Say where the file goes: a collection is matched here, a decklist is sent to be read. */
+  note: string;
   disabled?: boolean;
 }) {
   const inputId = useId();
@@ -84,9 +88,7 @@ export function FileDrop({
           </label>{" "}
           <span className="text-muted-foreground">or drag one here</span>
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          .csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. It stays in your browser.
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{note}</p>
         <input
           ref={inputRef}
           id={inputId}
