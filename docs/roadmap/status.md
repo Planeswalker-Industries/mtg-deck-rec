@@ -68,6 +68,25 @@ Where the signals stand:
 | Deck-internal synergy | To build, approximated from functional tag overlap with the rest of the deck — "fits the sacrifice theme you're already on". Real card-pair co-occurrence is an N² aggregate over ~15k decks and the hosted database is at 381 MB of 500 MB, so measure whether tags are enough before paying for it. |
 | User preference | Wired (`votes`, 0.1 swap / 0 add) with no data. Waits on the swap-quality eval. |
 
+**Next slice: price as a weighted component.** Bigger than it looks, for two reasons worth knowing before starting.
+
+*It changes the contract.* `ScoreComponent` is a closed union in `contract/recs.ts` and `ScoreBreakdown.components` is a `Record` over it, so adding `price` is a contract change: version bump, mocks updated, and the "Why this card" panel gets a label and an absent-reason for free once it's there.
+
+*The SQL decides which candidates exist; the blend only decides their order.* `rec_swap_candidates` ends with
+
+```sql
+order by x.is_functional_twin desc,
+  (0.4 * x.tag_similarity
+    + 0.2 * coalesce(st.staple_score, 0)
+    + 0.1 * exp(-abs(e.mana_value - ...) / 1.5)) desc,
+  e.name
+limit p_limit
+```
+
+— the no-corpus half of `SWAP_WEIGHTS.collection_less`, hard-coded. Because of the `limit`, a component that lives only in TypeScript can reorder what SQL returned but can never add to it. A cheap card that scores badly on tag similarity is cut before the blend ever sees it, so the budget-conscious suggestion the feature exists to make would be missing and nothing would look broken. Adding price to the blend therefore means either mirroring it into that `order by` or widening `p_limit` and accepting the cost — and `create or replace` on that function drops its `enable_nestloop = off`, so the SET has to be repeated.
+
+The toggle itself is small: a switch beside Suggest Game Changers, and zero weight while owned-only is on.
+
 **EDHREC, pinned.** The intent is to compare our synergy against theirs as a check on our own corpus, and only then consider ingesting it as one more signal — a comparison, never a source of truth. They aggregate from the same public deck sites we do.
 
 **Before any ingestion happens, the terms question has to be settled and written down here with the permitting language.** The hard constraints in `CLAUDE.md` currently forbid `json.edhrec.com`, and a note from 2026-09-15 records that their terms forbid automated queries. A one-off manual comparison needs none of that; a live dependency does.
