@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import type { Job } from "./job-selector";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
+import { FileDrop } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
@@ -152,6 +154,12 @@ export function DeckTool() {
             <Label htmlFor="decklist" className="sr-only">
               Decklist
             </Label>
+            {/* A CSV deck export collapses to quantity and name: a deck is oracle-level, so the printing is noise. */}
+            <FileDrop
+              note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. A CSV is reduced to quantities and card names."
+              disabled={tool.parse.status === "loading"}
+              onFile={(contents) => tool.setText(decklistFromFile(contents))}
+            />
             <Textarea
               id="decklist"
               rows={8}
@@ -294,7 +302,7 @@ export function DeckTool() {
               </aside>
 
               <div className="flex flex-col gap-4 lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
-                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} />
+                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} hasCollection={tool.ownedOnly !== null} />
               </div>
 
               <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">

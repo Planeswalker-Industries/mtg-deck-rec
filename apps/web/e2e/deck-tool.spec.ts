@@ -45,3 +45,19 @@ test("remembers the list view for the next visit", async ({ page }) => {
   await expect(recs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
   await expect(recs.getByRole("button", { name: /^Cut Weak links/ })).toBeVisible();
 });
+
+test("takes a decklist as a file, and reduces a CSV export to quantities and names", async ({ page }) => {
+  await page.goto("/deck");
+
+  // An Archidekt-shaped deck CSV: printings and finishes, which a deck doesn't care about.
+  const csv = [
+    "Quantity,Name,Finish,Edition Code,Collector Number,Condition",
+    "1,Sol Ring,Normal,C21,263,NM",
+    "1,Sol Ring,Foil,LTC,284,NM",
+    '1,"Liesa, Forgotten Archangel",Normal,MID,238,NM',
+  ].join("\n");
+
+  await page.locator("input[type=file]").setInputFiles({ name: "deck.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  // The two Sol Ring rows are one card the deck runs twice; the printings are gone.
+  await expect(page.getByRole("textbox", { name: "Decklist" })).toHaveValue("2 Sol Ring\n1 Liesa, Forgotten Archangel");
+});
