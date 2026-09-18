@@ -4,6 +4,7 @@ import type { AddResult, CutResult } from "@mtg/core/contract";
 import { cn } from "cn";
 import { formatPercent, formatUsd } from "@/lib/format";
 import { cutReasonShortLabel, HARD_CUT_REASONS } from "@/lib/labels";
+import { CollectionPrompt } from "./collection-prompt";
 import { JobNote, JobPreview } from "./job-preview";
 import { JobSelector, type Job } from "./job-selector";
 import type { Async } from "./use-deck-tool";
@@ -19,11 +20,14 @@ export function WorkspaceRail({
   onSelect,
   cut,
   add,
+  hasCollection,
 }: {
   job: Job | null;
   onSelect: (job: Job | null) => void;
   cut: Async<CutResult>;
   add: Async<AddResult>;
+  /** Whether the player has a collection at all. Without one there is a better question to ask than which job to open. */
+  hasCollection: boolean;
 }) {
   const cutCount = cut.status === "ready" ? cut.data.suggestions.length : undefined;
   const addSuggestions = add.status === "ready" ? add.data.groups.flatMap((g) => g.suggestions) : [];
@@ -33,7 +37,9 @@ export function WorkspaceRail({
   const topAdd = addSuggestions[0];
 
   return (
-    <JobSelector
+    <>
+      {!hasCollection && <CollectionPrompt />}
+      <JobSelector
       selected={job}
       onSelect={onSelect}
       counts={{ cut: cutCount, add: addCount }}
@@ -84,7 +90,8 @@ export function WorkspaceRail({
         ),
         // Replacements are per card, so there's no list to preview: the deck is the way in.
         replace: <JobNote>Pick any card in the deck to see what else does its job, and what the swap costs.</JobNote>,
-      }}
-    />
+        }}
+      />
+    </>
   );
 }

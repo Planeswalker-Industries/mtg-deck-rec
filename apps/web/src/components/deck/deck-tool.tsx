@@ -302,7 +302,7 @@ export function DeckTool() {
               </aside>
 
               <div className="flex flex-col gap-4 lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
-                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} />
+                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} hasCollection={tool.ownedOnly !== null} />
               </div>
 
               <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">
