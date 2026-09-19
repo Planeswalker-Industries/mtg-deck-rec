@@ -79,7 +79,8 @@ export async function parseDeckAction(input: { text: string }): Promise<Result<P
 
 /**
  * Imports a public Archidekt deck from its link: one request for that deck when the user asks, then the same parsing
- * and name resolution as pasted text. Moxfield doesn't allow automated access without its permission.
+ * and name resolution as pasted text. Moxfield links are rejected with a paste-text fallback (Moxfield's API requires
+ * authentication).
  */
 export async function importDeckFromUrlAction(input: { url: string }): Promise<Result<ImportDeckUrlResult>> {
   const parsed = parseInput(importDeckInputSchema, input);

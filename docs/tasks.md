@@ -219,7 +219,7 @@ The Google OAuth flow is fully wired and hidden behind `NEXT_PUBLIC_AUTH_GOOGLE`
 
 ### T026: Collection import from a share link
 
-**Priority:** MEDIUM | **Area:** Backend / Frontend | **Status:** Not started
+**Priority:** MEDIUM | **Area:** Backend / Frontend | **Status:** Partially decided, not built
 
 `fetchShareLink` already takes `what: "deck" | "collection"` and the kill switch covers both, but the only caller is the deck tool's Archidekt deck import. Collections are paste- or file-only.
 
@@ -229,7 +229,7 @@ The Google OAuth flow is fully wired and hidden behind `NEXT_PUBLIC_AUTH_GOOGLE`
 - `apps/web/src/app/collection/actions.ts` — where a collection-side action belongs
 - `apps/web/src/components/collection/collection-tool.tsx` — the paste box that would accept a lone URL
 
-**Context:** Approved sources are ManaBox, Moxfield, Archidekt and TCGplayer; Moxfield returns UPSTREAM_NOT_AUTHORIZED. One request per user action, honest User-Agent, paste fallback when a source blocks — never work around a challenge. Fetched text goes through the same `parseCollectionText` / `resolveCollectionRowsAction` path as a paste.
+**Context:** Approved sources are ManaBox, Archidekt and TCGplayer for URL import. Moxfield: text/CSV import only (API requires authentication). One request per user action, honest User-Agent, paste fallback when a source blocks — never work around a challenge. Fetched text goes through the same `parseCollectionText` / `resolveCollectionRowsAction` path as a paste.
 
 **Acceptance criteria:**
 - [ ] A lone URL in the collection box routes to an import action, like the deck tool's

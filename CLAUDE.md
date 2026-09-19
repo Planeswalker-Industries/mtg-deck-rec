@@ -176,7 +176,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 - **Deck import by link:**
   - A lone URL in the decklist box goes to `importDeckFromUrlAction`.
   - Archidekt: one request to `/api/decks/:id/`, converted by `@mtg/core/parse` `archidektDecklist` (primary category decides; sideboard, maybeboard and considering excluded), then resolved like pasted text.
-  - Moxfield links return UPSTREAM_NOT_AUTHORIZED.
+  - Moxfield: text/CSV import only (no URL import; Moxfield's API requires authentication).
 - **Commander deck lookups** (contract v2):
   - When an analyzed deck has one commander with confidence `none`, the deck tool (`use-commander-lookup.ts`, `commander-lookup.tsx`) checks `getCommanderCoverage` first. An active lookup is joined and shown ("someone else is also looking"); a standing not-enough or failed result shows a notice; otherwise it prompts.
   - Queue: `public.commander_requests`, one active row per commander (partial unique index). API roles only reach it through `get_commander_request`, `request_commander_decks` (rate limit per salted visitor hash, queue cap, cooldowns) and `get_commander_request_status`. Limits and the ETA pace (`secondsPerDeck`, `aggregateSeconds`) live in `app_config.commander_requests`.
@@ -247,7 +247,7 @@ C: has little free space. Put large local data — Scryfall bulk downloads, cach
 ## Hard constraints
 
 - No bot-detection circumvention anywhere: no cloudscraper-class libraries, fingerprint spoofing, UA rotation, or proxies. Every outbound request sends an accurate descriptive `User-Agent` (and `Accept` for Scryfall).
-- Data sources qualify only by documented API, published terms, or direct operator permission. Do not add Deckstats, Aetherhub, MTGGoldfish, TappedOut, or EDHREC `json.edhrec.com`. Background crawling of Moxfield still needs its authorization.
+- Data sources qualify only by documented API, published terms, or direct operator permission. Do not add Deckstats, Aetherhub, MTGGoldfish, TappedOut, or EDHREC `json.edhrec.com`.
 - Share-link imports are allowed (owner decision, 2026-09-14): a deck or collection link a user pastes from Archidekt, ManaBox, Moxfield, TCGplayer or similar sites may be fetched, since those links exist to move lists between platforms. One request per user action, honest User-Agent, and if the site blocks automated requests (bot challenge, 403) show the paste-text fallback; never work around it.
 - Third-party decklists are used for aggregates only and never exposed.
 - The repo is public: anti-abuse thresholds and scoring weights belong in database config, not code.
