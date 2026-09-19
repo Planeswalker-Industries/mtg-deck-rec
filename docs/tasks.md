@@ -156,7 +156,7 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 - `apps/web/src/lib/server/recs-route.ts` — route handlers
 - `supabase/migrations/` — new migration for price data in rec functions
 
-**Context:** Prices come from Scryfall via the `printings` table; `cards.prices_as_of` tracks when a price last changed. Two things make this bigger than it looks (`status.md` §4 has the full write-up):
+**Context:** Prices come from Scryfall via the `printings` table; `cards.prices_as_of` tracks when a price last changed. Two things make this bigger than it looks:
 
 1. *It changes the contract.* `ScoreComponent` is a closed union in `contract/recs.ts` and `ScoreBreakdown.components` is a `Record` over it, so adding `price` needs a version bump (v9 → v10) and updated mocks. The "Why this card" panel (shipped 2026-09-18) renders whatever components exist, so it picks up a price row for free once it has a label and an absent-reason.
 2. *The SQL decides which candidates exist; the blend only decides their order.* `rec_swap_candidates` ends with a hard-coded `order by` mirroring the no-corpus half of `SWAP_WEIGHTS.collection_less`, then `limit p_limit`. A cheap card that scores badly on tag similarity is cut before TypeScript ever sees it — the budget suggestion the feature exists to make would be missing and nothing would look broken. So either mirror price into that `order by` or widen `p_limit` and pay for it.
