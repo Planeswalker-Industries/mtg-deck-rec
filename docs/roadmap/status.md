@@ -15,17 +15,28 @@ Companion to [`execution-plan.md`](execution-plan.md) (the phased roadmap) and [
 ## Live setup
 
 - **Site:** https://mtg-app-psi.vercel.app, Vercel project `mtg-app` (root `apps/web`, functions in `cle1`).
-- **Database:** Supabase Free, `us-east-2`, **372 MB of 500 MB**. Migrations in `supabase/migrations` are applied by Supabase's GitHub integration when **`main`** changes; `.github/workflows/db-push.yml` is the manual fallback.
-- **Scryfall data:** `.github/workflows/sync.yml` runs daily (repo variable `SYNC_ENABLED`, currently `true`). Catalog 34,765 cards, 525k printings.
+- **Released to `main` 2026-09-17 20:48 UTC** (PR #41, 21 commits, contract v5 → v9): saved decks and their pages, the timeout retry and `rec_timeouts`, `cards.keywords`, deck grouping, and the deck workspace with reopening and auto-save.
+- **Database:** Supabase Free, `us-east-2`, **381 MB of 500 MB** (375 MB before that release; `cards.keywords` cost the +6 MB the local measurement predicted). Migrations in `supabase/migrations` are applied by Supabase's GitHub integration when **`main`** changes; `.github/workflows/db-push.yml` is the manual fallback.
+- **Scryfall data:** `.github/workflows/sync.yml` runs daily (repo variable `SYNC_ENABLED`, currently `true`). Catalog 34,829 cards, 525,299 printings. `artist` and `keywords` are both fully populated on hosted; art backdrops render live.
 - **Corpus on hosted:** 129 commanders have stats. Aggregates are rebuilt from this PC with `cli:hosted aggregate:corpus`.
 
 ## Open work
 
-### 1. The deck lookup collector isn't running anywhere
+### 1. Accounts are reachable on the live site and sign-in there is not set up
+
+The release put `/sign-in`, `/account`, `/decks` and account collections on the hosted site for the first time. Three pieces of dashboard work are still missing, none of them code:
+
+- Add `https://mtg-app-psi.vercel.app/auth/confirm` and `/auth/callback` to the Supabase Auth redirect allow list. Without them Supabase falls back to the site URL and the emailed link breaks.
+- Paste `supabase/templates/sign-in.html` into the dashboard's email templates.
+- Set `SUPABASE_SECRET_KEY` on Vercel, which the share-link kill switch needs.
+
+Until then the hosted site shows the sign-in form and the email does not work.
+
+### 2. The deck lookup collector isn't running anywhere
 
 The deck tool offers "Pull decks" for commanders without data, but no `serve:commander-requests` worker is running, so requests wait in `commander_requests` and the UI reports the collector offline. It needs the corpus files, so it runs from this PC (`cli:hosted serve:commander-requests`) until there is another plan.
 
-### 2. Swap timeouts on the hosted database — mitigated, watch it
+### 3. Swap timeouts on the hosted database — mitigated, watch it
 
 Was the top item. Two changes shipped:
 
@@ -42,10 +53,28 @@ from public.rec_timeouts t left join public.cards c on c.id = t.target_card_id
 order by t.hits desc limit 20;
 ```
 
-### 3. Smaller items
+### 4. Recommendation direction: Collection Fit (decided 2026-09-18)
+
+A recommendation should answer *"given the deck I want and the cards I actually own, what should my version look like?"* — not *"what do Commander players generally play?"*. That means a weighted blend of several signals rather than one play-rate ranking, which is already the shape of `blendScore`: a weighted sum over named components that renormalizes when data is missing. `ScoreBreakdown` already returns per-component values **and** effective weights, so the "why this card" panel needs no new plumbing, only a renderer.
+
+Where the signals stand:
+
+| Signal | State |
+|---|---|
+| Commander synergy | Built. `commander_card_stats.synergy` is shrunk inclusion − baseline p0 — the same formula EDHREC documents, from our own corpus, with shrinkage they don't appear to apply. |
+| Deck role fit | Built (`role`). |
+| Collection | **Stays a hard filter, not a weighted term** (owner decision 2026-09-18). An owned card cannot outrank a better unowned one; owned-only removes everything else from the pool instead. Revisit if people ask why a cheap card they own never shows up beside an expensive one they don't. |
+| Price | To build: a weighted component, with a toggle to turn cost weighting off. Suppressed while owned-only is on, where everything already costs nothing. |
+| Deck-internal synergy | To build, approximated from functional tag overlap with the rest of the deck — "fits the sacrifice theme you're already on". Real card-pair co-occurrence is an N² aggregate over ~15k decks and the hosted database is at 381 MB of 500 MB, so measure whether tags are enough before paying for it. |
+| User preference | Wired (`votes`, 0.1 swap / 0 add) with no data. Waits on the swap-quality eval. |
+
+**EDHREC, pinned.** The intent is to compare our synergy against theirs as a check on our own corpus, and only then consider ingesting it as one more signal — a comparison, never a source of truth. They aggregate from the same public deck sites we do.
+
+**Before any ingestion happens, the terms question has to be settled and written down here with the permitting language.** The hard constraints in `CLAUDE.md` currently forbid `json.edhrec.com`, and a note from 2026-09-15 records that their terms forbid automated queries. A one-off manual comparison needs none of that; a live dependency does.
+
+### 5. Smaller items
 
 - **`collections.maxEntries` is 100,000**, about 23 MB per account. Six maxed accounts would exhaust the free tier's headroom. It lives in `app_config.collections`, so lowering it is a SQL update with no deploy.
-- **`artist` is not populated on hosted** yet, so no art backdrops render there. The column shipped after the last sync; the next daily run fills it, because `artist` is part of `content_hash`. `cli:hosted sync:catalog --force` does it sooner.
 - `partnerPoolWeight` 0.25 rests on four pairs, all including Rograkh. Retune once more pair decks or the swap-quality eval exist.
 - Play rate can lift a weak tag match (Reliquary Tower tops Sea Gate Restoration swaps).
 - Invalid commander-pair `commander_keys` rows remain without stats.
@@ -60,8 +89,10 @@ order by t.hits desc limit 20;
 
 ## Release process, and a trap to avoid
 
-`develop` is the working branch; `main` is merged from `develop` manually and is what Vercel production and the Supabase integration deploy. **`main` is currently well behind `develop`** — check with `git log --oneline main..develop` before assuming a preview runs on the schema you just wrote.
+`develop` is the working branch; `main` is merged from `develop` manually and is what Vercel production and the Supabase integration deploy. Check with `git log --oneline origin/main..origin/develop` before assuming a preview runs on the schema you just wrote — and use the `origin/` refs, because a stale local `main` reported a 104-commit gap where the real one was 21.
 
-Merging a migration to `develop` publishes a preview that still runs against **`main`'s** schema. A migration adding a column to a shared read path therefore breaks the develop preview until `main` catches up — this happened with `cards.artist`.
+Merging a migration to `develop` publishes a preview that still runs against **`main`'s** schema. A migration adding a column to a shared read path therefore breaks the develop preview until `main` catches up — this happened with `cards.artist`, and `cards.keywords` was the same shape (it is in `CARD_COLUMNS`).
+
+**A column added to `content_hash` is empty on hosted until a sync rewrites the rows.** Applying the migration is not the end of the release: the daily run fills it, or `yarn workspace @mtg/worker cli:hosted sync:catalog --force` does it at once. That is a hosted write, so it needs a human to ask for it.
 
 Stacked PRs need the base branch **deleted** on merge, or the child retargeted by hand. A child merged into a base that has already merged elsewhere lands in a dead branch: that happened to #32 and needed #35 to rescue it.

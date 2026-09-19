@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import type { CollectionTotals, ResolvedCollectionRow, UnresolvedCollectionRow } from "@mtg/core/contract";
-import { parseCollectionText } from "@mtg/core/parse";
+import { FileDrop } from "./file-drop";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ import {
   type UnmatchedLine,
 } from "@/lib/collection-store";
 import { notifyCollectionChanged, useCollectionSource } from "./use-collection-source";
+import { useCollectionParser } from "./use-collection-parser";
 
 /** The server matches and saves at most this many rows per call. */
 const ROWS_PER_CALL = 2_000;
@@ -46,7 +47,10 @@ const LINK = "font-bold text-primary underline-offset-4 hover:underline";
 
 export function CollectionTool() {
   const { source, setSource } = useCollectionSource();
+  const parse = useCollectionParser();
   const [text, setText] = useState("");
+  /** The file the text came from, so the import can say what it is working on. */
+  const [fileName, setFileName] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   /** Lines that didn't match in the last import to the account, which doesn't keep them. */
@@ -61,9 +65,20 @@ export function CollectionTool() {
     const id = ++importRun.current;
     const current = () => id === importRun.current;
     setProblem(null);
-    const rows = parseCollectionText(text);
-    if (rows.length === 0) return importFailed('No cards found. Paste one card per line, like "4 Sol Ring (C21) 263".');
+    // Parsing a large export is slow enough to say so: the worker keeps the page responsive, not instant.
+    setProgress({ label: "Reading the export", done: 0, total: 1 });
+    const rows = await parse(text);
+    if (!current()) return;
+    if (rows.length === 0) {
+      setProgress(null);
+      return importFailed(
+        fileName === null
+          ? 'No cards found. Paste one card per line, like "4 Sol Ring (C21) 263", or upload a CSV export.'
+          : `No cards found in ${fileName}. It should be a collection export from ManaBox, Moxfield, Archidekt or TCGplayer.`,
+      );
+    }
     if (rows.length > MAX_ROWS) {
+      setProgress(null);
       return importFailed(`That's ${count(rows.length)} lines. Collections can have up to ${count(MAX_ROWS)} lines for now.`);
     }
 
@@ -95,7 +110,10 @@ export function CollectionTool() {
     const saved = signedIn ? await saveToAccount(resolved, unmatched, current) : await saveToBrowser(catalogEpoch, resolved, unmatched, current);
     if (!current()) return;
     setProgress(null);
-    if (saved) setText("");
+    if (saved) {
+      setText("");
+      setFileName(null);
+    }
   }
 
   /** Replaces the account's collection with the import. Returns whether it saved. */
@@ -162,7 +180,7 @@ export function CollectionTool() {
       <div>
         <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">My collection</h1>
         <p className="mt-2 max-w-prose text-muted-foreground">
-          Paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, and the deck tool can suggest only cards you own.
+          Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, and the deck tool can suggest only cards you own.
           {source.kind !== "loading" &&
             (signedIn ? (
               " It's saved to your account."
@@ -210,11 +228,28 @@ export function CollectionTool() {
         <Label htmlFor="collection-text" className="font-bold">
           {hasCollection ? "Replace with a new export" : "Collection export"}
         </Label>
+        <FileDrop
+          note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. It stays in your browser."
+          disabled={importing}
+          onFile={(contents, name) => {
+            setProblem(null);
+            setText(contents);
+            setFileName(name);
+          }}
+        />
+        {fileName !== null && (
+          <p className="text-sm text-muted-foreground">
+            Read <span className="font-bold text-foreground">{fileName}</span>. Check it below, then import.
+          </p>
+        )}
         <Textarea
           id="collection-text"
           rows={8}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setFileName(null);
+          }}
           placeholder={PLACEHOLDER}
           spellCheck={false}
           autoCapitalize="off"

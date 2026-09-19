@@ -13,6 +13,7 @@ import { describeCostDelta, formatAsOf, formatPercent } from "@/lib/format";
 import { emptySwapMessage } from "@/lib/labels";
 import { GameChangerBadge, OwnedBadge } from "./card-label";
 import { PanelError } from "./panel-state";
+import { ScoreExplainer } from "./score-explainer";
 import type { SwapState } from "./use-deck-tool";
 
 function jobLabels(matches: TagMatch[]): string[] {
@@ -134,6 +135,7 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
       ) : (
         jobs.length > 0 && <p className="mt-2 text-sm">Does the same job: {jobs.join(", ")}</p>
       )}
+      <ScoreExplainer score={selected.score} />
     </div>
   );
 }

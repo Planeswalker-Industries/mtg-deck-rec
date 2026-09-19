@@ -45,3 +45,45 @@ test("remembers the list view for the next visit", async ({ page }) => {
   await expect(recs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
   await expect(recs.getByRole("button", { name: /^Cut Weak links/ })).toBeVisible();
 });
+
+test("takes a decklist as a file, and reduces a CSV export to quantities and names", async ({ page }) => {
+  await page.goto("/deck");
+
+  // An Archidekt-shaped deck CSV: printings and finishes, which a deck doesn't care about.
+  const csv = [
+    "Quantity,Name,Finish,Edition Code,Collector Number,Condition",
+    "1,Sol Ring,Normal,C21,263,NM",
+    "1,Sol Ring,Foil,LTC,284,NM",
+    '1,"Liesa, Forgotten Archangel",Normal,MID,238,NM',
+  ].join("\n");
+
+  await page.locator("input[type=file]").setInputFiles({ name: "deck.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  // The two Sol Ring rows are one card the deck runs twice; the printings are gone.
+  await expect(page.getByRole("textbox", { name: "Decklist" })).toHaveValue("2 Sol Ring\n1 Liesa, Forgotten Archangel");
+});
+
+test("explains why a replacement was suggested, and the shares add up", async ({ page }) => {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+
+  await recs.getByRole("button", { name: "List" }).click();
+  await recs.getByRole("region", { name: "Your deck" }).getByRole("list").first().getByRole("button").first().click();
+
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByRole("heading", { name: /^Replace / })).toBeVisible();
+  const why = sheet.getByText("Why this card");
+  await expect(why).toBeVisible({ timeout: 60_000 });
+  await why.click();
+
+  // Every component that counted names its share, and those shares are the whole score.
+  const panel = sheet.locator("details[open]");
+  const shares = await panel.getByText(/% of the score$/).allInnerTexts();
+  expect(shares.length).toBeGreaterThan(0);
+  const total = shares.reduce((sum, text) => sum + Number(text.replace(/\D/g, "")), 0);
+  // Each share is rounded to a whole percent, so the sum lands within a point per row.
+  expect(Math.abs(total - 100)).toBeLessThanOrEqual(shares.length);
+});
