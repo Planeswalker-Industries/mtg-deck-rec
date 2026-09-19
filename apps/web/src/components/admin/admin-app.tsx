@@ -1,8 +1,9 @@
 "use client";
 
-import { Admin, radiantDarkTheme, Resource } from "react-admin";
+import { Admin, Resource } from "react-admin";
 import { BrowserRouter } from "react-router-dom";
 import { AdminLayout } from "./admin-layout";
+import { adminTheme } from "./theme";
 import { createAdminAuthProvider } from "./auth-provider";
 import { adminDataProvider } from "./data-provider";
 import { PlatformAdminList, UserEdit, UserList, UserShow } from "./users";
@@ -10,10 +11,10 @@ import { PlatformAdminList, UserEdit, UserList, UserShow } from "./users";
 /**
  * The admin single-page app.
  *
- * It is Material UI inside a site that is otherwise shadcn and the "table at night" tokens. That is on purpose:
- * React Admin brings its own design system, and reskinning it to match the public pages would be a lot of work to
- * make an internal tool look like something it isn't. It uses React Admin's dark theme so it is at least not a
- * white rectangle in a dark site, and no light theme is offered, like the rest of the site.
+ * It is Material UI in a site that is otherwise shadcn and Tailwind, but it is not a different-looking product:
+ * `theme.ts` restates the site's own tokens — the table, the sleeve, the seam, the gold lamp, Fraunces and Atkinson
+ * Hyperlegible — as a Material UI theme, so the components React Admin brings are dressed in them. No light theme is
+ * offered, like the rest of the site.
  *
  * The <BrowserRouter> is load-bearing, not decoration. Left to itself React Admin builds a *hash* router, where
  * `basename` has nothing to apply to and every screen resolves to nothing at all — /admin renders an empty page. It
@@ -37,7 +38,7 @@ export default function AdminApp({ userId, email }: AdminAppProps) {
         dataProvider={adminDataProvider}
         authProvider={createAdminAuthProvider({ id: userId, fullName: email ?? undefined })}
         layout={AdminLayout}
-        theme={radiantDarkTheme}
+        theme={adminTheme}
         darkTheme={null}
         disableTelemetry
       >
