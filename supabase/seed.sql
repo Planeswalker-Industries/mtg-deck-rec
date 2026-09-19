@@ -11,8 +11,8 @@
 --
 -- which mints a link directly and so costs none of the local 30-emails-per-hour budget the e2e tests share.
 --
--- "admin" is only a name. There is no admin role in the app yet, and this account has exactly the same rights as
--- the other one.
+-- "admin" is a real role now: the account below is inserted into public.platform_admins, so it can reach /admin.
+-- The "anon" account deliberately is not, so the guard has something to refuse.
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -41,6 +41,12 @@ on conflict (id) do nothing;
 -- on_auth_user_created gives each one a profile row; name them so they are obvious in the UI.
 update public.profiles set display_name = 'Test anon' where id = '00000000-0000-4000-8000-000000000a01';
 update public.profiles set display_name = 'Test admin' where id = '00000000-0000-4000-8000-0000000000ad';
+
+-- The only platform admin locally. Membership is granted by SQL on purpose: there is no way to make the first
+-- admin through the app, because every admin write already requires an admin.
+insert into public.platform_admins (user_id, note)
+values ('00000000-0000-4000-8000-0000000000ad', 'Local test admin')
+on conflict (user_id) do nothing;
 
 -- The e2e suite signs in several times per run, and every run comes from one address, so all of it lands in one
 -- rate-limit bucket: six sign-ins at two calls each is past the production budget of 10 per 10 minutes. Real
