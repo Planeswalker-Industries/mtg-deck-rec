@@ -11,7 +11,8 @@ export type RateLimitBucket =
   | "collection"
   | "auth"
   | "vote"
-  | "search";
+  | "search"
+  | "admin";
 
 /**
  * Counts one request against the visitor's budget for `bucket`. Returns a RATE_LIMITED error once the budget is spent,
