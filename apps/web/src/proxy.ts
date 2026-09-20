@@ -10,6 +10,8 @@ import { createPublicClient } from "@/lib/server/supabase";
  *   the page.
  * - Keeps a signed-in visitor's session fresh. Server Components can't write cookies, so an expired access token is
  *   refreshed here. Visitors without a session cookie skip this entirely.
+ * - The whole status story for /admin: signed-out visitors are redirected to sign in, and a signed-in visitor who
+ *   is not a platform admin gets a real 404. Neither can be done from the page, which streams.
  */
 export async function proxy(request: NextRequest) {
   const [, section, slug] = request.nextUrl.pathname.split("/");
@@ -25,6 +27,27 @@ export async function proxy(request: NextRequest) {
         return NextResponse.rewrite(new URL("/_missing", request.url));
       }
     } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // /admin streams, so neither of its two answers can come from the page itself: a `redirect()` or a `notFound()`
+  // inside its <Suspense> runs after the shell has gone out as HTTP 200 and strands the visitor on the loading
+  // state. Both are decided here instead — signed out goes to sign in like /decks does, and a signed-in
+  // non-admin gets a real 404, which is also the answer that tells them least. The page and every /api/admin route
+  // still check for themselves; this is about which response the visitor gets, not about being the only lock.
+  if (section === "admin") {
+    if (!hasSessionCookie(request)) {
+      const signIn = new URL("/sign-in", request.url);
+      signIn.searchParams.set("next", request.nextUrl.pathname);
+      return NextResponse.redirect(signIn);
+    }
+    try {
+      if (!(await isPlatformAdmin(request))) {
+        return NextResponse.rewrite(new URL("/_missing", request.url));
+      }
+    } catch (err) {
+      // A database hiccup leaves the decision to the page, which refuses rather than guesses.
       console.error(err);
     }
   }
@@ -62,6 +85,24 @@ async function pageExists(section: "card" | "commander", slug: string): Promise<
       : await db.from("commander_keys").select("id").eq("slug", slug).limit(1);
   if (error) throw new Error(`Checking ${section} page ${slug} failed: ${error.message}`);
   return data.length > 0;
+}
+
+/**
+ * Whether the request carries the session of a platform admin. Reads the cookies without refreshing them: the
+ * refresh happens further down for every request, and a token too stale to answer this is one the visitor has to
+ * sign in for anyway.
+ */
+async function isPlatformAdmin(request: NextRequest): Promise<boolean> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) throw new Error("Supabase isn't configured, so the admin check can't run.");
+
+  const supabase = createServerClient<Database>(url, key, {
+    cookies: { getAll: () => request.cookies.getAll(), setAll: () => {} },
+  });
+  const { data, error } = await supabase.rpc("is_platform_admin", {});
+  if (error) throw new Error(`Checking platform admin failed: ${error.message}`);
+  return data === true;
 }
 
 /** Supabase stores the session in cookies named sb-<project>-auth-token (split into .0, .1, ... when large). */

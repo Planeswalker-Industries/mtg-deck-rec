@@ -793,6 +793,27 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_admins: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       printings: {
         Row: {
           card_id: number
@@ -1253,6 +1274,45 @@ export type Database = {
       }
     }
     Functions: {
+      admin_delete_user: { Args: { p_user_id: string }; Returns: undefined }
+      admin_list_users: {
+        Args: {
+          p_admins_only?: boolean
+          p_ascending?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+          p_sort?: string
+          p_user_id?: string
+        }
+        Returns: {
+          admin_note: string
+          admin_since: string
+          banned_until: string
+          collection_count: number
+          created_at: string
+          deck_count: number
+          display_name: string
+          email: string
+          email_confirmed_at: string
+          id: string
+          is_admin: boolean
+          last_sign_in_at: string
+          total_count: number
+        }[]
+      }
+      admin_set_display_name: {
+        Args: { p_display_name: string; p_user_id: string }
+        Returns: undefined
+      }
+      admin_set_platform_admin: {
+        Args: { p_is_admin: boolean; p_note?: string; p_user_id: string }
+        Returns: undefined
+      }
+      admin_set_user_banned: {
+        Args: { p_banned: boolean; p_user_id: string }
+        Returns: undefined
+      }
       card_functional_tags: {
         Args: { p_card_id: number }
         Returns: {
@@ -1355,6 +1415,7 @@ export type Database = {
         Args: { p_bucket: string; p_visitor: string }
         Returns: number
       }
+      is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
       log_rec_timeout: {
         Args: {
           p_commander_ids?: number[]
@@ -1438,6 +1499,7 @@ export type Database = {
         Args: { p_card_id: number; p_client_key: string }
         Returns: Json
       }
+      require_platform_admin: { Args: never; Returns: string }
       resolve_card_names: {
         Args: { p_names: string[] }
         Returns: {
@@ -1528,12 +1590,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1557,11 +1619,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1582,11 +1644,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1607,11 +1669,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1624,11 +1686,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

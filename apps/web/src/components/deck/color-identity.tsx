@@ -1,34 +1,44 @@
+import Image from "next/image";
 import type { ColorIdentity as ColorIdentityValue } from "@mtg/core/contract";
 import { cn } from "cn";
 
-const COLORS: Record<string, { name: string; className: string }> = {
-  W: { name: "White", className: "bg-mana-w" },
-  U: { name: "Blue", className: "bg-mana-u" },
-  B: { name: "Black", className: "bg-mana-b" },
-  R: { name: "Red", className: "bg-mana-r" },
-  G: { name: "Green", className: "bg-mana-g" },
+/** Scryfall's published mana-symbol SVGs, the same CDN the card images come from. */
+export const MANA_SYMBOL_URL = (key: string) => `https://svgs.scryfall.io/card-symbols/${key}.svg`;
+
+export const COLOR_NAMES: Record<string, string> = {
+  W: "White",
+  U: "Blue",
+  B: "Black",
+  R: "Red",
+  G: "Green",
+  C: "Colorless",
 };
 
+/**
+ * A color identity as Scryfall mana pips. An empty identity shows the colorless pip, so the row is never
+ * blank. The wrapper carries the accessible name and each pip is decorative, so a screen reader hears the
+ * colors once.
+ */
 export function ColorIdentity({ identity, className }: { identity: ColorIdentityValue; className?: string }) {
-  if (!identity) return <span className={cn("text-xs text-muted-foreground", className)}>Colorless</span>;
-  const colors = [...identity];
+  const keys = identity ? [...identity] : ["C"];
+  const label = keys.map((key) => COLOR_NAMES[key] ?? key).join(", ");
+
   return (
     <span
       role="img"
-      aria-label={`Color identity: ${colors.map((c) => COLORS[c]?.name ?? c).join(", ")}`}
+      aria-label={`Color identity: ${label}`}
       className={cn("inline-flex gap-1", className)}
     >
-      {colors.map((c) => (
-        <span
-          key={c}
-          aria-hidden
-          className={cn(
-            "inline-flex size-[1.125rem] items-center justify-center rounded-full text-[0.625rem] font-bold text-foreground ring-1 ring-foreground/15",
-            COLORS[c]?.className,
-          )}
-        >
-          {c}
-        </span>
+      {keys.map((key) => (
+        <Image
+          key={key}
+          src={MANA_SYMBOL_URL(key)}
+          alt=""
+          width={18}
+          height={18}
+          unoptimized
+          className="size-[1.125rem]"
+        />
       ))}
     </span>
   );

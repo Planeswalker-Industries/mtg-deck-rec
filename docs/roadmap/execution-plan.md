@@ -706,7 +706,7 @@ Ingestion drops non-playable layouts (tokens, art series, emblems, planar, schem
 - **Anonymous:** resolved rows go to IndexedDB (`idb`): stores `collection_rows`, `current_deck`, `meta{catalogEpoch, expiresAt}`. Recs send `ownedCardIds` (int ids, ~30–50 KB for 10k unique cards). An epoch mismatch ⇒ re-resolve from stored printing ids.
 - **Migration on signup:** non-blocking prompt shown after results render → OAuth/magic link (same-origin IndexedDB survives redirect and new tab) → `/collection?migrate=1` → "Save your N cards?" → `saveCollectionBatch` in chunks (merge) → commit recomputes `collection_cards` for the user → IndexedDB cleared. Different device ⇒ explain and offer re-import.
 
-**Archidekt URL import:** Server Action → shared HTTP client → zod-validated response. Moxfield URL import sits behind a feature flag and returns `UPSTREAM_NOT_AUTHORIZED` until whitelisted.
+**Archidekt URL import:** Server Action → shared HTTP client → zod-validated response. Moxfield: text/CSV import only (API requires authentication). URL import disabled by default in `share_import_sources`.
 
 ---
 

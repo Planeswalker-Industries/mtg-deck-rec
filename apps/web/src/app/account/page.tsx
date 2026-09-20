@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { isPlatformAdmin } from "@/lib/server/admin";
 import { getCurrentUser } from "@/lib/server/auth";
+import { buttonVariants } from "@/components/ui/button";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Your account",
@@ -28,6 +31,15 @@ async function AccountDetails() {
       <p>
         Signed in as <span className="font-bold">{user.email ?? "your Google account"}</span>.
       </p>
+      {/* The only link to /admin anywhere. It isn't in the header because that would cost every signed-in visitor a
+          membership check on every page, to show a link almost nobody can use. */}
+      {(await isPlatformAdmin()) && (
+        <div>
+          <Link href="/admin" className={buttonVariants({ variant: "outline", className: "h-10 px-4" })}>
+            Platform admin
+          </Link>
+        </div>
+      )}
       <div>
         <SignOutButton />
       </div>

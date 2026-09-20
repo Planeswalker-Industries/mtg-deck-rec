@@ -18,8 +18,22 @@ export async function latestSignInCode(request: APIRequestContext, email: string
   throw new Error(`No sign-in email arrived for ${email}`);
 }
 
+/**
+ * Throws away everything Mailpit is holding for `email`.
+ *
+ * Tests that sign in as a fixed account (the seeded admin, say) rather than a fresh address share an inbox with
+ * every earlier run, and `latestSignInCode` can hand back a code from one of those — which the app correctly
+ * refuses. Clearing first makes the next email the only one there is.
+ */
+export async function clearInbox(request: APIRequestContext, email: string) {
+  const search = await request.get(`${mailpit}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}&limit=200`);
+  const ids = ((await search.json()).messages ?? []).map((message: { ID: string }) => message.ID);
+  if (ids.length > 0) await request.delete(`${mailpit}/api/v1/messages`, { data: { IDs: ids } });
+}
+
 /** Signs in on /sign-in with an emailed code, then waits to land on `next`. */
 export async function signIn(page: Page, request: APIRequestContext, email: string, next: string) {
+  await clearInbox(request, email);
   await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Email me a code" }).click();

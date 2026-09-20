@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { findResolvedCard } from "@/lib/cards";
+import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { AddPanel } from "./add-panel";
 import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { CutPanel } from "./cut-panel";
@@ -41,7 +42,10 @@ Deck
 
 export function DeckTool() {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
-  const openCode = useSearchParams().get("deck");
+  // ?commander=<slug> opens a featured deck from the landing page carousel.
+  const searchParams = useSearchParams();
+  const openCode = searchParams.get("deck");
+  const commanderSlug = searchParams.get("commander");
   const { source } = useCollectionSource();
   const collectionLoaded = source.kind !== "loading";
   const tool = useDeckTool(source);
@@ -59,12 +63,29 @@ export function DeckTool() {
   const { analysis, context, swap } = tool;
 
   /*
-   * Open where the player left off: a saved deck when the link named one, otherwise the deck from their last visit,
-   * analyzed again. Waits for the saved collection so owned-only suggestions apply from the first load.
+   * Open where the player left off: a featured deck when the link named one, a saved deck when the link
+   * named one, otherwise the deck from their last visit, analyzed again. Waits for the saved collection
+   * so owned-only suggestions apply from the first load.
    */
   useEffect(() => {
     if (restoreStarted.current || !collectionLoaded) return;
     restoreStarted.current = true;
+
+    // ?commander=<slug> loads a featured deck from the landing page carousel
+    if (commanderSlug !== null) {
+      const featured = FEATURED_DECKS.find((d) => d.slug === commanderSlug);
+      if (featured) {
+        void tool.submit({ text: featured.decklist, bracketOverride: null, gameChangerOverride: null, importedFrom: null }).then((outcome) => {
+          if (outcome.parsed) {
+            setEditing(false);
+            void lookup.check(outcome.analysis);
+          }
+        });
+        return;
+      }
+      // Unknown slug falls through to the remembered deck
+    }
+
     const opened = openCode === null ? tool.restoreLastDeck() : tool.openSavedDeck(openCode).then((r) => {
       if (r.ok) return r.data;
       setOpenError(r.error.message);
@@ -76,7 +97,7 @@ export function DeckTool() {
       setEditing(false);
       void lookup.check(restored.analysis);
     });
-  }, [tool, lookup, collectionLoaded, openCode]);
+  }, [tool, lookup, collectionLoaded, openCode, commanderSlug]);
   const showInput = editing || !analysis;
   const selectedCardId = swap?.targetCardId ?? null;
   const swapTarget = selectedCardId === null ? null : findResolvedCard(tool.lines, selectedCardId);
