@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 
 test("three step headings are present", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Add your decklist" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Import your collection" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Find the perfect swaps" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your decklist" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cut/Add/Replace" })).toBeVisible();
 });
 
 test("ring aria-label names every category", async ({ page }) => {
