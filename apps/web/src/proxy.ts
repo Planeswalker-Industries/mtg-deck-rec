@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { CARDS_COLLECTION, COMMANDERS_COLLECTION } from "@mtg/core/search";
 import type { Database } from "@/lib/server/database.types";
+import { fromIndex } from "@/lib/server/search-index";
 import { createPublicClient } from "@/lib/server/supabase";
 
 /**
@@ -77,7 +79,30 @@ async function publicDeckExists(code: string): Promise<boolean> {
   return data.length > 0;
 }
 
+/**
+ * Does this slug have a page? Asked on every card and commander page view, so it is the one query the proxy can most
+ * afford to lose.
+ *
+ * A **hit** is conclusive and costs no database query. A **miss** is not: the index can be a drain behind a card the
+ * catalog sync has just added, and this check has to stay a superset of what the page loaders will find or it would
+ * 404 a page that renders. So a miss falls through to the query, which is the answer that matters and is rare
+ * (typos and bots, not readers).
+ */
 async function pageExists(section: "card" | "commander", slug: string): Promise<boolean> {
+  if (SLUG.test(slug)) {
+    const collection = section === "card" ? CARDS_COLLECTION : COMMANDERS_COLLECTION;
+    const indexed = await fromIndex(`Checking ${section} page`, async (index) => {
+      const result = await index.search<{ slug: string }>(collection, {
+        q: "*",
+        filter_by: `slug:=${slug}`,
+        per_page: 1,
+        include_fields: "slug",
+      });
+      return (result.found ?? 0) > 0;
+    });
+    if (indexed?.value === true) return true;
+  }
+
   const db = createPublicClient();
   const { data, error } =
     section === "card"
@@ -86,6 +111,12 @@ async function pageExists(section: "card" | "commander", slug: string): Promise<
   if (error) throw new Error(`Checking ${section} page ${slug} failed: ${error.message}`);
   return data.length > 0;
 }
+
+/**
+ * The shape every slug the catalog generates has. Anything else skips the index and goes to the query, so no caller
+ * input ever reaches a filter expression — the same care `search_cards` takes when it escapes a LIKE pattern.
+ */
+const SLUG = /^[a-z0-9-]{1,120}$/;
 
 /**
  * Whether the request carries the session of a platform admin. Reads the cookies without refreshing them: the
