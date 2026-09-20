@@ -52,9 +52,27 @@ test("Build this Deck navigates to /deck?commander=", async ({ page }) => {
   await page.goto("/");
   const link = page.getByRole("link", { name: "Build this Deck" });
   await expect(link).toBeVisible({ timeout: 10_000 });
-  // The page shade fill and full lamp border, not the outline variant's dark-mode input fill.
-  await expect(link).toHaveCSS("background-color", "rgb(0, 9, 14)");
-  await expect(link).toHaveCSS("border-top-color", "rgb(227, 171, 110)");
+
+  // The button wears the page shade and the lamp itself, not the outline variant's dark-mode input fill.
+  // Read the tokens rather than hardcoding, so a palette tweak can't fail this.
+  const tokens = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const resolve = (value: string) => {
+      const probe = document.createElement("span");
+      probe.style.color = value.trim();
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    };
+    return {
+      background: resolve(root.getPropertyValue("--background")),
+      primary: resolve(root.getPropertyValue("--primary")),
+    };
+  });
+  await expect(link).toHaveCSS("background-color", tokens.background);
+  await expect(link).toHaveCSS("border-top-color", tokens.primary);
+
   await link.click();
   await expect(page).toHaveURL(/\/deck\?commander=/);
 });

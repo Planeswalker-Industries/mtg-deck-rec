@@ -75,7 +75,7 @@
   --popover: #08151b;
   --popover-foreground: var(--foreground);
 
-  --primary: #e9c35c; /* the lamp: the only thing that is lit */
+  --primary: #e3ab6e; /* the lamp: the only thing that is lit */
   --primary-foreground: #08161a;
   --secondary: #10202a;
   --secondary-foreground: var(--foreground);
