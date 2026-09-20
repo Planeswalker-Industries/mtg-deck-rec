@@ -1,12 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Suspense } from "react";
-import { ClipboardPaste, Library, Plus, Repeat2, Scissors } from "lucide-react";
+import { Fragment, Suspense } from "react";
+import { ArrowRight, ClipboardPaste, Library, Plus, Repeat2, Scissors } from "lucide-react";
 import { mockCards } from "@mtg/core/mocks";
 import type { CardSummary } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { buttonVariants } from "@/components/ui/button";
-import { getHeroArt } from "@/lib/server/recs-cache";
+import { FeaturedCommanders } from "@/components/home/featured-commanders";
+import { getFeaturedCommanders, getHeroArt } from "@/lib/server/recs-cache";
 
 function sampleCard(name: string): CardSummary {
   const card = mockCards.find((c) => c.name === name);
@@ -72,6 +73,25 @@ async function HeroCredit() {
       </Link>{" "}
       by {hero.artist}
     </p>
+  );
+}
+
+async function FeaturedCommandersSection() {
+  const commanders = await getFeaturedCommanders();
+  return (
+    <section
+      role="region"
+      aria-label="Popular Commanders"
+      className="rounded-xl border border-seam bg-background p-5 sm:p-7"
+    >
+      <h2 className="flex items-center gap-3 text-xs font-bold tracking-[0.25em] text-primary uppercase">
+        <span aria-hidden className="h-px w-6 bg-primary/60" />
+        Popular Commanders
+      </h2>
+      <div className="mt-5">
+        <FeaturedCommanders commanders={commanders} />
+      </div>
+    </section>
   );
 }
 
@@ -181,18 +201,54 @@ export default function Home() {
         </Suspense>
       </div>
 
+      <Suspense fallback={null}>
+        <div className="px-4">
+          <FeaturedCommandersSection />
+        </div>
+      </Suspense>
+
+      {/* Three steps */}
+      <section className="px-4">
+        <div role="list" className="flex flex-col gap-6 sm:flex-row sm:items-stretch">
+          {[
+            { step: 1, title: "Add your decklist", desc: "Paste, or import from Archidekt, ManaBox, Moxfield or TCGplayer." },
+            { step: 2, title: "Import your collection", desc: "A CSV or text export from the same apps. Optional." },
+            { step: 3, title: "Find the perfect swaps", desc: "Cuts, additions and substitutes, with the price difference before you commit." },
+          ].map(({ step, title, desc }, i) => (
+            <Fragment key={step}>
+              <div role="listitem" className="flex flex-1 gap-4 rounded-xl border border-seam bg-sleeve/60 p-5">
+                <span
+                  aria-hidden
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary"
+                >
+                  {step}
+                </span>
+                <div>
+                  <h3 className="font-heading text-base font-semibold">{title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{desc}</p>
+                </div>
+              </div>
+              {i < 2 && (
+                <div aria-hidden className="hidden shrink-0 items-center justify-center self-center text-muted-foreground sm:flex">
+                  <ArrowRight className="size-5" />
+                </div>
+              )}
+            </Fragment>
+          ))}
+        </div>
+      </section>
+
+      {/* Closing CTA */}
       <section className="rounded-xl border border-seam bg-sleeve/60 p-5 sm:p-7">
-        <h2 className="font-heading text-2xl leading-tight font-semibold">Ranked from decks people actually built.</h2>
-        <p className="mt-3 max-w-prose leading-relaxed text-muted-foreground">
-          Cuts are the cards costing more than they give you, sitting outside your colors, or pushing the deck past its
-          bracket. Additions are what decks with your commander play that yours doesn&rsquo;t. Replacements are cards that
-          do the same job, with the price difference shown before you commit.
-        </p>
-        <p className="mt-3 max-w-prose leading-relaxed text-muted-foreground">
-          All of it comes from how often a card turns up in real decks for your commander, and from what each card does on
-          the table, so a swap holds the deck&rsquo;s shape instead of just matching its price. When we don&rsquo;t have
-          enough decks for a commander, the page says so.
-        </p>
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-heading text-xl font-semibold">Your collection. Your deck. Optimized.</h2>
+            <p className="mt-1 text-sm text-muted-foreground">No account needed.</p>
+          </div>
+          <Link href="/deck" className={buttonVariants({ size: "lg", className: "lit h-12 gap-2 px-6 text-base font-bold" })}>
+            Get started
+          </Link>
+        </div>
       </section>
     </div>
   );

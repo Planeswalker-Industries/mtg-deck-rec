@@ -16,17 +16,17 @@ import type { RaThemeOptions } from "react-admin";
  * `<html>`, nothing computes on them, and that keeps the fonts in one place.
  */
 const TOKENS = {
-  background: "#10131a", // the table, in shadow
-  sleeve: "#1a1e28", // a card sleeve lying on the table
-  seam: "#2a303d", // where two surfaces meet
-  popover: "#1e232e",
+  background: "#00090e", // the table, in shadow
+  sleeve: "#050e13", // a card sleeve lying on the table
+  seam: "#1b2a30", // where two surfaces meet
+  popover: "#08151b",
   foreground: "#e9e5dd", // warm off-white: paper under a lamp, never pure white
-  mutedForeground: "#98a0ae",
-  muted: "#232936",
-  secondary: "#272d39",
-  input: "#39414f",
-  primary: "#d8a441", // the lamp: the only thing that is lit
-  primaryForeground: "#17130a",
+  mutedForeground: "#80909f",
+  muted: "#0c1a21",
+  secondary: "#10202a",
+  input: "#1e3038",
+  primary: "#e3ab6e", // the lamp: the only thing that is lit
+  primaryForeground: "#08161a",
   cut: "#e8687c",
   add: "#3cbd94",
   replace: "#9d8ef5",

@@ -39,12 +39,18 @@
   --color-add: var(--add);
   --color-replace: var(--replace);
 
-  /* Mana colors: color identity only */
-  --color-mana-w: #f4ebc6;
-  --color-mana-u: #a9cdeb;
-  --color-mana-b: #bfb5b0;
-  --color-mana-r: #efa98c;
-  --color-mana-g: #9fcbaa;
+  /* Card-type ring: mid-chroma, near-equal lightness, deliberately duller than --cut/--add/--replace
+     so the eight slices separate without competing with the gold primary or the job colors.
+     Order matches the DeckOverview legend: land, creature, instant, sorcery, artifact, enchantment,
+     planeswalker, battle. */
+  --color-cat-land: var(--cat-land);
+  --color-cat-creature: var(--cat-creature);
+  --color-cat-instant: var(--cat-instant);
+  --color-cat-sorcery: var(--cat-sorcery);
+  --color-cat-artifact: var(--cat-artifact);
+  --color-cat-enchantment: var(--cat-enchantment);
+  --color-cat-planeswalker: var(--cat-planeswalker);
+  --color-cat-battle: var(--cat-battle);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -59,23 +65,23 @@
   --radius: 0.375rem;
 
   /* The light falls from the top of the page, so surfaces get warmer as they rise. */
-  --background: #10131a; /* the table, in shadow */
+  --background: #00090e; /* the table, in shadow */
   --foreground: #e9e5dd; /* warm off-white: paper under a lamp, never pure white */
-  --sleeve: #1a1e28; /* a card sleeve lying on the table */
-  --seam: #2a303d; /* where two surfaces meet */
+  --sleeve: #050e13; /* a card sleeve lying on the table */
+  --seam: #1b2a30; /* where two surfaces meet, and the divider inside a card */
 
   --card: var(--sleeve);
   --card-foreground: var(--foreground);
-  --popover: #1e232e;
+  --popover: #08151b;
   --popover-foreground: var(--foreground);
 
-  --primary: #d8a441; /* the lamp: the only thing that is lit */
-  --primary-foreground: #17130a;
-  --secondary: #272d39;
+  --primary: #e3ab6e; /* the lamp: the only thing that is lit */
+  --primary-foreground: #08161a;
+  --secondary: #10202a;
   --secondary-foreground: var(--foreground);
-  --muted: #232936;
-  --muted-foreground: #98a0ae; /* far enough from the surface to stay readable */
-  --accent: #272d39;
+  --muted: #0c1a21;
+  --muted-foreground: #80909f; /* far enough from the surface to stay readable */
+  --accent: #10202a;
   --accent-foreground: var(--foreground);
 
   /* Cut, add and replace. Rose, jade and violet sit clear of W/U/B/R/G. */
@@ -83,14 +89,46 @@
   --add: #3cbd94;
   --replace: #9d8ef5;
 
+  /* Card-type ring colors, in the DeckOverview legend order: land, creature, instant, sorcery,
+     artifact, enchantment, planeswalker, battle. */
+  --cat-land: #80909f;
+  --cat-creature: #87b0cb;
+  --cat-instant: #e1b880;
+  --cat-sorcery: #df6256;
+  --cat-artifact: #9faab7;
+  --cat-enchantment: #d3b3c8;
+  --cat-planeswalker: #a37dcf;
+  --cat-battle: #74c284;
+
   --destructive: #ef6172;
   --save: #3cbd94;
   --gc: #e0b354;
   --gc-bg: #3a2d13;
 
   --border: var(--seam);
-  --input: #39414f;
+  --input: #1e3038;
   --ring: var(--primary);
+
+  /* v1 palette (pre-homepage redesign). Kept so the earlier "table at night" values can be restored. */
+  --backgroundv1: #10131a;
+  --sleevev1: #1a1e28;
+  --seamv1: #2a303d;
+  --popoverv1: #1e232e;
+  --primaryv1: #d8a441;
+  --primary-foregroundv1: #17130a;
+  --secondaryv1: #272d39;
+  --mutedv1: #232936;
+  --muted-foregroundv1: #98a0ae;
+  --accentv1: #272d39;
+  --inputv1: #39414f;
+  --cat-landv1: #7d9e8e;
+  --cat-creaturev1: #7d9e6e;
+  --cat-instantv1: #6e9eaa;
+  --cat-sorceryv1: #9e7d8e;
+  --cat-artifactv1: #8e8e7d;
+  --cat-enchantmentv1: #7d8e9e;
+  --cat-planeswalkerv1: #9e8e6e;
+  --cat-battlev1: #9e6e6e;
 }
 
 @layer base {

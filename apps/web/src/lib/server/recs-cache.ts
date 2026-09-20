@@ -2,6 +2,7 @@ import type { RecContext, SwapResult } from "@mtg/core/contract";
 import { cacheLife, cacheTag } from "next/cache";
 import { loadCardPage, type CardPageData } from "./card-page";
 import { loadCommanderPage, type CommanderPage } from "./commander-page";
+import { type FeaturedCommander, loadFeaturedCommanders } from "./featured";
 import { getSwapSuggestions, loadSwapPool, NotFoundError, rankSwaps, SHARED_SWAP_POOL, type SwapPool } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
 
@@ -102,4 +103,22 @@ export async function getCachedSwapSuggestions(
   const pool = await sharedSwapPool(targetCardId, commanderIds, context.includeGameChangers);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
   return rankSwaps(pool, { context, limit });
+}
+
+/**
+ * Featured commanders for the landing page carousel. The fixture always returns; the database only adds art,
+ * color identity and deck counts. Creating the client is itself guarded so a missing or unreachable
+ * configuration still renders the section (CI has no catalog).
+ */
+export async function getFeaturedCommanders(): Promise<FeaturedCommander[]> {
+  "use cache";
+  cacheLife("days");
+  cacheTag("catalog", "corpus");
+  let db: PublicClient | null = null;
+  try {
+    db = createPublicClient();
+  } catch {
+    db = null;
+  }
+  return loadFeaturedCommanders(db);
 }
