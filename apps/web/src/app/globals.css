@@ -75,7 +75,7 @@
   --popover: #08151b;
   --popover-foreground: var(--foreground);
 
-  --primary: #e3ab6e; /* the lamp: the only thing that is lit */
+  --primary: #e9c35c; /* the lamp: the only thing that is lit */
   --primary-foreground: #08161a;
   --secondary: #10202a;
   --secondary-foreground: var(--foreground);
@@ -109,7 +109,7 @@
   --input: #1e3038;
   --ring: var(--primary);
 
-  /* v1 palette (pre-homepage redesign). Kept so the earlier "table at night" values can be restored. */
+  /* v1 palette (pre-homepage redesign). Kept so the earlier values can be restored. */
   --backgroundv1: #10131a;
   --sleevev1: #1a1e28;
   --seamv1: #2a303d;
@@ -174,7 +174,8 @@
 /* The hero deals its cards once, on load. Positions come from the element's own custom
    properties so the resting layout is correct even if the animation never runs. */
 .fan-card {
-  transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg)) scale(var(--s, 1));
+  transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg))
+    scale(var(--s, 1));
   animation: deal 0.75s cubic-bezier(0.22, 1, 0.36, 1) var(--delay, 0s) both;
 }
 
@@ -184,7 +185,8 @@
     opacity: 0;
   }
   to {
-    transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg)) scale(var(--s, 1));
+    transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg))
+      scale(var(--s, 1));
     opacity: 1;
   }
 }
