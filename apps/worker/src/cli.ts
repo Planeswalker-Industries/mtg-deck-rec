@@ -4,6 +4,7 @@ import { profileTags } from './jobs/profile-tags';
 import { serveCommanderRequests } from './jobs/serve-commander-requests';
 import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
 import { syncCatalog } from './jobs/sync-catalog';
+import { syncSearchIndex } from './jobs/sync-search-index';
 import { syncPrintings } from './jobs/sync-printings';
 import { syncTags } from './jobs/sync-tags';
 import { downloadBulk, getBulkIndex, type BulkType } from './lib/bulk';
@@ -16,6 +17,9 @@ Commands:
   sync:catalog [--force]    Oracle Cards → cards, name aliases, functional twins (skips if the file is unchanged)
   sync:printings [--force]  All Cards → printings, card stats (staple score), cheapest prices, flavor names (after sync:catalog)
   sync:tags [--force]       Oracle Tags → tags, hierarchy, card taggings (after sync:catalog)
+  sync:typesense [--rebuild]
+                            Drain public.search_index_queue into the search index (--rebuild: build every
+                            collection from scratch and move the aliases when it is done)
   aggregate:corpus [--file path] [--force]
                             Deck corpus (JSONL of slim decks; default: the Archidekt spike) → commander and card play-rate stats
   serve:commander-requests [--once]
@@ -60,6 +64,8 @@ async function main(): Promise<void> {
       return syncPrintings({ force });
     case 'sync:tags':
       return syncTags({ force });
+    case 'sync:typesense':
+      return syncSearchIndex({ rebuild: args.includes('--rebuild') });
     case 'aggregate:corpus': {
       const fileIndex = args.indexOf('--file');
       await aggregateCorpus({ file: fileIndex === -1 ? undefined : args[fileIndex + 1], force });

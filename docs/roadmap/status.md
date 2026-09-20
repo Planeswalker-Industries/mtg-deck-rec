@@ -29,6 +29,21 @@ PR #41, 21 commits, contract v5 to v9. Shipped:
 - `cards_rec_pool` covering index
 - Deck workspace layout (Cut/Add/Replace drill-down, section nav, top suggestions in rail)
 
+## Search index (Typesense) — built 2026-09-19, not deployed
+
+A self-hosted Typesense now serves the reads that cost Postgres the most: card documents by id (a swap pool is 220
+cards, an add pool 400, a commander page 500), the header search and commander picker, card tags, the proxy's slug
+check on every card and commander page view, and the card-shaped part of `loadCardCorpus` (five queries to one).
+Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](typesense-ops.md).
+
+- **Never a dependency.** Unset `TYPESENSE_URL` and every path takes the query it always took; configured-but-broken
+  logs and falls back. Checked by `scripts/search-index-check.ts`.
+- **Recommendation ranking is untouched.** `rec_swap_candidates` and `rec_add_candidates` stay in SQL so the open
+  blind swap-quality eval still measures what it was built to measure.
+- **Left to do is configuration, not code** — see T032. Nothing is live until the VPS is running.
+- Measured: triggers add ~1.4 s to a worst-case full-catalog rewrite (1.57 s to 2.99 s, 34,760 rows); a full rebuild
+  is ~6 s for 39,295 documents; card rows rebuilt from documents are byte-identical to Postgres across 500 cards.
+
 ## Open Items (from tasks.md P0)
 
 1. Hosted sign-in not set up (dashboard config, not code)

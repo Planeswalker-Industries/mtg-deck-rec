@@ -10,7 +10,8 @@
     "./schemas": "./src/contract/schemas.ts",
     "./parse": "./src/parse/index.ts",
     "./commander": "./src/formats/commander/index.ts",
-    "./scoring": "./src/scoring/index.ts"
+    "./scoring": "./src/scoring/index.ts",
+    "./search": "./src/search/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

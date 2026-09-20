@@ -1,7 +1,9 @@
 import { isStatementTimeout, recordRecTimeout, retryOnTimeout } from "./retry-timeout";
 import type { AddSuggestion, CardCategory, CardSummary, CommanderKeyId, CommanderPageData } from "@mtg/core/contract";
 import { ADD_WEIGHTS, blendScore, cardCategory, commanderCorpusScore } from "@mtg/core/scoring";
+import { COMMANDER_CARDS_COLLECTION, MAX_PER_PAGE, type CommanderCardDocument } from "@mtg/core/search";
 import { fetchCardsById, toCardSummary } from "./cards";
+import { fromIndex } from "./search-index";
 import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
 import { fetchTags, loadRoleTargets } from "./recs";
 import type { PublicClient } from "./supabase";
@@ -26,6 +28,24 @@ async function loadTopCardIds(
   commanderIds: readonly number[],
 ): Promise<number[]> {
   if (corpus.borrowedDeckCount === 0) {
+    // One key, one sort, no join: the index answers this straight out of the collection it is sorted by.
+    const indexed = await fromIndex("Commander cards", async (index) => {
+      const pages = Math.ceil(TOP_POOL / MAX_PER_PAGE);
+      const results = await index.multiSearch<CommanderCardDocument>(
+        Array.from({ length: pages }, (_, i) => ({
+          collection: COMMANDER_CARDS_COLLECTION,
+          q: "*",
+          filter_by: `key_id:[${corpus.sourceKeyIds.join(",")}]`,
+          sort_by: "inclusion_shrunk:desc",
+          per_page: Math.min(MAX_PER_PAGE, TOP_POOL - i * MAX_PER_PAGE),
+          page: i + 1,
+          include_fields: "card_id,inclusion_shrunk",
+        })),
+      );
+      return results.flatMap((r) => (r.hits ?? []).map((h) => h.document.card_id));
+    });
+    if (indexed) return [...new Set(indexed.value)].filter((id) => !commanderIds.includes(id));
+
     const { data, error } = await db
       .from("commander_card_stats")
       .select("card_id")
@@ -33,9 +53,9 @@ async function loadTopCardIds(
       .order("inclusion_shrunk", { ascending: false })
       .limit(TOP_POOL);
     if (error) {
-    if (isStatementTimeout(error)) recordRecTimeout(db, { fn: "add", commanderIds, identityMask });
-    throw new Error(`Loading commander cards failed: ${error.message}`);
-  }
+      if (isStatementTimeout(error)) recordRecTimeout(db, { fn: "add", commanderIds, identityMask });
+      throw new Error(`Loading commander cards failed: ${error.message}`);
+    }
     return [...new Set(data.map((r) => r.card_id))].filter((id) => !commanderIds.includes(id));
   }
 
