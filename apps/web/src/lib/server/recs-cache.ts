@@ -6,43 +6,6 @@ import { type FeaturedCommander, loadFeaturedCommanders } from "./featured";
 import { getSwapSuggestions, loadSwapPool, NotFoundError, rankSwaps, SHARED_SWAP_POOL, type SwapPool } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
 
-export interface HeroArt {
-  art: string;
-  artist: string;
-  name: string;
-  slug: string;
-}
-
-/**
- * Art for the landing hero, taking the first of `slugs` that resolves. Lands come first: their art is
- * painted as scenery, so it works as a wide banner where a creature portrait does not.
- *
- * The landing page otherwise has no database dependency and so cannot fail, which is worth keeping:
- * any error here returns null and the page renders without a backdrop rather than erroring. Null also
- * covers a build with no catalog, which is how CI runs.
- */
-export async function getHeroArt(slugs: readonly string[]): Promise<HeroArt | null> {
-  "use cache";
-  cacheLife("days");
-  cacheTag("catalog", `hero:${slugs.join(",")}`);
-  try {
-    const { data, error } = await createPublicClient()
-      .from("cards")
-      .select("name, slug, images, artist")
-      .in("slug", [...slugs])
-      .is("deleted_at", null);
-    if (error || !data) return null;
-    for (const slug of slugs) {
-      const row = data.find((r) => r.slug === slug);
-      const art = (row?.images as { front?: { artCrop?: string } } | null)?.front?.artCrop;
-      if (row?.artist && art) return { art, artist: row.artist, name: row.name, slug: row.slug };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * The deck-independent part of a swap (candidates, card data, tags, play rates), cached per target card, commander(s)
  * and Game Changer setting. It changes only when the catalog, tags or corpus are rebuilt (tag "recs").

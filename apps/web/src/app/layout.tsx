@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: { default: "MTG Deck Rec", template: "%s | MTG Deck Rec" },
   description:
-    "Commander deck recommendations: cards to cut, cards to add, and replacements that do the same job, with card images and price differences.",
+    "Commander deck recommendations built from the cards you already own. Import your collection, improve a deck, or swap into popular lists and skip the expensive singles.",
 };
 
 export const viewport: Viewport = {
