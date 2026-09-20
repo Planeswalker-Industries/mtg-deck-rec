@@ -188,11 +188,37 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 **Context:** The `cards_rec_pool` covering index already reduced reads from ~165 MB to ~46 MB. But the anon 3s statement timeout still fires on cold databases. The retry mechanism (up to 3 attempts) works because pages stay in `shared_buffers`, but it's a mitigation, not a fix.
 
+**Changed by the search index (2026-09-19):** a swap request no longer fetches its 220 candidate card rows or the card-shaped half of `loadCardCorpus` from Postgres, leaving `rec_swap_candidates` itself as the one query. Whether that alone stops the timeouts is a hosted measurement nobody has taken — **re-read `rec_timeouts` a week after T032 lands before designing anything here.** The answer may be that this ticket is smaller than it looks, or already done.
+
 **Acceptance criteria:**
 - [ ] Design a caching strategy (Supabase materialized view, Redis, or extended `use cache` TTL)
 - [ ] Implement caching for swap candidate pools
 - [ ] Verify cold-query timeouts stop firing in `rec_timeouts`
 - [ ] Keep the `cards_rec_pool` index columns and predicate in step with what the `eligible`/`pool` CTEs read and filter on
+
+---
+
+### T032: Deploy the search index to the VPS
+
+**Priority:** HIGH | **Area:** Infrastructure | **Status:** Not started (the code is built and merged)
+
+The Typesense index is built, tested and documented, and nothing uses it until it is running. Every read path falls back to Postgres while `TYPESENSE_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
+
+**Files:**
+- `deploy/typesense/docker-compose.yml` — the deployment, with its `.env.example`
+- `docs/roadmap/typesense-ops.md` — the runbook this ticket follows
+- `.github/workflows/sync.yml` — already reads `TYPESENSE_URL` / `TYPESENSE_ADMIN_KEY` as secrets
+
+**Context:** Self-hosted rather than Typesense Cloud (owner decision, 2026-09-19; the cheapest Cloud node is ~$21.60/mo plus egress). Typesense terminates no TLS of its own and its API key is its entire access control, so the compose file publishes on 127.0.0.1 only and it goes behind the existing reverse proxy.
+
+**Acceptance criteria:**
+- [ ] `docker compose up -d` on the VPS, reporting healthy, behind the reverse proxy with TLS
+- [ ] Two keys: admin for the worker and the sync workflow, search-only (`documents:search`, `documents:get`) for the app
+- [ ] `TYPESENSE_URL` + `TYPESENSE_SEARCH_KEY` on Vercel **Production and Preview**; `TYPESENSE_URL` + `TYPESENSE_ADMIN_KEY` in GitHub Actions secrets and `apps/worker/.env.hosted`
+- [ ] `cli:hosted sync:typesense --rebuild` once, then confirm the daily sync drains the queue
+- [ ] `scripts/search-parity-check.ts` passes against hosted data (the local run has no deck corpus, so `commanders` and `commander_cards` have never been exercised with real rows)
+- [ ] Measure RAM after the first build (`/metrics.json`) and record it in the runbook beside the estimate
+- [ ] A week later, re-read `rec_timeouts` and update T008
 
 ---
 
