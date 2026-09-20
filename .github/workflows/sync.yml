@@ -5,6 +5,8 @@ name: Scryfall sync
 #   DATABASE_URL       Supabase session pooler connection string (IPv4; the jobs use temp tables, so not the transaction pooler)
 #   WEB_APP_URL        the deployed site, so finished syncs refresh its cached pages
 #   REVALIDATE_SECRET  the web app's REVALIDATE_SECRET
+#   TYPESENSE_URL      the search index on the VPS, so each finished sync updates the documents it changed
+#   TYPESENSE_ADMIN_KEY  its admin key (the web app only ever gets a search-only key)
 on:
   schedule:
     - cron: "23 10 * * *"
@@ -31,6 +33,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
       REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+      TYPESENSE_URL: ${{ secrets.TYPESENSE_URL }}
+      TYPESENSE_ADMIN_KEY: ${{ secrets.TYPESENSE_ADMIN_KEY }}
       FORCE: ${{ inputs.force && '--force' || '' }}
     steps:
       - uses: actions/checkout@v4
@@ -54,3 +58,10 @@ jobs:
 
       - name: Tags
         run: yarn workspace @mtg/worker cli sync:tags $FORCE
+
+      # Each sync drains the queue itself when it finishes, so this is the sweep that catches anything left: a job
+      # that skipped as unchanged, a write from somewhere else, or a drain that failed and left its rows in place.
+      # It is a no-op when the secrets aren't set, which is how a fork or a run without an index behaves.
+      - name: Search index
+        if: always()
+        run: yarn workspace @mtg/worker cli sync:typesense
