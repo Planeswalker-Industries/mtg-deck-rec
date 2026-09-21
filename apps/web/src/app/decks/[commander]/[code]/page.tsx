@@ -105,6 +105,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
               </span>
             </h2>
             <PocketGrid
+              zoomable
               label={cardCategoryLabel[group.category]}
               items={group.cards.map((entry) => ({
                 card: entry.card,
