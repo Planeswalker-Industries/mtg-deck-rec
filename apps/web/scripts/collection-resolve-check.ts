@@ -46,6 +46,22 @@ async function main() {
   check("language and condition carried through", counterspell?.lang === "ja" && counterspell.condition === "LP" && counterspell.quantity === 3, JSON.stringify(counterspell));
   check("epoch present", /^\d+$/.test(result.catalogEpoch) && result.catalogEpoch !== "0", result.catalogEpoch);
 
+  // PostgREST returns at most `[api] max_rows` rows (1000) and drops the overflow silently, so a batch that
+  // matches more than that used to lose the remainder and report it NOT_FOUND. Matching now chunks internally.
+  const many: CollectionRowInput[] = Array.from({ length: 1_200 }, (_, i) => ({
+    rowNo: 1_000 + i,
+    quantity: 1,
+    name: "Sol Ring",
+    setCode: "C21",
+    collectorNumber: "263",
+  }));
+  const bulk = await resolveCollectionRows(db, many);
+  check(
+    "more rows than the PostgREST row cap all match",
+    bulk.resolved.length === many.length && bulk.unresolved.length === 0,
+    `${bulk.resolved.length} resolved, ${bulk.unresolved.length} unresolved`,
+  );
+
   console.log(failures.length ? `FAILURES: ${failures.join(", ")}` : "all collection resolve checks passed");
   if (failures.length) process.exitCode = 1;
 }

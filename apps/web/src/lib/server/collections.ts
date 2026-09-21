@@ -21,6 +21,17 @@ interface MatchRow {
 }
 
 const VIAS: ReadonlySet<string> = new Set<CollectionResolveVia>(["scryfall_id", "tcgplayer_id", "set_cn_lang", "set_cn", "name_only"]);
+
+/**
+ * How many rows go into one `resolve_collection_rows` call.
+ *
+ * PostgREST caps every response at `[api] max_rows` in `supabase/config.toml` (1000, the hosted default),
+ * and a set-returning function is no exception: the overflow is dropped silently, so rows past the cap look
+ * like they did not match. Each input row yields at most one match, so chunking the input to the cap keeps
+ * every response under it. The caller may still send up to `MAX_COLLECTION_ROWS_PER_CALL` in one action.
+ */
+const MATCH_ROWS_PER_CALL = 1_000;
+
 const FINISHES: ReadonlySet<string> = new Set<Finish>(["nonfoil", "foil", "etched"]);
 
 const hasIdentifier = (row: CollectionRowInput) =>
@@ -38,24 +49,24 @@ function finishFor(row: CollectionRowInput, printingFinishes: readonly string[] 
  * with nothing to match on are INVALID; rows no identifier matched are NOT_FOUND.
  */
 export async function resolveCollectionRows(db: PublicClient, rows: readonly CollectionRowInput[]): Promise<ResolveCollectionResult> {
-  const payload = rows.map((row) => ({
-    rowNo: row.rowNo,
-    scryfallId: row.scryfallId,
-    tcgplayerId: row.tcgplayerId,
-    setCode: row.setCode,
-    collectorNumber: row.collectorNumber,
-    lang: row.lang,
-    nameNormalized: row.name ? normalizeName(row.name) : undefined,
-  }));
-
-  const [matchResult, epochResult] = await Promise.all([
-    rows.length > 0 ? db.rpc("resolve_collection_rows", { p_rows: payload }) : Promise.resolve({ data: [] as MatchRow[], error: null }),
-    db.rpc("catalog_epoch"),
-  ]);
-  if (matchResult.error) throw new Error(`Matching collection rows failed: ${matchResult.error.message}`);
+  const epochResult = await db.rpc("catalog_epoch");
   if (epochResult.error) throw new Error(`Loading the catalog version failed: ${epochResult.error.message}`);
 
-  const matches = new Map(((matchResult.data ?? []) as MatchRow[]).map((m) => [m.row_no, m]));
+  const matches = new Map<number, MatchRow>();
+  for (let start = 0; start < rows.length; start += MATCH_ROWS_PER_CALL) {
+    const payload = rows.slice(start, start + MATCH_ROWS_PER_CALL).map((row) => ({
+      rowNo: row.rowNo,
+      scryfallId: row.scryfallId,
+      tcgplayerId: row.tcgplayerId,
+      setCode: row.setCode,
+      collectorNumber: row.collectorNumber,
+      lang: row.lang,
+      nameNormalized: row.name ? normalizeName(row.name) : undefined,
+    }));
+    const { data, error } = await db.rpc("resolve_collection_rows", { p_rows: payload });
+    if (error) throw new Error(`Matching collection rows failed: ${error.message}`);
+    for (const match of (data ?? []) as MatchRow[]) matches.set(match.row_no, match);
+  }
   const resolved: ResolvedCollectionRow[] = [];
   const unresolved: UnresolvedCollectionRow[] = [];
 
