@@ -55,6 +55,14 @@ The one part of the app not built on the contract or on shadcn.
 - A signed-in non-admin gets **404, not 403** from both the page and the API
 - The only link to `/admin` is on `/account`, shown to admins only
 
+## Coding Policy
+
+**Never use Magic Numbers in the code. Set as top of document const variables if used in ONLY that document/component. Otherwise, set in a global constants/config file and import.** (Owner rule, 2026-09-21.)
+- Name the constant for what it means and put the unit in the name (`SWIPE_COOLDOWN_MS`, `DRAG_CLICK_SLOP_PX`), with a one-line comment on why it has that value.
+- A value shared across files goes in `apps/web/src/lib/constants.ts` for the web app, or `packages/core/src` when the worker needs it too. Create the file when the first shared value needs it.
+- Not magic numbers: 0, 1 and -1 used as identities or directions, array indices, and Tailwind classes or design tokens (`gap-3`, `size-14`), which already are the scale.
+- Scoring weights and anti-abuse thresholds still belong in database config (`app_config`), not in a constants file: the repo is public (see Hard constraints in `../../CLAUDE.md`).
+
 ## UI Patterns
 
 - **shadcn/ui** (`radix-nova` style, Radix primitives)
