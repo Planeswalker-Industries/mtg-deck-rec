@@ -1,8 +1,28 @@
--- LOCAL ONLY. Seeds run on `supabase db reset` against the local database. The hosted project is built from
--- supabase/migrations, which the GitHub integration applies when `main` changes, so nothing here reaches production.
+-- LOCAL ONLY. Two accounts on predictable addresses are fine on a laptop and are not fine on a public site, so this
+-- file is kept away from the hosted project on three counts:
 --
--- TODO before any launch: delete this file, or confirm it still cannot reach the hosted project. Two accounts on
--- predictable addresses are fine on a laptop and are not fine on a public site.
+--   1. Nothing that builds hosted runs it. The Supabase GitHub integration applies supabase/migrations when `main`
+--      changes and never seeds the production branch; `supabase db push` skips seeds without `--include-seed`.
+--   2. The guard below refuses to run against any database that already has a real account, which every hosted
+--      database does. A fresh local reset has none: migrations create no users.
+--   3. Even seeded somewhere by mistake, the accounts have no password and their @test.local addresses receive no
+--      mail, so the only way in is a link minted with the secret key (scripts/dev-sign-in.ts, which also refuses to
+--      run against anything but a local database URL).
+--
+-- Google sign-in works locally and on hosted, so real accounts cover everything these used to be needed for outside
+-- local testing.
+
+do $$
+begin
+  if exists (
+    select 1 from auth.users
+    where id not in ('00000000-0000-4000-8000-000000000a01', '00000000-0000-4000-8000-0000000000ad')
+  ) then
+    raise exception 'seed.sql is local only: this database already has real accounts, so it is not a fresh local reset.';
+  end if;
+end;
+$$;
+
 --
 -- Two fixed accounts, so anything needing sign-in can be tested against the same data every time instead of a fresh
 -- random address per run. Sign in with:

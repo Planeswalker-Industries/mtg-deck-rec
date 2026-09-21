@@ -12,23 +12,6 @@ Ticket ids are stable and never reused: a closed ticket leaves a gap rather than
 
 Must complete before any public launch. These are blockers, not nice-to-haves.
 
-### T001: Remove local test seed data
-
-**Priority:** HIGH | **Area:** DevOps / Security | **Status:** Not started
-
-Two files create fixed test accounts (`anon@test.local`, `admin@test.local`) and a sign-in link generator for local dev. They are safe today (seed.sql only runs via `supabase db reset`, the script checks `NEXT_PUBLIC_SUPABASE_URL` is localhost) but must not ship to production.
-
-**Files:**
-- `supabase/seed.sql` (line 4)
-- `apps/web/scripts/dev-sign-in.ts` (line 5)
-
-**Acceptance criteria:**
-- [ ] Either delete both files, or prove hosted Supabase (built from `supabase/migrations` only) can never execute them
-- [ ] Remove any references to these files from CLAUDE.md or docs
-- [ ] Verify `supabase db reset` still works locally without them (or document new setup)
-
----
-
 ### T002: Configure hosted Supabase Auth
 
 **Priority:** HIGH | **Area:** DevOps | **Status:** Dashboard configured; SMTP pending (T033)
@@ -61,38 +44,6 @@ The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a r
 - [ ] Decide destination (email, form, in-app feedback)
 - [ ] Update the link
 - [ ] Remove GitHub issue template reference if present
-
----
-
-### T004: Privacy policy + account deletion
-
-**Priority:** MEDIUM | **Area:** Legal / Backend | **Status:** Not started
-
-Auth data, salted IP hashes, and user-generated content require a privacy policy. Account deletion must cascade to collections, decks, and anonymize votes.
-
-**Files:**
-- `apps/web/src/app/account/` — account settings page
-- `apps/web/src/lib/server/supabase-admin.ts` — admin client
-
-**Acceptance criteria:**
-- [ ] Privacy policy page linked from footer
-- [ ] Account deletion function cascades: `deck_cards` → `decks`, `collection_items` → `collection_imports`, anonymizes `swap_votes`
-- [ ] Deletion accessible from account settings
-
----
-
-### T005: WotC Fan Content Policy disclaimer
-
-**Priority:** LOW | **Area:** Legal / Frontend | **Status:** Partly done
-
-Footer disclaimer per WotC Fan Content Policy for MTG-related content. The disclaimer text is already in `site-footer.tsx`; it names the policy but does not link to it.
-
-**Files:**
-- `apps/web/src/components/layout/site-footer.tsx`
-
-**Acceptance criteria:**
-- [x] Disclaimer added to site footer
-- [ ] Links to WotC Fan Content Policy
 
 ---
 
@@ -595,5 +546,8 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
 
+- **T001 — Remove local test seed data.** Closed 2026-09-21: kept for local testing, fenced off from hosted. `seed.sql` now opens with a guard that raises if `auth.users` holds any account besides the two test ids, which every hosted database does and a fresh `supabase db reset` never does. Nothing that builds hosted runs it anyway: the GitHub integration applies migrations and does not seed the production branch, and `db push` skips seeds without `--include-seed`. The accounts have no password and undeliverable addresses, and `dev-sign-in.ts` refuses a non-local database URL. Google sign-in covers real accounts.
+- **T004 — Privacy policy + account deletion.** Closed 2026-09-21. `/privacy` (linked from the footer) is a boilerplate policy drafted from how the app stores data. Owner decisions it records: a deleted account's email and id stay in `audit_log` to catch ban evasion and multiple accounts; submitted data (decks, collections, votes, lookups) is used to improve recommendations and never sold or used for anything else. Deletion is `delete_my_account()` (migration `20260921000100_account_deletion.sql`) behind a typed confirmation on `/account`; existing cascades remove profile, decks, collection and admin membership, the `on_auth_user_deleted` trigger re-keys votes to a random voter key on every delete path, and `tags.disabled_by` is now `on delete set null`. No automated test deletes anything, by owner rule; the owner tested a deletion by hand.
+- **T005 — WotC Fan Content Policy disclaimer.** Closed 2026-09-21: the footer disclaimer now links to the policy.
 - **T012 — Parser test fixtures (26 → 60).** Closed 2026-09-18: the goal is met. `yarn workspace @mtg/core vitest run src/parse` reports **63 passing tests** across 8 files; the CSV and file-import work (PR #43) carried the count past 60. `status.md` still says 26 and is stale there.
 - **T024 — Invalidate swap pool cache after corpus rebuilds.** Closed 2026-09-18: already wired. `TAGS_BY_JOB` in `apps/worker/src/lib/web-app.ts:10` maps `corpus_aggregate` to `['corpus', 'recs']`, so `finishRun` already revalidates `recs` after a rebuild. The premise that only `catalog` and `corpus` were sent was wrong.
