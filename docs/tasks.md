@@ -155,7 +155,7 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 **Priority:** HIGH | **Area:** Infrastructure | **Status:** Not started (the code is built and merged)
 
-The Typesense index is built, tested and documented, and nothing uses it until it is running. Every read path falls back to Postgres while `TYPESENSE_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
+The index and the Go service in front of it are built, tested and documented, and nothing uses them until they are running. Every read path falls back to Postgres while `SEARCH_API_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
 
 **Files:**
 - `deploy/search/docker-compose.yml` — the deployment (Typesense + `services/search-api`), with its `.env.example`
@@ -171,6 +171,7 @@ The Typesense index is built, tested and documented, and nothing uses it until i
 - [ ] `cli:hosted sync:typesense --rebuild` once, then confirm the daily sync drains the queue
 - [ ] `scripts/search-parity-check.ts` passes against hosted data (the local run has no deck corpus, so `commanders` and `commander_cards` have never been exercised with real rows)
 - [ ] Measure RAM after the first build (`/metrics.json`) and record it in the runbook beside the estimate
+- [ ] `services/search-api` reachable over TLS; `curl https://<host>/v1/health` returns `{"ok":true}` **without** `-k`
 - [ ] A week later, re-read `rec_timeouts` and update T008
 
 ---

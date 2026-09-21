@@ -9,7 +9,11 @@ to make, what to do when it misbehaves, and what has been measured. Phase 5 (swa
 
 ## Why
 
-The hosted database is a Supabase Free instance: **381 MB of 500 MB**, 224 MB of `shared_buffers`, and a **3 s statement timeout on the `anon` role**. Two things follow from that, and both are already written down in `status.md`:
+*(Written 2026-09-19, when the database was a Supabase Free instance at 381 MB of 500 MB with 224 MB of
+`shared_buffers`. Hosted moved to **Pro, 8 GB** on 2026-09-21: storage is no longer a constraint, and the cache is
+bigger. The figures below are what was measured then, and the paragraph after this one says what still holds.)*
+
+The hosted database had a **3 s statement timeout on the `anon` role** and 224 MB of `shared_buffers`. Two things followed from that, and both are already written down in `status.md`:
 
 - Recommendation queries that sweep `cards` blow the timeout when the cache is cold. Mitigated by `cards_rec_pool` and `retryOnTimeout`, not fixed.
 - Every page view costs queries that have nothing to do with recommendations — `proxy.ts` asks "does this slug exist" on every `/card/:slug` and `/commander/:slug` request, and `fetchCardsById` pulls 120–500 wide rows out of `cards` for every swap, add, commander page and rater deal.
@@ -21,6 +25,12 @@ Typesense is a RAM-resident document store with a search engine on top. It is ve
 | "Give me these 400 documents by id" | Excellent. This is a hash lookup in RAM; Postgres has to visit 400 heap rows in a 92 MB table. |
 | "Rank names by prefix, then contains, then typo" | Excellent, and it is what the engine is for. Today this is `search_cards`: two `LIKE`s and two trigram operators over 37,350 rows, run on every debounced keystroke. |
 | "Score candidates by idf-weighted tag-closure overlap" | Poor. Typesense cannot express the `rec_swap_candidates` similarity formula. Any Typesense version of it is an approximation, which collides with the still-open blind swap-quality eval. |
+
+**What the move to Pro changes, and what it does not.** Storage never motivated this work, so nothing here rests on
+it. The volume argument is untouched: a commander page still fetches 500 card rows, and each is still a heap visit
+in a 92 MB table whatever the plan. What *is* now unmeasured is the urgency — the "cold `shared_buffers`, cancelled
+at 3 s" story was Free-tier arithmetic, and Pro has more cache. **Re-read `rec_timeouts` on Pro before treating the
+timeout argument as current** (T008 says the same).
 
 So the rule this plan follows: **Typesense holds documents and ranks names. Postgres keeps every join that decides what a recommendation means.** That keeps the recommendation ranking exactly where the regression harness and the pending eval can see it, and it still removes the great majority of the query volume.
 
@@ -196,7 +206,7 @@ Worth measuring before merging: what a `sync:catalog --force` (34,829 row trigge
 3. Delete the claimed rows **only after** the import returns success, so a crash replays rather than loses.
 4. `--rebuild` writes a fresh `cards_<timestamp>` collection, then moves the `cards` alias to it and drops the old one, so a full reindex is never a window where the site has no index.
 
-Wire it where the cache refresh already is: `finishRun(..., 'succeeded')` calls `refreshWebCaches(job)` after the transaction commits, and the drain belongs next to it, before the revalidate — so a visitor whose cache was just busted reads a current index. Add it to `.github/workflows/sync.yml` after the three syncs, with `TYPESENSE_URL` / `TYPESENSE_ADMIN_KEY` as secrets.
+Wire it where the cache refresh already is: `finishRun(..., 'succeeded')` calls `refreshWebCaches(job)` after the transaction commits, and the drain belongs next to it, before the revalidate — so a visitor whose cache was just busted reads a current index. Add it to `.github/workflows/sync.yml` after the three syncs, with `SEARCH_API_URL` / `SEARCH_API_ADMIN_TOKEN` as secrets.
 
 ### 3. Optional: `pg_cron` for out-of-band edits
 
@@ -219,7 +229,7 @@ This is the decision that should be made before any code: **which of those three
 ## Phases
 
 **Phase 1 — done. The index exists and one read uses it.** `@mtg/core/search`, the `cards` collection, `sync:typesense --rebuild`, and `searchCards` switched over with its fallback. Nothing else changes.
-*Done when:* header search and the commander picker return the same cards as `search_cards` for a fixture list of queries (prefix, contains, typo, back-face match), and unsetting `TYPESENSE_URL` still passes the e2e suite.
+*Done when:* header search and the commander picker return the same cards as `search_cards` for a fixture list of queries (prefix, contains, typo, back-face match), and unsetting `SEARCH_API_URL` still passes the e2e suite.
 
 **Phase 2 — done. Documents replace row fetches.** `fetchCardsById`, `fetchCardTags` (with the `tags` collection), `proxy.ts` `pageExists`. This is the largest single reduction in query volume and it changes no ranking anywhere.
 *Done when:* a card page, a commander page and a swap request each issue measurably fewer Supabase queries (instrument `createPublicClient` behind a debug flag and count), and `yarn workspace @mtg/web regress` is byte-identical to its previous output.
