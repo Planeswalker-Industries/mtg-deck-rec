@@ -15,7 +15,7 @@ Where the project stands. Open work: [`../tasks.md`](../tasks.md). Architecture 
 ## Live Setup
 
 - **Site:** https://mtg-app-psi.vercel.app, Vercel project `mtg-app` (root `apps/web`, functions in `cle1`)
-- **Database:** Supabase Free, `us-east-2`, **381 MB of 500 MB** (2026-09-17, post-keywords release)
+- **Database:** Supabase **Pro** since 2026-09-21, `us-east-2`, 8 GB of storage, so size is no longer a constraint. Was 416 MB of the Free tier's 500 MB just before the upgrade.
 - **Scryfall data:** Catalog 34,829 cards, 525,299 printings. `artist` and `keywords` fully populated on hosted.
 - **Corpus on hosted:** 129 commanders have stats. Rebuilt from this PC with `cli:hosted aggregate:corpus`.
 - **Contract version:** v9 (as of 2026-09-17 release)

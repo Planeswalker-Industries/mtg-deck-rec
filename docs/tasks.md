@@ -237,7 +237,7 @@ Phase 3 planned a timing check for a large collection import that was never run.
 - [ ] Time a 10,000-row import end to end against the local database
 - [ ] Record per-batch resolve time and commit time
 - [ ] Confirm no statement times out, and that the browser stays responsive (the parse is in a Web Worker)
-- [ ] Feed the numbers into T023's `maxEntries` decision
+- [ ] Record the numbers beside `app_config.collections` so a future limit change has evidence
 
 ---
 
@@ -298,24 +298,6 @@ Currently manual crawl from this PC. A queue table would decouple crawling from 
 - [ ] Implement a worker that processes the queue on a schedule
 - [ ] Respect Archidekt rate limits (1 req/s, ≥1s apart)
 - [ ] Track crawl progress and resumability
-
----
-
-### T011: Monitor database growth
-
-**Priority:** LOW | **Area:** DevOps | **Status:** Not started
-
-Database was 416/500 MB on 2026-09-21. Commander stats grow with each looked-up commander. Need to monitor before corpus grows.
-
-**English-only printings (2026-09-21):** migration `20260921000200_english_printings_only.sql` deletes ~426k non-English printings (hosted `printings` is 166 MB, ~81% of it other languages). The delete only frees space for reuse; **after it reaches hosted, run `vacuum full public.printings;` by hand** (superuser, outside a transaction) to hand the disk back. Locally that took the database from 389 MB to 270 MB.
-
-**Files:**
-- `supabase/migrations/` — potential future vacuum/compact jobs
-
-**Acceptance criteria:**
-- [ ] Add a periodic size check (SQL or worker job)
-- [ ] Alert when approaching 450 MB
-- [ ] Document compaction strategy (`VACUUM FULL` per table)
 
 ---
 
@@ -528,25 +510,12 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 
 ---
 
-### T023: collections.maxEntries limit review
-
-**Priority:** LOW | **Area:** Database | **Status:** Not started
-
-`collections.maxEntries` is 100,000 (~23 MB/account). 6 maxed accounts exhaust free tier headroom. May need lowering before launch.
-
-**Files:**
-- `supabase/migrations/` — `app_config.collections`
-
-**Acceptance criteria:**
-- [ ] Review actual collection sizes in production
-- [ ] Decide on a lower limit
-- [ ] Update `app_config` via SQL migration
-
----
-
 ## Closed
 
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
+
+- **T011 — Monitor database growth.** Closed 2026-09-21: hosted moved to Supabase Pro with 8 GB, so the 500 MB ceiling this watched for is gone (416 MB at the upgrade). One leftover from PR #62: once `20260921000200_english_printings_only.sql` is on hosted, `vacuum full public.printings;` (superuser) returns ~120 MB. No longer urgent, still tidy.
+- **T023 — collections.maxEntries limit review.** Closed 2026-09-21: the worry was six maxed accounts (~23 MB each) filling the free tier. On Pro's 8 GB the 100,000 limit stays.
 
 - **T001 — Remove local test seed data.** Closed 2026-09-21: kept for local testing, fenced off from hosted. `seed.sql` now opens with a guard that raises if `auth.users` holds any account besides the two test ids, which every hosted database does and a fresh `supabase db reset` never does. Nothing that builds hosted runs it anyway: the GitHub integration applies migrations and does not seed the production branch, and `db push` skips seeds without `--include-seed`. The accounts have no password and undeliverable addresses, and `dev-sign-in.ts` refuses a non-local database URL. Google sign-in covers real accounts.
 - **T004 — Privacy policy + account deletion.** Closed 2026-09-21. `/privacy` (linked from the footer) is a boilerplate policy drafted from how the app stores data. Owner decisions it records: a deleted account's email and id stay in `audit_log` to catch ban evasion and multiple accounts; submitted data (decks, collections, votes, lookups) is used to improve recommendations and never sold or used for anything else. Deletion is `delete_my_account()` (migration `20260921000100_account_deletion.sql`) behind a typed confirmation on `/account`; existing cascades remove profile, decks, collection and admin membership, the `on_auth_user_deleted` trigger re-keys votes to a random voter key on every delete path, and `tags.disabled_by` is now `on delete set null`. No automated test deletes anything, by owner rule; the owner tested a deletion by hand.
