@@ -178,7 +178,7 @@ export function CollectionTool() {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">My collection</h1>
+        <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">Import your collection</h1>
         <p className="mt-2 max-w-prose text-muted-foreground">
           Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, and the deck tool can suggest only cards you own.
           {source.kind !== "loading" &&
@@ -188,7 +188,7 @@ export function CollectionTool() {
               <>
                 {" "}
                 It stays in this browser for 7 days.{" "}
-                <Link href="/sign-in?next=/collection" className={LINK}>
+                <Link href="/sign-in?next=/collection/import" className={LINK}>
                   Sign in
                 </Link>{" "}
                 to save it to your account instead.
@@ -326,7 +326,10 @@ function CollectionSummary({
         </details>
       )}
       <div className="flex flex-wrap gap-2">
-        <Link href="/deck" className={buttonVariants({ size: "lg" })}>
+        <Link href="/collection" className={buttonVariants({ size: "lg" })}>
+          Browse your collection
+        </Link>
+        <Link href="/deck" className={buttonVariants({ size: "lg", variant: "outline" })}>
           Use it in the deck tool
         </Link>
         <Button type="button" size="lg" variant="outline" onClick={onClear}>

@@ -259,6 +259,30 @@ Hosted Auth is configured (T002, T025) but email deliverability is not. Supabase
 - [ ] Custom SMTP sends sign-in emails at a production rate
 - [ ] `NEXT_PUBLIC_SITE_URL` and the Google OAuth redirects updated for the domain
 
+### T034: Lazy rendering for large collections in the collection view
+
+**Priority:** LOW | **Area:** Frontend / Performance | **Status:** Tabled (owner, 2026-09-21), revisit when real collections grow
+
+`/collection` renders every card in every open group. Images are already lazy (`CardImage` uses native lazy loading), so the cost is DOM and React work: about ten elements per card. A 729-card collection loads in ~0.6 s on phone and desktop and filters instantly. At ~10,000 cards that becomes ~100,000 elements rebuilt on every search keystroke or toggle; `useDeferredValue` keeps typing responsive, but results would lag.
+
+**Files:**
+- `apps/web/src/components/collection/collection-view.tsx`: the groups and the filter memo
+- `apps/web/src/components/cards/pocket-grid.tsx`: the grid each group renders
+- `packages/core/src/collection/index.ts`: filter rules, which run on data and stay as they are
+
+**Options, cheapest first** (discussed 2026-09-21):
+1. `content-visibility: auto` on each group or row. One CSS rule; the browser skips layout and paint off-screen, and find-in-page, zoom and links keep working. It doesn't reduce React's render work, so filter changes on a huge collection stay slow.
+2. Render the first N cards per group (around 60) with a "Show N more" button, only for groups over a threshold (around 100). Bounded work at any size, and counts stay exact because filtering runs on data. Costs one tap per big group, and find-in-page only sees what's shown.
+3. Virtualise the grid (e.g. TanStack Virtual). Handles 30k cards, but the container-query columns (3 to 6 across) must be measured and re-measured, collapsible headers need one virtual list covering headers and rows, find-in-page breaks, and zoom triggers unmount when their row leaves the buffer.
+
+Recommendation: 1 first, 2 when a real collection needs it, 3 only if 2 isn't enough. Constants for N and the threshold go at the top of the file (coding policy).
+
+**Acceptance criteria:**
+- [ ] Measure first: a synthetic 10,000-card browser collection from the local catalog. Time the initial load, a search keystroke and a colour toggle, before and after.
+- [ ] Apply option 1, and option 2 if the numbers call for it
+- [ ] Filter counts stay exact, and collapsing a group still works
+- [ ] `e2e/collection.spec.ts` still passes
+
 ---
 
 ## Data Pipeline

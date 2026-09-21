@@ -146,6 +146,23 @@ export const cardTagsInputSchema = z.object(
   request,
 );
 
+export const MAX_COLLECTION_CARD_IDS = 1000;
+export const MAX_COLLECTION_SET_CODES = 1000;
+/** Scryfall set codes are 3–6 letters and digits; a little room either way. */
+const MAX_SET_CODE_CHARS = 8;
+
+export const collectionCardsInputSchema = z.object(
+  {
+    cardIds: z
+      .array(cardId("That card is not valid."))
+      .max(MAX_COLLECTION_CARD_IDS, "Too many cards in one request."),
+    setCodes: z
+      .array(z.string().trim().min(1).max(MAX_SET_CODE_CHARS))
+      .max(MAX_COLLECTION_SET_CODES, "Too many sets in one request."),
+  },
+  request,
+);
+
 export const searchCardsInputSchema = z.object(
   {
     q: z
@@ -208,6 +225,7 @@ const resolvedCollectionRow = z.object({
   lang: z.string().min(1).max(8),
   quantity: z.int().min(1, 'Quantities must be at least 1.').max(100_000),
   via: z.enum(['scryfall_id', 'tcgplayer_id', 'set_cn_lang', 'set_cn', 'name_only']),
+  setCode: z.string().max(10).nullable().optional(),
 });
 
 export const saveCollectionBatchInputSchema = z.object(

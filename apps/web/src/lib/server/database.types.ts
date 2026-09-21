@@ -983,6 +983,30 @@ export type Database = {
         }
         Relationships: []
       }
+      sets: {
+        Row: {
+          code: string
+          name: string
+          released_at: string | null
+          set_type: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          name: string
+          released_at?: string | null
+          set_type: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          name?: string
+          released_at?: string | null
+          set_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       share_import_sources: {
         Row: {
           disabled_at: string | null
@@ -1454,6 +1478,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      my_collection_entries: { Args: never; Returns: Json }
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
       new_deck_code: { Args: never; Returns: string }
@@ -1546,6 +1571,7 @@ export type Database = {
           lang: string
           printing_id: string
           row_no: number
+          set_code: string
           via: string
         }[]
       }

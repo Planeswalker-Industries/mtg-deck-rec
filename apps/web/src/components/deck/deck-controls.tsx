@@ -60,7 +60,7 @@ export function DeckControls({
           <Label htmlFor="include-game-changers">Suggest Game Changers</Label>
         </div>
         {ownedOnly === null ? (
-          <Link href="/collection" className="text-sm font-bold text-primary underline-offset-4 hover:underline">
+          <Link href="/collection/import" className="text-sm font-bold text-primary underline-offset-4 hover:underline">
             Add your collection
           </Link>
         ) : (

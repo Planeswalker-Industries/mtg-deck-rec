@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { CollectionTool } from "@/components/collection/collection-tool";
+import { CollectionView } from "@/components/collection/collection-view";
 
 export const metadata: Metadata = {
   title: "My collection",
-  description: "Import your Magic collection so the deck tool can suggest cards you own.",
-  // A collection is personal and lives in the visitor's browser; nothing here is worth indexing.
+  description: "Browse your Magic collection by name, what cards do, color and set.",
+  // A collection is personal; nothing here is worth indexing.
   robots: { index: false, follow: true },
 };
 
 export default function CollectionPage() {
-  return <CollectionTool />;
+  return <CollectionView />;
 }

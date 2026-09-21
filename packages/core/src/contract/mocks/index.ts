@@ -489,6 +489,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           lang: row.lang ?? 'en',
           quantity: row.quantity,
           via: 'name_only',
+          setCode: null,
         });
       }
       return delay(ok({ catalogEpoch: 'mock-1', resolved, unresolved }));
@@ -510,6 +511,19 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     async deleteCollection() {
       collectionRows = [];
       return delay(ok(null));
+    },
+
+    async getMyCollectionEntries() {
+      const byCard = new Map<number, { quantity: number; setCodes: Set<string> }>();
+      for (const row of collectionRows) {
+        const entry = byCard.get(row.cardId) ?? { quantity: 0, setCodes: new Set<string>() };
+        entry.quantity += row.quantity;
+        if (row.setCode) entry.setCodes.add(row.setCode);
+        byCard.set(row.cardId, entry);
+      }
+      return delay(
+        ok([...byCard].map(([cardId, e]) => ({ cardId: cardId as CardId, quantity: e.quantity, setCodes: [...e.setCodes] }))),
+      );
     },
 
     async saveDeck({ deckId, name, deck, isPublic, bracket }) {
@@ -637,6 +651,15 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         .sort((a, b) => Number(b.name.toLowerCase().startsWith(needle)) - Number(a.name.toLowerCase().startsWith(needle)))
         .slice(0, limit);
       return delay(ok(hits), 50);
+    },
+
+    async collectionCards({ cardIds, setCodes }) {
+      const cards = cardIds.flatMap((id) => {
+        const card = byId.get(id);
+        return card ? [{ card, tags: (mockCardTags[id] ?? []).map((t) => t.label) }] : [];
+      });
+      const sets = setCodes.map((code) => ({ code, name: code, setType: 'expansion', releasedAt: null }));
+      return delay(ok({ cards, sets }), 40);
     },
 
     async cardTags({ cardIds }) {
