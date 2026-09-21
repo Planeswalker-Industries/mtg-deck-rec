@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/typesense"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
 // How the card search ranks, moved here from the app because this is now where searching happens.

@@ -14,8 +14,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/config"
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/typesense"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
 // Collection names, matching packages/core/src/search/documents.ts. Read endpoints name their own collection, so a

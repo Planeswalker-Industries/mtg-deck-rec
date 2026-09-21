@@ -38,7 +38,7 @@ The hosted dashboard steps are done (URL configuration and the sign-in email tem
 The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a real destination before public launch.
 
 **Files:**
-- `apps/web/src/app/decks/[commander]/[code]/page.tsx:129` — the `github.com/wuddat/mtg-deck-rec/issues/new` link (the repo is now `Planeswalker-Industries/mtg-deck-rec`; the old URL redirects)
+- `apps/web/src/app/decks/[commander]/[code]/page.tsx:129` — the `github.com/Planeswalker-Industries/mtg-deck-rec/issues/new` link
 
 **Acceptance criteria:**
 - [ ] Decide destination (email, form, in-app feedback)

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 mtg-deck-rec: public Commander-only web app. Paste or import a decklist → cards to add, cards to cut, and functional substitutes (click a card) with an estimated cost delta. Two modes share one pipeline: **collection-less** (anonymous; ranked by corpus play rate + Scryfall Tagger tags) and **collection-aware** (candidate pool restricted to owned cards).
 
-Live at https://mtg-app-psi.vercel.app (Vercel + Supabase Pro). Current state: `docs/roadmap/status.md`. Open work: `docs/tasks.md`. Phase 0 report and execution plan: `docs/roadmap/` (`execution-plan.md`, `phase0-report.md`). The next data pipeline (corpus in Postgres, card-pair statistics, deck affinity scoring, full commander crawl) is designed in `docs/roadmap/card-graph-plan.md` and shelved as T035 until a backend owner picks it up. The GitHub repo is `Planeswalker-Industries/mtg-deck-rec` (moved from `wuddat/mtg-deck-rec`, which redirects).
+Live at https://mtg-app-psi.vercel.app (Vercel + Supabase Pro). Current state: `docs/roadmap/status.md`. Open work: `docs/tasks.md`. Phase 0 report and execution plan: `docs/roadmap/` (`execution-plan.md`, `phase0-report.md`). The next data pipeline (corpus in Postgres, card-pair statistics, deck affinity scoring, full commander crawl) is designed in `docs/roadmap/card-graph-plan.md` and shelved as T035 until a backend owner picks it up. The GitHub repo is `Planeswalker-Industries/mtg-deck-rec`, a shared organisation repo so the owner and the backend collaborator both have access (moved from `wuddat/mtg-deck-rec`, which redirects). User-Agent strings, in-app links and the search API's Go module path use the organisation address.
 
 ## Commands
 

@@ -12,9 +12,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/api"
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/config"
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/typesense"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/api"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
 const (

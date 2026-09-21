@@ -129,7 +129,7 @@ export default function PrivacyPage() {
       <Section title="Changes and questions">
         <p>
           If this policy changes, the date at the top will change with it. Questions can go to the project&apos;s{" "}
-          <a href="https://github.com/wuddat/mtg-deck-rec/issues" className="underline underline-offset-2">
+          <a href="https://github.com/Planeswalker-Industries/mtg-deck-rec/issues" className="underline underline-offset-2">
             issue tracker
           </a>
           .

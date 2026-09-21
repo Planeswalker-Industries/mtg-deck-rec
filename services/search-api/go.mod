@@ -1,4 +1,4 @@
-module github.com/wuddat/mtg-deck-rec/services/search-api
+module github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api
 
 go 1.25.0
 

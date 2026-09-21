@@ -126,7 +126,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
         <p className="border-t border-seam pt-4 text-sm text-muted-foreground">
           This deck was shared by someone using MTG Deck Rec.{" "}
           <a
-            href={`https://github.com/wuddat/mtg-deck-rec/issues/new?title=${encodeURIComponent(
+            href={`https://github.com/Planeswalker-Industries/mtg-deck-rec/issues/new?title=${encodeURIComponent(
               `Report deck ${deck.id}`,
             )}&body=${encodeURIComponent(`Deck: ${deck.id}\n\nWhat's wrong with it:`)}`}
             target="_blank"
