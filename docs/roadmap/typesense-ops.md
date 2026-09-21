@@ -123,7 +123,10 @@ what makes one file safe for the nginx case.
 **If a panel manages the host** — Dokploy, Coolify and the like, which generate
 `<project>-<service>-<hash>.sslip.io` names — set the domain and container port **8080** in the panel for the
 **search-api** service, not for Typesense, and let it write the labels. Hand-written labels there are overwritten on
-the next deploy.
+the next deploy. **On Dokploy, use [`deploy/dokploy/`](../../deploy/dokploy) instead of the generic files** — one compose file per
+app, with the shared network hardcoded and the index kept outside the clone.
+[`deploy/README.md`](../../deploy/README.md) explains why, and it is worth reading before the first deploy rather
+than after.
 
 *Diagnosing Traefik:* a self-signed `CN=TRAEFIK DEFAULT CERT` and a bare `404 page not found` are **one problem, not
 two** — Traefik only requests a certificate for a hostname it has a router rule for, so a missing router produces
@@ -187,7 +190,8 @@ never slow down or fail a sync transaction.
 | `502` from the API while both containers are healthy | search-api reached Typesense and got an error back; `docker compose logs search-api` names it. |
 | The API will not start | It refuses an empty key, an empty token, or two identical tokens, and says which. |
 | `port is already allocated` | Only `SEARCH_API_PORT` can do that; set it in `deploy/search-api/.env`. A port *inside* a container never collides with the host. |
-| `network ... declared as external, but could not be found` | The search-api stack went first. Deploy `deploy/typesense/` — it is what creates the network — then this one. |
+| `network ... declared as external, but could not be found` | The search-api stack went first. Deploy `deploy/typesense/` — it is what creates the network — then this one. On a panel, use the panel's own network instead: `SEARCH_NETWORK` and `SEARCH_NETWORK_EXTERNAL=true` on both apps. |
+| The index is empty after a redeploy | A panel that re-clones the repo replaced the `./data` bind mount. Set `TYPESENSE_DATA_DIR` to an absolute path outside the clone, then `--rebuild`. |
 | API healthy but `/v1/health` says 503 after changing `SEARCH_NETWORK` | Compose reused the running container and left it on the old network. `docker compose up -d --force-recreate`. |
 | The VPS is down | Nothing breaks. Every read path falls back to Postgres and logs. Rebuild when it is back. |
 

@@ -1,0 +1,60 @@
+# Typesense, for Dokploy. Point a Compose app at `deploy/dokploy/typesense.yml`.
+#
+# Same container as deploy/typesense/, with the two things a panel gets wrong taken out of your hands:
+#
+#   * The shared network is **hardcoded** to Dokploy's own, not assembled from variables. Compose interpolates the
+#     `networks:` block from a `.env` beside the compose file or from the shell — not from a `.env` at the repo
+#     root — so a panel variable that does not land in the right place leaves the network at its default and the
+#     deploy fails with "network ... not found". There is no variable here to get wrong.
+#   * The data directory defaults outside the clone, because Dokploy re-clones the repo on every deploy and a bind
+#     mount inside it would take the index with it.
+#
+# Set one variable on this app: TYPESENSE_ADMIN_KEY. The search-api app needs the same value.
+#
+# This publishes no port and takes no domain. It is reachable only by search-api, over the shared network.
+
+services:
+  typesense:
+    image: typesense/typesense:29.0
+    restart: unless-stopped
+
+    volumes:
+      - ${TYPESENSE_DATA_DIR:-/var/lib/mtg-typesense}:/data
+
+    command:
+      - "--data-dir=/data"
+      - "--api-key=${TYPESENSE_ADMIN_KEY:?set TYPESENSE_ADMIN_KEY on this app}"
+      - "--listen-port=8108"
+
+    networks:
+      dokploy-network:
+        # The name search-api uses in TYPESENSE_URL. Explicit, so it does not depend on what Dokploy calls the
+        # compose project.
+        aliases:
+          - typesense
+
+    # The image ships no curl and no wget, so the obvious healthcheck marks a working container unhealthy forever.
+    # It does ship bash, whose /dev/tcp can speak just enough HTTP to ask /health and read the answer.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8108 && printf "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q ''"ok":true'' <&3'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    mem_limit: ${TYPESENSE_MEM_LIMIT:-1g}
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # Dokploy's own network, which it creates and maintains. Hardcoded on purpose: see the note at the top.
+  dokploy-network:
+    external: true

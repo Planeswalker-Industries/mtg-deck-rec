@@ -28,7 +28,8 @@ The Typesense service publishes the alias `typesense` on that network, which is 
 
 **To use a network neither stack owns** — a panel's shared network, say — set `SEARCH_NETWORK` to its name and
 `SEARCH_NETWORK_EXTERNAL=true` in **both** `.env` files. Then neither tries to create it and the order stops
-mattering. Verified working on a network created separately.
+mattering. Verified working on a network created separately. **On Dokploy this is the path to take** — see the
+section below.
 
 > Changing `SEARCH_NETWORK` on a stack that is already up needs `docker compose up -d --force-recreate`. Compose
 > reuses a running container and leaves it on the old network, which looks like the API being healthy while
@@ -63,6 +64,51 @@ curl https://<host>/v1/health                 # {"ok":true} — and the proxy ro
 
 Then build the index, and point Vercel and the sync workflow at it. Both steps are in
 [`docs/roadmap/typesense-ops.md`](../docs/roadmap/typesense-ops.md), which is the runbook this summarises.
+
+## On Dokploy: use `deploy/dokploy/`
+
+Dokploy runs each compose file as its own project — `docker compose -p <app> -f <path> up -d --build` — with
+Traefik under Swarm. [`deploy/dokploy/`](dokploy/) holds a file per app, shaped for exactly that:
+
+| Dokploy app | Compose path | Variables to set | Domain |
+|---|---|---|---|
+| Typesense | `deploy/dokploy/typesense.yml` | `TYPESENSE_ADMIN_KEY` | none |
+| search API | `deploy/dokploy/search-api.yml` | `TYPESENSE_ADMIN_KEY` (same value), `SEARCH_API_TOKEN`, `SEARCH_API_ADMIN_TOKEN` | yes, container port **8080** |
+
+They differ from the generic files above in three ways, each answering something a panel got wrong:
+
+**The shared network is hardcoded to `dokploy-network`, not built from variables.** Compose interpolates the
+`networks:` block from a `.env` *beside the compose file* or from the shell — **not** from a `.env` at the repo
+root. Measured:
+
+| Where `SEARCH_NETWORK` was set | Reached `networks:`? |
+|---|---|
+| `.env` at the repo root | **No** — silently stayed at the default |
+| `.env` beside the compose file | Yes |
+| Shell variable | Yes |
+
+A variable that does not land in the right place leaves the network at its default and the deploy fails with
+`Could not attach to network mtg-search: network mtg-search not found`. These files have no variable there to get
+wrong.
+
+**The data directory defaults to `/var/lib/mtg-typesense`**, outside the clone. Dokploy re-clones the repo on every
+deploy, so a bind mount inside it would take the index with it — recoverable with `sync:typesense --rebuild`, but a
+slow surprise.
+
+**There are no Traefik labels**, so nothing of ours can win a label merge and leave the panel's domain without a
+router. Add the domain in Dokploy against the search-api app.
+
+### If a deploy still cannot find the network
+
+Check what compose actually resolved, on the VPS:
+
+```sh
+cd /etc/dokploy/compose/<app>/code
+docker compose -p <app> -f ./deploy/dokploy/search-api.yml config | grep -A3 '^networks:'
+```
+
+It should say `name: dokploy-network`. Confirm that is what Dokploy calls it — `docker network ls | grep dokploy` —
+and if not, the name is the one literal in these two files to change.
 
 ## Ports
 

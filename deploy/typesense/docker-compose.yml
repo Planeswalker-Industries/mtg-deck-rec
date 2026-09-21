@@ -31,10 +31,15 @@ services:
     image: typesense/typesense:29.0
     restart: unless-stopped
 
-    # A bind mount next to this file, not a named volume: on a server the data should be somewhere you can find,
-    # back up if you ever want to, and see the size of without asking Docker.
+    # A bind mount, not a named volume: on a server the data should be somewhere you can find, back up if you ever
+    # want to, and see the size of without asking Docker.
+    #
+    # `./data` is beside this file, which is right for a checkout you manage yourself. **On a panel that clones the
+    # repo per deploy — Dokploy does — point TYPESENSE_DATA_DIR at an absolute path outside the clone**, or a
+    # redeploy that re-clones takes the index with it. Nothing is lost that `sync:typesense --rebuild` cannot
+    # recreate, but it is a slow surprise.
     volumes:
-      - ./data:/data
+      - ${TYPESENSE_DATA_DIR:-./data}:/data
 
     # ${VAR:?message} refuses to start rather than silently booting with an empty key.
     command:
