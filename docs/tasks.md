@@ -287,6 +287,30 @@ Recommendation: 1 first, 2 when a real collection needs it, 3 only if 2 isn't en
 
 ## Data Pipeline
 
+### T035: Deck aggregation pipeline and card graph
+
+**Priority:** HIGH | **Area:** Backend / Data | **Status:** Shelved 2026-09-21, waiting for a backend owner
+
+The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md). The corpus moves from JSONL on X:
+into Postgres. Complete user decks become a source. Aggregation recomputes only the commanders whose decks changed.
+Sparse card-pair tables feed a new "deck affinity" score, EDHREC commander pages serve as a prior and a benchmark,
+and every commander is crawled rather than the top 50. It is split into 11 slices, each one PR.
+
+**Owner decisions it rests on (2026-09-21):**
+- User decks count only when complete: 100 cards and legal. `save_deck` today flags on per-card legality alone.
+- All data lives in Postgres. The legal team consented to using all publicly facing data, EDHREC and MTGGoldfish
+  included. The crawler guardrails in the plan (robots.txt, honest User-Agent, stop on a block) still apply.
+- Collections stay one per account, and win-condition analysis waits.
+
+**Supersedes when started:** T010 (becomes slice 10), T020 (slices 5–8), T031 (slice 11 automates it). Slice 1
+rewrites the CLAUDE.md data-source and storage rules, which still describe the old constraints.
+
+**Acceptance criteria:**
+- [ ] A backend owner reviews the plan and confirms or changes the slice order
+- [ ] Slices 1–11 as listed in the plan
+
+---
+
 ### T009: Always-on commander request consumer
 
 **Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** Not started
