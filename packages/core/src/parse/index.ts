@@ -6,3 +6,4 @@ export * from './collection';
 export * from './collection-csv';
 export * from './decklist-file';
 export * from './share-response';
+export * from './collection-link';

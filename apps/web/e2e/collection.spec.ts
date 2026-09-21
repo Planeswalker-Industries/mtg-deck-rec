@@ -34,6 +34,20 @@ test("imports a collection and limits suggestions to owned cards", async ({ page
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeHidden();
 });
 
+// Only links the app can't read are exercised here: an Archidekt link would make a real request to Archidekt, which
+// tests must never do. The Archidekt path is covered by the parser tests in @mtg/core and checked by hand.
+test("a link the app can't read says how to export instead", async ({ page }) => {
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill("https://manabox.app/binders/example");
+  await page.getByRole("button", { name: "Import from link" }).click();
+  await expect(page.getByText(/ManaBox links can't be imported yet\..*export a CSV/)).toBeVisible({ timeout: 30_000 });
+
+  // Changing the text clears the old problem, and a plain export gets the usual button back.
+  await page.getByLabel("Collection export").fill("1 Sol Ring");
+  await expect(page.getByText(/ManaBox links can't be imported/)).toBeHidden();
+  await expect(page.getByRole("button", { name: /Import collection|Replace collection/ })).toBeVisible();
+});
+
 test("imports a CSV export from a file, keeping its Scryfall ids", async ({ page }) => {
   await page.goto("/collection/import");
 

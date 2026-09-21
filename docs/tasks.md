@@ -197,28 +197,6 @@ The Google OAuth flow is fully wired behind `NEXT_PUBLIC_AUTH_GOOGLE`. The provi
 
 ---
 
-### T026: Collection import from a share link
-
-**Priority:** MEDIUM | **Area:** Backend / Frontend | **Status:** Partially decided, not built
-
-`fetchShareLink` already takes `what: "deck" | "collection"` and the kill switch covers both, but the only caller is the deck tool's Archidekt deck import. Collections are paste- or file-only.
-
-**Files:**
-- `apps/web/src/lib/server/share-import.ts:35` — `fetchShareLink`, already collection-aware
-- `apps/web/src/app/deck/actions.ts:107` — the one existing caller, as the pattern to copy
-- `apps/web/src/app/collection/actions.ts` — where a collection-side action belongs
-- `apps/web/src/components/collection/collection-tool.tsx` — the paste box that would accept a lone URL
-
-**Context:** Approved sources are ManaBox, Archidekt and TCGplayer for URL import. Moxfield: text/CSV import only (API requires authentication). One request per user action, honest User-Agent, paste fallback when a source blocks — never work around a challenge. Fetched text goes through the same `parseCollectionText` / `resolveCollectionRowsAction` path as a paste.
-
-**Acceptance criteria:**
-- [ ] A lone URL in the collection box routes to an import action, like the deck tool's
-- [ ] Only URLs the app builds for that source's own hosts; no redirect following
-- [ ] Blocked or challenged source falls back to the paste instructions and trips the kill switch as `classifyShareResponse` decides
-- [ ] Uses the `import` rate-limit bucket
-
----
-
 ### T027: 10k-row collection import timing check
 
 **Priority:** LOW | **Area:** Performance | **Status:** 1,000-row path fixed; 10k check not run
@@ -539,6 +517,7 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
 
+- **T026 — Collection import from a share link.** Closed 2026-09-21 for Archidekt. A lone link to a public Archidekt collection in `/collection/import` downloads it through Archidekt's own export endpoint (CSV with Scryfall ids, 2,500 rows a page, a second apart, four pages per server call) and imports it like an uploaded file; a 4,651-row collection took about 30 s end to end locally. ManaBox, Moxfield and TCGplayer links get a message saying how to export from that app: ManaBox and TCGplayer publish no share-link format, and Moxfield's API needs an account. **Open:** if the owner has a real ManaBox or TCGplayer share link, it can be looked at and added as a second source behind the same action. **Owner check:** a large collection is several requests to Archidekt (spaced a second apart, capped at 20), which departs from the "one request per user action" wording in CLAUDE.md's Hard constraints.
 - **T011 — Monitor database growth.** Closed 2026-09-21: hosted moved to Supabase Pro with 8 GB, so the 500 MB ceiling this watched for is gone (416 MB at the upgrade). One leftover from PR #62: once `20260921000200_english_printings_only.sql` is on hosted, `vacuum full public.printings;` (superuser) returns ~120 MB. No longer urgent, still tidy.
 - **T023 — collections.maxEntries limit review.** Closed 2026-09-21: the worry was six maxed accounts (~23 MB each) filling the free tier. On Pro's 8 GB the 100,000 limit stays.
 
