@@ -65,61 +65,50 @@ curl https://<host>/v1/health                 # {"ok":true} — and the proxy ro
 Then build the index, and point Vercel and the sync workflow at it. Both steps are in
 [`docs/roadmap/typesense-ops.md`](../docs/roadmap/typesense-ops.md), which is the runbook this summarises.
 
-## On Dokploy (or any panel that deploys one compose file per app)
+## On Dokploy: use `deploy/dokploy/`
 
-Dokploy runs each compose file as its own project — `docker compose -p <app> -f deploy/search-api/docker-compose.yml
-up -d --build` — and runs Traefik under Swarm. Three things follow, and getting any of them wrong produces a deploy
-error rather than a subtle bug.
+Dokploy runs each compose file as its own project — `docker compose -p <app> -f <path> up -d --build` — with
+Traefik under Swarm. [`deploy/dokploy/`](dokploy/) holds a file per app, shaped for exactly that:
 
-**1. Use Dokploy's own network, not one of ours.** Dokploy maintains a shared network every app can join, so neither
-stack needs to create anything and the deploy order stops mattering. Find its name:
+| Dokploy app | Compose path | Variables to set | Domain |
+|---|---|---|---|
+| Typesense | `deploy/dokploy/typesense.yml` | `TYPESENSE_ADMIN_KEY` | none |
+| search API | `deploy/dokploy/search-api.yml` | `TYPESENSE_ADMIN_KEY` (same value), `SEARCH_API_TOKEN`, `SEARCH_API_ADMIN_TOKEN` | yes, container port **8080** |
+
+They differ from the generic files above in three ways, each answering something a panel got wrong:
+
+**The shared network is hardcoded to `dokploy-network`, not built from variables.** Compose interpolates the
+`networks:` block from a `.env` *beside the compose file* or from the shell — **not** from a `.env` at the repo
+root. Measured:
+
+| Where `SEARCH_NETWORK` was set | Reached `networks:`? |
+|---|---|
+| `.env` at the repo root | **No** — silently stayed at the default |
+| `.env` beside the compose file | Yes |
+| Shell variable | Yes |
+
+A variable that does not land in the right place leaves the network at its default and the deploy fails with
+`Could not attach to network mtg-search: network mtg-search not found`. These files have no variable there to get
+wrong.
+
+**The data directory defaults to `/var/lib/mtg-typesense`**, outside the clone. Dokploy re-clones the repo on every
+deploy, so a bind mount inside it would take the index with it — recoverable with `sync:typesense --rebuild`, but a
+slow surprise.
+
+**There are no Traefik labels**, so nothing of ours can win a label merge and leave the panel's domain without a
+router. Add the domain in Dokploy against the search-api app.
+
+### If a deploy still cannot find the network
+
+Check what compose actually resolved, on the VPS:
 
 ```sh
-docker network ls | grep dokploy      # usually `dokploy-network`
+cd /etc/dokploy/compose/<app>/code
+docker compose -p <app> -f ./deploy/dokploy/search-api.yml config | grep -A3 '^networks:'
 ```
 
-Then set these in **both** apps' environment, in the panel:
-
-```
-SEARCH_NETWORK=dokploy-network
-SEARCH_NETWORK_EXTERNAL=true
-```
-
-Without them, the API app fails with `Could not attach to network mtg-search: network mtg-search not found`,
-because the network is ours and the Typesense app is what creates it — so the API app deployed on its own has
-nothing to attach to.
-
-**2. Routing — one of two ways, and it is worth knowing which your panel wants.** Either way the domain goes on the
-**search-api** app and Typesense gets none at all; it is not supposed to be reachable.
-
-*Let the panel do it.* Add the domain in the panel's UI against the search-api service, container port **8080** (or
-whatever `SEARCH_API_CONTAINER_PORT` is set to), and leave `TRAEFIK_ENABLE` unset here.
-
-*Or do it with these labels.* If the panel's domain does not take — this file ships `traefik.enable=false` by
-default, and a panel that merges rather than replaces labels may leave that winning — switch ours on instead:
-
-```
-TRAEFIK_ENABLE=true
-TRAEFIK_EXTERNAL=true
-TRAEFIK_NETWORK=dokploy-network
-SEARCH_API_HOST=<the hostname>
-TRAEFIK_CERT_RESOLVER=<whatever the panel's Traefik calls its resolver>
-```
-
-The symptom that tells you which you are in: a `404 page not found` from Traefik with a `CN=TRAEFIK DEFAULT CERT`
-means **no router matched the hostname** — one problem, not two, because Traefik only requests a certificate for a
-hostname it has a router for. Check the router before suspecting Let's Encrypt.
-
-**3. Keep the index out of the clone.** Dokploy clones the repo per app, so the default `./data` bind mount lands
-inside a directory a redeploy may replace. Set `TYPESENSE_DATA_DIR` on the Typesense app to an absolute path outside
-it:
-
-```
-TYPESENSE_DATA_DIR=/var/lib/mtg-typesense
-```
-
-Nothing is lost that `sync:typesense --rebuild` cannot recreate, but a redeploy that silently empties the index is a
-slow surprise.
+It should say `name: dokploy-network`. Confirm that is what Dokploy calls it — `docker network ls | grep dokploy` —
+and if not, the name is the one literal in these two files to change.
 
 ## Ports
 

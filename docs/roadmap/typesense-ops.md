@@ -123,10 +123,10 @@ what makes one file safe for the nginx case.
 **If a panel manages the host** — Dokploy, Coolify and the like, which generate
 `<project>-<service>-<hash>.sslip.io` names — set the domain and container port **8080** in the panel for the
 **search-api** service, not for Typesense, and let it write the labels. Hand-written labels there are overwritten on
-the next deploy. Dokploy also deploys each compose file as a separate app on a shared Swarm network, which changes
-how these two find each other and where the index should live:
-[`deploy/README.md`](../../deploy/README.md) has a section for it, and it is worth reading before the first deploy
-rather than after.
+the next deploy. **On Dokploy, use [`deploy/dokploy/`](../../deploy/dokploy) instead of the generic files** — one compose file per
+app, with the shared network hardcoded and the index kept outside the clone.
+[`deploy/README.md`](../../deploy/README.md) explains why, and it is worth reading before the first deploy rather
+than after.
 
 *Diagnosing Traefik:* a self-signed `CN=TRAEFIK DEFAULT CERT` and a bare `404 page not found` are **one problem, not
 two** — Traefik only requests a certificate for a hostname it has a router rule for, so a missing router produces
