@@ -88,3 +88,13 @@ The one part of the app not built on the contract or on shadcn.
 - `supabase gen types typescript --local` outputs UTF-8 with BOM and CRLF via PowerShell; write as UTF-8 without BOM, LF endings
 - `revalidatePath('/decks')` on deck writes; `revalidateTag` on syncs — keep `next/cache` imports out of `recs.ts` so the regression harness can run outside Next.js
 - The deck tool's `SaveDeckButton` is the only way to create a deck — never auto-save a throwaway paste as public
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

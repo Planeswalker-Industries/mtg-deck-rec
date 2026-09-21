@@ -50,11 +50,9 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 1. Hosted sign-in configured; email deliverability (custom SMTP + domain) is T033
 2. Deck report link points at GitHub issue
 3. Public deck page indexing undecided
-4. `seed.sql` and `dev-sign-in.ts` need to be deleted or proven unreachable
 
 ## Before Any Launch
 
-- Delete `supabase/seed.sql` and `apps/web/scripts/dev-sign-in.ts`, or prove they cannot reach the hosted project
 - Decide where deck reports go
 - Decide whether public deck pages should be indexed
 - Buy a domain and move hosted Auth to custom SMTP (T033)

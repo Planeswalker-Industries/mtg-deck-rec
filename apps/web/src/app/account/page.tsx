@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { DeleteAccount } from "@/components/auth/delete-account";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { isPlatformAdmin } from "@/lib/server/admin";
 import { getCurrentUser } from "@/lib/server/auth";
@@ -43,6 +44,7 @@ async function AccountDetails() {
       <div>
         <SignOutButton />
       </div>
+      <DeleteAccount />
     </>
   );
 }

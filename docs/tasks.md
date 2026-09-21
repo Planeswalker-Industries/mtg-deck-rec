@@ -2,7 +2,7 @@
 
 Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up.
 
-Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-18**. `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
+Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-21** (develop and main at PR #59). `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -11,23 +11,6 @@ Ticket ids are stable and never reused: a closed ticket leaves a gap rather than
 ## Pre-Launch Hard Gates
 
 Must complete before any public launch. These are blockers, not nice-to-haves.
-
-### T001: Remove local test seed data
-
-**Priority:** HIGH | **Area:** DevOps / Security | **Status:** Not started
-
-Two files create fixed test accounts (`anon@test.local`, `admin@test.local`) and a sign-in link generator for local dev. They are safe today (seed.sql only runs via `supabase db reset`, the script checks `NEXT_PUBLIC_SUPABASE_URL` is localhost) but must not ship to production.
-
-**Files:**
-- `supabase/seed.sql` (line 4)
-- `apps/web/scripts/dev-sign-in.ts` (line 5)
-
-**Acceptance criteria:**
-- [ ] Either delete both files, or prove hosted Supabase (built from `supabase/migrations` only) can never execute them
-- [ ] Remove any references to these files from CLAUDE.md or docs
-- [ ] Verify `supabase db reset` still works locally without them (or document new setup)
-
----
 
 ### T002: Configure hosted Supabase Auth
 
@@ -61,38 +44,6 @@ The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a r
 - [ ] Decide destination (email, form, in-app feedback)
 - [ ] Update the link
 - [ ] Remove GitHub issue template reference if present
-
----
-
-### T004: Privacy policy + account deletion
-
-**Priority:** MEDIUM | **Area:** Legal / Backend | **Status:** Not started
-
-Auth data, salted IP hashes, and user-generated content require a privacy policy. Account deletion must cascade to collections, decks, and anonymize votes.
-
-**Files:**
-- `apps/web/src/app/account/` — account settings page
-- `apps/web/src/lib/server/supabase-admin.ts` — admin client
-
-**Acceptance criteria:**
-- [ ] Privacy policy page linked from footer
-- [ ] Account deletion function cascades: `deck_cards` → `decks`, `collection_items` → `collection_imports`, anonymizes `swap_votes`
-- [ ] Deletion accessible from account settings
-
----
-
-### T005: WotC Fan Content Policy disclaimer
-
-**Priority:** LOW | **Area:** Legal / Frontend | **Status:** Not started
-
-Footer disclaimer per WotC Fan Content Policy for MTG-related content.
-
-**Files:**
-- `apps/web/src/components/layout/site-footer.tsx`
-
-**Acceptance criteria:**
-- [ ] Disclaimer added to site footer
-- [ ] Links to WotC Fan Content Policy
 
 ---
 
@@ -269,15 +220,20 @@ The Google OAuth flow is fully wired behind `NEXT_PUBLIC_AUTH_GOOGLE`. The provi
 
 ### T027: 10k-row collection import timing check
 
-**Priority:** LOW | **Area:** Performance | **Status:** Not started
+**Priority:** LOW | **Area:** Performance | **Status:** 1,000-row path fixed; 10k check not run
 
 Phase 3 planned a timing check for a large collection import that was never run. Collections match 2,000 rows per call, so a 10k-row import is five round trips plus the commit.
+
+**Done 2026-09-20 (PRs #56, #58):**
+- `8f0eb1b` — PostgREST's `max_rows` (1000) silently truncated `resolve_collection_rows` responses, so a 1,487-row export reported 487 cards NOT_FOUND. Matching now goes in chunks of `MATCH_ROWS_PER_CALL`; `collection-resolve-check.ts` asserts a 1,200-row batch.
+- `34b0ee3` — a 1,000-row import hit the 3 s `anon` timeout on hosted (9.3 s warm). Branches now short-circuit and `printings_set_cn_cover` makes set + number index-only. Local buffers per 1,000 rows: Scryfall ids 16,742 → 4,011, set + number 12,779 → 3,089. Migration `20260920000100_collection_resolve_short_circuit.sql`.
 
 **Files:**
 - `apps/web/src/app/collection/actions.ts` — `resolveCollectionRowsAction`, `saveCollectionBatchAction`
 - `apps/web/scripts/collection-resolve-check.ts` — existing resolver check to extend
 
 **Acceptance criteria:**
+- [ ] Re-run a 1,000-row import on hosted now that `20260920000100` is on main, and confirm it no longer times out
 - [ ] Time a 10,000-row import end to end against the local database
 - [ ] Record per-batch resolve time and commit time
 - [ ] Confirm no statement times out, and that the browser stays responsive (the parse is in a Web Worker)
@@ -483,14 +439,21 @@ Import preconstructed deck lists. Needs MTGJSON license verification first.
 
 ### T019: Admin pages (tag kill switch UI, sync status dashboard)
 
-**Priority:** LOW | **Area:** Frontend | **Status:** Not started
+**Priority:** LOW | **Area:** Frontend | **Status:** Not started (admin shell exists)
 
 Tag kill switch works via SQL but has no UI. Sync status is only in `sync_runs` table.
+
+**Since PR #47:** `/admin` exists as a React Admin app with platform-admin guards (proxy, page, API) and a users resource only. Both pages here become new resources in it rather than a separate area — see `apps/web/AGENTS.md` for the admin data flow.
+
+**Files:**
+- `apps/web/src/components/admin/admin-app.tsx` — register new resources
+- `apps/web/src/components/admin/data-provider.ts` — admin data flow
+- `apps/web/src/components/admin/users.tsx` — the existing resource, as the pattern
 
 **Acceptance criteria:**
 - [ ] Tag kill switch page (list tags, toggle disabled)
 - [ ] Sync status dashboard (recent runs, metrics, errors)
-- [ ] Admin-only access (or service_role only)
+- [ ] Admin-only access through the existing platform-admin guards and security-definer functions
 
 ---
 
@@ -583,5 +546,8 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
 
+- **T001 — Remove local test seed data.** Closed 2026-09-21: kept for local testing, fenced off from hosted. `seed.sql` now opens with a guard that raises if `auth.users` holds any account besides the two test ids, which every hosted database does and a fresh `supabase db reset` never does. Nothing that builds hosted runs it anyway: the GitHub integration applies migrations and does not seed the production branch, and `db push` skips seeds without `--include-seed`. The accounts have no password and undeliverable addresses, and `dev-sign-in.ts` refuses a non-local database URL. Google sign-in covers real accounts.
+- **T004 — Privacy policy + account deletion.** Closed 2026-09-21. `/privacy` (linked from the footer) is a boilerplate policy drafted from how the app stores data. Owner decisions it records: a deleted account's email and id stay in `audit_log` to catch ban evasion and multiple accounts; submitted data (decks, collections, votes, lookups) is used to improve recommendations and never sold or used for anything else. Deletion is `delete_my_account()` (migration `20260921000100_account_deletion.sql`) behind a typed confirmation on `/account`; existing cascades remove profile, decks, collection and admin membership, the `on_auth_user_deleted` trigger re-keys votes to a random voter key on every delete path, and `tags.disabled_by` is now `on delete set null`. No automated test deletes anything, by owner rule; the owner tested a deletion by hand.
+- **T005 — WotC Fan Content Policy disclaimer.** Closed 2026-09-21: the footer disclaimer now links to the policy.
 - **T012 — Parser test fixtures (26 → 60).** Closed 2026-09-18: the goal is met. `yarn workspace @mtg/core vitest run src/parse` reports **63 passing tests** across 8 files; the CSV and file-import work (PR #43) carried the count past 60. `status.md` still says 26 and is stale there.
 - **T024 — Invalidate swap pool cache after corpus rebuilds.** Closed 2026-09-18: already wired. `TAGS_BY_JOB` in `apps/worker/src/lib/web-app.ts:10` maps `corpus_aggregate` to `['corpus', 'recs']`, so `finishRun` already revalidates `recs` after a rebuild. The premise that only `catalog` and `corpus` were sent was wrong.
