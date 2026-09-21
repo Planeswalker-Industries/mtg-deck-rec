@@ -1,0 +1,42 @@
+# Traefik variant. Use *with* the base file, not instead of it:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#
+# The base file publishes on 127.0.0.1:8108, which suits a reverse proxy running on the host (nginx, Caddy). Traefik
+# in Docker cannot use that: it discovers containers by label and connects to them **container to container**, so
+# reaching Typesense through the host's loopback is not something it can do. This file joins Traefik's network and
+# adds the router, which is what makes the hostname resolve to this service.
+#
+# It is also what gets you a certificate. Traefik only asks Let's Encrypt for a hostname it has a router rule for, so
+# the symptom of a missing router is *both* a `CN=TRAEFIK DEFAULT CERT` self-signed certificate and a bare
+# "404 page not found" — one cause, two symptoms. If you see either, the router is what to look at.
+#
+# The base file's loopback publish is kept rather than removed (compose merges `ports` across files instead of
+# replacing them). It costs nothing — loopback is not reachable from outside the VPS — and it leaves you able to
+# `curl 127.0.0.1:8108/health` on the box to tell "Typesense is broken" apart from "Traefik isn't routing to it".
+#
+# **If a panel manages this host** — Dokploy, Coolify and the like generate `<project>-<service>-<hash>.sslip.io`
+# names and write these labels themselves — set the domain and container port 8108 in the panel instead. Labels you
+# write by hand there are overwritten on the next deploy.
+
+services:
+  typesense:
+    networks:
+      - default
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "${TRAEFIK_NETWORK:-traefik}"
+      traefik.http.routers.typesense.rule: "Host(`${TYPESENSE_HOST:?set TYPESENSE_HOST in .env to the hostname Traefik should route}`)"
+      traefik.http.routers.typesense.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
+      traefik.http.routers.typesense.tls: "true"
+      traefik.http.routers.typesense.tls.certresolver: "${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      # Which port on the container Traefik forwards to. Needed because the container publishes nothing Traefik reads.
+      traefik.http.services.typesense.loadbalancer.server.port: "8108"
+
+networks:
+  # Traefik's own network, created by whatever runs Traefik. `external` means compose expects to find it rather than
+  # make it: if the name is wrong, `up` fails saying so instead of quietly starting an unroutable container.
+  traefik:
+    external: true
+    name: "${TRAEFIK_NETWORK:-traefik}"

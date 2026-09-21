@@ -35,14 +35,68 @@ docker compose ps                # wait for "healthy"
 
 The compose file refuses to start without a key rather than booting an open index, keeps the data in `./data` beside
 it, caps memory (`TYPESENSE_MEM_LIMIT`, default 1g) and rotates its logs. It publishes on **127.0.0.1:8108** only:
-Typesense terminates no TLS of its own and its API key is the whole of its access control, so it goes behind the
-reverse proxy that already holds the certificate.
+Typesense terminates no TLS of its own and its API key is the whole of its access control, so it never faces the
+internet directly. Something in front of it holds the certificate — pick whichever of the next two sections matches
+the VPS.
+
+Keep the `127.0.0.1:` prefix on that port mapping whatever you do. Docker writes its own iptables rules that bypass
+`ufw` for published ports, so `0.0.0.0:8108` is reachable from the internet no matter what the firewall says, with
+the API key as the only thing in front of it.
+
+**A reverse proxy on the host** (nginx, Caddy) reaches the container through the published loopback port. nginx, with
+`certbot --nginx -d <host>` for the certificate:
 
 ```nginx
-location / {
-  proxy_pass http://127.0.0.1:8108;
-  proxy_set_header Host $host;
+server {
+  listen 443 ssl;
+  server_name search.example.com;
+
+  ssl_certificate     /etc/letsencrypt/live/search.example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/search.example.com/privkey.pem;
+
+  location / {
+    proxy_pass http://127.0.0.1:8108;
+    proxy_set_header Host $host;
+    proxy_http_version 1.1;
+  }
 }
+```
+
+Caddy is two lines and gets its own certificate: `search.example.com { reverse_proxy 127.0.0.1:8108 }`.
+
+**Traefik in Docker** cannot use that loopback port at all. It discovers containers by label and connects to them
+container to container, so the service has to join Traefik's network and carry a router. That is what
+`docker-compose.traefik.yml` adds, used *with* the base file:
+
+```sh
+# in .env, beside TYPESENSE_ADMIN_KEY:
+#   TYPESENSE_HOST=search.example.com
+#   TRAEFIK_NETWORK=traefik          # if yours is called something else
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+```
+
+**If a panel manages the host** — Dokploy, Coolify and the like, which generate
+`<project>-<service>-<hash>.sslip.io` names — set the domain and container port **8108** in the panel instead and let
+it write the labels. Hand-written labels there are overwritten on the next deploy.
+
+*Diagnosing Traefik:* a self-signed `CN=TRAEFIK DEFAULT CERT` and a bare `404 page not found` are **one problem, not
+two** — Traefik only requests a certificate for a hostname it has a router rule for, so a missing router produces
+both. Check the router before suspecting ACME. Port 80 also has to be reachable: the HTTP-01 challenge uses it even
+though you will only ever call 443.
+
+```sh
+curl -k https://<host>/health        # 404 page not found  -> Traefik is up, no router for this host
+docker exec <container> bash -c 'exec 3<>/dev/tcp/127.0.0.1/8108 && printf "GET /health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" >&3 && cat <&3'
+```
+
+The second one answers `{"ok":true}` when Typesense itself is fine, which tells "Typesense is broken" apart from
+"Traefik is not routing to it". (The base file also keeps the loopback publish under the Traefik variant, so
+`curl 127.0.0.1:8108/health` on the box does the same job.)
+
+Whichever route, the endpoint is ready when this succeeds **without** `-k`:
+
+```sh
+curl https://<host>/health           # {"ok":true}
 ```
 
 Two things worth knowing about that container. Its healthcheck goes through `bash`'s `/dev/tcp` rather than `curl`,
@@ -105,6 +159,7 @@ never slow down or fail a sync transaction.
 | A schema field was added in `@mtg/core/search` | `--rebuild`. A new field needs a new collection; a plain drain cannot add one. |
 | Disk or memory filling up | A `--rebuild` drops every stale version of each collection, not just the one the alias pointed at — a rebuild that died before moving its alias leaves a full copy behind, and Typesense loads every collection it has into memory at startup. `GET /collections` should show exactly four. |
 | Upgrading Typesense | Bump the tag in `deploy/typesense/docker-compose.yml`, `docker compose up -d`, then `--rebuild`. |
+| Untrusted certificate, or a bare 404 behind Traefik | One cause: no router for that hostname. See "Diagnosing Traefik" above. |
 | The VPS is down | Nothing breaks. Every read path falls back to Postgres and logs. Rebuild when it is back. |
 
 ### Checks
