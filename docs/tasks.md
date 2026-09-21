@@ -2,7 +2,7 @@
 
 Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up.
 
-Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-18**. `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
+Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-21** (develop and main at PR #59). `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -83,15 +83,15 @@ Auth data, salted IP hashes, and user-generated content require a privacy policy
 
 ### T005: WotC Fan Content Policy disclaimer
 
-**Priority:** LOW | **Area:** Legal / Frontend | **Status:** Not started
+**Priority:** LOW | **Area:** Legal / Frontend | **Status:** Partly done
 
-Footer disclaimer per WotC Fan Content Policy for MTG-related content.
+Footer disclaimer per WotC Fan Content Policy for MTG-related content. The disclaimer text is already in `site-footer.tsx`; it names the policy but does not link to it.
 
 **Files:**
 - `apps/web/src/components/layout/site-footer.tsx`
 
 **Acceptance criteria:**
-- [ ] Disclaimer added to site footer
+- [x] Disclaimer added to site footer
 - [ ] Links to WotC Fan Content Policy
 
 ---
@@ -269,15 +269,20 @@ The Google OAuth flow is fully wired behind `NEXT_PUBLIC_AUTH_GOOGLE`. The provi
 
 ### T027: 10k-row collection import timing check
 
-**Priority:** LOW | **Area:** Performance | **Status:** Not started
+**Priority:** LOW | **Area:** Performance | **Status:** 1,000-row path fixed; 10k check not run
 
 Phase 3 planned a timing check for a large collection import that was never run. Collections match 2,000 rows per call, so a 10k-row import is five round trips plus the commit.
+
+**Done 2026-09-20 (PRs #56, #58):**
+- `8f0eb1b` — PostgREST's `max_rows` (1000) silently truncated `resolve_collection_rows` responses, so a 1,487-row export reported 487 cards NOT_FOUND. Matching now goes in chunks of `MATCH_ROWS_PER_CALL`; `collection-resolve-check.ts` asserts a 1,200-row batch.
+- `34b0ee3` — a 1,000-row import hit the 3 s `anon` timeout on hosted (9.3 s warm). Branches now short-circuit and `printings_set_cn_cover` makes set + number index-only. Local buffers per 1,000 rows: Scryfall ids 16,742 → 4,011, set + number 12,779 → 3,089. Migration `20260920000100_collection_resolve_short_circuit.sql`.
 
 **Files:**
 - `apps/web/src/app/collection/actions.ts` — `resolveCollectionRowsAction`, `saveCollectionBatchAction`
 - `apps/web/scripts/collection-resolve-check.ts` — existing resolver check to extend
 
 **Acceptance criteria:**
+- [ ] Re-run a 1,000-row import on hosted now that `20260920000100` is on main, and confirm it no longer times out
 - [ ] Time a 10,000-row import end to end against the local database
 - [ ] Record per-batch resolve time and commit time
 - [ ] Confirm no statement times out, and that the browser stays responsive (the parse is in a Web Worker)
@@ -483,14 +488,21 @@ Import preconstructed deck lists. Needs MTGJSON license verification first.
 
 ### T019: Admin pages (tag kill switch UI, sync status dashboard)
 
-**Priority:** LOW | **Area:** Frontend | **Status:** Not started
+**Priority:** LOW | **Area:** Frontend | **Status:** Not started (admin shell exists)
 
 Tag kill switch works via SQL but has no UI. Sync status is only in `sync_runs` table.
+
+**Since PR #47:** `/admin` exists as a React Admin app with platform-admin guards (proxy, page, API) and a users resource only. Both pages here become new resources in it rather than a separate area — see `apps/web/AGENTS.md` for the admin data flow.
+
+**Files:**
+- `apps/web/src/components/admin/admin-app.tsx` — register new resources
+- `apps/web/src/components/admin/data-provider.ts` — admin data flow
+- `apps/web/src/components/admin/users.tsx` — the existing resource, as the pattern
 
 **Acceptance criteria:**
 - [ ] Tag kill switch page (list tags, toggle disabled)
 - [ ] Sync status dashboard (recent runs, metrics, errors)
-- [ ] Admin-only access (or service_role only)
+- [ ] Admin-only access through the existing platform-admin guards and security-definer functions
 
 ---
 
