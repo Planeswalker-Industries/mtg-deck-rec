@@ -3,17 +3,16 @@
 #
 # Deployed separately from Typesense: a managed panel treats one compose file as one application, and the two have
 # different lifecycles — this one is rebuilt whenever its Go code changes, Typesense is a long-lived stateful
-# container. They find each other over a shared network you create once:
-#
-#   docker network create mtg-search       # the same one deploy/typesense uses
+# container. They find each other over a shared network the **Typesense stack creates**, so deploy that one first.
 #
 #   cd deploy/search-api
 #   cp .env.example .env && $EDITOR .env   # three values, one of them shared with the Typesense stack
 #   docker compose up -d
 #   docker compose ps                      # wait for "healthy"
 #
-# Start Typesense first, or this container will report unhealthy until it appears — it says so in its log and keeps
-# trying rather than exiting, so the order is a convenience and not a requirement.
+# Typesense first, because it is what creates the shared network — without it, this stack fails to start with
+# "network mtg-search not found". Once the network exists the two are independent again: stop Typesense and this
+# keeps running and serving 503s until it comes back.
 #
 # Then build the index, from a checkout that can reach the hosted database:
 #   SEARCH_API_URL=https://<host> SEARCH_API_ADMIN_TOKEN=... \
@@ -87,10 +86,13 @@ services:
       traefik.http.services.searchapi.loadbalancer.server.port: "${SEARCH_API_CONTAINER_PORT:-8080}"
 
 networks:
-  # Where Typesense is. External on both sides, so neither stack depends on the other's deploy order and a missing
-  # network fails `up` loudly rather than quietly starting a container that cannot reach the index.
+  # Where Typesense is. External here because the Typesense stack creates it — deploy that one first, or this fails
+  # with "network <name> not found", which is at least a clear thing to read.
+  #
+  # Set SEARCH_NETWORK_EXTERNAL=true in *both* .env files, with SEARCH_NETWORK naming it, to use a network neither
+  # stack owns — a panel's shared network, for instance.
   mtg-search:
-    external: true
+    external: ${SEARCH_NETWORK_EXTERNAL:-true}
     name: ${SEARCH_NETWORK:-mtg-search}
 
   # The proxy's network. With TRAEFIK_EXTERNAL unset this is an ordinary bridge network compose creates and nothing
