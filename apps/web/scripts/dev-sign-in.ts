@@ -2,8 +2,8 @@
  * LOCAL ONLY. Prints a sign-in link for one of the seeded test accounts, so signing in during development costs no
  * email and does not spend the local 30-per-hour budget that the Mailpit-gated e2e tests share.
  *
- * TODO before any launch: this and supabase/seed.sql go together. Delete both, or prove they cannot reach the
- * hosted project.
+ * It goes with supabase/seed.sql, whose header says why neither reaches the hosted project. Nothing in the app imports
+ * it, so it is never bundled, and it refuses to run unless NEXT_PUBLIC_SUPABASE_URL points at a local database.
  *
  * Usage: yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts [anon|admin|<email>] [next-path]
  *
