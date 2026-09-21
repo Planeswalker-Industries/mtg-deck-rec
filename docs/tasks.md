@@ -305,7 +305,9 @@ Currently manual crawl from this PC. A queue table would decouple crawling from 
 
 **Priority:** LOW | **Area:** DevOps | **Status:** Not started
 
-Database is at 381/500 MB. Commander stats grow with each looked-up commander. Need to monitor before corpus grows.
+Database was 416/500 MB on 2026-09-21. Commander stats grow with each looked-up commander. Need to monitor before corpus grows.
+
+**English-only printings (2026-09-21):** migration `20260921000200_english_printings_only.sql` deletes ~426k non-English printings (hosted `printings` is 166 MB, ~81% of it other languages). The delete only frees space for reuse; **after it reaches hosted, run `vacuum full public.printings;` by hand** (superuser, outside a transaction) to hand the disk back. Locally that took the database from 389 MB to 270 MB.
 
 **Files:**
 - `supabase/migrations/` — potential future vacuum/compact jobs
