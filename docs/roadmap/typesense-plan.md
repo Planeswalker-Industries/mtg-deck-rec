@@ -2,7 +2,8 @@
 
 Companion to [`execution-plan.md`](execution-plan.md) and [`status.md`](status.md).
 
-**Built 2026-09-19, Phases 1–4.** Self-hosted on the owner's VPS (decision made the same day; the cost comparison
+**Built 2026-09-19, Phases 1–4**, and put behind a Go service on 2026-09-21 (`services/search-api`), so that nothing
+but that service talks to Typesense. Self-hosted on the owner's VPS (decision made the same day; the cost comparison
 below is kept for the record). [`typesense-ops.md`](typesense-ops.md) is the runbook — how to stand it up, which keys
 to make, what to do when it misbehaves, and what has been measured. Phase 5 (swaps) is deliberately not built.
 
@@ -112,7 +113,7 @@ At 129 commanders this is a few hundred thousand documents. It is the one collec
 - `mappers.ts` — pure `toCardDocument(row, names, tags, stats, globalStats)` and friends. Unit-tested in vitest like the rest of core.
 - `client.ts` — a small typed wrapper over the REST API: `retrieve`, `search`, `multiSearch`, `import`, `deleteByFilter`, alias ops. Timeouts on every call; no retries on writes, because the queue below is the retry.
 
-**`apps/web/src/lib/server/search-index.ts`** — `getSearchIndex()`, reading `TYPESENSE_URL` and `TYPESENSE_SEARCH_KEY`. **Returns null when they are unset.** That is what keeps CI (empty database, `NEXT_PUBLIC_USE_MOCKS=1`) and any local checkout working with no Typesense at all.
+**`apps/web/src/lib/server/search-index.ts`** — `getSearchIndex()`, reading `SEARCH_API_URL` and `SEARCH_API_TOKEN`. **Returns null when they are unset.** That is what keeps CI (empty database, `NEXT_PUBLIC_USE_MOCKS=1`) and any local checkout working with no search index at all.
 
 Then each read path gains one branch and keeps its signature:
 
@@ -211,7 +212,7 @@ Typesense keeps the whole index in RAM, with the raw documents on disk. The rule
 | **Self-host on the PC that already runs the corpus worker** | Free | Needs a public address Vercel functions can reach, and the site's search then depends on a home machine being up. The fallback path makes that survivable but not good. |
 | **Self-host on a small VPS / Fly / Railway** | ~$5/mo | A machine to keep patched. Probably the best value if the fallback is solid. |
 
-Local development: a `docker-compose.typesense.yml` on port **56325** (the project's own range: API 56321, DB 56322, Studio 56323, Mailpit 56324), data directory under `MTG_DATA_DIR/typesense` — C: has no room, which is why `DATA_DIR` exists.
+Local development: `docker-compose.search.yml` runs both containers on **56325** (Typesense) and **56326** (the API), in the project's own range beside Supabase (56321-56324).
 
 This is the decision that should be made before any code: **which of those three**, and whether a recurring bill is acceptable. Everything else in this plan is the same either way.
 

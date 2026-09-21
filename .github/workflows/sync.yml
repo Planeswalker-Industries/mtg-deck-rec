@@ -5,8 +5,8 @@ name: Scryfall sync
 #   DATABASE_URL       Supabase session pooler connection string (IPv4; the jobs use temp tables, so not the transaction pooler)
 #   WEB_APP_URL        the deployed site, so finished syncs refresh its cached pages
 #   REVALIDATE_SECRET  the web app's REVALIDATE_SECRET
-#   TYPESENSE_URL      the search index on the VPS, so each finished sync updates the documents it changed
-#   TYPESENSE_ADMIN_KEY  its admin key (the web app only ever gets a search-only key)
+#   SEARCH_API_URL     the search API on the VPS, so each finished sync updates the documents it changed
+#   SEARCH_API_ADMIN_TOKEN  its write token (the web app only ever gets a read token)
 on:
   schedule:
     - cron: "23 10 * * *"
@@ -33,8 +33,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
       REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
-      TYPESENSE_URL: ${{ secrets.TYPESENSE_URL }}
-      TYPESENSE_ADMIN_KEY: ${{ secrets.TYPESENSE_ADMIN_KEY }}
+      SEARCH_API_URL: ${{ secrets.SEARCH_API_URL }}
+      SEARCH_API_ADMIN_TOKEN: ${{ secrets.SEARCH_API_ADMIN_TOKEN }}
       FORCE: ${{ inputs.force && '--force' || '' }}
     steps:
       - uses: actions/checkout@v4

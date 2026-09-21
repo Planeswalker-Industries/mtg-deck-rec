@@ -3,6 +3,12 @@
 Companion to [`typesense-plan.md`](typesense-plan.md), which says *what* moves into the index and why. This is how to
 stand it up and keep it running. Decided 2026-09-19: **self-hosted on the owner's VPS**, not Typesense Cloud.
 
+**Two containers, one of them public.** `deploy/search/` runs Typesense and `services/search-api` (Go, Fiber). Only
+the API is reachable from outside; Typesense publishes no port and sits on the private network beside it. So there
+is one hostname to route and certify, the Typesense key never leaves the machine, and what does leave is a read
+token for Vercel and a write token for the worker — each able to do less than the key it fronts. The service itself
+is documented in [`services/search-api/README.md`](../../services/search-api/README.md).
+
 ## What it holds, and how big
 
 Four collections, rebuilt from Postgres at any time by one command — nothing in the index is a source of truth, so
@@ -22,29 +28,37 @@ with the corpus — recheck it at 500 commanders.
 
 ## Standing it up
 
-**1. Run it.** `deploy/typesense/` is the whole deployment — copy that directory to the VPS (or check the repo out
+**1. Run it.** `deploy/search/` is the whole deployment — copy that directory to the VPS (or check the repo out
 there) and:
 
 ```sh
-cd deploy/typesense
+cd deploy/search
 cp .env.example .env
-openssl rand -base64 36          # put this in .env as TYPESENSE_ADMIN_KEY
+openssl rand -base64 36    # three times: TYPESENSE_ADMIN_KEY, SEARCH_API_TOKEN, SEARCH_API_ADMIN_TOKEN
 docker compose up -d
-docker compose ps                # wait for "healthy"
+docker compose ps          # wait for both to be healthy
 ```
 
-The compose file refuses to start without a key rather than booting an open index, keeps the data in `./data` beside
-it, caps memory (`TYPESENSE_MEM_LIMIT`, default 1g) and rotates its logs. It publishes on **127.0.0.1:8108** only:
-Typesense terminates no TLS of its own and its API key is the whole of its access control, so it never faces the
-internet directly. Something in front of it holds the certificate — pick whichever of the next two sections matches
-the VPS.
+Three secrets, and they are three for a reason. `TYPESENSE_ADMIN_KEY` never leaves the VPS. `SEARCH_API_TOKEN` goes
+to Vercel and can only read. `SEARCH_API_ADMIN_TOKEN` goes to the worker and the sync workflow and can also write.
+The service refuses to start if the two tokens match, or if any of the three is empty.
 
-Keep the `127.0.0.1:` prefix on that port mapping whatever you do. Docker writes its own iptables rules that bypass
-`ufw` for published ports, so `0.0.0.0:8108` is reachable from the internet no matter what the firewall says, with
-the API key as the only thing in front of it.
+Neither container faces the internet on its own. **Typesense has no published port at all** — search-api reaches it
+by service name on the private network. search-api publishes **127.0.0.1:8090**, for a proxy on the host and for
+`curl 127.0.0.1:8090/v1/health` when something is wrong. Keep that `127.0.0.1:` prefix: Docker writes iptables rules
+that bypass `ufw` for published ports, so `0.0.0.0:8090` is reachable from the internet whatever the firewall says.
 
-**A reverse proxy on the host** (nginx, Caddy) reaches the container through the published loopback port. nginx, with
-`certbot --nginx -d <host>` for the certificate:
+Two things worth knowing about those containers. Both healthchecks avoid `curl`, because neither image has it — the
+Typesense image ships no shell tools at all beyond `bash`, whose `/dev/tcp` can just about speak HTTP, and the
+search-api image is distroless, so `search-api healthcheck` is a mode of the binary itself. A healthcheck that
+cannot run marks a working container unhealthy forever, which is what the first version of this file did. And there
+is no backup story on purpose: nothing in the index is a source of truth, so losing the volume costs one `--rebuild`,
+and restoring from Postgres is both faster and always correct.
+
+**2. Put TLS in front of search-api.**
+
+*A proxy on the host* (nginx, Caddy) reaches it through that loopback port. nginx, with `certbot --nginx -d <host>`
+for the certificate:
 
 ```nginx
 server {
@@ -55,25 +69,25 @@ server {
   ssl_certificate_key /etc/letsencrypt/live/search.example.com/privkey.pem;
 
   location / {
-    proxy_pass http://127.0.0.1:8108;
+    proxy_pass http://127.0.0.1:8090;
     proxy_set_header Host $host;
     proxy_http_version 1.1;
   }
 }
 ```
 
-Caddy is two lines and gets its own certificate: `search.example.com { reverse_proxy 127.0.0.1:8108 }`.
+Caddy is two lines and gets its own certificate: `search.example.com { reverse_proxy 127.0.0.1:8090 }`.
 
-**Traefik in Docker** cannot use that loopback port at all. It discovers containers by label and connects to them
-container to container, so the service has to join Traefik's network and carry a router. The same compose file does
-this — it is one file rather than two because a managed panel usually points at a single compose path and cannot be
-told to merge an override. Four lines in `.env` switch it on:
+*Traefik in Docker* cannot use a loopback port at all. It discovers containers by label and connects to them
+container to container, so search-api has to join Traefik's network and carry a router. The same compose file does
+this — one file rather than two, because a managed panel usually points at a single compose path and cannot be told
+to merge an override. Four lines in `.env`:
 
 ```sh
-# beside TYPESENSE_ADMIN_KEY:
+# beside the three secrets:
 #   TRAEFIK_ENABLE=true
 #   TRAEFIK_EXTERNAL=true
-#   TYPESENSE_HOST=search.example.com
+#   SEARCH_API_HOST=search.example.com
 #   TRAEFIK_NETWORK=traefik          # if yours is called something else
 docker compose up -d
 ```
@@ -85,8 +99,9 @@ to. With neither set, the labels say `traefik.enable=false` and the network is a
 what makes one file safe for the nginx case.
 
 **If a panel manages the host** — Dokploy, Coolify and the like, which generate
-`<project>-<service>-<hash>.sslip.io` names — set the domain and container port **8108** in the panel instead and let
-it write the labels. Hand-written labels there are overwritten on the next deploy.
+`<project>-<service>-<hash>.sslip.io` names — set the domain and container port **8080** in the panel for the
+**search-api** service, not for Typesense, and let it write the labels. Hand-written labels there are overwritten on
+the next deploy.
 
 *Diagnosing Traefik:* a self-signed `CN=TRAEFIK DEFAULT CERT` and a bare `404 page not found` are **one problem, not
 two** — Traefik only requests a certificate for a hostname it has a router rule for, so a missing router produces
@@ -94,45 +109,22 @@ both. Check the router before suspecting ACME. Port 80 also has to be reachable:
 though you will only ever call 443.
 
 ```sh
-curl -k https://<host>/health        # 404 page not found  -> Traefik is up, no router for this host
-docker exec <container> bash -c 'exec 3<>/dev/tcp/127.0.0.1/8108 && printf "GET /health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" >&3 && cat <&3'
+curl -k https://<host>/v1/health      # 404 page not found -> Traefik is up, no router for this host
+curl http://127.0.0.1:8090/v1/health  # {"ok":true}        -> the stack is fine, it is only the routing
 ```
 
-The second one answers `{"ok":true}` when Typesense itself is fine, which tells "Typesense is broken" apart from
-"Traefik is not routing to it". (The base file also keeps the loopback publish under the Traefik variant, so
-`curl 127.0.0.1:8108/health` on the box does the same job.)
+The second command is what tells "the search stack is broken" apart from "Traefik is not routing to it".
 
 Whichever route, the endpoint is ready when this succeeds **without** `-k`:
 
 ```sh
-curl https://<host>/health           # {"ok":true}
+curl https://<host>/v1/health         # {"ok":true}
 ```
 
-Two things worth knowing about that container. Its healthcheck goes through `bash`'s `/dev/tcp` rather than `curl`,
-because **the image ships neither curl nor wget** — the obvious healthcheck marks a perfectly working container
-unhealthy forever. And there is no backup story on purpose: nothing in the index is a source of truth, so losing the
-volume costs one `--rebuild` and restoring from Postgres is both faster and always correct.
-
-**2. Make two keys, not one.** The admin key above can drop collections. The app must never hold it:
+**3. Build the index.**
 
 ```sh
-curl -X POST "https://<host>/keys" -H "X-TYPESENSE-API-KEY: $TYPESENSE_ADMIN_KEY" \
-  -H 'content-type: application/json' \
-  -d '{"description":"web app, search only","actions":["documents:search","documents:get"],"collections":["*"]}'
-```
-
-The response shows the key **once**. That is `TYPESENSE_SEARCH_KEY`.
-
-Two actions, and no more. `documents:search` covers the header search, the card multi-gets, the tag pages and the
-proxy's slug lookup; `documents:get` is there only so a future single-document read needs no new key. Nothing about
-collections, aliases or writes, so the worst a leaked search key can do is read public card data the site already
-serves — and it cannot drop a collection. Verify with `GET /keys` that the worker's key and the app's key are
-different ones.
-
-**3. Build it.**
-
-```sh
-TYPESENSE_URL=https://<host> TYPESENSE_ADMIN_KEY=... \
+SEARCH_API_URL=https://<host> SEARCH_API_ADMIN_TOKEN=... \
   yarn workspace @mtg/worker cli:hosted sync:typesense --rebuild
 ```
 
@@ -140,9 +132,9 @@ TYPESENSE_URL=https://<host> TYPESENSE_ADMIN_KEY=... \
 
 | Where | Variables |
 |---|---|
-| Vercel (Production **and** Preview) | `TYPESENSE_URL`, `TYPESENSE_SEARCH_KEY` |
-| GitHub Actions secrets (the daily sync) | `TYPESENSE_URL`, `TYPESENSE_ADMIN_KEY` |
-| `apps/worker/.env.hosted` (this PC: corpus rebuilds, deck lookups) | `TYPESENSE_URL`, `TYPESENSE_ADMIN_KEY` |
+| Vercel (Production **and** Preview) | `SEARCH_API_URL`, `SEARCH_API_TOKEN` |
+| GitHub Actions secrets (the daily sync) | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
+| `apps/worker/.env.hosted` (this PC: corpus rebuilds, deck lookups) | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
 
 Unset anywhere is a working configuration — that side just reads Postgres.
 
@@ -167,8 +159,11 @@ never slow down or fail a sync transaction.
 | Results look stale or wrong | `cli:hosted sync:typesense --rebuild`. Safe at any time: it builds a new versioned collection and moves the alias only when it is complete. |
 | A schema field was added in `@mtg/core/search` | `--rebuild`. A new field needs a new collection; a plain drain cannot add one. |
 | Disk or memory filling up | A `--rebuild` drops every stale version of each collection, not just the one the alias pointed at — a rebuild that died before moving its alias leaves a full copy behind, and Typesense loads every collection it has into memory at startup. `GET /collections` should show exactly four. |
-| Upgrading Typesense | Bump the tag in `deploy/typesense/docker-compose.yml`, `docker compose up -d`, then `--rebuild`. |
-| Untrusted certificate, or a bare 404 behind Traefik | One cause: no router for that hostname. See "Diagnosing Traefik" above. |
+| Upgrading Typesense | Bump the tag in `deploy/search/docker-compose.yml`, `docker compose up -d`, then `--rebuild`. |
+| Deploying a new search-api | `docker compose up -d --build` in `deploy/search/`. In-flight imports finish first: the service waits up to 30 s on shutdown so the worker never has to guess whether its batch landed. |
+| Untrusted certificate, or a bare 404 behind Traefik | One cause: no router for that hostname, and it has to point at **search-api**, not Typesense. See "Diagnosing Traefik" above. |
+| `502` from the API while both containers are healthy | search-api reached Typesense and got an error back; `docker compose logs search-api` names it. |
+| The API will not start | It refuses an empty key, an empty token, or two identical tokens, and says which. |
 | The VPS is down | Nothing breaks. Every read path falls back to Postgres and logs. Rebuild when it is back. |
 
 ### Checks
@@ -176,6 +171,7 @@ never slow down or fail a sync transaction.
 ```sh
 yarn workspace @mtg/web tsx scripts/search-index-check.ts                        # fallback survives a broken index (no DB, no index; runs in CI)
 yarn workspace @mtg/web tsx --env-file=.env.local scripts/search-parity-check.ts # the index agrees with Postgres (needs both, local only)
+cd services/search-api && go test ./...                                          # the API itself; it fakes Typesense
 ```
 
 ## Local development
@@ -183,17 +179,25 @@ yarn workspace @mtg/web tsx --env-file=.env.local scripts/search-parity-check.ts
 A separate compose file at the repo root, so the local one can be thrown away without touching the deployment:
 
 ```sh
-docker compose -f docker-compose.typesense.yml up -d     # port 56325, beside Supabase's 56321-56324
+docker compose -f docker-compose.search.yml up -d --build   # Typesense 56325, search API 56326
 yarn workspace @mtg/worker cli sync:typesense --rebuild
 ```
-
-It uses a named volume and a fixed development key, where the deployment uses a bind mount and a real one.
 
 Then in `apps/web/.env.local`:
 
 ```
-TYPESENSE_URL=http://localhost:56325
-TYPESENSE_SEARCH_KEY=mtg-local-dev-key
+SEARCH_API_URL=http://localhost:56326
+SEARCH_API_TOKEN=mtg-local-read
+```
+
+It uses a named volume and fixed development tokens on loopback-only ports, where the deployment uses a bind mount
+and real ones.
+
+Then in `apps/web/.env.local`:
+
+```
+SEARCH_API_URL=http://localhost:56326
+SEARCH_API_TOKEN=mtg-local-read
 ```
 
 Leave them out to work the way CI does, against Postgres alone.
