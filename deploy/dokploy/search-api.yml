@@ -20,6 +20,10 @@
 
 services:
   search-api:
+    # A fixed container name, matching the other services on this VPS. Dokploy's Traefik finds it by label and by
+    # network rather than by name, but a stable name is what makes `docker logs search-api` and
+    # `docker exec search-api /search-api healthcheck` work without looking up the project prefix first.
+    container_name: search-api
     build:
       context: ../../services/search-api
     image: ${SEARCH_API_IMAGE:-mtg-search-api:local}
