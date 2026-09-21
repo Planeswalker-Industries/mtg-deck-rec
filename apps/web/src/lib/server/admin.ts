@@ -1,7 +1,22 @@
 import type { ApiError } from "@mtg/core/contract";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ListAdminUsersInput, UpdateAdminUserInput } from "@/lib/admin/schemas";
-import type { AdminUser, AdminUserPage } from "@/lib/admin/types";
+import type {
+  ListAdminSyncRunsInput,
+  ListAdminTagsInput,
+  ListAdminUsersInput,
+  UpdateAdminTagInput,
+  UpdateAdminUserInput,
+} from "@/lib/admin/schemas";
+import type {
+  AdminSyncJob,
+  AdminSyncRun,
+  AdminSyncRunPage,
+  AdminSyncStatus,
+  AdminTag,
+  AdminTagPage,
+  AdminUser,
+  AdminUserPage,
+} from "@/lib/admin/types";
 import { createAuthClient, getCurrentUser, type CurrentUser } from "./auth";
 import type { Database } from "./database.types";
 
@@ -153,3 +168,119 @@ function toAdminUser(row: Database["public"]["Functions"]["admin_list_users"]["R
     collectionCount: row.collection_count,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Tags: the kill switch
+// ---------------------------------------------------------------------------
+
+export async function listAdminTags(db: AuthedClient, input: ListAdminTagsInput): Promise<AdminTagPage> {
+  const { data, error } = await db.rpc("admin_list_tags", {
+    ...(input.tagId ? { p_tag_id: input.tagId } : {}),
+    ...(input.search ? { p_search: input.search } : {}),
+    p_disabled_only: input.disabledOnly,
+    p_functional_only: input.functionalOnly,
+    p_sort: input.sort,
+    p_ascending: input.ascending,
+    p_offset: input.offset,
+    p_limit: input.limit,
+  });
+  if (error) throw asAdminError(error);
+  const rows = data ?? [];
+  return { tags: rows.map(toAdminTag), total: rows[0] ? Number(rows[0].total_count) : 0 };
+}
+
+export async function getAdminTag(db: AuthedClient, id: string): Promise<AdminTag | null> {
+  const { tags } = await listAdminTags(db, {
+    tagId: id,
+    disabledOnly: false,
+    functionalOnly: false,
+    sort: "card_count",
+    ascending: false,
+    offset: 0,
+    limit: 1,
+  });
+  return tags[0] ?? null;
+}
+
+/** Throws the switch. The database records who, when and why, and writes the audit row. */
+export async function setAdminTagDisabled(db: AuthedClient, id: string, input: UpdateAdminTagInput): Promise<void> {
+  const { error } = await db.rpc("admin_set_tag_disabled", {
+    p_tag_id: id,
+    p_disabled: input.disabled,
+    ...(input.disabledReason ? { p_reason: input.disabledReason } : {}),
+  });
+  if (error) throw asAdminError(error);
+}
+
+function toAdminTag(row: Database["public"]["Functions"]["admin_list_tags"]["Returns"][number]): AdminTag {
+  return {
+    id: row.id,
+    slug: row.slug,
+    label: row.label,
+    description: row.description,
+    cardCount: row.card_count,
+    idf: row.idf,
+    isFunctional: row.is_functional,
+    disabled: row.disabled,
+    disabledReason: row.disabled_reason,
+    disabledByEmail: row.disabled_by_email,
+    disabledAt: row.disabled_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sync runs
+// ---------------------------------------------------------------------------
+
+type DbSyncJob = Database["public"]["Enums"]["sync_job"];
+type DbSyncStatus = Database["public"]["Enums"]["sync_status"];
+
+/**
+ * Compile-time proof that the filter lists in `lib/admin/types.ts` name exactly the database's enum values: a job
+ * added in a migration and missed there (or the reverse) fails the typecheck here rather than going unfilterable.
+ */
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const JOBS_MATCH: Same<AdminSyncJob, DbSyncJob> = true;
+const STATUSES_MATCH: Same<AdminSyncStatus, DbSyncStatus> = true;
+void JOBS_MATCH;
+void STATUSES_MATCH;
+
+export async function listAdminSyncRuns(db: AuthedClient, input: ListAdminSyncRunsInput): Promise<AdminSyncRunPage> {
+  const { data, error } = await db.rpc("admin_list_sync_runs", {
+    ...(input.runId ? { p_run_id: input.runId } : {}),
+    ...(input.job ? { p_job: input.job } : {}),
+    ...(input.status ? { p_status: input.status } : {}),
+    p_ascending: input.ascending,
+    p_offset: input.offset,
+    p_limit: input.limit,
+  });
+  if (error) throw asAdminError(error);
+  const rows = data ?? [];
+  return { runs: rows.map(toAdminSyncRun), total: rows[0] ? Number(rows[0].total_count) : 0 };
+}
+
+export async function getAdminSyncRun(db: AuthedClient, id: number): Promise<AdminSyncRun | null> {
+  const { runs } = await listAdminSyncRuns(db, { runId: id, ascending: false, offset: 0, limit: 1 });
+  return runs[0] ?? null;
+}
+
+function toAdminSyncRun(row: Database["public"]["Functions"]["admin_list_sync_runs"]["Returns"][number]): AdminSyncRun {
+  return {
+    id: Number(row.id),
+    job: row.job as AdminSyncJob,
+    status: row.status as AdminSyncStatus,
+    sourceUri: row.source_uri,
+    sourceUpdatedAt: row.source_updated_at,
+    workerId: row.worker_id,
+    startedAt: row.started_at,
+    heartbeatAt: row.heartbeat_at,
+    finishedAt: row.finished_at,
+    rowsRead: Number(row.rows_read),
+    rowsChanged: Number(row.rows_changed),
+    metrics: isRecord(row.metrics) ? row.metrics : null,
+    error: row.error,
+  };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);

@@ -1,0 +1,61 @@
+# The search stack for local development: Typesense, and the Go API that is the only thing that talks to it.
+# Production runs the same two services from deploy/search/ (see docs/roadmap/typesense-ops.md).
+#
+#   docker compose -f docker-compose.search.yml up -d --build
+#   yarn workspace @mtg/worker cli sync:typesense --rebuild
+#
+# Then in apps/web/.env.local:
+#   SEARCH_API_URL=http://localhost:56326
+#   SEARCH_API_TOKEN=mtg-local-read
+#
+# Ports 56325 and 56326 keep this in the project's own range, beside Supabase (API 56321, Postgres 56322,
+# Studio 56323, Mailpit 56324), so it never collides with another local stack on the default ports.
+#
+# The data lives in a named volume rather than a bind mount: C: has no room on the Windows machine, and Docker
+# Desktop's disk image is already on X: there, so the volume lands in the right place on both machines with no path
+# to configure. It is a cache of Postgres either way — `sync:typesense --rebuild` recreates all of it.
+#
+# The keys here are fixed development values on a loopback-only port, deliberately. Production generates real ones.
+services:
+  typesense:
+    image: typesense/typesense:29.0
+    restart: unless-stopped
+    # Published locally, unlike production, so the index can be poked at directly while working on it.
+    ports:
+      - "127.0.0.1:56325:8108"
+    volumes:
+      - typesense-data:/data
+    command:
+      - "--data-dir=/data"
+      - "--api-key=${TYPESENSE_LOCAL_KEY:-mtg-local-dev-key}"
+      - "--listen-port=8108"
+    # The image ships no curl and no wget — the obvious healthcheck marks a perfectly working container unhealthy
+    # forever. It does ship bash, whose /dev/tcp can ask /health and read the answer.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8108 && printf "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q ''"ok":true'' <&3'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  search-api:
+    build: ./services/search-api
+    restart: unless-stopped
+    depends_on:
+      typesense:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:56326:8080"
+    environment:
+      SEARCH_API_ADDR: ":8080"
+      TYPESENSE_URL: "http://typesense:8108"
+      TYPESENSE_ADMIN_KEY: "${TYPESENSE_LOCAL_KEY:-mtg-local-dev-key}"
+      SEARCH_API_TOKEN: "${SEARCH_API_LOCAL_TOKEN:-mtg-local-read}"
+      SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_LOCAL_ADMIN_TOKEN:-mtg-local-admin}"
+
+volumes:
+  typesense-data:

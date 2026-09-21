@@ -30,14 +30,20 @@ PR #41, 21 commits, contract v5 to v9. Shipped:
 - `cards_rec_pool` covering index
 - Deck workspace layout (Cut/Add/Replace drill-down, section nav, top suggestions in rail)
 
-## Search index (Typesense) — built 2026-09-19, not deployed
+## Search index (Typesense behind a Go API) — built, not deployed
 
 A self-hosted Typesense now serves the reads that cost Postgres the most: card documents by id (a swap pool is 220
 cards, an add pool 400, a commander page 500), the header search and commander picker, card tags, the proxy's slug
 check on every card and commander page view, and the card-shaped part of `loadCardCorpus` (five queries to one).
-Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](typesense-ops.md).
+Since 2026-09-21 nothing talks to Typesense but `services/search-api` (Go, Fiber): the app reads through it, the
+worker writes through it, and Typesense publishes no port at all. So the Typesense key never leaves the VPS, what
+does leave is a read token and a write token, and there is one hostname to route and certify rather than a search
+engine facing the internet.
 
-- **Never a dependency.** Unset `TYPESENSE_URL` and every path takes the query it always took; configured-but-broken
+Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](typesense-ops.md). The service:
+[`services/search-api/README.md`](../../services/search-api/README.md).
+
+- **Never a dependency.** Unset `SEARCH_API_URL` and every path takes the query it always took; configured-but-broken
   logs and falls back. Checked by `scripts/search-index-check.ts`.
 - **Recommendation ranking is untouched.** `rec_swap_candidates` and `rec_add_candidates` stay in SQL so the open
   blind swap-quality eval still measures what it was built to measure.

@@ -2,6 +2,8 @@ import type { ExportFormat, FavoriteRef, SyncStatusRow, TagAdminRow } from './ac
 import type { CardDetail, CardSummary, TagRef } from './cards';
 import type { CommanderCoverage, CommanderRequest } from './commander-requests';
 import type {
+  CollectionCardsResult,
+  CollectionEntry,
   CollectionRowInput,
   CollectionTotals,
   ResolveCollectionResult,
@@ -37,6 +39,11 @@ export interface CatalogApi {
   searchCards(input: { q: string; commanderEligible?: boolean; limit?: number }): Promise<Result<CardSummary[]>>;
   /** Functional tags per card, for grouping a deck by what its cards do. Cards with no tags are omitted. */
   cardTags(input: { cardIds: CardId[] }): Promise<Result<{ cardId: CardId; tags: TagRef[] }[]>>;
+  /**
+   * Cards with their functional tag labels, plus the named sets, for the collection view. ≤ 1,000 cards and 1,000 set
+   * codes per call; a larger collection asks in chunks. Cards the catalog no longer has are left out.
+   */
+  collectionCards(input: { cardIds: CardId[]; setCodes: string[] }): Promise<Result<CollectionCardsResult>>;
 }
 
 /** Mutations and user-triggered operations. Transport: Server Actions. */
@@ -64,6 +71,8 @@ export interface ActionsApi {
     final: boolean;
   }): Promise<Result<{ importId: string; totals: CollectionTotals | null }>>;
   deleteCollection(): Promise<Result<null>>;
+  /** Authenticated. The signed-in user's collection, one entry per card. */
+  getMyCollectionEntries(): Promise<Result<CollectionEntry[]>>;
 
   /** Returns the deck's code as well as its id, so a deck just saved can be linked to and gone on editing. */
   saveDeck(input: {

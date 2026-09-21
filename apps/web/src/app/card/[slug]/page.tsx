@@ -75,7 +75,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
       <ArtBackdrop art={card.images?.front.artCrop} artist={artist} cardName={name} cardSlug={card.slug}>
       <div className="grid gap-6 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
         <figure className="mx-auto w-full max-w-72 sm:mx-0">
-          <FlippableCardImage card={card} variant="large" sizes="(min-width: 640px) 288px, 80vw" eager />
+          <FlippableCardImage card={card} zoomable variant="large" sizes="(min-width: 640px) 288px, 80vw" eager />
         </figure>
 
         <div className="flex min-w-0 flex-col gap-4">
@@ -146,6 +146,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
           <p className="text-sm">{emptySwapMessage[alternatives.emptyReason ?? "NO_CANDIDATES"]}</p>
         ) : (
           <PocketGrid
+            zoomable
             label={`Cards that do the same job as ${name}`}
             items={alternatives.suggestions.map((s) => ({
               card: s.card,
@@ -166,7 +167,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
           <h2 id="commanders-heading" className="font-heading text-2xl font-extrabold tracking-tight">
             Commanders whose decks run it most
           </h2>
-          <PocketGrid label={`Commanders whose decks run ${name}`} items={commanderItems} />
+          <PocketGrid zoomable label={`Commanders whose decks run ${name}`} items={commanderItems} />
         </section>
       )}
 

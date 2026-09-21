@@ -155,22 +155,23 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 **Priority:** HIGH | **Area:** Infrastructure | **Status:** Not started (the code is built and merged)
 
-The Typesense index is built, tested and documented, and nothing uses it until it is running. Every read path falls back to Postgres while `TYPESENSE_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
+The index and the Go service in front of it are built, tested and documented, and nothing uses them until they are running. Every read path falls back to Postgres while `SEARCH_API_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
 
 **Files:**
-- `deploy/typesense/docker-compose.yml` — the deployment, with its `.env.example`
+- `deploy/search/docker-compose.yml` — the deployment (Typesense + `services/search-api`), with its `.env.example`
 - `docs/roadmap/typesense-ops.md` — the runbook this ticket follows
-- `.github/workflows/sync.yml` — already reads `TYPESENSE_URL` / `TYPESENSE_ADMIN_KEY` as secrets
+- `.github/workflows/sync.yml` — already reads `SEARCH_API_URL` / `SEARCH_API_ADMIN_TOKEN` as secrets
 
-**Context:** Self-hosted rather than Typesense Cloud (owner decision, 2026-09-19; the cheapest Cloud node is ~$21.60/mo plus egress). Typesense terminates no TLS of its own and its API key is its entire access control, so the compose file publishes on 127.0.0.1 only and it goes behind the existing reverse proxy.
+**Context:** Self-hosted rather than Typesense Cloud (owner decision, 2026-09-19; the cheapest Cloud node is ~$21.60/mo plus egress). Typesense terminates no TLS of its own and its API key is its entire access control, so it is not exposed at all: `services/search-api` (Go, Fiber) is the only thing that talks to it, and that is what goes behind the reverse proxy.
 
 **Acceptance criteria:**
-- [ ] `docker compose up -d` on the VPS, reporting healthy, behind the reverse proxy with TLS
-- [ ] Two keys: admin for the worker and the sync workflow, search-only (`documents:search`, `documents:get`) for the app
-- [ ] `TYPESENSE_URL` + `TYPESENSE_SEARCH_KEY` on Vercel **Production and Preview**; `TYPESENSE_URL` + `TYPESENSE_ADMIN_KEY` in GitHub Actions secrets and `apps/worker/.env.hosted`
+- [ ] `docker compose up -d` in `deploy/search/` on the VPS, both containers healthy, **search-api** behind the reverse proxy with TLS (Typesense publishes no port and must stay that way)
+- [ ] Three secrets generated: `TYPESENSE_ADMIN_KEY` (stays on the VPS), `SEARCH_API_ADMIN_TOKEN` (worker), `SEARCH_API_TOKEN` (web app)
+- [ ] `SEARCH_API_URL` + `SEARCH_API_TOKEN` on Vercel **Production and Preview**; `SEARCH_API_URL` + `SEARCH_API_ADMIN_TOKEN` in GitHub Actions secrets and `apps/worker/.env.hosted`
 - [ ] `cli:hosted sync:typesense --rebuild` once, then confirm the daily sync drains the queue
 - [ ] `scripts/search-parity-check.ts` passes against hosted data (the local run has no deck corpus, so `commanders` and `commander_cards` have never been exercised with real rows)
 - [ ] Measure RAM after the first build (`/metrics.json`) and record it in the runbook beside the estimate
+- [ ] `services/search-api` reachable over TLS; `curl https://<host>/v1/health` returns `{"ok":true}` **without** `-k`
 - [ ] A week later, re-read `rec_timeouts` and update T008
 
 ---
@@ -193,28 +194,6 @@ The Google OAuth flow is fully wired behind `NEXT_PUBLIC_AUTH_GOOGLE`. The provi
 - [x] Set client id and secret in the Supabase dashboard (and `config.toml` locally)
 - [x] Set `NEXT_PUBLIC_AUTH_GOOGLE=1` on Vercel
 - [x] Verify `/auth/callback` completes and creates a `profiles` row
-
----
-
-### T026: Collection import from a share link
-
-**Priority:** MEDIUM | **Area:** Backend / Frontend | **Status:** Partially decided, not built
-
-`fetchShareLink` already takes `what: "deck" | "collection"` and the kill switch covers both, but the only caller is the deck tool's Archidekt deck import. Collections are paste- or file-only.
-
-**Files:**
-- `apps/web/src/lib/server/share-import.ts:35` — `fetchShareLink`, already collection-aware
-- `apps/web/src/app/deck/actions.ts:107` — the one existing caller, as the pattern to copy
-- `apps/web/src/app/collection/actions.ts` — where a collection-side action belongs
-- `apps/web/src/components/collection/collection-tool.tsx` — the paste box that would accept a lone URL
-
-**Context:** Approved sources are ManaBox, Archidekt and TCGplayer for URL import. Moxfield: text/CSV import only (API requires authentication). One request per user action, honest User-Agent, paste fallback when a source blocks — never work around a challenge. Fetched text goes through the same `parseCollectionText` / `resolveCollectionRowsAction` path as a paste.
-
-**Acceptance criteria:**
-- [ ] A lone URL in the collection box routes to an import action, like the deck tool's
-- [ ] Only URLs the app builds for that source's own hosts; no redirect following
-- [ ] Blocked or challenged source falls back to the paste instructions and trips the kill switch as `classifyShareResponse` decides
-- [ ] Uses the `import` rate-limit bucket
 
 ---
 
@@ -258,9 +237,57 @@ Hosted Auth is configured (T002, T025) but email deliverability is not. Supabase
 - [ ] Custom SMTP sends sign-in emails at a production rate
 - [ ] `NEXT_PUBLIC_SITE_URL` and the Google OAuth redirects updated for the domain
 
+### T034: Lazy rendering for large collections in the collection view
+
+**Priority:** LOW | **Area:** Frontend / Performance | **Status:** Tabled (owner, 2026-09-21), revisit when real collections grow
+
+`/collection` renders every card in every open group. Images are already lazy (`CardImage` uses native lazy loading), so the cost is DOM and React work: about ten elements per card. A 729-card collection loads in ~0.6 s on phone and desktop and filters instantly. At ~10,000 cards that becomes ~100,000 elements rebuilt on every search keystroke or toggle; `useDeferredValue` keeps typing responsive, but results would lag.
+
+**Files:**
+- `apps/web/src/components/collection/collection-view.tsx`: the groups and the filter memo
+- `apps/web/src/components/cards/pocket-grid.tsx`: the grid each group renders
+- `packages/core/src/collection/index.ts`: filter rules, which run on data and stay as they are
+
+**Options, cheapest first** (discussed 2026-09-21):
+1. `content-visibility: auto` on each group or row. One CSS rule; the browser skips layout and paint off-screen, and find-in-page, zoom and links keep working. It doesn't reduce React's render work, so filter changes on a huge collection stay slow.
+2. Render the first N cards per group (around 60) with a "Show N more" button, only for groups over a threshold (around 100). Bounded work at any size, and counts stay exact because filtering runs on data. Costs one tap per big group, and find-in-page only sees what's shown.
+3. Virtualise the grid (e.g. TanStack Virtual). Handles 30k cards, but the container-query columns (3 to 6 across) must be measured and re-measured, collapsible headers need one virtual list covering headers and rows, find-in-page breaks, and zoom triggers unmount when their row leaves the buffer.
+
+Recommendation: 1 first, 2 when a real collection needs it, 3 only if 2 isn't enough. Constants for N and the threshold go at the top of the file (coding policy).
+
+**Acceptance criteria:**
+- [ ] Measure first: a synthetic 10,000-card browser collection from the local catalog. Time the initial load, a search keystroke and a colour toggle, before and after.
+- [ ] Apply option 1, and option 2 if the numbers call for it
+- [ ] Filter counts stay exact, and collapsing a group still works
+- [ ] `e2e/collection.spec.ts` still passes
+
 ---
 
 ## Data Pipeline
+
+### T035: Deck aggregation pipeline and card graph
+
+**Priority:** HIGH | **Area:** Backend / Data | **Status:** Shelved 2026-09-21, waiting for a backend owner
+
+The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md). The corpus moves from JSONL on X:
+into Postgres. Complete user decks become a source. Aggregation recomputes only the commanders whose decks changed.
+Sparse card-pair tables feed a new "deck affinity" score, EDHREC commander pages serve as a prior and a benchmark,
+and every commander is crawled rather than the top 50. It is split into 11 slices, each one PR.
+
+**Owner decisions it rests on (2026-09-21):**
+- User decks count only when complete: 100 cards and legal. `save_deck` today flags on per-card legality alone.
+- All data lives in Postgres. The legal team consented to using all publicly facing data, EDHREC and MTGGoldfish
+  included. The crawler guardrails in the plan (robots.txt, honest User-Agent, stop on a block) still apply.
+- Collections stay one per account, and win-condition analysis waits.
+
+**Supersedes when started:** T010 (becomes slice 10), T020 (slices 5–8), T031 (slice 11 automates it). Slice 1
+rewrites the CLAUDE.md data-source and storage rules, which still describe the old constraints.
+
+**Acceptance criteria:**
+- [ ] A backend owner reviews the plan and confirms or changes the slice order
+- [ ] Slices 1–11 as listed in the plan
+
+---
 
 ### T009: Always-on commander request consumer
 
@@ -382,19 +409,6 @@ Collection RLS policies have no pgTAP tests. Deck RLS has extensive tests in `su
 
 ## Future / Lower Priority
 
-### T016: Deck export
-
-**Priority:** LOW | **Area:** Frontend | **Status:** Not started
-
-Export deck as text, CSV, or other formats.
-
-**Acceptance criteria:**
-- [ ] Text export (decklist format)
-- [ ] CSV export (with set codes, quantities)
-- [ ] Copy-to-clipboard
-
----
-
 ### T017: Favorites
 
 **Priority:** LOW | **Area:** Frontend / Backend | **Status:** Not started
@@ -418,26 +432,6 @@ Import preconstructed deck lists. Needs MTGJSON license verification first.
 - [ ] Verify MTGJSON license allows redistribution
 - [ ] Import precon data
 - [ ] Map precon cards to oracle cards
-
----
-
-### T019: Admin pages (tag kill switch UI, sync status dashboard)
-
-**Priority:** LOW | **Area:** Frontend | **Status:** Not started (admin shell exists)
-
-Tag kill switch works via SQL but has no UI. Sync status is only in `sync_runs` table.
-
-**Since PR #47:** `/admin` exists as a React Admin app with platform-admin guards (proxy, page, API) and a users resource only. Both pages here become new resources in it rather than a separate area — see `apps/web/AGENTS.md` for the admin data flow.
-
-**Files:**
-- `apps/web/src/components/admin/admin-app.tsx` — register new resources
-- `apps/web/src/components/admin/data-provider.ts` — admin data flow
-- `apps/web/src/components/admin/users.tsx` — the existing resource, as the pattern
-
-**Acceptance criteria:**
-- [ ] Tag kill switch page (list tags, toggle disabled)
-- [ ] Sync status dashboard (recent runs, metrics, errors)
-- [ ] Admin-only access through the existing platform-admin guards and security-definer functions
 
 ---
 
@@ -514,6 +508,9 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
 
+- **T026 — Collection import from a share link.** Closed 2026-09-21 for Archidekt. A lone link to a public Archidekt collection in `/collection/import` downloads it through Archidekt's own export endpoint (CSV with Scryfall ids, 2,500 rows a page, a second apart, four pages per server call) and imports it like an uploaded file; a 4,651-row collection took about 30 s end to end locally. ManaBox, Moxfield and TCGplayer links get a message saying how to export from that app: ManaBox and TCGplayer publish no share-link format, and Moxfield's API needs an account. **Open:** if the owner has a real ManaBox or TCGplayer share link, it can be looked at and added as a second source behind the same action. **Owner check:** a large collection is several requests to Archidekt (spaced a second apart, capped at 20), which departs from the "one request per user action" wording in CLAUDE.md's Hard constraints.
+- **T019 — Admin pages (tag kill switch, sync status).** Closed 2026-09-21. `/admin/tags` lists every tag with its card count, specificity and whether recommendations use it, filters to switched-off or functional tags, and switches a tag off with a reason (`admin_set_tag_disabled`, audited). `/admin/sync-runs` shows each job's latest run and the full history with row counts, duration, metrics and errors (`admin_list_sync_runs`). Both are security-definer functions behind `require_platform_admin()`, reached through new `/api/admin` routes with the same guard; `supabase/tests/platform-admins.sql` grew to 53 checks and `e2e/admin.spec.ts` covers both pages.
+- **T016 — Deck export.** Closed 2026-09-21. Every saved deck page (owner, or anyone while it is public) has Copy decklist, Download text and Download CSV. The text is the same Commander/Deck shape the tool reopens a deck in (`decklistText`, `@mtg/core/parse`). The CSV adds the set code and collector number of the printing the page shows, found from the Scryfall id in the image URL; about 6% of cards have no matching English printing and export by name alone. Its Board column lets the app's own CSV import put the commander back. Downloads go through `/decks/[commander]/[code]/export`, which uses the deck page's loader, so a private deck 404s for everyone but its owner.
 - **T011 — Monitor database growth.** Closed 2026-09-21: hosted moved to Supabase Pro with 8 GB, so the 500 MB ceiling this watched for is gone (416 MB at the upgrade). One leftover from PR #62: once `20260921000200_english_printings_only.sql` is on hosted, `vacuum full public.printings;` (superuser) returns ~120 MB. No longer urgent, still tidy.
 - **T023 — collections.maxEntries limit review.** Closed 2026-09-21: the worry was six maxed accounts (~23 MB each) filling the free tier. On Pro's 8 GB the 100,000 limit stays.
 

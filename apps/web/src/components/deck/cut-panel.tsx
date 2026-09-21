@@ -35,7 +35,7 @@ export function CutPanel({
       {suggestions.length === 0 ? (
         <p className="text-sm">Nothing stands out to cut. Open Your deck to compare replacements for any card.</p>
       ) : (
-        <PocketGrid
+        <PocketGrid zoomable
           label="Cards to cut"
           onSelect={(card: CardSummary) => onSelectCard(card.id)}
           items={suggestions.map((s) => ({

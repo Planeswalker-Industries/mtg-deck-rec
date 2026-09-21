@@ -4,18 +4,29 @@ import { useState, type ComponentProps } from "react";
 import { RotateCcw } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
 import { CardImage } from "./card-image";
+import { ZoomableCard } from "./card-zoom";
 
-/** Card image with a front/back toggle for double-faced cards; plain image otherwise. */
+/**
+ * Card image with a front/back toggle for double-faced cards; plain image otherwise. `zoomable` lets it be enlarged
+ * by hover or tap, on whichever face is showing.
+ */
 export function FlippableCardImage({
   card,
+  zoomable = false,
   ...imageProps
-}: { card: CardSummary } & Omit<ComponentProps<typeof CardImage>, "card" | "face">) {
+}: { card: CardSummary; zoomable?: boolean } & Omit<ComponentProps<typeof CardImage>, "card" | "face">) {
   const [face, setFace] = useState<"front" | "back">("front");
   const hasBack = Boolean(card.images?.back);
 
   return (
     <>
-      <CardImage card={card} face={face} {...imageProps} />
+      {zoomable ? (
+        <ZoomableCard card={card} face={face}>
+          <CardImage card={card} face={face} {...imageProps} />
+        </ZoomableCard>
+      ) : (
+        <CardImage card={card} face={face} {...imageProps} />
+      )}
       {hasBack && (
         <button
           type="button"

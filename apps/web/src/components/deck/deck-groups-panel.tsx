@@ -73,7 +73,7 @@ export function DeckGroupsPanel({
             {groupHeading(group.label)}{" "}
             <span className="font-sans text-sm font-normal text-muted-foreground tabular-nums">{group.count}</span>
           </h3>
-          <PocketGrid
+          <PocketGrid zoomable
             label={groupHeading(group.label)}
             onSelect={(card: CardSummary) => onSelectCard(card.id)}
             items={group.entries.map(({ card, quantity }) => ({

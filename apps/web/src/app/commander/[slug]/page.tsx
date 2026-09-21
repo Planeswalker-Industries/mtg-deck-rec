@@ -116,6 +116,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
             {cardCategoryLabel[group.category]}
           </h2>
           <PocketGrid
+            zoomable
             label={`Most played ${cardCategoryLabel[group.category].toLowerCase()}`}
             items={group.suggestions.map((s) => ({
               card: s.card,

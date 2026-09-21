@@ -1,4 +1,4 @@
-import type { CardId, CollectionTotals, ResolvedCollectionRow, SourceApp } from "@mtg/core/contract";
+import type { CardId, CollectionEntry, CollectionTotals, ResolvedCollectionRow, SourceApp } from "@mtg/core/contract";
 import type { createAuthClient } from "./auth";
 
 type AuthClient = Awaited<ReturnType<typeof createAuthClient>>;
@@ -77,6 +77,13 @@ export async function accountCollectionTotals(db: AuthClient): Promise<Collectio
   if (error) throw new Error(`Loading collection totals failed: ${error.message}`);
   const totals = toTotals(data);
   return totals.uniqueCards > 0 ? totals : null;
+}
+
+/** The signed-in user's collection, one entry per card (copies summed across printings). */
+export async function accountCollectionEntries(db: AuthClient): Promise<CollectionEntry[]> {
+  const { data, error } = await db.rpc("my_collection_entries");
+  if (error) throw new Error(`Loading the collection failed: ${error.message}`);
+  return (data ?? []) as unknown as CollectionEntry[];
 }
 
 export async function accountOwnedCardIds(db: AuthClient): Promise<CardId[]> {

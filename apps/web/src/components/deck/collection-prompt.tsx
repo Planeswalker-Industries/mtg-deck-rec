@@ -68,7 +68,7 @@ export function CollectionPrompt() {
         Import your collection and the tool will suggest cards you already own, instead of ones you&apos;d have to buy.
       </p>
       <Link
-        href="/collection"
+        href="/collection/import"
         className="mt-3 inline-block text-sm font-bold text-primary underline-offset-4 hover:underline"
       >
         Import your collection

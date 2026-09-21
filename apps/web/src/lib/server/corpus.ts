@@ -11,7 +11,7 @@ import {
   type CorpusSource,
 } from "@mtg/core/scoring";
 import { colorsToMask } from "@mtg/core/search";
-import { fetchCardDocuments, fetchCommanderCardDocuments, fromIndex } from "./search-index";
+import { fromIndex } from "./search-index";
 import type { PublicClient } from "./supabase";
 
 const DEFAULT_SETTINGS = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100, partnerPoolWeight: 0.25 };
@@ -204,8 +204,8 @@ async function factsFromIndex(
 ): Promise<{ global: Map<number, GlobalRate>; cardFacts: Map<number, CardFacts>; commanderDecks: Map<number, number> } | null> {
   const loaded = await fromIndex("Card play rates", async (index) => {
     const [cards, commanderCards] = await Promise.all([
-      fetchCardDocuments(index, ids),
-      fetchCommanderCardDocuments(index, { keyIds: corpus.sourceKeyIds, cardIds: ids }),
+      index.cardsByID(ids),
+      index.commanderCardRates({ keyIds: corpus.sourceKeyIds, cardIds: ids }),
     ]);
     return { cards, commanderCards };
   });

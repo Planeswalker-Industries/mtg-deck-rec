@@ -6,6 +6,8 @@ import { AdminLayout } from "./admin-layout";
 import { adminTheme } from "./theme";
 import { createAdminAuthProvider } from "./auth-provider";
 import { adminDataProvider } from "./data-provider";
+import { SyncRunList, SyncRunShow } from "./sync-runs";
+import { TagEdit, TagList } from "./tags";
 import { PlatformAdminList, UserEdit, UserList, UserShow } from "./users";
 
 /**
@@ -53,6 +55,16 @@ export default function AdminApp({ userId, email }: AdminAppProps) {
         {/* The same records, filtered to the people who can reach this area. Read-only: granting and revoking is an
             edit to the user, so there is one place where it happens. */}
         <Resource name="platform-admins" list={PlatformAdminList} options={{ label: "Platform admins" }} />
+        {/* The kill switch for Tagger tags: switching one off takes it out of recommendations. */}
+        <Resource
+          name="tags"
+          list={TagList}
+          edit={TagEdit}
+          recordRepresentation={(record) => record.label ?? record.id}
+          options={{ label: "Tags" }}
+        />
+        {/* The worker's run history, read-only. */}
+        <Resource name="sync-runs" list={SyncRunList} show={SyncRunShow} options={{ label: "Sync runs" }} />
       </Admin>
     </BrowserRouter>
   );

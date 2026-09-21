@@ -1,7 +1,7 @@
 /**
- * Checks that the search index is only ever an optimisation: with no index, a slow index or a broken one, every read
- * path still answers, out of Postgres. Nothing here touches a database or a search server — both are faked, so this
- * runs in CI where neither exists.
+ * Checks that the search index is only ever an optimisation: with no search API, a slow one or a broken one, every
+ * read path still answers, out of Postgres. Nothing here touches a database or a search service — both are faked, so
+ * this runs in CI where neither exists.
  *
  * Usage: yarn workspace @mtg/web tsx scripts/search-index-check.ts
  */
@@ -67,15 +67,17 @@ function fakeDb() {
   };
 }
 
-/** A search client whose every call fails the way a down or overloaded server would. */
+/** A search client whose every call fails the way a down or overloaded service would. */
 function brokenIndex(): SearchClient {
   const fail = () => Promise.reject(new Error("connect ECONNREFUSED"));
   return {
-    search: fail,
-    multiSearch: fail,
-    retrieve: fail,
     health: fail,
-    importDocuments: fail,
+    cardsByID: fail,
+    searchCards: fail,
+    pageExists: fail,
+    allTags: fail,
+    commanderCardRates: fail,
+    commanderCardsTop: fail,
   } as unknown as SearchClient;
 }
 
@@ -114,9 +116,7 @@ async function main() {
   }
 
   // 3. A working index answers, and the answer is distinguishable from a fallback.
-  setSearchIndexForTesting({
-    multiSearch: async () => [{ found: 0, hits: [] }],
-  } as unknown as SearchClient);
+  setSearchIndexForTesting({ cardsByID: async () => [] } as unknown as SearchClient);
   {
     const db = fakeDb();
     const cards = await fetchCardsById(db.client, [1]);

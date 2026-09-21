@@ -983,6 +983,30 @@ export type Database = {
         }
         Relationships: []
       }
+      sets: {
+        Row: {
+          code: string
+          name: string
+          released_at: string | null
+          set_type: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          name: string
+          released_at?: string | null
+          set_type: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          name?: string
+          released_at?: string | null
+          set_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       share_import_sources: {
         Row: {
           disabled_at: string | null
@@ -1302,6 +1326,58 @@ export type Database = {
     }
     Functions: {
       admin_delete_user: { Args: { p_user_id: string }; Returns: undefined }
+      admin_list_sync_runs: {
+        Args: {
+          p_ascending?: boolean
+          p_job?: string
+          p_limit?: number
+          p_offset?: number
+          p_run_id?: number
+          p_status?: string
+        }
+        Returns: {
+          error: string
+          finished_at: string
+          heartbeat_at: string
+          id: number
+          job: string
+          metrics: Json
+          rows_changed: number
+          rows_read: number
+          source_updated_at: string
+          source_uri: string
+          started_at: string
+          status: string
+          total_count: number
+          worker_id: string
+        }[]
+      }
+      admin_list_tags: {
+        Args: {
+          p_ascending?: boolean
+          p_disabled_only?: boolean
+          p_functional_only?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+          p_sort?: string
+          p_tag_id?: string
+        }
+        Returns: {
+          card_count: number
+          description: string
+          disabled: boolean
+          disabled_at: string
+          disabled_by_email: string
+          disabled_reason: string
+          id: string
+          idf: number
+          is_functional: boolean
+          label: string
+          slug: string
+          total_count: number
+        }[]
+      }
       admin_list_users: {
         Args: {
           p_admins_only?: boolean
@@ -1334,6 +1410,10 @@ export type Database = {
       }
       admin_set_platform_admin: {
         Args: { p_is_admin: boolean; p_note?: string; p_user_id: string }
+        Returns: undefined
+      }
+      admin_set_tag_disabled: {
+        Args: { p_disabled: boolean; p_reason?: string; p_tag_id: string }
         Returns: undefined
       }
       admin_set_user_banned: {
@@ -1454,6 +1534,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      my_collection_entries: { Args: never; Returns: Json }
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
       new_deck_code: { Args: never; Returns: string }
@@ -1546,6 +1627,7 @@ export type Database = {
           lang: string
           printing_id: string
           row_no: number
+          set_code: string
           via: string
         }[]
       }

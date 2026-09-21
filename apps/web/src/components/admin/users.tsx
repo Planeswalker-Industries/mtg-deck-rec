@@ -1,7 +1,5 @@
 "use client";
 
-import { Box, Stack } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import {
   BooleanInput,
   Datagrid,
@@ -21,7 +19,7 @@ import {
   useRecordContext,
 } from "react-admin";
 import { MAX_ADMIN_NOTE_CHARS, MAX_DISPLAY_NAME_CHARS, type AdminUser } from "@/lib/admin/types";
-import { ADMIN_TOKENS } from "./theme";
+import { Pill, Pills } from "./pill";
 
 /**
  * User management. The list is the whole account table; the editor exposes exactly the three things an admin can
@@ -37,54 +35,27 @@ const UserTitle = () => {
 };
 
 /**
- * Status as pills, in the site's own shape: a rounded outline that is quiet until it has something to say.
- *
- * One column rather than an Admin column and a Banned column, because both are false for almost every row and two
- * columns of crosses is 50 rows of noise to carry two facts. The pill is only drawn when it is true, and it says
- * what it means in words — colour alone would not.
+ * One Status column rather than an Admin column and a Banned column, because both are false for almost every row and
+ * two columns of crosses is 50 rows of noise to carry two facts.
  */
-const STATUS_PILL = {
-  display: "inline-flex",
-  alignItems: "center",
-  borderRadius: 999,
-  border: "1px solid",
-  px: 1,
-  py: 0.25,
-  fontSize: "0.6875rem",
-  fontWeight: 700,
-  lineHeight: 1.4,
-  whiteSpace: "nowrap",
-} as const;
-
 const StatusPills = () => {
   const record = useRecordContext<AdminUser>();
   if (!record) return null;
-  if (!record.isAdmin && !record.banned) {
-    return (
-      <Box component="span" sx={{ color: ADMIN_TOKENS.mutedForeground }} aria-label="No flags">
-        —
-      </Box>
-    );
-  }
   return (
-    <Stack direction="row" spacing={0.5} component="span">
-      {record.isAdmin && (
-        <Box
-          component="span"
-          sx={{ ...STATUS_PILL, color: ADMIN_TOKENS.primary, borderColor: alpha(ADMIN_TOKENS.primary, 0.45), backgroundColor: alpha(ADMIN_TOKENS.primary, 0.1) }}
-        >
-          Admin
-        </Box>
-      )}
-      {record.banned && (
-        <Box
-          component="span"
-          sx={{ ...STATUS_PILL, color: ADMIN_TOKENS.cut, borderColor: alpha(ADMIN_TOKENS.cut, 0.45), backgroundColor: alpha(ADMIN_TOKENS.cut, 0.1) }}
-        >
-          Banned
-        </Box>
-      )}
-    </Stack>
+    <Pills emptyLabel="No flags">
+      {[
+        record.isAdmin && (
+          <Pill key="admin" tone="primary">
+            Admin
+          </Pill>
+        ),
+        record.banned && (
+          <Pill key="banned" tone="cut">
+            Banned
+          </Pill>
+        ),
+      ]}
+    </Pills>
   );
 };
 

@@ -5,9 +5,10 @@
  * types, so a field can't be added on one side and missed on the other. It deliberately holds no I/O — the mappers
  * beside it are pure, and the client is a separate file — so the whole shape can be unit-tested without a server.
  *
- * Why an index at all: the hosted database is a 500 MB free tier with a 3 s statement timeout on the `anon` role, and
- * the highest-volume reads (fetch these 400 cards, rank these names, does this slug exist) are document lookups that
- * cost Postgres a heap visit each. See docs/roadmap/typesense-plan.md.
+ * Why an index at all: the highest-volume reads (fetch these 400 cards, rank these names, does this slug exist) are
+ * document lookups, and Postgres charges a heap visit for each one out of a 92 MB table. That holds on any plan; the
+ * sharper version of the argument — a 3 s statement timeout on the `anon` role against 224 MB of `shared_buffers` —
+ * was measured on the Free tier the project has since left. See docs/roadmap/typesense-plan.md.
  */
 
 export const CARDS_COLLECTION = "cards";

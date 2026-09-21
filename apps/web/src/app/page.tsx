@@ -197,7 +197,7 @@ export default function Home() {
                   Paste a decklist
                 </Link>
                 <Link
-                  href="/collection"
+                  href="/collection/import"
                   className={buttonVariants({
                     variant: "outline",
                     size: "lg",

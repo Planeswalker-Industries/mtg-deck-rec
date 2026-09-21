@@ -48,7 +48,7 @@ export function AddPanel({ state }: { state: Async<AddResult> }) {
             {cardCategoryLabel[group.category]}{" "}
             <span className="font-sans text-sm font-normal text-muted-foreground tabular-nums">{group.suggestions.length}</span>
           </h3>
-          <PocketGrid
+          <PocketGrid zoomable
             label={cardCategoryLabel[group.category]}
             items={group.suggestions.map((s) => ({
               card: s.card,

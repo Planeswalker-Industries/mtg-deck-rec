@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import type { CollectionTotals, ResolvedCollectionRow, UnresolvedCollectionRow } from "@mtg/core/contract";
+import { appendCsvPage, collectionLink } from "@mtg/core/parse";
+import { importCollectionFromLinkAction } from "@/app/collection/actions";
 import { FileDrop } from "./file-drop";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -10,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Textarea } from "@/components/ui/textarea";
 import { getApis } from "@/lib/api/client";
+import { COLLECTION_MAX_IMPORT_ROWS } from "@/lib/constants";
 import {
   clearCollection,
   collectionTotals,
@@ -22,7 +25,6 @@ import { useCollectionParser } from "./use-collection-parser";
 
 /** The server accepts at most this many rows per call (it chunks matching internally under PostgREST's row cap). */
 const ROWS_PER_CALL = 2_000;
-const MAX_ROWS = 50_000;
 const UNMATCHED_SHOWN = 50;
 
 const PLACEHOLDER = `4 Sol Ring (C21) 263
@@ -31,6 +33,10 @@ const PLACEHOLDER = `4 Sol Ring (C21) 263
 …`;
 
 const count = (n: number) => n.toLocaleString("en-US");
+
+/** Data rows in downloaded CSV so far, for the progress bar: every line but the header. */
+const csvDataRows = (csv: string) => Math.max(0, csv.split(/\r?\n/).filter((line) => line !== "").length - 1);
+
 const day = (ms: number) => new Date(ms).toLocaleDateString("en-US", { month: "long", day: "numeric" });
 
 interface Unmatched {
@@ -65,9 +71,16 @@ export function CollectionTool() {
     const id = ++importRun.current;
     const current = () => id === importRun.current;
     setProblem(null);
+    // A lone link is fetched first; what comes back is CSV and takes the same path as an uploaded file.
+    let exported = text;
+    if (collectionLink(text)) {
+      const downloaded = await downloadFromLink(text.trim(), current);
+      if (downloaded === null) return;
+      exported = downloaded;
+    }
     // Parsing a large export is slow enough to say so: the worker keeps the page responsive, not instant.
     setProgress({ label: "Reading the export", done: 0, total: 1 });
-    const rows = await parse(text);
+    const rows = await parse(exported);
     if (!current()) return;
     if (rows.length === 0) {
       setProgress(null);
@@ -77,9 +90,9 @@ export function CollectionTool() {
           : `No cards found in ${fileName}. It should be a collection export from ManaBox, Moxfield, Archidekt or TCGplayer.`,
       );
     }
-    if (rows.length > MAX_ROWS) {
+    if (rows.length > COLLECTION_MAX_IMPORT_ROWS) {
       setProgress(null);
-      return importFailed(`That's ${count(rows.length)} lines. Collections can have up to ${count(MAX_ROWS)} lines for now.`);
+      return importFailed(`That's ${count(rows.length)} lines. Collections can have up to ${count(COLLECTION_MAX_IMPORT_ROWS)} lines for now.`);
     }
 
     const resolved: ResolvedCollectionRow[] = [];
@@ -114,6 +127,30 @@ export function CollectionTool() {
       setText("");
       setFileName(null);
     }
+  }
+
+  /**
+   * Downloads a shared collection page by page. Each call to the server fetches a few export pages and says which to
+   * ask for next. Returns the CSV, or null after reporting why it couldn't (or when a newer import took over).
+   */
+  async function downloadFromLink(url: string, current: () => boolean): Promise<string | null> {
+    let csv = "";
+    let page: number | null = 1;
+    setProgress({ label: "Downloading the collection", done: 0, total: 0 });
+    while (page !== null) {
+      const result = await importCollectionFromLinkAction({ url, page });
+      if (!current()) return null;
+      if (!result.ok) {
+        setProgress(null);
+        importFailed(result.error.message);
+        return null;
+      }
+      csv = appendCsvPage(csv, result.data.csv);
+      const done = csvDataRows(csv);
+      setProgress({ label: "Downloading from Archidekt", done, total: Math.max(done, result.data.totalRows ?? done) });
+      page = result.data.nextPage;
+    }
+    return csv;
   }
 
   /** Replaces the account's collection with the import. Returns whether it saved. */
@@ -174,13 +211,14 @@ export function CollectionTool() {
   }
 
   const importing = progress !== null;
+  const isLink = collectionLink(text) !== null;
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">My collection</h1>
+        <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">Import your collection</h1>
         <p className="mt-2 max-w-prose text-muted-foreground">
-          Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, and the deck tool can suggest only cards you own.
+          Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, or paste a link to a public Archidekt collection, and the deck tool can suggest only cards you own.
           {source.kind !== "loading" &&
             (signedIn ? (
               " It's saved to your account."
@@ -188,7 +226,7 @@ export function CollectionTool() {
               <>
                 {" "}
                 It stays in this browser for 7 days.{" "}
-                <Link href="/sign-in?next=/collection" className={LINK}>
+                <Link href="/sign-in?next=/collection/import" className={LINK}>
                   Sign in
                 </Link>{" "}
                 to save it to your account instead.
@@ -249,20 +287,27 @@ export function CollectionTool() {
           onChange={(e) => {
             setText(e.target.value);
             setFileName(null);
+            // The last problem was about the last text; leaving it up makes the new text look wrong too.
+            setProblem(null);
           }}
           placeholder={PLACEHOLDER}
+          aria-describedby="collection-text-hint"
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
           disabled={importing}
           className="bg-sleeve text-base sm:text-sm"
         />
+        <p id="collection-text-hint" className="text-sm text-muted-foreground">
+          Or paste a link to a public Archidekt collection, like https://archidekt.com/collection/v2/123456.
+        </p>
         {progress && (
           <div className="flex flex-col gap-1.5" aria-live="polite">
             <p className="text-sm font-bold tabular-nums">
-              {progress.label}: {count(progress.done)} of {count(progress.total)}
+              {/* Before a download says how large it is, there is nothing to count against. */}
+              {progress.total > 0 ? `${progress.label}: ${count(progress.done)} of ${count(progress.total)}` : `${progress.label}…`}
             </p>
-            <ProgressBar value={Math.round((progress.done / progress.total) * 100)} label="Collection import" />
+            <ProgressBar value={progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0} label="Collection import" />
           </div>
         )}
         {problem && (
@@ -273,7 +318,7 @@ export function CollectionTool() {
         )}
         <div>
           <Button type="submit" size="lg" disabled={!text.trim() || importing || source.kind === "loading"}>
-            {importing ? "Importing…" : hasCollection ? "Replace collection" : "Import collection"}
+            {importing ? "Importing…" : isLink ? "Import from link" : hasCollection ? "Replace collection" : "Import collection"}
           </Button>
         </div>
       </form>
@@ -326,7 +371,10 @@ function CollectionSummary({
         </details>
       )}
       <div className="flex flex-wrap gap-2">
-        <Link href="/deck" className={buttonVariants({ size: "lg" })}>
+        <Link href="/collection" className={buttonVariants({ size: "lg" })}>
+          Browse your collection
+        </Link>
+        <Link href="/deck" className={buttonVariants({ size: "lg", variant: "outline" })}>
           Use it in the deck tool
         </Link>
         <Button type="button" size="lg" variant="outline" onClick={onClear}>
