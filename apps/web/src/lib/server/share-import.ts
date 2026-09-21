@@ -32,7 +32,20 @@ const isAllowedHost = (source: ShareSource, url: URL) =>
  */
 export async function fetchShareLink(
   db: PublicClient,
-  { source, url, expects, what }: { source: ShareSource; url: string; expects: "json" | "html" | "text"; what: "deck" | "collection" },
+  {
+    source,
+    url,
+    expects,
+    what,
+    json,
+  }: {
+    source: ShareSource;
+    url: string;
+    expects: "json" | "html" | "text";
+    what: "deck" | "collection";
+    /** Sent as a JSON POST body. Only for endpoints the source's own site calls the same way (Archidekt's export). */
+    json?: unknown;
+  },
 ): Promise<ShareFetchResult> {
   const { name } = SOURCES[source];
   const target = new URL(url);
@@ -48,7 +61,13 @@ export async function fetchShareLink(
   let body: string;
   try {
     res = await fetch(target, {
-      headers: { "User-Agent": USER_AGENT, Accept: expects === "json" ? "application/json" : "text/html,text/plain;q=0.9,*/*;q=0.5" },
+      method: json === undefined ? "GET" : "POST",
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: expects === "json" ? "application/json" : "text/html,text/plain;q=0.9,*/*;q=0.5",
+        ...(json === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(json === undefined ? {} : { body: JSON.stringify(json) }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: "no-store",
       redirect: "manual",

@@ -38,6 +38,8 @@ describe('classifyShareResponse', () => {
 
   it('reports missing lists, rate limits and outages', () => {
     expect(classifyShareResponse(response({ status: 404 }))).toBe('not_found');
+    expect(classifyShareResponse(response({ status: 400, body: '{"error":"No collection found."}' }))).toBe('not_found');
+    expect(classifyShareResponse(response({ status: 400, headerValues: { 'content-type': 'text/html' }, body: '<html>Bad request</html>' }))).toBe('unavailable');
     expect(classifyShareResponse(response({ status: 429 }))).toBe('rate_limited');
     expect(classifyShareResponse(response({ status: 502, headerValues: { 'content-type': 'text/html' }, body: 'Bad gateway' }))).toBe('unavailable');
   });

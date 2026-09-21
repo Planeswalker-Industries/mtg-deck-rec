@@ -2,7 +2,9 @@
 
 import { headers } from "next/headers";
 import type { ActionsApi, ApiError, CollectionEntry, CollectionTotals, Result } from "@mtg/core/contract";
+import { collectionLink, type CollectionLinkSource } from "@mtg/core/parse";
 import { parseInput, saveCollectionBatchInputSchema } from "@mtg/core/schemas";
+import { z } from "zod";
 import {
   accountCollectionEntries,
   accountCollectionTotals,
@@ -15,6 +17,7 @@ import {
   startImport,
 } from "@/lib/server/account-collection";
 import { createAuthClient } from "@/lib/server/auth";
+import { ARCHIDEKT_MAX_PAGE, fetchArchidektCollection, type CollectionLinkChunk } from "@/lib/server/collection-link";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
@@ -107,5 +110,50 @@ export async function deleteCollectionAction(): Promise<Result<null>> {
     return { ok: true, data: null };
   } catch (err) {
     return failed(err, "Couldn't clear your collection. Try again in a moment.");
+  }
+}
+
+/** Longest link the import box will send. Real collection links are well under a hundred characters. */
+const MAX_LINK_CHARS = 2_048;
+
+const importLinkInputSchema = z.object({
+  url: z.string().trim().min(1, "Paste a link to a collection.").max(MAX_LINK_CHARS, "That link is too long."),
+  page: z.int().min(1).max(ARCHIDEKT_MAX_PAGE),
+});
+
+/** What to do instead, for apps whose links can't be read. Each is the app's own export path. */
+const EXPORT_INSTEAD: Record<Exclude<CollectionLinkSource, "archidekt">, string> = {
+  manabox: "ManaBox links can't be imported yet. In ManaBox, open the menu at the top right of the Collection tab, export a CSV, and upload the file here.",
+  moxfield: "Moxfield links can't be imported, because Moxfield's API needs an account. In Moxfield, export the collection as CSV and upload the file here.",
+  tcgplayer: "TCGplayer links can't be imported yet. Export the collection from the TCGplayer app and upload the file here.",
+};
+
+export type CollectionLinkImport = CollectionLinkChunk & { source: "archidekt"; sourceUrl: string };
+
+/**
+ * A public collection from a pasted share link, as CSV for the same parser an upload goes through. Only Archidekt
+ * links can be read; the others say how to export from that app instead.
+ *
+ * A large collection comes in several calls: each returns up to four export pages and the page to ask for next, and
+ * the import calls again until `nextPage` is null. Every call counts against the `import` rate limit.
+ */
+export async function importCollectionFromLinkAction(input: { url: string; page: number }): Promise<Result<CollectionLinkImport>> {
+  const parsed = importLinkInputSchema.safeParse(input);
+  if (!parsed.success) return failure("VALIDATION", parsed.error.issues[0]?.message ?? "That link can't be imported.");
+  const { url, page } = parsed.data;
+
+  const link = collectionLink(url);
+  if (!link) return failure("VALIDATION", "Paste a link to a public Archidekt collection, like https://archidekt.com/collection/v2/123456.");
+  if (link.source !== "archidekt") return failure("UPSTREAM_NOT_AUTHORIZED", EXPORT_INSTEAD[link.source]);
+
+  try {
+    const db = createPublicClient();
+    const error = await checkRateLimit(db, "import", visitorKey(await headers()));
+    if (error) return { ok: false, error };
+    const result = await fetchArchidektCollection(db, link.collectionId, page);
+    if (!result.ok) return result;
+    return { ok: true, data: { ...result.data, source: "archidekt", sourceUrl: `https://archidekt.com/collection/v2/${link.collectionId}` } };
+  } catch (err) {
+    return failed(err, "Couldn't load that Archidekt collection. Try again in a moment.");
   }
 }

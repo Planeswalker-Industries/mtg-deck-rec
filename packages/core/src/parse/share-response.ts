@@ -46,6 +46,9 @@ export function classifyShareResponse(facts: ShareResponseFacts): ShareResponseK
 
   if (BLOCK_STATUSES.has(status)) return unusualFormat ? 'bot_blocked' : 'not_public';
   if (status === 404 || status === 410) return 'not_found';
+  // A 400 in the API's own JSON is the API refusing that id: Archidekt's collection export answers an unknown
+  // collection with 400 {"error":"No collection found."}. Anything else at 400 stays an outage, not a missing list.
+  if (status === 400 && expects === 'json' && !unusualFormat) return 'not_found';
   if (status === 429) return 'rate_limited';
   if (status >= 200 && status < 300) return 'ok';
   return 'unavailable';

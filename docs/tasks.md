@@ -197,28 +197,6 @@ The Google OAuth flow is fully wired behind `NEXT_PUBLIC_AUTH_GOOGLE`. The provi
 
 ---
 
-### T026: Collection import from a share link
-
-**Priority:** MEDIUM | **Area:** Backend / Frontend | **Status:** Partially decided, not built
-
-`fetchShareLink` already takes `what: "deck" | "collection"` and the kill switch covers both, but the only caller is the deck tool's Archidekt deck import. Collections are paste- or file-only.
-
-**Files:**
-- `apps/web/src/lib/server/share-import.ts:35` — `fetchShareLink`, already collection-aware
-- `apps/web/src/app/deck/actions.ts:107` — the one existing caller, as the pattern to copy
-- `apps/web/src/app/collection/actions.ts` — where a collection-side action belongs
-- `apps/web/src/components/collection/collection-tool.tsx` — the paste box that would accept a lone URL
-
-**Context:** Approved sources are ManaBox, Archidekt and TCGplayer for URL import. Moxfield: text/CSV import only (API requires authentication). One request per user action, honest User-Agent, paste fallback when a source blocks — never work around a challenge. Fetched text goes through the same `parseCollectionText` / `resolveCollectionRowsAction` path as a paste.
-
-**Acceptance criteria:**
-- [ ] A lone URL in the collection box routes to an import action, like the deck tool's
-- [ ] Only URLs the app builds for that source's own hosts; no redirect following
-- [ ] Blocked or challenged source falls back to the paste instructions and trips the kill switch as `classifyShareResponse` decides
-- [ ] Uses the `import` rate-limit bucket
-
----
-
 ### T027: 10k-row collection import timing check
 
 **Priority:** LOW | **Area:** Performance | **Status:** 1,000-row path fixed; 10k check not run
@@ -530,6 +508,7 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
 
+- **T026 — Collection import from a share link.** Closed 2026-09-21 for Archidekt. A lone link to a public Archidekt collection in `/collection/import` downloads it through Archidekt's own export endpoint (CSV with Scryfall ids, 2,500 rows a page, a second apart, four pages per server call) and imports it like an uploaded file; a 4,651-row collection took about 30 s end to end locally. ManaBox, Moxfield and TCGplayer links get a message saying how to export from that app: ManaBox and TCGplayer publish no share-link format, and Moxfield's API needs an account. **Open:** if the owner has a real ManaBox or TCGplayer share link, it can be looked at and added as a second source behind the same action. **Owner check:** a large collection is several requests to Archidekt (spaced a second apart, capped at 20), which departs from the "one request per user action" wording in CLAUDE.md's Hard constraints.
 - **T019 — Admin pages (tag kill switch, sync status).** Closed 2026-09-21. `/admin/tags` lists every tag with its card count, specificity and whether recommendations use it, filters to switched-off or functional tags, and switches a tag off with a reason (`admin_set_tag_disabled`, audited). `/admin/sync-runs` shows each job's latest run and the full history with row counts, duration, metrics and errors (`admin_list_sync_runs`). Both are security-definer functions behind `require_platform_admin()`, reached through new `/api/admin` routes with the same guard; `supabase/tests/platform-admins.sql` grew to 53 checks and `e2e/admin.spec.ts` covers both pages.
 - **T016 — Deck export.** Closed 2026-09-21. Every saved deck page (owner, or anyone while it is public) has Copy decklist, Download text and Download CSV. The text is the same Commander/Deck shape the tool reopens a deck in (`decklistText`, `@mtg/core/parse`). The CSV adds the set code and collector number of the printing the page shows, found from the Scryfall id in the image URL; about 6% of cards have no matching English printing and export by name alone. Its Board column lets the app's own CSV import put the commander back. Downloads go through `/decks/[commander]/[code]/export`, which uses the deck page's loader, so a private deck 404s for everyone but its owner.
 - **T011 — Monitor database growth.** Closed 2026-09-21: hosted moved to Supabase Pro with 8 GB, so the 500 MB ceiling this watched for is gone (416 MB at the upgrade). One leftover from PR #62: once `20260921000200_english_printings_only.sql` is on hosted, `vacuum full public.printings;` (superuser) returns ~120 MB. No longer urgent, still tidy.

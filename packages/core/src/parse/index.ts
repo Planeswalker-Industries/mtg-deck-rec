@@ -7,3 +7,4 @@ export * from './collection-csv';
 export * from './decklist-file';
 export * from './decklist-export';
 export * from './share-response';
+export * from './collection-link';
