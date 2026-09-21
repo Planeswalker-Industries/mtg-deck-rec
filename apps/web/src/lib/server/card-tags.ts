@@ -1,7 +1,7 @@
 import type { CardId, TagId, TagRef } from "@mtg/core/contract";
 import { tagRefsFromDocument } from "@mtg/core/search";
 import { retryOnTimeout } from "./retry-timeout";
-import { fetchCardDocuments, fromIndex, loadTagDocuments } from "./search-index";
+import { fromIndex, loadTagDocuments } from "./search-index";
 import type { PublicClient } from "./supabase";
 
 /**
@@ -24,7 +24,7 @@ export async function fetchCardTags(
   if (unique.length === 0) return [];
 
   const tags = await loadTagDocuments();
-  const indexed = tags ? await fromIndex("Card tags", (index) => fetchCardDocuments(index, unique)) : null;
+  const indexed = tags ? await fromIndex("Card tags", (index) => index.cardsByID(unique)) : null;
   if (indexed && tags) {
     return indexed.value.flatMap((doc) => {
       const refs = tagRefsFromDocument(doc, tags).map((t): TagRef => ({ id: t.id as TagId, slug: t.slug, label: t.label, depth: t.depth }));

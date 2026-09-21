@@ -1,6 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { CARDS_COLLECTION, COMMANDERS_COLLECTION } from "@mtg/core/search";
 import type { Database } from "@/lib/server/database.types";
 import { fromIndex } from "@/lib/server/search-index";
 import { createPublicClient } from "@/lib/server/supabase";
@@ -90,16 +89,7 @@ async function publicDeckExists(code: string): Promise<boolean> {
  */
 async function pageExists(section: "card" | "commander", slug: string): Promise<boolean> {
   if (SLUG.test(slug)) {
-    const collection = section === "card" ? CARDS_COLLECTION : COMMANDERS_COLLECTION;
-    const indexed = await fromIndex(`Checking ${section} page`, async (index) => {
-      const result = await index.search<{ slug: string }>(collection, {
-        q: "*",
-        filter_by: `slug:=${slug}`,
-        per_page: 1,
-        include_fields: "slug",
-      });
-      return (result.found ?? 0) > 0;
-    });
+    const indexed = await fromIndex(`Checking ${section} page`, (index) => index.pageExists(section, slug));
     if (indexed?.value === true) return true;
   }
 
@@ -113,8 +103,9 @@ async function pageExists(section: "card" | "commander", slug: string): Promise<
 }
 
 /**
- * The shape every slug the catalog generates has. Anything else skips the index and goes to the query, so no caller
- * input ever reaches a filter expression — the same care `search_cards` takes when it escapes a LIKE pattern.
+ * The shape every slug the catalog generates has. Anything else skips the index and goes to the query. The search
+ * API checks this too — no caller input should reach a filter expression — but the cheapest place to refuse a path
+ * that could never be a page is before the request is made.
  */
 const SLUG = /^[a-z0-9-]{1,120}$/;
 

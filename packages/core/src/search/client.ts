@@ -1,11 +1,15 @@
-import type { CollectionName, CollectionSchema } from "./documents";
+import type { CardDocument, CollectionSchema, CommanderCardDocument, TagDocument } from "./documents";
 
 /**
- * A small typed client for the Typesense REST API.
+ * Client for the search API (services/search-api), which is the only thing that talks to Typesense.
  *
- * Ours rather than the `typesense` package for the same reason `parse/csv.ts` is ours: we use six endpoints, the
- * wire format is JSON and JSONL, and `fetch` is everywhere both the app and the worker run. It also keeps
- * `@mtg/core` dependency-free, which matters because the contract package is imported into the browser bundle.
+ * Nothing here knows Typesense's REST API. The endpoints are shaped around the questions this project asks — "these
+ * 500 cards", "does this slug have a page", "the play rates for these keys and cards" — so chunking, paging and the
+ * search ranking live on the far side, in one place, instead of being rebuilt by every caller.
+ *
+ * Ours rather than a generated client for the same reason `parse/csv.ts` is ours: a dozen endpoints and a JSON wire
+ * format. It also keeps `@mtg/core` dependency-free, which matters because the contract package is imported into
+ * the browser bundle.
  *
  * Every call has a timeout. Reads never retry — the caller falls back to Postgres, which is always faster than
  * waiting twice. Writes never retry either: the queue the worker drains is the retry.
@@ -22,68 +26,47 @@ export class SearchError extends Error {
 }
 
 export interface SearchClientConfig {
+  /** The search API's base URL. */
   url: string;
-  apiKey: string;
-  /** Reads are on a request path with its own budget, so this is short on purpose. */
+  /** The read token for the app, or the admin token for the worker. */
+  token: string;
+  /** Reads sit on a request path with its own budget, so this is short on purpose. */
   timeoutMs?: number;
 }
 
-export interface SearchParams {
-  q: string;
-  query_by?: string;
-  query_by_weights?: string;
-  filter_by?: string;
-  sort_by?: string;
-  per_page?: number;
-  page?: number;
-  prefix?: string | boolean;
-  num_typos?: string | number;
-  include_fields?: string;
-  exclude_fields?: string;
-  infix?: string;
-  drop_tokens_threshold?: number;
-  typo_tokens_threshold?: number;
-}
-
-export interface SearchHit<T> {
-  document: T;
-  text_match?: number;
-}
-
-export interface SearchResponse<T> {
-  found: number;
-  out_of?: number;
-  hits?: SearchHit<T>[];
-}
-
-export interface ImportResult {
-  imported: number;
-  failures: { error: string; document?: string }[];
-}
-
 const DEFAULT_TIMEOUT_MS = 2_000;
-
-/** Typesense refuses a page bigger than this, so every multi-get chunks to it. */
-export const MAX_PER_PAGE = 250;
+/** Bulk imports and rebuilds are patient; they run after a sync has already committed. */
+const WRITE_TIMEOUT_MS = 120_000;
 
 export class SearchClient {
   private readonly base: string;
-  private readonly apiKey: string;
+  private readonly token: string;
   private readonly timeoutMs: number;
 
-  constructor({ url, apiKey, timeoutMs = DEFAULT_TIMEOUT_MS }: SearchClientConfig) {
+  constructor({ url, token, timeoutMs = DEFAULT_TIMEOUT_MS }: SearchClientConfig) {
     this.base = url.replace(/\/+$/, "");
-    this.apiKey = apiKey;
+    this.token = token;
     this.timeoutMs = timeoutMs;
   }
 
-  private async requestText(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<string> {
-    const { timeoutMs, ...rest } = init;
+  private async request<T>(
+    path: string,
+    { timeoutMs, body, method = "GET", contentType = "application/json" }: {
+      timeoutMs?: number;
+      body?: string;
+      method?: string;
+      contentType?: string;
+    } = {},
+  ): Promise<T> {
     let response: Response;
     try {
       response = await fetch(`${this.base}${path}`, {
-        ...rest,
-        headers: { "X-TYPESENSE-API-KEY": this.apiKey, ...(rest.headers ?? {}) },
+        method,
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          ...(body === undefined ? {} : { "content-type": contentType }),
+        },
+        ...(body === undefined ? {} : { body }),
         signal: AbortSignal.timeout(timeoutMs ?? this.timeoutMs),
         cache: "no-store",
       });
@@ -91,141 +74,124 @@ export class SearchClient {
       // A timeout and a refused connection are the same answer to the caller: use Postgres.
       throw new SearchError(err instanceof Error ? err.message : String(err), null);
     }
-    const body = await response.text();
-    if (!response.ok) throw new SearchError(`HTTP ${response.status}: ${body.slice(0, 300)}`, response.status);
-    return body;
+    const text = await response.text();
+    if (!response.ok) throw new SearchError(`HTTP ${response.status}: ${text.slice(0, 300)}`, response.status);
+    return (text ? JSON.parse(text) : null) as T;
   }
 
-  private async request<T>(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
-    const body = await this.requestText(path, init);
-    return (body ? JSON.parse(body) : null) as T;
-  }
-
+  /** Unauthenticated on the far side, and the one call that says whether the index is usable at all. */
   async health(): Promise<boolean> {
-    const result = await this.request<{ ok: boolean }>("/health");
+    const result = await this.request<{ ok: boolean }>("/v1/health");
     return result?.ok === true;
   }
 
-  /** One document by its id, or null when the collection doesn't hold it. The cheapest question the index answers. */
-  async retrieve<T>(collection: string, id: string): Promise<T | null> {
-    try {
-      return await this.request<T>(`/collections/${encodeURIComponent(collection)}/documents/${encodeURIComponent(id)}`);
-    } catch (err) {
-      if (err instanceof SearchError && err.status === 404) return null;
-      throw err;
-    }
-  }
+  // --- reads ---
 
-  async search<T>(collection: string, params: SearchParams): Promise<SearchResponse<T>> {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null) query.set(key, String(value));
-    }
-    return this.request<SearchResponse<T>>(`/collections/${encodeURIComponent(collection)}/documents/search?${query}`);
-  }
-
-  /**
-   * Several searches in one round trip. Used for multi-get: a 500-id fetch is two 250-id filters, and sending them
-   * as one POST also keeps long filters out of a URL.
-   */
-  async multiSearch<T>(searches: ({ collection: string } & SearchParams)[]): Promise<SearchResponse<T>[]> {
-    if (searches.length === 0) return [];
-    const result = await this.request<{ results: SearchResponse<T>[] }>("/multi_search", {
+  /** The hottest call in the app: a swap pool is 220 cards, an add pool 400, a commander page 500. */
+  async cardsByID(ids: readonly number[]): Promise<CardDocument[]> {
+    if (ids.length === 0) return [];
+    const result = await this.request<{ cards: CardDocument[] }>("/v1/cards/by-id", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ searches }),
+      body: JSON.stringify({ ids: [...ids] }),
     });
-    return result.results ?? [];
+    return result.cards ?? [];
   }
 
-  /** Bulk upsert (or delete) as JSONL. `action: "upsert"` writes whole documents; missing ones are created. */
-  async importDocuments(
-    collection: string,
-    documents: readonly Record<string, unknown>[],
-    { action = "upsert", timeoutMs = 60_000 }: { action?: "create" | "upsert" | "update" | "emplace"; timeoutMs?: number } = {},
-  ): Promise<ImportResult> {
-    if (documents.length === 0) return { imported: 0, failures: [] };
-    const body = documents.map((d) => JSON.stringify(d)).join("\n");
-    // The import endpoint answers with one JSON object per line, not with a JSON document.
-    const text = await this.requestText(`/collections/${encodeURIComponent(collection)}/documents/import?action=${action}`, {
+  async searchCards({ q, commanderOnly = false, limit = 8 }: { q: string; commanderOnly?: boolean; limit?: number }): Promise<CardDocument[]> {
+    const query = new URLSearchParams({ q, limit: String(limit) });
+    if (commanderOnly) query.set("commanderOnly", "1");
+    const result = await this.request<{ cards: CardDocument[] }>(`/v1/cards/search?${query}`);
+    return result.cards ?? [];
+  }
+
+  /** Whether a slug is a real page. A hit is conclusive; the caller decides what a miss means. */
+  async pageExists(kind: "card" | "commander", slug: string): Promise<boolean> {
+    const result = await this.request<{ exists: boolean }>(`/v1/pages/${kind}/${encodeURIComponent(slug)}`);
+    return result.exists === true;
+  }
+
+  /** Every Tagger tag. Paged on the far side, so this is one request rather than nineteen. */
+  async allTags(): Promise<TagDocument[]> {
+    const result = await this.request<{ tags: TagDocument[] }>("/v1/tags", { timeoutMs: Math.max(this.timeoutMs, 5_000) });
+    return result.tags ?? [];
+  }
+
+  async commanderCardRates({ keyIds, cardIds }: { keyIds: readonly number[]; cardIds: readonly number[] }): Promise<CommanderCardDocument[]> {
+    if (keyIds.length === 0 || cardIds.length === 0) return [];
+    const result = await this.request<{ rates: CommanderCardDocument[] }>("/v1/commander-cards/rates", {
       method: "POST",
-      headers: { "content-type": "text/plain" },
-      body,
-      timeoutMs,
+      body: JSON.stringify({ keyIds: [...keyIds], cardIds: [...cardIds] }),
     });
-    const lines = text.trim().split("\n").filter(Boolean);
-    const failures: ImportResult["failures"] = [];
-    for (const line of lines) {
-      const parsed = JSON.parse(line) as { success: boolean; error?: string; document?: string };
-      if (!parsed.success) failures.push({ error: parsed.error ?? "unknown", ...(parsed.document ? { document: parsed.document } : {}) });
-    }
-    return { imported: lines.length - failures.length, failures };
+    return result.rates ?? [];
   }
 
-  async deleteDocument(collection: string, id: string): Promise<boolean> {
-    try {
-      await this.request(`/collections/${encodeURIComponent(collection)}/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
-      return true;
-    } catch (err) {
-      // Deleting something already gone is the state the caller wanted.
-      if (err instanceof SearchError && err.status === 404) return false;
-      throw err;
-    }
+  /** The cards a commander's decks play most, by shrunk inclusion — ids only; the caller scores them itself. */
+  async commanderCardsTop({ keyIds, limit }: { keyIds: readonly number[]; limit: number }): Promise<number[]> {
+    if (keyIds.length === 0) return [];
+    const query = new URLSearchParams({ keyIds: keyIds.join(","), limit: String(limit) });
+    const result = await this.request<{ cardIds: number[] }>(`/v1/commander-cards/top?${query}`);
+    return result.cardIds ?? [];
   }
 
-  async deleteByFilter(collection: string, filterBy: string): Promise<number> {
-    const result = await this.request<{ num_deleted: number }>(
-      `/collections/${encodeURIComponent(collection)}/documents?filter_by=${encodeURIComponent(filterBy)}`,
-      { method: "DELETE", timeoutMs: 60_000 },
-    );
-    return result?.num_deleted ?? 0;
+  // --- writes (the worker's admin token only) ---
+
+  async listCollections(): Promise<{ name: string; numDocuments: number }[]> {
+    const result = await this.request<{ collections: { name: string; numDocuments: number }[] }>("/v1/admin/collections", {
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
+    return result.collections ?? [];
+  }
+
+  async collectionExists(name: string): Promise<boolean> {
+    return (await this.listCollections()).some((c) => c.name === name);
   }
 
   async createCollection(schema: CollectionSchema): Promise<void> {
-    await this.request("/collections", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(schema),
-      timeoutMs: 30_000,
-    });
+    await this.request("/v1/admin/collections", { method: "POST", body: JSON.stringify(schema), timeoutMs: WRITE_TIMEOUT_MS });
   }
 
   async dropCollection(name: string): Promise<void> {
-    try {
-      await this.request(`/collections/${encodeURIComponent(name)}`, { method: "DELETE", timeoutMs: 60_000 });
-    } catch (err) {
-      if (err instanceof SearchError && err.status === 404) return;
-      throw err;
-    }
+    await this.request(`/v1/admin/collections/${encodeURIComponent(name)}`, { method: "DELETE", timeoutMs: WRITE_TIMEOUT_MS });
   }
 
-  /** Whether a real collection goes by this name. A name that is only an alias answers 404 here. */
-  async collectionExists(name: string): Promise<boolean> {
-    const collections = await this.listCollections();
-    return collections.some((c) => c.name === name);
+  /** Bulk upsert as JSONL, which is what the far side hands Typesense unchanged. */
+  async importDocuments(collection: string, documents: readonly Record<string, unknown>[]): Promise<{ imported: number; failures: string[] }> {
+    if (documents.length === 0) return { imported: 0, failures: [] };
+    const result = await this.request<{ imported: number; failures: string[] }>(
+      `/v1/admin/collections/${encodeURIComponent(collection)}/import`,
+      {
+        method: "POST",
+        body: documents.map((d) => JSON.stringify(d)).join("\n"),
+        contentType: "application/x-ndjson",
+        timeoutMs: WRITE_TIMEOUT_MS,
+      },
+    );
+    return { imported: result.imported ?? 0, failures: result.failures ?? [] };
   }
 
-  async listCollections(): Promise<{ name: string; num_documents: number }[]> {
-    return (await this.request<{ name: string; num_documents: number }[]>("/collections", { timeoutMs: 30_000 })) ?? [];
+  /** True when a document was there to delete; false when it was already gone, which is the state the caller wanted. */
+  async deleteDocument(collection: string, id: string): Promise<boolean> {
+    const result = await this.request<{ deleted: boolean }>(
+      `/v1/admin/collections/${encodeURIComponent(collection)}/documents/${encodeURIComponent(id)}`,
+      { method: "DELETE", timeoutMs: WRITE_TIMEOUT_MS },
+    );
+    return result.deleted === true;
+  }
+
+  /** The collection an alias points at, or null when there is no such alias. */
+  async resolveAlias(name: string): Promise<string | null> {
+    const result = await this.request<{ collectionName: string | null }>(`/v1/admin/aliases/${encodeURIComponent(name)}`, {
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
+    return result.collectionName ?? null;
   }
 
   /** Points a stable name at a versioned collection, so a full rebuild is never a window with no index. */
   async upsertAlias(name: string, collectionName: string): Promise<void> {
-    await this.request(`/aliases/${encodeURIComponent(name)}`, {
+    await this.request(`/v1/admin/aliases/${encodeURIComponent(name)}`, {
       method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ collection_name: collectionName }),
-      timeoutMs: 30_000,
+      body: JSON.stringify({ collectionName }),
+      timeoutMs: WRITE_TIMEOUT_MS,
     });
-  }
-
-  async resolveAlias(name: string): Promise<string | null> {
-    const alias = await this.request<{ collection_name: string } | null>(`/aliases/${encodeURIComponent(name)}`).catch((err: unknown) => {
-      if (err instanceof SearchError && err.status === 404) return null;
-      throw err;
-    });
-    return alias?.collection_name ?? null;
   }
 }
-
-export type { CollectionName };
