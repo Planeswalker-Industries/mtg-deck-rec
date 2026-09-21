@@ -3,11 +3,13 @@
 Companion to [`typesense-plan.md`](typesense-plan.md), which says *what* moves into the index and why. This is how to
 stand it up and keep it running. Decided 2026-09-19: **self-hosted on the owner's VPS**, not Typesense Cloud.
 
-**Two containers, one of them public.** `deploy/search/` runs Typesense and `services/search-api` (Go, Fiber). Only
-the API is reachable from outside; Typesense publishes no port and sits on the private network beside it. So there
-is one hostname to route and certify, the Typesense key never leaves the machine, and what does leave is a read
-token for Vercel and a write token for the worker — each able to do less than the key it fronts. The service itself
-is documented in [`services/search-api/README.md`](../../services/search-api/README.md).
+**Two containers, deployed separately, one of them public.** [`deploy/typesense/`](../../deploy/typesense) and
+[`deploy/search-api/`](../../deploy/search-api) are two compose files — a managed panel treats one file as one
+application, and the two have different lifecycles. Only the API is reachable from outside; Typesense publishes no
+port and is reached by name on a shared Docker network. So there is one hostname to route and certify, the Typesense
+key never leaves the machine, and what does leave is a read token for Vercel and a write token for the worker, each
+able to do less than the key it fronts. [`deploy/README.md`](../../deploy/README.md) is how the two fit together;
+[`services/search-api/README.md`](../../services/search-api/README.md) is the service itself.
 
 ## What it holds, and how big
 
@@ -28,32 +30,53 @@ with the corpus — recheck it at 500 commanders.
 
 ## Standing it up
 
-**1. Run it.** `deploy/search/` is the whole deployment — copy that directory to the VPS (or check the repo out
-there) and:
+**1. Run it.** Two stacks and a network they share, created once by hand so neither depends on the other's deploy
+order:
 
 ```sh
-cd deploy/search
-cp .env.example .env
-openssl rand -base64 36    # three times: TYPESENSE_ADMIN_KEY, SEARCH_API_TOKEN, SEARCH_API_ADMIN_TOKEN
+docker network create mtg-search
+
+cd deploy/typesense
+cp .env.example .env    # TYPESENSE_ADMIN_KEY
 docker compose up -d
-docker compose ps          # wait for both to be healthy
+
+cd ../search-api
+cp .env.example .env    # the same TYPESENSE_ADMIN_KEY, plus the two tokens
+docker compose up -d --build
+
+docker compose ps       # in each; wait for "healthy"
 ```
 
-Three secrets, and they are three for a reason. `TYPESENSE_ADMIN_KEY` never leaves the VPS. `SEARCH_API_TOKEN` goes
-to Vercel and can only read. `SEARCH_API_ADMIN_TOKEN` goes to the worker and the sync workflow and can also write.
-The service refuses to start if the two tokens match, or if any of the three is empty.
+Three secrets, and they are three for a reason. `TYPESENSE_ADMIN_KEY` never leaves the VPS and is the one value both
+stacks need. `SEARCH_API_TOKEN` goes to Vercel and can only read. `SEARCH_API_ADMIN_TOKEN` goes to the worker and
+the sync workflow and can also write. The API refuses to start if the two tokens match, or if any of the three is
+empty.
 
-Neither container faces the internet on its own. **Typesense has no published port at all** — search-api reaches it
-by service name on the private network. search-api publishes **127.0.0.1:8090**, for a proxy on the host and for
-`curl 127.0.0.1:8090/v1/health` when something is wrong. Keep that `127.0.0.1:` prefix: Docker writes iptables rules
-that bypass `ufw` for published ports, so `0.0.0.0:8090` is reachable from the internet whatever the firewall says.
+Neither container faces the internet on its own. **Typesense publishes no port at all** — search-api reaches it by
+the `typesense` alias on the shared network. search-api publishes **127.0.0.1:8090**, for a proxy on the host and
+for `curl 127.0.0.1:8090/v1/health` when something is wrong. Keep that `127.0.0.1:` prefix: Docker writes iptables
+rules that bypass `ufw` for published ports, so `0.0.0.0:8090` is reachable from the internet whatever the firewall
+says.
+
+`SEARCH_API_PORT` is the one port here that can collide with something else on the machine; set it in
+`deploy/search-api/.env` if 8090 is taken. The ports *inside* the containers — Typesense's 8108 and search-api's
+`SEARCH_API_CONTAINER_PORT` — cannot, because a container has its own network namespace; another service on the
+host using the same number is not a conflict. A panel asking "which container port?" wants
+`SEARCH_API_CONTAINER_PORT` (8080 unless you change it), and changing it carries the Traefik label and the health
+probe along with it.
+
+**Order does not matter, and a Typesense outage does not take the API down with it.** Measured: stop the Typesense
+stack and the API container stays *healthy* across several probe intervals while `/v1/health` returns 503 and
+`/v1/health/live` returns 200. That split is deliberate — the container probe asks liveness, because a readiness
+probe would have a panel restart-looping the API and Traefik pulling it out of the router over a dependency outage
+the web app already falls back from. Start Typesense again and the API recovers on its own.
 
 Two things worth knowing about those containers. Both healthchecks avoid `curl`, because neither image has it — the
-Typesense image ships no shell tools at all beyond `bash`, whose `/dev/tcp` can just about speak HTTP, and the
-search-api image is distroless, so `search-api healthcheck` is a mode of the binary itself. A healthcheck that
-cannot run marks a working container unhealthy forever, which is what the first version of this file did. And there
-is no backup story on purpose: nothing in the index is a source of truth, so losing the volume costs one `--rebuild`,
-and restoring from Postgres is both faster and always correct.
+Typesense image ships no shell tools beyond `bash`, whose `/dev/tcp` can just about speak HTTP, and the search-api
+image is distroless, so `search-api healthcheck` is a mode of the binary itself. A healthcheck that cannot run marks
+a working container unhealthy forever, which is what the first version of this file did. And there is no backup
+story on purpose: nothing in the index is a source of truth, so losing the volume costs one `--rebuild`, and
+restoring from Postgres is both faster and always correct.
 
 **2. Put TLS in front of search-api.**
 
@@ -159,11 +182,13 @@ never slow down or fail a sync transaction.
 | Results look stale or wrong | `cli:hosted sync:typesense --rebuild`. Safe at any time: it builds a new versioned collection and moves the alias only when it is complete. |
 | A schema field was added in `@mtg/core/search` | `--rebuild`. A new field needs a new collection; a plain drain cannot add one. |
 | Disk or memory filling up | A `--rebuild` drops every stale version of each collection, not just the one the alias pointed at — a rebuild that died before moving its alias leaves a full copy behind, and Typesense loads every collection it has into memory at startup. `GET /collections` should show exactly four. |
-| Upgrading Typesense | Bump the tag in `deploy/search/docker-compose.yml`, `docker compose up -d`, then `--rebuild`. |
-| Deploying a new search-api | `docker compose up -d --build` in `deploy/search/`. In-flight imports finish first: the service waits up to 30 s on shutdown so the worker never has to guess whether its batch landed. |
+| Upgrading Typesense | Bump the tag in `deploy/typesense/docker-compose.yml`, `docker compose up -d`, then `--rebuild`. The API stays up throughout and serves 503s meanwhile. |
+| Deploying a new search-api | `docker compose up -d --build` in `deploy/search-api/` — Typesense is a separate stack and is not restarted. In-flight imports finish first: the service waits up to 30 s on shutdown so the worker never has to guess whether its batch landed. |
 | Untrusted certificate, or a bare 404 behind Traefik | One cause: no router for that hostname, and it has to point at **search-api**, not Typesense. See "Diagnosing Traefik" above. |
 | `502` from the API while both containers are healthy | search-api reached Typesense and got an error back; `docker compose logs search-api` names it. |
 | The API will not start | It refuses an empty key, an empty token, or two identical tokens, and says which. |
+| `port is already allocated` | Only `SEARCH_API_PORT` can do that; set it in `deploy/search-api/.env`. A port *inside* a container never collides with the host. |
+| `up` fails on a missing network | `docker network create mtg-search`. Both stacks declare it external on purpose, so this fails loudly rather than starting a container that cannot reach the index. |
 | The VPS is down | Nothing breaks. Every read path falls back to Postgres and logs. Rebuild when it is back. |
 
 ### Checks

@@ -16,8 +16,12 @@ Typesense again with extra latency.
 
 ## Endpoints
 
-`GET /v1/health` is unauthenticated (a load balancer needs it) and reports whether Typesense answers. Everything else
-takes `Authorization: Bearer <token>`.
+Two unauthenticated health endpoints, because they answer different questions. `GET /v1/health` is **readiness**: it
+reports whether Typesense answers. `GET /v1/health/live` is **liveness**: only that this process is serving. The
+container probe asks liveness — a probe on readiness would have a panel restart-looping this service, and Traefik
+pulling it out of the router, over a dependency outage the web app already falls back from.
+
+Everything else takes `Authorization: Bearer <token>`.
 
 | Endpoint | Token | For |
 |---|---|---|
@@ -50,11 +54,12 @@ SEARCH_API_TOKEN=... SEARCH_API_ADMIN_TOKEN=... \
   go run .
 ```
 
-Usually you want the whole stack instead: `docker compose -f ../../docker-compose.search.yml up -d --build`.
+Usually you want the whole stack instead: `docker compose -f ../../docker-compose.search.yml up -d --build`. On the
+VPS the two run as separate compose files; see [`deploy/README.md`](../../deploy/README.md).
 
 | Variable | Default | |
 |---|---|---|
-| `SEARCH_API_ADDR` | `:8080` | |
+| `SEARCH_API_ADDR` | `:8080` | inside the container, so it cannot collide with a host service; the compose files set it from `SEARCH_API_CONTAINER_PORT` |
 | `TYPESENSE_URL` | `http://typesense:8108` | by service name on the private network |
 | `TYPESENSE_ADMIN_KEY` | — | required |
 | `SEARCH_API_TOKEN` | — | required; the web app's |
