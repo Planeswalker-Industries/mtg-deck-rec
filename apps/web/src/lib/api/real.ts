@@ -1,5 +1,5 @@
 import type { ActionsApi, ApiError, CardSummary, CatalogApi, RecsApi, Result } from "@mtg/core/contract";
-import { deleteCollectionAction, saveCollectionBatchAction } from "@/app/collection/actions";
+import { deleteCollectionAction, getMyCollectionEntriesAction, saveCollectionBatchAction } from "@/app/collection/actions";
 import { dealRaterCardsAction } from "@/app/rate/actions";
 import {
   analyzeDeckAction,
@@ -60,6 +60,7 @@ export const realActions: ActionsApi = {
   resolveCollectionRows: (input) => resolveCollectionRowsAction(input),
   saveCollectionBatch: (input) => saveCollectionBatchAction(input),
   deleteCollection: () => deleteCollectionAction(),
+  getMyCollectionEntries: () => getMyCollectionEntriesAction(),
   saveDeck: (input) => saveDeckAction(input),
   openSavedDeck: (input) => openSavedDeckAction(input),
   renameDeck: (input) => renameDeckAction(input),
@@ -90,4 +91,5 @@ export const realCatalog: CatalogApi = {
   // POST, not GET: a hundred card ids do not belong in a URL. The answer is the same for everyone, so the
   // route still sets cache headers.
   cardTags: (input) => post("/api/cards/tags", input),
+  collectionCards: (input) => post("/api/cards/collection", input),
 };

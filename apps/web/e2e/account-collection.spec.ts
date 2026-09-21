@@ -23,12 +23,12 @@ test("a collection imported before signing in moves to the account and drives ow
   const summary = page.getByRole("region", { name: "Saved collection" });
   const copies = summary.locator("dd").nth(1);
 
-  await page.goto("/collection");
+  await page.goto("/collection/import");
   await page.getByLabel("Collection export").fill("3 Sol Ring");
   await page.getByRole("button", { name: "Import collection" }).click();
   await expect(summary.getByText(/Saved in this browser until/)).toBeVisible({ timeout: 30_000 });
 
-  await signIn(page, request, `e2e-collection-${Date.now()}@example.com`, "/collection");
+  await signIn(page, request, `e2e-collection-${Date.now()}@example.com`, "/collection/import");
   await expect(summary.getByText(/Saved to your account/)).toBeVisible({ timeout: 30_000 });
   await expect(copies).toHaveText("3");
   expect(await hasBrowserCopy(page)).toBe(false);
@@ -51,7 +51,7 @@ test("a collection imported before signing in moves to the account and drives ow
   await recs.getByRole("button", { name: /^Add Missing pieces/ }).click();
   await expect(recs.getByText(/Nothing in your collection fits this deck's colors/)).toBeVisible({ timeout: 60_000 });
 
-  await page.goto("/collection");
+  await page.goto("/collection/import");
   await page.getByLabel("Replace with a new export").fill("2 Arcane Signet\n1 Definitely Not A Real Card");
   await page.getByRole("button", { name: "Replace collection" }).click();
   await expect(summary.getByText("1 line didn't match a card")).toBeVisible({ timeout: 30_000 });

@@ -32,5 +32,10 @@
  * text), and saveDeck takes an optional bracket, so a deck comes back with the bracket it was saved at. saveDeck also
  * returns the deck's code beside its id, so the deck just saved can be linked to and gone on editing; it already
  * accepted a deckId, which is what makes the tool's auto-save an update rather than a new deck.
+ *
+ * v10 (2026-09-21): the collection view. ActionsApi.getMyCollectionEntries reads the signed-in user's collection back
+ * (one CollectionEntry per card), CatalogApi.collectionCards returns those cards with their tag labels and the sets
+ * they were printed in (CardSet), and ResolvedCollectionRow carries an optional setCode so a browser collection can be
+ * filtered by set too.
  */
-export const CONTRACT_VERSION = 9;
+export const CONTRACT_VERSION = 10;

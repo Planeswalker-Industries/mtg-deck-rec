@@ -18,6 +18,7 @@ interface MatchRow {
   lang: string | null;
   finishes: string[] | null;
   via: string;
+  set_code: string | null;
 }
 
 const VIAS: ReadonlySet<string> = new Set<CollectionResolveVia>(["scryfall_id", "tcgplayer_id", "set_cn_lang", "set_cn", "name_only"]);
@@ -85,6 +86,7 @@ export async function resolveCollectionRows(db: PublicClient, rows: readonly Col
       lang: match.lang ?? row.lang?.toLowerCase() ?? "en",
       quantity: row.quantity,
       via: match.via as CollectionResolveVia,
+      setCode: match.set_code,
     });
   }
 

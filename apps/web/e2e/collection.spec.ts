@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("imports a collection and limits suggestions to owned cards", async ({ page }) => {
-  await page.goto("/collection");
+  await page.goto("/collection/import");
   await page.getByLabel("Collection export").fill("1 Sol Ring\n1 Definitely Not A Real Card");
   await page.getByRole("button", { name: "Import collection" }).click();
 
@@ -29,13 +29,13 @@ test("imports a collection and limits suggestions to owned cards", async ({ page
   await recs.getByRole("button", { name: /^Add Missing pieces/ }).click();
   await expect(recs.getByText(/Nothing in your collection fits this deck's colors/)).toBeVisible({ timeout: 60_000 });
 
-  await page.goto("/collection");
+  await page.goto("/collection/import");
   await page.getByRole("button", { name: "Clear collection" }).click();
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeHidden();
 });
 
 test("imports a CSV export from a file, keeping its Scryfall ids", async ({ page }) => {
-  await page.goto("/collection");
+  await page.goto("/collection/import");
 
   /*
    * A ManaBox-shaped CSV. Both real cards are in the mock pool as well as the real catalog, so the counts below hold
@@ -60,4 +60,47 @@ test("imports a CSV export from a file, keeping its Scryfall ids", async ({ page
   await expect(summary.getByText("2", { exact: true })).toBeVisible();
   await expect(summary.getByText("4", { exact: true })).toBeVisible();
   await expect(summary.getByText("1 line didn't match a card")).toBeVisible();
+});
+
+test("browses a collection by name, color and type", async ({ page }) => {
+  await page.goto("/collection");
+  await expect(page.getByRole("heading", { name: "No collection yet" })).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill("2 Sol Ring\n1 Chulane, Teller of Tales");
+  await page.getByRole("button", { name: "Import collection" }).click();
+  const summary = page.getByRole("region", { name: "Saved collection" });
+  await summary.getByRole("link", { name: "Browse your collection" }).click({ timeout: 30_000 });
+
+  const legends = page.getByRole("list", { name: "Legendary creatures" });
+  const artifacts = page.getByRole("list", { name: "Artifacts" });
+  await expect(legends.getByText("Chulane, Teller of Tales")).toBeVisible({ timeout: 30_000 });
+  await expect(artifacts.getByText("Sol Ring")).toBeVisible();
+  await expect(artifacts.getByText("×2")).toBeVisible();
+
+  const search = page.getByRole("searchbox", { name: /Search your collection/ });
+  await search.fill("chulane");
+  await expect(artifacts).toBeHidden();
+  await expect(legends.getByText("Chulane, Teller of Tales")).toBeVisible();
+  await search.fill("");
+
+  // Colorless keeps Sol Ring; Chulane is green-white-blue.
+  await page.getByRole("button", { name: "Colorless" }).click();
+  await expect(artifacts.getByText("Sol Ring")).toBeVisible();
+  await expect(legends).toBeHidden();
+
+  // Multicolor with green: Chulane has green among several colors; Sol Ring has none.
+  await page.getByRole("button", { name: "Colorless" }).click();
+  await page.getByRole("button", { name: "Green" }).click();
+  await page.getByRole("button", { name: /^Multicolor/ }).click();
+  await expect(legends.getByText("Chulane, Teller of Tales")).toBeVisible();
+  await expect(artifacts).toBeHidden();
+
+  await page.getByRole("button", { name: "Clear filters" }).first().click();
+  await page.getByRole("button", { name: /^Artifacts/ }).click();
+  await expect(artifacts).toBeHidden();
+  await expect(legends).toBeVisible();
+
+  await page.goto("/collection/import");
+  await page.getByRole("button", { name: "Clear collection" }).click();
 });

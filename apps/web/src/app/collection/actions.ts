@@ -1,9 +1,10 @@
 "use server";
 
 import { headers } from "next/headers";
-import type { ActionsApi, ApiError, CollectionTotals, Result } from "@mtg/core/contract";
+import type { ActionsApi, ApiError, CollectionEntry, CollectionTotals, Result } from "@mtg/core/contract";
 import { parseInput, saveCollectionBatchInputSchema } from "@mtg/core/schemas";
 import {
+  accountCollectionEntries,
   accountCollectionTotals,
   CollectionRefused,
   commitImport,
@@ -79,6 +80,19 @@ export async function saveCollectionBatchAction(
     return { ok: true, data: { importId: id, totals: final ? await commitImport(db, id) : null } };
   } catch (err) {
     return failed(err, "Couldn't save your collection. Try again in a moment.");
+  }
+}
+
+/** The signed-in user's saved collection, one entry per card, for the collection view. */
+export async function getMyCollectionEntriesAction(): Promise<Result<CollectionEntry[]>> {
+  try {
+    const blocked = await limited();
+    if (blocked) return blocked;
+    const db = await createAuthClient();
+    await requireUserId(db);
+    return { ok: true, data: await accountCollectionEntries(db) };
+  } catch (err) {
+    return failed(err, "Couldn't load your collection. Try again in a moment.");
   }
 }
 
