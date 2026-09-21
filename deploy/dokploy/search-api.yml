@@ -33,8 +33,15 @@ services:
       SEARCH_API_TOKEN: "${SEARCH_API_TOKEN:?set SEARCH_API_TOKEN on this app — the web app's read token}"
       SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:?set SEARCH_API_ADMIN_TOKEN on this app — the worker's write token}"
 
-    # No `ports:`. Dokploy's Traefik reaches this over the shared network on 8080; publishing a host port as well
-    # would only be another thing to collide with something already on the box.
+    # Dokploy's Traefik reaches this over the shared network on 8080 and does not need a published port. This one
+    # is on **loopback** and exists for the times routing is the thing that is broken: `curl
+    # 127.0.0.1:8090/v1/health` on the box is what separates "the stack is down" from "Traefik is not routing to
+    # it", and without it that question needs a `docker exec`.
+    #
+    # Keep the `127.0.0.1:` prefix. Docker writes iptables rules that bypass ufw for published ports, so
+    # `0.0.0.0:8090` would be on the internet whatever the firewall says. Change SEARCH_API_PORT if 8090 is taken.
+    ports:
+      - "127.0.0.1:${SEARCH_API_PORT:-8090}:8080"
 
     networks:
       - dokploy-network
