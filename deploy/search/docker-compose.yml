@@ -1,0 +1,118 @@
+# The search stack on the VPS: Typesense, and the Go API that is the only thing allowed to talk to it.
+#
+#   cp .env.example .env && $EDITOR .env      # three secrets; the file says how to generate them
+#   docker compose up -d
+#   docker compose ps                         # wait for both to be healthy
+#
+# Then build the index from Postgres, from a checkout that can reach the hosted database:
+#   SEARCH_API_URL=https://<host> SEARCH_API_ADMIN_TOKEN=... \
+#     yarn workspace @mtg/worker cli:hosted sync:typesense --rebuild
+#
+# Only search-api is reachable from outside. Typesense publishes no port at all and lives on this compose file's
+# private network, which means its admin key exists in exactly one place and the tokens that leave the VPS can do
+# strictly less than it can. Full context in docs/roadmap/typesense-plan.md; the runbook is typesense-ops.md.
+#
+# One file covers both ways of putting TLS in front of search-api, because a managed panel usually points at a
+# single compose file and cannot be told to merge two. Which one you get is decided by .env:
+#
+#   * **A proxy on the host** (nginx, Caddy) — the default. It reaches search-api through the loopback port below.
+#   * **Traefik in Docker** — set TRAEFIK_ENABLE=true, TRAEFIK_EXTERNAL=true, TRAEFIK_NETWORK and SEARCH_API_HOST.
+#     Traefik cannot use a loopback port: it discovers containers by label and connects to them container to
+#     container, so it needs the shared network and the router labels below.
+
+name: mtg-search
+
+services:
+  typesense:
+    image: typesense/typesense:29.0
+    restart: unless-stopped
+
+    # No `ports:` on purpose. Nothing outside this compose file has any business reaching Typesense — search-api
+    # talks to it over the private network below, by service name.
+    volumes:
+      - ./data:/data
+
+    # ${VAR:?message} refuses to start rather than silently booting with an empty key.
+    command:
+      - "--data-dir=/data"
+      - "--api-key=${TYPESENSE_ADMIN_KEY:?set TYPESENSE_ADMIN_KEY in .env — see .env.example}"
+      - "--listen-port=8108"
+      # No --enable-cors: the only caller is search-api, server to server.
+
+    # The image ships no curl and no wget, so the obvious healthcheck silently marks a working container unhealthy
+    # forever. It does ship bash, whose /dev/tcp can speak just enough HTTP to ask /health and read the answer.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8108 && printf "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q ''"ok":true'' <&3'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    # Typesense holds its index in RAM. The cap is a guard against one runaway collection taking the whole box down
+    # with the rest of what the VPS runs; raise it as commander_cards grows (see the sizing note in the runbook).
+    mem_limit: ${TYPESENSE_MEM_LIMIT:-1g}
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  search-api:
+    build: ../../services/search-api
+    image: ${SEARCH_API_IMAGE:-mtg-search-api:local}
+    restart: unless-stopped
+    depends_on:
+      typesense:
+        condition: service_healthy
+
+    environment:
+      SEARCH_API_ADDR: ":8080"
+      # By service name on the private network. Never a public URL: that would defeat the point of this service.
+      TYPESENSE_URL: "http://typesense:8108"
+      TYPESENSE_ADMIN_KEY: "${TYPESENSE_ADMIN_KEY:?}"
+      SEARCH_API_TOKEN: "${SEARCH_API_TOKEN:?set SEARCH_API_TOKEN in .env — the web app's read token}"
+      SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:?set SEARCH_API_ADMIN_TOKEN in .env — the worker's write token}"
+
+    # Loopback only, for a proxy on the host and for `curl 127.0.0.1:8090/v1/health` when something is wrong.
+    # Keep the `127.0.0.1:` prefix: Docker writes iptables rules that bypass ufw for published ports, so
+    # `0.0.0.0:8090` is reachable from the internet whatever the firewall says.
+    ports:
+      - "127.0.0.1:8090:8080"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      - default
+      - proxy
+
+    # Inert unless TRAEFIK_ENABLE is true: a label is metadata, and Traefik ignores a container that says
+    # `traefik.enable=false`. Saying so explicitly is safer than saying nothing, because Traefik's default is to
+    # expose every container it can see.
+    labels:
+      traefik.enable: "${TRAEFIK_ENABLE:-false}"
+      traefik.docker.network: "${TRAEFIK_NETWORK:-mtg-search-proxy}"
+      traefik.http.routers.searchapi.rule: "Host(`${SEARCH_API_HOST:-search-api.set-SEARCH_API_HOST-in-env.invalid}`)"
+      traefik.http.routers.searchapi.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
+      traefik.http.routers.searchapi.tls: "true"
+      traefik.http.routers.searchapi.tls.certresolver: "${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      traefik.http.services.searchapi.loadbalancer.server.port: "8080"
+
+networks:
+  # Typesense and search-api talk to each other here, and nothing else joins it.
+  default:
+  # The proxy's network. With TRAEFIK_EXTERNAL unset this is an ordinary bridge network compose creates and nothing
+  # else joins — unused, harmless, and it keeps this one file valid without a proxy in play. Set TRAEFIK_EXTERNAL=true
+  # and TRAEFIK_NETWORK to join the network Traefik is already on; `external` then means compose expects to find it,
+  # so a wrong name fails `up` loudly instead of quietly starting a container nothing can route to.
+  proxy:
+    external: ${TRAEFIK_EXTERNAL:-false}
+    name: ${TRAEFIK_NETWORK:-mtg-search-proxy}

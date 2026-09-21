@@ -155,22 +155,23 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 **Priority:** HIGH | **Area:** Infrastructure | **Status:** Not started (the code is built and merged)
 
-The Typesense index is built, tested and documented, and nothing uses it until it is running. Every read path falls back to Postgres while `TYPESENSE_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
+The index and the Go service in front of it are built, tested and documented, and nothing uses them until they are running. Every read path falls back to Postgres while `SEARCH_API_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
 
 **Files:**
-- `deploy/typesense/docker-compose.yml` — the deployment, with its `.env.example`
+- `deploy/search/docker-compose.yml` — the deployment (Typesense + `services/search-api`), with its `.env.example`
 - `docs/roadmap/typesense-ops.md` — the runbook this ticket follows
-- `.github/workflows/sync.yml` — already reads `TYPESENSE_URL` / `TYPESENSE_ADMIN_KEY` as secrets
+- `.github/workflows/sync.yml` — already reads `SEARCH_API_URL` / `SEARCH_API_ADMIN_TOKEN` as secrets
 
-**Context:** Self-hosted rather than Typesense Cloud (owner decision, 2026-09-19; the cheapest Cloud node is ~$21.60/mo plus egress). Typesense terminates no TLS of its own and its API key is its entire access control, so the compose file publishes on 127.0.0.1 only and it goes behind the existing reverse proxy.
+**Context:** Self-hosted rather than Typesense Cloud (owner decision, 2026-09-19; the cheapest Cloud node is ~$21.60/mo plus egress). Typesense terminates no TLS of its own and its API key is its entire access control, so it is not exposed at all: `services/search-api` (Go, Fiber) is the only thing that talks to it, and that is what goes behind the reverse proxy.
 
 **Acceptance criteria:**
-- [ ] `docker compose up -d` on the VPS, reporting healthy, behind the reverse proxy with TLS
-- [ ] Two keys: admin for the worker and the sync workflow, search-only (`documents:search`, `documents:get`) for the app
-- [ ] `TYPESENSE_URL` + `TYPESENSE_SEARCH_KEY` on Vercel **Production and Preview**; `TYPESENSE_URL` + `TYPESENSE_ADMIN_KEY` in GitHub Actions secrets and `apps/worker/.env.hosted`
+- [ ] `docker compose up -d` in `deploy/search/` on the VPS, both containers healthy, **search-api** behind the reverse proxy with TLS (Typesense publishes no port and must stay that way)
+- [ ] Three secrets generated: `TYPESENSE_ADMIN_KEY` (stays on the VPS), `SEARCH_API_ADMIN_TOKEN` (worker), `SEARCH_API_TOKEN` (web app)
+- [ ] `SEARCH_API_URL` + `SEARCH_API_TOKEN` on Vercel **Production and Preview**; `SEARCH_API_URL` + `SEARCH_API_ADMIN_TOKEN` in GitHub Actions secrets and `apps/worker/.env.hosted`
 - [ ] `cli:hosted sync:typesense --rebuild` once, then confirm the daily sync drains the queue
 - [ ] `scripts/search-parity-check.ts` passes against hosted data (the local run has no deck corpus, so `commanders` and `commander_cards` have never been exercised with real rows)
 - [ ] Measure RAM after the first build (`/metrics.json`) and record it in the runbook beside the estimate
+- [ ] `services/search-api` reachable over TLS; `curl https://<host>/v1/health` returns `{"ok":true}` **without** `-k`
 - [ ] A week later, re-read `rec_timeouts` and update T008
 
 ---

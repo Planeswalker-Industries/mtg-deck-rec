@@ -16,10 +16,13 @@ import {
   type TagIndexRow,
 } from '@mtg/core/search';
 import { connect, type ReservedSql, type Sql } from '../lib/db';
-import { requireSearchClient, searchClient } from '../lib/typesense';
+import { requireSearchClient, searchClient } from '../lib/search-api';
 
 /**
  * Drains public.search_index_queue into the search index, and rebuilds it from scratch on request.
+ *
+ * Everything goes through the search API (services/search-api) rather than Typesense directly: this job builds the
+ * documents, and that service is the only thing holding the key that can write them.
  *
  * The queue holds the **stable key** of every document a write touched. This job looks each one up: a row that is
  * still there becomes a document, a row that is gone or soft-deleted has its document removed. That is why the queue
@@ -150,7 +153,7 @@ async function importAll(index: SearchClient, collection: string, documents: Rec
     const batch = documents.slice(i, i + IMPORT_BATCH);
     const result = await index.importDocuments(collection, batch);
     if (result.failures.length > 0) {
-      throw new Error(`${collection}: ${result.failures.length} of ${batch.length} documents were rejected. First: ${result.failures[0]?.error}`);
+      throw new Error(`${collection}: ${result.failures.length} of ${batch.length} documents were rejected. First: ${result.failures[0]}`);
     }
     written += result.imported;
   }
@@ -379,7 +382,7 @@ export async function syncSearchIndex({ rebuild: doRebuild = false }: { rebuild?
     // Not an error: a checkout, a fork or a CI run with no index configured is a normal state, and the app reads
     // Postgres in exactly that case. `--rebuild` is a deliberate act, so that one insists.
     if (doRebuild) requireSearchClient();
-    console.log('sync:typesense: TYPESENSE_URL and TYPESENSE_ADMIN_KEY are not set, so there is no index to update.');
+    console.log('sync:typesense: SEARCH_API_URL and SEARCH_API_ADMIN_TOKEN are not set, so there is no index to update.');
     return;
   }
   const pool = connect();

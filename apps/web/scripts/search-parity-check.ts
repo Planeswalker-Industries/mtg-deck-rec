@@ -3,12 +3,11 @@
  * check that says the index is telling the truth; `search-index-check.ts` is the one that says the app survives
  * without it.
  *
- * Needs the local Supabase stack with a synced catalog, and a built index:
- *   docker compose -f ../../docker-compose.typesense.yml up -d
+ * Needs the local Supabase stack with a synced catalog, and a built index behind a running search API:
+ *   docker compose -f ../../docker-compose.search.yml up -d
  *   yarn workspace @mtg/worker cli sync:typesense --rebuild
  *   yarn workspace @mtg/web tsx --env-file=.env.local scripts/search-parity-check.ts
  */
-import { CARDS_COLLECTION } from "@mtg/core/search";
 import { searchCards } from "../src/lib/server/card-search";
 import { fetchCardTags } from "../src/lib/server/card-tags";
 import { fetchCardsById } from "../src/lib/server/cards";
@@ -38,20 +37,17 @@ const QUERIES = ["sol ring", "swords", "plowshares", "lightening bolt", "cultiva
 async function main() {
   const db = createPublicClient();
   if (!getSearchIndex()) {
-    console.log("TYPESENSE_URL / TYPESENSE_SEARCH_KEY are not set, so there is nothing to compare against.");
+    console.log("SEARCH_API_URL / SEARCH_API_TOKEN are not set, so there is nothing to compare against.");
     process.exitCode = 1;
     return;
   }
 
   // Every read path falls back to Postgres when the index does not answer, which means a check like this can pass
   // for the wrong reason — comparing Postgres with itself. Prove the index is actually answering first, with a read
-  // that needs the key: /health is unauthenticated and answers "ok" to a wrong one.
-  const reachable = await fromIndex("probe", async (index) => {
-    const result = await index.search<unknown>(CARDS_COLLECTION, { q: "sol", query_by: "name", per_page: 1 });
-    return (result.found ?? 0) > 0;
-  });
+  // that needs the token: /v1/health is unauthenticated and answers "ok" to a caller with no credentials at all.
+  const reachable = await fromIndex("probe", async (index) => (await index.searchCards({ q: "sol", limit: 1 })).length > 0);
   if (reachable?.value !== true) {
-    console.log("FAIL  the index is not answering, so there is nothing to compare. Check TYPESENSE_URL and TYPESENSE_SEARCH_KEY.");
+    console.log("FAIL  the index is not answering, so there is nothing to compare. Check SEARCH_API_URL and SEARCH_API_TOKEN.");
     process.exitCode = 1;
     return;
   }
