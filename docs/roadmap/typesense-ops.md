@@ -58,6 +58,13 @@ for `curl 127.0.0.1:8090/v1/health` when something is wrong. Keep that `127.0.0.
 rules that bypass `ufw` for published ports, so `0.0.0.0:8090` is reachable from the internet whatever the firewall
 says.
 
+`SEARCH_API_PORT` is the one port here that can collide with something else on the machine; set it in
+`deploy/search-api/.env` if 8090 is taken. The ports *inside* the containers — Typesense's 8108 and search-api's
+`SEARCH_API_CONTAINER_PORT` — cannot, because a container has its own network namespace; another service on the
+host using the same number is not a conflict. A panel asking "which container port?" wants
+`SEARCH_API_CONTAINER_PORT` (8080 unless you change it), and changing it carries the Traefik label and the health
+probe along with it.
+
 **Order does not matter, and a Typesense outage does not take the API down with it.** Measured: stop the Typesense
 stack and the API container stays *healthy* across several probe intervals while `/v1/health` returns 503 and
 `/v1/health/live` returns 200. That split is deliberate — the container probe asks liveness, because a readiness
@@ -180,6 +187,7 @@ never slow down or fail a sync transaction.
 | Untrusted certificate, or a bare 404 behind Traefik | One cause: no router for that hostname, and it has to point at **search-api**, not Typesense. See "Diagnosing Traefik" above. |
 | `502` from the API while both containers are healthy | search-api reached Typesense and got an error back; `docker compose logs search-api` names it. |
 | The API will not start | It refuses an empty key, an empty token, or two identical tokens, and says which. |
+| `port is already allocated` | Only `SEARCH_API_PORT` can do that; set it in `deploy/search-api/.env`. A port *inside* a container never collides with the host. |
 | `up` fails on a missing network | `docker network create mtg-search`. Both stacks declare it external on purpose, so this fails loudly rather than starting a container that cannot reach the index. |
 | The VPS is down | Nothing breaks. Every read path falls back to Postgres and logs. Rebuild when it is back. |
 

@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
 
     environment:
-      SEARCH_API_ADDR: ":8080"
+      SEARCH_API_ADDR: ":${SEARCH_API_CONTAINER_PORT:-8080}"
       # By name on the shared network — the alias the Typesense stack declares. Never a public URL: that would
       # defeat the point of this service.
       TYPESENSE_URL: "http://typesense:8108"
@@ -48,11 +48,20 @@ services:
       SEARCH_API_TOKEN: "${SEARCH_API_TOKEN:?set SEARCH_API_TOKEN in .env — the web app's read token}"
       SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:?set SEARCH_API_ADMIN_TOKEN in .env — the worker's write token}"
 
-    # Loopback only, for a proxy on the host and for `curl 127.0.0.1:8090/v1/health` when something is wrong.
-    # Keep the `127.0.0.1:` prefix: Docker writes iptables rules that bypass ufw for published ports, so
-    # `0.0.0.0:8090` is reachable from the internet whatever the firewall says.
+    # Two different ports, and only the first can ever collide with anything else on the machine:
+    #
+    #   SEARCH_API_PORT            the **host** port, on loopback. This is the one to change if something else on
+    #                              the VPS already has it. It is what a proxy on the host connects to, and what
+    #                              `curl 127.0.0.1:<port>/v1/health` uses when something is wrong.
+    #   SEARCH_API_CONTAINER_PORT  the port **inside** the container. A container has its own network namespace, so
+    #                              this cannot conflict with a host service or with another container, whatever
+    #                              either of them uses. It is here to be changed only if you want it to match
+    #                              something, not because it has to be.
+    #
+    # Keep the `127.0.0.1:` prefix on the host side: Docker writes iptables rules that bypass ufw for published
+    # ports, so `0.0.0.0:<port>` is reachable from the internet whatever the firewall says.
     ports:
-      - "127.0.0.1:${SEARCH_API_PORT:-8090}:8080"
+      - "127.0.0.1:${SEARCH_API_PORT:-8090}:${SEARCH_API_CONTAINER_PORT:-8080}"
 
     networks:
       - mtg-search
@@ -74,7 +83,8 @@ services:
       traefik.http.routers.searchapi.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
       traefik.http.routers.searchapi.tls: "true"
       traefik.http.routers.searchapi.tls.certresolver: "${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
-      traefik.http.services.searchapi.loadbalancer.server.port: "8080"
+      # The container port, not the host one: Traefik connects container to container.
+      traefik.http.services.searchapi.loadbalancer.server.port: "${SEARCH_API_CONTAINER_PORT:-8080}"
 
 networks:
   # Where Typesense is. External on both sides, so neither stack depends on the other's deploy order and a missing

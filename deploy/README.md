@@ -52,6 +52,18 @@ curl https://<host>/v1/health                 # {"ok":true} — and the proxy ro
 Then build the index, and point Vercel and the sync workflow at it. Both steps are in
 [`docs/roadmap/typesense-ops.md`](../docs/roadmap/typesense-ops.md), which is the runbook this summarises.
 
+## Ports
+
+Only one port here can collide with anything: **`SEARCH_API_PORT`**, the host port search-api publishes on loopback
+(8090 by default). Change it in `deploy/search-api/.env` if something else on the VPS already has it.
+
+Everything else is inside a container, where it cannot conflict with a host service or with another container
+whatever either of them uses — Typesense's 8108 and search-api's `SEARCH_API_CONTAINER_PORT` (8080 by default).
+Changing the latter carries the Traefik label and the health probe with it, so a panel asking "which container
+port?" wants whatever you set there.
+
+Typesense publishes nothing at all, so it takes no host port.
+
 ## Local development is one file, not two
 
 [`docker-compose.search.yml`](../docker-compose.search.yml) at the repo root runs both services together on

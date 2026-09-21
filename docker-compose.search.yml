@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
     # Published locally, unlike production, so the index can be poked at directly while working on it.
     ports:
-      - "127.0.0.1:56325:8108"
+      - "127.0.0.1:${TYPESENSE_LOCAL_PORT:-56325}:8108"
     volumes:
       - typesense-data:/data
     command:
@@ -52,9 +52,9 @@ services:
       typesense:
         condition: service_healthy
     ports:
-      - "127.0.0.1:56326:8080"
+      - "127.0.0.1:${SEARCH_API_LOCAL_PORT:-56326}:${SEARCH_API_CONTAINER_PORT:-8080}"
     environment:
-      SEARCH_API_ADDR: ":8080"
+      SEARCH_API_ADDR: ":${SEARCH_API_CONTAINER_PORT:-8080}"
       TYPESENSE_URL: "http://typesense:8108"
       TYPESENSE_ADMIN_KEY: "${TYPESENSE_LOCAL_KEY:-mtg-local-dev-key}"
       SEARCH_API_TOKEN: "${SEARCH_API_LOCAL_TOKEN:-mtg-local-read}"

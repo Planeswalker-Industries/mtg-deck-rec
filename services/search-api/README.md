@@ -59,7 +59,7 @@ VPS the two run as separate compose files; see [`deploy/README.md`](../../deploy
 
 | Variable | Default | |
 |---|---|---|
-| `SEARCH_API_ADDR` | `:8080` | |
+| `SEARCH_API_ADDR` | `:8080` | inside the container, so it cannot collide with a host service; the compose files set it from `SEARCH_API_CONTAINER_PORT` |
 | `TYPESENSE_URL` | `http://typesense:8108` | by service name on the private network |
 | `TYPESENSE_ADMIN_KEY` | — | required |
 | `SEARCH_API_TOKEN` | — | required; the web app's |
