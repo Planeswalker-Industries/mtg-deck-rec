@@ -1,0 +1,92 @@
+# The search API on the VPS (services/search-api). The only thing that talks to Typesense, and the only one of the
+# two that faces the internet.
+#
+# Deployed separately from Typesense: a managed panel treats one compose file as one application, and the two have
+# different lifecycles — this one is rebuilt whenever its Go code changes, Typesense is a long-lived stateful
+# container. They find each other over a shared network you create once:
+#
+#   docker network create mtg-search       # the same one deploy/typesense uses
+#
+#   cd deploy/search-api
+#   cp .env.example .env && $EDITOR .env   # three values, one of them shared with the Typesense stack
+#   docker compose up -d
+#   docker compose ps                      # wait for "healthy"
+#
+# Start Typesense first, or this container will report unhealthy until it appears — it says so in its log and keeps
+# trying rather than exiting, so the order is a convenience and not a requirement.
+#
+# Then build the index, from a checkout that can reach the hosted database:
+#   SEARCH_API_URL=https://<host> SEARCH_API_ADMIN_TOKEN=... \
+#     yarn workspace @mtg/worker cli:hosted sync:typesense --rebuild
+#
+# One file covers both ways of putting TLS in front of it, because a panel usually points at a single compose file
+# and cannot be told to merge an override. Which one you get is decided by .env:
+#
+#   * **A proxy on the host** (nginx, Caddy) — the default. It reaches this through the loopback port below.
+#   * **Traefik in Docker** — set TRAEFIK_ENABLE=true, TRAEFIK_EXTERNAL=true, TRAEFIK_NETWORK and SEARCH_API_HOST.
+#     Traefik cannot use a loopback port: it discovers containers by label and connects to them container to
+#     container, so it needs the shared network and the router labels below.
+#
+# Full context in docs/roadmap/typesense-plan.md; the runbook is docs/roadmap/typesense-ops.md; the service itself
+# is documented in services/search-api/README.md.
+
+name: mtg-search-api
+
+services:
+  search-api:
+    # Built on the VPS from the repo by default. Set SEARCH_API_IMAGE to a registry tag if you build it elsewhere.
+    build: ../../services/search-api
+    image: ${SEARCH_API_IMAGE:-mtg-search-api:local}
+    restart: unless-stopped
+
+    environment:
+      SEARCH_API_ADDR: ":8080"
+      # By name on the shared network — the alias the Typesense stack declares. Never a public URL: that would
+      # defeat the point of this service.
+      TYPESENSE_URL: "http://typesense:8108"
+      TYPESENSE_ADMIN_KEY: "${TYPESENSE_ADMIN_KEY:?set TYPESENSE_ADMIN_KEY in .env — the same value the Typesense stack uses}"
+      SEARCH_API_TOKEN: "${SEARCH_API_TOKEN:?set SEARCH_API_TOKEN in .env — the web app's read token}"
+      SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:?set SEARCH_API_ADMIN_TOKEN in .env — the worker's write token}"
+
+    # Loopback only, for a proxy on the host and for `curl 127.0.0.1:8090/v1/health` when something is wrong.
+    # Keep the `127.0.0.1:` prefix: Docker writes iptables rules that bypass ufw for published ports, so
+    # `0.0.0.0:8090` is reachable from the internet whatever the firewall says.
+    ports:
+      - "127.0.0.1:${SEARCH_API_PORT:-8090}:8080"
+
+    networks:
+      - mtg-search
+      - proxy
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Inert unless TRAEFIK_ENABLE is true: a label is metadata, and Traefik ignores a container that says
+    # `traefik.enable=false`. Saying so explicitly is safer than saying nothing, because Traefik's default is to
+    # expose every container it can see.
+    labels:
+      traefik.enable: "${TRAEFIK_ENABLE:-false}"
+      traefik.docker.network: "${TRAEFIK_NETWORK:-mtg-search-api-proxy}"
+      traefik.http.routers.searchapi.rule: "Host(`${SEARCH_API_HOST:-search-api.set-SEARCH_API_HOST-in-env.invalid}`)"
+      traefik.http.routers.searchapi.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
+      traefik.http.routers.searchapi.tls: "true"
+      traefik.http.routers.searchapi.tls.certresolver: "${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      traefik.http.services.searchapi.loadbalancer.server.port: "8080"
+
+networks:
+  # Where Typesense is. External on both sides, so neither stack depends on the other's deploy order and a missing
+  # network fails `up` loudly rather than quietly starting a container that cannot reach the index.
+  mtg-search:
+    external: true
+    name: ${SEARCH_NETWORK:-mtg-search}
+
+  # The proxy's network. With TRAEFIK_EXTERNAL unset this is an ordinary bridge network compose creates and nothing
+  # else joins — unused, harmless, and it keeps this one file valid without a proxy in play. Set TRAEFIK_EXTERNAL=true
+  # and TRAEFIK_NETWORK to join the network Traefik is already on; `external` then means compose expects to find it,
+  # so a wrong name fails `up` loudly instead of quietly starting a container nothing can route to.
+  proxy:
+    external: ${TRAEFIK_EXTERNAL:-false}
+    name: ${TRAEFIK_NETWORK:-mtg-search-api-proxy}

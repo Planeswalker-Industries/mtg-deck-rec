@@ -16,8 +16,12 @@ Typesense again with extra latency.
 
 ## Endpoints
 
-`GET /v1/health` is unauthenticated (a load balancer needs it) and reports whether Typesense answers. Everything else
-takes `Authorization: Bearer <token>`.
+Two unauthenticated health endpoints, because they answer different questions. `GET /v1/health` is **readiness**: it
+reports whether Typesense answers. `GET /v1/health/live` is **liveness**: only that this process is serving. The
+container probe asks liveness — a probe on readiness would have a panel restart-looping this service, and Traefik
+pulling it out of the router, over a dependency outage the web app already falls back from.
+
+Everything else takes `Authorization: Bearer <token>`.
 
 | Endpoint | Token | For |
 |---|---|---|
@@ -50,7 +54,8 @@ SEARCH_API_TOKEN=... SEARCH_API_ADMIN_TOKEN=... \
   go run .
 ```
 
-Usually you want the whole stack instead: `docker compose -f ../../docker-compose.search.yml up -d --build`.
+Usually you want the whole stack instead: `docker compose -f ../../docker-compose.search.yml up -d --build`. On the
+VPS the two run as separate compose files; see [`deploy/README.md`](../../deploy/README.md).
 
 | Variable | Default | |
 |---|---|---|
