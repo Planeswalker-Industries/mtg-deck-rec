@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import type { CardSummary, SwapSuggestion, TagMatch } from "@mtg/core/contract";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
+import { isCardZoomEvent, ZoomableCard } from "@/components/cards/card-zoom";
 import { FlippableCardImage } from "@/components/cards/flippable-card-image";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +38,10 @@ export function SwapSheet({
     <Sheet open={swap !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
         side="bottom"
+        // A press on an enlarged card lands outside the sheet, and would otherwise close it along with the card.
+        onInteractOutside={(e) => {
+          if (isCardZoomEvent(e)) e.preventDefault();
+        }}
         className="mx-auto max-h-[92dvh] w-full max-w-xl gap-0 overflow-y-auto rounded-t-2xl border-seam bg-sleeve p-0"
       >
         {/* Keyed by target so the chosen replacement resets when another card is opened. */}
@@ -95,7 +100,7 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
       <div className="grid grid-cols-[minmax(0,2fr)_auto_minmax(0,3fr)] items-center gap-2 sm:gap-4">
         <figure className="min-w-0">
           <figcaption className="mb-1.5 text-xs text-muted-foreground">In your deck</figcaption>
-          <FlippableCardImage card={target} sizes="(min-width: 640px) 210px, 38vw" className="opacity-75 saturate-50" />
+          <FlippableCardImage card={target} zoomable sizes="(min-width: 640px) 210px, 38vw" className="opacity-75 saturate-50" />
         </figure>
         <ChevronRight aria-hidden className="size-6 text-muted-foreground" />
         <figure className="min-w-0">
@@ -103,6 +108,7 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
           <FlippableCardImage
             key={selected.card.id}
             card={selected.card}
+            zoomable
             variant="large"
             sizes="(min-width: 640px) 320px, 56vw"
             eager
@@ -157,19 +163,21 @@ function Alternatives({
       <ul className="-mx-4 mt-2 flex snap-x gap-2 overflow-x-auto px-4 pb-2">
         {suggestions.map((s, i) => (
           <li key={s.card.id} className="w-[5.5rem] shrink-0 snap-start">
-            <button
-              type="button"
-              onClick={() => onSelect(i)}
-              aria-pressed={i === selectedIndex}
-              className={cn(
-                "block w-full rounded-lg p-1 text-left",
-                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                i === selectedIndex ? "bg-background ring-2 ring-primary" : "hover:bg-background",
-              )}
-            >
-              <CardImage card={s.card} alt="" sizes="88px" />
-              <span className="mt-1 line-clamp-2 text-[0.6875rem] leading-tight font-bold">{displayName(s.card)}</span>
-            </button>
+            <ZoomableCard card={s.card} trigger="icon">
+              <button
+                type="button"
+                onClick={() => onSelect(i)}
+                aria-pressed={i === selectedIndex}
+                className={cn(
+                  "block w-full rounded-lg p-1 text-left",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  i === selectedIndex ? "bg-background ring-2 ring-primary" : "hover:bg-background",
+                )}
+              >
+                <CardImage card={s.card} alt="" sizes="88px" />
+                <span className="mt-1 line-clamp-2 text-[0.6875rem] leading-tight font-bold">{displayName(s.card)}</span>
+              </button>
+            </ZoomableCard>
           </li>
         ))}
       </ul>

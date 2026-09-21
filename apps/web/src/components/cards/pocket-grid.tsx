@@ -5,6 +5,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { displayName } from "@/lib/cards";
 import { CardImage } from "./card-image";
+import { ZoomableCard } from "./card-zoom";
 
 export interface PocketItem {
   card: CardSummary;
@@ -27,10 +28,13 @@ export function PocketGrid({
   items,
   label,
   onSelect,
+  zoomable = false,
 }: {
   items: PocketItem[];
   label: string;
   onSelect?: (card: CardSummary) => void;
+  /** Hover to enlarge a card, or press its magnifier; pressing the card itself still selects it or follows its link. */
+  zoomable?: boolean;
 }) {
   return (
     <div className="@container">
@@ -43,30 +47,37 @@ export function PocketGrid({
               {item.caption && <span className="mt-0.5 block text-xs leading-snug">{item.caption}</span>}
             </>
           );
+          const pocket = onSelect ? (
+            <button
+              type="button"
+              onClick={() => onSelect(item.card)}
+              aria-pressed={item.selected ?? false}
+              className={cn(
+                "block w-full rounded-lg p-1 text-left transition-colors hover:bg-sleeve/70",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                item.selected && "bg-sleeve ring-2 ring-primary",
+              )}
+            >
+              {content}
+            </button>
+          ) : item.href ? (
+            <Link
+              href={item.href as Route}
+              className="block rounded-lg p-1 transition-colors hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {content}
+            </Link>
+          ) : (
+            <div className="p-1">{content}</div>
+          );
           return (
             <li key={item.href ?? item.card.id} className="min-w-0">
-              {onSelect ? (
-                <button
-                  type="button"
-                  onClick={() => onSelect(item.card)}
-                  aria-pressed={item.selected ?? false}
-                  className={cn(
-                    "block w-full rounded-lg p-1 text-left transition-colors hover:bg-sleeve/70",
-                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                    item.selected && "bg-sleeve ring-2 ring-primary",
-                  )}
-                >
-                  {content}
-                </button>
-              ) : item.href ? (
-                <Link
-                  href={item.href as Route}
-                  className="block rounded-lg p-1 transition-colors hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  {content}
-                </Link>
+              {zoomable ? (
+                <ZoomableCard card={item.card} trigger="icon">
+                  {pocket}
+                </ZoomableCard>
               ) : (
-                <div className="p-1">{content}</div>
+                pocket
               )}
             </li>
           );
