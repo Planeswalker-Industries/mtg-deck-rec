@@ -31,17 +31,19 @@ Two files create fixed test accounts (`anon@test.local`, `admin@test.local`) and
 
 ### T002: Configure hosted Supabase Auth
 
-**Priority:** HIGH | **Area:** DevOps | **Status:** Not started
+**Priority:** HIGH | **Area:** DevOps | **Status:** Dashboard configured; SMTP pending (T033)
 
-Sign-in emails break on hosted without these dashboard steps (not code — manual config).
+The hosted dashboard steps are done (URL configuration and the sign-in email template in Phase D, `SUPABASE_SECRET_KEY` on Vercel in Phase E). What remains is deliverability, which needs a real SMTP provider and a domain — that is T033.
 
 **Steps:**
-1. Add `/auth/confirm` and `/auth/callback` to Supabase Auth redirect allow list (dashboard → Authentication → URL Configuration)
-2. Paste `supabase/templates/sign-in.html` into dashboard email templates
-3. Set `SUPABASE_SECRET_KEY` on Vercel project (`mtg-app`) — needed by share-link kill switch (`lib/server/share-import.ts`)
+1. ~~Add `/auth/confirm` and `/auth/callback` to Supabase Auth redirect allow list (dashboard → Authentication → URL Configuration)~~ done
+2. ~~Paste `supabase/templates/sign-in.html` into dashboard email templates~~ done
+3. ~~Set `SUPABASE_SECRET_KEY` on Vercel project (`mtg-app`) — needed by share-link kill switch (`lib/server/share-import.ts`)~~ done
 
 **Acceptance criteria:**
-- [ ] Sign-in email link works on hosted site
+- [x] URL configuration and sign-in email template set on hosted
+- [x] `SUPABASE_SECRET_KEY` set on Vercel (share-link kill switch)
+- [ ] Sign-in email link works on hosted at a usable rate (T033)
 - [ ] Share-link kill switch activates on 403/409 responses
 
 ---
@@ -226,9 +228,9 @@ The Typesense index is built, tested and documented, and nothing uses it until i
 
 ### T025: Google sign-in credentials
 
-**Priority:** LOW | **Area:** DevOps / Auth | **Status:** Code done, credentials missing
+**Priority:** LOW | **Area:** DevOps / Auth | **Status:** Done (local and hosted)
 
-The Google OAuth flow is fully wired and hidden behind `NEXT_PUBLIC_AUTH_GOOGLE`, which is off because no credentials exist. Nothing to build — a console registration and two environment values.
+The Google OAuth flow is fully wired behind `NEXT_PUBLIC_AUTH_GOOGLE`. The provider is enabled locally (`supabase/config.toml`, secret in `supabase/.env`) and on hosted (dashboard), the flag is set on Vercel, and both a local and the hosted round trip create a `profiles` row.
 
 **Files:**
 - `apps/web/src/app/sign-in/actions.ts:72` — `startGoogleSignInAction`, refuses with FORBIDDEN while the flag is off
@@ -236,10 +238,10 @@ The Google OAuth flow is fully wired and hidden behind `NEXT_PUBLIC_AUTH_GOOGLE`
 - `supabase/config.toml` — `[auth.external.google]`
 
 **Acceptance criteria:**
-- [ ] Register an OAuth client in Google Cloud Console; redirect URI is the Supabase project's `/auth/v1/callback`
-- [ ] Set client id and secret in the Supabase dashboard (and `config.toml` locally)
-- [ ] Set `NEXT_PUBLIC_AUTH_GOOGLE=1` on Vercel
-- [ ] Verify `/auth/callback` completes and creates a `profiles` row
+- [x] Register an OAuth client in Google Cloud Console; redirect URI is the Supabase project's `/auth/v1/callback`
+- [x] Set client id and secret in the Supabase dashboard (and `config.toml` locally)
+- [x] Set `NEXT_PUBLIC_AUTH_GOOGLE=1` on Vercel
+- [x] Verify `/auth/callback` completes and creates a `profiles` row
 
 ---
 
@@ -280,6 +282,25 @@ Phase 3 planned a timing check for a large collection import that was never run.
 - [ ] Record per-batch resolve time and commit time
 - [ ] Confirm no statement times out, and that the browser stays responsive (the parse is in a Web Worker)
 - [ ] Feed the numbers into T023's `maxEntries` decision
+
+---
+
+### T033: Hosted custom SMTP and custom domain
+
+**Priority:** MEDIUM | **Area:** DevOps / Auth | **Status:** Not started
+
+Hosted Auth is configured (T002, T025) but email deliverability is not. Supabase's built-in SMTP sends only a couple of emails an hour and is explicitly not for production, so the email-code sign-in path cannot be relied on. Google sign-in covers the owner in the meantime; the email path needs a real SMTP provider, and most providers need a domain you control.
+
+**Steps:**
+1. Point a domain at the app and set it as the custom URL.
+2. Resend (free tier, ~3k/month) or equivalent: verify the sending domain, then Supabase → Authentication → SMTP with its credentials.
+3. Raise Authentication → Rate Limits → emails per hour past the default.
+4. Move the URL settings to the domain: Supabase Site URL and redirect allow list, Vercel `NEXT_PUBLIC_SITE_URL`, and the Google OAuth client's authorized redirect URIs.
+
+**Acceptance criteria:**
+- [ ] Custom domain serves the app and is on the Auth redirect allow list
+- [ ] Custom SMTP sends sign-in emails at a production rate
+- [ ] `NEXT_PUBLIC_SITE_URL` and the Google OAuth redirects updated for the domain
 
 ---
 
