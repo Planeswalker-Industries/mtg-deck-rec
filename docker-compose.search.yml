@@ -1,5 +1,8 @@
 # The search stack for local development: Typesense, and the Go API that is the only thing that talks to it.
-# Production runs the same two services from deploy/search/ (see docs/roadmap/typesense-ops.md).
+#
+# One file, unlike production, which deploys the two separately from deploy/typesense/ and deploy/search-api/. That
+# split exists because a managed panel treats one compose file as one application; on a laptop there is no panel to
+# satisfy and you always want both, so one `up` is the right shape here. See deploy/README.md.
 #
 #   docker compose -f docker-compose.search.yml up -d --build
 #   yarn workspace @mtg/worker cli sync:typesense --rebuild

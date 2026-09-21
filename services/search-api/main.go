@@ -21,7 +21,7 @@ import (
 )
 
 func main() {
-	// `search-api healthcheck` asks this process's own /v1/health and exits 0 or 1. The container image is
+	// `search-api healthcheck` asks this process's own liveness endpoint and exits 0 or 1. The container image is
 	// distroless — no shell, no curl, no wget — so the binary has to be able to check itself, or the healthcheck
 	// is one that can never run. (Learned from the Typesense image, whose obvious healthcheck marked a working
 	// container unhealthy forever.)
@@ -75,7 +75,9 @@ func healthcheck() int {
 		addr = ":8080"
 	}
 	client := &http.Client{Timeout: 3 * time.Second}
-	res, err := client.Get("http://127.0.0.1" + addr + "/v1/health")
+	// Liveness, not readiness: a Typesense outage must not make Docker call this container unhealthy. See the
+	// comment on the `live` handler.
+	res, err := client.Get("http://127.0.0.1" + addr + "/v1/health/live")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

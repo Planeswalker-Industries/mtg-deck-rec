@@ -51,6 +51,7 @@ func New(cfg config.Config, ts *typesense.Client, log *slog.Logger) *fiber.App {
 	})
 
 	app.Get("/v1/health", s.health)
+	app.Get("/v1/health/live", s.live)
 
 	read := app.Group("/v1", s.authorize(cfg.ReadToken, cfg.AdminToken))
 	read.Post("/cards/by-id", s.cardsByID)
@@ -126,12 +127,23 @@ func (s *Server) authorize(accepted ...string) fiber.Handler {
 	}
 }
 
-// health is deliberately unauthenticated and deliberately shallow about Typesense: a load balancer needs to know
-// this process is up, and saying more to an anonymous caller than "ok" tells them about the inside.
+// health is readiness: can this service actually do its job, which means Typesense answering. Unauthenticated,
+// because a load balancer needs it, and deliberately shallow — saying more than "ok" to an anonymous caller tells
+// them about the inside.
 func (s *Server) health(c fiber.Ctx) error {
 	if err := s.ts.Health(c.Context()); err != nil {
 		s.log.Warn("health: typesense did not answer", "err", err)
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"ok": false})
 	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+// live is liveness: is this process serving HTTP. It deliberately says nothing about Typesense.
+//
+// The container's healthcheck asks *this* one. If it asked the readiness endpoint, a Typesense outage would mark a
+// perfectly working API unhealthy — which means a panel restart-looping it and Traefik pulling it out of the
+// router, turning an honest 503 that the app already falls back from into a connection failure. Measured: stop the
+// Typesense stack and /v1/health returns 503 while this still returns 200, which is the distinction that matters.
+func (s *Server) live(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true})
 }
