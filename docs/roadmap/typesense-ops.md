@@ -65,15 +65,24 @@ server {
 Caddy is two lines and gets its own certificate: `search.example.com { reverse_proxy 127.0.0.1:8108 }`.
 
 **Traefik in Docker** cannot use that loopback port at all. It discovers containers by label and connects to them
-container to container, so the service has to join Traefik's network and carry a router. That is what
-`docker-compose.traefik.yml` adds, used *with* the base file:
+container to container, so the service has to join Traefik's network and carry a router. The same compose file does
+this — it is one file rather than two because a managed panel usually points at a single compose path and cannot be
+told to merge an override. Four lines in `.env` switch it on:
 
 ```sh
-# in .env, beside TYPESENSE_ADMIN_KEY:
+# beside TYPESENSE_ADMIN_KEY:
+#   TRAEFIK_ENABLE=true
+#   TRAEFIK_EXTERNAL=true
 #   TYPESENSE_HOST=search.example.com
 #   TRAEFIK_NETWORK=traefik          # if yours is called something else
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+docker compose up -d
 ```
+
+`TRAEFIK_ENABLE` turns the labels on; `TRAEFIK_EXTERNAL` joins Traefik's existing network instead of an unused local
+one. **Both are needed** — labels on a container Traefik cannot reach do nothing, and with `external` set the name
+has to be right, because compose then fails `up` loudly rather than quietly starting a container nothing can route
+to. With neither set, the labels say `traefik.enable=false` and the network is an ordinary unused bridge, which is
+what makes one file safe for the nginx case.
 
 **If a panel manages the host** — Dokploy, Coolify and the like, which generate
 `<project>-<service>-<hash>.sslip.io` names — set the domain and container port **8108** in the panel instead and let
