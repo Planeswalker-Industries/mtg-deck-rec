@@ -11,19 +11,33 @@ Two files rather than one because a managed panel treats one compose file as one
 different lifecycles: the API is rebuilt whenever its Go code changes, while Typesense is a long-lived stateful
 container you only touch to upgrade it.
 
-## They meet on a network you create once
+## They meet on a shared network
 
-```sh
-docker network create mtg-search
+**The Typesense stack creates it; the API stack joins it. Deploy Typesense first.** Nothing has to be created by
+hand — a panel deploy cannot run `docker network create`, and requiring it is what produced
+
+```
+Could not attach to network mtg-search: network mtg-search not found
 ```
 
-Both stacks declare it `external`, so neither depends on the other's deploy order and a missing network fails `up`
-loudly instead of quietly starting a container that cannot reach the index. The Typesense service publishes the
-alias `typesense` on it, which is the whole of `TYPESENSE_URL=http://typesense:8108` in the API's environment.
+on a first deploy. Get the order wrong and the API refuses to start with `network mtg-search declared as external,
+but could not be found`, which at least says what to do.
 
-**Order does not matter.** Measured: stop the Typesense stack and the API keeps running and stays *healthy* — its
-container probe asks liveness, not readiness — while `/v1/health` honestly returns 503 and the web app falls back to
-Postgres. Start Typesense again and it recovers on its own, with nothing to restart.
+The Typesense service publishes the alias `typesense` on that network, which is the whole of
+`TYPESENSE_URL=http://typesense:8108` in the API's environment.
+
+**To use a network neither stack owns** — a panel's shared network, say — set `SEARCH_NETWORK` to its name and
+`SEARCH_NETWORK_EXTERNAL=true` in **both** `.env` files. Then neither tries to create it and the order stops
+mattering. Verified working on a network created separately.
+
+> Changing `SEARCH_NETWORK` on a stack that is already up needs `docker compose up -d --force-recreate`. Compose
+> reuses a running container and leaves it on the old network, which looks like the API being healthy while
+> `/v1/health` reports 503 — it is live, it just cannot see Typesense.
+
+**Once the network exists the two are independent again.** Measured: stop the Typesense stack and the API keeps
+running and stays *healthy* — its container probe asks liveness, not readiness — while `/v1/health` honestly returns
+503 and the web app falls back to Postgres. Start Typesense again and it recovers on its own, with nothing to
+restart.
 
 ## Three secrets, each able to do less than the last
 
@@ -40,9 +54,7 @@ refuses to start if the two tokens match, or if any of the three is empty.
 ## Order to stand it up
 
 ```sh
-docker network create mtg-search
-
-cd deploy/typesense  && cp .env.example .env && $EDITOR .env && docker compose up -d
+cd deploy/typesense  && cp .env.example .env && $EDITOR .env && docker compose up -d   # creates the network
 cd ../search-api     && cp .env.example .env && $EDITOR .env && docker compose up -d --build
 
 curl http://127.0.0.1:8090/v1/health          # {"ok":true} — the stack works

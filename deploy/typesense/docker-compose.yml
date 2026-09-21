@@ -2,12 +2,13 @@
 # compose file as one application, and these two have different lifecycles — the API is rebuilt whenever its Go
 # code changes, while Typesense is a long-lived stateful container you only touch to upgrade it.
 #
-# They find each other over a shared Docker network you create once, by hand:
+# They find each other over a shared Docker network. **This stack creates it**, and the search-api stack joins it,
+# so deploy this one first. Nothing has to be created by hand: a panel deploy cannot run `docker network create`,
+# and requiring it meant "network mtg-search not found" on the first deploy.
 #
-#   docker network create mtg-search
-#
-# External rather than created by whichever stack starts first: that way neither depends on the other's deploy
-# order, and a missing network fails `up` loudly instead of quietly starting a container nothing can reach.
+# If you would rather they both used a network something else owns — a panel's shared network, say — set
+# SEARCH_NETWORK to its name and SEARCH_NETWORK_EXTERNAL=true in *both* .env files, and neither stack will try to
+# create it.
 #
 #   cd deploy/typesense
 #   cp .env.example .env && $EDITOR .env      # TYPESENSE_ADMIN_KEY
@@ -74,6 +75,11 @@ services:
         max-file: "3"
 
 networks:
+  # Created here, joined by the search-api stack. `name:` pins the exact name rather than letting compose prefix it
+  # with this project's, because the other stack has to be able to name it.
+  #
+  # SEARCH_NETWORK_EXTERNAL defaults to **false** here and **true** there: unset, this stack owns the network and
+  # that one attaches. Set it to true in both to use a network neither of them owns.
   mtg-search:
-    external: true
+    external: ${SEARCH_NETWORK_EXTERNAL:-false}
     name: ${SEARCH_NETWORK:-mtg-search}
