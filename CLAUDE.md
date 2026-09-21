@@ -276,6 +276,14 @@ C: has little free space. Put large local data — Scryfall bulk downloads, cach
 - Prices are estimates and must always render with their as-of timestamp.
 - Scryfall `edhrec_rank` is not used anywhere.
 
+## Coding policy
+
+**Never use Magic Numbers in the code. Set as top of document const variables if used in ONLY that document/component. Otherwise, set in a global constants/config file and import.** (Owner rule, 2026-09-21.)
+- Name the constant for what it means and put the unit in the name (`SWIPE_COOLDOWN_MS`, `DRAG_CLICK_SLOP_PX`), with a one-line comment on why it has that value.
+- A value shared across files goes in `apps/web/src/lib/constants.ts` for the web app, or `packages/core/src` when the worker needs it too. Create the file when the first shared value needs it.
+- Not magic numbers: 0, 1 and -1 used as identities or directions, array indices, and Tailwind classes or design tokens (`gap-3`, `size-14`), which already are the scale.
+- Scoring weights and anti-abuse thresholds still belong in database config (`app_config`), not in a constants file: the repo is public (see Hard constraints).
+
 ## Hard constraints
 
 - No bot-detection circumvention anywhere: no cloudscraper-class libraries, fingerprint spoofing, UA rotation, or proxies. Every outbound request sends an accurate descriptive `User-Agent` (and `Accept` for Scryfall).

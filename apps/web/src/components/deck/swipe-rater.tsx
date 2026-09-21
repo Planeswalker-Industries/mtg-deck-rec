@@ -24,6 +24,44 @@ const SWIPE_SHARE = 0.3;
 const FLICK_VELOCITY = 600;
 /** How long a swiped card takes to leave. */
 const FLING_SECONDS = 0.22;
+/** How far a leaving card travels, in card widths: far enough to be fully off-screen. */
+const FLING_DISTANCE_WIDTHS = 1.8;
+/**
+ * After a swipe lands, the next one waits this long. A double tap on ✅ or ❌ would otherwise cast a second vote on the
+ * card that just came up, which the player never saw.
+ */
+const SWIPE_COOLDOWN_MS = 500;
+/** Movement (px) past which a press on the card counts as a drag, so the click it ends in doesn't enlarge the card. */
+const DRAG_CLICK_SLOP_PX = 5;
+/** Card width (px) assumed before the card has been measured. */
+const FALLBACK_CARD_WIDTH_PX = 240;
+/** The card tilts up to TILT_MAX_DEG as it is dragged TILT_AT_PX to either side. */
+const TILT_AT_PX = 260;
+const TILT_MAX_DEG = 14;
+/** A dragged card stays solid to FADE_START_PX and is gone by FADE_END_PX. */
+const FADE_START_PX = 260;
+const FADE_END_PX = 420;
+/** The spring a card let go early settles back with. */
+const SPRING_BACK = { type: "spring", stiffness: 520, damping: 32 } as const;
+/** How much the ❌ and ✅ buttons swell as the card is dragged all the way to them. */
+const BUTTON_PULL_SCALE = 0.18;
+/** Cut reasons under the card being replaced, and the jobs flanking it. */
+const MAX_REASONS = 2;
+const MAX_TARGET_JOBS = 6;
+/** The draw that opens a sitting: cards slide out of the deck, turn over, then their names and details fade in. */
+const DRAW = {
+  startScale: 0.55,
+  slideSeconds: 0.42,
+  slideEase: [0.22, 0.9, 0.3, 1],
+  flipDelaySeconds: 0.24,
+  flipSeconds: 0.38,
+  fadeSeconds: 0.25,
+  targetFromY: 140,
+  replacementFromY: -170,
+  replacementDelaySeconds: 0.12,
+  targetNameDelaySeconds: 0.55,
+  replacementDetailsDelaySeconds: 0.7,
+} as const;
 
 type Direction = 1 | -1;
 
@@ -38,11 +76,14 @@ interface SwipeHandle {
 function SwipeCard({
   ref,
   onSwipe,
+  canSwipe,
   onDrag,
   children,
 }: {
   ref: Ref<SwipeHandle>;
   onSwipe: (direction: Direction) => void;
+  /** False during the cooldown after the previous swipe: a drag past the threshold springs back instead. */
+  canSwipe: () => boolean;
   /** -1..1: how far toward a swipe the card has been dragged. */
   onDrag: (progress: number) => void;
   children: ReactNode;
@@ -53,20 +94,24 @@ function SwipeCard({
   const dragged = useRef(false);
   const reduceMotion = useReducedMotion();
   const x = useMotionValue(0);
-  const rotate = useTransform(x, [-260, 0, 260], [-14, 0, 14]);
-  const opacity = useTransform(x, [-420, -260, 0, 260, 420], [0, 1, 1, 1, 0]);
+  const rotate = useTransform(x, [-TILT_AT_PX, 0, TILT_AT_PX], [-TILT_MAX_DEG, 0, TILT_MAX_DEG]);
+  const opacity = useTransform(x, [-FADE_END_PX, -FADE_START_PX, 0, FADE_START_PX, FADE_END_PX], [0, 1, 1, 1, 0]);
 
-  const width = () => box.current?.offsetWidth ?? 240;
+  const width = () => box.current?.offsetWidth ?? FALLBACK_CARD_WIDTH_PX;
 
   function fling(direction: Direction) {
     if (leaving.current) return;
     leaving.current = true;
     onDrag(0);
+    // A leaving card slides over the ❌ and ✅ buttons, so a quick second tap would land on it and start a drag. Motion
+    // stops the fling for that drag, and a stopped animation never resolves: the swipe was never reported and every
+    // later press returned early, freezing the view. Letting presses through to the button underneath avoids that.
+    if (box.current) box.current.style.pointerEvents = "none";
     if (reduceMotion) {
       onSwipe(direction);
       return;
     }
-    void animate(x, direction * width() * 1.8, { duration: FLING_SECONDS, ease: "easeOut" }).then(() => onSwipe(direction));
+    void animate(x, direction * width() * FLING_DISTANCE_WIDTHS, { duration: FLING_SECONDS, ease: "easeOut" }).then(() => onSwipe(direction));
   }
 
   useImperativeHandle(ref, () => ({ fling }));
@@ -85,16 +130,16 @@ function SwipeCard({
         e.preventDefault();
       }}
       onDrag={(_, info) => {
-        if (Math.abs(info.offset.x) > 5 || Math.abs(info.offset.y) > 5) dragged.current = true;
+        if (Math.abs(info.offset.x) > DRAG_CLICK_SLOP_PX || Math.abs(info.offset.y) > DRAG_CLICK_SLOP_PX) dragged.current = true;
         onDrag(Math.max(-1, Math.min(1, info.offset.x / (width() * SWIPE_SHARE))));
       }}
       onDragEnd={(_, info) => {
         const flicked = Math.abs(info.velocity.x) >= FLICK_VELOCITY && Math.sign(info.velocity.x) === Math.sign(info.offset.x);
-        if (Math.abs(info.offset.x) >= width() * SWIPE_SHARE || flicked) {
+        if ((Math.abs(info.offset.x) >= width() * SWIPE_SHARE || flicked) && canSwipe()) {
           fling(info.offset.x > 0 ? 1 : -1);
         } else {
           onDrag(0);
-          void animate(x, 0, { type: "spring", stiffness: 520, damping: 32 });
+          void animate(x, 0, SPRING_BACK);
         }
       }}
       // Above the ❌ and ✅ buttons, so a dragged card slides over them instead of under them: nothing covers the card.
@@ -126,15 +171,15 @@ function DrawnCard({
   return (
     <motion.div
       className={cn("relative [perspective:1400px]", className)}
-      initial={play ? { y: fromY, scale: 0.55, opacity: 0 } : false}
+      initial={play ? { y: fromY, scale: DRAW.startScale, opacity: 0 } : false}
       animate={{ y: 0, scale: 1, opacity: 1 }}
-      transition={{ delay, duration: 0.42, ease: [0.22, 0.9, 0.3, 1] }}
+      transition={{ delay, duration: DRAW.slideSeconds, ease: DRAW.slideEase }}
     >
       <motion.div
         className="relative [transform-style:preserve-3d]"
         initial={play ? { rotateY: 180 } : false}
         animate={{ rotateY: 0 }}
-        transition={{ delay: delay + 0.24, duration: 0.38, ease: "easeInOut" }}
+        transition={{ delay: delay + DRAW.flipDelaySeconds, duration: DRAW.flipSeconds, ease: "easeInOut" }}
       >
         <div className="[backface-visibility:hidden]">{children}</div>
         <div aria-hidden className="absolute inset-0 [transform:rotateY(180deg)] [backface-visibility:hidden]">
@@ -167,7 +212,7 @@ function SideButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      style={{ transform: `scale(${1 + pull * 0.18})` }}
+      style={{ transform: `scale(${1 + pull * BUTTON_PULL_SCALE})` }}
       className={cn(
         "flex size-14 items-center justify-center rounded-full transition-[transform,box-shadow,background-color] duration-150",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-40",
@@ -209,14 +254,23 @@ export function SwipeRater({
   const reduceMotion = useReducedMotion();
   const card = useRef<SwipeHandle>(null);
   const [drag, setDrag] = useState(0);
+  /** When the last swipe landed, for SWIPE_COOLDOWN_MS. */
+  const lastSwipeAt = useRef(0);
   const { target, loaded, candidate } = rater;
   const inRater = mode === "rater";
 
-  const act = (direction: Direction) => {
-    if (!candidate) return;
-    if (card.current) card.current.fling(direction);
-    else if (direction === 1) rater.swapIn();
+  const canSwipe = () => Date.now() - lastSwipeAt.current >= SWIPE_COOLDOWN_MS;
+
+  const swiped = (direction: Direction) => {
+    lastSwipeAt.current = Date.now();
+    if (direction === 1) rater.swapIn();
     else rater.pass();
+  };
+
+  const act = (direction: Direction) => {
+    if (!candidate || !canSwipe()) return;
+    if (card.current) card.current.fling(direction);
+    else swiped(direction);
   };
 
   // Arrow keys do what the buttons do, unless the player is typing somewhere.
@@ -240,13 +294,13 @@ export function SwipeRater({
   }
   const drawing = !reduceMotion && rater.targetIndex === 0 && rater.candidateIndex === 0;
   const targetName = displayName(target.card);
-  const reasons = (target.reasons ?? []).map((r) => cutReasonShortLabel[r]).slice(0, 2);
+  const reasons = (target.reasons ?? []).map((r) => cutReasonShortLabel[r]).slice(0, MAX_REASONS);
   const jobs = candidate
     ? [...new Set(candidate.matchedTags.map((m) => (m.distance === 0 || !m.via ? m.candidateTag.label : m.via.label)))]
     : [];
   // The same jobs, named as the card being replaced has them: they flank its image, half on each side.
   const targetJobs = candidate
-    ? [...new Set(candidate.matchedTags.map((m) => (m.distance === 0 || !m.via ? m.targetTag.label : m.via.label)))].slice(0, 6)
+    ? [...new Set(candidate.matchedTags.map((m) => (m.distance === 0 || !m.via ? m.targetTag.label : m.via.label)))].slice(0, MAX_TARGET_JOBS)
     : [];
 
   return (
@@ -269,7 +323,7 @@ export function SwipeRater({
         {/* Both cards scale with the screen's height so the whole sitting fits on a phone below the deck bar. */}
         <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
           <TagPills labels={targetJobs.filter((_, i) => i % 2 === 0)} label={`What ${targetName} does`} align="end" />
-          <DrawnCard play={drawing} delay={0} fromY={140} className="w-[clamp(5.5rem,calc((100dvh_-_35rem)*0.32),11rem)]">
+          <DrawnCard play={drawing} delay={0} fromY={DRAW.targetFromY} className="w-[clamp(5.5rem,calc((100dvh_-_35rem)*0.32),11rem)]">
             <ZoomableCard card={target.card}>
               <CardImage card={target.card} alt={`${inRater ? "Card being replaced" : "In your deck"}: ${target.card.name}`} sizes="176px" eager className={inRater ? undefined : "opacity-80 saturate-50"} />
             </ZoomableCard>
@@ -277,7 +331,7 @@ export function SwipeRater({
           <TagPills labels={targetJobs.filter((_, i) => i % 2 === 1)} label={`More of what ${targetName} does`} align="start" />
         </div>
         {/* While the first pair is being drawn, the names wait until the cards have turned over. */}
-        <motion.figcaption className="mt-1.5" initial={drawing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ delay: 0.55, duration: 0.25 }}>
+        <motion.figcaption className="mt-1.5" initial={drawing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ delay: DRAW.targetNameDelaySeconds, duration: DRAW.fadeSeconds }}>
           <span className="block font-heading text-lg leading-tight font-extrabold">{targetName}</span>
           {reasons.length > 0 && <span className="block text-xs text-muted-foreground">{reasons.join(", ")}</span>}
         </motion.figcaption>
@@ -311,8 +365,10 @@ export function SwipeRater({
         <>
           <div className="grid grid-cols-[3.5rem_1fr_3.5rem] items-center gap-2">
             <SideButton kind="pass" label={inRater ? `Not a fit: ${candidate.card.name}` : `Pass on ${candidate.card.name}`} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
-            <SwipeCard key={candidate.card.id} ref={card} onDrag={setDrag} onSwipe={(d) => (d === 1 ? rater.swapIn() : rater.pass())}>
-              <DrawnCard play={drawing} delay={0.12} fromY={-170} className="mx-auto w-[clamp(7rem,calc((100dvh_-_35rem)*0.72),16rem)]">
+            {/* Keyed by the pair: the rater's next card can open on the same replacement, and reusing the card that
+                just flew off would leave it off-screen and still marked as leaving. */}
+            <SwipeCard key={`${target.card.id}:${candidate.card.id}`} ref={card} onDrag={setDrag} canSwipe={canSwipe} onSwipe={swiped}>
+              <DrawnCard play={drawing} delay={DRAW.replacementDelaySeconds} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(7rem,calc((100dvh_-_35rem)*0.72),16rem)]">
                 <ZoomableCard card={candidate.card}>
                   <CardImage card={candidate.card} variant="large" alt={`Replacement: ${candidate.card.name}`} sizes="256px" eager className="shadow-[0_0_0_2px_var(--color-primary)]" />
                 </ZoomableCard>
@@ -325,7 +381,7 @@ export function SwipeRater({
             className="mt-3 text-center"
             initial={drawing ? { opacity: 0 } : false}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.7, duration: 0.25 }}
+            transition={{ delay: DRAW.replacementDetailsDelaySeconds, duration: DRAW.fadeSeconds }}
           >
             <p className="font-heading text-xl leading-tight font-extrabold">{displayName(candidate.card)}</p>
             <p className="text-sm text-muted-foreground tabular-nums">
