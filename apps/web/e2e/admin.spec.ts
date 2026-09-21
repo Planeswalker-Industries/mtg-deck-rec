@@ -14,10 +14,15 @@ test("signed out, /admin redirects to sign in", async ({ page }) => {
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fadmin$/);
 });
 
+/** Every admin endpoint, so a new one can't ship without the same guard. */
+const ADMIN_API = ["/api/admin/users", "/api/admin/tags", "/api/admin/sync-runs"] as const;
+
 test("signed out, the admin API refuses", async ({ request }) => {
-  const res = await request.get("/api/admin/users");
-  expect(res.status()).toBe(401);
-  expect((await res.json()).error.code).toBe("UNAUTHENTICATED");
+  for (const path of ADMIN_API) {
+    const res = await request.get(path);
+    expect(res.status(), path).toBe(401);
+    expect((await res.json()).error.code, path).toBe("UNAUTHENTICATED");
+  }
 });
 
 test("a signed-in visitor who isn't an admin gets a real 404", async ({ page, request }) => {
@@ -30,8 +35,10 @@ test("a signed-in visitor who isn't an admin gets a real 404", async ({ page, re
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 
   // The API answers the same way, so nothing about the area is confirmed by either door.
-  const api = await page.request.get("/api/admin/users");
-  expect(api.status()).toBe(404);
+  for (const path of ADMIN_API) {
+    const api = await page.request.get(path);
+    expect(api.status(), path).toBe(404);
+  }
 });
 
 test("a platform admin sees the user list and can rename someone", async ({ page, request }) => {
@@ -85,4 +92,51 @@ test("a platform admin sees the user list and can rename someone", async ({ page
   const selfRevoke = await page.request.patch(`/api/admin/users/${myId}`, { data: { isAdmin: false } });
   expect(selfRevoke.status()).toBe(400);
   expect((await selfRevoke.json()).error.message).toContain("your own platform admin access");
+});
+
+test("a platform admin switches a tag off and back on, and reads the sync history", async ({ page, request }) => {
+  test.skip(!mailpit, "needs the local mail catcher (E2E_MAILPIT_URL)");
+  test.skip(!process.env.E2E_LOCAL_DATA, "needs the local catalog's tags (E2E_LOCAL_DATA)");
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await signIn(page, request, "admin@test.local", "/decks");
+  await page.goto("/admin/tags");
+  const tags = page.getByRole("table");
+  await expect(tags).toBeVisible({ timeout: 60_000 });
+
+  // A trivia tag nothing on the site reads, so switching it cannot disturb other tests.
+  await page.getByPlaceholder("Tag name, slug or id").fill("alliteration");
+  const row = tags.getByRole("row").filter({ has: page.getByRole("cell", { name: "alliteration", exact: true }) });
+  await row.click({ timeout: 30_000 });
+
+  await page.getByLabel("Switched off", { exact: true }).check();
+  await page.getByLabel("Why").fill("e2e: trivia, not a job");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL(/\/admin\/tags/);
+
+  // Reopened, it says who threw the switch and why.
+  await page.goto("/admin/tags");
+  await page.getByPlaceholder("Tag name, slug or id").fill("alliteration");
+  await expect(row.getByText("Switched off")).toBeVisible({ timeout: 30_000 });
+  await row.click();
+  await expect(page.getByText(/Switched off by admin@test\.local/)).toBeVisible();
+  await expect(page.getByLabel("Why")).toHaveValue("e2e: trivia, not a job");
+
+  // And back on, which clears all of it.
+  await page.getByLabel("Switched off", { exact: true }).uncheck();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL(/\/admin\/tags/);
+  await page.getByPlaceholder("Tag name, slug or id").fill("alliteration");
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(row.getByText("Switched off")).toHaveCount(0);
+
+  // The sync history lists runs, and a run opens with its metrics.
+  await page.goto("/admin/sync-runs");
+  await expect(page.getByRole("heading", { name: "Latest run of each job" })).toBeVisible({ timeout: 60_000 });
+  const runs = page.getByRole("table");
+  await expect(runs.getByRole("row").nth(1)).toBeVisible({ timeout: 30_000 });
+  await runs.getByRole("row").nth(1).click();
+  await expect(page.getByText("Rows changed")).toBeVisible();
+  await expect(page.getByText("Metrics")).toBeVisible();
 });

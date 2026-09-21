@@ -457,26 +457,6 @@ Import preconstructed deck lists. Needs MTGJSON license verification first.
 
 ---
 
-### T019: Admin pages (tag kill switch UI, sync status dashboard)
-
-**Priority:** LOW | **Area:** Frontend | **Status:** Not started (admin shell exists)
-
-Tag kill switch works via SQL but has no UI. Sync status is only in `sync_runs` table.
-
-**Since PR #47:** `/admin` exists as a React Admin app with platform-admin guards (proxy, page, API) and a users resource only. Both pages here become new resources in it rather than a separate area — see `apps/web/AGENTS.md` for the admin data flow.
-
-**Files:**
-- `apps/web/src/components/admin/admin-app.tsx` — register new resources
-- `apps/web/src/components/admin/data-provider.ts` — admin data flow
-- `apps/web/src/components/admin/users.tsx` — the existing resource, as the pattern
-
-**Acceptance criteria:**
-- [ ] Tag kill switch page (list tags, toggle disabled)
-- [ ] Sync status dashboard (recent runs, metrics, errors)
-- [ ] Admin-only access through the existing platform-admin guards and security-definer functions
-
----
-
 ### T020: Deck-internal synergy scoring
 
 **Priority:** LOW | **Area:** Backend / Scoring | **Status:** Not started
@@ -550,6 +530,7 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
 
+- **T019 — Admin pages (tag kill switch, sync status).** Closed 2026-09-21. `/admin/tags` lists every tag with its card count, specificity and whether recommendations use it, filters to switched-off or functional tags, and switches a tag off with a reason (`admin_set_tag_disabled`, audited). `/admin/sync-runs` shows each job's latest run and the full history with row counts, duration, metrics and errors (`admin_list_sync_runs`). Both are security-definer functions behind `require_platform_admin()`, reached through new `/api/admin` routes with the same guard; `supabase/tests/platform-admins.sql` grew to 53 checks and `e2e/admin.spec.ts` covers both pages.
 - **T016 — Deck export.** Closed 2026-09-21. Every saved deck page (owner, or anyone while it is public) has Copy decklist, Download text and Download CSV. The text is the same Commander/Deck shape the tool reopens a deck in (`decklistText`, `@mtg/core/parse`). The CSV adds the set code and collector number of the printing the page shows, found from the Scryfall id in the image URL; about 6% of cards have no matching English printing and export by name alone. Its Board column lets the app's own CSV import put the commander back. Downloads go through `/decks/[commander]/[code]/export`, which uses the deck page's loader, so a private deck 404s for everyone but its owner.
 - **T011 — Monitor database growth.** Closed 2026-09-21: hosted moved to Supabase Pro with 8 GB, so the 500 MB ceiling this watched for is gone (416 MB at the upgrade). One leftover from PR #62: once `20260921000200_english_printings_only.sql` is on hosted, `vacuum full public.printings;` (superuser) returns ~120 MB. No longer urgent, still tidy.
 - **T023 — collections.maxEntries limit review.** Closed 2026-09-21: the worry was six maxed accounts (~23 MB each) filling the free tier. On Pro's 8 GB the 100,000 limit stays.
