@@ -18,6 +18,8 @@ This app targets Next.js 16.3. APIs differ from older versions. Read the bundled
 - Recommendations: Route Handlers `POST /api/recs/{swap,add,cut}` (Server Actions dispatch serially)
 - Deck parsing, analysis, link import, deck lookups: Server Actions
 - Client code reaches the contract only through `lib/api/client.ts` (`getApis()`)
+- A few account-side actions sit outside the contract and are imported directly: `getAccountCollectionAction` and `importCollectionFromLinkAction` (`app/collection/actions.ts`), plus sign-in and account deletion. They bypass the mocks, so CI tests must not trigger them against real services (the collection link e2e only uses a ManaBox link, which answers before any request)
+- Route handlers beside pages are fine when a page needs a download: `/decks/[commander]/[code]/export` reuses `loadDeckPage`, so the same people can see the page and fetch the file
 
 ## Admin Area (`/admin` — React Admin)
 
@@ -43,7 +45,10 @@ The one part of the app not built on the contract or on shadcn.
 
 ### Data flow
 
+- Resources: Users, Platform admins (users with the admins-only filter pinned), Tags (the kill switch, `tags.tsx`) and Sync runs (read-only history, `sync-runs.tsx`)
 - React Admin talks to `/api/admin/{users,tags,sync-runs}`, never to Supabase directly (`components/admin/data-provider.ts`, one `ResourceApi` per resource)
+- Status pills come from `components/admin/pill.tsx` (`Pill`, `Pills`); tones are the site's job colours plus the lamp
+- A new admin endpoint goes in `ADMIN_API` in `e2e/admin.spec.ts`, which checks every one refuses signed-out visitors (401) and non-admins (404)
 - Every admin read/write is a security-definer function that checks the caller
 - `platform-admins` endpoint has the admins-only filter pinned on
 
@@ -59,7 +64,7 @@ The one part of the app not built on the contract or on shadcn.
 
 **Never use Magic Numbers in the code. Set as top of document const variables if used in ONLY that document/component. Otherwise, set in a global constants/config file and import.** (Owner rule, 2026-09-21.)
 - Name the constant for what it means and put the unit in the name (`SWIPE_COOLDOWN_MS`, `DRAG_CLICK_SLOP_PX`), with a one-line comment on why it has that value.
-- A value shared across files goes in `apps/web/src/lib/constants.ts` for the web app, or `packages/core/src` when the worker needs it too. Create the file when the first shared value needs it.
+- A value shared across files goes in `apps/web/src/lib/constants.ts` for the web app, or `packages/core/src` when the worker needs it too. `lib/constants.ts` exists; add to it rather than starting another.
 - Not magic numbers: 0, 1 and -1 used as identities or directions, array indices, and Tailwind classes or design tokens (`gap-3`, `size-14`), which already are the scale.
 - Scoring weights and anti-abuse thresholds still belong in database config (`app_config`), not in a constants file: the repo is public (see Hard constraints in `../../CLAUDE.md`).
 
@@ -85,6 +90,11 @@ The one part of the app not built on the contract or on shadcn.
 | `lib/safe-path.ts` | `safeNextPath` redirect validation |
 | `components/admin/theme.ts` | Material UI theme mirroring site tokens |
 | `components/admin/data-provider.ts` | React Admin data layer |
+| `components/admin/tags.tsx`, `sync-runs.tsx` | Tag kill switch and sync history screens |
+| `lib/constants.ts` | Values shared across files (`COLLECTION_MAX_IMPORT_ROWS`) |
+| `lib/server/deck-export.ts`, `components/decks/deck-export.tsx` | Deck page export: entries with the shown printing, and the copy/download buttons |
+| `lib/server/collection-link.ts` | Archidekt collection export, paged a second apart, four pages per call |
+| `components/collection/collection-tool.tsx` | Collection import: paste, file or share link, then match and save |
 
 ## Gotchas
 
@@ -94,7 +104,7 @@ The one part of the app not built on the contract or on shadcn.
 - `proxy.ts`: signed-out visitors get `notFound` for `/decks/:commander/:code` (anon can't distinguish private from missing)
 - Production builds need reachable Supabase — `next build` prerenders `/sitemap.xml` which queries the DB
 - `supabase gen types typescript --local` outputs UTF-8 with BOM and CRLF via PowerShell; write as UTF-8 without BOM, LF endings
-- `revalidatePath('/decks')` on deck writes; `revalidateTag` on syncs — keep `next/cache` imports out of `recs.ts` so the regression harness can run outside Next.js
+- `revalidatePath('/decks')` on deck writes; `revalidateTag` on syncs and when an admin flips a tag (`recs`, `catalog`) — keep `next/cache` imports out of `recs.ts` so the regression harness can run outside Next.js
 - The deck tool's `SaveDeckButton` is the only way to create a deck — never auto-save a throwaway paste as public
 
 <!-- BEGIN:nextjs-agent-rules -->
