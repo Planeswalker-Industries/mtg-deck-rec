@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 mtg-deck-rec: public Commander-only web app. Paste or import a decklist → cards to add, cards to cut, and functional substitutes (click a card) with an estimated cost delta. Two modes share one pipeline: **collection-less** (anonymous; ranked by corpus play rate + Scryfall Tagger tags) and **collection-aware** (candidate pool restricted to owned cards).
 
-Live at https://mtg-app-psi.vercel.app (Vercel + Supabase Pro). Current state: `docs/roadmap/status.md`. Open work: `docs/tasks.md`. Phase 0 report and execution plan: `docs/roadmap/` (`execution-plan.md`, `phase0-report.md`).
+Live at https://mtg-app-psi.vercel.app (Vercel + Supabase Pro). Current state: `docs/roadmap/status.md`. Open work: `docs/tasks.md`. Phase 0 report and execution plan: `docs/roadmap/` (`execution-plan.md`, `phase0-report.md`). The next data pipeline (corpus in Postgres, card-pair statistics, deck affinity scoring, full commander crawl) is designed in `docs/roadmap/card-graph-plan.md` and shelved as T035 until a backend owner picks it up. The GitHub repo is `Planeswalker-Industries/mtg-deck-rec` (moved from `wuddat/mtg-deck-rec`, which redirects).
 
 ## Commands
 
@@ -96,7 +96,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - **Both pick their candidate pool out of `cards`, through the covering index `cards_rec_pool`** (`id` include `color_identity`, `game_changer`, `name`, `mana_value`, `equivalence_base_id`, where the row is live, commander-legal and not a basic land). `cards` is 121 MB of heap and the hash join swept all of it: one add touched ~142 MB, one swap ~165 MB, against 224 MB of `shared_buffers` on the hosted free tier (measured before the move to Pro). Warm that still ran in 90–160 ms, but any eviction (the next call, a sync, an idle spell) made it read from disk and blow past the anon 3 s timeout. With the index: add ~22 MB, swap ~46 MB. Keep the index's columns and predicate in step with what the two `eligible`/`pool` CTEs read and filter on; the price update never writes these columns, so `cards` keeps its HOT updates.
   - Exclusive tag modes (`app_config.functional_tag_exclusive_groups`, currently sweeper vs spot removal) multiply tag similarity by `penalty` when a candidate has only a mode the target lacks.
 - `rec_swap_candidates` selects its candidate pool with SQL weights that mirror `SWAP_WEIGHTS` in `@mtg/core/scoring` (no-corpus case). Change both together.
-- **Deck corpus:** only aggregates live in Postgres; third-party decklists stay in local JSONL files.
+- **Deck corpus:** only aggregates live in Postgres; third-party decklists stay in local JSONL files. T035 (`docs/roadmap/card-graph-plan.md`) moves them into a private `corpus` schema with no API grants; until that lands, this is how it works.
   - **Shared filters:** `apps/worker/src/lib/corpus.ts` (`resolveDeck`) decides which decks count, for both `aggregate:corpus` and the stability job.
   - **Stored stats:** `card_global_stats.rate` is the baseline p0, computed over decks whose identity allows the card. `commander_card_stats` holds inclusion shrunk toward p0, (x + α·p0)/(n + α), and synergy = shrunk − p0.
   - **Settings:** `app_config.corpus` holds `shrinkAlpha`, `minDecks` (50) and `fullDecks` (100), measured by `spike:corpus:stability`, and `partnerPoolWeight` (0.25).
@@ -127,7 +127,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - The swap route calls `getCachedSwapSuggestions` in `lib/server/recs-cache.ts`: `use cache` + `cacheLife("hours")` + `cacheTag("recs")`, keyed by target, commander ids and the Game Changer setting. Collection-aware requests skip the cache.
   - Keep `next/cache` imports out of `recs.ts` so `yarn workspace @mtg/web regress` can run the recommendation code outside Next.js.
 - **Share-link fetches and the kill switch:** every deck or collection link import goes through `fetchShareLink` (`lib/server/share-import.ts`).
-  - It only fetches URLs the app builds for that source's own hosts, never follows redirects, and sends the honest User-Agent.
+  - It only fetches URLs the app builds for that source's own hosts, never follows redirects, and sends the honest User-Agent. A `json` option sends a JSON POST, used only for an endpoint the source's own site calls the same way (Archidekt's collection export).
   - `classifyShareResponse` (`@mtg/core/parse`) decides what came back. A Cloudflare challenge, or a 403/409 outside the site's usual format, switches that source off in `share_import_sources` (via `SUPABASE_SECRET_KEY`, `lib/server/supabase-admin.ts`) and writes an `audit_log` row. A 403 in the usual format just means the list isn't public.
   - A switched-off source makes no requests until someone deliberately sets `enabled` back to true. `yarn workspace @mtg/web tsx --env-file=.env.local scripts/share-kill-switch-check.ts` checks this with a faked fetch.
 - **Accounts (email code + Google):**
@@ -293,14 +293,14 @@ C: has little free space. Put large local data — Scryfall bulk downloads, cach
 
 **Never use Magic Numbers in the code. Set as top of document const variables if used in ONLY that document/component. Otherwise, set in a global constants/config file and import.** (Owner rule, 2026-09-21.)
 - Name the constant for what it means and put the unit in the name (`SWIPE_COOLDOWN_MS`, `DRAG_CLICK_SLOP_PX`), with a one-line comment on why it has that value.
-- A value shared across files goes in `apps/web/src/lib/constants.ts` for the web app, or `packages/core/src` when the worker needs it too. Create the file when the first shared value needs it.
+- A value shared across files goes in `apps/web/src/lib/constants.ts` for the web app, or `packages/core/src` when the worker needs it too. `lib/constants.ts` exists (first value: `COLLECTION_MAX_IMPORT_ROWS`, shared by the collection import screen and the link import).
 - Not magic numbers: 0, 1 and -1 used as identities or directions, array indices, and Tailwind classes or design tokens (`gap-3`, `size-14`), which already are the scale.
 - Scoring weights and anti-abuse thresholds still belong in database config (`app_config`), not in a constants file: the repo is public (see Hard constraints).
 
 ## Hard constraints
 
 - No bot-detection circumvention anywhere: no cloudscraper-class libraries, fingerprint spoofing, UA rotation, or proxies. Every outbound request sends an accurate descriptive `User-Agent` (and `Accept` for Scryfall).
-- Data sources qualify only by documented API, published terms, or direct operator permission. Do not add Deckstats, Aetherhub, MTGGoldfish, TappedOut, or EDHREC `json.edhrec.com`.
-- Share-link imports are allowed (owner decision, 2026-09-14): a deck or collection link a user pastes from Archidekt, ManaBox, Moxfield, TCGplayer or similar sites may be fetched, since those links exist to move lists between platforms. One request per user action, honest User-Agent, and if the site blocks automated requests (bot challenge, 403) show the paste-text fallback; never work around it.
+- Data sources: the owner's legal team consented (owner decision, 2026-09-21, reaffirmed) to using **all publicly facing data** (no paywall, no login) from every platform, EDHREC and MTGGoldfish included. Consent covers what may be used, not how it is fetched: obey robots.txt (EDHREC disallows `/deckpreview/`, MTGGoldfish `/deck/download*`), one limiter per host at about 1 request a second, the honest User-Agent, and a 403 or bot challenge switches that source off rather than being worked around. `json.edhrec.com` answered an automated request with 403 on 2026-09-21. Nothing ingests EDHREC or MTGGoldfish yet; T035 plans EDHREC commander pages as a prior and benchmark, never as a deck source.
+- Share-link imports are allowed (owner decision, 2026-09-14): a deck or collection link a user pastes from Archidekt, ManaBox, Moxfield, TCGplayer or similar sites may be fetched, since those links exist to move lists between platforms. One request per user action, honest User-Agent, and if the site blocks automated requests (bot challenge, 403) show the paste-text fallback; never work around it. The one exception is a large Archidekt collection, whose export is paged: up to 20 requests a second apart, four per server call (see Collection import by link).
 - Third-party decklists are used for aggregates only and never exposed.
 - The repo is public: anti-abuse thresholds and scoring weights belong in database config, not code.

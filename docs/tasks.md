@@ -2,7 +2,7 @@
 
 Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up.
 
-Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-21** (develop and main at PR #59). `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
+Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-21** (develop at PR #71: deck export, admin tag and sync pages, collection import by link). `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -38,7 +38,7 @@ The hosted dashboard steps are done (URL configuration and the sign-in email tem
 The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a real destination before public launch.
 
 **Files:**
-- `apps/web/src/app/decks/[commander]/[code]/page.tsx:123` — the `github.com/wuddat/mtg-deck-rec/issues/new` link
+- `apps/web/src/app/decks/[commander]/[code]/page.tsx:129` — the `github.com/wuddat/mtg-deck-rec/issues/new` link (the repo is now `Planeswalker-Industries/mtg-deck-rec`; the old URL redirects)
 
 **Acceptance criteria:**
 - [ ] Decide destination (email, form, in-app feedback)
@@ -280,8 +280,8 @@ and every commander is crawled rather than the top 50. It is split into 11 slice
   included. The crawler guardrails in the plan (robots.txt, honest User-Agent, stop on a block) still apply.
 - Collections stay one per account, and win-condition analysis waits.
 
-**Supersedes when started:** T010 (becomes slice 10), T020 (slices 5–8), T031 (slice 11 automates it). Slice 1
-rewrites the CLAUDE.md data-source and storage rules, which still describe the old constraints.
+**Supersedes when started:** T010 (becomes slice 10), T020 (slices 5–8), T031 (slice 11 automates it). CLAUDE.md's data-source rule already records the consent and the fetching guardrails (2026-09-21); slice 1 still
+rewrites its storage rule ("decklists stay in local JSONL"), which describes how the corpus works today.
 
 **Acceptance criteria:**
 - [ ] A backend owner reviews the plan and confirms or changes the slice order
