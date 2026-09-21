@@ -20,7 +20,7 @@ import {
 import { notifyCollectionChanged, useCollectionSource } from "./use-collection-source";
 import { useCollectionParser } from "./use-collection-parser";
 
-/** The server matches and saves at most this many rows per call. */
+/** The server accepts at most this many rows per call (it chunks matching internally under PostgREST's row cap). */
 const ROWS_PER_CALL = 2_000;
 const MAX_ROWS = 50_000;
 const UNMATCHED_SHOWN = 50;

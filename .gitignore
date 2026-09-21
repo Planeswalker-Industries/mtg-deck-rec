@@ -30,6 +30,9 @@ supabase/.branches/
 # spikes: downloaded bulk files and crawl output never committed
 spikes/**/data/
 
+# personal collection/deck exports used to test imports; third-party data stays out of the public repo
+docs/plan_files/
+
 # local-only: agent config, personal agent notes, outreach drafts (CLAUDE.md and docs/roadmap are shared)
 .claude/
 CLAUDE.local.md
