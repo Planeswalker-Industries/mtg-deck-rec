@@ -33,7 +33,10 @@ export function PocketGrid({
   items: PocketItem[];
   label: string;
   onSelect?: (card: CardSummary) => void;
-  /** Hover to enlarge a card, or press its magnifier; pressing the card itself still selects it or follows its link. */
+  /**
+   * Lets each card be enlarged. A pocket that selects or links keeps that press and gets a magnifier; a plain one is
+   * enlarged by pressing the card itself. Hover works on both.
+   */
   zoomable?: boolean;
 }) {
   return (
@@ -73,7 +76,7 @@ export function PocketGrid({
           return (
             <li key={item.href ?? item.card.id} className="min-w-0">
               {zoomable ? (
-                <ZoomableCard card={item.card} trigger="icon">
+                <ZoomableCard card={item.card} trigger={onSelect || item.href ? "icon" : "tap"}>
                   {pocket}
                 </ZoomableCard>
               ) : (
