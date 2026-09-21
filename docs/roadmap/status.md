@@ -1,4 +1,4 @@
-# Status (2026-09-19)
+# Status (2026-09-21)
 
 Where the project stands. Open work: [`../tasks.md`](../tasks.md). Architecture reference: [`../../CLAUDE.md`](../../CLAUDE.md).
 
@@ -19,6 +19,7 @@ Where the project stands. Open work: [`../tasks.md`](../tasks.md). Architecture 
 - **Scryfall data:** Catalog 34,829 cards, 525,299 printings. `artist` and `keywords` fully populated on hosted.
 - **Corpus on hosted:** 129 commanders have stats. Rebuilt from this PC with `cli:hosted aggregate:corpus`.
 - **Contract version:** v9 (as of 2026-09-17 release)
+- **Auth:** Google sign-in is live locally and on hosted (T025); the Supabase redirect allow list and sign-in email template are set (T002). Email delivery still runs on Supabase's built-in SMTP, which is not production-grade — a real provider and a domain are T033.
 
 ## Released to main 2026-09-17
 
@@ -46,7 +47,7 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 
 ## Open Items (from tasks.md P0)
 
-1. Hosted sign-in not set up (dashboard config, not code)
+1. Hosted sign-in configured; email deliverability (custom SMTP + domain) is T033
 2. Deck report link points at GitHub issue
 3. Public deck page indexing undecided
 4. `seed.sql` and `dev-sign-in.ts` need to be deleted or proven unreachable
@@ -56,9 +57,7 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 - Delete `supabase/seed.sql` and `apps/web/scripts/dev-sign-in.ts`, or prove they cannot reach the hosted project
 - Decide where deck reports go
 - Decide whether public deck pages should be indexed
-- Add `/auth/confirm` and `/auth/callback` to Supabase Auth redirect allow list
-- Paste `supabase/templates/sign-in.html` into dashboard email templates
-- Set `SUPABASE_SECRET_KEY` on Vercel
+- Buy a domain and move hosted Auth to custom SMTP (T033)
 
 ## Release Process Trap
 
