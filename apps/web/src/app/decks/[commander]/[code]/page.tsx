@@ -3,11 +3,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { decklistText } from "@mtg/core/parse";
 import { PocketGrid } from "@/components/cards/pocket-grid";
+import { DeckExport } from "@/components/decks/deck-export";
 import { DeckVisibility } from "@/components/decks/deck-visibility";
 import { buttonVariants } from "@/components/ui/button";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
+import { deckExportEntries } from "@/lib/server/deck-export";
 import { loadDeckPage } from "@/lib/server/deck-page";
 import { displayName } from "@/lib/cards";
 import { cardCategoryLabel } from "@/lib/labels";
@@ -89,6 +92,8 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             </Link>
           </div>
         )}
+
+        <DeckExport text={decklistText(deckExportEntries(deck))} commanderSlug={deck.commanderSlug} code={deck.code} />
       </header>
 
       {deck.isOwner && <DeckVisibility deckId={deck.id} isPublic={deck.isPublic} />}

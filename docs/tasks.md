@@ -287,6 +287,30 @@ Recommendation: 1 first, 2 when a real collection needs it, 3 only if 2 isn't en
 
 ## Data Pipeline
 
+### T035: Deck aggregation pipeline and card graph
+
+**Priority:** HIGH | **Area:** Backend / Data | **Status:** Shelved 2026-09-21, waiting for a backend owner
+
+The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md). The corpus moves from JSONL on X:
+into Postgres. Complete user decks become a source. Aggregation recomputes only the commanders whose decks changed.
+Sparse card-pair tables feed a new "deck affinity" score, EDHREC commander pages serve as a prior and a benchmark,
+and every commander is crawled rather than the top 50. It is split into 11 slices, each one PR.
+
+**Owner decisions it rests on (2026-09-21):**
+- User decks count only when complete: 100 cards and legal. `save_deck` today flags on per-card legality alone.
+- All data lives in Postgres. The legal team consented to using all publicly facing data, EDHREC and MTGGoldfish
+  included. The crawler guardrails in the plan (robots.txt, honest User-Agent, stop on a block) still apply.
+- Collections stay one per account, and win-condition analysis waits.
+
+**Supersedes when started:** T010 (becomes slice 10), T020 (slices 5–8), T031 (slice 11 automates it). Slice 1
+rewrites the CLAUDE.md data-source and storage rules, which still describe the old constraints.
+
+**Acceptance criteria:**
+- [ ] A backend owner reviews the plan and confirms or changes the slice order
+- [ ] Slices 1–11 as listed in the plan
+
+---
+
 ### T009: Always-on commander request consumer
 
 **Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** Not started
@@ -407,19 +431,6 @@ Collection RLS policies have no pgTAP tests. Deck RLS has extensive tests in `su
 
 ## Future / Lower Priority
 
-### T016: Deck export
-
-**Priority:** LOW | **Area:** Frontend | **Status:** Not started
-
-Export deck as text, CSV, or other formats.
-
-**Acceptance criteria:**
-- [ ] Text export (decklist format)
-- [ ] CSV export (with set codes, quantities)
-- [ ] Copy-to-clipboard
-
----
-
 ### T017: Favorites
 
 **Priority:** LOW | **Area:** Frontend / Backend | **Status:** Not started
@@ -520,6 +531,7 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
 
 - **T019 — Admin pages (tag kill switch, sync status).** Closed 2026-09-21. `/admin/tags` lists every tag with its card count, specificity and whether recommendations use it, filters to switched-off or functional tags, and switches a tag off with a reason (`admin_set_tag_disabled`, audited). `/admin/sync-runs` shows each job's latest run and the full history with row counts, duration, metrics and errors (`admin_list_sync_runs`). Both are security-definer functions behind `require_platform_admin()`, reached through new `/api/admin` routes with the same guard; `supabase/tests/platform-admins.sql` grew to 53 checks and `e2e/admin.spec.ts` covers both pages.
+- **T016 — Deck export.** Closed 2026-09-21. Every saved deck page (owner, or anyone while it is public) has Copy decklist, Download text and Download CSV. The text is the same Commander/Deck shape the tool reopens a deck in (`decklistText`, `@mtg/core/parse`). The CSV adds the set code and collector number of the printing the page shows, found from the Scryfall id in the image URL; about 6% of cards have no matching English printing and export by name alone. Its Board column lets the app's own CSV import put the commander back. Downloads go through `/decks/[commander]/[code]/export`, which uses the deck page's loader, so a private deck 404s for everyone but its owner.
 - **T011 — Monitor database growth.** Closed 2026-09-21: hosted moved to Supabase Pro with 8 GB, so the 500 MB ceiling this watched for is gone (416 MB at the upgrade). One leftover from PR #62: once `20260921000200_english_printings_only.sql` is on hosted, `vacuum full public.printings;` (superuser) returns ~120 MB. No longer urgent, still tidy.
 - **T023 — collections.maxEntries limit review.** Closed 2026-09-21: the worry was six maxed accounts (~23 MB each) filling the free tier. On Pro's 8 GB the 100,000 limit stays.
 
