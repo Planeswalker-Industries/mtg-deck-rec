@@ -43,7 +43,7 @@ The one part of the app not built on the contract or on shadcn.
 
 ### Data flow
 
-- React Admin talks to `/api/admin/users`, never to Supabase directly (`components/admin/data-provider.ts`)
+- React Admin talks to `/api/admin/{users,tags,sync-runs}`, never to Supabase directly (`components/admin/data-provider.ts`, one `ResourceApi` per resource)
 - Every admin read/write is a security-definer function that checks the caller
 - `platform-admins` endpoint has the admins-only filter pinned on
 

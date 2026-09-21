@@ -53,6 +53,12 @@ function toApiError(failure: ApiError | unknown): ApiError {
  */
 export const asUserId = (id: string): string | null => (UUID.test(id) ? id : null);
 
+/** The same check for a tag id: Tagger tags are keyed by uuid too. */
+export const asTagId = asUserId;
+
+/** A path segment that is a sync run id (a positive integer), or null. */
+export const asRunId = (id: string): number | null => (/^[1-9][0-9]{0,15}$/.test(id) ? Number(id) : null);
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const isApiError = (value: unknown): value is ApiError =>

@@ -21,6 +21,12 @@ delete from public.platform_admins;
 
 insert into public.platform_admins (user_id, note) values ('aaaaaaaa-0000-4000-8000-000000000001', 'test admin');
 
+-- A tag and a sync run of the test's own, so the tag and sync checks don't depend on a loaded catalog.
+insert into public.tags (id, type, slug, label, content_hash)
+values ('cccccccc-0000-4000-8000-000000000001', 'oracle', 'zz-admin-test-tag', 'ZZ admin test tag', decode('00', 'hex'));
+insert into public.sync_runs (job, status, worker_id, error, finished_at)
+values ('precon_import', 'failed', 'admin-test', 'admin test failure', now());
+
 -- === signed out ===
 set local role anon;
 do $$ begin
@@ -28,6 +34,20 @@ do $$ begin
   insert into t values ('anon cannot list users', false, 'no error raised');
 exception when others then
   insert into t values ('anon cannot list users', sqlstate in ('42501', '42883'), sqlstate || ' ' || sqlerrm);
+end $$;
+
+do $$ begin
+  perform public.admin_list_tags();
+  insert into t values ('anon cannot list tags', false, 'no error raised');
+exception when others then
+  insert into t values ('anon cannot list tags', sqlstate in ('42501', '42883'), sqlstate || ' ' || sqlerrm);
+end $$;
+
+do $$ begin
+  perform public.admin_list_sync_runs();
+  insert into t values ('anon cannot list sync runs', false, 'no error raised');
+exception when others then
+  insert into t values ('anon cannot list sync runs', sqlstate in ('42501', '42883'), sqlstate || ' ' || sqlerrm);
 end $$;
 
 -- === a signed-in player who is not an admin ===
@@ -71,6 +91,29 @@ do $$ begin
   insert into t values ('non-admin cannot use the admin rename', false, 'no error raised');
 exception when others then
   insert into t values ('non-admin cannot use the admin rename', sqlstate = '42501', sqlstate || ' ' || sqlerrm);
+end $$;
+
+do $$ begin
+  perform public.admin_list_tags();
+  insert into t values ('non-admin cannot list tags', false, 'no error raised');
+exception when others then
+  insert into t values ('non-admin cannot list tags', sqlstate in ('42501'), sqlstate || ' ' || sqlerrm);
+end $$;
+
+do $$ begin
+  perform public.admin_set_tag_disabled('cccccccc-0000-4000-8000-000000000001', true, 'not mine to switch');
+  insert into t values ('non-admin cannot disable a tag', false, 'no error raised');
+exception when others then
+  insert into t values ('non-admin cannot disable a tag', sqlstate in ('42501'), sqlstate || ' ' || sqlerrm);
+end $$;
+
+select chk('non-admin cannot write tags directly either', not has_table_privilege('authenticated', 'public.tags', 'update'));
+
+do $$ begin
+  perform public.admin_list_sync_runs();
+  insert into t values ('non-admin cannot list sync runs', false, 'no error raised');
+exception when others then
+  insert into t values ('non-admin cannot list sync runs', sqlstate in ('42501'), sqlstate || ' ' || sqlerrm);
 end $$;
 
 -- === the admin ===
@@ -183,8 +226,55 @@ select public.admin_delete_user('aaaaaaaa-0000-4000-8000-000000000002');
 select chk('admin deletes a plain user',
   (select count(*) = 0 from public.admin_list_users(p_user_id => 'aaaaaaaa-0000-4000-8000-000000000002')));
 
+-- Tags: the kill switch.
+select chk('admin finds a tag by search',
+  (select count(*) = 1 and bool_and(not disabled) from public.admin_list_tags(p_search => 'zz admin test')));
+
+select public.admin_set_tag_disabled('cccccccc-0000-4000-8000-000000000001', true, '  trivia, not a job  ');
+select chk('disabling records the trimmed reason, who and when',
+  (select disabled and disabled_reason = 'trivia, not a job' and disabled_by_email = 'admin-a@test.invalid'
+     and disabled_at is not null
+   from public.admin_list_tags(p_tag_id => 'cccccccc-0000-4000-8000-000000000001')));
+select chk('a disabled tag shows under the disabled filter',
+  (select count(*) = 1 from public.admin_list_tags(p_disabled_only => true, p_search => 'zz admin test')));
+
+select public.admin_set_tag_disabled('cccccccc-0000-4000-8000-000000000001', true, 'trivia, not a job');
+select chk('saving the same switch again leaves it disabled',
+  (select count(*) = 1 from public.admin_list_tags(p_tag_id => 'cccccccc-0000-4000-8000-000000000001', p_disabled_only => true)));
+
+do $$ begin
+  perform public.admin_set_tag_disabled('cccccccc-0000-4000-8000-000000000001', true, repeat('x', 201));
+  insert into t values ('a reason over 200 characters is refused', false, 'no error raised');
+exception when others then
+  insert into t values ('a reason over 200 characters is refused', sqlstate in ('23514'), sqlstate || ' ' || sqlerrm);
+end $$;
+
+do $$ begin
+  perform public.admin_set_tag_disabled('00000000-0000-4000-8000-00000000dead', true);
+  insert into t values ('disabling an unknown tag is refused', false, 'no error raised');
+exception when others then
+  insert into t values ('disabling an unknown tag is refused', sqlstate in ('P0002'), sqlstate || ' ' || sqlerrm);
+end $$;
+
+select public.admin_set_tag_disabled('cccccccc-0000-4000-8000-000000000001', false, 'ignored when enabling');
+select chk('enabling clears the reason, who and when',
+  (select not disabled and disabled_reason is null and disabled_by_email is null and disabled_at is null
+   from public.admin_list_tags(p_tag_id => 'cccccccc-0000-4000-8000-000000000001')));
+
+-- Sync runs.
+select chk('admin finds a failed run by job and status, with its error',
+  (select count(*) = 1 and bool_and(error = 'admin test failure')
+   from public.admin_list_sync_runs(p_job => 'precon_import', p_status => 'failed')
+   where worker_id = 'admin-test'));
+select chk('an unknown job filters to nothing rather than failing',
+  (select count(*) = 0 from public.admin_list_sync_runs(p_job => 'no_such_job')));
+
 -- The audit log is service-role only, so its rows are checked once the test is out of the authenticated role.
 reset role;
+select chk('the tag switch is audited once per real change',
+  (select count(*) filter (where action = 'admin.tag_disable') = 1
+      and count(*) filter (where action = 'admin.tag_enable') = 1
+   from public.audit_log where payload->>'tag_id' = 'cccccccc-0000-4000-8000-000000000001'));
 select chk('granting is written to the audit log',
   (select count(*) = 1 from public.audit_log
    where action = 'admin.grant' and payload->>'user_id' = 'aaaaaaaa-0000-4000-8000-000000000002'));

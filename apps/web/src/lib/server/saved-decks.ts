@@ -1,4 +1,5 @@
 import type { Bracket, CardId, DeckId, DeckInput, SavedDeckContents, SavedDeckSummary } from "@mtg/core/contract";
+import { decklistText } from "@mtg/core/parse";
 import { fetchCardsById, toCardSummary } from "./cards";
 import type { createAuthClient } from "./auth";
 
@@ -114,22 +115,17 @@ export async function openSavedDeck(db: AuthClient, code: string, userId: string
     (rows ?? []).map((r) => r.card_id),
   );
   // A card the catalog has since dropped would otherwise come back as a blank line the parser rejects.
-  const named = (rows ?? []).flatMap((row) => {
+  const entries = (rows ?? []).flatMap((row) => {
     const card = cards.get(row.card_id);
-    return card ? [{ name: card.name, section: row.section, quantity: row.quantity }] : [];
+    return card ? [{ name: card.name, quantity: row.quantity, commander: row.section === "commander" }] : [];
   });
-  const section = (commander: boolean) =>
-    named
-      .filter((r) => (r.section === "commander") === commander)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((r) => `${r.quantity} ${r.name}`);
 
   return {
     deckId: deck.id as DeckId,
     code: deck.code,
     name: deck.name,
     ...(deck.bracket === null ? {} : { bracket: deck.bracket as Bracket }),
-    text: ["Commander", ...section(true), "", "Deck", ...section(false), ""].join("\n"),
+    text: decklistText(entries),
   };
 }
 

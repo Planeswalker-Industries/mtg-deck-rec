@@ -87,6 +87,15 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   const asPublic = await strangerPage.goto(url);
   expect(asPublic?.status()).toBe(200);
   await expect(strangerPage.getByRole("link", { name: "Report it" })).toBeVisible();
+  // Anyone who can see the page can download it, with the commander on its own board.
+  const exportUrl = `${url}/export?format=csv`;
+  const publicCsv = await stranger.request.get(exportUrl);
+  expect(publicCsv.status()).toBe(200);
+  expect(publicCsv.headers()["content-disposition"]).toMatch(/^attachment; filename=".+\.csv"$/);
+  const csv = await publicCsv.text();
+  expect(csv.split("\r\n")[0]).toBe("Quantity,Name,Set code,Collector number,Board");
+  expect(csv).toMatch(/,commander\r\n/);
+  expect(csv).toContain("Sol Ring");
 
   // Hiding it takes the page away from everyone else.
   await page.getByRole("switch").click();
@@ -97,7 +106,13 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   await expect(strangerPage.getByRole("heading", { name: "Lands" })).toBeHidden();
   const leaked = await strangerPage.evaluate(() => document.body.innerText);
   expect(leaked).not.toContain("Sol Ring");
+  // The download goes with the page.
+  expect((await stranger.request.get(exportUrl)).status()).toBe(404);
   await stranger.close();
+  // Its owner can still download it.
+  const ownerText = await page.request.get(`${url}/export?format=txt`);
+  expect(ownerText.status()).toBe(200);
+  expect(await ownerText.text()).toMatch(/^Commander\n1 /);
 
   // The owner still sees it.
   await page.reload();
