@@ -10,6 +10,8 @@ import { displayName } from "@/lib/cards";
 
 /** How long a mouse has to rest on a card before it opens by itself. */
 const HOVER_DELAY_MS = 450;
+/** A press held longer than this is someone holding the card (deciding which way to swipe), not a tap to enlarge it. */
+const TAP_MAX_MS = 350;
 
 /** When an enlarged card was last dismissed: the click a dismissing tap leaves behind must not open it again. */
 let dismissedAt = 0;
@@ -28,6 +30,8 @@ export function ZoomableCard({ card, children, className }: { card: CardSummary;
   const [openBy, setOpenBy] = useState<"hover" | "press" | null>(null);
   const open = openBy !== null;
   const timer = useRef<number | null>(null);
+  /** When the current press started, or null when no button or finger is down. */
+  const pressedAt = useRef<number | null>(null);
 
   function clearTimer() {
     if (timer.current === null) return;
@@ -75,8 +79,15 @@ export function ZoomableCard({ card, children, className }: { card: CardSummary;
           setOpen("press");
         }}
         className={cn("cursor-zoom-in focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", className)}
+        onPointerDown={() => {
+          // A card being held, as when it is dragged in the swipe view, never opens: the hover timer would otherwise
+          // run out mid-drag and dim the view over the card in hand. A hover-opened copy closes for the same reason.
+          pressedAt.current = Date.now();
+          clearTimer();
+          if (openBy === "hover") setOpen(null);
+        }}
         onPointerEnter={(e) => {
-          if (e.pointerType !== "mouse" || open) return;
+          if (e.pointerType !== "mouse" || open || e.buttons !== 0) return;
           clearTimer();
           timer.current = window.setTimeout(() => setOpen("hover"), HOVER_DELAY_MS);
         }}
@@ -87,7 +98,9 @@ export function ZoomableCard({ card, children, className }: { card: CardSummary;
         }}
         onClick={() => {
           clearTimer();
-          if (Date.now() - dismissedAt < 400) return;
+          const heldFor = pressedAt.current === null ? 0 : Date.now() - pressedAt.current;
+          pressedAt.current = null;
+          if (Date.now() - dismissedAt < 400 || heldFor > TAP_MAX_MS) return;
           setOpen("press");
         }}
       >

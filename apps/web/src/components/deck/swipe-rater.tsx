@@ -62,6 +62,10 @@ function SwipeCard({
     if (leaving.current) return;
     leaving.current = true;
     onDrag(0);
+    // A leaving card slides over the ❌ and ✅ buttons, so a quick second tap would land on it and start a drag. Motion
+    // stops the fling for that drag, and a stopped animation never resolves: the swipe was never reported and every
+    // later press returned early, freezing the view. Letting presses through to the button underneath avoids that.
+    if (box.current) box.current.style.pointerEvents = "none";
     if (reduceMotion) {
       onSwipe(direction);
       return;
@@ -311,7 +315,9 @@ export function SwipeRater({
         <>
           <div className="grid grid-cols-[3.5rem_1fr_3.5rem] items-center gap-2">
             <SideButton kind="pass" label={inRater ? `Not a fit: ${candidate.card.name}` : `Pass on ${candidate.card.name}`} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
-            <SwipeCard key={candidate.card.id} ref={card} onDrag={setDrag} onSwipe={(d) => (d === 1 ? rater.swapIn() : rater.pass())}>
+            {/* Keyed by the pair: the rater's next card can open on the same replacement, and reusing the card that
+                just flew off would leave it off-screen and still marked as leaving. */}
+            <SwipeCard key={`${target.card.id}:${candidate.card.id}`} ref={card} onDrag={setDrag} onSwipe={(d) => (d === 1 ? rater.swapIn() : rater.pass())}>
               <DrawnCard play={drawing} delay={0.12} fromY={-170} className="mx-auto w-[clamp(7rem,calc((100dvh_-_35rem)*0.72),16rem)]">
                 <ZoomableCard card={candidate.card}>
                   <CardImage card={candidate.card} variant="large" alt={`Replacement: ${candidate.card.name}`} sizes="256px" eager className="shadow-[0_0_0_2px_var(--color-primary)]" />
