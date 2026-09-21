@@ -30,12 +30,11 @@ with the corpus — recheck it at 500 commanders.
 
 ## Standing it up
 
-**1. Run it.** Two stacks and a network they share, created once by hand so neither depends on the other's deploy
-order:
+**1. Run it.** Two stacks and a network they share. **The Typesense stack creates it, so deploy that one first** —
+nothing needs creating by hand, because a panel deploy cannot run `docker network create` and requiring it is what
+produced `Could not attach to network mtg-search: network mtg-search not found` on a first deploy.
 
 ```sh
-docker network create mtg-search
-
 cd deploy/typesense
 cp .env.example .env    # TYPESENSE_ADMIN_KEY
 docker compose up -d
@@ -65,7 +64,7 @@ host using the same number is not a conflict. A panel asking "which container po
 `SEARCH_API_CONTAINER_PORT` (8080 unless you change it), and changing it carries the Traefik label and the health
 probe along with it.
 
-**Order does not matter, and a Typesense outage does not take the API down with it.** Measured: stop the Typesense
+**After the first deploy, order stops mattering, and a Typesense outage does not take the API down with it.** Measured: stop the Typesense
 stack and the API container stays *healthy* across several probe intervals while `/v1/health` returns 503 and
 `/v1/health/live` returns 200. That split is deliberate — the container probe asks liveness, because a readiness
 probe would have a panel restart-looping the API and Traefik pulling it out of the router over a dependency outage
@@ -188,7 +187,8 @@ never slow down or fail a sync transaction.
 | `502` from the API while both containers are healthy | search-api reached Typesense and got an error back; `docker compose logs search-api` names it. |
 | The API will not start | It refuses an empty key, an empty token, or two identical tokens, and says which. |
 | `port is already allocated` | Only `SEARCH_API_PORT` can do that; set it in `deploy/search-api/.env`. A port *inside* a container never collides with the host. |
-| `up` fails on a missing network | `docker network create mtg-search`. Both stacks declare it external on purpose, so this fails loudly rather than starting a container that cannot reach the index. |
+| `network ... declared as external, but could not be found` | The search-api stack went first. Deploy `deploy/typesense/` — it is what creates the network — then this one. |
+| API healthy but `/v1/health` says 503 after changing `SEARCH_NETWORK` | Compose reused the running container and left it on the old network. `docker compose up -d --force-recreate`. |
 | The VPS is down | Nothing breaks. Every read path falls back to Postgres and logs. Rebuild when it is back. |
 
 ### Checks
