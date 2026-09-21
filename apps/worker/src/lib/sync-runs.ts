@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { drainSearchIndexQuietly } from '../jobs/sync-search-index';
 import type { Sql } from './db';
 import { refreshWebCaches } from './web-app';
 
@@ -82,6 +83,10 @@ export async function finishRun(
     where id = ${runId}
     returning job
   `;
-  // Jobs report success only after their transaction commits, so the web app re-renders from the new data.
-  if (status === 'succeeded' && run) await refreshWebCaches(run.job);
+  // Jobs report success only after their transaction commits, so the index and the web app both see the new data.
+  // The index goes first: refreshing a page cache that then reads a stale index would be the wrong order.
+  if (status === 'succeeded' && run) {
+    await drainSearchIndexQuietly(sql, run.job);
+    await refreshWebCaches(run.job);
+  }
 }

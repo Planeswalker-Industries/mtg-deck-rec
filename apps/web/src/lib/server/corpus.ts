@@ -10,6 +10,8 @@ import {
   type CorpusKey,
   type CorpusSource,
 } from "@mtg/core/scoring";
+import { colorsToMask } from "@mtg/core/search";
+import { fetchCardDocuments, fetchCommanderCardDocuments, fromIndex } from "./search-index";
 import type { PublicClient } from "./supabase";
 
 const DEFAULT_SETTINGS = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100, partnerPoolWeight: 0.25 };
@@ -165,6 +167,81 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
   };
 }
 
+interface GlobalRate {
+  card_id: number;
+  decks_with: number;
+  eligible_decks: number;
+  rate: number;
+}
+
+interface CardFacts {
+  releaseMonth: string | null;
+  identity: number;
+}
+
+/** Each source key's decks count at its own weight, and a card's total is the sum across the keys that ran it. */
+function weightedCommanderDecks(
+  corpus: CommanderCorpus,
+  rows: readonly { commander_key_id: number; card_id: number; decks_with: number }[],
+): Map<number, number> {
+  const weightByKey = new Map(corpus.sources.map((s) => [s.id, s.weight]));
+  const decks = new Map<number, number>();
+  for (const r of rows) decks.set(r.card_id, (decks.get(r.card_id) ?? 0) + (weightByKey.get(r.commander_key_id) ?? 0) * r.decks_with);
+  return decks;
+}
+
+/**
+ * The four card-shaped reads this function needs, from the search index: the baseline rate, the release month and
+ * the colour identity all sit on a card document, and the commander's own counts are their own collection.
+ *
+ * **All or nothing.** A card the index hasn't got yet would otherwise be scored as if no deck could ever have run it
+ * — not "unknown" but "unplayed", which is the one mistake `corpusComponent` is built to avoid. So a short answer
+ * sends the whole call back to Postgres rather than quietly mixing sources.
+ */
+async function factsFromIndex(
+  corpus: CommanderCorpus,
+  ids: readonly number[],
+): Promise<{ global: Map<number, GlobalRate>; cardFacts: Map<number, CardFacts>; commanderDecks: Map<number, number> } | null> {
+  const loaded = await fromIndex("Card play rates", async (index) => {
+    const [cards, commanderCards] = await Promise.all([
+      fetchCardDocuments(index, ids),
+      fetchCommanderCardDocuments(index, { keyIds: corpus.sourceKeyIds, cardIds: ids }),
+    ]);
+    return { cards, commanderCards };
+  });
+  if (!loaded || loaded.value.cards.length !== ids.length) return null;
+
+  const global = new Map<number, GlobalRate>();
+  const cardFacts = new Map<number, CardFacts>();
+  for (const doc of loaded.value.cards) {
+    // Only when a card_global_stats row exists. A card with no row is one the baseline says nothing about, and the
+    // caller counts its eligible decks from the identity histograms instead of reading a zero as "nobody plays it".
+    if (doc.has_baseline) {
+      global.set(doc.card_id, {
+        card_id: doc.card_id,
+        decks_with: doc.baseline_decks_with,
+        eligible_decks: doc.baseline_eligible_decks,
+        rate: doc.baseline_rate,
+      });
+    }
+    // First printing, not released_at: Oracle Cards dates a card by its representative (often latest) printing.
+    const month = doc.first_printed_at ?? doc.released_at ?? null;
+    cardFacts.set(doc.card_id, {
+      releaseMonth: month ? month.slice(0, 7) : null,
+      identity: doc.color_identity ?? colorsToMask(doc.colors),
+    });
+  }
+
+  return {
+    global,
+    cardFacts,
+    commanderDecks: weightedCommanderDecks(
+      corpus,
+      loaded.value.commanderCards.map((d) => ({ commander_key_id: d.key_id, card_id: d.card_id, decks_with: d.decks_with })),
+    ),
+  };
+}
+
 /**
  * Play rates for candidate cards: the baseline everywhere, plus the commander's own decks when it has any. Both count
  * only decks updated since the card's release, so new cards aren't judged by decks built before they existed. Borrowed
@@ -178,40 +255,50 @@ export async function loadCardCorpus(
   const ids = [...new Set(cardIds)];
   if (!corpus.available || ids.length === 0) return new Map();
 
-  const [globalResult, commanderResult, cardsResult, printingsResult, identityResult] = await Promise.all([
-    db.from("card_global_stats").select("card_id, decks_with, eligible_decks, rate").in("card_id", ids),
-    corpus.sourceKeyIds.length > 0
-      ? db
-          .from("commander_card_stats")
-          .select("commander_key_id, card_id, decks_with")
-          .in("commander_key_id", corpus.sourceKeyIds)
-          .in("card_id", ids)
-      : Promise.resolve({ data: [] as { commander_key_id: number; card_id: number; decks_with: number }[], error: null }),
-    db.from("cards").select("id, released_at, color_identity").in("id", ids),
-    db.from("card_stats").select("card_id, first_printed_at").in("card_id", ids),
-    db.from("corpus_identity_stats").select("color_identity, deck_months"),
-  ]);
-  if (globalResult.error) throw new Error(`Loading card play rates failed: ${globalResult.error.message}`);
-  if (commanderResult.error) throw new Error(`Loading commander play rates failed: ${commanderResult.error.message}`);
-  if (cardsResult.error) throw new Error(`Loading card release dates failed: ${cardsResult.error.message}`);
-  if (printingsResult.error) throw new Error(`Loading first printings failed: ${printingsResult.error.message}`);
+  // 32 rows, read whole, and it is the one part of this that is not card-shaped: it stays a query either way.
+  const identityPromise = db.from("corpus_identity_stats").select("color_identity, deck_months");
+
+  const indexed = await factsFromIndex(corpus, ids);
+  const identityResult = await identityPromise;
   if (identityResult.error) throw new Error(`Loading corpus deck counts failed: ${identityResult.error.message}`);
 
-  const global = new Map(globalResult.data.map((r) => [r.card_id, r]));
-  // First printing, not cards.released_at: Oracle Cards dates a card by its representative (often latest) printing.
-  const firstPrinted = new Map(printingsResult.data.map((r) => [r.card_id, r.first_printed_at]));
-  const cardFacts = new Map(
-    cardsResult.data.map((r) => [
-      r.id,
-      { releaseMonth: (firstPrinted.get(r.id) ?? r.released_at)?.slice(0, 7) ?? null, identity: r.color_identity },
-    ]),
-  );
-  const monthsByIdentity = new Map(identityResult.data.map((r) => [r.color_identity, parseNumberRecord(r.deck_months)]));
-  const weightByKey = new Map(corpus.sources.map((s) => [s.id, s.weight]));
-  const commanderDecks = new Map<number, number>();
-  for (const r of commanderResult.data ?? []) {
-    commanderDecks.set(r.card_id, (commanderDecks.get(r.card_id) ?? 0) + (weightByKey.get(r.commander_key_id) ?? 0) * r.decks_with);
+  let global: Map<number, GlobalRate>;
+  let cardFacts: Map<number, CardFacts>;
+  let commanderDecks: Map<number, number>;
+
+  if (indexed) {
+    ({ global, cardFacts, commanderDecks } = indexed);
+  } else {
+    const [globalResult, commanderResult, cardsResult, printingsResult] = await Promise.all([
+      db.from("card_global_stats").select("card_id, decks_with, eligible_decks, rate").in("card_id", ids),
+      corpus.sourceKeyIds.length > 0
+        ? db
+            .from("commander_card_stats")
+            .select("commander_key_id, card_id, decks_with")
+            .in("commander_key_id", corpus.sourceKeyIds)
+            .in("card_id", ids)
+        : Promise.resolve({ data: [] as { commander_key_id: number; card_id: number; decks_with: number }[], error: null }),
+      db.from("cards").select("id, released_at, color_identity").in("id", ids),
+      db.from("card_stats").select("card_id, first_printed_at").in("card_id", ids),
+    ]);
+    if (globalResult.error) throw new Error(`Loading card play rates failed: ${globalResult.error.message}`);
+    if (commanderResult.error) throw new Error(`Loading commander play rates failed: ${commanderResult.error.message}`);
+    if (cardsResult.error) throw new Error(`Loading card release dates failed: ${cardsResult.error.message}`);
+    if (printingsResult.error) throw new Error(`Loading first printings failed: ${printingsResult.error.message}`);
+
+    global = new Map(globalResult.data.map((r) => [r.card_id, r]));
+    // First printing, not cards.released_at: Oracle Cards dates a card by its representative (often latest) printing.
+    const firstPrinted = new Map(printingsResult.data.map((r) => [r.card_id, r.first_printed_at]));
+    cardFacts = new Map(
+      cardsResult.data.map((r) => [
+        r.id,
+        { releaseMonth: (firstPrinted.get(r.id) ?? r.released_at)?.slice(0, 7) ?? null, identity: r.color_identity },
+      ]),
+    );
+    commanderDecks = weightedCommanderDecks(corpus, commanderResult.data ?? []);
   }
+
+  const monthsByIdentity = new Map(identityResult.data.map((r) => [r.color_identity, parseNumberRecord(r.deck_months)]));
   const pooled = corpus.borrowedDeckCount > 0;
 
   // Cards no deck runs have no baseline row; count the decks that could have run them from the identity histograms.

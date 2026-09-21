@@ -80,7 +80,7 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
 
   const card = current.card;
 
-  // Reduced motion: a cross-fade in place of the x-slide (motion.dev's accessibility guidance).
+  // Reduced motion: a cross-fade in place of the y-slide (motion.dev's accessibility guidance).
   const variants: Variants = reduceMotion
     ? {
         enter: { opacity: 0 },
@@ -88,9 +88,9 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
         exit: { opacity: 0 },
       }
     : {
-        enter: (d: Direction) => ({ x: d > 0 ? 200 : -200, opacity: 0 }),
-        center: { x: 0, opacity: 1 },
-        exit: (d: Direction) => ({ x: d > 0 ? -200 : 200, opacity: 0 }),
+        enter: (d: Direction) => ({ y: d > 0 ? -200 : 200, opacity: 0 }),
+        center: { y: 0, opacity: 1 },
+        exit: (d: Direction) => ({ y: d > 0 ? 200 : -200, opacity: 0 }),
       };
 
   return (
@@ -113,6 +113,10 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
       <AnimatePresence mode="wait" custom={direction} initial={false}>
         <motion.article
           key={current.deck.slug}
+          // Custom goes on the article too, not just AnimatePresence: non-exit variants resolve it
+          // from the component's own prop (presence custom is only read for "exit"), so without it
+          // enter always fell to the `d > 0` false branch and slid up from the bottom.
+          custom={direction}
           variants={variants}
           initial="enter"
           animate="center"
