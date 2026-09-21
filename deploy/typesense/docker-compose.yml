@@ -9,6 +9,15 @@
 # Then build the index from Postgres, from a checkout that can reach the hosted database:
 #   TYPESENSE_URL=https://<host> TYPESENSE_ADMIN_KEY=... yarn workspace @mtg/worker cli:hosted sync:typesense --rebuild
 #
+# One file covers both ways of putting TLS in front of it, because a managed panel usually points at a single compose
+# file and cannot be told to merge two. Which one you get is decided by .env:
+#
+#   * **A proxy on the host** (nginx, Caddy) — the default. It reaches the container through the published loopback
+#     port below, and nothing else here applies.
+#   * **Traefik in Docker** — set TRAEFIK_ENABLE=true, TRAEFIK_EXTERNAL=true, TRAEFIK_NETWORK and TYPESENSE_HOST.
+#     Traefik cannot use the loopback port at all: it discovers containers by label and connects to them container to
+#     container, so it needs the shared network and the router labels at the bottom of this file.
+#
 # Nothing in here is a source of truth. Losing the volume costs one --rebuild and nothing else, which is also why
 # there is no backup story: restoring from Postgres is faster and always correct.
 
@@ -19,9 +28,12 @@ services:
     image: typesense/typesense:29.0
     restart: unless-stopped
 
-    # Bound to loopback on purpose. Typesense terminates no TLS of its own and its API key is the whole of its access
-    # control, so it sits behind the reverse proxy that already holds the certificate rather than on the open
-    # internet. The runbook has the nginx block.
+    # Published to loopback on purpose, and kept even under Traefik. Typesense terminates no TLS of its own and its
+    # API key is the whole of its access control, so it never faces the internet directly.
+    #
+    # Keep the `127.0.0.1:` prefix. Docker writes its own iptables rules that bypass ufw for published ports, so
+    # `0.0.0.0:8108` is reachable from the internet whatever the firewall says. Under Traefik this port is also how
+    # you tell "Typesense is broken" apart from "Traefik is not routing to it".
     ports:
       - "127.0.0.1:8108:8108"
 
@@ -63,3 +75,31 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+    networks:
+      - default
+      - proxy
+
+    # Inert unless TRAEFIK_ENABLE is true: a label is metadata, and Traefik ignores a container that says
+    # `traefik.enable=false`. Saying so explicitly is safer than saying nothing, because Traefik's default is to
+    # expose every container it can see.
+    labels:
+      traefik.enable: "${TRAEFIK_ENABLE:-false}"
+      # Which network to reach the container on. Needed because it is on two.
+      traefik.docker.network: "${TRAEFIK_NETWORK:-mtg-search-proxy}"
+      traefik.http.routers.typesense.rule: "Host(`${TYPESENSE_HOST:-typesense.set-TYPESENSE_HOST-in-env.invalid}`)"
+      traefik.http.routers.typesense.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
+      traefik.http.routers.typesense.tls: "true"
+      traefik.http.routers.typesense.tls.certresolver: "${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      # Which container port Traefik forwards to. It cannot read the published port above, which is loopback-only.
+      traefik.http.services.typesense.loadbalancer.server.port: "8108"
+
+networks:
+  default:
+  # The proxy's network. With TRAEFIK_EXTERNAL unset this is an ordinary bridge network compose creates and nothing
+  # else joins — unused, harmless, and it keeps this one file valid without a proxy in play. Set TRAEFIK_EXTERNAL=true
+  # and TRAEFIK_NETWORK to join the network Traefik is already on; `external` then means compose expects to find it,
+  # so a wrong name fails `up` loudly instead of quietly starting a container nothing can route to.
+  proxy:
+    external: ${TRAEFIK_EXTERNAL:-false}
+    name: ${TRAEFIK_NETWORK:-mtg-search-proxy}
