@@ -27,8 +27,51 @@ import (
 const (
 	searchQueryBy        = "name_head,name,names"
 	searchQueryByWeights = "5,3,1"
+	// One per query_by field. name_head exists to rank "starts with" above "contains", so matching inside its words
+	// would defeat it; name and names match mid-word, which is what finds *General Thunderbolt Ross* from "bolt".
+	// `always` rather than `fallback`: fallback only searches infix when nothing else matched at all, and "bolt"
+	// already matches *Guiding Bolt*, so the card people were looking for would still be missing.
+	searchInfix = "off,always,always"
 	searchSortBy         = "_text_match:desc,commander_deck_count:desc,staple_score:desc"
+
+	// The deckbuilder ranks differently, because it is a different question. A picker asks "which card did you mean",
+	// so it breaks ties on how often a card leads a deck. The deckbuilder asks "what should go in this deck", so it
+	// breaks ties on how often Commander decks play the card at all, and then on the name so that paging is stable.
+	builderSortBy = "_text_match:desc,baseline_rate:desc,name:asc"
+	// A browse has no query to score, so play rate is the whole ranking. Same order as the Postgres fallback.
+	browseSortBy = "baseline_rate:desc,name:asc"
+
+	// Commander legality is not a filter the caller chooses: the deckbuilder builds Commander decks, and the Postgres
+	// function it replaces has the same condition baked in. Basic lands stay, because decks run them.
+	builderLegalFilter = "legal_commander:=legal"
 )
+
+// The mana curve's last bar means "this much or more", matching the deckbuilder's 7+ pill and p_mana_value_top in
+// search_cards_filtered.
+const manaValueTop = 7
+
+var colorLetters = [...]string{"W", "U", "B", "R", "G"}
+
+// identityFilter is the Typesense spelling of Postgres's `(color_identity & ~mask) = 0`: a card may not carry a colour
+// the deck's identity lacks. Typesense has no bitwise operators, so the filter names the colours that are *not*
+// allowed. Colourless fits every deck, so an empty `colors` array always passes, and a five-colour deck excludes
+// nothing and needs no filter at all. Mirrors identityFilter() in @mtg/core/search.
+func identityFilter(colors string) string {
+	allowed := map[string]bool{}
+	for _, letter := range strings.Split(strings.ToUpper(colors), "") {
+		allowed[letter] = true
+	}
+	var disallowed []string
+	for _, letter := range colorLetters {
+		if !allowed[letter] {
+			disallowed = append(disallowed, letter)
+		}
+	}
+	if len(disallowed) == 0 {
+		return ""
+	}
+	return "colors:!=[" + strings.Join(disallowed, ",") + "]"
+}
 
 // Ceilings on what one request may ask for. A deck is 100 cards, an add pool 400, a commander page 500; anything
 // far past that is a mistake or an abuser, and either way it should not become a 40-way multi_search.
@@ -36,6 +79,9 @@ const (
 	maxIDsPerRequest  = 2000
 	maxKeysPerRequest = 32
 	maxSearchLimit    = 50
+	// The deckbuilder's "More cards" walks forward a page at a time. Far past this nobody is reading results, and
+	// deep paging is where an engine starts doing real work per request.
+	maxSearchOffset = 1000
 )
 
 func decodeBody(c fiber.Ctx, out any) error {
@@ -106,29 +152,61 @@ func (s *Server) cardsByID(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"cards": documents(results)})
 }
 
+// cardsSearch serves both card searches the app makes.
+//
+//   - A plain name search (the header picker): two letters or more, ranked by how well the name matches.
+//   - The deckbuilder's search: the same name match narrowed to the commander's colours, a card type and a mana
+//     value, and — with no name at all — a browse of those filtered cards by how widely Commander decks play them.
+//
+// The second used to be a Postgres function because the index had no card-type field. It has one now
+// (`card_category`), so both run here, and `search_cards_filtered` stays as the fallback every read path keeps.
 func (s *Server) cardsSearch(c fiber.Ctx) error {
 	q := strings.TrimSpace(c.Query("q"))
-	if len(q) < 2 {
-		// The app normalises and length-checks before calling, so this is a guard, not a behaviour.
-		return c.JSON(fiber.Map{"cards": []json.RawMessage{}})
-	}
 	limit, err := strconv.Atoi(c.Query("limit", "8"))
 	if err != nil || limit < 1 || limit > maxSearchLimit {
 		return badRequest(fmt.Sprintf("limit must be a number between 1 and %d", maxSearchLimit))
 	}
+	offset, err := strconv.Atoi(c.Query("offset", "0"))
+	if err != nil || offset < 0 || offset > maxSearchOffset {
+		return badRequest(fmt.Sprintf("offset must be a number between 0 and %d", maxSearchOffset))
+	}
+
+	filters, err := builderFilters(c)
+	if err != nil {
+		return err
+	}
+	// Without a name there has to be something to narrow by, or this is a request for the whole catalog by play rate.
+	// The app never asks for that; refusing it here keeps a bug or an abuser from making the engine prove it.
+	if len(q) < 2 && len(filters) == 0 {
+		// The app normalises and length-checks before calling, so this is a guard, not a behaviour.
+		return c.JSON(fiber.Map{"cards": []json.RawMessage{}})
+	}
+	if c.Query("commanderOnly") == "1" {
+		filters = dedupe(append(filters, "can_be_commander:=true", builderLegalFilter))
+	}
 
 	prefix := true
 	params := typesense.SearchParams{
-		Collection:     cardsCollection,
-		Q:              q,
-		QueryBy:        searchQueryBy,
-		QueryByWeights: searchQueryByWeights,
-		SortBy:         searchSortBy,
-		PerPage:        limit,
-		Prefix:         &prefix,
+		Collection: cardsCollection,
+		FilterBy:   strings.Join(filters, " && "),
+		Limit:      limit,
+		Offset:     offset,
 	}
-	if c.Query("commanderOnly") == "1" {
-		params.FilterBy = "can_be_commander:=true && legal_commander:=legal"
+	switch {
+	case len(q) < 2:
+		// `*` is Typesense's "every document"; there is no text to score, so play rate is the whole ranking.
+		params.Q = "*"
+		params.SortBy = browseSortBy
+	default:
+		params.Q = q
+		params.QueryBy = searchQueryBy
+		params.QueryByWeights = searchQueryByWeights
+		params.Prefix = &prefix
+		params.Infix = searchInfix
+		params.SortBy = searchSortBy
+		if c.Query("builder") == "1" {
+			params.SortBy = builderSortBy
+		}
 	}
 
 	result, err := s.ts.Search(c.Context(), params)
@@ -136,6 +214,53 @@ func (s *Server) cardsSearch(c fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(fiber.Map{"cards": documents([]typesense.SearchResult{result})})
+}
+
+// builderFilters reads the deckbuilder's narrowing parameters. Each is optional and each is validated, because these
+// arrive from a URL: an unparseable one is a bad request rather than a filter quietly dropped, which would answer a
+// question nobody asked with results that look right.
+func builderFilters(c fiber.Ctx) ([]string, error) {
+	var filters []string
+	if colors := c.Query("colors"); colors != "" || c.Query("colorless") == "1" {
+		filters = append(filters, builderLegalFilter)
+		if f := identityFilter(colors); f != "" {
+			filters = append(filters, f)
+		}
+	}
+	if category := c.Query("type"); category != "" {
+		if !categoryShape.MatchString(category) {
+			return nil, badRequest("type must be a card category")
+		}
+		filters = append(filters, "card_category:="+category, builderLegalFilter)
+	}
+	if raw := c.Query("mv"); raw != "" {
+		mv, err := strconv.Atoi(raw)
+		if err != nil || mv < 0 || mv > manaValueTop {
+			return nil, badRequest(fmt.Sprintf("mv must be a number between 0 and %d", manaValueTop))
+		}
+		if mv >= manaValueTop {
+			filters = append(filters, fmt.Sprintf("mana_value:>=%d", manaValueTop))
+		} else {
+			// mana_value is a float because a few cards have one; the deckbuilder's pills are whole numbers, so a
+			// card sits in the bar its value floors into.
+			filters = append(filters, fmt.Sprintf("mana_value:>=%d && mana_value:<%d", mv, mv+1))
+		}
+		filters = append(filters, builderLegalFilter)
+	}
+	return dedupe(filters), nil
+}
+
+// dedupe keeps the filter string short when several parameters each demand Commander legality.
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	out := in[:0]
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // pageExists answers the one question the app's proxy asks on every card and commander page view: is this slug a

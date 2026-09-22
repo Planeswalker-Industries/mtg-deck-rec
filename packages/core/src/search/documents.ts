@@ -11,6 +11,8 @@
  * was measured on the Free tier the project has since left. See docs/roadmap/typesense-plan.md.
  */
 
+import type { CardCategory } from '../contract';
+
 export const CARDS_COLLECTION = "cards";
 export const TAGS_COLLECTION = "tags";
 export const COMMANDERS_COLLECTION = "commanders";
@@ -58,6 +60,13 @@ export interface CardDocument {
   name_head: string[];
   slug: string;
   type_line: string;
+  /**
+   * The deck-grouping category the type line resolves to (`cardCategory`), stored rather than derived because a
+   * filter cannot run a precedence rule: an artifact creature files under creature and an artifact land under
+   * artifact, which no substring match on `type_line` can express. It is the field that lets the deckbuilder's
+   * filtered search run here instead of in Postgres.
+   */
+  card_category: CardCategory;
   mana_value: number;
   /** The smallint bitmask, kept so a document round-trips to a CardRow exactly. */
   color_identity: number;
@@ -158,6 +167,13 @@ export interface CollectionField {
   index?: boolean;
   facet?: boolean;
   sort?: boolean;
+  /**
+   * Mid-word matching. Typesense matches whole tokens (with a prefix), so "bolt" finds *Guiding Bolt* but not
+   * *General Thunderbolt Ross*; an infix field can match inside a word, which is what Postgres's `%bolt%` did and
+   * what the deckbuilder's search had before it moved here. Typesense builds a separate structure for it, so it
+   * goes only on the two fields a person actually types into.
+   */
+  infix?: boolean;
 }
 
 export interface CollectionSchema {
@@ -176,13 +192,17 @@ export const CARD_SCHEMA: CollectionSchema = {
   fields: [
     { name: "card_id", type: "int32" },
     { name: "oracle_id", type: "string", index: false, optional: true },
-    { name: "name", type: "string" },
+    // `sort: true` because a browse orders by play rate and breaks ties on the name, exactly as the Postgres
+    // fallback does. Without a deterministic tiebreak the thousands of cards sharing rate 0 come back in whatever
+    // order the engine happens to hold them, and paging past them would repeat and skip cards.
+    { name: "name", type: "string", sort: true, infix: true },
     { name: "name_normalized", type: "string" },
-    { name: "names", type: "string[]" },
+    { name: "names", type: "string[]", infix: true },
     { name: "name_head", type: "string[]" },
     // Indexed because `proxy.ts` resolves a URL segment to a page through it on every card page view.
     { name: "slug", type: "string" },
     { name: "type_line", type: "string" },
+    { name: "card_category", type: "string", facet: true },
     { name: "mana_value", type: "float" },
     { name: "color_identity", type: "int32", index: false, optional: true },
     { name: "colors", type: "string[]", facet: true },

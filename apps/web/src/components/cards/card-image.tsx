@@ -9,6 +9,15 @@ const CARD_CORNERS = "rounded-[4.75%/3.4%]";
 /**
  * A card image from Scryfall's CDN. Never overlay anything on the lower part of the image:
  * Scryfall's guidelines require the artist and copyright line to stay visible.
+ *
+ * **Pick `variant` from the size the image is actually rendered at.** These are `unoptimized`, so `sizes` buys nothing:
+ * there is no srcset and the browser fetches whatever `variant` names, whole. Scryfall's steps are `small` 146×204 at
+ * ~13 KB, `normal` 488×680 at ~93 KB and `large` 672×936, so a thumbnail left on the default costs seven times its
+ * weight — measured, one page of twenty search results was 1.83 MB of `normal` files in 112 px slots.
+ *
+ * Every grid of cards is `small`, up to the 160 px pockets of `PocketGrid`: a grid is where a card is recognised by its
+ * art and name, not where its rules text is read, and a hundred-card deck page on `normal` is nine megabytes. `normal`
+ * is for a card shown on its own at a few hundred pixels, and `large` for one someone has deliberately enlarged.
  */
 export function CardImage({
   card,

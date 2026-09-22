@@ -111,7 +111,14 @@ type SearchParams struct {
 	IncludeFields  string `json:"include_fields,omitempty"`
 	PerPage        int    `json:"per_page,omitempty"`
 	Page           int    `json:"page,omitempty"`
+	// Offset/Limit are the alternative to Page/PerPage, for a caller that pages by a row offset rather than by page
+	// number. Set one pair or the other, never both.
+	Limit  int `json:"limit,omitempty"`
+	Offset int `json:"offset,omitempty"`
 	Prefix         *bool  `json:"prefix,omitempty"`
+	// One value per query_by field, e.g. "off,always,always". Only fields declared `infix: true` may be anything
+	// but off.
+	Infix string `json:"infix,omitempty"`
 }
 
 type Hit struct {
