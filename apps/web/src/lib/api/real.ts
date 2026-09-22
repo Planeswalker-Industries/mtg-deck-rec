@@ -1,5 +1,10 @@
 import type { ActionsApi, ApiError, CardSummary, CatalogApi, RecsApi, Result } from "@mtg/core/contract";
-import { deleteCollectionAction, getMyCollectionEntriesAction, saveCollectionBatchAction } from "@/app/collection/actions";
+import {
+  deleteCollectionAction,
+  getMyCollectionEntriesAction,
+  saveCollectionBatchAction,
+  setCollectionCardQuantityAction,
+} from "@/app/collection/actions";
 import { dealRaterCardsAction } from "@/app/rate/actions";
 import {
   analyzeDeckAction,
@@ -61,6 +66,7 @@ export const realActions: ActionsApi = {
   saveCollectionBatch: (input) => saveCollectionBatchAction(input),
   deleteCollection: () => deleteCollectionAction(),
   getMyCollectionEntries: () => getMyCollectionEntriesAction(),
+  setCollectionCardQuantity: (input) => setCollectionCardQuantityAction(input),
   saveDeck: (input) => saveDeckAction(input),
   openSavedDeck: (input) => openSavedDeckAction(input),
   renameDeck: (input) => renameDeckAction(input),

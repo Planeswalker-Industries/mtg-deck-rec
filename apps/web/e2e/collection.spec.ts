@@ -121,3 +121,29 @@ test("browses a collection by name, color and type", async ({ page }) => {
   await page.goto("/collection/import");
   await page.getByRole("button", { name: "Clear collection" }).click();
 });
+
+test("edits a browser collection by hand, and the edits stay", async ({ page }) => {
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill("2 Sol Ring\n1 Chulane, Teller of Tales");
+  await page.getByRole("button", { name: "Import collection" }).click();
+  await page.getByRole("region", { name: "Saved collection" }).getByRole("link", { name: "Browse your collection" }).click({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: "Edit collection" }).click({ timeout: 30_000 });
+  // One more Sol Ring, Chulane out, Arcane Signet in by name.
+  await page.getByRole("button", { name: "One more Sol Ring" }).click();
+  await expect(page.getByLabel("3 copies of Sol Ring")).toBeVisible();
+  await page.getByRole("button", { name: "Remove Chulane, Teller of Tales" }).click();
+  await page.getByRole("searchbox", { name: "Card to add" }).fill("Arcane Signet");
+  await page.getByRole("list", { name: "Cards to add" }).getByRole("button", { name: "Add Arcane Signet" }).click({ timeout: 30_000 });
+  await expect(page.getByText("Changes save as you make them.")).toBeVisible({ timeout: 10_000 });
+
+  // A fresh load reads the collection back from the browser.
+  await page.reload();
+  const artifacts = page.getByRole("list", { name: "Artifacts" });
+  await expect(artifacts.getByText("×3")).toBeVisible({ timeout: 30_000 });
+  await expect(artifacts.getByText("Arcane Signet")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Legendary creatures" })).toBeHidden();
+
+  await page.goto("/collection/import");
+  await page.getByRole("button", { name: "Clear collection" }).click();
+});

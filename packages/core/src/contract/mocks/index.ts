@@ -36,6 +36,7 @@ import type { CommanderRequest, CommanderRequestStatus } from '../commander-requ
 import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
 import { ownedFirst, ownedOnly, rankKey } from '../../scoring/owned';
 import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
+import { cardQuantity, setCardQuantity } from '../../collection/edit';
 import {
   frontFaceName,
   MOCK_AS_OF,
@@ -537,6 +538,12 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       return delay(
         ok([...byCard].map(([cardId, e]) => ({ cardId: cardId as CardId, quantity: e.quantity, setCodes: [...e.setCodes] }))),
       );
+    },
+
+    async setCollectionCardQuantity({ cardId, quantity }) {
+      if (!byId.has(cardId)) return delay(fail('NOT_FOUND', `Unknown card ${cardId}`));
+      collectionRows = setCardQuantity(collectionRows, cardId, quantity);
+      return delay(ok({ cardId, quantity: cardQuantity(collectionRows, cardId) }));
     },
 
     async saveDeck({ deckId, name, deck, isPublic, bracket }) {

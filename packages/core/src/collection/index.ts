@@ -106,3 +106,4 @@ export function majorSetsNewestFirst(sets: readonly CardSet[]): CardSet[] {
     .filter((s) => MAJOR_SET_TYPES.has(s.setType))
     .toSorted((a, b) => (b.releasedAt ?? '').localeCompare(a.releasedAt ?? '') || a.name.localeCompare(b.name));
 }
+export * from './edit';

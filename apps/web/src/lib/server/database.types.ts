@@ -1698,6 +1698,10 @@ export type Database = {
           card_id: number
         }[]
       }
+      set_collection_card_quantity: {
+        Args: { p_card_id: number; p_quantity: number }
+        Returns: number
+      }
       set_deck_visibility: {
         Args: { p_deck_id: string; p_is_public: boolean }
         Returns: undefined
