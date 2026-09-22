@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -63,6 +64,9 @@ func New(cfg config.Config, ts *typesense.Client, log *slog.Logger, crawls map[s
 		// Bulk imports arrive as JSONL and a full card collection is tens of MB.
 		BodyLimit: 64 * 1024 * 1024,
 	})
+
+	// Before the routes, so it sees every request including the ones that match nothing.
+	app.Use(s.requestLog())
 
 	app.Get("/v1/health", s.health)
 	app.Get("/v1/health/live", s.live)
@@ -157,6 +161,37 @@ func (s *Server) authorize(accepted ...string) fiber.Handler {
 			return c.Next()
 		}
 		return &apiError{status: fiber.StatusForbidden, message: "that token is not allowed here"}
+	}
+}
+
+// healthPaths are the probes. They are the only requests not logged: the container asks one every few seconds, and a
+// log that is almost entirely health checks is one nobody reads.
+var healthPaths = map[string]bool{"/v1/health": true, "/v1/health/live": true}
+
+// requestLog records one line per request. Without it the service is silent unless something fails, which makes
+// "is anything calling this?" unanswerable from the outside — the question is not hypothetical: it cost an afternoon
+// once, because a successful search and no search at all look identical in the log.
+//
+// The query string is deliberately left out. A search term is a person's words, and `q=` would put every one of them
+// in the log; the path alone answers which endpoint was reached. The Authorization header is never touched.
+func (s *Server) requestLog() fiber.Handler {
+	return func(c fiber.Ctx) error {
+		if healthPaths[c.Path()] {
+			return c.Next()
+		}
+		start := time.Now()
+		err := c.Next()
+
+		// A handler that returned an error has not reached the error handler yet, so the response still carries its
+		// pre-error status. Report the error itself rather than a misleading 200.
+		attrs := []any{"method", c.Method(), "path", c.Path(), "ms", time.Since(start).Milliseconds()}
+		if err != nil {
+			attrs = append(attrs, "err", err.Error())
+		} else {
+			attrs = append(attrs, "status", c.Response().StatusCode())
+		}
+		s.log.Info("request", attrs...)
+		return err
 	}
 }
 
