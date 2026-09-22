@@ -30,7 +30,7 @@ const FLING_DISTANCE_WIDTHS = 1.8;
  * After a swipe lands, the next one waits this long. A double tap on ✅ or ❌ would otherwise cast a second vote on the
  * card that just came up, which the player never saw.
  */
-const SWIPE_COOLDOWN_MS = 500;
+export const SWIPE_COOLDOWN_MS = 500;
 /** Movement (px) past which a press on the card counts as a drag, so the click it ends in doesn't enlarge the card. */
 const DRAG_CLICK_SLOP_PX = 5;
 /** Card width (px) assumed before the card has been measured. */
@@ -49,7 +49,7 @@ const BUTTON_PULL_SCALE = 0.18;
 const MAX_REASONS = 2;
 const MAX_TARGET_JOBS = 6;
 /** The draw that opens a sitting: cards slide out of the deck, turn over, then their names and details fade in. */
-const DRAW = {
+export const DRAW = {
   startScale: 0.55,
   slideSeconds: 0.42,
   slideEase: [0.22, 0.9, 0.3, 1],
@@ -63,9 +63,9 @@ const DRAW = {
   replacementDetailsDelaySeconds: 0.7,
 } as const;
 
-type Direction = 1 | -1;
+export type Direction = 1 | -1;
 
-interface SwipeHandle {
+export interface SwipeHandle {
   fling: (direction: Direction) => void;
 }
 
@@ -73,7 +73,7 @@ interface SwipeHandle {
  * A card that follows the finger sideways with a slight tilt, springs back when let go early, and flies off when dragged
  * past the threshold or flicked. Vertical drags keep scrolling the page. Nothing is drawn over the card itself.
  */
-function SwipeCard({
+export function SwipeCard({
   ref,
   onSwipe,
   canSwipe,
@@ -154,7 +154,7 @@ function SwipeCard({
  * The first pair of a sitting is drawn from the deck: each card slides out from the middle of the screen face down and
  * flips over. Later cards just appear. `play` only counts when the card first mounts.
  */
-function DrawnCard({
+export function DrawnCard({
   play,
   delay,
   fromY,
@@ -190,15 +190,28 @@ function DrawnCard({
   );
 }
 
+/** The ✅ button's colour: gold for a swap, or the job's own colour when the swipe is a cut or an add. */
+const ACCEPT_TONE = {
+  primary: "bg-primary text-primary-foreground shadow-[0_2px_0_color-mix(in_oklch,var(--primary),black_35%)] hover:bg-primary/90",
+  cut: "bg-cut text-background shadow-[0_2px_0_color-mix(in_oklch,var(--cut),black_35%)] hover:bg-cut/90",
+  add: "bg-add text-background shadow-[0_2px_0_color-mix(in_oklch,var(--add),black_35%)] hover:bg-add/90",
+} as const;
+
+const PULL_RING = { primary: "ring-primary/25", cut: "ring-cut/30", add: "ring-add/30" } as const;
+
+export type AcceptTone = keyof typeof ACCEPT_TONE;
+
 /** The ❌ and ✅ buttons beside the replacement: they swell as the card is dragged toward them. */
-function SideButton({
+export function SideButton({
   kind,
   label,
   pull,
   disabled,
   onClick,
+  tone = "primary",
 }: {
   kind: "pass" | "swap";
+  tone?: AcceptTone;
   label: string;
   /** 0..1 */
   pull: number;
@@ -216,10 +229,8 @@ function SideButton({
       className={cn(
         "flex size-14 items-center justify-center rounded-full transition-[transform,box-shadow,background-color] duration-150",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-40",
-        kind === "swap"
-          ? "bg-primary text-primary-foreground shadow-[0_2px_0_color-mix(in_oklch,var(--primary),black_35%)] hover:bg-primary/90"
-          : "border border-input bg-sleeve text-foreground shadow-[0_2px_0_var(--seam)] hover:bg-muted",
-        pull >= 1 && "ring-4 ring-primary/25",
+        kind === "swap" ? ACCEPT_TONE[tone] : "border border-input bg-sleeve text-foreground shadow-[0_2px_0_var(--seam)] hover:bg-muted",
+        pull >= 1 && ["ring-4", PULL_RING[tone]],
       )}
     >
       <Icon aria-hidden className="size-7" strokeWidth={2.75} />
@@ -306,13 +317,13 @@ export function SwipeRater({
   return (
     <section
       ref={viewRef}
-      aria-label={inRater ? "Rate replacements" : "Swipe through cards to cut"}
+      aria-label={inRater ? "Rate replacements" : "Swipe through cards to replace"}
       className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col"
     >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground tabular-nums">
           Card {rater.targetIndex + 1} of {rater.targetCount}
-          {inRater ? "" : " to cut"}
+          {inRater ? "" : " to replace"}
         </p>
         <Button type="button" size="sm" variant="ghost" onClick={onFinish}>
           {inRater ? "Done" : "Finish"}

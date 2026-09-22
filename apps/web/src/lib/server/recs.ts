@@ -366,6 +366,7 @@ export async function getCutSuggestions(
       includeGameChangers: context.includeGameChangers,
       gameChangerLimit: gameChangerLimit(context.bracket),
       roleTargets: roleTargetsFor(roleTargets, corpus),
+      severeSynergyScore: corpus.settings.severeSynergyScore,
     },
   );
 
@@ -379,6 +380,7 @@ export async function getCutSuggestions(
         card: toCardSummary(row),
         cutScore: s.cutScore,
         reasons: notOwned ? [...s.reasons, "NOT_OWNED"] : s.reasons,
+        severity: s.severity,
         corpus: commanderRateFor(s.cardId)?.evidence ?? null,
         owned: owned?.has(s.cardId) ? { quantity: 1 } : null,
       },

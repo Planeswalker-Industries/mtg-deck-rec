@@ -20,13 +20,16 @@ export function SaveDeckButton({
   analysis,
   bracket,
   onSaved,
+  defaultOpen = false,
 }: {
   analysis: DeckAnalysis;
   /** The bracket on screen, stored with the deck so reopening it comes back the same. */
   bracket: Bracket | null;
   onSaved: (deck: { deckId: DeckId; code: string; name: string }) => void;
+  /** Opens on the name form, for when the player has already asked to save (the journey's Review). */
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [name, setName] = useState(() => suggestedName(analysis));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

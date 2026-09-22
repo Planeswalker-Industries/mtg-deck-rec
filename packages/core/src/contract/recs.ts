@@ -171,11 +171,19 @@ export type CutReason =
   | 'HIGH_MANA_VALUE'
   | 'NOT_OWNED';
 
+/**
+ * mandatory: the card works against the deck (breaks a rule, or the commander's decks all but never run it); cut it
+ * whatever replaces it. suggested: a weaker fit, worth swapping for something better.
+ */
+export type CutSeverity = 'mandatory' | 'suggested';
+
 export interface CutSuggestion {
   card: CardSummary;
   /** 0..1, higher = stronger cut candidate */
   cutScore: number;
   reasons: CutReason[];
+  /** Mandatory cuts come first in `CutResult.suggestions`. */
+  severity: CutSeverity;
   corpus: CorpusEvidence | null;
   owned: OwnedInfo | null;
 }
