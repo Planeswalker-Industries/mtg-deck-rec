@@ -3,6 +3,7 @@ import type { DeckInput } from './decks';
 import type { ApiError, Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
 import type { RecContext, VoteContext } from './recs';
+import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
 
 /**
  * Runtime validation for contract inputs that arrive over the network (Route Handler bodies, Server Action arguments).
@@ -134,6 +135,8 @@ export const castVoteInputSchema = z
 
 export const MAX_SEARCH_QUERY_CHARS = 100;
 export const MAX_SEARCH_LIMIT = 20;
+/** How deep the deckbuilder's "more" button can page a filtered search: thirty pages of the maximum. */
+export const MAX_SEARCH_OFFSET = 600;
 
 export const MAX_CARD_TAG_IDS = 400;
 
@@ -164,18 +167,29 @@ export const collectionCardsInputSchema = z.object(
   request,
 );
 
-export const searchCardsInputSchema = z.object(
-  {
-    q: z
-      .string({ error: 'Type part of a card name.' })
-      .trim()
-      .min(2, 'Type at least 2 letters.')
-      .max(MAX_SEARCH_QUERY_CHARS, `Searches can be at most ${MAX_SEARCH_QUERY_CHARS} characters.`),
-    commanderEligible: z.boolean().optional(),
-    limit: z.int().min(1).max(MAX_SEARCH_LIMIT).optional(),
-  },
-  request,
-);
+export const searchCardsInputSchema = z
+  .object(
+    {
+      q: z
+        .string({ error: 'Type part of a card name.' })
+        .trim()
+        .max(MAX_SEARCH_QUERY_CHARS, `Searches can be at most ${MAX_SEARCH_QUERY_CHARS} characters.`),
+      commanderEligible: z.boolean().optional(),
+      limit: z.int().min(1).max(MAX_SEARCH_LIMIT).optional(),
+      colorIdentity: z.string().regex(/^[WUBRG]{0,5}$/, 'Invalid colours.').optional(),
+      cardType: z
+        .enum(['creature', 'planeswalker', 'battle', 'instant', 'sorcery', 'artifact', 'enchantment', 'land'], { error: 'Invalid card type.' })
+        .optional(),
+      manaValue: z.int().min(0).max(CURVE_TOP_MANA_VALUE, 'Invalid mana value.').optional(),
+      offset: z.int().min(0).max(MAX_SEARCH_OFFSET).optional(),
+    },
+    request,
+  )
+  // A name of 2+ letters, or a filter to browse by: an empty search with nothing to narrow it would be the whole catalog.
+  .refine((v) => v.q.length >= 2 || v.cardType !== undefined || v.manaValue !== undefined || (v.q.length === 0 && v.colorIdentity !== undefined), {
+    message: 'Type at least 2 letters.',
+    path: ['q'],
+  });
 
 export const dealRaterCardsInputSchema = z
   .object(

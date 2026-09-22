@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -85,8 +85,11 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
 
         {deck.isOwner && (
           <div className="flex flex-wrap gap-2">
-            <Link href={{ pathname: "/deck", query: { deck: deck.code } }} className={buttonVariants({ size: "sm" })}>
-              Open in the deck tool
+            <Link href={`/decks/${deck.commanderSlug}/${deck.code}/edit` as Route} className={buttonVariants({ size: "sm" })}>
+              Edit deck
+            </Link>
+            <Link href={{ pathname: "/deck", query: { deck: deck.code } }} className={buttonVariants({ size: "sm", variant: "outline" })}>
+              Upgrade it
             </Link>
             <Link href="/decks" className={buttonVariants({ variant: "outline", size: "sm" })}>
               All your decks

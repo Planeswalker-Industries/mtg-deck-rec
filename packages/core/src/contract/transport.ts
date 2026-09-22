@@ -1,5 +1,5 @@
 import type { ExportFormat, FavoriteRef, SyncStatusRow, TagAdminRow } from './account';
-import type { CardDetail, CardSummary, TagRef } from './cards';
+import type { CardDetail, CardSummary, TagRef, CardSearchInput } from './cards';
 import type { CommanderCoverage, CommanderRequest } from './commander-requests';
 import type {
   CollectionCardsResult,
@@ -36,7 +36,7 @@ export interface RecsApi {
 /** Card lookups for pickers. Transport: GET Route Handlers under /api/cards (cacheable, parallel). */
 export interface CatalogApi {
   /** Cards whose name matches `q` (at least 2 characters), best match first; `commanderEligible` keeps only cards that can lead a deck. */
-  searchCards(input: { q: string; commanderEligible?: boolean; limit?: number }): Promise<Result<CardSummary[]>>;
+  searchCards(input: CardSearchInput): Promise<Result<CardSummary[]>>;
   /** Functional tags per card, for grouping a deck by what its cards do. Cards with no tags are omitted. */
   cardTags(input: { cardIds: CardId[] }): Promise<Result<{ cardId: CardId; tags: TagRef[] }[]>>;
   /**

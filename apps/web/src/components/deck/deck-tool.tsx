@@ -2,20 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import type { Route } from "next";
+import { useRouter, useSearchParams } from "next/navigation";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { findResolvedCard } from "@/lib/cards";
 import { FEATURED_DECKS } from "@/lib/featured-decks";
-import { AddPanel } from "./add-panel";
 import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
-import { CutPanel } from "./cut-panel";
 import { DeckBar } from "./deck-bar";
-import { DeckGroupsPanel } from "./deck-groups-panel";
-import type { Job } from "./job-selector";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
@@ -23,9 +19,7 @@ import { FileDrop } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
-import { SwapSheet } from "./swap-sheet";
-import { WorkspaceNav } from "./workspace-nav";
-import { WorkspaceRail } from "./workspace-rail";
+import { ToolDeckEditor, type FlushEdits } from "@/components/deckbuilder/tool-deck-editor";
 import { AddPhase } from "./journey/add-phase";
 import { CutPhase } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
@@ -81,7 +75,7 @@ function Segmented<T extends string>({
   );
 }
 
-/** "upgrade" walks the deck through the journey; "edit" is the workspace for editing it by hand. */
+/** "upgrade" walks the deck through the journey; "edit" is the deckbuilder. */
 type ToolMode = "upgrade" | "edit";
 
 export function DeckTool() {
@@ -99,13 +93,14 @@ export function DeckTool() {
   const [openError, setOpenError] = useState<string | null>(null);
   const [view, setView] = useState<ReviewView>(readReviewView);
   const [mode, setMode] = useState<ToolMode>("upgrade");
-  // null is the deck itself, which is where the workspace starts.
-  const [job, setJob] = useState<Job | null>(null);
+  const router = useRouter();
+  /** The inline deckbuilder's pending-edit flush, while it is on screen, so Save saves the deck as edited. */
+  const flushEdits = useRef<FlushEdits | null>(null);
   /** Review's Save on a deck that isn't saved yet opens the name form in the header. */
   const [saveAsked, setSaveAsked] = useState(false);
   const [committing, setCommitting] = useState(false);
   const restoreStarted = useRef(false);
-  const { analysis, context, swap } = tool;
+  const { analysis, context } = tool;
   const journey = useDeckJourney({ analysis, context, lines: tool.lines, cut: tool.cut });
 
   /*
@@ -145,8 +140,20 @@ export function DeckTool() {
     });
   }, [tool, lookup, collectionLoaded, openCode, commanderSlug]);
   const showInput = editing || !analysis;
-  const selectedCardId = swap?.targetCardId ?? null;
-  const swapTarget = selectedCardId === null ? null : findResolvedCard(tool.lines, selectedCardId);
+
+  /** A saved deck's deckbuilder has its own address; the commander segment is decoration, the code finds the deck. */
+  const editorUrl = (code: string) => `/decks/${analysis?.commanderKey.commanders[0]?.slug ?? "deck"}/${code}/edit` as Route;
+
+  /** Edit deck: a saved deck opens in its own editor once its last change has been written; an unsaved one edits here. */
+  async function changeMode(next: ToolMode) {
+    const open = tool.openDeck;
+    if (next === "edit" && open) {
+      await tool.whenSaved();
+      router.push(editorUrl(open.code));
+      return;
+    }
+    setMode(next);
+  }
   const cardCount = analysis
     ? analysis.deck.commanders.length +
       analysis.deck.cards.filter((c) => c.section === "main").reduce((n, c) => n + c.quantity, 0)
@@ -177,8 +184,14 @@ export function DeckTool() {
     setCommitting(false);
     if (!outcome.parsed) return;
     if (kind === "save") {
+      // An open deck was just written back by the analysis; once that lands, its editor has the result.
+      if (tool.openDeck) {
+        await tool.whenSaved();
+        router.push(editorUrl(tool.openDeck.code));
+        return;
+      }
       setMode("edit");
-      if (!tool.openDeck) setSaveAsked(true);
+      setSaveAsked(true);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -283,9 +296,12 @@ export function DeckTool() {
               onSaved={(deck) => {
                 setSaveAsked(false);
                 tool.trackSavedDeck(deck);
+                // Saving opens the deck in its deckbuilder, at the address it keeps from now on.
+                router.push(editorUrl(deck.code));
               }}
               defaultOpen={saveAsked}
               original={tool.original}
+              beforeSave={async () => (flushEdits.current ? flushEdits.current() : null)}
             />
           )}
           <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
@@ -328,10 +344,10 @@ export function DeckTool() {
               label="What to do with the deck"
               options={[
                 { value: "upgrade", label: "Upgrade" },
-                { value: "edit", label: "Edit deck" },
+                { value: "edit", label: "Deckbuilder" },
               ]}
               value={mode}
-              onChange={setMode}
+              onChange={(next) => void changeMode(next)}
             />
             {mode === "upgrade" && journey.state?.phase !== "review" && (
               <Segmented
@@ -366,58 +382,12 @@ export function DeckTool() {
               </div>
             )
           ) : (
-            /*
-             * The workspace: where you are (left), what you're working on (middle) and the three jobs (right).
-             *
-             * One grid rather than three nested columns, so the same markup is a single stack on a phone in the
-             * order the mock asks for — jobs, then cards — and three columns from `lg` up.
-             */
-            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[11rem_minmax(0,1fr)_17rem] lg:gap-6">
-              <aside className="hidden lg:col-start-1 lg:row-start-1 lg:block">
-                <WorkspaceNav deckGroups={deckGroups} showSections={job === null || job === "replace"} />
-              </aside>
-
-              <div className="flex flex-col gap-4 lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
-                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} hasCollection={tool.collectionMode !== null} />
-              </div>
-
-              <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">
-                {job === null && (
-                  <DeckGroupsPanel deckGroups={deckGroups} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
-                )}
-                {job === "cut" && (
-                  <CutPanel
-                    state={tool.cut}
-                    commanderKey={analysis.commanderKey}
-                    selectedCardId={selectedCardId}
-                    onSelectCard={tool.openSwap}
-                  />
-                )}
-                {job === "add" && <AddPanel state={tool.add} />}
-                {job === "replace" && (
-                  <>
-                    {/*
-                     * Replacements are per card rather than a list of their own: the question is always "what else
-                     * does this card's job", so the deck is the way in.
-                     */}
-                    <p className="text-sm text-muted-foreground">
-                      Tap any card to see what else does its job, how the two compare and what the swap costs.
-                    </p>
-                    <DeckGroupsPanel deckGroups={deckGroups} selectedCardId={selectedCardId} onSelectCard={tool.openSwap} />
-                  </>
-                )}
-              </div>
-            </div>
+            // Remounted when the player pastes a new decklist, so the builder starts from it rather than its old state.
+            <ToolDeckEditor key={tool.originText ?? "deck"} tool={tool} flushRef={flushEdits} />
           )}
         </section>
       )}
 
-      <SwapSheet
-        swap={swap}
-        target={swapTarget}
-        commanderCount={tool.analysis?.commanderKey.commanders.length ?? 0}
-        onClose={tool.closeSwap}
-      />
       <CommanderLookupSheet lookup={lookup} />
     </div>
   );

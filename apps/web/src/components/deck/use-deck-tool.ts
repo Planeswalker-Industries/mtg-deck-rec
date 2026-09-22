@@ -174,6 +174,8 @@ export function useDeckTool(source: CollectionSource) {
    */
   const openDeckRef = useRef<OpenDeck | null>(null);
   const saveRequest = useRef(0);
+  /** The write auto-save has in flight, so a caller can wait for the account to have the deck before leaving. */
+  const pendingSave = useRef<Promise<void>>(Promise.resolve());
   const recsRequest = useRef(0);
   const swapRequest = useRef(0);
 
@@ -305,7 +307,7 @@ export function useDeckTool(source: CollectionSource) {
     if (r.data.analysis) {
       void loadRecs(buildContext(r.data.analysis, bracket, includeGameChangers, ownership), null);
       // Every path that changes the deck goes through here, so this is the one place auto-save has to hang off.
-      if (openDeckRef.current) void persist(r.data.analysis, bracket);
+      if (openDeckRef.current) pendingSave.current = persist(r.data.analysis, bracket);
     } else {
       setAdd({ status: "idle" });
       setCut({ status: "idle" });
@@ -461,6 +463,8 @@ export function useDeckTool(source: CollectionSource) {
     refreshRecommendations,
     applySwaps,
     commitText,
+    /** Resolves once the open deck's last auto-save has landed (or failed, which the open deck bar reports). */
+    whenSaved: () => pendingSave.current,
     startOver,
     originText,
     /** The deck the player brought, when the current deck differs from it: what a save keeps as its original. */
@@ -485,3 +489,5 @@ export function useDeckTool(source: CollectionSource) {
     closeSwap,
   };
 }
+
+export type DeckTool = ReturnType<typeof useDeckTool>;
