@@ -15,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/crawl"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
@@ -38,10 +39,13 @@ type Server struct {
 	ts  *typesense.Client
 	cfg config.Config
 	log *slog.Logger
+	// crawls maps source names to their runner. Empty (or missing an entry) when a source isn't wired up - the
+	// handlers answer 503, never a broken crawl.
+	crawls map[string]*crawl.Runner
 }
 
-func New(cfg config.Config, ts *typesense.Client, log *slog.Logger) *fiber.App {
-	s := &Server{ts: ts, cfg: cfg, log: log}
+func New(cfg config.Config, ts *typesense.Client, log *slog.Logger, crawls map[string]*crawl.Runner) *fiber.App {
+	s := &Server{ts: ts, cfg: cfg, log: log, crawls: crawls}
 
 	app := fiber.New(fiber.Config{
 		AppName:      "mtg search-api",
@@ -70,6 +74,16 @@ func New(cfg config.Config, ts *typesense.Client, log *slog.Logger) *fiber.App {
 	admin.Delete("/collections/:name/documents/:id", s.deleteDocument)
 	admin.Get("/aliases/:name", s.getAlias)
 	admin.Put("/aliases/:name", s.putAlias)
+
+	// The deck crawls, triggered by the web app's daily cron, one group per source (:source ∈ {moxfield, archidekt}).
+	// Only the cron token (and the admin token) reach them; the read token on Vercel cannot. They live outside /v1 on
+	// purpose: the read group's authorize is a Use on /v1 that would otherwise intercept every path below it (Fiber
+	// mounts a group's middleware at the prefix), and the whole point is that a cron trigger is not a read. When a
+	// source isn't configured its handler answers 503, so an existing deploy predating the crawls keeps serving
+	// search with the same three secrets.
+	crawlGroup := app.Group("/cron/:source", s.authorize(cfg.CronToken, cfg.AdminToken))
+	crawlGroup.Post("/scrape", s.crawlScrape)
+	crawlGroup.Get("/status", s.crawlStatus)
 
 	return app
 }

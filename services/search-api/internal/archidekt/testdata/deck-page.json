@@ -1,0 +1,152 @@
+{
+ "deckFormat": 3,
+ "private": false,
+ "unlisted": false,
+ "updatedAt": "2026-09-22T02:18:34.929650Z",
+ "categories": [
+  {
+   "name": "Commander",
+   "includedInDeck": true
+  },
+  {
+   "name": "Theft",
+   "includedInDeck": true
+  },
+  {
+   "name": "Lifegain",
+   "includedInDeck": true
+  },
+  {
+   "name": "Copy",
+   "includedInDeck": true
+  },
+  {
+   "name": "Tutor",
+   "includedInDeck": true
+  },
+  {
+   "name": "Ramp",
+   "includedInDeck": true
+  },
+  {
+   "name": "Evasion",
+   "includedInDeck": true
+  },
+  {
+   "name": "Tokens",
+   "includedInDeck": true
+  },
+  {
+   "name": "Anthem",
+   "includedInDeck": true
+  },
+  {
+   "name": "Removal",
+   "includedInDeck": true
+  },
+  {
+   "name": "Land",
+   "includedInDeck": true
+  },
+  {
+   "name": "Stax",
+   "includedInDeck": true
+  },
+  {
+   "name": "Draw",
+   "includedInDeck": true
+  },
+  {
+   "name": "Burn",
+   "includedInDeck": true
+  },
+  {
+   "name": "Protection",
+   "includedInDeck": true
+  },
+  {
+   "name": "Finisher",
+   "includedInDeck": true
+  }
+ ],
+ "cards": [
+  {
+   "id": 3498439823,
+   "quantity": 1,
+   "categories": [
+    "Commander"
+   ],
+   "card": {
+    "oracleCard": {
+     "uid": "02598a35-1b11-4abe-89cd-fc44c8c36c15",
+     "name": "Winota, Joiner of Forces"
+    }
+   }
+  },
+  {
+   "id": 3498438556,
+   "quantity": 1,
+   "categories": [
+    "Finisher"
+   ],
+   "card": {
+    "oracleCard": {
+     "uid": "81c6c4f0-81ad-463c-a42b-60a73e6d70f3",
+     "name": "Alexios, Deimos of Kosmos"
+    }
+   }
+  },
+  {
+   "id": 3498438557,
+   "quantity": 1,
+   "categories": [
+    "Protection"
+   ],
+   "card": {
+    "oracleCard": {
+     "uid": "d371031e-78be-4964-b521-b1eaa22a5480",
+     "name": "Alseid of Life's Bounty"
+    }
+   }
+  },
+  {
+   "id": 3498438558,
+   "quantity": 1,
+   "categories": [
+    "Burn"
+   ],
+   "card": {
+    "oracleCard": {
+     "uid": "2d4976d4-649c-4d42-ac5a-ada4b46a480c",
+     "name": "Angrath's Marauders"
+    }
+   }
+  },
+  {
+   "id": 3498438559,
+   "quantity": 1,
+   "categories": [
+    "Draw"
+   ],
+   "card": {
+    "oracleCard": {
+     "uid": "08b13e1f-27ca-40a8-b5ed-88ac933d24bf",
+     "name": "Archivist of Oghma"
+    }
+   }
+  },
+  {
+   "id": 3498438560,
+   "quantity": 1,
+   "categories": [
+    "Stax"
+   ],
+   "card": {
+    "oracleCard": {
+     "uid": "ceef2d5a-77ea-4e56-9806-fd1a2d5be400",
+     "name": "Archon of Emeria"
+    }
+   }
+  }
+ ]
+}

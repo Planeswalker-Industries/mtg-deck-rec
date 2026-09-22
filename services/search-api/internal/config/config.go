@@ -24,16 +24,27 @@ type Config struct {
 	// token leaked from a Vercel function cannot drop a collection.
 	ReadToken  string
 	AdminToken string
+
+	// The Moxfield crawl. Optional: when any of these is empty the crawl endpoints answer 503, a configured-but-
+	// disabled state, and the existing deploy boots unchanged.
+	SupabaseURL        string // the project URL, e.g. https://<ref>.supabase.co
+	SupabaseServiceKey string // service_role: the crawl writes third-party decklists, so no lesser key is right
+	CronToken          string // the web app's. It can trigger a scrape, nothing else (the split the tokens exist for)
+	SupabaseTimeout    time.Duration
 }
 
 func Load() (Config, error) {
 	c := Config{
-		Addr:             env("SEARCH_API_ADDR", ":8080"),
-		TypesenseURL:     strings.TrimRight(env("TYPESENSE_URL", "http://typesense:8108"), "/"),
-		TypesenseKey:     os.Getenv("TYPESENSE_ADMIN_KEY"),
-		ReadToken:        os.Getenv("SEARCH_API_TOKEN"),
-		AdminToken:       os.Getenv("SEARCH_API_ADMIN_TOKEN"),
-		TypesenseTimeout: 10 * time.Second,
+		Addr:               env("SEARCH_API_ADDR", ":8080"),
+		TypesenseURL:       strings.TrimRight(env("TYPESENSE_URL", "http://typesense:8108"), "/"),
+		TypesenseKey:       os.Getenv("TYPESENSE_ADMIN_KEY"),
+		ReadToken:          os.Getenv("SEARCH_API_TOKEN"),
+		AdminToken:         os.Getenv("SEARCH_API_ADMIN_TOKEN"),
+		TypesenseTimeout:   10 * time.Second,
+		SupabaseURL:        strings.TrimRight(os.Getenv("SUPABASE_URL"), "/"),
+		SupabaseServiceKey: os.Getenv("SUPABASE_SERVICE_ROLE_KEY"),
+		CronToken:          os.Getenv("SEARCH_API_CRON_TOKEN"),
+		SupabaseTimeout:    30 * time.Second,
 	}
 
 	var missing []string
@@ -55,6 +66,13 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("SEARCH_API_TOKEN and SEARCH_API_ADMIN_TOKEN must differ")
 	}
 	return c, nil
+}
+
+// CrawlConfigured reports whether the Moxfield scrape is wired up: a project URL, a service key and a cron token.
+// All three are needed; the crawl endpoints answer 503 when it is false, so a deploy that predates the scrape
+// still boots and serves search unchanged.
+func (c Config) CrawlConfigured() bool {
+	return c.SupabaseURL != "" && c.SupabaseServiceKey != "" && c.CronToken != ""
 }
 
 func env(name, fallback string) string {
