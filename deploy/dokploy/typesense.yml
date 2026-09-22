@@ -15,6 +15,10 @@
 
 services:
   typesense:
+    # A fixed container name, so `http://typesense:8108` resolves on the shared network regardless of what Dokploy
+    # calls the compose project. This is the shape the other services on this VPS already use and it is known to
+    # work there; the network alias below says the same thing twice, deliberately.
+    container_name: typesense
     image: typesense/typesense:29.0
     restart: unless-stopped
 

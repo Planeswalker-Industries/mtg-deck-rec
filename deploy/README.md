@@ -124,6 +124,15 @@ Either way, this is the command that tells you which half is broken:
 curl 127.0.0.1:8090/v1/health    # on the box: {"ok":true} means only the routing is wrong
 ```
 
+### Pointing the apps at these files
+
+Merging a change that adds these files does not move an existing app onto them — **the compose path is a setting in
+the panel**, and an app created earlier keeps pointing at whatever it was given. If a deploy still fails with
+`network mtg-search not found` after these files exist, that is the reason: `mtg-search` is the default in
+`deploy/search-api/docker-compose.yml`, so the app is still on the old path. Change it to
+`deploy/dokploy/search-api.yml` (and `deploy/dokploy/typesense.yml` for the other app) in the app's settings, then
+redeploy.
+
 ### If a deploy still cannot find the network
 
 Check what compose actually resolved, on the VPS:
