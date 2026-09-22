@@ -59,6 +59,7 @@ export const recContextSchema: InputSchema<RecContext> = z.object(
     includeGameChangers: z.boolean({ error: 'Invalid Game Changer setting.' }),
     /** Omitted means collection-less. */
     ownership: ownershipSchema.nullable().default(null),
+    ownershipMode: z.enum(['only', 'first'], { error: 'Invalid collection setting.' }).optional(),
   },
   { error: 'Missing deck.' },
 );
@@ -265,6 +266,7 @@ export const saveDeckInputSchema = z.object(
     deck: deckInputSchema,
     isPublic: z.boolean({ error: 'Choose whether the deck is public.' }),
     bracket: z.literal([1, 2, 3, 4, 5], { error: 'Pick a bracket from 1 to 5.' }).optional(),
+    original: deckInputSchema.optional(),
   },
   request,
 );

@@ -48,6 +48,13 @@ export const emptySwapMessage: Record<NonNullable<SwapResult["emptyReason"]>, st
   NO_CANDIDATES: "No legal replacements fit this deck.",
 };
 
+/** The deck bar's collection choices. */
+export const collectionModeLabel: Record<"off" | "first" | "only", string> = {
+  first: "Owned first",
+  only: "Owned only",
+  off: "Ignore it",
+};
+
 export const bracketLabel: Record<Bracket, string> = {
   1: "1 Exhibition",
   2: "2 Core",

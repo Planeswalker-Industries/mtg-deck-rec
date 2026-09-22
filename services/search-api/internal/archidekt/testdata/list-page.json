@@ -1,0 +1,54 @@
+{
+ "count": 1000,
+ "next": "http://archidekt.com/api/decks/v3/?deckFormat=3&orderBy=-updatedAt&page=2&size=100",
+ "results": [
+  {
+   "id": 26657848,
+   "name": "Hatebears",
+   "updatedAt": "2026-09-22T02:18:27.069947Z",
+   "deckFormat": 3,
+   "private": false,
+   "unlisted": false
+  },
+  {
+   "id": 26376529,
+   "name": "Gishath",
+   "updatedAt": "2026-09-22T02:18:27.018779Z",
+   "deckFormat": 3,
+   "private": false,
+   "unlisted": false
+  },
+  {
+   "id": 20887936,
+   "name": "Bustin Makes Me Feel Good",
+   "updatedAt": "2026-09-22T02:18:26.797899Z",
+   "deckFormat": 3,
+   "private": false,
+   "unlisted": false
+  },
+  {
+   "id": 26657715,
+   "name": "Copy of - Arcades",
+   "updatedAt": "2026-09-22T02:18:26.537417Z",
+   "deckFormat": 3,
+   "private": false,
+   "unlisted": false
+  },
+  {
+   "id": 26656900,
+   "name": "warped expectations",
+   "updatedAt": "2026-09-22T02:18:26.478207Z",
+   "deckFormat": 3,
+   "private": false,
+   "unlisted": false
+  },
+  {
+   "id": 26515321,
+   "name": "AP",
+   "updatedAt": "2026-09-22T02:18:26.452902Z",
+   "deckFormat": 3,
+   "private": false,
+   "unlisted": false
+  }
+ ]
+}

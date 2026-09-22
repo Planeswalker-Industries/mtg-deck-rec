@@ -81,6 +81,11 @@ export interface ActionsApi {
     deck: DeckInput;
     isPublic: boolean;
     bracket?: Bracket;
+    /**
+     * The deck the player brought before the tool changed it. Kept once, as the deck's original: a deck that already
+     * has one keeps it. Leave it out when nothing changed.
+     */
+    original?: DeckInput;
   }): Promise<Result<{ deckId: DeckId; code: string }>>;
   /** The caller's own saved deck, as decklist text to go on editing. NOT_FOUND for anyone else's. */
   openSavedDeck(input: { code: string }): Promise<Result<SavedDeckContents>>;

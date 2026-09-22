@@ -12,7 +12,8 @@
     "./commander": "./src/formats/commander/index.ts",
     "./scoring": "./src/scoring/index.ts",
     "./search": "./src/search/index.ts",
-    "./collection": "./src/collection/index.ts"
+    "./collection": "./src/collection/index.ts",
+    "./journey": "./src/journey/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

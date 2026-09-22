@@ -10,6 +10,12 @@ export type OwnershipInput =
   /** Authenticated: server joins the persisted collection. */
   | { kind: 'account' };
 
+/**
+ * What a collection does to suggestions. only: suggest owned cards and nothing else (cuts flag unowned cards).
+ * first: suggest from everything, with owned cards ranked ahead of comparable ones; scores themselves are unchanged.
+ */
+export type OwnershipMode = 'only' | 'first';
+
 export interface RecContext {
   deck: DeckInput;
   bracket: Bracket;
@@ -17,6 +23,8 @@ export interface RecContext {
   includeGameChangers: boolean;
   /** null = collection-less mode */
   ownership: OwnershipInput | null;
+  /** How `ownership` applies. Omitted means 'only', which is what every client before v13 meant. */
+  ownershipMode?: OwnershipMode;
 }
 
 /**
@@ -171,11 +179,19 @@ export type CutReason =
   | 'HIGH_MANA_VALUE'
   | 'NOT_OWNED';
 
+/**
+ * mandatory: the card works against the deck (breaks a rule, or the commander's decks all but never run it); cut it
+ * whatever replaces it. suggested: a weaker fit, worth swapping for something better.
+ */
+export type CutSeverity = 'mandatory' | 'suggested';
+
 export interface CutSuggestion {
   card: CardSummary;
   /** 0..1, higher = stronger cut candidate */
   cutScore: number;
   reasons: CutReason[];
+  /** Mandatory cuts come first in `CutResult.suggestions`. */
+  severity: CutSeverity;
   corpus: CorpusEvidence | null;
   owned: OwnedInfo | null;
 }

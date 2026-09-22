@@ -14,7 +14,7 @@ import { colorsToMask } from "@mtg/core/search";
 import { fromIndex } from "./search-index";
 import type { PublicClient } from "./supabase";
 
-const DEFAULT_SETTINGS = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100, partnerPoolWeight: 0.25 };
+const DEFAULT_SETTINGS = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100, partnerPoolWeight: 0.25, severeSynergyScore: 0.2 };
 type CorpusSettings = typeof DEFAULT_SETTINGS;
 type DeckMonths = Record<string, number>;
 
@@ -66,6 +66,7 @@ function parseSettings(value: unknown): CorpusSettings {
     minDecks: read("minDecks"),
     fullDecks: read("fullDecks"),
     partnerPoolWeight: read("partnerPoolWeight"),
+    severeSynergyScore: read("severeSynergyScore"),
   };
 }
 
