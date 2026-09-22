@@ -31,8 +31,8 @@ const (
 	// would defeat it; name and names match mid-word, which is what finds *General Thunderbolt Ross* from "bolt".
 	// `always` rather than `fallback`: fallback only searches infix when nothing else matched at all, and "bolt"
 	// already matches *Guiding Bolt*, so the card people were looking for would still be missing.
-	searchInfix = "off,always,always"
-	searchSortBy         = "_text_match:desc,commander_deck_count:desc,staple_score:desc"
+	searchInfix  = "off,always,always"
+	searchSortBy = "_text_match:desc,commander_deck_count:desc,staple_score:desc"
 
 	// The deckbuilder ranks differently, because it is a different question. A picker asks "which card did you mean",
 	// so it breaks ties on how often a card leads a deck. The deckbuilder asks "what should go in this deck", so it
