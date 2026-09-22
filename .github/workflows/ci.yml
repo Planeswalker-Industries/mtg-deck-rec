@@ -21,6 +21,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # supabase_migrations.schema_migrations keys a migration by its timestamp prefix, so two files sharing one make
+      # `supabase start` fail on the second. Two branches written the same day can each pass CI alone and only collide
+      # once both are merged, which is how develop broke on 2026-09-22 — hence checking the prefixes, not the contents.
+      - name: Unique migration versions
+        run: |
+          duplicates=$(ls supabase/migrations | cut -d_ -f1 | sort | uniq -d)
+          if [ -n "$duplicates" ]; then
+            echo "Migration versions used more than once:"; echo "$duplicates"
+            echo "Rename the newer migration (the one not yet on main) to a free timestamp."
+            ls supabase/migrations | grep -F "$duplicates"
+            exit 1
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
