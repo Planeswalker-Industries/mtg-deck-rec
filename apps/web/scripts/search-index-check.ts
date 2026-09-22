@@ -61,7 +61,8 @@ function fakeDb() {
       },
       rpc: (name: string) => {
         queries++;
-        return Promise.resolve({ data: name === "search_cards" ? [{ card_id: 1 }] : null, error: null });
+        const idOnly = name === "search_cards" || name === "search_cards_filtered";
+        return Promise.resolve({ data: idOnly ? [{ card_id: 1 }] : null, error: null });
       },
     } as unknown as PublicClient,
   };
@@ -93,8 +94,12 @@ async function main() {
   }
   {
     const db = fakeDb();
-    const results = await searchCards(db.client, { q: "swords" });
-    check("with no index, search comes from the database", results[0]?.name === "Swords to Plowshares", `${results.length} result(s)`);
+    const { cards: results, source } = await searchCards(db.client, { q: "swords" });
+    check(
+      "with no index, search comes from the database",
+      results[0]?.name === "Swords to Plowshares" && source === "postgres-unconfigured",
+      `${results.length} result(s) from ${source}`,
+    );
   }
 
   // 2. Configured but broken. The failure mode that matters: the site must not notice.
@@ -107,8 +112,25 @@ async function main() {
   }
   {
     const db = fakeDb();
-    const results = await searchCards(db.client, { q: "swords" });
-    check("a broken index falls back to the database for search", results[0]?.name === "Swords to Plowshares", `${results.length} result(s)`);
+    const { cards: results, source } = await searchCards(db.client, { q: "swords" });
+    // The reported source separates a broken index from an absent one; they look the same to the visitor and need
+    // different fixes.
+    check(
+      "a broken index falls back to the database for search",
+      results[0]?.name === "Swords to Plowshares" && source === "postgres-index-failed",
+      `${results.length} result(s) from ${source}`,
+    );
+  }
+  {
+    // The deckbuilder's search is the newest path onto the index, and the one that used to be Postgres-only. It has
+    // to fall back like every other read: same results, and a source that says which side answered.
+    const db = fakeDb();
+    const { cards: results, source } = await searchCards(db.client, { q: "swords", colorIdentity: "W", cardType: "instant" });
+    check(
+      "a broken index falls back to the database for the deckbuilder's filtered search",
+      results[0]?.name === "Swords to Plowshares" && source === "postgres-filtered",
+      `${results.length} result(s) from ${source}`,
+    );
   }
   {
     const boxed = await fromIndex("probe", (index) => index.health());

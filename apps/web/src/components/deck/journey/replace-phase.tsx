@@ -75,12 +75,12 @@ export function ReplacePhase({
         <ul aria-label="Swaps picked" className="flex flex-col divide-y divide-seam rounded-lg border border-seam bg-sleeve">
           {swaps.map((s) => (
             <li key={s.target.id} className="grid grid-cols-[3.5rem_1fr_3.5rem_auto] items-center gap-3 p-3">
-              <CardImage card={s.target} alt="" sizes="56px" className="opacity-80 saturate-50" />
+              <CardImage card={s.target} variant="small" alt="" sizes="56px" className="opacity-80 saturate-50" />
               <p className="text-sm leading-snug">
                 <span className="block text-muted-foreground">Out: {displayName(s.target)}</span>
                 <span className="block font-bold">In: {displayName(s.replacement)}</span>
               </p>
-              <CardImage card={s.replacement} alt="" sizes="56px" />
+              <CardImage card={s.replacement} variant="small" alt="" sizes="56px" />
               <Button type="button" size="sm" variant="ghost" onClick={() => journey.dispatch({ type: "unswap", targetId: s.target.id })}>
                 Undo
               </Button>
