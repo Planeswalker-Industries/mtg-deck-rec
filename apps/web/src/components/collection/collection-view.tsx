@@ -27,6 +27,8 @@ import { Input } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { displayName } from "@/lib/cards";
+import { AddToCollection, EditableCards } from "./collection-edit";
+import { useCollectionEditor } from "./use-collection-editor";
 import { useCollectionView, type CollectionViewItem } from "./use-collection-view";
 
 /** The five colour wedges of the multicolour toggle, in WUBRG order, as Scryfall's own pips colour them. */
@@ -94,7 +96,10 @@ function Heading() {
   return <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">My collection</h1>;
 }
 
-function ReadyView({ items, sets, where }: { items: CollectionViewItem[]; sets: CardSet[]; where: "browser" | "account" }) {
+function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]; sets: CardSet[]; where: "browser" | "account" }) {
+  const editor = useCollectionEditor(loaded, where);
+  const items = editor.items;
+  const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [colors, setColors] = useState<ColorFilter>({ colors: new Set(), colorless: false, multicolor: false });
@@ -153,6 +158,9 @@ function ReadyView({ items, sets, where }: { items: CollectionViewItem[]; sets: 
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button type="button" variant={editing ? "default" : "outline"} aria-pressed={editing} onClick={() => setEditing(!editing)}>
+            {editing ? "Done editing" : "Edit collection"}
+          </Button>
           <Link href="/collection/import" className={buttonVariants({ variant: "outline" })}>
             Import
           </Link>
@@ -161,6 +169,15 @@ function ReadyView({ items, sets, where }: { items: CollectionViewItem[]; sets: 
           </Link>
         </div>
       </div>
+
+      {editing && (
+        <>
+          <p role={editor.error ? "alert" : "status"} className={editor.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
+            {editor.error ?? (editor.saving ? "Saving…" : "Changes save as you make them.")}
+          </p>
+          <AddToCollection editor={editor} />
+        </>
+      )}
 
       <div
         role="search"
@@ -263,15 +280,19 @@ function ReadyView({ items, sets, where }: { items: CollectionViewItem[]; sets: 
               </h2>
               {open && (
                 <div id={id}>
-                  <PocketGrid
-                    zoomable
-                    label={COLLECTION_GROUP_LABELS[group]}
-                    items={groupItems.map((item) => ({
-                      card: item.card,
-                      href: `/card/${item.card.slug}`,
-                      caption: item.quantity > 1 ? <span className="tabular-nums text-muted-foreground">×{item.quantity}</span> : undefined,
-                    }))}
-                  />
+                  {editing ? (
+                    <EditableCards label={COLLECTION_GROUP_LABELS[group]} items={groupItems} editor={editor} />
+                  ) : (
+                    <PocketGrid
+                      zoomable
+                      label={COLLECTION_GROUP_LABELS[group]}
+                      items={groupItems.map((item) => ({
+                        card: item.card,
+                        href: `/card/${item.card.slug}`,
+                        caption: item.quantity > 1 ? <span className="tabular-nums text-muted-foreground">×{item.quantity}</span> : undefined,
+                      }))}
+                    />
+                  )}
                 </div>
               )}
             </section>

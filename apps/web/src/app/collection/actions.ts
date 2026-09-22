@@ -1,9 +1,9 @@
 "use server";
 
 import { headers } from "next/headers";
-import type { ActionsApi, ApiError, CollectionEntry, CollectionTotals, Result } from "@mtg/core/contract";
+import type { ActionsApi, ApiError, CardId, CollectionEntry, CollectionTotals, Result } from "@mtg/core/contract";
 import { collectionLink, type CollectionLinkSource } from "@mtg/core/parse";
-import { parseInput, saveCollectionBatchInputSchema } from "@mtg/core/schemas";
+import { parseInput, saveCollectionBatchInputSchema, setCollectionCardQuantityInputSchema } from "@mtg/core/schemas";
 import { z } from "zod";
 import {
   accountCollectionEntries,
@@ -14,6 +14,7 @@ import {
   NotSignedInError,
   requireUserId,
   saveRows,
+  setAccountCardQuantity,
   startImport,
 } from "@/lib/server/account-collection";
 import { createAuthClient } from "@/lib/server/auth";
@@ -28,6 +29,7 @@ const refusals: Record<CollectionRefused["reason"] | "NOT_SIGNED_IN", Result<nev
   NOT_SIGNED_IN: failure("UNAUTHENTICATED", "Sign in to save your collection to an account."),
   IMPORT_NOT_OPEN: failure("VALIDATION", "That upload expired or already finished. Import the collection again."),
   COLLECTION_TOO_LARGE: failure("PAYLOAD_TOO_LARGE", "That collection is larger than an account can hold for now."),
+  CARD_NOT_FOUND: failure("NOT_FOUND", "That card isn't in the catalog any more."),
 };
 
 function failed(err: unknown, message: string): Result<never> {
@@ -96,6 +98,22 @@ export async function getMyCollectionEntriesAction(): Promise<Result<CollectionE
     return { ok: true, data: await accountCollectionEntries(db) };
   } catch (err) {
     return failed(err, "Couldn't load your collection. Try again in a moment.");
+  }
+}
+
+/** Sets how many copies of a card the signed-in user's collection holds; 0 removes it. */
+export async function setCollectionCardQuantityAction(input: unknown): Promise<Result<{ cardId: CardId; quantity: number }>> {
+  try {
+    const parsed = parseInput(setCollectionCardQuantityInputSchema, input);
+    if (!parsed.ok) return parsed;
+    const blocked = await limited();
+    if (blocked) return blocked;
+    const db = await createAuthClient();
+    await requireUserId(db);
+    const quantity = await setAccountCardQuantity(db, parsed.data.cardId, parsed.data.quantity);
+    return { ok: true, data: { cardId: parsed.data.cardId, quantity } };
+  } catch (err) {
+    return failed(err, "Couldn't update your collection. Try again in a moment.");
   }
 }
 

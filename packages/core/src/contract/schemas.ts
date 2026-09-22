@@ -285,6 +285,17 @@ export const saveDeckInputSchema = z.object(
   request,
 );
 
+/** Most copies of one card a collection can hold, matching collection_items.quantity's check. */
+export const MAX_CARD_COPIES = 100_000;
+
+export const setCollectionCardQuantityInputSchema = z.object(
+  {
+    cardId: cardId('Pick a card.'),
+    quantity: z.int({ error: 'Enter a number of copies.' }).min(0, 'Copies can\'t be negative.').max(MAX_CARD_COPIES, 'That is more copies than a collection can hold.'),
+  },
+  request,
+);
+
 /** Deck codes are generated, so anything that isn't one of ours is a bad request rather than a missing deck. */
 export const openSavedDeckInputSchema = z.object(
   { code: z.string({ error: 'That deck is not valid.' }).regex(/^[A-Za-z0-9]{8,32}$/, 'That deck is not valid.') },
