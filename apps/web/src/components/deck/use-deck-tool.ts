@@ -12,6 +12,7 @@ import type {
   DeckInput,
   ImportDeckUrlResult,
   OwnershipInput,
+  OwnershipMode,
   ParseDeckResult,
   RecContext,
   ResolvedLine,
@@ -92,11 +93,17 @@ function decklistText(lines: readonly ResolvedLine[]): string {
   return ["Commander", ...raw(true), "", "Deck", ...raw(false), ""].join("\n");
 }
 
+/** A collection applied to suggestions: whose cards, and whether they are the only ones suggested or just come first. */
+interface CollectionUse {
+  ownership: OwnershipInput;
+  mode: OwnershipMode;
+}
+
 function buildContext(
   analysis: DeckAnalysis,
   bracketOverride: Bracket | null,
   gameChangerOverride: boolean | null,
-  ownership: OwnershipInput | null,
+  collection: CollectionUse | null,
 ): RecContext {
   const bracket = bracketOverride ?? analysis.estimatedBracket;
   return {
@@ -104,24 +111,34 @@ function buildContext(
     bracket,
     bracketSource: bracketOverride === null ? "inferred" : "user",
     includeGameChangers: gameChangerOverride ?? defaultIncludeGameChangers(bracket),
-    ownership,
+    ownership: collection?.ownership ?? null,
+    ...(collection ? { ownershipMode: collection.mode } : {}),
   };
 }
 
-/** Whether the player last chose owned-only suggestions, remembered in this browser. */
-const OWNED_ONLY_KEY = "mtg-deck-rec:owned-only";
+/** What a collection does to suggestions: nothing, owned cards first, or owned cards only. */
+export type CollectionMode = "off" | OwnershipMode;
 
-function readOwnedOnly(): boolean {
+/**
+ * The player's last choice, remembered in this browser. The key predates "owned first", when "1" meant owned-only and
+ * "0" meant off, so those values still read that way. With no choice yet, a collection puts owned cards first: it
+ * changes the order without hiding anything, which is what someone who just imported one expects.
+ */
+const COLLECTION_MODE_KEY = "mtg-deck-rec:owned-only";
+const STORED_MODE: Record<string, CollectionMode> = { "1": "only", "0": "off", first: "first", only: "only", off: "off" };
+
+function readCollectionMode(): CollectionMode {
   try {
-    return typeof window !== "undefined" && localStorage.getItem(OWNED_ONLY_KEY) === "1";
+    const stored = typeof window === "undefined" ? null : localStorage.getItem(COLLECTION_MODE_KEY);
+    return (stored !== null && STORED_MODE[stored]) || "first";
   } catch {
-    return false;
+    return "first";
   }
 }
 
-function writeOwnedOnly(on: boolean) {
+function writeCollectionMode(mode: CollectionMode) {
   try {
-    localStorage.setItem(OWNED_ONLY_KEY, on ? "1" : "0");
+    localStorage.setItem(COLLECTION_MODE_KEY, mode);
   } catch {
     // Storage is blocked; the choice just won't be remembered.
   }
@@ -160,20 +177,22 @@ export function useDeckTool(source: CollectionSource) {
   const recsRequest = useRef(0);
   const swapRequest = useRef(0);
 
-  const [ownedOnlyChosen, setOwnedOnlyChosen] = useState(readOwnedOnly);
+  const [collectionMode, setCollectionMode] = useState<CollectionMode>(readCollectionMode);
   const browserCollection = source.kind === "browser" ? source.collection : null;
   const ownedIds = useMemo(() => (browserCollection ? ownedCardIds(browserCollection) : null), [browserCollection]);
   const hasCollection = source.kind === "browser" || source.kind === "account";
   /**
-   * Owned-only suggestions need a collection; without one the choice is kept but not applied. A browser collection
-   * sends its card ids; an account collection is read on the server.
+   * A collection mode needs a collection; without one the choice is kept but not applied. A browser collection sends
+   * its card ids; an account collection is read on the server.
    */
-  const ownershipFor = (on: boolean): OwnershipInput | null => {
-    if (!on) return null;
-    if (browserCollection && ownedIds) return { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: ownedIds };
-    return source.kind === "account" ? { kind: "account" } : null;
+  const ownershipFor = (mode: CollectionMode): CollectionUse | null => {
+    if (mode === "off") return null;
+    if (browserCollection && ownedIds) {
+      return { ownership: { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: ownedIds }, mode };
+    }
+    return source.kind === "account" ? { ownership: { kind: "account" }, mode } : null;
   };
-  const ownership = ownershipFor(ownedOnlyChosen);
+  const ownership = ownershipFor(collectionMode);
 
   const context = analysis ? buildContext(analysis, bracketOverride, gameChangerOverride, ownership) : null;
 
@@ -403,10 +422,10 @@ export function useDeckTool(source: CollectionSource) {
   }
 
   /** Switches owned-only suggestions on or off and reloads cuts, adds and any open swap with the new pool. */
-  function changeOwnedOnly(on: boolean) {
-    setOwnedOnlyChosen(on);
-    writeOwnedOnly(on);
-    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, gameChangerOverride, ownershipFor(on)), swap?.targetCardId ?? null);
+  function changeCollectionMode(mode: CollectionMode) {
+    setCollectionMode(mode);
+    writeCollectionMode(mode);
+    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, gameChangerOverride, ownershipFor(mode)), swap?.targetCardId ?? null);
   }
 
   function openSwap(targetCardId: CardId) {
@@ -456,8 +475,9 @@ export function useDeckTool(source: CollectionSource) {
     changeBracket,
     changeIncludeGameChangers,
     /** null when there's no collection to limit suggestions to. */
-    ownedOnly: hasCollection ? ownedOnlyChosen : null,
-    changeOwnedOnly,
+    /** null when there's no collection to apply. */
+    collectionMode: hasCollection ? collectionMode : null,
+    changeCollectionMode,
     add,
     cut,
     swap,

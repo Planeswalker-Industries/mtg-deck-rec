@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
@@ -198,6 +199,22 @@ export function DeckTool() {
               Paste your Commander decklist, or a link to a public Archidekt deck, to see cards to cut, cards to add, and
               replacements that do the same job.
             </p>
+            {/* Two ways in: a deck first, or a collection first so suggestions can lean on cards already owned. */}
+            {source.kind === "none" && (
+              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
+                Building from cards you own?{" "}
+                <Link href="/collection/import" className="font-bold text-primary underline-offset-4 hover:underline">
+                  Import your collection first
+                </Link>
+                , and suggestions will put your cards ahead of the rest.
+              </p>
+            )}
+            {(source.kind === "browser" || source.kind === "account") && (
+              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
+                Your collection is loaded: suggestions put cards you own first. Change that under My collection once the deck
+                is analyzed.
+              </p>
+            )}
           </div>
           <form
             className="flex flex-col gap-3"
@@ -302,8 +319,8 @@ export function DeckTool() {
             cardCount={cardCount}
             onBracketChange={tool.changeBracket}
             onIncludeGameChangersChange={tool.changeIncludeGameChangers}
-            ownedOnly={tool.ownedOnly}
-            onOwnedOnlyChange={tool.changeOwnedOnly}
+            collectionMode={tool.collectionMode}
+            onCollectionModeChange={tool.changeCollectionMode}
           />
           <CommanderLookupBar lookup={lookup} />
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -361,7 +378,7 @@ export function DeckTool() {
               </aside>
 
               <div className="flex flex-col gap-4 lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
-                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} hasCollection={tool.ownedOnly !== null} />
+                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} hasCollection={tool.collectionMode !== null} />
               </div>
 
               <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">

@@ -19,10 +19,12 @@ test("imports a collection and limits suggestions to owned cards", async ({ page
   // With real data the sample commander may prompt for a deck lookup; not needed here.
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
 
-  const ownedOnly = page.getByRole("switch", { name: "Only cards I own" });
-  await expect(ownedOnly).toBeVisible();
-  await ownedOnly.click();
-  await expect(ownedOnly).toBeChecked();
+  // With a collection, suggestions put owned cards first until the player asks for owned cards only.
+  const collectionMode = page.getByRole("combobox", { name: "My collection" });
+  await expect(collectionMode).toHaveText("Owned first");
+  await collectionMode.click();
+  await page.getByRole("option", { name: "Owned only" }).click();
+  await expect(collectionMode).toHaveText("Owned only");
 
   // The only owned card (Sol Ring) is already in the sample deck, so there's nothing to add.
   await recs.getByRole("button", { name: "Edit deck" }).click();

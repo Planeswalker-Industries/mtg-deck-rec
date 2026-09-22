@@ -59,6 +59,7 @@ export const recContextSchema: InputSchema<RecContext> = z.object(
     includeGameChangers: z.boolean({ error: 'Invalid Game Changer setting.' }),
     /** Omitted means collection-less. */
     ownership: ownershipSchema.nullable().default(null),
+    ownershipMode: z.enum(['only', 'first'], { error: 'Invalid collection setting.' }).optional(),
   },
   { error: 'Missing deck.' },
 );

@@ -39,7 +39,7 @@ const subscribe = (listener: () => void) => {
  * which of those they already own. The link goes to the collection page, whose summary leads straight back here, and
  * the deck is remembered in this browser, so the round trip returns them to the deck they left.
  *
- * Shown only when there is no collection at all. Once there is one, the deck bar's "Only cards I own" switch is the
+ * Shown only when there is no collection at all. Once there is one, the deck bar's "My collection" choice is the
  * control that matters and this has nothing left to say.
  *
  * The dismissal is read through `useSyncExternalStore` rather than an effect: its server snapshot is "hidden", so

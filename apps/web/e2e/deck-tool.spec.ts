@@ -87,3 +87,11 @@ test("explains why a replacement was suggested, and the shares add up", async ({
   // Each share is rounded to a whole percent, so the sum lands within a point per row.
   expect(Math.abs(total - 100)).toBeLessThanOrEqual(shares.length);
 });
+
+test("offers to start from a collection when there isn't one", async ({ page }) => {
+  await page.goto("/deck");
+  const link = page.getByRole("link", { name: "Import your collection first" });
+  await expect(link).toBeVisible({ timeout: 30_000 });
+  await link.click();
+  await page.waitForURL(/\/collection\/import$/);
+});
