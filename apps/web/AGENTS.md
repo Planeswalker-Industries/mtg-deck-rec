@@ -101,6 +101,7 @@ The one part of the app not built on the contract or on shadcn.
 
 ## Gotchas
 
+- **Route segment config `dynamic` does not exist under `cacheComponents`.** `export const dynamic = "force-dynamic"` is a build error ("not compatible with `nextConfig.cacheComponents`"), and it is also unnecessary: everything is dynamic by default and a route handler reading headers is already `ƒ`. It type-checks and lints fine, so only `build` catches it — `node_modules/next/dist/docs/01-app/02-guides/migrating-to-cache-components.md` is the list of segment configs that went away
 - **A cron route is authorized by `CRON_SECRET`, never by a header Vercel happens to set.** Vercel sends `Authorization: Bearer $CRON_SECRET` on every cron invocation; `x-vercel-cron-schedule` and the `vercel-cron` user agent are ordinary inbound headers any caller can type. Unset `CRON_SECRET` means 503, never an open door — the route can trigger outbound crawling of a third-party site
 - `/deck` is `noindex` — indexable content belongs on card/commander pages
 - `/decks` redirects signed-out visitors to `/sign-in?next=/decks`

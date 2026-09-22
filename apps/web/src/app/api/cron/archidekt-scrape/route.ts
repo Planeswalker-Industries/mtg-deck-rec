@@ -4,8 +4,6 @@
  */
 import { handleCrawlCron } from "@/lib/server/crawl-cron";
 
-export const dynamic = "force-dynamic";
-
 export async function GET(request: Request): Promise<Response> {
   return handleCrawlCron(request, "archidekt");
 }
