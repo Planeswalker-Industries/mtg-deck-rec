@@ -26,6 +26,7 @@ yarn workspace @mtg/worker cli sync:catalog      # Oracle Cards → cards, card_
 yarn workspace @mtg/worker cli sync:printings    # All Cards → English paper printings, card_stats (staple score), cheapest prices, flavor names (after sync:catalog)
 supabase migration up                            # apply new migrations to the running local database
 docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/tests/saved-decks.sql   # saved-deck function and isolation checks (needs the local catalog; rolls back)
+docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/tests/deck-snapshots.sql  # deck originals: written once, owner-only, readable when the deck is (rolls back)
 docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/tests/platform-admins.sql  # platform admin guard and user-management checks (rolls back)
 docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/demo/admin-demo.sql       # demo accounts, decks and collections so /admin has something to show (commits; re-runnable)
 supabase gen types typescript --local            # regenerate apps/web/src/lib/server/database.types.ts after schema changes (write UTF-8 without BOM, LF line endings; PowerShell's Out-String adds CRLF)
@@ -155,6 +156,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
     - The open deck is held in a **ref as well as state**: `submit()` reads it in the same handler that may have just set it, and state would still be a render behind.
     - `saveDeck` returns the deck's `code` beside its id, so a deck just saved can be linked to and gone on editing without another read.
     - Owner-only, and deliberately not `loadDeckPage`: reopening puts a deck in the player's editor, which is theirs alone, while the deck page is a read-only view anyone may see. Someone else's deck is reported missing, not refused.
+  - **Originals (contract v12):** a save can carry `original`, the deck the player brought before the journey changed it (`useDeckTool.original`, sent only when the deck differs). `save_deck_original` keeps it once in `deck_snapshots` (kind `original`, cards as one jsonb value, readable exactly when the deck is): a deck that already has one keeps it, so another round never moves what "original" means. The deck page shows what changed since and lets the owner restore it, which is an ordinary save of the original's cards. Checks: `supabase/tests/deck-snapshots.sql` (12).
   - `/deck` reads that search param, so `DeckTool` sits inside a `<Suspense>` — `useSearchParams` is request-time data under `cacheComponents`.
   - `/decks` is `noindex` and redirects signed-out visitors to `/sign-in?next=/decks`. Deck writes use the `deck_write` rate-limit bucket and `revalidatePath('/decks')`.
   - **`/decks/[commander]/[code]`** serves the owner and everyone else from one route. `loadDeckPage` returns null both when the deck does not exist and when the viewer may not see it, so a private deck is indistinguishable from a missing one and its id cannot be probed. It is `noindex`: the names on it are user-written.

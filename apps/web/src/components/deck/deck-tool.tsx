@@ -268,6 +268,7 @@ export function DeckTool() {
                 tool.trackSavedDeck(deck);
               }}
               defaultOpen={saveAsked}
+              original={tool.original}
             />
           )}
           <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>

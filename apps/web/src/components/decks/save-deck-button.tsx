@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { Bracket, DeckAnalysis, DeckId } from "@mtg/core/contract";
+import type { Bracket, DeckAnalysis, DeckId, DeckInput } from "@mtg/core/contract";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ export function SaveDeckButton({
   bracket,
   onSaved,
   defaultOpen = false,
+  original,
 }: {
   analysis: DeckAnalysis;
   /** The bracket on screen, stored with the deck so reopening it comes back the same. */
@@ -28,6 +29,8 @@ export function SaveDeckButton({
   onSaved: (deck: { deckId: DeckId; code: string; name: string }) => void;
   /** Opens on the name form, for when the player has already asked to save (the journey's Review). */
   defaultOpen?: boolean;
+  /** The deck the player brought, when the tool changed it: kept beside the saved deck as its original. */
+  original?: DeckInput | undefined;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [name, setName] = useState(() => suggestedName(analysis));
@@ -69,6 +72,7 @@ export function SaveDeckButton({
             deck: analysis.deck,
             isPublic: true,
             ...(bracket === null ? {} : { bracket }),
+            ...(original ? { original } : {}),
           })
           .then((result) => {
             setBusy(false);

@@ -41,5 +41,8 @@
  * v11 (2026-09-21): the deck journey (cut, add, replace, review). CutSuggestion.severity splits cards that work against
  * the deck (mandatory: rule problems and severe misfits, dealt in the Cut phase) from weaker fits (suggested, dealt in
  * the Replace phase with a replacement). Mandatory cuts come first in CutResult.suggestions.
+ *
+ * v12 (2026-09-22): ActionsApi.saveDeck takes an optional `original`, the deck the player brought before the journey
+ * changed it. It is kept once per deck, so the deck page can compare the two and put the original back.
  */
-export const CONTRACT_VERSION = 11;
+export const CONTRACT_VERSION = 12;
