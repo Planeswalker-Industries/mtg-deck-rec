@@ -51,6 +51,20 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 - Measured: triggers add ~1.4 s to a worst-case full-catalog rewrite (1.57 s to 2.99 s, 34,760 rows); a full rebuild
   is ~6 s for 39,295 documents; card rows rebuilt from documents are byte-identical to Postgres across 500 cards.
 
+## Deck crawls — Archidekt active, Moxfield blocked (2026-09-22)
+
+A daily deck crawl (Vercel cron → search API → private `corpus` schema, one shared engine in
+`services/search-api/internal/crawl`) has two sources:
+- **Archidekt** is **active**: its public API is reachable - the project's own worker has used it since 2026-09-14,
+  and a VPS probe on 2026-09-22 returned 2xx - so the crawl is wired from the web cron. Parsers are pinned against
+  live fixtures.
+- **Moxfield** is built but **blocked**: probed from the VPS with the app's honest User-Agent, it answered
+  Cloudflare's hard WAF block (403), and per the crawler guardrails a block switches the source off rather than
+  being worked around.
+
+Both self-disable on first contact (`corpus.crawl_state.disabled` per source), so deploying is safe — a blocked
+source just does nothing until a human re-enables it. Tracked as T036.
+
 ## Open Items (from tasks.md P0)
 
 1. Hosted sign-in configured; email deliverability (custom SMTP + domain) is T033
