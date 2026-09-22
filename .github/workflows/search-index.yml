@@ -1,0 +1,68 @@
+name: Search index
+
+# Rebuilds or drains the search index on demand, so neither needs a shell on the VPS or a Node install anywhere.
+#
+# It runs where the Scryfall syncs already run, with the secrets they already use, on a machine that already has
+# Node — so this adds a button rather than a service. The daily sync drains the queue on its own; this is for the
+# first build, and for the times you want one without waiting for tomorrow.
+#
+# Triggerable three ways:
+#   * the Actions tab, "Run workflow"
+#   * the GitHub API, which is what makes it a Postman request (see docs/roadmap/typesense-ops.md)
+#   * `gh workflow run search-index.yml -f rebuild=true`
+#
+# Secrets (the same two the Scryfall sync uses):
+#   DATABASE_URL            Supabase session pooler (IPv4; this job uses temp tables, so not the transaction pooler)
+#   SEARCH_API_URL          the search API on the VPS
+#   SEARCH_API_ADMIN_TOKEN  its write token
+
+on:
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: "Rebuild every collection from scratch (off: just drain the queue)"
+        type: boolean
+        default: false
+
+# One at a time, and never cancel one in flight: a half-finished rebuild leaves a versioned collection behind that
+# nothing points at, and the alias only moves when the build is complete.
+concurrency:
+  group: search-index
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SEARCH_API_URL: ${{ secrets.SEARCH_API_URL }}
+      SEARCH_API_ADMIN_TOKEN: ${{ secrets.SEARCH_API_ADMIN_TOKEN }}
+      REBUILD: ${{ inputs.rebuild && '--rebuild' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Only the worker's dependencies: it needs `postgres` and @mtg/core, not Next.js or Playwright.
+      - name: Install
+        run: |
+          corepack enable
+          yarn workspaces focus @mtg/worker
+
+      - name: Refuse to run unconfigured
+        run: |
+          if [ -z "$SEARCH_API_URL" ] || [ -z "$SEARCH_API_ADMIN_TOKEN" ] || [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL, SEARCH_API_URL and SEARCH_API_ADMIN_TOKEN must all be set as repository secrets."
+            exit 1
+          fi
+
+      # `cli`, not `cli:hosted`: that one reads apps/worker/.env.hosted, which does not exist here. The secrets
+      # above are already in the environment, and DATABASE_URL points at the hosted database.
+      - name: Sync the search index
+        run: yarn workspace @mtg/worker cli sync:typesense $REBUILD

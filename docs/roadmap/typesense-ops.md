@@ -146,7 +146,25 @@ Whichever route, the endpoint is ready when this succeeds **without** `-k`:
 curl https://<host>/v1/health         # {"ok":true}
 ```
 
-**3. Build the index.**
+**3. Build the index.** Easiest from GitHub Actions, which already has the secrets and a machine with Node — no
+shell on the VPS and nothing to install. Actions → **Search index** → *Run workflow*, with **rebuild** ticked.
+
+Or from anywhere that can make an HTTP request, which is what makes it a Postman call. A fine-grained token with
+**Actions: read and write** on this repository:
+
+```
+POST https://api.github.com/repos/Planeswalker-Industries/mtg-deck-rec/actions/workflows/search-index.yml/dispatches
+Authorization: Bearer <token>
+Accept: application/vnd.github+json
+Content-Type: application/json
+
+{ "ref": "develop", "inputs": { "rebuild": "true" } }
+```
+
+A `204 No Content` means it started; the Actions tab has the log. Note `"true"` is a **string** — `workflow_dispatch`
+inputs are strings over the API even when the workflow declares them boolean, and a real `true` is rejected.
+
+Or, with a checkout and the worker's dependencies:
 
 ```sh
 SEARCH_API_URL=https://<host> SEARCH_API_ADMIN_TOKEN=... \
@@ -180,8 +198,8 @@ never slow down or fail a sync transaction.
 
 | Situation | Do |
 |---|---|
-| Queue is growing and not draining | `cli:hosted sync:typesense`, and read its error. It stops rather than looping. |
-| Results look stale or wrong | `cli:hosted sync:typesense --rebuild`. Safe at any time: it builds a new versioned collection and moves the alias only when it is complete. |
+| Queue is growing and not draining | Run the **Search index** workflow without *rebuild*, or `cli:hosted sync:typesense`, and read the error. It stops rather than looping. |
+| Results look stale or wrong | The **Search index** workflow with *rebuild*, or `cli:hosted sync:typesense --rebuild`. Safe at any time: it builds a new versioned collection and moves the alias only when it is complete. |
 | A schema field was added in `@mtg/core/search` | `--rebuild`. A new field needs a new collection; a plain drain cannot add one. |
 | Disk or memory filling up | A `--rebuild` drops every stale version of each collection, not just the one the alias pointed at — a rebuild that died before moving its alias leaves a full copy behind, and Typesense loads every collection it has into memory at startup. `GET /collections` should show exactly four. |
 | Upgrading Typesense | Bump the tag in `deploy/typesense/docker-compose.yml`, `docker compose up -d`, then `--rebuild`. The API stays up throughout and serves 503s meanwhile. |
