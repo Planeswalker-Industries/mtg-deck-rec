@@ -40,7 +40,7 @@ running and stays *healthy* — its container probe asks liveness, not readiness
 503 and the web app falls back to Postgres. Start Typesense again and it recovers on its own, with nothing to
 restart.
 
-## Three secrets, each able to do less than the last
+## Secrets, each able to do less than the last
 
 | Secret | Held by | Can |
 |---|---|---|
@@ -51,6 +51,18 @@ restart.
 `TYPESENSE_ADMIN_KEY` is the one duplicated value: it appears in both `.env` files, because Typesense is told to use
 it and the API is told to present it. Changing it means changing it in both places and restarting both. The API
 refuses to start if the two tokens match, or if any of the three is empty.
+
+The **deck crawls** ([`docs/roadmap/deck-crawl.md`](../docs/roadmap/deck-crawl.md)) add three more to the search API,
+all or nothing — with any of them empty the crawl endpoints answer 503 and search is unaffected:
+
+| Secret | Held by | Can |
+|---|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | the VPS, never Vercel | everything in the database — it bypasses RLS. Narrowing this to a dedicated role is open work (T036) |
+| `SEARCH_API_CRON_TOKEN` | the VPS and Vercel | trigger a scrape, read a crawl's status |
+| `CRON_SECRET` | **Vercel only** | nothing here — it is what the web app's cron route checks on the way in |
+
+`SUPABASE_URL` goes beside them and is not a secret. `SEARCH_API_CRON_TOKEN` is the second duplicated value, for the
+same reason as the Typesense key: one side presents it, the other checks it.
 
 ## Order to stand it up
 
@@ -73,7 +85,7 @@ Traefik under Swarm. [`deploy/dokploy/`](dokploy/) holds a file per app, shaped 
 | Dokploy app | Compose path | Variables to set | Domain |
 |---|---|---|---|
 | Typesense | `deploy/dokploy/typesense.yml` | `TYPESENSE_ADMIN_KEY` | none |
-| search API | `deploy/dokploy/search-api.yml` | `TYPESENSE_ADMIN_KEY` (same value), `SEARCH_API_TOKEN`, `SEARCH_API_ADMIN_TOKEN` | yes, container port **8080** |
+| search API | `deploy/dokploy/search-api.yml` | `TYPESENSE_ADMIN_KEY` (same value), `SEARCH_API_TOKEN`, `SEARCH_API_ADMIN_TOKEN`, and for the deck crawls `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SEARCH_API_CRON_TOKEN` | yes, container port **8080** |
 
 They differ from the generic files above in three ways, each answering something a panel got wrong:
 

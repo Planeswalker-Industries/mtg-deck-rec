@@ -48,6 +48,9 @@ services:
   search-api:
     build: ./services/search-api
     restart: unless-stopped
+    # Matches the deploy stack: a background deck crawl needs longer than Docker's ten-second default to notice a
+    # shutdown and let go of its database claim.
+    stop_grace_period: 60s
     depends_on:
       typesense:
         condition: service_healthy
@@ -59,6 +62,13 @@ services:
       TYPESENSE_ADMIN_KEY: "${TYPESENSE_LOCAL_KEY:-mtg-local-dev-key}"
       SEARCH_API_TOKEN: "${SEARCH_API_LOCAL_TOKEN:-mtg-local-read}"
       SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_LOCAL_ADMIN_TOKEN:-mtg-local-admin}"
+      # The deck crawls, against the local Supabase. Unset means the /cron endpoints answer 503, which is the
+      # default here: a crawl makes real requests to Archidekt, so it is opt-in even locally.
+      # From `supabase status -o env`: SUPABASE_URL is the API URL, the key is SERVICE_ROLE_KEY. Note the container
+      # cannot reach 127.0.0.1 — use http://host.docker.internal:56321.
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      SEARCH_API_CRON_TOKEN: "${SEARCH_API_CRON_TOKEN:-}"
 
 volumes:
   typesense-data:

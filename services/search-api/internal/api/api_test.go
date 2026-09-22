@@ -20,6 +20,7 @@ import (
 const (
 	readToken  = "read-token"
 	adminToken = "admin-token"
+	cronToken  = "cron-token"
 )
 
 // fakeTypesense stands in for the real thing and records what it was asked, so the tests can assert on the requests
@@ -71,9 +72,9 @@ func newFakeTypesense(t *testing.T) *fakeTypesense {
 
 func newApp(t *testing.T, fake *fakeTypesense) *fiber.App {
 	t.Helper()
-	cfg := config.Config{ReadToken: readToken, AdminToken: adminToken}
+	cfg := config.Config{ReadToken: readToken, AdminToken: adminToken, CronToken: cronToken}
 	client := typesense.New(fake.server.URL, "key", 5*time.Second)
-	return api.New(cfg, client, discardLogger())
+	return api.New(cfg, client, discardLogger(), nil)
 }
 
 func do(t *testing.T, app *fiber.App, method, path, token, body string) (*http.Response, map[string]any) {
@@ -114,6 +115,14 @@ func TestAuthorization(t *testing.T) {
 		{"an admin endpoint with the admin token", http.MethodGet, "/v1/admin/collections", adminToken, http.StatusOK},
 		// The admin token is strictly more privileged, so it may also read.
 		{"a read endpoint with the admin token", http.MethodGet, "/v1/tags", adminToken, http.StatusOK},
+		// The crawls are a cron/admin affair, deliberately outside /v1. Unconfigured (no runners) they are a 503 for
+		// any source, never an anon read.
+		{"scrape without a token", http.MethodPost, "/cron/moxfield/scrape", "", http.StatusUnauthorized},
+		{"scrape with the read token", http.MethodPost, "/cron/moxfield/scrape", readToken, http.StatusForbidden},
+		{"scrape moxfield with the cron token, unconfigured", http.MethodPost, "/cron/moxfield/scrape", cronToken, http.StatusServiceUnavailable},
+		{"scrape archidekt with the cron token, unconfigured", http.MethodPost, "/cron/archidekt/scrape", cronToken, http.StatusServiceUnavailable},
+		{"status with the cron token, unconfigured", http.MethodGet, "/cron/moxfield/status", cronToken, http.StatusServiceUnavailable},
+		{"an unknown source is refused the same way, unconfigured", http.MethodPost, "/cron/nope/scrape", cronToken, http.StatusServiceUnavailable},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
