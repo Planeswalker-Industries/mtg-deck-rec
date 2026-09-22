@@ -9,6 +9,7 @@ import type {
   CutResult,
   DeckAnalysis,
   DeckId,
+  DeckInput,
   ImportDeckUrlResult,
   OwnershipInput,
   ParseDeckResult,
@@ -18,6 +19,7 @@ import type {
   SavedDeckContents,
   SwapResult,
 } from "@mtg/core/contract";
+import { deckDiff } from "@mtg/core/journey";
 import { mockDecklistText } from "@mtg/core/mocks";
 import type { CollectionSource } from "@/components/collection/use-collection-source";
 import { getApis } from "@/lib/api/client";
@@ -70,6 +72,14 @@ export interface OpenDeck {
   status: "saved" | "saving" | "dirty" | "error";
   /** Why the last write failed, so the player is told rather than losing work silently. */
   message?: string;
+}
+
+/** `original` when `deck` differs from it (commanders or main deck), so a save only keeps an original that means something. */
+export function changedOriginal(original: DeckInput | null, deck: DeckInput): DeckInput | undefined {
+  if (!original) return undefined;
+  const sameCommanders = [...original.commanders].sort().join() === [...deck.commanders].sort().join();
+  const diff = deckDiff(original, deck);
+  return sameCommanders && diff.removed.length === 0 && diff.added.length === 0 ? undefined : original;
 }
 
 /** Steps of reloading recommendations after new play-rate data arrives. */
@@ -135,6 +145,12 @@ export function useDeckTool(source: CollectionSource) {
   const [openDeck, setOpenDeck] = useState<OpenDeck | null>(null);
   /** The decklist the player brought, before any journey result replaced it: what Start over goes back to. */
   const [originText, setOriginText] = useState<string | null>(null);
+  /**
+   * The same deck as analyzed, for saving beside the result. A ref, like the open deck: submit() persists in the same
+   * handler that may have just set it.
+   */
+  const originDeckRef = useRef<DeckInput | null>(null);
+  const [originDeck, setOriginDeck] = useState<DeckInput | null>(null);
   /*
    * The open deck is read inside submit(), which the caller may run before a setState from the same handler has been
    * applied, so the ref is what the writes go by and the state is what the screen shows.
@@ -197,12 +213,14 @@ export function useDeckTool(source: CollectionSource) {
     if (!deck) return;
     const id = ++saveRequest.current;
     trackOpenDeck({ ...deck, status: "saving" });
+    const original = changedOriginal(originDeckRef.current, analysis.deck);
     const r = await getApis().actions.saveDeck({
       deckId: deck.deckId,
       name: deck.name,
       deck: analysis.deck,
       isPublic: true,
       ...(bracket === null ? {} : { bracket }),
+      ...(original ? { original } : {}),
     });
     if (id !== saveRequest.current) return;
     const current = openDeckRef.current;
@@ -252,7 +270,11 @@ export function useDeckTool(source: CollectionSource) {
     recsRequest.current++;
     swapRequest.current++;
     setText(finalText);
-    if (!keepOrigin) setOriginText(finalText);
+    if (!keepOrigin) {
+      setOriginText(finalText);
+      originDeckRef.current = r.data.analysis?.deck ?? null;
+      setOriginDeck(originDeckRef.current);
+    }
     setImportedFrom(source);
     setParse({ status: "ready", data: null });
     setLines(r.data.lines);
@@ -346,6 +368,8 @@ export function useDeckTool(source: CollectionSource) {
   function clearDeck() {
     clearSavedDeck();
     setOriginText(null);
+    originDeckRef.current = null;
+    setOriginDeck(null);
     // Let go of the account deck rather than emptying it: Clear means "not working on this now", not "delete it".
     trackOpenDeck(null);
     saveRequest.current++;
@@ -420,6 +444,8 @@ export function useDeckTool(source: CollectionSource) {
     commitText,
     startOver,
     originText,
+    /** The deck the player brought, when the current deck differs from it: what a save keeps as its original. */
+    original: analysis ? changedOriginal(originDeck, analysis.deck) : undefined,
     clearDeck,
     parse,
     importedFrom,

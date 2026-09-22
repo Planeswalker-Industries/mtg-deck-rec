@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { decklistText } from "@mtg/core/parse";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { DeckExport } from "@/components/decks/deck-export";
+import { DeckOriginal } from "@/components/decks/deck-original";
 import { DeckVisibility } from "@/components/decks/deck-visibility";
 import { buttonVariants } from "@/components/ui/button";
 import { ColorIdentity } from "@/components/deck/color-identity";
@@ -97,6 +98,11 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
       </header>
 
       {deck.isOwner && <DeckVisibility deckId={deck.id} isPublic={deck.isPublic} />}
+
+      {/* A stranger sees the comparison only while there is one; the owner also sees that a restored deck matches. */}
+      {deck.original && (deck.isOwner || deck.original.out.length + deck.original.in.length > 0) && (
+        <DeckOriginal deckId={deck.id} name={deck.name} isOwner={deck.isOwner} original={deck.original} />
+      )}
 
       {deck.groups.length === 0 ? (
         <p className="text-muted-foreground">This deck has no cards yet.</p>

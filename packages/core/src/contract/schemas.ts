@@ -265,6 +265,7 @@ export const saveDeckInputSchema = z.object(
     deck: deckInputSchema,
     isPublic: z.boolean({ error: 'Choose whether the deck is public.' }),
     bracket: z.literal([1, 2, 3, 4, 5], { error: 'Pick a bracket from 1 to 5.' }).optional(),
+    original: deckInputSchema.optional(),
   },
   request,
 );
