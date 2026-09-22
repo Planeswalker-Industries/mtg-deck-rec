@@ -73,6 +73,12 @@ export interface ActionsApi {
   deleteCollection(): Promise<Result<null>>;
   /** Authenticated. The signed-in user's collection, one entry per card. */
   getMyCollectionEntries(): Promise<Result<CollectionEntry[]>>;
+  /**
+   * Authenticated. Sets how many copies of a card the signed-in user's collection holds, whatever the printing; 0
+   * removes it. Added copies go into a generic entry and removed ones come out of it first, so imported printings are
+   * the last to go. Returns the new total.
+   */
+  setCollectionCardQuantity(input: { cardId: CardId; quantity: number }): Promise<Result<{ cardId: CardId; quantity: number }>>;
 
   /** Returns the deck's code as well as its id, so a deck just saved can be linked to and gone on editing. */
   saveDeck(input: {

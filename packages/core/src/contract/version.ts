@@ -50,5 +50,8 @@
  *
  * v14 (2026-09-22): the deckbuilder's card search. CatalogApi.searchCards takes CardSearchInput: optional colour
  * identity, card type, mana value and offset, and an empty name when a filter is set (browse by play rate).
+ *
+ * v15 (2026-09-22): editing a collection by hand. ActionsApi.setCollectionCardQuantity sets a card's total copies in
+ * the signed-in user's collection (0 removes it).
  */
-export const CONTRACT_VERSION = 14;
+export const CONTRACT_VERSION = 15;
