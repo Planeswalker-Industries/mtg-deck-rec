@@ -16,7 +16,11 @@ import (
 	"time"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/api"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/archidekt"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/crawl"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/moxfield"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/supabase"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
@@ -38,7 +42,21 @@ func main() {
 	}
 
 	client := typesense.New(cfg.TypesenseURL, cfg.TypesenseKey, cfg.TypesenseTimeout)
-	app := api.New(cfg, client, log)
+
+	// The deck crawls are optional: unset SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SEARCH_API_CRON_TOKEN and the
+	// scrape endpoints answer 503, exactly like an index that isn't deployed. Only when all three are present does
+	// any runner exist to serve the daily cron. Each source registers itself (Moxfield is blocked but harmless - it
+	// self-disables on first contact; Archidekt is the active one).
+	var crawls map[string]*crawl.Runner
+	if cfg.CrawlConfigured() {
+		db := supabase.New(cfg.SupabaseURL, cfg.SupabaseServiceKey, cfg.SupabaseTimeout)
+		crawls = map[string]*crawl.Runner{
+			moxfield.Name:  moxfield.NewRunner(db, log, hostname()),
+			archidekt.Name: archidekt.NewRunner(db, log, hostname()),
+		}
+	}
+
+	app := api.New(cfg, client, log, crawls)
 
 	// Typesense may still be starting; say so and carry on rather than refusing to boot. /v1/health reports the
 	// truth either way, and the app falls back to Postgres while this is unhealthy.
@@ -65,6 +83,15 @@ func main() {
 	if err := app.ShutdownWithTimeout(30 * time.Second); err != nil {
 		log.Error("shutdown", "err", err)
 	}
+}
+
+// hostname names this crawl client in the store's claim, so a stale claim can be attributed to the container that
+// made it. Docker sets HOSTNAME; fall back to something unambiguous.
+func hostname() string {
+	if h := os.Getenv("HOSTNAME"); h != "" {
+		return h
+	}
+	return "search-api"
 }
 
 // healthcheck is the container's own probe: it talks to this process over loopback, so it proves the HTTP server is

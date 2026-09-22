@@ -20,6 +20,7 @@ This app targets Next.js 16.3. APIs differ from older versions. Read the bundled
 - Client code reaches the contract only through `lib/api/client.ts` (`getApis()`)
 - A few account-side actions sit outside the contract and are imported directly: `getAccountCollectionAction` and `importCollectionFromLinkAction` (`app/collection/actions.ts`), plus sign-in and account deletion. They bypass the mocks, so CI tests must not trigger them against real services (the collection link e2e only uses a ManaBox link, which answers before any request)
 - Route handlers beside pages are fine when a page needs a download: `/decks/[commander]/[code]/export` reuses `loadDeckPage`, so the same people can see the page and fetch the file
+- Scheduled work is a route the platform calls, not a server action: `/api/cron/{archidekt,moxfield}-scrape` (`lib/server/crawl-cron.ts`) forwards a daily Vercel cron to the search API's deck crawl. Full account in `docs/roadmap/deck-crawl.md`
 
 ## Admin Area (`/admin` — React Admin)
 
@@ -87,6 +88,7 @@ The one part of the app not built on the contract or on shadcn.
 | `lib/api/client.ts` | `getApis()` — contract access |
 | `lib/server/recs-cache.ts` | Swap caching (`use cache` + `cacheLife("hours")`) |
 | `lib/server/share-import.ts` | `fetchShareLink`, kill switch |
+| `lib/server/crawl-cron.ts` | The daily deck-crawl trigger: `CRON_SECRET` gate, forwards to the search API |
 | `lib/server/retry-timeout.ts` | Statement-timeout retry (SQLSTATE 57014) |
 | `lib/saved-deck.ts` | Browser-only remembered deck (localStorage, 30 days) |
 | `lib/safe-path.ts` | `safeNextPath` redirect validation |
@@ -100,6 +102,8 @@ The one part of the app not built on the contract or on shadcn.
 
 ## Gotchas
 
+- **Route segment config `dynamic` does not exist under `cacheComponents`.** `export const dynamic = "force-dynamic"` is a build error ("not compatible with `nextConfig.cacheComponents`"), and it is also unnecessary: everything is dynamic by default and a route handler reading headers is already `ƒ`. It type-checks and lints fine, so only `build` catches it — `node_modules/next/dist/docs/01-app/02-guides/migrating-to-cache-components.md` is the list of segment configs that went away
+- **A cron route is authorized by `CRON_SECRET`, never by a header Vercel happens to set.** Vercel sends `Authorization: Bearer $CRON_SECRET` on every cron invocation; `x-vercel-cron-schedule` and the `vercel-cron` user agent are ordinary inbound headers any caller can type. Unset `CRON_SECRET` means 503, never an open door — the route can trigger outbound crawling of a third-party site
 - `/deck` is `noindex` — indexable content belongs on card/commander pages
 - `/decks` redirects signed-out visitors to `/sign-in?next=/decks`
 - `/decks/[commander]/[code]` — the 12-char code alone resolves the deck; the commander segment is decoration

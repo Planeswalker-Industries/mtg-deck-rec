@@ -3,6 +3,10 @@
 The only thing in this project that talks to Typesense. The web app reads through it, the worker writes through it,
 and Typesense itself is reachable only on the private Docker network beside it.
 
+It also runs the **daily deck crawls** — a long-running job needs a host that is not a serverless function, and this
+is the one the project already has on a machine with an outbound address. See
+[`docs/roadmap/deck-crawl.md`](../../docs/roadmap/deck-crawl.md).
+
 Why it exists:
 
 - **The Typesense key stays on the VPS.** What leaves is a read token (the web app) and a write token (the worker
@@ -33,6 +37,12 @@ Everything else takes `Authorization: Bearer <token>`.
 | `GET /v1/commander-cards/top` | read | what a commander page ranks |
 | `GET/POST/DELETE /v1/admin/collections…` | admin | the worker's drain and `--rebuild` |
 | `GET/PUT /v1/admin/aliases/:name` | admin | the alias swap that makes a rebuild atomic |
+| `POST /cron/:source/scrape` | cron | the daily deck crawl; answers `202` and runs in the background |
+| `GET /cron/:source/status` | cron | that source's kill switch, claim and deck count |
+
+The crawl endpoints take the **cron** token (or the admin token), never the read token on Vercel, and they sit
+outside `/v1` because the read group's middleware is mounted at that prefix — a cron trigger is not a read. With the
+crawl unconfigured they answer `503`, so a deploy predating it serves search on the same three secrets.
 
 The admin token also satisfies the read endpoints; the read token is refused on admin ones, and the service will not
 start if the two are equal.
@@ -64,6 +74,13 @@ VPS the two run as separate compose files; see [`deploy/README.md`](../../deploy
 | `TYPESENSE_ADMIN_KEY` | — | required |
 | `SEARCH_API_TOKEN` | — | required; the web app's |
 | `SEARCH_API_ADMIN_TOKEN` | — | required; the worker's, must differ |
+| `SUPABASE_URL` | — | the deck crawls; `https://<ref>.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | — | the deck crawls; the web app calls the same value `SUPABASE_SECRET_KEY` |
+| `SEARCH_API_CRON_TOKEN` | — | the deck crawls; what the web app's cron route sends |
+
+The last three are optional and all-or-nothing: with any of them empty the crawl endpoints answer 503 and everything
+else is unaffected. They are the only ones that reach outside the VPS's own stack, and the service-role key belongs
+on the VPS alone — never on Vercel, never in a browser.
 
 The image is a static binary on distroless. `search-api healthcheck` is a mode of that same binary, because there is
 no shell in the image to run `curl` in — and a healthcheck that cannot run marks a working container unhealthy

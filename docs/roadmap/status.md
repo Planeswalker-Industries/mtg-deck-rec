@@ -51,6 +51,30 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 - Measured: triggers add ~1.4 s to a worst-case full-catalog rewrite (1.57 s to 2.99 s, 34,760 rows); a full rebuild
   is ~6 s for 39,295 documents; card rows rebuilt from documents are byte-identical to Postgres across 500 cards.
 
+## Deck crawls — Archidekt active, Moxfield blocked (2026-09-22)
+
+A daily deck crawl (Vercel cron → search API → private `corpus` schema, one shared engine in
+`services/search-api/internal/crawl`) has two sources. Full account and runbook:
+[`deck-crawl.md`](deck-crawl.md).
+- **Archidekt** is **active**: its public API is reachable - the project's own worker has used it since 2026-09-14,
+  and a VPS probe on 2026-09-22 returned 2xx - so the crawl is wired from the web cron. Parsers are pinned against
+  live fixtures.
+- **Moxfield** is built but **blocked**: probed from the VPS with the app's honest User-Agent, it answered
+  Cloudflare's hard WAF block (403), and per the crawler guardrails a block switches the source off rather than
+  being worked around.
+
+Moxfield is **seeded disabled** in the migration rather than left to discover the block once a day: the right
+number of requests to make to a source that has said no is zero. Either source switches itself off on a 403 or a
+challenge, audited as `crawl.disabled` in `audit_log`, and only a human re-enables it. Deploying is safe.
+
+The crawl reaches the private schema only through the `public.crawl_*` security-definer functions — PostgREST can
+address a table only in an exposed schema, and exposing one holding third-party decklists is what it exists to
+avoid. Nothing reads `corpus.decks` yet; aggregating it into `commander_card_stats` is the next milestone.
+
+Left to do is configuration: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SEARCH_API_CRON_TOKEN` on the VPS,
+`CRON_SECRET` + `SEARCH_API_URL` + `SEARCH_API_CRON_TOKEN` on Vercel, and the migration applied to the hosted
+database. Tracked as T036.
+
 ## Open Items (from tasks.md P0)
 
 1. Hosted sign-in configured; email deliverability (custom SMTP + domain) is T033

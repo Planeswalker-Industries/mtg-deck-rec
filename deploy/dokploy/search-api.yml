@@ -11,6 +11,11 @@
 #   SEARCH_API_TOKEN         the web app's read token   (Vercel)
 #   SEARCH_API_ADMIN_TOKEN   the worker's write token   (GitHub Actions, apps/worker/.env.hosted)
 #
+# Three more turn the deck crawls on, all or nothing (see docs/roadmap/deck-crawl.md):
+#   SUPABASE_URL               https://<ref>.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY  the service-role key — VPS only, never Vercel
+#   SEARCH_API_CRON_TOKEN      the token the web app's cron route sends; same value on Vercel
+#
 # Give **this** app the domain, on container port 8080. Typesense gets none.
 #
 # Routing is left to Dokploy: there are no Traefik labels here, so nothing of ours can win a label merge and leave
@@ -28,6 +33,10 @@ services:
       context: ../../services/search-api
     image: ${SEARCH_API_IMAGE:-mtg-search-api:local}
     restart: unless-stopped
+    # Docker's default is ten seconds from SIGTERM to SIGKILL, which is less than this process asks for: Fiber waits
+    # up to 30 s for in-flight requests, then a background deck crawl gets 20 s to notice it was cancelled and
+    # release its database claim. Killed before that, the claim sits until another run takes it over as stale.
+    stop_grace_period: 60s
 
     environment:
       SEARCH_API_ADDR: ":8080"
@@ -36,6 +45,17 @@ services:
       TYPESENSE_ADMIN_KEY: "${TYPESENSE_ADMIN_KEY:?set TYPESENSE_ADMIN_KEY on this app — the same value the Typesense app uses}"
       SEARCH_API_TOKEN: "${SEARCH_API_TOKEN:?set SEARCH_API_TOKEN on this app — the web app's read token}"
       SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:?set SEARCH_API_ADMIN_TOKEN on this app — the worker's write token}"
+
+      # The deck crawls (T036). Optional and all-or-nothing: leave them unset and /cron/:source answers 503 while
+      # search serves exactly as before, which is why these have empty defaults rather than the `:?` guards above.
+      #   SUPABASE_URL               https://<ref>.supabase.co
+      #   SUPABASE_SERVICE_ROLE_KEY  the service-role (secret) key; the web app calls the same value
+      #                              SUPABASE_SECRET_KEY. It bypasses RLS database-wide, so it stays on the VPS.
+      #   SEARCH_API_CRON_TOKEN      a third token, doing less than the two above: trigger a scrape, read a
+      #                              status, nothing else. The same value goes on Vercel.
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      SEARCH_API_CRON_TOKEN: "${SEARCH_API_CRON_TOKEN:-}"
 
     # Dokploy's Traefik reaches this over the shared network on 8080 and does not need a published port. This one
     # is on **loopback** and exists for the times routing is the thing that is broken: `curl

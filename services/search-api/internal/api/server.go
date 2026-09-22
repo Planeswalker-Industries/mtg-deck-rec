@@ -7,14 +7,18 @@
 package api
 
 import (
+	"context"
+	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/crawl"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
@@ -38,10 +42,20 @@ type Server struct {
 	ts  *typesense.Client
 	cfg config.Config
 	log *slog.Logger
+	// crawls maps source names to their runner. Empty (or missing an entry) when a source isn't wired up - the
+	// handlers answer 503, never a broken crawl.
+	crawls map[string]*crawl.Runner
+	// The background crawls' lifetime: one context for all of them, cancelled at shutdown, a WaitGroup to drain
+	// them, and the set of sources currently crawling so a source can only have one goroutine at a time.
+	crawlCtx  context.Context
+	crawlStop context.CancelFunc
+	crawlWG   sync.WaitGroup
+	crawling  sync.Map
 }
 
-func New(cfg config.Config, ts *typesense.Client, log *slog.Logger) *fiber.App {
-	s := &Server{ts: ts, cfg: cfg, log: log}
+func New(cfg config.Config, ts *typesense.Client, log *slog.Logger, crawls map[string]*crawl.Runner) *fiber.App {
+	crawlCtx, crawlStop := newCrawlContext()
+	s := &Server{ts: ts, cfg: cfg, log: log, crawls: crawls, crawlCtx: crawlCtx, crawlStop: crawlStop}
 
 	app := fiber.New(fiber.Config{
 		AppName:      "mtg search-api",
@@ -70,6 +84,22 @@ func New(cfg config.Config, ts *typesense.Client, log *slog.Logger) *fiber.App {
 	admin.Delete("/collections/:name/documents/:id", s.deleteDocument)
 	admin.Get("/aliases/:name", s.getAlias)
 	admin.Put("/aliases/:name", s.putAlias)
+
+	// The deck crawls, triggered by the web app's daily cron, one group per source (:source ∈ {moxfield, archidekt}).
+	// Only the cron token (and the admin token) reach them; the read token on Vercel cannot. They live outside /v1 on
+	// purpose: the read group's authorize is a Use on /v1 that would otherwise intercept every path below it (Fiber
+	// mounts a group's middleware at the prefix), and the whole point is that a cron trigger is not a read. When a
+	// source isn't configured its handler answers 503, so an existing deploy predating the crawls keeps serving
+	// search with the same three secrets.
+	crawlGroup := app.Group("/cron/:source", s.authorize(cfg.CronToken, cfg.AdminToken))
+	crawlGroup.Post("/scrape", s.crawlScrape)
+	crawlGroup.Get("/status", s.crawlStatus)
+
+	// A crawl outlives the request that started it, so the server has to be the thing that ends it.
+	app.Hooks().OnPostShutdown(func(error) error {
+		s.stopCrawls()
+		return nil
+	})
 
 	return app
 }
@@ -108,9 +138,8 @@ func (s *Server) errorHandler(c fiber.Ctx, err error) error {
 	return c.Status(status).JSON(fiber.Map{"error": message})
 }
 
-// authorize accepts any of the given bearer tokens. Comparison is constant-time-ish by length and content via
-// subtle-free equality on short strings; these are long random tokens over TLS, and the threat this guards is a
-// missing or wrong token, not a timing oracle.
+// authorize accepts any of the given bearer tokens. The comparison is constant-time because these tokens gate
+// writes and outbound crawling; subtle.ConstantTimeCompare costs nothing here and removes the question.
 func (s *Server) authorize(accepted ...string) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		header := c.Get("Authorization")
@@ -118,10 +147,14 @@ func (s *Server) authorize(accepted ...string) fiber.Handler {
 		if token == "" || header == token {
 			return &apiError{status: fiber.StatusUnauthorized, message: "a bearer token is required"}
 		}
+		allowed := false
 		for _, want := range accepted {
-			if want != "" && token == want {
-				return c.Next()
+			if want != "" && subtle.ConstantTimeCompare([]byte(token), []byte(want)) == 1 {
+				allowed = true
 			}
+		}
+		if allowed {
+			return c.Next()
 		}
 		return &apiError{status: fiber.StatusForbidden, message: "that token is not allowed here"}
 	}
