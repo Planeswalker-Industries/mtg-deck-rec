@@ -12,9 +12,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/api"
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/config"
-	"github.com/wuddat/mtg-deck-rec/services/search-api/internal/typesense"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/api"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
 const (
@@ -106,6 +106,7 @@ func TestAuthorization(t *testing.T) {
 		want                      int
 	}{
 		{"health needs no token", http.MethodGet, "/v1/health", "", http.StatusOK},
+		{"liveness needs no token", http.MethodGet, "/v1/health/live", "", http.StatusOK},
 		{"a read endpoint without a token", http.MethodGet, "/v1/tags", "", http.StatusUnauthorized},
 		{"a read endpoint with a wrong token", http.MethodGet, "/v1/tags", "nonsense", http.StatusForbidden},
 		{"a read endpoint with the read token", http.MethodGet, "/v1/tags", readToken, http.StatusOK},
@@ -121,6 +122,24 @@ func TestAuthorization(t *testing.T) {
 				t.Fatalf("got %d, want %d", res.StatusCode, tc.want)
 			}
 		})
+	}
+}
+
+// Liveness must not depend on Typesense: the container healthcheck asks it, and a dependency outage that marks the
+// API unhealthy gets it restart-looped and pulled out of the router over a 503 the app already falls back from.
+func TestLivenessIgnoresTypesense(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+	fake.server.Close() // Typesense is now unreachable.
+
+	res, decoded := do(t, app, http.MethodGet, "/v1/health/live", "", "")
+	if res.StatusCode != http.StatusOK || decoded["ok"] != true {
+		t.Fatalf("liveness should not care: %d %v", res.StatusCode, decoded)
+	}
+
+	ready, _ := do(t, app, http.MethodGet, "/v1/health", "", "")
+	if ready.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("readiness should report the outage, got %d", ready.StatusCode)
 	}
 }
 

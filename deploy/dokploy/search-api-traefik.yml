@@ -1,0 +1,63 @@
+# The search API for Dokploy, routed by **our own Traefik labels** instead of the panel's domain settings.
+#
+# Use this one when `deploy/dokploy/search-api.yml` is deployed and healthy but the hostname answers
+# `404 page not found` behind a `CN=TRAEFIK DEFAULT CERT`. That pair of symptoms is one problem, not two: Traefik
+# only requests a certificate for a hostname it has a router for, so both say "no router exists". If the panel's
+# domain settings are not producing one, these labels will.
+#
+# Point the Dokploy app's compose path here and set, on that app:
+#
+#   SEARCH_API_HOST          the hostname, e.g. mtgdeckrec-api-....sslip.io
+#   TRAEFIK_CERT_RESOLVER    whatever the panel's Traefik calls its ACME resolver (Dokploy's is `letsencrypt`)
+#   TYPESENSE_ADMIN_KEY      the same value as the Typesense app
+#   SEARCH_API_TOKEN         the web app's read token
+#   SEARCH_API_ADMIN_TOKEN   the worker's write token
+#
+# Then **remove the domain from the panel for this app**, or two routers compete for one hostname.
+#
+# Everything else matches deploy/dokploy/search-api.yml. If the panel's own domain settings do work, prefer that
+# file: fewer moving parts, and the panel keeps owning its certificates.
+
+services:
+  search-api:
+    container_name: search-api
+    build:
+      context: ../../services/search-api
+    image: ${SEARCH_API_IMAGE:-mtg-search-api:local}
+    restart: unless-stopped
+
+    environment:
+      SEARCH_API_ADDR: ":8080"
+      TYPESENSE_URL: "http://typesense:8108"
+      TYPESENSE_ADMIN_KEY: "${TYPESENSE_ADMIN_KEY:?set TYPESENSE_ADMIN_KEY on this app — the same value the Typesense app uses}"
+      SEARCH_API_TOKEN: "${SEARCH_API_TOKEN:?set SEARCH_API_TOKEN on this app — the web app's read token}"
+      SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:?set SEARCH_API_ADMIN_TOKEN on this app — the worker's write token}"
+
+    # Loopback only, so `curl 127.0.0.1:8090/v1/health` on the box can tell "the stack is down" from "Traefik is
+    # not routing to it" — which is the question this file exists to answer.
+    ports:
+      - "127.0.0.1:${SEARCH_API_PORT:-8090}:8080"
+
+    networks:
+      - dokploy-network
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      traefik.enable: "true"
+      # Which network Traefik should reach the container on. It is on one, but saying so removes a guess.
+      traefik.docker.network: "${TRAEFIK_NETWORK:-dokploy-network}"
+      traefik.http.routers.searchapi.rule: "Host(`${SEARCH_API_HOST:?set SEARCH_API_HOST on this app — the hostname Traefik should route}`)"
+      traefik.http.routers.searchapi.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
+      traefik.http.routers.searchapi.tls: "true"
+      traefik.http.routers.searchapi.tls.certresolver: "${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      # The container port, not the published one: Traefik connects container to container.
+      traefik.http.services.searchapi.loadbalancer.server.port: "8080"
+
+networks:
+  dokploy-network:
+    external: true

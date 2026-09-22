@@ -1,0 +1,61 @@
+# The search API, for Dokploy. Point a Compose app at `deploy/dokploy/search-api.yml`.
+#
+# Same container as deploy/search-api/, with the shared network **hardcoded** to Dokploy's own rather than
+# assembled from variables — compose interpolates the `networks:` block from a `.env` beside the compose file or
+# from the shell, not from a `.env` at the repo root, so a panel variable that does not land in the right place
+# leaves the network at its default and the deploy fails with "network ... not found". There is no variable here to
+# get wrong.
+#
+# Set three variables on this app:
+#   TYPESENSE_ADMIN_KEY      the same value as the Typesense app
+#   SEARCH_API_TOKEN         the web app's read token   (Vercel)
+#   SEARCH_API_ADMIN_TOKEN   the worker's write token   (GitHub Actions, apps/worker/.env.hosted)
+#
+# Give **this** app the domain, on container port 8080. Typesense gets none.
+#
+# Routing is left to Dokploy: there are no Traefik labels here, so nothing of ours can win a label merge and leave
+# the panel's domain without a router. If the panel's domain does not take, the symptom is a `404 page not found`
+# with a `CN=TRAEFIK DEFAULT CERT` — that is one problem, a missing router, not two, because Traefik only requests
+# a certificate for a hostname it has a router for.
+
+services:
+  search-api:
+    # A fixed container name, matching the other services on this VPS. Dokploy's Traefik finds it by label and by
+    # network rather than by name, but a stable name is what makes `docker logs search-api` and
+    # `docker exec search-api /search-api healthcheck` work without looking up the project prefix first.
+    container_name: search-api
+    build:
+      context: ../../services/search-api
+    image: ${SEARCH_API_IMAGE:-mtg-search-api:local}
+    restart: unless-stopped
+
+    environment:
+      SEARCH_API_ADDR: ":8080"
+      # By the alias the Typesense app publishes on the shared network.
+      TYPESENSE_URL: "http://typesense:8108"
+      TYPESENSE_ADMIN_KEY: "${TYPESENSE_ADMIN_KEY:?set TYPESENSE_ADMIN_KEY on this app — the same value the Typesense app uses}"
+      SEARCH_API_TOKEN: "${SEARCH_API_TOKEN:?set SEARCH_API_TOKEN on this app — the web app's read token}"
+      SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:?set SEARCH_API_ADMIN_TOKEN on this app — the worker's write token}"
+
+    # Dokploy's Traefik reaches this over the shared network on 8080 and does not need a published port. This one
+    # is on **loopback** and exists for the times routing is the thing that is broken: `curl
+    # 127.0.0.1:8090/v1/health` on the box is what separates "the stack is down" from "Traefik is not routing to
+    # it", and without it that question needs a `docker exec`.
+    #
+    # Keep the `127.0.0.1:` prefix. Docker writes iptables rules that bypass ufw for published ports, so
+    # `0.0.0.0:8090` would be on the internet whatever the firewall says. Change SEARCH_API_PORT if 8090 is taken.
+    ports:
+      - "127.0.0.1:${SEARCH_API_PORT:-8090}:8080"
+
+    networks:
+      - dokploy-network
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  dokploy-network:
+    external: true

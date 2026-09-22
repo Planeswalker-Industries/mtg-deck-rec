@@ -1,0 +1,90 @@
+# Typesense on the VPS. Deployed on its own, separately from the API in front of it: a managed panel treats one
+# compose file as one application, and these two have different lifecycles — the API is rebuilt whenever its Go
+# code changes, while Typesense is a long-lived stateful container you only touch to upgrade it.
+#
+# They find each other over a shared Docker network. **This stack creates it**, and the search-api stack joins it,
+# so deploy this one first. Nothing has to be created by hand: a panel deploy cannot run `docker network create`,
+# and requiring it meant "network mtg-search not found" on the first deploy.
+#
+# If you would rather they both used a network something else owns — a panel's shared network, say — set
+# SEARCH_NETWORK to its name and SEARCH_NETWORK_EXTERNAL=true in *both* .env files, and neither stack will try to
+# create it.
+#
+#   cd deploy/typesense
+#   cp .env.example .env && $EDITOR .env      # TYPESENSE_ADMIN_KEY
+#   docker compose up -d
+#   docker compose ps                         # wait for "healthy"
+#
+# **This container publishes no port at all.** Nothing but search-api has any business reaching Typesense, and
+# search-api reaches it by name on the shared network. Its API key is its entire access control and it terminates no
+# TLS of its own, so exposing it would mean putting that key on the internet.
+#
+# Nothing here is a source of truth. Losing the volume costs one `sync:typesense --rebuild` and nothing else, which
+# is also why there is no backup story: restoring from Postgres is faster and always correct.
+#
+# Full context in docs/roadmap/typesense-plan.md; the runbook is docs/roadmap/typesense-ops.md.
+
+name: mtg-typesense
+
+services:
+  typesense:
+    image: typesense/typesense:29.0
+    restart: unless-stopped
+
+    # A bind mount, not a named volume: on a server the data should be somewhere you can find, back up if you ever
+    # want to, and see the size of without asking Docker.
+    #
+    # `./data` is beside this file, which is right for a checkout you manage yourself. **On a panel that clones the
+    # repo per deploy — Dokploy does — point TYPESENSE_DATA_DIR at an absolute path outside the clone**, or a
+    # redeploy that re-clones takes the index with it. Nothing is lost that `sync:typesense --rebuild` cannot
+    # recreate, but it is a slow surprise.
+    volumes:
+      - ${TYPESENSE_DATA_DIR:-./data}:/data
+
+    # ${VAR:?message} refuses to start rather than silently booting with an empty key.
+    command:
+      - "--data-dir=/data"
+      - "--api-key=${TYPESENSE_ADMIN_KEY:?set TYPESENSE_ADMIN_KEY in .env — see .env.example}"
+      - "--listen-port=8108"
+      # No --enable-cors: the only caller is search-api, server to server.
+
+    networks:
+      mtg-search:
+        # An explicit alias, so `http://typesense:8108` resolves from the other stack no matter what that stack's
+        # project is called. Compose adds the service name as an alias on its own networks; spelling it out here
+        # means the API's configuration does not depend on that behaviour.
+        aliases:
+          - typesense
+
+    # The image ships no curl and no wget, so the obvious healthcheck silently marks a working container unhealthy
+    # forever. It does ship bash, whose /dev/tcp can speak just enough HTTP to ask /health and read the answer.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8108 && printf "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q ''"ok":true'' <&3'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    # Typesense holds its index in RAM. The cap is a guard against one runaway collection taking the whole box down
+    # with the rest of what the VPS runs; raise it as commander_cards grows (see the sizing note in the runbook).
+    mem_limit: ${TYPESENSE_MEM_LIMIT:-1g}
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # Created here, joined by the search-api stack. `name:` pins the exact name rather than letting compose prefix it
+  # with this project's, because the other stack has to be able to name it.
+  #
+  # SEARCH_NETWORK_EXTERNAL defaults to **false** here and **true** there: unset, this stack owns the network and
+  # that one attaches. Set it to true in both to use a network neither of them owns.
+  mtg-search:
+    external: ${SEARCH_NETWORK_EXTERNAL:-false}
+    name: ${SEARCH_NETWORK:-mtg-search}

@@ -1,7 +1,7 @@
 # MTG Collection-Aware Deck Optimizer — Execution Plan
 
 ## Context
-Greenfield repo (`wuddat/mtg-deck-rec`, **public**; README + CLAUDE.md only). Goal: public Commander web app. Paste/import a decklist and get (a) **cards to add** (EDHREC-style), (b) **cards to cut**, (c) **top-N functional substitutes** when a card is clicked, each with an estimated cost delta. Two modes share one pipeline: **collection-less** (anonymous, ranked by corpus play rate + Tagger tags) and **collection-aware** (candidate pool restricted to owned cards). Team: 1 FE + 1 BE, so a typed contract is frozen early and FE builds against mocks.
+Greenfield repo (`wuddat/mtg-deck-rec` at the time, now `Planeswalker-Industries/mtg-deck-rec`, **public**; README + CLAUDE.md only). Goal: public Commander web app. Paste/import a decklist and get (a) **cards to add** (EDHREC-style), (b) **cards to cut**, (c) **top-N functional substitutes** when a card is clicked, each with an estimated cost delta. Two modes share one pipeline: **collection-less** (anonymous, ranked by corpus play rate + Tagger tags) and **collection-aware** (candidate pool restricted to owned cards). Team: 1 FE + 1 BE, so a typed contract is frozen early and FE builds against mocks.
 
 ### Step 0 outcomes (locked)
 | # | Decision |

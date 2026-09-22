@@ -13,7 +13,7 @@ const SOURCES: Record<ShareSource, { name: string; hosts: readonly string[] }> =
 };
 
 /** Identifies the app honestly on every outbound request (the worker sends the same). */
-const USER_AGENT = "MTGDeckRec/0.1 (+https://github.com/wuddat/mtg-deck-rec)";
+const USER_AGENT = "MTGDeckRec/0.1 (+https://github.com/Planeswalker-Industries/mtg-deck-rec)";
 const TIMEOUT_MS = 10_000;
 const MAX_BODY_CHARS = 5_000_000;
 

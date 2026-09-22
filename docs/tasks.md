@@ -2,7 +2,7 @@
 
 Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up.
 
-Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-21** (develop and main at PR #59). `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
+Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-21** (develop at PR #71: deck export, admin tag and sync pages, collection import by link). `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -38,7 +38,7 @@ The hosted dashboard steps are done (URL configuration and the sign-in email tem
 The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a real destination before public launch.
 
 **Files:**
-- `apps/web/src/app/decks/[commander]/[code]/page.tsx:123` — the `github.com/wuddat/mtg-deck-rec/issues/new` link
+- `apps/web/src/app/decks/[commander]/[code]/page.tsx:129` — the `github.com/Planeswalker-Industries/mtg-deck-rec/issues/new` link
 
 **Acceptance criteria:**
 - [ ] Decide destination (email, form, in-app feedback)
@@ -158,14 +158,14 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 The index and the Go service in front of it are built, tested and documented, and nothing uses them until they are running. Every read path falls back to Postgres while `SEARCH_API_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
 
 **Files:**
-- `deploy/search/docker-compose.yml` — the deployment (Typesense + `services/search-api`), with its `.env.example`
+- `deploy/typesense/` and `deploy/search-api/` — two independently deployed compose files; `deploy/README.md` is how they fit together
 - `docs/roadmap/typesense-ops.md` — the runbook this ticket follows
 - `.github/workflows/sync.yml` — already reads `SEARCH_API_URL` / `SEARCH_API_ADMIN_TOKEN` as secrets
 
 **Context:** Self-hosted rather than Typesense Cloud (owner decision, 2026-09-19; the cheapest Cloud node is ~$21.60/mo plus egress). Typesense terminates no TLS of its own and its API key is its entire access control, so it is not exposed at all: `services/search-api` (Go, Fiber) is the only thing that talks to it, and that is what goes behind the reverse proxy.
 
 **Acceptance criteria:**
-- [ ] `docker compose up -d` in `deploy/search/` on the VPS, both containers healthy, **search-api** behind the reverse proxy with TLS (Typesense publishes no port and must stay that way)
+- [ ] `docker network create mtg-search`, then `docker compose up -d` in `deploy/typesense/` and `deploy/search-api/`, both healthy, **search-api** behind the reverse proxy with TLS (Typesense publishes no port and must stay that way)
 - [ ] Three secrets generated: `TYPESENSE_ADMIN_KEY` (stays on the VPS), `SEARCH_API_ADMIN_TOKEN` (worker), `SEARCH_API_TOKEN` (web app)
 - [ ] `SEARCH_API_URL` + `SEARCH_API_TOKEN` on Vercel **Production and Preview**; `SEARCH_API_URL` + `SEARCH_API_ADMIN_TOKEN` in GitHub Actions secrets and `apps/worker/.env.hosted`
 - [ ] `cli:hosted sync:typesense --rebuild` once, then confirm the daily sync drains the queue
@@ -280,8 +280,8 @@ and every commander is crawled rather than the top 50. It is split into 11 slice
   included. The crawler guardrails in the plan (robots.txt, honest User-Agent, stop on a block) still apply.
 - Collections stay one per account, and win-condition analysis waits.
 
-**Supersedes when started:** T010 (becomes slice 10), T020 (slices 5–8), T031 (slice 11 automates it). Slice 1
-rewrites the CLAUDE.md data-source and storage rules, which still describe the old constraints.
+**Supersedes when started:** T010 (becomes slice 10), T020 (slices 5–8), T031 (slice 11 automates it). CLAUDE.md's data-source rule already records the consent and the fetching guardrails (2026-09-21); slice 1 still
+rewrites its storage rule ("decklists stay in local JSONL"), which describes how the corpus works today.
 
 **Acceptance criteria:**
 - [ ] A backend owner reviews the plan and confirms or changes the slice order

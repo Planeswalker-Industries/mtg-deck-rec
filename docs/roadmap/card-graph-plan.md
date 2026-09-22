@@ -26,7 +26,7 @@ candidates per request from indexed lookups.** Never the card × card × command
 |---|---|---|
 | Deck storage | Archidekt decks in `X:\mtg_proj\archidekt\spike\decks.jsonl` (15,346 decks) | `corpus.decks` in Postgres, with card lists as a sorted `int[]` |
 | Deck sources | Archidekt only; `aggregateCorpus({ source: 'archidekt' })` | `DeckSource` adapters: Archidekt crawl and complete user decks, with Moxfield once its API access is confirmed. Nothing downstream sees the source |
-| External statistics | None (EDHREC banned in CLAUDE.md) | `StatsSource` adapter: EDHREC commander pages → `external_commander_card_stats`, used as a prior for thin commanders and as a benchmark. Never mixed into deck counts |
+| External statistics | None (CLAUDE.md allows EDHREC since 2026-09-21; nothing reads it yet) | `StatsSource` adapter: EDHREC commander pages → `external_commander_card_stats`, used as a prior for thin commanders and as a benchmark. Never mixed into deck counts |
 | Which decks count | `resolveDeck` for Archidekt; `save_deck` flags user decks on per-card legality only, so a 70-card deck is flagged | One rule for every source: `resolveDeck` (100 cards, identity, legal pair, ≤ 3 unresolved) |
 | Crawl coverage | Top 50 commanders, run by hand (`spike:archidekt:crawl`) | Every commander with ≥ 50 listed decks (≈ 2,800), from a queue on an always-on worker (T010) |
 | Where jobs run | Home PC | VPS worker container, next to `search-api` |
