@@ -1,9 +1,11 @@
 package api_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -380,4 +382,43 @@ func countRequests(requests []string, want string) int {
 		}
 	}
 	return n
+}
+
+// The log is the only way to answer "is anything calling this?" from outside: a successful request is otherwise
+// indistinguishable from no request at all.
+func TestRequestsAreLogged(t *testing.T) {
+	var buf bytes.Buffer
+	fake := newFakeTypesense(t)
+	cfg := config.Config{ReadToken: readToken, AdminToken: adminToken}
+	app := api.New(cfg, typesense.New(fake.server.URL, "key", 5*time.Second),
+		slog.New(slog.NewJSONHandler(&buf, nil)), nil)
+
+	res, err := app.Test(httptest.NewRequest(http.MethodGet, "/v1/tags", nil))
+	if err == nil {
+		_ = res.Body.Close()
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, `"msg":"request"`) || !strings.Contains(logged, `"path":"/v1/tags"`) {
+		t.Fatalf("a served request should be logged: %s", logged)
+	}
+
+	// A search term is the person's words and must not be in the log.
+	buf.Reset()
+	req := httptest.NewRequest(http.MethodGet, "/v1/cards/search?q=sol+ring", nil)
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	if res, err := app.Test(req); err == nil {
+		_ = res.Body.Close()
+	}
+	if strings.Contains(buf.String(), "sol") {
+		t.Fatalf("the query string must not reach the log: %s", buf.String())
+	}
+
+	// Health probes arrive every few seconds; a log that is mostly health checks is one nobody reads.
+	buf.Reset()
+	if res, err := app.Test(httptest.NewRequest(http.MethodGet, "/v1/health/live", nil)); err == nil {
+		_ = res.Body.Close()
+	}
+	if strings.Contains(buf.String(), `"msg":"request"`) {
+		t.Fatalf("health probes should not be logged: %s", buf.String())
+	}
 }
