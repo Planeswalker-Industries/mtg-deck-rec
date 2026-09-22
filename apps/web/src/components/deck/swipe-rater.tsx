@@ -447,12 +447,12 @@ export function SwipeSummary({
         <ul aria-label="Swaps picked" className="flex flex-col divide-y divide-seam rounded-lg border border-seam bg-sleeve">
           {swaps.map((s) => (
             <li key={s.target.id} className="grid grid-cols-[4.5rem_1fr_4.5rem] items-center gap-3 p-3">
-              <CardImage card={s.target} alt="" sizes="72px" className="opacity-80 saturate-50" />
+              <CardImage card={s.target} variant="small" alt="" sizes="72px" className="opacity-80 saturate-50" />
               <p className="text-sm leading-snug">
                 <span className="block text-muted-foreground">Cut {displayName(s.target)}</span>
                 <span className="block font-bold">Add {displayName(s.replacement)}</span>
               </p>
-              <CardImage card={s.replacement} alt="" sizes="72px" />
+              <CardImage card={s.replacement} variant="small" alt="" sizes="72px" />
             </li>
           ))}
         </ul>

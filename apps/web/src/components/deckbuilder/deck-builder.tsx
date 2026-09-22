@@ -57,7 +57,7 @@ function DeckCard({
   return (
     <li className="flex min-w-0 flex-col gap-1">
       <ZoomableCard card={card}>
-        <CardImage card={card} alt="" sizes="(min-width: 1024px) 140px, 30vw" />
+        <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 140px, 30vw" />
       </ZoomableCard>
       <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{name}</span>
       {card.gameChanger && <GameChangerBadge />}

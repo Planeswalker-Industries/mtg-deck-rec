@@ -39,6 +39,11 @@ var collectionName = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 // Slugs the catalog generates. Checked for the same reason: it reaches a filter expression.
 var slugShape = regexp.MustCompile(`^[a-z0-9-]{1,120}$`)
 
+// The deck-grouping categories, spelled exactly as cardCategory in @mtg/core writes them into card_category. A
+// closed set rather than a general shape: the filter is built into a query string, and the only values that can
+// match anything are these eight.
+var categoryShape = regexp.MustCompile(`^(creature|planeswalker|battle|instant|sorcery|artifact|enchantment|land)$`)
+
 type Server struct {
 	ts  *typesense.Client
 	cfg config.Config
