@@ -302,8 +302,10 @@ A single 403/challenge flips that source's `corpus.crawl_state.disabled` row unt
 
 **Review fixes (2026-09-22).** The first cut could not have run: it addressed `corpus` tables as PostgREST paths (`/rest/v1/corpus.decks`, which is PGRST205 — the schema is not exposed and must not be), `service_role` had no `usage` on the schema, and the "atomic claim" sent a compound filter PostgREST has no syntax for, so it matched nothing and every run reported itself busy. All three are now the `public.crawl_*` functions, checked against a real PostgREST by `TestLiveStoreRoundTrip` (skipped unless `SUPABASE_TEST_URL`/`SUPABASE_TEST_SERVICE_KEY` are set) rather than only against fakes. The Archidekt parser also dropped every uncategorized card and skipped qualification entirely; it now mirrors `qualifyDeck` (format, public, commander, 100 cards) and keeps quantities. The cron trusted spoofable Vercel headers and now takes `CRON_SECRET`.
 
+**Doc:** `docs/roadmap/deck-crawl.md` — what it does, how a run works, the schema, and the ops runbook.
+
 **Files:**
-- `supabase/migrations/20260922000100_deck_crawl_corpus.sql` — `corpus` schema + `app_config.{archidekt,moxfield}` policies
+- `supabase/migrations/20260922000100_deck_crawl_corpus.sql` — `corpus` schema, the `public.crawl_*` functions, `app_config.{archidekt,moxfield}` policies
 - `services/search-api/internal/crawl/` — the shared engine
 - `services/search-api/internal/archidekt/`, `internal/moxfield/` — the source adapters
 - `services/search-api/internal/supabase/` — PostgREST client (service role)

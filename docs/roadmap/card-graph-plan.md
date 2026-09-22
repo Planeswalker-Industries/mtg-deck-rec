@@ -323,6 +323,7 @@ tables for them from the start.
 - **MTGGoldfish.** It is allowed now, but its decks lean toward constructed formats and its deck downloads are
   disallowed by robots.txt. It is low value for Commander, so it waits until the other sources are running.
 - **Moxfield** until its API access or User-Agent whitelist is confirmed. Its whitelisting wants a production
-  domain (T033). A colly scrape built for it (`feature/moxfield-scrape`, T036) is shelved: a 2026-09-22 probe from
-  the VPS answered Cloudflare's hard WAF block, so the source stays off until access is granted.
+  domain (T033). A colly scrape built for it (T036, [`deck-crawl.md`](deck-crawl.md)) is shelved: a 2026-09-22 probe
+  from the VPS answered Cloudflare's hard WAF block, so the source stays off until access is granted. The Archidekt
+  half of that same engine is active, and its `corpus.decks` output is what this plan's aggregation reads.
 - Negative associations, win-condition analysis, multiple collections, and embeddings.
