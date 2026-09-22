@@ -26,10 +26,11 @@ test("imports a collection and limits suggestions to owned cards", async ({ page
   await page.getByRole("option", { name: "Owned only" }).click();
   await expect(collectionMode).toHaveText("Owned only");
 
-  // The only owned card (Sol Ring) is already in the sample deck, so there's nothing to add.
-  await recs.getByRole("button", { name: "Edit deck" }).click();
-  await recs.getByRole("button", { name: /^Add Missing pieces/ }).click();
-  await expect(recs.getByText(/Nothing in your collection fits this deck's colors/)).toBeVisible({ timeout: 60_000 });
+  // The only owned card (Sol Ring) is already in the sample deck, so nothing owned can replace anything.
+  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  await recs.getByRole("region", { name: "Deck list" }).getByRole("button", { name: /^Replace / }).first().click({ timeout: 60_000 });
+  await expect(page.getByRole("dialog").getByText("Nothing in your collection does a similar job.")).toBeVisible({ timeout: 60_000 });
+  await page.keyboard.press("Escape");
 
   await page.goto("/collection/import");
   await page.getByRole("button", { name: "Clear collection" }).click();

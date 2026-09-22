@@ -81,7 +81,8 @@ The one part of the app not built on the contract or on shadcn.
 | File | Purpose |
 |---|---|
 | `components/deck/use-deck-tool.ts` | Request flow, stale responses dropped by request counters |
-| `components/deck/deck-tool.tsx` | Upgrade (journey) and Edit deck (workspace grid, drill-down, rail) modes |
+| `components/deck/deck-tool.tsx` | Upgrade (journey) and Deckbuilder modes |
+| `components/deckbuilder/deck-builder.tsx` | The deckbuilder; hosted by `saved-deck-editor.tsx` (`/decks/[commander]/[code]/edit`) and `tool-deck-editor.tsx` (inline in `/deck`) |
 | `components/deck/journey/use-deck-journey.ts` | Cut → Add → Replace → Review round over `@mtg/core/journey`; one component per phase beside it |
 | `lib/api/client.ts` | `getApis()` — contract access |
 | `lib/server/recs-cache.ts` | Swap caching (`use cache` + `cacheLife("hours")`) |

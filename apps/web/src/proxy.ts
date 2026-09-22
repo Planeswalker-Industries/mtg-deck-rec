@@ -22,6 +22,15 @@ export async function proxy(request: NextRequest) {
   // and an owner has every right to their own hidden deck. A signed-in visitor falls through to the page, which
   // renders the not-found body without leaking anything.
   const code = request.nextUrl.pathname.split("/")[3];
+
+  // The deckbuilder is its owner's alone. Signed out, sign in first: like /admin, a redirect from inside the page's
+  // <Suspense> would strand the visitor on the loading state. Signed in, the page itself answers not-found for anyone
+  // else's deck.
+  if (section === "decks" && request.nextUrl.pathname.split("/")[4] === "edit" && !hasSessionCookie(request)) {
+    const signIn = new URL("/sign-in", request.url);
+    signIn.searchParams.set("next", request.nextUrl.pathname);
+    return NextResponse.redirect(signIn);
+  }
   if (section === "decks" && code && DECK_CODE.test(code) && !hasSessionCookie(request)) {
     try {
       if (!(await publicDeckExists(code))) {

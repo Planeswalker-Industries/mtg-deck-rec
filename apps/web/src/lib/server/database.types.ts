@@ -1449,6 +1449,7 @@ export type Database = {
         Args: { p_banned: boolean; p_user_id: string }
         Returns: undefined
       }
+      card_category: { Args: { p_type_line: string }; Returns: string }
       card_functional_tags: {
         Args: { p_card_id: number }
         Returns: {
@@ -1679,6 +1680,20 @@ export type Database = {
       }
       search_cards: {
         Args: { p_commander_only?: boolean; p_limit?: number; p_query: string }
+        Returns: {
+          card_id: number
+        }[]
+      }
+      search_cards_filtered: {
+        Args: {
+          p_category?: string
+          p_identity_mask?: number
+          p_limit?: number
+          p_mana_value?: number
+          p_mana_value_top?: number
+          p_offset?: number
+          p_query?: string
+        }
         Returns: {
           card_id: number
         }[]

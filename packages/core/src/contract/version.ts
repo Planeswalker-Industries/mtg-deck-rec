@@ -47,5 +47,8 @@
  *
  * v13 (2026-09-22): RecContext.ownershipMode. 'first' ranks owned cards ahead of comparable ones without hiding the
  * rest; 'only' (the default when omitted, and what earlier clients meant) keeps suggestions to owned cards.
+ *
+ * v14 (2026-09-22): the deckbuilder's card search. CatalogApi.searchCards takes CardSearchInput: optional colour
+ * identity, card type, mana value and offset, and an empty name when a filter is set (browse by play rate).
  */
-export const CONTRACT_VERSION = 13;
+export const CONTRACT_VERSION = 14;
