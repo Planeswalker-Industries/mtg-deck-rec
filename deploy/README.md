@@ -96,7 +96,33 @@ deploy, so a bind mount inside it would take the index with it — recoverable w
 slow surprise.
 
 **There are no Traefik labels**, so nothing of ours can win a label merge and leave the panel's domain without a
-router. Add the domain in Dokploy against the search-api app.
+router. Add the domain in Dokploy against the search-api app, service `search-api`, container port **8080**.
+
+### When the panel's domain does not produce a router
+
+Symptom: the app deploys and is healthy, but the hostname answers `404 page not found` behind a
+`CN=TRAEFIK DEFAULT CERT`. Those are **one problem, not two** — Traefik only requests a certificate for a hostname
+it has a router for, so both say the same thing: no router exists.
+
+Check whether the panel wrote any labels at all, on the VPS:
+
+```sh
+docker inspect search-api --format '{{json .Config.Labels}}' | tr ',' '\n' | grep traefik
+```
+
+Nothing back means the panel's domain never reached this container — most often because a Compose app needs the
+domain pointed at a **service name** (`search-api`) and a container port (`8080`), not just a hostname.
+
+If that cannot be made to work, [`search-api-traefik.yml`](dokploy/search-api-traefik.yml) is the same container
+carrying our own router labels. Point the app's compose path at it, set `SEARCH_API_HOST` and
+`TRAEFIK_CERT_RESOLVER`, and **remove the domain from the panel for that app** so two routers do not compete for one
+hostname.
+
+Either way, this is the command that tells you which half is broken:
+
+```sh
+curl 127.0.0.1:8090/v1/health    # on the box: {"ok":true} means only the routing is wrong
+```
 
 ### If a deploy still cannot find the network
 
