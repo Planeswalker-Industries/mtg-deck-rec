@@ -5,9 +5,11 @@ import type { Bracket } from "@mtg/core/contract";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { bracketLabel } from "@/lib/labels";
+import { bracketLabel, collectionModeLabel } from "@/lib/labels";
+import type { CollectionMode } from "./use-deck-tool";
 
 const BRACKETS: Bracket[] = [1, 2, 3, 4, 5];
+const COLLECTION_MODES: CollectionMode[] = ["first", "only", "off"];
 
 export function DeckControls({
   bracket,
@@ -17,8 +19,8 @@ export function DeckControls({
   includeGameChangers,
   onBracketChange,
   onIncludeGameChangersChange,
-  ownedOnly,
-  onOwnedOnlyChange,
+  collectionMode,
+  onCollectionModeChange,
 }: {
   bracket: Bracket;
   bracketSource: "inferred" | "user";
@@ -28,8 +30,8 @@ export function DeckControls({
   onBracketChange: (bracket: Bracket) => void;
   onIncludeGameChangersChange: (include: boolean) => void;
   /** null when there's no saved collection; the control then links to the collection page. */
-  ownedOnly: boolean | null;
-  onOwnedOnlyChange: (on: boolean) => void;
+  collectionMode: CollectionMode | null;
+  onCollectionModeChange: (mode: CollectionMode) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -59,14 +61,25 @@ export function DeckControls({
           <Switch id="include-game-changers" checked={includeGameChangers} onCheckedChange={onIncludeGameChangersChange} />
           <Label htmlFor="include-game-changers">Suggest Game Changers</Label>
         </div>
-        {ownedOnly === null ? (
+        {collectionMode === null ? (
           <Link href="/collection/import" className="text-sm font-bold text-primary underline-offset-4 hover:underline">
             Add your collection
           </Link>
         ) : (
           <div className="flex items-center gap-2">
-            <Switch id="owned-only" checked={ownedOnly} onCheckedChange={onOwnedOnlyChange} />
-            <Label htmlFor="owned-only">Only cards I own</Label>
+            <Label htmlFor="collection-mode">My collection</Label>
+            <Select value={collectionMode} onValueChange={(value) => onCollectionModeChange(value as CollectionMode)}>
+              <SelectTrigger id="collection-mode" size="sm" className="bg-sleeve">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {COLLECTION_MODES.map((mode) => (
+                  <SelectItem key={mode} value={mode}>
+                    {collectionModeLabel[mode]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
       </div>

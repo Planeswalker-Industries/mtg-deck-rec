@@ -10,6 +10,12 @@ export type OwnershipInput =
   /** Authenticated: server joins the persisted collection. */
   | { kind: 'account' };
 
+/**
+ * What a collection does to suggestions. only: suggest owned cards and nothing else (cuts flag unowned cards).
+ * first: suggest from everything, with owned cards ranked ahead of comparable ones; scores themselves are unchanged.
+ */
+export type OwnershipMode = 'only' | 'first';
+
 export interface RecContext {
   deck: DeckInput;
   bracket: Bracket;
@@ -17,6 +23,8 @@ export interface RecContext {
   includeGameChangers: boolean;
   /** null = collection-less mode */
   ownership: OwnershipInput | null;
+  /** How `ownership` applies. Omitted means 'only', which is what every client before v13 meant. */
+  ownershipMode?: OwnershipMode;
 }
 
 /**

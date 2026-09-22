@@ -6,6 +6,7 @@ import type { Bracket, DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { displayName } from "@/lib/cards";
 import { ColorIdentity } from "./color-identity";
 import { DeckControls } from "./deck-controls";
+import type { CollectionMode } from "./use-deck-tool";
 
 /** Sticky summary of the deck being analyzed: who it's built around and the knobs that change recommendations. */
 export function DeckBar({
@@ -14,8 +15,8 @@ export function DeckBar({
   cardCount,
   onBracketChange,
   onIncludeGameChangersChange,
-  ownedOnly,
-  onOwnedOnlyChange,
+  collectionMode,
+  onCollectionModeChange,
 }: {
   analysis: DeckAnalysis;
   context: RecContext;
@@ -23,8 +24,8 @@ export function DeckBar({
   onBracketChange: (bracket: Bracket) => void;
   onIncludeGameChangersChange: (include: boolean) => void;
   /** null when there's no saved collection. */
-  ownedOnly: boolean | null;
-  onOwnedOnlyChange: (on: boolean) => void;
+  collectionMode: CollectionMode | null;
+  onCollectionModeChange: (mode: CollectionMode) => void;
 }) {
   const commanders = analysis.commanderKey.commanders;
   const art = commanders[0]?.images?.front.artCrop;
@@ -70,8 +71,8 @@ export function DeckBar({
           includeGameChangers={context.includeGameChangers}
           onBracketChange={onBracketChange}
           onIncludeGameChangersChange={onIncludeGameChangersChange}
-          ownedOnly={ownedOnly}
-          onOwnedOnlyChange={onOwnedOnlyChange}
+          collectionMode={collectionMode}
+          onCollectionModeChange={onCollectionModeChange}
         />
       </div>
     </div>

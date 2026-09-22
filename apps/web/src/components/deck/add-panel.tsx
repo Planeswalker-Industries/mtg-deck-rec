@@ -31,7 +31,7 @@ export function AddPanel({ state }: { state: Async<AddResult> }) {
     return (
       <p className="max-w-prose text-sm">
         {mode === "collection_aware"
-          ? "Nothing in your collection fits this deck's colors that it doesn't already run. Switch off Only cards I own to see everything."
+          ? "Nothing in your collection fits this deck's colors that it doesn't already run. Set My collection to Owned first to see everything."
           : confidence === "none"
             ? "Cards to add come from what other players run. That deck data isn't loaded yet, so there's nothing to suggest here for now."
             : "No additions to suggest."}
