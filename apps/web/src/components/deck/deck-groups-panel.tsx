@@ -1,9 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import type { DeckGrouping } from "@mtg/core/scoring";
 import { cn } from "cn";
-import { PocketGrid } from "@/components/cards/pocket-grid";
+import { PocketGrid, type PocketItem } from "@/components/cards/pocket-grid";
 import { GameChangerBadge } from "./card-label";
 import { groupHeading, groupId } from "./deck-group-id";
 import type { DeckGroups } from "./use-deck-groups";
@@ -19,10 +20,16 @@ export function DeckGroupsPanel({
   deckGroups,
   selectedCardId,
   onSelectCard,
+  markFor,
+  captionFor,
 }: {
   deckGroups: DeckGroups;
   selectedCardId: CardId | null;
   onSelectCard: (cardId: CardId) => void;
+  /** Marks cards for a job, e.g. the cuts picked in the journey's Cut phase. */
+  markFor?: (card: CardSummary) => PocketItem["mark"];
+  /** Extra caption lines, e.g. why a card is marked. */
+  captionFor?: (card: CardSummary) => ReactNode;
 }) {
   const { grouping, setGrouping, groups, loadingTags, tagsError } = deckGroups;
 
@@ -76,17 +83,23 @@ export function DeckGroupsPanel({
           <PocketGrid zoomable
             label={groupHeading(group.label)}
             onSelect={(card: CardSummary) => onSelectCard(card.id)}
-            items={group.entries.map(({ card, quantity }) => ({
-              card,
-              selected: card.id === selectedCardId,
-              caption:
-                card.gameChanger || quantity > 1 ? (
-                  <span className="flex flex-col items-start gap-0.5">
-                    {card.gameChanger && <GameChangerBadge />}
-                    {quantity > 1 && <span className="text-muted-foreground tabular-nums">{quantity} copies</span>}
-                  </span>
-                ) : undefined,
-            }))}
+            items={group.entries.map(({ card, quantity }): PocketItem => {
+              const extra = captionFor?.(card);
+              const mark = markFor?.(card);
+              return {
+                card,
+                selected: card.id === selectedCardId,
+                ...(mark ? { mark } : {}),
+                caption:
+                  card.gameChanger || quantity > 1 || extra ? (
+                    <span className="flex flex-col items-start gap-0.5">
+                      {card.gameChanger && <GameChangerBadge />}
+                      {quantity > 1 && <span className="text-muted-foreground tabular-nums">{quantity} copies</span>}
+                      {extra}
+                    </span>
+                  ) : undefined,
+              };
+            })}
           />
         </section>
       ))}

@@ -25,6 +25,10 @@
 
 services:
   search-api:
+    # A fixed container name, matching the other services on this VPS. Dokploy's Traefik finds it by label and by
+    # network rather than by name, but a stable name is what makes `docker logs search-api` and
+    # `docker exec search-api /search-api healthcheck` work without looking up the project prefix first.
+    container_name: search-api
     build:
       context: ../../services/search-api
     image: ${SEARCH_API_IMAGE:-mtg-search-api:local}
@@ -53,8 +57,15 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
       SEARCH_API_CRON_TOKEN: "${SEARCH_API_CRON_TOKEN:-}"
 
-    # No `ports:`. Dokploy's Traefik reaches this over the shared network on 8080; publishing a host port as well
-    # would only be another thing to collide with something already on the box.
+    # Dokploy's Traefik reaches this over the shared network on 8080 and does not need a published port. This one
+    # is on **loopback** and exists for the times routing is the thing that is broken: `curl
+    # 127.0.0.1:8090/v1/health` on the box is what separates "the stack is down" from "Traefik is not routing to
+    # it", and without it that question needs a `docker exec`.
+    #
+    # Keep the `127.0.0.1:` prefix. Docker writes iptables rules that bypass ufw for published ports, so
+    # `0.0.0.0:8090` would be on the internet whatever the firewall says. Change SEARCH_API_PORT if 8090 is taken.
+    ports:
+      - "127.0.0.1:${SEARCH_API_PORT:-8090}:8080"
 
     networks:
       - dokploy-network

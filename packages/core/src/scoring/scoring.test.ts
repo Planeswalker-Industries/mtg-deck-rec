@@ -119,4 +119,24 @@ describe('scoreCuts', () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ cardId: filler.cardId, reasons: ['ROLE_REDUNDANT'] });
   });
+
+  it('makes rule problems and severe misfits mandatory, and deals them before higher-scoring suggestions', () => {
+    const offColor = card({ withinIdentity: false });
+    const misfit = card({ corpusScore: 0.15 });
+    const lowSynergy = card({ corpusScore: 0.3 });
+    const bigRedundant = [0, 1, 2].map(() => card({ roleIds: ['ramp'], manaValue: 7, corpusScore: 0.3 }));
+    const result = scoreCuts([...bigRedundant, lowSynergy, misfit, offColor], { ...options, severeSynergyScore: 0.2 });
+    expect(result.slice(0, 2).map((r) => [r.cardId, r.severity])).toEqual([
+      [offColor.cardId, 'mandatory'],
+      [misfit.cardId, 'mandatory'],
+    ]);
+    expect(result.slice(2).every((r) => r.severity === 'suggested')).toBe(true);
+    // A redundant, expensive card outscores the misfit and still comes after it.
+    expect(result[2]!.cutScore).toBeGreaterThan(result[1]!.cutScore);
+  });
+
+  it('calls nothing a misfit without a threshold or without play rates', () => {
+    expect(scoreCuts([card({ corpusScore: 0.05 })], options)[0]?.severity).toBe('suggested');
+    expect(scoreCuts([card({ manaValue: 7 })], { ...options, severeSynergyScore: 0.2 })[0]?.severity).toBe('suggested');
+  });
 });

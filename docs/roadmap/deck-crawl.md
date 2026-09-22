@@ -42,7 +42,7 @@ and a serverless function must not: the search API answers `202 {"started": true
 | `services/search-api/internal/archidekt/` | URLs and parsers for Archidekt — the active source |
 | `services/search-api/internal/moxfield/` | the same for Moxfield — built, blocked, seeded off |
 | `services/search-api/internal/supabase/` | a thin PostgREST client: `RPC` and `SelectAll`, nothing general |
-| `supabase/migrations/20260922000100_deck_crawl_corpus.sql` | the `corpus` schema and the `public.crawl_*` functions |
+| `supabase/migrations/20260922000300_deck_crawl_corpus.sql` | the `corpus` schema and the `public.crawl_*` functions |
 | `apps/web/src/lib/server/crawl-cron.ts` | the shared cron route body |
 
 A source supplies four things — `ListURL`, `DeckURL`, `ParseList`, `ParseDeck` — and nothing downstream knows which

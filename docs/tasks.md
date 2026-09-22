@@ -305,7 +305,7 @@ A single 403/challenge flips that source's `corpus.crawl_state.disabled` row unt
 **Doc:** `docs/roadmap/deck-crawl.md` — what it does, how a run works, the schema, and the ops runbook.
 
 **Files:**
-- `supabase/migrations/20260922000100_deck_crawl_corpus.sql` — `corpus` schema, the `public.crawl_*` functions, `app_config.{archidekt,moxfield}` policies
+- `supabase/migrations/20260922000300_deck_crawl_corpus.sql` — `corpus` schema, the `public.crawl_*` functions, `app_config.{archidekt,moxfield}` policies
 - `services/search-api/internal/crawl/` — the shared engine
 - `services/search-api/internal/archidekt/`, `internal/moxfield/` — the source adapters
 - `services/search-api/internal/supabase/` — PostgREST client (service role)

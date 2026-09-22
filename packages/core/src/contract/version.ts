@@ -37,5 +37,15 @@
  * (one CollectionEntry per card), CatalogApi.collectionCards returns those cards with their tag labels and the sets
  * they were printed in (CardSet), and ResolvedCollectionRow carries an optional setCode so a browser collection can be
  * filtered by set too.
+ *
+ * v11 (2026-09-21): the deck journey (cut, add, replace, review). CutSuggestion.severity splits cards that work against
+ * the deck (mandatory: rule problems and severe misfits, dealt in the Cut phase) from weaker fits (suggested, dealt in
+ * the Replace phase with a replacement). Mandatory cuts come first in CutResult.suggestions.
+ *
+ * v12 (2026-09-22): ActionsApi.saveDeck takes an optional `original`, the deck the player brought before the journey
+ * changed it. It is kept once per deck, so the deck page can compare the two and put the original back.
+ *
+ * v13 (2026-09-22): RecContext.ownershipMode. 'first' ranks owned cards ahead of comparable ones without hiding the
+ * rest; 'only' (the default when omitted, and what earlier clients meant) keeps suggestions to owned cards.
  */
-export const CONTRACT_VERSION = 10;
+export const CONTRACT_VERSION = 13;

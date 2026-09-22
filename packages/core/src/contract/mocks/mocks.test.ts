@@ -145,3 +145,34 @@ describe('mock cut and votes', () => {
     expect(r.ok ? null : r.error.code).toBe('UPSTREAM_NOT_AUTHORIZED');
   });
 });
+
+describe('mock collection modes', () => {
+  it("'only' keeps adds to owned cards; 'first' suggests everything, owned cards ranked up", async () => {
+    const { apis, context } = await setup();
+    const ownership = { kind: 'account' as const };
+    const flat = (r: Awaited<ReturnType<typeof apis.recs.add>>) => (r.ok ? r.data.groups.flatMap((g) => g.suggestions) : []);
+
+    const only = flat(await apis.recs.add({ context: context({ ownership }) }));
+    expect(only.every((s) => s.owned !== null)).toBe(true);
+
+    const first = await apis.recs.add({ context: context({ ownership, ownershipMode: 'first' }) });
+    const all = flat(first);
+    expect(all.some((s) => s.owned === null)).toBe(true);
+    expect(all.some((s) => s.owned !== null)).toBe(true);
+
+    // Within each group an owned card never sits below an unowned one that scores less than the boost above it.
+    const groups = first.ok ? first.data.groups : [];
+    for (const { suggestions } of groups) {
+      for (let i = 1; i < suggestions.length; i++) {
+        const [above, below] = [suggestions[i - 1]!, suggestions[i]!];
+        if (below.owned && !above.owned) expect(above.score.total - below.score.total).toBeGreaterThanOrEqual(0.1);
+      }
+    }
+  });
+
+  it("'first' never flags cuts as not owned", async () => {
+    const { apis, context } = await setup();
+    const cut = await apis.recs.cut({ context: context({ ownership: { kind: 'account' }, ownershipMode: 'first' }) });
+    expect(cut.ok && cut.data.suggestions.every((s) => !s.reasons.includes('NOT_OWNED'))).toBe(true);
+  });
+});

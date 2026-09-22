@@ -159,3 +159,44 @@ test("reopens a saved deck in the tool, and edits go back to it", async ({ page,
   await expect(deckPage.getByText("99 cards", { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(deckPage.getByText("Sol Ring")).toHaveCount(0);
 });
+
+test("saving a journey's result keeps the original, which the deck page compares and restores", async ({ page, request }) => {
+  const email = `original-${Date.now()}@test.invalid`;
+  await signIn(page, request, email, "/decks");
+
+  // A short Chulane deck with one off-colour card, which the Cut phase deals as a mandatory cut.
+  await page.goto("/deck");
+  await page
+    .getByRole("textbox", { name: "Decklist" })
+    .fill(["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Arcane Signet", "1 Lightning Bolt", "1 Command Tower"].join("\n"));
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await recs.getByRole("button", { name: "Cut Lightning Bolt" }).click({ timeout: 60_000 });
+  await recs.getByRole("button", { name: /^Next: add \d+ cards?$/ }).click();
+  await recs.getByRole("button", { name: "Done adding for now" }).click({ timeout: 60_000 });
+  const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
+  const toReview = recs.getByRole("button", { name: "Next: review the deck" });
+  await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });
+  if (await rater.isVisible()) await rater.getByRole("button", { name: "Finish" }).click();
+  else await toReview.click();
+
+  // Save from Review opens the name form in the editor, prefilled.
+  await recs.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click({ timeout: 60_000 });
+  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 30_000 });
+
+  // The deck page shows what changed since the original.
+  await page.getByRole("region", { name: "Saved deck" }).getByRole("link", { name: "Deck page" }).click();
+  await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
+  const changes = page.getByRole("region", { name: "Changes from the original" });
+  await expect(changes).toBeVisible({ timeout: 30_000 });
+  await expect(changes.getByRole("list", { name: "Cards taken out since the original" }).getByText("Lightning Bolt")).toBeVisible();
+
+  // Restoring puts the original back, after asking.
+  await changes.getByRole("button", { name: "Restore original" }).click();
+  await changes.getByRole("button", { name: "Restore original" }).click();
+  await expect(changes.getByText(/matches the list it started from/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("article").getByText("Lightning Bolt").first()).toBeVisible();
+});

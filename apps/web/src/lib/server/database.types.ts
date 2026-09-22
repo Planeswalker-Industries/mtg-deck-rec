@@ -700,6 +700,35 @@ export type Database = {
           },
         ]
       }
+      deck_snapshots: {
+        Row: {
+          cards: Json
+          created_at: string
+          deck_id: string
+          kind: string
+        }
+        Insert: {
+          cards: Json
+          created_at?: string
+          deck_id: string
+          kind: string
+        }
+        Update: {
+          cards?: Json
+          created_at?: string
+          deck_id?: string
+          kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deck_snapshots_deck_id_fkey"
+            columns: ["deck_id"]
+            isOneToOne: false
+            referencedRelation: "decks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       decks: {
         Row: {
           bracket: number | null
@@ -1643,6 +1672,10 @@ export type Database = {
           p_name?: string
         }
         Returns: string
+      }
+      save_deck_original: {
+        Args: { p_cards: Json; p_deck_id: string }
+        Returns: boolean
       }
       search_cards: {
         Args: { p_commander_only?: boolean; p_limit?: number; p_query: string }

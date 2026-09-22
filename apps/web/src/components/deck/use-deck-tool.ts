@@ -9,8 +9,10 @@ import type {
   CutResult,
   DeckAnalysis,
   DeckId,
+  DeckInput,
   ImportDeckUrlResult,
   OwnershipInput,
+  OwnershipMode,
   ParseDeckResult,
   RecContext,
   ResolvedLine,
@@ -18,6 +20,7 @@ import type {
   SavedDeckContents,
   SwapResult,
 } from "@mtg/core/contract";
+import { deckDiff } from "@mtg/core/journey";
 import { mockDecklistText } from "@mtg/core/mocks";
 import type { CollectionSource } from "@/components/collection/use-collection-source";
 import { getApis } from "@/lib/api/client";
@@ -72,6 +75,14 @@ export interface OpenDeck {
   message?: string;
 }
 
+/** `original` when `deck` differs from it (commanders or main deck), so a save only keeps an original that means something. */
+export function changedOriginal(original: DeckInput | null, deck: DeckInput): DeckInput | undefined {
+  if (!original) return undefined;
+  const sameCommanders = [...original.commanders].sort().join() === [...deck.commanders].sort().join();
+  const diff = deckDiff(original, deck);
+  return sameCommanders && diff.removed.length === 0 && diff.added.length === 0 ? undefined : original;
+}
+
 /** Steps of reloading recommendations after new play-rate data arrives. */
 export type RefreshStage = "rating" | "cuts" | "adds";
 
@@ -82,11 +93,17 @@ function decklistText(lines: readonly ResolvedLine[]): string {
   return ["Commander", ...raw(true), "", "Deck", ...raw(false), ""].join("\n");
 }
 
+/** A collection applied to suggestions: whose cards, and whether they are the only ones suggested or just come first. */
+interface CollectionUse {
+  ownership: OwnershipInput;
+  mode: OwnershipMode;
+}
+
 function buildContext(
   analysis: DeckAnalysis,
   bracketOverride: Bracket | null,
   gameChangerOverride: boolean | null,
-  ownership: OwnershipInput | null,
+  collection: CollectionUse | null,
 ): RecContext {
   const bracket = bracketOverride ?? analysis.estimatedBracket;
   return {
@@ -94,24 +111,34 @@ function buildContext(
     bracket,
     bracketSource: bracketOverride === null ? "inferred" : "user",
     includeGameChangers: gameChangerOverride ?? defaultIncludeGameChangers(bracket),
-    ownership,
+    ownership: collection?.ownership ?? null,
+    ...(collection ? { ownershipMode: collection.mode } : {}),
   };
 }
 
-/** Whether the player last chose owned-only suggestions, remembered in this browser. */
-const OWNED_ONLY_KEY = "mtg-deck-rec:owned-only";
+/** What a collection does to suggestions: nothing, owned cards first, or owned cards only. */
+export type CollectionMode = "off" | OwnershipMode;
 
-function readOwnedOnly(): boolean {
+/**
+ * The player's last choice, remembered in this browser. The key predates "owned first", when "1" meant owned-only and
+ * "0" meant off, so those values still read that way. With no choice yet, a collection puts owned cards first: it
+ * changes the order without hiding anything, which is what someone who just imported one expects.
+ */
+const COLLECTION_MODE_KEY = "mtg-deck-rec:owned-only";
+const STORED_MODE: Record<string, CollectionMode> = { "1": "only", "0": "off", first: "first", only: "only", off: "off" };
+
+function readCollectionMode(): CollectionMode {
   try {
-    return typeof window !== "undefined" && localStorage.getItem(OWNED_ONLY_KEY) === "1";
+    const stored = typeof window === "undefined" ? null : localStorage.getItem(COLLECTION_MODE_KEY);
+    return (stored !== null && STORED_MODE[stored]) || "first";
   } catch {
-    return false;
+    return "first";
   }
 }
 
-function writeOwnedOnly(on: boolean) {
+function writeCollectionMode(mode: CollectionMode) {
   try {
-    localStorage.setItem(OWNED_ONLY_KEY, on ? "1" : "0");
+    localStorage.setItem(COLLECTION_MODE_KEY, mode);
   } catch {
     // Storage is blocked; the choice just won't be remembered.
   }
@@ -133,6 +160,14 @@ export function useDeckTool(source: CollectionSource) {
   const [swap, setSwap] = useState<SwapState | null>(null);
   const [importedFrom, setImportedFrom] = useState<ImportedFrom | null>(null);
   const [openDeck, setOpenDeck] = useState<OpenDeck | null>(null);
+  /** The decklist the player brought, before any journey result replaced it: what Start over goes back to. */
+  const [originText, setOriginText] = useState<string | null>(null);
+  /**
+   * The same deck as analyzed, for saving beside the result. A ref, like the open deck: submit() persists in the same
+   * handler that may have just set it.
+   */
+  const originDeckRef = useRef<DeckInput | null>(null);
+  const [originDeck, setOriginDeck] = useState<DeckInput | null>(null);
   /*
    * The open deck is read inside submit(), which the caller may run before a setState from the same handler has been
    * applied, so the ref is what the writes go by and the state is what the screen shows.
@@ -142,20 +177,22 @@ export function useDeckTool(source: CollectionSource) {
   const recsRequest = useRef(0);
   const swapRequest = useRef(0);
 
-  const [ownedOnlyChosen, setOwnedOnlyChosen] = useState(readOwnedOnly);
+  const [collectionMode, setCollectionMode] = useState<CollectionMode>(readCollectionMode);
   const browserCollection = source.kind === "browser" ? source.collection : null;
   const ownedIds = useMemo(() => (browserCollection ? ownedCardIds(browserCollection) : null), [browserCollection]);
   const hasCollection = source.kind === "browser" || source.kind === "account";
   /**
-   * Owned-only suggestions need a collection; without one the choice is kept but not applied. A browser collection
-   * sends its card ids; an account collection is read on the server.
+   * A collection mode needs a collection; without one the choice is kept but not applied. A browser collection sends
+   * its card ids; an account collection is read on the server.
    */
-  const ownershipFor = (on: boolean): OwnershipInput | null => {
-    if (!on) return null;
-    if (browserCollection && ownedIds) return { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: ownedIds };
-    return source.kind === "account" ? { kind: "account" } : null;
+  const ownershipFor = (mode: CollectionMode): CollectionUse | null => {
+    if (mode === "off") return null;
+    if (browserCollection && ownedIds) {
+      return { ownership: { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: ownedIds }, mode };
+    }
+    return source.kind === "account" ? { ownership: { kind: "account" }, mode } : null;
   };
-  const ownership = ownershipFor(ownedOnlyChosen);
+  const ownership = ownershipFor(collectionMode);
 
   const context = analysis ? buildContext(analysis, bracketOverride, gameChangerOverride, ownership) : null;
 
@@ -195,12 +232,14 @@ export function useDeckTool(source: CollectionSource) {
     if (!deck) return;
     const id = ++saveRequest.current;
     trackOpenDeck({ ...deck, status: "saving" });
+    const original = changedOriginal(originDeckRef.current, analysis.deck);
     const r = await getApis().actions.saveDeck({
       deckId: deck.deckId,
       name: deck.name,
       deck: analysis.deck,
       isPublic: true,
       ...(bracket === null ? {} : { bracket }),
+      ...(original ? { original } : {}),
     });
     if (id !== saveRequest.current) return;
     const current = openDeckRef.current;
@@ -226,9 +265,10 @@ export function useDeckTool(source: CollectionSource) {
 
   /**
    * Parses (or imports) the decklist and loads recommendations, then remembers the deck in this browser. `restore`
-   * replays a deck saved on an earlier visit, with its bracket and Game Changer choices.
+   * replays a deck saved on an earlier visit, with its bracket and Game Changer choices. `keepOrigin` marks a result
+   * the tool produced (a journey commit, applied swaps), so Start over still goes back to the deck the player brought.
    */
-  async function submit(restore?: SavedDeck): Promise<SubmitOutcome> {
+  async function submit(restore?: SavedDeck, { keepOrigin = false }: { keepOrigin?: boolean } = {}): Promise<SubmitOutcome> {
     setParse({ status: "loading" });
     const deckText = restore?.text ?? text;
     const input = deckText.trim();
@@ -249,6 +289,11 @@ export function useDeckTool(source: CollectionSource) {
     recsRequest.current++;
     swapRequest.current++;
     setText(finalText);
+    if (!keepOrigin) {
+      setOriginText(finalText);
+      originDeckRef.current = r.data.analysis?.deck ?? null;
+      setOriginDeck(originDeckRef.current);
+    }
     setImportedFrom(source);
     setParse({ status: "ready", data: null });
     setLines(r.data.lines);
@@ -323,12 +368,27 @@ export function useDeckTool(source: CollectionSource) {
     });
     const nextText = editedInPlace ? textLines.join("\n") : decklistText(nextLines);
     setText(nextText);
-    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom });
+    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom }, { keepOrigin: true });
+  }
+
+  /** Puts a decklist the tool produced (a journey's result) in the box and analyzes it, keeping the player's settings. */
+  function commitText(nextText: string): Promise<SubmitOutcome> {
+    setText(nextText);
+    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom: null }, { keepOrigin: true });
+  }
+
+  /** Goes back to the decklist the player brought and analyzes it again. */
+  function startOver(): Promise<SubmitOutcome> {
+    if (originText === null) return Promise.resolve({ parsed: false, analysis: null });
+    return commitText(originText);
   }
 
   /** Forgets the deck here and in this browser's storage. */
   function clearDeck() {
     clearSavedDeck();
+    setOriginText(null);
+    originDeckRef.current = null;
+    setOriginDeck(null);
     // Let go of the account deck rather than emptying it: Clear means "not working on this now", not "delete it".
     trackOpenDeck(null);
     saveRequest.current++;
@@ -362,10 +422,10 @@ export function useDeckTool(source: CollectionSource) {
   }
 
   /** Switches owned-only suggestions on or off and reloads cuts, adds and any open swap with the new pool. */
-  function changeOwnedOnly(on: boolean) {
-    setOwnedOnlyChosen(on);
-    writeOwnedOnly(on);
-    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, gameChangerOverride, ownershipFor(on)), swap?.targetCardId ?? null);
+  function changeCollectionMode(mode: CollectionMode) {
+    setCollectionMode(mode);
+    writeCollectionMode(mode);
+    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, gameChangerOverride, ownershipFor(mode)), swap?.targetCardId ?? null);
   }
 
   function openSwap(targetCardId: CardId) {
@@ -400,6 +460,11 @@ export function useDeckTool(source: CollectionSource) {
     restoreLastDeck,
     refreshRecommendations,
     applySwaps,
+    commitText,
+    startOver,
+    originText,
+    /** The deck the player brought, when the current deck differs from it: what a save keeps as its original. */
+    original: analysis ? changedOriginal(originDeck, analysis.deck) : undefined,
     clearDeck,
     parse,
     importedFrom,
@@ -410,8 +475,9 @@ export function useDeckTool(source: CollectionSource) {
     changeBracket,
     changeIncludeGameChangers,
     /** null when there's no collection to limit suggestions to. */
-    ownedOnly: hasCollection ? ownedOnlyChosen : null,
-    changeOwnedOnly,
+    /** null when there's no collection to apply. */
+    collectionMode: hasCollection ? collectionMode : null,
+    changeCollectionMode,
     add,
     cut,
     swap,

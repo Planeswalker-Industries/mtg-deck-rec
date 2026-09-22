@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
@@ -23,10 +24,14 @@ import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
 import { SwapSheet } from "./swap-sheet";
-import { SwipeRater, SwipeSummary } from "./swipe-rater";
 import { WorkspaceNav } from "./workspace-nav";
 import { WorkspaceRail } from "./workspace-rail";
-import type { PickedSwap } from "./use-swipe-rater";
+import { AddPhase } from "./journey/add-phase";
+import { CutPhase } from "./journey/cut-phase";
+import { JourneyStepper } from "./journey/journey-stepper";
+import { ReplacePhase } from "./journey/replace-phase";
+import { ReviewPhase } from "./journey/review-phase";
+import { useDeckJourney } from "./journey/use-deck-journey";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
@@ -39,6 +44,45 @@ Deck
 1 Sol Ring
 1 Arcane Signet
 …`;
+
+/**
+ * A segmented control: one of a few options, pressed state on the chosen one. Used for the tool's mode (upgrade or
+ * edit) and for how each journey phase is reviewed (swipe or list).
+ */
+function Segmented<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex w-fit rounded-lg bg-muted p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            value === o.value ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** "upgrade" walks the deck through the journey; "edit" is the workspace for editing it by hand. */
+type ToolMode = "upgrade" | "edit";
 
 export function DeckTool() {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
@@ -54,13 +98,15 @@ export function DeckTool() {
   const [editing, setEditing] = useState(true);
   const [openError, setOpenError] = useState<string | null>(null);
   const [view, setView] = useState<ReviewView>(readReviewView);
-  const [pendingSwaps, setPendingSwaps] = useState<PickedSwap[]>([]);
+  const [mode, setMode] = useState<ToolMode>("upgrade");
   // null is the deck itself, which is where the workspace starts.
   const [job, setJob] = useState<Job | null>(null);
-  const [summary, setSummary] = useState<PickedSwap[] | null>(null);
+  /** Review's Save on a deck that isn't saved yet opens the name form in the header. */
+  const [saveAsked, setSaveAsked] = useState(false);
+  const [committing, setCommitting] = useState(false);
   const restoreStarted = useRef(false);
-  const swipeScrollWanted = useRef(false);
   const { analysis, context, swap } = tool;
+  const journey = useDeckJourney({ analysis, context, lines: tool.lines, cut: tool.cut });
 
   /*
    * Open where the player left off: a featured deck when the link named one, a saved deck when the link
@@ -106,46 +152,35 @@ export function DeckTool() {
       analysis.deck.cards.filter((c) => c.section === "main").reduce((n, c) => n + c.quantity, 0)
     : 0;
 
-  /** Asks for the swipe view (or its summary) to scroll just below the sticky deck bar once it shows. */
-  function scrollToSwipeView() {
-    swipeScrollWanted.current = true;
-  }
-
-  /**
-   * The swipe view's and summary's element ref. They mount with their cards often several renders after the scroll was
-   * asked for, and in a child that re-renders on its own (the deck shuffles first, and the page is too short to scroll
-   * while it does), so the scroll happens here rather than in an effect.
-   */
-  function scrollIfWanted(element: HTMLElement | null) {
-    if (!element || !swipeScrollWanted.current) return;
-    swipeScrollWanted.current = false;
-    element.scrollIntoView({ block: "start", behavior: "smooth" });
-  }
-
-  /** Ends a swipe sitting: shows what was picked and writes the swaps into the decklist. */
-  function finishSwiping() {
-    setSummary(pendingSwaps);
-    if (pendingSwaps.length > 0) void tool.applySwaps(pendingSwaps);
-    setPendingSwaps([]);
-    scrollToSwipeView();
-  }
-
   function changeView(next: ReviewView) {
-    if (next === view) return;
-    // Leaving the swipe view mid-sitting still puts the picked swaps in the deck.
-    if (view === "swipe" && pendingSwaps.length > 0) void tool.applySwaps(pendingSwaps);
-    setPendingSwaps([]);
-    setSummary(null);
     setView(next);
     writeReviewView(next);
-    if (next === "swipe") scrollToSwipeView();
   }
 
   async function analyze() {
     const outcome = await tool.submit();
     setEditing(false);
-    if (outcome.analysis && view === "swipe") scrollToSwipeView();
+    setMode("upgrade");
     if (outcome.parsed) void lookup.check(outcome.analysis);
+  }
+
+  /**
+   * Ends a journey round from Review. Save and Re-analyze put the result in the decklist and analyze it; Start over goes
+   * back to the deck the player brought. A new analysis starts a new round at Cut. Save then opens the editor: an open
+   * account deck has just been written back by the analysis, and a deck that isn't saved yet gets the name form.
+   */
+  async function commitJourney(kind: "save" | "reanalyze" | "startOver") {
+    const text = kind === "startOver" ? null : journey.resultText();
+    if (kind !== "startOver" && text === null) return;
+    setCommitting(true);
+    const outcome = text === null ? await tool.startOver() : await tool.commitText(text);
+    setCommitting(false);
+    if (!outcome.parsed) return;
+    if (kind === "save") {
+      setMode("edit");
+      if (!tool.openDeck) setSaveAsked(true);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
@@ -164,6 +199,22 @@ export function DeckTool() {
               Paste your Commander decklist, or a link to a public Archidekt deck, to see cards to cut, cards to add, and
               replacements that do the same job.
             </p>
+            {/* Two ways in: a deck first, or a collection first so suggestions can lean on cards already owned. */}
+            {source.kind === "none" && (
+              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
+                Building from cards you own?{" "}
+                <Link href="/collection/import" className="font-bold text-primary underline-offset-4 hover:underline">
+                  Import your collection first
+                </Link>
+                , and suggestions will put your cards ahead of the rest.
+              </p>
+            )}
+            {(source.kind === "browser" || source.kind === "account") && (
+              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
+                Your collection is loaded: suggestions put cards you own first. Change that under My collection once the deck
+                is analyzed.
+              </p>
+            )}
           </div>
           <form
             className="flex flex-col gap-3"
@@ -220,12 +271,22 @@ export function DeckTool() {
               )}
             </div>
           </form>
-          {!analysis && view === "swipe" && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
+          {!analysis && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
         </section>
       ) : tool.openDeck ? null : (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {analysis && (
-            <SaveDeckButton analysis={analysis} bracket={context?.bracket ?? null} onSaved={tool.trackSavedDeck} />
+            <SaveDeckButton
+              key={saveAsked ? "asked" : "idle"}
+              analysis={analysis}
+              bracket={context?.bracket ?? null}
+              onSaved={(deck) => {
+                setSaveAsked(false);
+                tool.trackSavedDeck(deck);
+              }}
+              defaultOpen={saveAsked}
+              original={tool.original}
+            />
           )}
           <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
             Edit decklist
@@ -258,57 +319,51 @@ export function DeckTool() {
             cardCount={cardCount}
             onBracketChange={tool.changeBracket}
             onIncludeGameChangersChange={tool.changeIncludeGameChangers}
-            ownedOnly={tool.ownedOnly}
-            onOwnedOnlyChange={tool.changeOwnedOnly}
+            collectionMode={tool.collectionMode}
+            onCollectionModeChange={tool.changeCollectionMode}
           />
           <CommanderLookupBar lookup={lookup} />
-          <div role="group" aria-label="How to review cards" className="inline-flex w-fit rounded-lg bg-muted p-0.5">
-            {(["swipe", "list"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={view === v}
-                onClick={() => changeView(v)}
-                className={cn(
-                  "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  view === v ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {v === "swipe" ? "Swipe" : "List"}
-              </button>
-            ))}
-          </div>
-          {view === "swipe" ? (
-            summary ? (
-              <SwipeSummary
-                swaps={summary}
-                viewRef={scrollIfWanted}
-                updating={tool.parse.status === "loading"}
-                onSwipeAgain={() => {
-                  setSummary(null);
-                  scrollToSwipeView();
-                }}
-                onShowList={() => changeView("list")}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Segmented
+              label="What to do with the deck"
+              options={[
+                { value: "upgrade", label: "Upgrade" },
+                { value: "edit", label: "Edit deck" },
+              ]}
+              value={mode}
+              onChange={setMode}
+            />
+            {mode === "upgrade" && journey.state?.phase !== "review" && (
+              <Segmented
+                label="How to review cards"
+                options={[
+                  { value: "swipe", label: "Swipe" },
+                  { value: "list", label: "List" },
+                ]}
+                value={view}
+                onChange={changeView}
               />
-            ) : tool.cut.status === "ready" ? (
-              tool.cut.data.suggestions.length > 0 ? (
-                <SwipeRater
-                  targets={tool.cut.data.suggestions}
-                  viewRef={scrollIfWanted}
-                  context={context}
-                  commanderKeyId={analysis.commanderKey.id}
-                  picked={pendingSwaps}
-                  onPick={(swap) => setPendingSwaps((prev) => [...prev, swap])}
-                  onFinish={finishSwiping}
-                />
-              ) : (
-                <p className="text-sm">Nothing stands out to cut. Switch to the list to compare replacements for any card.</p>
-              )
-            ) : tool.cut.status === "error" ? (
-              <PanelError message={tool.cut.message} />
-            ) : (
-              <ShuffleDeck label="Finding cards to cut" />
+            )}
+          </div>
+          {mode === "upgrade" ? (
+            journey.state && (
+              <div className="flex flex-col gap-5">
+                <JourneyStepper phase={journey.state.phase} onSelect={(phase) => journey.goTo(phase)} />
+                {journey.state.phase === "cut" && <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />}
+                {journey.state.phase === "add" && <AddPhase journey={journey} view={view} />}
+                {journey.state.phase === "replace" && (
+                  <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />
+                )}
+                {journey.state.phase === "review" && (
+                  <ReviewPhase
+                    journey={journey}
+                    busy={committing}
+                    onSave={() => void commitJourney("save")}
+                    onReanalyze={() => void commitJourney("reanalyze")}
+                    onStartOver={() => void commitJourney("startOver")}
+                  />
+                )}
+              </div>
             )
           ) : (
             /*
@@ -323,7 +378,7 @@ export function DeckTool() {
               </aside>
 
               <div className="flex flex-col gap-4 lg:sticky lg:top-4 lg:col-start-3 lg:row-start-1">
-                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} hasCollection={tool.ownedOnly !== null} />
+                <WorkspaceRail job={job} onSelect={setJob} cut={tool.cut} add={tool.add} hasCollection={tool.collectionMode !== null} />
               </div>
 
               <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">

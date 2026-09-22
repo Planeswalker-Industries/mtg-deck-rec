@@ -34,6 +34,7 @@ import type {
 } from '../recs';
 import type { CommanderRequest, CommanderRequestStatus } from '../commander-requests';
 import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
+import { ownedFirst, ownedOnly, rankKey } from '../../scoring/owned';
 import {
   frontFaceName,
   MOCK_AS_OF,
@@ -56,6 +57,10 @@ export interface MockApis {
 
 const MOCK_DECK_COUNT = 1204;
 const MOCK_ACCOUNT_OWNED = new Set<number>([2, 3, 5, 9, 12, 16, 17]);
+/** Mock play-rate score below which a card is a severe misfit (mandatory cut), so the mock deck has some to deal. */
+const MOCK_SEVERE_SYNERGY_SCORE = 0.2;
+/** Mock stand-in for app_config.ownership.firstBoost: how far an owned card moves up in 'first' mode. */
+const MOCK_OWNED_FIRST_BOOST = 0.1;
 const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 };
 const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
 
@@ -284,12 +289,14 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       if (!target) return delay(fail('NOT_FOUND', `Unknown card ${targetCardId}`));
       try {
         const owned = ownedIds(context.ownership);
+        const only = ownedOnly(context) ? owned : null;
+        const boost = ownedFirst(context) ? MOCK_OWNED_FIRST_BOOST : 0;
         const inDeck = deckCardIds(context.deck);
         const identity = deckIdentity(context.deck);
         const suggestions = mockCards
           .filter((c) => c.id !== target.id && !inDeck.has(c.id) && !isBasicLand(c) && withinIdentity(c, identity))
           .filter((c) => context.includeGameChangers || !c.gameChanger)
-          .filter((c) => !owned || owned.has(c.id))
+          .filter((c) => !only || only.has(c.id))
           .map((c): SwapSuggestion => {
             const matchedTags = tagMatches(target.id, c.id);
             const corpus = corpusFor(c.id);
@@ -316,7 +323,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             };
           })
           .filter((s) => (s.score.components.tag ?? 0) >= 0.25)
-          .sort((a, b) => b.score.total - a.score.total)
+          .sort((a, b) => rankKey(b.score.total, b.owned !== null, boost) - rankKey(a.score.total, a.owned !== null, boost))
           .slice(0, limit);
 
         const result: SwapResult = { mode: modeOf(context), target, confidence: confidenceOf(context), suggestions };
@@ -333,13 +340,15 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     async add({ context, limitPerCategory = 5 }) {
       try {
         const owned = ownedIds(context.ownership);
+        const only = ownedOnly(context) ? owned : null;
+        const boost = ownedFirst(context) ? MOCK_OWNED_FIRST_BOOST : 0;
         const inDeck = deckCardIds(context.deck);
         const identity = deckIdentity(context.deck);
         const groups = new Map<CardCategory, AddSuggestion[]>();
         for (const c of mockCards) {
           if (inDeck.has(c.id) || isBasicLand(c) || !withinIdentity(c, identity)) continue;
           if (!context.includeGameChangers && c.gameChanger) continue;
-          if (owned && !owned.has(c.id)) continue;
+          if (only && !only.has(c.id)) continue;
           const corpus = corpusFor(c.id);
           const category = categoryOf(c.typeLine);
           const suggestion: AddSuggestion = {
@@ -358,7 +367,9 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           confidence: confidenceOf(context),
           groups: [...groups].map(([category, list]) => ({
             category,
-            suggestions: list.sort((a, b) => b.score.total - a.score.total).slice(0, limitPerCategory),
+            suggestions: list
+              .sort((a, b) => rankKey(b.score.total, b.owned !== null, boost) - rankKey(a.score.total, a.owned !== null, boost))
+              .slice(0, limitPerCategory),
           })),
         };
         return delay(ok(result));
@@ -383,11 +394,12 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             if (c.gameChanger && !context.includeGameChangers) reasons.push('GAME_CHANGER_EXCLUDED');
             if (c.manaValue >= 5) reasons.push('HIGH_MANA_VALUE');
             if (score < 0.5) reasons.push('LOW_SYNERGY');
-            if (owned && !owned.has(c.id)) reasons.push('NOT_OWNED');
+            if (owned && ownedOnly(context) && !owned.has(c.id)) reasons.push('NOT_OWNED');
             const hard = reasons.includes('OUTSIDE_COLOR_IDENTITY') || reasons.includes('GAME_CHANGER_EXCLUDED');
-            return [{ card: c, cutScore: hard ? 1 : round(1 - score), reasons, corpus, owned: ownedInfo(owned, c.id) }];
+            const severity = hard || score < MOCK_SEVERE_SYNERGY_SCORE ? 'mandatory' : 'suggested';
+            return [{ card: c, cutScore: hard ? 1 : round(1 - score), reasons, severity, corpus, owned: ownedInfo(owned, c.id) }];
           })
-          .sort((a, b) => b.cutScore - a.cutScore)
+          .sort((a, b) => Number(b.severity === 'mandatory') - Number(a.severity === 'mandatory') || b.cutScore - a.cutScore)
           .slice(0, limit);
         const result: CutResult = { mode: modeOf(context), confidence: confidenceOf(context), suggestions };
         return delay(ok(result));

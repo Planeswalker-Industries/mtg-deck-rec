@@ -33,6 +33,9 @@ import {
   SWAP_WEIGHTS,
   TAG_SIMILARITY_FLOOR,
   type RoleTarget,
+  ownedFirst,
+  ownedOnly,
+  rankKey,
 } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
 import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
@@ -64,8 +67,26 @@ interface RawMatch {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const frontType = (typeLine: string) => typeLine.split(" // ")[0] ?? typeLine;
 const modeOf = (ctx: RecContext): RecMode => (ctx.ownership ? "collection_aware" : "collection_less");
+/** Every card the collection holds, for badges and cost: in 'first' mode as much as in 'only'. */
 const ownedIds = (ctx: RecContext): ReadonlySet<number> | null =>
   ctx.ownership?.kind === "session" ? new Set<number>(ctx.ownership.ownedCardIds) : null;
+/** The cards suggestions are limited to: the collection in 'only' mode, nothing in 'first' mode. */
+const onlyIds = (ctx: RecContext): ReadonlySet<number> | null => (ownedOnly(ctx) ? ownedIds(ctx) : null);
+
+/** Used when app_config has no ownership row. The value lives in the database: the repo is public. */
+const DEFAULT_OWNED_BOOST = 0;
+
+/**
+ * How far an owned card moves up in 'first' mode (app_config.ownership.firstBoost). Read only when that mode is on;
+ * without the row, owned cards simply keep their place.
+ */
+export async function loadOwnedBoost(db: PublicClient, context: RecContext): Promise<number> {
+  if (!ownedFirst(context)) return 0;
+  const { data, error } = await db.rpc("get_public_config", { p_key: "ownership" });
+  if (error) throw new Error(`Loading collection settings failed: ${error.message}`);
+  const boost = (data as { firstBoost?: unknown } | null)?.firstBoost;
+  return typeof boost === "number" && Number.isFinite(boost) ? boost : DEFAULT_OWNED_BOOST;
+}
 const identityMaskOf = (ctx: RecContext, rows: ReadonlyMap<number, CardRow>) =>
   ctx.deck.commanders.reduce((mask, id) => mask | (rows.get(id)?.color_identity ?? 0), 0);
 const mainDeckIds = (ctx: RecContext) => [...new Set(ctx.deck.cards.filter((c) => c.section === "main").map((c) => c.cardId))];
@@ -239,14 +260,21 @@ export async function loadSwapPool(
   };
 }
 
-/** Ranks a swap pool for one deck: leaves out the deck's own cards (and unowned cards in collection mode), then blends scores. */
-export function rankSwaps(pool: SwapPool, { context, limit = 10 }: { context: RecContext; limit?: number }): SwapResult {
+/**
+ * Ranks a swap pool for one deck: leaves out the deck's own cards (and unowned cards in 'only' mode), then blends
+ * scores. In 'first' mode owned cards move up by `ownedBoost` (see loadOwnedBoost).
+ */
+export function rankSwaps(
+  pool: SwapPool,
+  { context, limit = 10, ownedBoost = 0 }: { context: RecContext; limit?: number; ownedBoost?: number },
+): SwapResult {
   const owned = ownedIds(context);
+  const only = onlyIds(context);
   const mode = modeOf(context);
   const target = toCardSummary(pool.target);
   const inDeck = new Set<number>([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)]);
   const candidates = pool.candidates.filter(
-    (c) => !inDeck.has(c.cardId) && (!owned || owned.has(c.cardId)) && c.tagSimilarity >= TAG_SIMILARITY_FLOOR,
+    (c) => !inDeck.has(c.cardId) && (!only || only.has(c.cardId)) && c.tagSimilarity >= TAG_SIMILARITY_FLOOR,
   );
 
   // undefined: no corpus loaded at all. null: too new to judge by play rates.
@@ -268,7 +296,9 @@ export function rankSwaps(pool: SwapPool, { context, limit = 10 }: { context: Re
   );
   // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
   const neutralCorpus = neutralCorpusValue([...corpusScores.values()].flatMap((s) => (s ? [s.value] : [])));
-  const baseWeights = SWAP_WEIGHTS[mode];
+  // The collection-aware weights are for choosing among owned cards alone. 'first' ranks every card, so it keeps the
+  // everyday weights and differs from a collection-less ranking only by the owned boost.
+  const baseWeights = SWAP_WEIGHTS[only ? "collection_aware" : "collection_less"];
 
   const suggestions = candidates
     .map((c): SwapSuggestion => {
@@ -296,12 +326,12 @@ export function rankSwaps(pool: SwapPool, { context, limit = 10 }: { context: Re
         ),
       };
     })
-    .sort((a, b) => b.score.total - a.score.total)
+    .sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost))
     .slice(0, limit);
 
   const result: SwapResult = { mode, target, confidence: pool.corpus.confidence, suggestions };
   if (suggestions.length === 0) {
-    result.emptyReason = pool.tagCount === 0 ? "NO_TAGS_ON_TARGET" : owned ? "NOTHING_OWNED_FITS" : "NO_CANDIDATES";
+    result.emptyReason = pool.tagCount === 0 ? "NO_TAGS_ON_TARGET" : only ? "NOTHING_OWNED_FITS" : "NO_CANDIDATES";
   }
   return result;
 }
@@ -311,17 +341,20 @@ export async function getSwapSuggestions(
   db: PublicClient,
   { context, targetCardId, limit = 10 }: { context: RecContext; targetCardId: number; limit?: number },
 ): Promise<SwapResult> {
-  const owned = ownedIds(context);
-  const pool = await loadSwapPool(db, {
-    targetCardId,
-    commanderIds: context.deck.commanders,
-    includeGameChangers: context.includeGameChangers,
-    excludeIds: [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])],
-    ownedIds: owned ? [...owned] : null,
-    poolSize: CANDIDATE_POOL,
-  });
+  const only = onlyIds(context);
+  const [pool, ownedBoost] = await Promise.all([
+    loadSwapPool(db, {
+      targetCardId,
+      commanderIds: context.deck.commanders,
+      includeGameChangers: context.includeGameChangers,
+      excludeIds: [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])],
+      ownedIds: only ? [...only] : null,
+      poolSize: CANDIDATE_POOL,
+    }),
+    loadOwnedBoost(db, context),
+  ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
-  return rankSwaps(pool, { context, limit });
+  return rankSwaps(pool, { context, limit, ownedBoost });
 }
 
 export async function getCutSuggestions(
@@ -366,6 +399,7 @@ export async function getCutSuggestions(
       includeGameChangers: context.includeGameChangers,
       gameChangerLimit: gameChangerLimit(context.bracket),
       roleTargets: roleTargetsFor(roleTargets, corpus),
+      severeSynergyScore: corpus.settings.severeSynergyScore,
     },
   );
 
@@ -373,12 +407,14 @@ export async function getCutSuggestions(
   const suggestions = scored.slice(0, limit).flatMap((s): CutSuggestion[] => {
     const row = rows.get(s.cardId);
     if (!row) return [];
-    const notOwned = owned !== null && !owned.has(s.cardId);
+    // Only 'only' mode flags unowned cards: in 'first' mode the collection is a preference, not a rule.
+    const notOwned = owned !== null && ownedOnly(context) && !owned.has(s.cardId);
     return [
       {
         card: toCardSummary(row),
         cutScore: s.cutScore,
         reasons: notOwned ? [...s.reasons, "NOT_OWNED"] : s.reasons,
+        severity: s.severity,
         corpus: commanderRateFor(s.cardId)?.evidence ?? null,
         owned: owned?.has(s.cardId) ? { quantity: 1 } : null,
       },
@@ -398,12 +434,14 @@ export async function getAddSuggestions(
   const deckIds = [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])];
   const mainIds = mainDeckIds(context);
   const owned = ownedIds(context);
+  const only = onlyIds(context);
   const mode = modeOf(context);
 
-  const [rows, corpus, roleTargets] = await Promise.all([
+  const [rows, corpus, roleTargets, ownedBoost] = await Promise.all([
     fetchCardsById(db, deckIds),
     loadCommanderCorpus(db, context.deck.commanders),
     loadRoleTargets(db),
+    loadOwnedBoost(db, context),
   ]);
   const commanderKey: AddResult["commanderKey"] = {
     id: corpus.keyId as CommanderKeyId | null,
@@ -425,7 +463,7 @@ export async function getAddSuggestions(
       p_identity_mask: identityMaskOf(context, rows),
       p_exclude: deckIds,
       p_allow_game_changers: context.includeGameChangers,
-      p_owned: owned ? [...owned] : undefined,
+      p_owned: only ? [...only] : undefined,
       p_limit: ADD_POOL,
     }),
   );
@@ -435,7 +473,7 @@ export async function getAddSuggestions(
         fn: "add",
         commanderIds: context.deck.commanders,
         identityMask: identityMaskOf(context, rows),
-        ownedOnly: owned !== undefined,
+        ownedOnly: only !== null,
       });
     }
     throw new Error(`Add candidates failed: ${error.message}`);
@@ -500,7 +538,7 @@ export async function getAddSuggestions(
     category,
     suggestions: suggestions
       .filter((s) => s.category === category)
-      .sort((a, b) => b.score.total - a.score.total)
+      .sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost))
       .slice(0, limitPerCategory),
   })).filter((g) => g.suggestions.length > 0);
 
