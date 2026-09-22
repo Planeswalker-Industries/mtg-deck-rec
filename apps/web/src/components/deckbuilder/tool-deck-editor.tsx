@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import type { CardSummary } from "@mtg/core/contract";
+import { useEffect, useRef, type RefObject } from "react";
+import type { CardSummary, DeckAnalysis } from "@mtg/core/contract";
 import { decklistFor } from "@mtg/core/journey";
 import type { DeckTool } from "@/components/deck/use-deck-tool";
 import { DeckBuilder } from "./deck-builder";
@@ -18,9 +18,12 @@ const COMMIT_DEBOUNCE_MS = 1500;
  * are written back into the decklist box as a clean list and analyzed, so Upgrade, the remembered deck and Save all
  * see the deck as it now stands.
  */
-export function ToolDeckEditor({ tool }: { tool: DeckTool }) {
+/** Writes an edit still waiting for its pause, and resolves to the deck as analyzed afterwards (null: nothing waited). */
+export type FlushEdits = () => Promise<DeckAnalysis | null>;
+
+export function ToolDeckEditor({ tool, flushRef }: { tool: DeckTool; flushRef?: RefObject<FlushEdits | null> }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pending = useRef<(() => void) | null>(null);
+  const pending = useRef<string | null>(null);
   const analysis = tool.analysis;
   const initialCards: CardSummary[] = [
     ...tool.lines.flatMap(({ resolution }) => (resolution.status === "resolved" ? [resolution.card] : [])),
@@ -32,22 +35,30 @@ export function ToolDeckEditor({ tool }: { tool: DeckTool }) {
     initialCards,
     onChange: (next, cards) => {
       if (timer.current) clearTimeout(timer.current);
-      pending.current = () => void tool.commitText(decklistFor(next, (id) => cards.get(id)?.name ?? null));
-      timer.current = setTimeout(() => {
-        pending.current?.();
-        pending.current = null;
-      }, COMMIT_DEBOUNCE_MS);
+      pending.current = decklistFor(next, (id) => cards.get(id)?.name ?? null);
+      timer.current = setTimeout(() => void flush(), COMMIT_DEBOUNCE_MS);
     },
   });
 
-  // Leaving the editor (back to Upgrade, or away) writes an edit that was still waiting, rather than losing it.
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-      pending.current?.();
-    },
-    [],
-  );
+  async function flush(): Promise<DeckAnalysis | null> {
+    if (timer.current) clearTimeout(timer.current);
+    const text = pending.current;
+    pending.current = null;
+    if (text === null) return null;
+    return (await tool.commitText(text)).analysis;
+  }
+
+  // Save asks for the flush before it writes, so it saves the deck as edited rather than a debounce behind. Leaving
+  // the editor (back to Upgrade, or away) writes a waiting edit rather than losing it.
+  useEffect(() => {
+    if (flushRef) flushRef.current = flush;
+    return () => {
+      if (flushRef) flushRef.current = null;
+      void flush();
+    };
+    // flush reads refs and the tool's commitText, which stays the same function for the tool's life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return <DeckBuilder builder={builder} analysis={analysis} swapContext={tool.context} showIssues={false} />;
 }

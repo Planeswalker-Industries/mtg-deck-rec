@@ -237,3 +237,24 @@ test("signed out, the deckbuilder asks you to sign in", async ({ page }) => {
   await page.waitForURL(/\/sign-in/);
   expect(new URL(page.url()).searchParams.get("next")).toBe("/decks/some-commander/abcdefgh1234/edit");
 });
+
+test("saving straight after a deckbuilder edit saves the edit", async ({ page, request }) => {
+  const email = `flush-${Date.now()}@test.invalid`;
+  await signIn(page, request, email, "/decks");
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await recs.getByRole("button", { name: "Deckbuilder" }).click({ timeout: 60_000 });
+
+  // Take a card out and save at once, well inside the pause before the edit would reach the decklist on its own.
+  await recs.getByRole("region", { name: "Deck list" }).getByRole("button", { name: "Remove Sol Ring" }).click();
+  await page.getByRole("button", { name: "Save deck" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expectEditor(page);
+  const deckList = page.getByRole("region", { name: "Deck list" });
+  await expect(deckList.getByRole("button", { name: /^Remove / }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(deckList.getByRole("button", { name: "Remove Sol Ring" })).toHaveCount(0);
+});

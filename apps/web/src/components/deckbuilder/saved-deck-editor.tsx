@@ -48,6 +48,11 @@ export function SavedDeckEditor({
   cards: CardSummary[];
 }) {
   const [name, setName] = useState(initialName);
+  /**
+   * The name every save writes. A ref as well as state: the save that runs when the page is left belongs to the first
+   * render, and would otherwise write the name the deck had then, undoing a rename.
+   */
+  const nameRef = useRef(initialName);
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(initialName);
   const [status, setStatus] = useState<SaveStatus>({ kind: "saved" });
@@ -79,7 +84,7 @@ export function SavedDeckEditor({
     pending.current = null;
     const id = ++saveRequest.current;
     setStatus({ kind: "saving" });
-    const r = await getApis().actions.saveDeck({ deckId, name, deck: next, isPublic: true });
+    const r = await getApis().actions.saveDeck({ deckId, name: nameRef.current, deck: next, isPublic: true });
     if (id !== saveRequest.current) return;
     setStatus(r.ok ? { kind: "saved" } : { kind: "error", message: r.error.message });
     if (r.ok) void analyze(next);
@@ -104,6 +109,7 @@ export function SavedDeckEditor({
     }
     const r = await getApis().actions.renameDeck({ deckId, name: trimmed });
     if (r.ok) {
+      nameRef.current = trimmed;
       setName(trimmed);
       setRenaming(false);
     } else {

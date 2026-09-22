@@ -19,7 +19,7 @@ import { FileDrop } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
-import { ToolDeckEditor } from "@/components/deckbuilder/tool-deck-editor";
+import { ToolDeckEditor, type FlushEdits } from "@/components/deckbuilder/tool-deck-editor";
 import { AddPhase } from "./journey/add-phase";
 import { CutPhase } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
@@ -94,6 +94,8 @@ export function DeckTool() {
   const [view, setView] = useState<ReviewView>(readReviewView);
   const [mode, setMode] = useState<ToolMode>("upgrade");
   const router = useRouter();
+  /** The inline deckbuilder's pending-edit flush, while it is on screen, so Save saves the deck as edited. */
+  const flushEdits = useRef<FlushEdits | null>(null);
   /** Review's Save on a deck that isn't saved yet opens the name form in the header. */
   const [saveAsked, setSaveAsked] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -299,6 +301,7 @@ export function DeckTool() {
               }}
               defaultOpen={saveAsked}
               original={tool.original}
+              beforeSave={async () => (flushEdits.current ? flushEdits.current() : null)}
             />
           )}
           <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
@@ -380,7 +383,7 @@ export function DeckTool() {
             )
           ) : (
             // Remounted when the player pastes a new decklist, so the builder starts from it rather than its old state.
-            <ToolDeckEditor key={tool.originText ?? "deck"} tool={tool} />
+            <ToolDeckEditor key={tool.originText ?? "deck"} tool={tool} flushRef={flushEdits} />
           )}
         </section>
       )}

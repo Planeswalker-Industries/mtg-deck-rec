@@ -125,3 +125,17 @@ test("offers to start from a collection when there isn't one", async ({ page }) 
   await link.click();
   await page.waitForURL(/\/collection\/import$/);
 });
+
+test("a name search's next page continues the list rather than repeating it", async ({ request }) => {
+  const page = async (offset: number) => {
+    const res = await request.get(`/api/cards/search?q=angel&limit=5&offset=${offset}`);
+    const body = (await res.json()) as { ok: boolean; data: { id: number }[] };
+    expect(body.ok).toBe(true);
+    return body.data.map((c) => c.id);
+  };
+  const first = await page(0);
+  // CI's database has no catalog, so there is nothing to page there.
+  test.skip(first.length === 0, "no catalog loaded");
+  const second = await page(first.length);
+  expect(second.filter((id) => first.includes(id))).toEqual([]);
+});

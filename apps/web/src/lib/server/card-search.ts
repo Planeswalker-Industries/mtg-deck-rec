@@ -27,7 +27,10 @@ export async function searchCards(
 ): Promise<CardSummary[]> {
   const { q, commanderEligible = false, limit = 8 } = input;
   const query = normalizeName(q);
-  const filtered = input.colorIdentity !== undefined || input.cardType !== undefined || input.manaValue !== undefined;
+  // A later page always comes from Postgres: the search index doesn't page, and asking it for "more" would return the
+  // first page again.
+  const filtered =
+    input.colorIdentity !== undefined || input.cardType !== undefined || input.manaValue !== undefined || (input.offset ?? 0) > 0;
   if (filtered) return searchFiltered(db, { ...input, query });
   if (query.length < 2) return [];
 
