@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId, DeckInput } from '../contract';
-import { addCard, canAdd, copiesOf, isBasicLand, makeCommander, removeCard, setQuantity, swapCard } from './builder';
+import { addCard, canAdd, copiesOf, deckSaveRows, isBasicLand, makeCommander, removeCard, setQuantity, swapCard } from './builder';
 
 const card = (id: number, typeLine = 'Creature — Bear') => ({ id: id as CardId, typeLine });
 const plains = card(50, 'Basic Land — Plains');
@@ -63,5 +63,31 @@ describe('deckbuilder edits', () => {
     expect(copiesOf(swapped, 7 as CardId)).toBe(1);
     expect(swapCard(deck, card(2), card(LIESA))).toBe(deck);
     expect(copiesOf(swapCard(deck, plains, card(8)), plains.id)).toBe(9);
+  });
+});
+
+describe('deckSaveRows', () => {
+  it('writes a commander once, although a DeckInput keeps it in two places', () => {
+    const rows = deckSaveRows(makeCommander({ commanders: [], cards: [{ cardId: 2 as CardId, quantity: 1, section: 'main' }] }, card(9), 'replace'));
+    expect(rows.filter((r) => r.section === 'commander')).toEqual([{ cardId: 9, quantity: 1, section: 'commander' }]);
+    expect(rows.filter((r) => r.cardId === 2)).toEqual([{ cardId: 2, quantity: 1, section: 'main' }]);
+  });
+
+  it('keeps a commander given only in commanders', () => {
+    expect(deckSaveRows({ commanders: [LIESA], cards: [] })).toEqual([{ cardId: LIESA, quantity: 1, section: 'commander' }]);
+  });
+
+  it('adds up repeated main entries and drops other boards', () => {
+    const rows = deckSaveRows({
+      commanders: [],
+      cards: [
+        { cardId: plains.id, quantity: 4, section: 'main' },
+        { cardId: plains.id, quantity: 6, section: 'main' },
+        { cardId: 3 as CardId, quantity: 1, section: 'sideboard' },
+        { cardId: 4 as CardId, quantity: 1, section: 'maybeboard' },
+        { cardId: 5 as CardId, quantity: 1, section: 'companion' },
+      ],
+    });
+    expect(rows).toEqual([{ cardId: plains.id, quantity: 10, section: 'main' }]);
   });
 });
