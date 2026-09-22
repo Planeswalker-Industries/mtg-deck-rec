@@ -49,10 +49,11 @@ test("a collection imported before signing in moves to the account and drives ow
   await collectionMode.click();
   await page.getByRole("option", { name: "Owned only" }).click();
   await expect(collectionMode).toHaveText("Owned only");
-  // The only owned card (Sol Ring) is already in the sample deck, so there's nothing to add.
-  await recs.getByRole("button", { name: "Edit deck" }).click();
-  await recs.getByRole("button", { name: /^Add Missing pieces/ }).click();
-  await expect(recs.getByText(/Nothing in your collection fits this deck's colors/)).toBeVisible({ timeout: 60_000 });
+  // The only owned card (Sol Ring) is already in the sample deck, so nothing owned can replace anything.
+  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  await recs.getByRole("region", { name: "Deck list" }).getByRole("button", { name: /^Replace / }).first().click({ timeout: 60_000 });
+  await expect(page.getByRole("dialog").getByText("Nothing in your collection does a similar job.")).toBeVisible({ timeout: 60_000 });
+  await page.keyboard.press("Escape");
 
   await page.goto("/collection/import");
   await page.getByLabel("Replace with a new export").fill("2 Arcane Signet\n1 Definitely Not A Real Card");
@@ -65,4 +66,26 @@ test("a collection imported before signing in moves to the account and drives ow
   await page.reload();
   await expect(page.getByLabel("Collection export")).toBeVisible({ timeout: 30_000 });
   await expect(summary).toBeHidden();
+});
+
+test("edits an account collection by hand, and the edits stay", async ({ page, request }) => {
+  test.skip(!mailpit, "needs the local mail catcher (E2E_MAILPIT_URL)");
+  await signIn(page, request, `e2e-edit-collection-${Date.now()}@example.com`, "/collection/import");
+  await page.getByLabel("Collection export").fill("2 Sol Ring");
+  await page.getByRole("button", { name: /Import collection|Replace collection/ }).click();
+  const summary = page.getByRole("region", { name: "Saved collection" });
+  await expect(summary.getByText(/Saved to your account/)).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/collection");
+  await page.getByRole("button", { name: "Edit collection" }).click({ timeout: 30_000 });
+  await page.getByRole("button", { name: "One fewer Sol Ring" }).click();
+  await page.getByRole("searchbox", { name: "Card to add" }).fill("Arcane Signet");
+  await page.getByRole("list", { name: "Cards to add" }).getByRole("button", { name: "Add Arcane Signet" }).click({ timeout: 30_000 });
+  await expect(page.getByText("Changes save as you make them.")).toBeVisible({ timeout: 10_000 });
+
+  await page.reload();
+  const artifacts = page.getByRole("list", { name: "Artifacts" });
+  await expect(artifacts.getByText("Arcane Signet")).toBeVisible({ timeout: 30_000 });
+  await expect(artifacts.getByText("Sol Ring")).toBeVisible();
+  await expect(artifacts.getByText("×2")).toHaveCount(0);
 });

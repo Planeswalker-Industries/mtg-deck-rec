@@ -1,33 +1,63 @@
 import { expect, test } from "@playwright/test";
 
-test("analyzes the sample deck and opens replacements for a card", async ({ page }) => {
+test("analyzes the sample deck, and the deckbuilder swaps a card for a replacement", async ({ page }) => {
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
-  // The upgrade journey is what opens; the workspace with the Cut/Add/Replace selector is the Edit deck mode.
+  // The upgrade journey is what opens; the deckbuilder is the other mode.
   await expect(recs.getByRole("button", { name: "Upgrade" })).toHaveAttribute("aria-pressed", "true");
 
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
   const notNow = page.getByRole("dialog").getByRole("button", { name: "Not now" });
   await notNow.click({ timeout: 3_000 }).catch(() => undefined);
 
-  await recs.getByRole("button", { name: "Edit deck" }).click();
-  await expect(recs.getByRole("button", { name: /^Cut Weak links/ })).toBeVisible();
-  // Drilling into a job collapses the selector to a Back control; the deck is what the workspace shows by default.
-  await recs.getByRole("button", { name: /^Add Missing pieces/ }).click();
-  await recs.getByRole("button", { name: "Back" }).click();
-  // The deck is grouped now: several card lists inside one named region, under the grouping pills.
-  // Scope to a list so the pills themselves are not mistaken for cards.
-  const deckCards = recs.getByRole("region", { name: "Your deck" }).getByRole("list").first().getByRole("button");
-  await expect(deckCards.first()).toBeVisible();
-  await deckCards.first().click();
+  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  const deckList = recs.getByRole("region", { name: "Deck list" });
+  const replace = deckList.getByRole("button", { name: /^Replace / }).first();
+  await expect(replace).toBeVisible({ timeout: 60_000 });
+  const target = ((await replace.getAttribute("aria-label")) ?? "").replace(/^Replace /, "");
+  await replace.click();
 
   const sheet = page.getByRole("dialog");
-  await expect(sheet.getByRole("heading", { name: /^Replace / })).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: `Replace ${target}` })).toBeVisible();
   await expect(sheet.getByText("Cards that do the same job, best fit first.")).toBeVisible();
+  const swapIn = sheet.getByRole("button", { name: /^Swap in / });
+  const nothing = sheet.getByText(/can't suggest replacements|No legal replacements|Nothing in your collection/);
+  await expect(swapIn.or(nothing)).toBeVisible({ timeout: 60_000 });
+  if (await nothing.isVisible()) return;
+
+  // Swapping puts the replacement in the deck in the card's place.
+  const replacement = ((await swapIn.innerText()) ?? "").replace(/^Swap in /, "");
+  await swapIn.click();
+  await expect(sheet).toBeHidden();
+  await expect(deckList.getByRole("button", { name: `Remove ${replacement}` })).toBeVisible();
+  await expect(deckList.getByRole("button", { name: `Remove ${target}` })).toHaveCount(0);
+});
+
+test("the deckbuilder adds a card from search, within the commander's colours", async ({ page }) => {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+
+  // On a phone the search is its own tab; on a wide screen it sits beside the deck.
+  const addTab = recs.getByRole("button", { name: "Add cards" });
+  if (await addTab.isVisible()) await addTab.click();
+  const search = recs.getByRole("region", { name: "Add cards" });
+  await search.getByRole("button", { name: "Creatures" }).click();
+  const results = search.getByRole("list", { name: "Search results" });
+  const add = results.getByRole("button", { name: /^Add / }).first();
+  await expect(add).toBeVisible({ timeout: 60_000 });
+  const name = ((await add.getAttribute("aria-label")) ?? "").replace(/^Add /, "");
+  await add.click();
+  // Once in, the card can't be added twice.
+  await expect(results.getByRole("button", { name: `${name} is in the deck` })).toBeVisible();
 });
 
 test("remembers the list view for the next visit", async ({ page }) => {
@@ -70,8 +100,8 @@ test("explains why a replacement was suggested, and the shares add up", async ({
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
 
-  await recs.getByRole("button", { name: "Edit deck" }).click();
-  await recs.getByRole("region", { name: "Your deck" }).getByRole("list").first().getByRole("button").first().click();
+  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  await recs.getByRole("region", { name: "Deck list" }).getByRole("button", { name: /^Replace / }).first().click({ timeout: 60_000 });
 
   const sheet = page.getByRole("dialog");
   await expect(sheet.getByRole("heading", { name: /^Replace / })).toBeVisible();
@@ -94,4 +124,18 @@ test("offers to start from a collection when there isn't one", async ({ page }) 
   await expect(link).toBeVisible({ timeout: 30_000 });
   await link.click();
   await page.waitForURL(/\/collection\/import$/);
+});
+
+test("a name search's next page continues the list rather than repeating it", async ({ request }) => {
+  const page = async (offset: number) => {
+    const res = await request.get(`/api/cards/search?q=angel&limit=5&offset=${offset}`);
+    const body = (await res.json()) as { ok: boolean; data: { id: number }[] };
+    expect(body.ok).toBe(true);
+    return body.data.map((c) => c.id);
+  };
+  const first = await page(0);
+  // CI's database has no catalog, so there is nothing to page there.
+  test.skip(first.length === 0, "no catalog loaded");
+  const second = await page(first.length);
+  expect(second.filter((id) => first.includes(id))).toEqual([]);
 });

@@ -1,4 +1,4 @@
-import type { Bracket, CardId, DeckId, DeckInput, SavedDeckContents, SavedDeckSummary } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, DeckId, DeckInput, SavedDeckContents, SavedDeckSummary } from "@mtg/core/contract";
 import { decklistText } from "@mtg/core/parse";
 import { fetchCardsById, toCardSummary } from "./cards";
 import type { createAuthClient } from "./auth";
@@ -193,4 +193,50 @@ export async function deleteDeck(db: AuthClient, deckId: DeckId): Promise<void> 
   const { error, count } = await db.from("decks").delete({ count: "exact" }).eq("id", deckId);
   if (error) throw new Error(`Deleting the deck failed: ${error.message}`);
   if (count === 0) throw new DeckRefused("DECK_NOT_FOUND");
+}
+
+export interface DeckForEdit {
+  deckId: DeckId;
+  code: string;
+  name: string;
+  bracket: Bracket | null;
+  deck: DeckInput;
+  /** Every card in the deck, for names and images. */
+  cards: CardSummary[];
+}
+
+/**
+ * One of the caller's own decks, as cards, for the deckbuilder. Owner-only like openSavedDeck: someone else's deck,
+ * public or not, is reported missing, because editing is theirs alone. Cards the catalog has since dropped are left
+ * out, so the first save writes a deck the catalog can still describe.
+ */
+export async function loadDeckForEdit(db: AuthClient, code: string, userId: string): Promise<DeckForEdit | null> {
+  const { data: deck, error } = await db
+    .from("decks")
+    .select("id, code, name, bracket")
+    .eq("code", code)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`Loading the deck failed: ${error.message}`);
+  if (!deck) return null;
+
+  const { data: rows, error: cardsError } = await db.from("deck_cards").select("card_id, section, quantity").eq("deck_id", deck.id);
+  if (cardsError) throw new Error(`Loading the deck's cards failed: ${cardsError.message}`);
+  const found = await fetchCardsById(
+    db,
+    (rows ?? []).map((r) => r.card_id),
+  );
+  const kept = (rows ?? []).filter((r) => found.has(r.card_id));
+
+  return {
+    deckId: deck.id as DeckId,
+    code: deck.code,
+    name: deck.name,
+    bracket: (deck.bracket as Bracket | null) ?? null,
+    deck: {
+      commanders: kept.filter((r) => r.section === "commander").map((r) => r.card_id as CardId),
+      cards: kept.map((r) => ({ cardId: r.card_id as CardId, quantity: r.quantity, section: r.section === "commander" ? "commander" : "main" })),
+    },
+    cards: [...found.values()].map((row) => toCardSummary(row)),
+  };
 }

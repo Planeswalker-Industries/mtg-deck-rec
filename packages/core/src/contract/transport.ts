@@ -1,5 +1,5 @@
 import type { ExportFormat, FavoriteRef, SyncStatusRow, TagAdminRow } from './account';
-import type { CardDetail, CardSummary, TagRef } from './cards';
+import type { CardDetail, CardSummary, TagRef, CardSearchInput } from './cards';
 import type { CommanderCoverage, CommanderRequest } from './commander-requests';
 import type {
   CollectionCardsResult,
@@ -36,7 +36,7 @@ export interface RecsApi {
 /** Card lookups for pickers. Transport: GET Route Handlers under /api/cards (cacheable, parallel). */
 export interface CatalogApi {
   /** Cards whose name matches `q` (at least 2 characters), best match first; `commanderEligible` keeps only cards that can lead a deck. */
-  searchCards(input: { q: string; commanderEligible?: boolean; limit?: number }): Promise<Result<CardSummary[]>>;
+  searchCards(input: CardSearchInput): Promise<Result<CardSummary[]>>;
   /** Functional tags per card, for grouping a deck by what its cards do. Cards with no tags are omitted. */
   cardTags(input: { cardIds: CardId[] }): Promise<Result<{ cardId: CardId; tags: TagRef[] }[]>>;
   /**
@@ -73,6 +73,12 @@ export interface ActionsApi {
   deleteCollection(): Promise<Result<null>>;
   /** Authenticated. The signed-in user's collection, one entry per card. */
   getMyCollectionEntries(): Promise<Result<CollectionEntry[]>>;
+  /**
+   * Authenticated. Sets how many copies of a card the signed-in user's collection holds, whatever the printing; 0
+   * removes it. Added copies go into a generic entry and removed ones come out of it first, so imported printings are
+   * the last to go. Returns the new total.
+   */
+  setCollectionCardQuantity(input: { cardId: CardId; quantity: number }): Promise<Result<{ cardId: CardId; quantity: number }>>;
 
   /** Returns the deck's code as well as its id, so a deck just saved can be linked to and gone on editing. */
   saveDeck(input: {

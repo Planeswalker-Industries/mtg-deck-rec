@@ -10,7 +10,7 @@ export class NotSignedInError extends Error {
   }
 }
 
-const REFUSALS = ["IMPORT_NOT_OPEN", "COLLECTION_TOO_LARGE", "NOT_SIGNED_IN"] as const;
+const REFUSALS = ["IMPORT_NOT_OPEN", "COLLECTION_TOO_LARGE", "CARD_NOT_FOUND", "NOT_SIGNED_IN"] as const;
 
 /** The database refused a collection write: the import already finished or expired, or the collection is too large. */
 export class CollectionRefused extends Error {
@@ -90,6 +90,13 @@ export async function accountOwnedCardIds(db: AuthClient): Promise<CardId[]> {
   const { data, error } = await db.rpc("my_owned_card_ids");
   if (error) throw new Error(`Loading owned cards failed: ${error.message}`);
   return ((data ?? []) as number[]).map((id) => id as CardId);
+}
+
+/** Sets a card's total copies in the caller's collection through set_collection_card_quantity; returns the new total. */
+export async function setAccountCardQuantity(db: AuthClient, cardId: CardId, quantity: number): Promise<number> {
+  const { data, error } = await db.rpc("set_collection_card_quantity", { p_card_id: cardId, p_quantity: quantity });
+  if (error) throw writeFailed("Updating the collection", error.message);
+  return data ?? 0;
 }
 
 export async function deleteAccountCollection(db: AuthClient): Promise<void> {

@@ -1,5 +1,10 @@
 import type { ActionsApi, ApiError, CardSummary, CatalogApi, RecsApi, Result } from "@mtg/core/contract";
-import { deleteCollectionAction, getMyCollectionEntriesAction, saveCollectionBatchAction } from "@/app/collection/actions";
+import {
+  deleteCollectionAction,
+  getMyCollectionEntriesAction,
+  saveCollectionBatchAction,
+  setCollectionCardQuantityAction,
+} from "@/app/collection/actions";
 import { dealRaterCardsAction } from "@/app/rate/actions";
 import {
   analyzeDeckAction,
@@ -61,6 +66,7 @@ export const realActions: ActionsApi = {
   saveCollectionBatch: (input) => saveCollectionBatchAction(input),
   deleteCollection: () => deleteCollectionAction(),
   getMyCollectionEntries: () => getMyCollectionEntriesAction(),
+  setCollectionCardQuantity: (input) => setCollectionCardQuantityAction(input),
   saveDeck: (input) => saveDeckAction(input),
   openSavedDeck: (input) => openSavedDeckAction(input),
   renameDeck: (input) => renameDeckAction(input),
@@ -76,10 +82,14 @@ export const realActions: ActionsApi = {
 
 /** Card lookups run as GET Route Handlers, so the CDN can keep results and searches don't queue behind actions. */
 export const realCatalog: CatalogApi = {
-  async searchCards({ q, commanderEligible, limit }) {
+  async searchCards({ q, commanderEligible, limit, colorIdentity, cardType, manaValue, offset }) {
     const params = new URLSearchParams({ q });
     if (commanderEligible) params.set("commander", "1");
     if (limit !== undefined) params.set("limit", String(limit));
+    if (colorIdentity !== undefined) params.set("colors", colorIdentity);
+    if (cardType !== undefined) params.set("type", cardType);
+    if (manaValue !== undefined) params.set("mv", String(manaValue));
+    if (offset !== undefined) params.set("offset", String(offset));
     try {
       const res = await fetch(`/api/cards/search?${params.toString()}`);
       return (await res.json()) as Result<CardSummary[]>;

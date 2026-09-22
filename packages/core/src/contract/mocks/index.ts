@@ -35,6 +35,8 @@ import type {
 import type { CommanderRequest, CommanderRequestStatus } from '../commander-requests';
 import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
 import { ownedFirst, ownedOnly, rankKey } from '../../scoring/owned';
+import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
+import { cardQuantity, setCardQuantity } from '../../collection/edit';
 import {
   frontFaceName,
   MOCK_AS_OF,
@@ -329,7 +331,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         const result: SwapResult = { mode: modeOf(context), target, confidence: confidenceOf(context), suggestions };
         if (suggestions.length === 0) {
           const noTags = (mockCardTags[target.id] ?? []).length === 0;
-          result.emptyReason = noTags ? 'NO_TAGS_ON_TARGET' : owned ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
+          result.emptyReason = noTags ? 'NO_TAGS_ON_TARGET' : only ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
         }
         return delay(ok(result));
       } catch (e) {
@@ -538,6 +540,12 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       );
     },
 
+    async setCollectionCardQuantity({ cardId, quantity }) {
+      if (!byId.has(cardId)) return delay(fail('NOT_FOUND', `Unknown card ${cardId}`));
+      collectionRows = setCardQuantity(collectionRows, cardId, quantity);
+      return delay(ok({ cardId, quantity: cardQuantity(collectionRows, cardId) }));
+    },
+
     async saveDeck({ deckId, name, deck, isPublic, bracket }) {
       const id = deckId ?? (`mock-deck-${nextDeckId++}` as DeckId);
       decks.set(id, { name, deck, isPublic, ...(bracket === undefined ? {} : { bracket }), updatedAt: new Date().toISOString() });
@@ -654,14 +662,18 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
   };
 
   const catalog: CatalogApi = {
-    async searchCards({ q, commanderEligible, limit = 8 }) {
+    async searchCards({ q, commanderEligible, limit = 8, colorIdentity, cardType, manaValue, offset = 0 }) {
       const needle = q.trim().toLowerCase();
-      if (needle.length < 2) return delay(fail('VALIDATION', 'Type at least 2 letters.'));
+      const filtered = colorIdentity !== undefined || cardType !== undefined || manaValue !== undefined;
+      if (needle.length < 2 && !filtered) return delay(fail('VALIDATION', 'Type at least 2 letters.'));
       const hits = mockCards
-        .filter((c) => c.name.toLowerCase().includes(needle))
+        .filter((c) => needle.length < 2 || c.name.toLowerCase().includes(needle))
         .filter((c) => !commanderEligible || isCommanderEligible(c))
+        .filter((c) => colorIdentity === undefined || withinIdentity(c, colorIdentity))
+        .filter((c) => cardType === undefined || categoryOf(c.typeLine) === cardType)
+        .filter((c) => manaValue === undefined || (manaValue >= CURVE_TOP_MANA_VALUE ? c.manaValue >= manaValue : Math.floor(c.manaValue) === manaValue))
         .sort((a, b) => Number(b.name.toLowerCase().startsWith(needle)) - Number(a.name.toLowerCase().startsWith(needle)))
-        .slice(0, limit);
+        .slice(offset, offset + limit);
       return delay(ok(hits), 50);
     },
 

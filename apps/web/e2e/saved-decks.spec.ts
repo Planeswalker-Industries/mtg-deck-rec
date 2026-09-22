@@ -4,6 +4,12 @@ import { mailpit, signIn } from "./mailpit";
 /** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */
 const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved deck" }).getByRole("status");
 
+/** Saving a deck opens it in its deckbuilder, at the address it keeps from then on, with nothing left to write. */
+async function expectEditor(page: Page) {
+  await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
+  await expect(page.getByText("All changes saved")).toBeVisible({ timeout: 30_000 });
+}
+
 // Saving needs an account, so these run only where the local mail catcher is up.
 test.skip(!mailpit, "set E2E_MAILPIT_URL to run the saved deck checks");
 
@@ -35,7 +41,7 @@ test("saves a deck, then renames, duplicates and deletes it from the list", asyn
   await expect(name).not.toHaveValue("");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   // Fail here, not on the list, if the save itself was refused. Saving hands the deck to the tool, which says so.
-  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 30_000 });
+  await expectEditor(page);
 
   await page.goto("/decks");
   const list = page.getByRole("listitem");
@@ -69,7 +75,7 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
   await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 30_000 });
+  await expectEditor(page);
 
   await page.goto("/decks");
   await page.getByRole("listitem").getByRole("link").first().click();
@@ -130,7 +136,7 @@ test("reopens a saved deck in the tool, and edits go back to it", async ({ page,
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
   await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 30_000 });
+  await expectEditor(page);
 
   // Come back to it from the list, by its own link rather than the deck page.
   await page.goto("/decks");
@@ -185,10 +191,10 @@ test("saving a journey's result keeps the original, which the deck page compares
   // Save from Review opens the name form in the editor, prefilled.
   await recs.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click({ timeout: 60_000 });
-  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 30_000 });
+  await expectEditor(page);
 
   // The deck page shows what changed since the original.
-  await page.getByRole("region", { name: "Saved deck" }).getByRole("link", { name: "Deck page" }).click();
+  await page.getByRole("link", { name: "Deck page" }).click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
   const changes = page.getByRole("region", { name: "Changes from the original" });
   await expect(changes).toBeVisible({ timeout: 30_000 });
@@ -199,4 +205,56 @@ test("saving a journey's result keeps the original, which the deck page compares
   await changes.getByRole("button", { name: "Restore original" }).click();
   await expect(changes.getByText(/matches the list it started from/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("article").getByText("Lightning Bolt").first()).toBeVisible();
+});
+
+test("the deckbuilder edits a saved deck, and every change is saved", async ({ page, request }) => {
+  const email = `builder-${Date.now()}@test.invalid`;
+  await signIn(page, request, email, "/decks");
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expectEditor(page);
+
+  // Take a card out; the editor writes it back on its own.
+  const deckList = page.getByRole("region", { name: "Deck list" });
+  const remove = deckList.getByRole("button", { name: "Remove Sol Ring" });
+  await remove.click();
+  await expect(remove).toHaveCount(0);
+  await expect(page.getByText("All changes saved")).toBeVisible({ timeout: 30_000 });
+
+  // The account has it: a fresh load no longer has the card.
+  await page.reload();
+  await expect(deckList.getByRole("button", { name: /^Remove / }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(deckList.getByRole("button", { name: "Remove Sol Ring" })).toHaveCount(0);
+});
+
+test("signed out, the deckbuilder asks you to sign in", async ({ page }) => {
+  await page.goto("/decks/some-commander/abcdefgh1234/edit");
+  await page.waitForURL(/\/sign-in/);
+  expect(new URL(page.url()).searchParams.get("next")).toBe("/decks/some-commander/abcdefgh1234/edit");
+});
+
+test("saving straight after a deckbuilder edit saves the edit", async ({ page, request }) => {
+  const email = `flush-${Date.now()}@test.invalid`;
+  await signIn(page, request, email, "/decks");
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await recs.getByRole("button", { name: "Deckbuilder" }).click({ timeout: 60_000 });
+
+  // Take a card out and save at once, well inside the pause before the edit would reach the decklist on its own.
+  await recs.getByRole("region", { name: "Deck list" }).getByRole("button", { name: "Remove Sol Ring" }).click();
+  await page.getByRole("button", { name: "Save deck" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expectEditor(page);
+  const deckList = page.getByRole("region", { name: "Deck list" });
+  await expect(deckList.getByRole("button", { name: /^Remove / }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(deckList.getByRole("button", { name: "Remove Sol Ring" })).toHaveCount(0);
 });

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { CardSummary, SwapSuggestion, TagMatch } from "@mtg/core/contract";
 import { cn } from "cn";
+import { Button } from "@/components/ui/button";
 import { CardImage } from "@/components/cards/card-image";
 import { isCardZoomEvent, ZoomableCard } from "@/components/cards/card-zoom";
 import { FlippableCardImage } from "@/components/cards/flippable-card-image";
@@ -27,12 +28,15 @@ export function SwapSheet({
   target,
   commanderCount,
   onClose,
+  onSwapIn,
 }: {
   swap: SwapState | null;
   target: CardSummary | null;
   /** How many commanders lead the deck, for wording play-rate evidence. */
   commanderCount: number;
   onClose: () => void;
+  /** Puts the chosen replacement in the deck in the target's place. Without it the sheet only compares. */
+  onSwapIn?: ((replacement: CardSummary) => void) | undefined;
 }) {
   return (
     <Sheet open={swap !== null} onOpenChange={(open) => !open && onClose()}>
@@ -45,13 +49,23 @@ export function SwapSheet({
         className="mx-auto max-h-[92dvh] w-full max-w-xl gap-0 overflow-y-auto rounded-t-2xl border-seam bg-sleeve p-0"
       >
         {/* Keyed by target so the chosen replacement resets when another card is opened. */}
-        {swap && <SwapBody key={swap.targetCardId} swap={swap} target={target} commanderCount={commanderCount} />}
+        {swap && <SwapBody key={swap.targetCardId} swap={swap} target={target} commanderCount={commanderCount} onSwapIn={onSwapIn} />}
       </SheetContent>
     </Sheet>
   );
 }
 
-function SwapBody({ swap, target, commanderCount }: { swap: SwapState; target: CardSummary | null; commanderCount: number }) {
+function SwapBody({
+  swap,
+  target,
+  commanderCount,
+  onSwapIn,
+}: {
+  swap: SwapState;
+  target: CardSummary | null;
+  commanderCount: number;
+  onSwapIn?: ((replacement: CardSummary) => void) | undefined;
+}) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const { result } = swap;
   const targetCard = result.status === "ready" ? result.data.target : target;
@@ -76,6 +90,11 @@ function SwapBody({ swap, target, commanderCount }: { swap: SwapState; target: C
         {result.status === "ready" && selected && targetCard && (
           <>
             <Comparison target={targetCard} selected={selected} commanderCount={commanderCount} />
+            {onSwapIn && (
+              <Button type="button" size="lg" className="mt-4 w-full sm:w-auto" onClick={() => onSwapIn(selected.card)}>
+                Swap in {displayName(selected.card)}
+              </Button>
+            )}
             {suggestions.length > 1 && (
               <Alternatives suggestions={suggestions} selectedIndex={selectedIndex} onSelect={setSelectedIndex} />
             )}

@@ -90,6 +90,16 @@ export async function saveCollection(
   return stored;
 }
 
+/**
+ * Writes hand edits to the saved collection's rows, keeping when it was imported and when it expires: editing isn't
+ * a new import. Throws when the browser won't store it.
+ */
+export async function updateCollectionRows(collection: StoredCollection, rows: ResolvedCollectionRow[]): Promise<StoredCollection> {
+  const stored: StoredCollection = { ...collection, rows };
+  await inStore("readwrite", (store) => store.put(stored, KEY));
+  return stored;
+}
+
 export async function clearCollection(): Promise<void> {
   try {
     await inStore("readwrite", (store) => store.delete(KEY));

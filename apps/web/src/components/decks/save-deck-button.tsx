@@ -22,6 +22,7 @@ export function SaveDeckButton({
   onSaved,
   defaultOpen = false,
   original,
+  beforeSave,
 }: {
   analysis: DeckAnalysis;
   /** The bracket on screen, stored with the deck so reopening it comes back the same. */
@@ -31,6 +32,11 @@ export function SaveDeckButton({
   defaultOpen?: boolean;
   /** The deck the player brought, when the tool changed it: kept beside the saved deck as its original. */
   original?: DeckInput | undefined;
+  /**
+   * Runs before the write and may hand back a newer analysis to save instead, e.g. the deckbuilder's edit that was
+   * still waiting to go into the decklist.
+   */
+  beforeSave?: (() => Promise<DeckAnalysis | null>) | undefined;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [name, setName] = useState(() => suggestedName(analysis));
@@ -66,14 +72,16 @@ export function SaveDeckButton({
         if (!trimmed || busy) return;
         setBusy(true);
         setError(null);
-        void getApis()
-          .actions.saveDeck({
-            name: trimmed,
-            deck: analysis.deck,
-            isPublic: true,
-            ...(bracket === null ? {} : { bracket }),
-            ...(original ? { original } : {}),
-          })
+        void (beforeSave ? beforeSave() : Promise.resolve(null))
+          .then((fresh) =>
+            getApis().actions.saveDeck({
+              name: trimmed,
+              deck: (fresh ?? analysis).deck,
+              isPublic: true,
+              ...(bracket === null ? {} : { bracket }),
+              ...(original ? { original } : {}),
+            }),
+          )
           .then((result) => {
             setBusy(false);
             if (result.ok) onSaved({ ...result.data, name: trimmed });
