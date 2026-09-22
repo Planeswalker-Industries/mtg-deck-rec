@@ -37,5 +37,9 @@
  * (one CollectionEntry per card), CatalogApi.collectionCards returns those cards with their tag labels and the sets
  * they were printed in (CardSet), and ResolvedCollectionRow carries an optional setCode so a browser collection can be
  * filtered by set too.
+ *
+ * v11 (2026-09-21): the deck journey (cut, add, replace, review). CutSuggestion.severity splits cards that work against
+ * the deck (mandatory: rule problems and severe misfits, dealt in the Cut phase) from weaker fits (suggested, dealt in
+ * the Replace phase with a replacement). Mandatory cuts come first in CutResult.suggestions.
  */
-export const CONTRACT_VERSION = 10;
+export const CONTRACT_VERSION = 11;

@@ -56,6 +56,8 @@ export interface MockApis {
 
 const MOCK_DECK_COUNT = 1204;
 const MOCK_ACCOUNT_OWNED = new Set<number>([2, 3, 5, 9, 12, 16, 17]);
+/** Mock play-rate score below which a card is a severe misfit (mandatory cut), so the mock deck has some to deal. */
+const MOCK_SEVERE_SYNERGY_SCORE = 0.2;
 const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 };
 const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
 
@@ -385,9 +387,10 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             if (score < 0.5) reasons.push('LOW_SYNERGY');
             if (owned && !owned.has(c.id)) reasons.push('NOT_OWNED');
             const hard = reasons.includes('OUTSIDE_COLOR_IDENTITY') || reasons.includes('GAME_CHANGER_EXCLUDED');
-            return [{ card: c, cutScore: hard ? 1 : round(1 - score), reasons, corpus, owned: ownedInfo(owned, c.id) }];
+            const severity = hard || score < MOCK_SEVERE_SYNERGY_SCORE ? 'mandatory' : 'suggested';
+            return [{ card: c, cutScore: hard ? 1 : round(1 - score), reasons, severity, corpus, owned: ownedInfo(owned, c.id) }];
           })
-          .sort((a, b) => b.cutScore - a.cutScore)
+          .sort((a, b) => Number(b.severity === 'mandatory') - Number(a.severity === 'mandatory') || b.cutScore - a.cutScore)
           .slice(0, limit);
         const result: CutResult = { mode: modeOf(context), confidence: confidenceOf(context), suggestions };
         return delay(ok(result));

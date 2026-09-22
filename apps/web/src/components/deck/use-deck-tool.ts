@@ -133,6 +133,8 @@ export function useDeckTool(source: CollectionSource) {
   const [swap, setSwap] = useState<SwapState | null>(null);
   const [importedFrom, setImportedFrom] = useState<ImportedFrom | null>(null);
   const [openDeck, setOpenDeck] = useState<OpenDeck | null>(null);
+  /** The decklist the player brought, before any journey result replaced it: what Start over goes back to. */
+  const [originText, setOriginText] = useState<string | null>(null);
   /*
    * The open deck is read inside submit(), which the caller may run before a setState from the same handler has been
    * applied, so the ref is what the writes go by and the state is what the screen shows.
@@ -226,9 +228,10 @@ export function useDeckTool(source: CollectionSource) {
 
   /**
    * Parses (or imports) the decklist and loads recommendations, then remembers the deck in this browser. `restore`
-   * replays a deck saved on an earlier visit, with its bracket and Game Changer choices.
+   * replays a deck saved on an earlier visit, with its bracket and Game Changer choices. `keepOrigin` marks a result
+   * the tool produced (a journey commit, applied swaps), so Start over still goes back to the deck the player brought.
    */
-  async function submit(restore?: SavedDeck): Promise<SubmitOutcome> {
+  async function submit(restore?: SavedDeck, { keepOrigin = false }: { keepOrigin?: boolean } = {}): Promise<SubmitOutcome> {
     setParse({ status: "loading" });
     const deckText = restore?.text ?? text;
     const input = deckText.trim();
@@ -249,6 +252,7 @@ export function useDeckTool(source: CollectionSource) {
     recsRequest.current++;
     swapRequest.current++;
     setText(finalText);
+    if (!keepOrigin) setOriginText(finalText);
     setImportedFrom(source);
     setParse({ status: "ready", data: null });
     setLines(r.data.lines);
@@ -323,12 +327,25 @@ export function useDeckTool(source: CollectionSource) {
     });
     const nextText = editedInPlace ? textLines.join("\n") : decklistText(nextLines);
     setText(nextText);
-    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom });
+    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom }, { keepOrigin: true });
+  }
+
+  /** Puts a decklist the tool produced (a journey's result) in the box and analyzes it, keeping the player's settings. */
+  function commitText(nextText: string): Promise<SubmitOutcome> {
+    setText(nextText);
+    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom: null }, { keepOrigin: true });
+  }
+
+  /** Goes back to the decklist the player brought and analyzes it again. */
+  function startOver(): Promise<SubmitOutcome> {
+    if (originText === null) return Promise.resolve({ parsed: false, analysis: null });
+    return commitText(originText);
   }
 
   /** Forgets the deck here and in this browser's storage. */
   function clearDeck() {
     clearSavedDeck();
+    setOriginText(null);
     // Let go of the account deck rather than emptying it: Clear means "not working on this now", not "delete it".
     trackOpenDeck(null);
     saveRequest.current++;
@@ -400,6 +417,9 @@ export function useDeckTool(source: CollectionSource) {
     restoreLastDeck,
     refreshRecommendations,
     applySwaps,
+    commitText,
+    startOver,
+    originText,
     clearDeck,
     parse,
     importedFrom,

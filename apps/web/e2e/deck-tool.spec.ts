@@ -7,14 +7,14 @@ test("analyzes the sample deck and opens replacements for a card", async ({ page
 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
-  // Swiping is the default on a first visit; the list keeps the Cut/Add/Replace selector.
-  await expect(recs.getByRole("button", { name: "Swipe" })).toHaveAttribute("aria-pressed", "true");
+  // The upgrade journey is what opens; the workspace with the Cut/Add/Replace selector is the Edit deck mode.
+  await expect(recs.getByRole("button", { name: "Upgrade" })).toHaveAttribute("aria-pressed", "true");
 
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
   const notNow = page.getByRole("dialog").getByRole("button", { name: "Not now" });
   await notNow.click({ timeout: 3_000 }).catch(() => undefined);
 
-  await recs.getByRole("button", { name: "List" }).click();
+  await recs.getByRole("button", { name: "Edit deck" }).click();
   await expect(recs.getByRole("button", { name: /^Cut Weak links/ })).toBeVisible();
   // Drilling into a job collapses the selector to a Back control; the deck is what the workspace shows by default.
   await recs.getByRole("button", { name: /^Add Missing pieces/ }).click();
@@ -39,11 +39,11 @@ test("remembers the list view for the next visit", async ({ page }) => {
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
   await recs.getByRole("button", { name: "List" }).click();
 
-  // The deck and the view both come back after a reload.
+  // The deck and the view both come back after a reload: the Cut phase opens as the list of the whole deck.
   await page.reload();
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await expect(recs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
-  await expect(recs.getByRole("button", { name: /^Cut Weak links/ })).toBeVisible();
+  await expect(recs.getByRole("region", { name: "Your deck" })).toBeVisible({ timeout: 60_000 });
 });
 
 test("takes a decklist as a file, and reduces a CSV export to quantities and names", async ({ page }) => {
@@ -70,7 +70,7 @@ test("explains why a replacement was suggested, and the shares add up", async ({
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
 
-  await recs.getByRole("button", { name: "List" }).click();
+  await recs.getByRole("button", { name: "Edit deck" }).click();
   await recs.getByRole("region", { name: "Your deck" }).getByRole("list").first().getByRole("button").first().click();
 
   const sheet = page.getByRole("dialog");
