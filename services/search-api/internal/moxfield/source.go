@@ -53,6 +53,7 @@ func (source) ParseDeck(body []byte, id string) (crawl.Deck, error) {
 		CommanderNames: parsed.CommanderNames,
 		Commanders:     parsed.Commanders,
 		Cards:          parsed.Cards,
+		Size:           parsed.Size,
 		UpdatedAt:      parsed.UpdatedAt,
 	}, nil
 }

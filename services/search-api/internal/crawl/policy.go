@@ -17,6 +17,10 @@ type Policy struct {
 	BackfillDecks   int
 	BackoffStart    time.Duration
 	BackoffMax      time.Duration
+	// StaleClaim is how long a crawl's claim may sit untouched before another run may take it over. It has to be
+	// comfortably longer than a real crawl (a backfill runs for hours at the polite pace) and short enough that a
+	// container killed mid-run does not wedge the source until someone notices.
+	StaleClaim time.Duration
 }
 
 // Defaults is a source's baseline policy. Zero fields fall back to the shared absolutes below, so a source only has
@@ -27,6 +31,7 @@ type Defaults struct {
 	BackfillDecks   int
 	BackoffStart    time.Duration
 	BackoffMax      time.Duration
+	StaleClaim      time.Duration
 }
 
 const (
@@ -35,6 +40,9 @@ const (
 	fallbackBackfillDecks   = 10_000
 	fallbackBackoffStart    = 5 * time.Second
 	fallbackBackoffMax      = 5 * time.Minute
+	// Six hours: longer than a 10,000-deck backfill at a 3 s pace (about eight and a half hours is the worst case,
+	// but a crawl that long is already over its budget), and far shorter than "until someone reads the logs".
+	fallbackStaleClaim = 6 * time.Hour
 )
 
 // Policy applies the defaults then fills any zero field from the shared fallbacks.
@@ -45,6 +53,7 @@ func (d Defaults) Policy() Policy {
 		BackfillDecks:   d.BackfillDecks,
 		BackoffStart:    d.BackoffStart,
 		BackoffMax:      d.BackoffMax,
+		StaleClaim:      d.StaleClaim,
 	}
 	if p.RequestInterval <= 0 {
 		p.RequestInterval = fallbackRequestInterval
@@ -61,6 +70,9 @@ func (d Defaults) Policy() Policy {
 	if p.BackoffMax <= 0 {
 		p.BackoffMax = fallbackBackoffMax
 	}
+	if p.StaleClaim <= 0 {
+		p.StaleClaim = fallbackStaleClaim
+	}
 	return p
 }
 
@@ -76,6 +88,7 @@ func ParsePolicy(raw json.RawMessage, d Defaults) (Policy, error) {
 		BackfillDecks     int `json:"backfillDecks"`
 		BackoffStartMs    int `json:"backoffStartMs"`
 		BackoffMaxMs      int `json:"backoffMaxMs"`
+		StaleClaimSeconds int `json:"staleClaimSeconds"`
 	}
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return Policy{}, err
@@ -94,6 +107,9 @@ func ParsePolicy(raw json.RawMessage, d Defaults) (Policy, error) {
 	}
 	if fields.BackoffMaxMs > 0 {
 		p.BackoffMax = time.Duration(fields.BackoffMaxMs) * time.Millisecond
+	}
+	if fields.StaleClaimSeconds > 0 {
+		p.StaleClaim = time.Duration(fields.StaleClaimSeconds) * time.Second
 	}
 	return p, nil
 }

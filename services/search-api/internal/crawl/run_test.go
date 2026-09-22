@@ -17,7 +17,7 @@ func newFakeRunner(store Store, getter Getter, src Source) *Runner {
 }
 
 // fakeSource's wire format is trivial so the run loop is what is tested: a list body is one id per line, a deck
-// body is JSON with commanders, cards and updatedAt.
+// body is JSON with commanders, cards and updatedAt. An id starting with "bad-" is a deck that does not qualify.
 type fakeSource struct {
 	name   string
 	domain string
@@ -39,7 +39,7 @@ func (s fakeSource) ParseList(body []byte) ([]Entry, error) {
 		ids = append(ids, line)
 	}
 	if len(ids) == 0 {
-		return nil, &ShapeError{What: "list", Detail: "empty feed"}
+		return nil, nil // an exhausted feed, not a broken one
 	}
 	entries := make([]Entry, len(ids))
 	for i, id := range ids {
@@ -49,18 +49,25 @@ func (s fakeSource) ParseList(body []byte) ([]Entry, error) {
 }
 
 func (s fakeSource) ParseDeck(body []byte, id string) (Deck, error) {
+	if strings.HasPrefix(id, "bad-") {
+		return Deck{}, &NotQualified{ID: id, Reason: "not a 100-card deck"}
+	}
 	var d struct {
-		Commanders []string  `json:"commanders"`
-		Cards      []string  `json:"cards"`
-		UpdatedAt  time.Time `json:"updatedAt"`
+		Commanders []string       `json:"commanders"`
+		Cards      map[string]int `json:"cards"`
+		UpdatedAt  time.Time      `json:"updatedAt"`
 	}
 	if err := json.Unmarshal(body, &d); err != nil {
 		return Deck{}, err
 	}
-	return Deck{ID: id, Commanders: d.Commanders, Cards: d.Cards, UpdatedAt: d.UpdatedAt}, nil
+	size := len(d.Commanders)
+	for _, n := range d.Cards {
+		size += n
+	}
+	return Deck{ID: id, Commanders: d.Commanders, Cards: d.Cards, Size: size, UpdatedAt: d.UpdatedAt}, nil
 }
 
-func deckBody(updated string, commanders, cards []string) []byte {
+func deckBody(updated string, commanders []string, cards map[string]int) []byte {
 	payload, _ := json.Marshal(map[string]any{
 		"commanders": commanders,
 		"cards":      cards,
@@ -96,21 +103,32 @@ func (g *fakeGetter) SetPolicy(p Policy) { g.policy = p }
 type fakeStore struct {
 	policy         Policy
 	state          CrawlState
-	existing       map[string]DeckRow
+	hashes         map[string]string
+	hashCalls      [][]string
 	upserts        []DeckRow
 	runID          int64
 	created        int
 	finished       []RunSummary
-	claimed        string // clientID when claimed, "" when released
-	probeOK        bool
-	disabledReason string
+	finishCtxErr   error
+	claimed        int64 // the run holding the claim, 0 when free
+	claimStale     bool  // the store reports the previous claim as stale and hands it over
 	claimLoses     bool
+	probeOK        bool
+	cursor         string
+	disabledReason string
 }
 
 func (s *fakeStore) Policy(context.Context) (Policy, error)         { return s.policy, nil }
 func (s *fakeStore) CrawlState(context.Context) (CrawlState, error) { return s.state, nil }
-func (s *fakeStore) ExistingDecks(context.Context) (map[string]DeckRow, error) {
-	return s.existing, nil
+func (s *fakeStore) DeckHashes(_ context.Context, ids []string) (map[string]string, error) {
+	s.hashCalls = append(s.hashCalls, ids)
+	out := map[string]string{}
+	for _, id := range ids {
+		if hash, ok := s.hashes[id]; ok {
+			out[id] = hash
+		}
+	}
+	return out, nil
 }
 func (s *fakeStore) UpsertDecks(_ context.Context, rows []DeckRow) error {
 	s.upserts = append(s.upserts, rows...)
@@ -121,19 +139,27 @@ func (s *fakeStore) CreateRun(context.Context) (int64, error) {
 	s.runID++
 	return s.runID, nil
 }
-func (s *fakeStore) FinishRun(_ context.Context, runID int64, summary RunSummary) error {
+func (s *fakeStore) FinishRun(ctx context.Context, _ int64, summary RunSummary) error {
+	s.finishCtxErr = ctx.Err()
 	s.finished = append(s.finished, summary)
 	return nil
 }
-func (s *fakeStore) Claim(_ context.Context, runID int64, clientID string) (bool, error) {
+func (s *fakeStore) Claim(_ context.Context, runID int64, _ string, _ time.Duration) (Claim, error) {
 	if s.claimLoses {
-		return false, nil
+		return Claim{Claimed: false, HeldBy: 42}, nil
 	}
-	s.claimed = clientID
-	return true, nil
+	tookOver := s.claimStale
+	s.claimed = runID
+	return Claim{Claimed: true, TookOver: tookOver, HeldBy: runID}, nil
 }
-func (s *fakeStore) ReleaseClaim(context.Context) error { s.claimed = ""; return nil }
-func (s *fakeStore) SetProbeOK(context.Context) error   { s.probeOK = true; return nil }
+func (s *fakeStore) ReleaseClaim(_ context.Context, runID int64) error {
+	if s.claimed == runID {
+		s.claimed = 0
+	}
+	return nil
+}
+func (s *fakeStore) SetCursor(_ context.Context, id string) error { s.cursor = id; return nil }
+func (s *fakeStore) SetProbeOK(context.Context) error             { s.probeOK = true; return nil }
 func (s *fakeStore) Disable(_ context.Context, reason string) error {
 	s.disabledReason = reason
 	return nil
@@ -143,19 +169,8 @@ func newRunner(store *fakeStore, getter *fakeGetter) *Runner {
 	return newFakeRunner(store, getter, fakeSource{name: "src", domain: "src.test"})
 }
 
-func TestRunIsBusyWhileAnotherRuns(t *testing.T) {
-	store := &fakeStore{state: CrawlState{RunningRunID: 7}, policy: Defaults{}.Policy()}
-	res, err := newRunner(store, &fakeGetter{}).Run(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !res.AlreadyBusy || store.created != 0 {
-		t.Fatalf("busy run should be a no-op: %+v, created=%d", res, store.created)
-	}
-}
-
-// Two crons that both pass the fast-path check are settled by the store's atomic claim: the loser reports busy.
-func TestRunLosesTheAtomicClaimIsBusy(t *testing.T) {
+// Two crons that fire together are settled by the store's claim: the loser crawls nothing and says so.
+func TestRunLosesTheClaimIsBusy(t *testing.T) {
 	store := &fakeStore{policy: Defaults{}.Policy(), claimLoses: true}
 	res, err := newRunner(store, &fakeGetter{}).Run(context.Background())
 	if err != nil {
@@ -164,11 +179,30 @@ func TestRunLosesTheAtomicClaimIsBusy(t *testing.T) {
 	if !res.AlreadyBusy {
 		t.Fatalf("should report busy after losing the claim: %+v", res)
 	}
-	if store.claimed != "" {
-		t.Fatalf("loser must not hold the claim: %q", store.claimed)
+	if store.claimed != 0 {
+		t.Fatalf("loser must not hold the claim: %d", store.claimed)
 	}
 	if len(store.finished) != 1 || store.finished[0].State != "failed" {
 		t.Fatalf("the loser's own run row should be closed failed: %+v", store.finished)
+	}
+}
+
+// A crawl whose container died leaves its claim behind. The store hands it over, and the run says so rather than
+// waiting for a human to clear the row.
+func TestRunTakesOverAStaleClaim(t *testing.T) {
+	store := &fakeStore{policy: Defaults{}.Policy(), claimStale: true}
+	src := fakeSource{name: "src", domain: "src.test"}
+	store.policy.BackfillDecks = 1
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(1):     []byte("111\n"),
+		src.DeckURL("111"): deckBody("2026-09-20T00:00:00Z", []string{"com1"}, map[string]int{"aaa": 1}),
+	}}
+	res, err := newFakeRunner(store, getter, src).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Summary.State != "succeeded" || res.Summary.DecksWritten != 1 {
+		t.Fatalf("a taken-over claim still crawls: %+v", res.Summary)
 	}
 }
 
@@ -189,8 +223,8 @@ func TestRunBackfillsAndWritesTheListedDecks(t *testing.T) {
 	store.policy.BackfillDecks = 2 // budget equals the two decks on page one, so the crawl stops after it
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(1):     []byte("111\n222\n"),
-		src.DeckURL("111"): deckBody("2026-09-20T00:00:00Z", []string{"com1"}, []string{"aaa"}),
-		src.DeckURL("222"): deckBody("2026-09-20T01:00:00Z", []string{"com2"}, []string{"bbb"}),
+		src.DeckURL("111"): deckBody("2026-09-20T00:00:00Z", []string{"com1"}, map[string]int{"aaa": 1}),
+		src.DeckURL("222"): deckBody("2026-09-20T01:00:00Z", []string{"com2"}, map[string]int{"bbb": 1}),
 	}}
 
 	res, err := newFakeRunner(store, getter, src).Run(context.Background())
@@ -206,43 +240,95 @@ func TestRunBackfillsAndWritesTheListedDecks(t *testing.T) {
 	if !store.probeOK {
 		t.Fatal("probe should be recorded")
 	}
-	if store.claimed != "" {
-		t.Fatalf("claim not released: %q", store.claimed)
+	if store.cursor != "111" {
+		t.Fatalf("the cursor should record where the feed started: %q", store.cursor)
+	}
+	if store.claimed != 0 {
+		t.Fatalf("claim not released: %d", store.claimed)
 	}
 	if len(store.finished) != 1 || store.finished[0].State != "succeeded" {
 		t.Fatalf("run not finished: %+v", store.finished)
 	}
-	if got := store.upserts[0].ContentHash; got != contentHash([]string{"com1"}, []string{"aaa"}) {
+	if got := store.upserts[0].ContentHash; got != contentHash([]string{"com1"}, map[string]int{"aaa": 1}) {
 		t.Fatalf("hash: %s", got)
+	}
+	if store.upserts[0].DeckSize != 2 {
+		t.Fatalf("deck size should be carried: %d", store.upserts[0].DeckSize)
 	}
 }
 
-func TestRunSkipsDecksItAlreadyHolds(t *testing.T) {
-	slugA := "111"
+// The hashes are read for the ids one page listed, not for the whole corpus: the corpus is the thing that grows.
+func TestRunReadsHashesPerPage(t *testing.T) {
 	store := &fakeStore{
 		policy: Defaults{}.Policy(),
-		existing: map[string]DeckRow{
-			slugA: {SourceDeckID: slugA, Commanders: []string{"com1"}, Cards: []string{"aaa"}, ContentHash: contentHash([]string{"com1"}, []string{"aaa"})},
-		},
+		state:  CrawlState{DeckCount: 5_000},
+		hashes: map[string]string{"111": contentHash([]string{"com1"}, map[string]int{"aaa": 1})},
 	}
-	store.policy.MaxDecksPerRun = 2 // one unchanged + one new, then the budget stops the crawl
+	store.policy.MaxDecksPerRun = 2
 	src := fakeSource{name: "src", domain: "src.test"}
-	slugB := "222"
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(1):     []byte("111\n222\n"),
-		src.DeckURL(slugA): deckBody("2026-09-20T00:00:00Z", []string{"com1"}, []string{"aaa"}),
-		src.DeckURL(slugB): deckBody("2026-09-21T00:00:00Z", []string{"com2"}, []string{"bbb"}),
+		src.DeckURL("111"): deckBody("2026-09-20T00:00:00Z", []string{"com1"}, map[string]int{"aaa": 1}),
+		src.DeckURL("222"): deckBody("2026-09-21T00:00:00Z", []string{"com2"}, map[string]int{"bbb": 1}),
 	}}
 
 	res, err := newFakeRunner(store, getter, src).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(store.hashCalls) != 1 || len(store.hashCalls[0]) != 2 {
+		t.Fatalf("one lookup for the page's two ids: %v", store.hashCalls)
+	}
 	if res.Summary.SkippedUnchanged != 1 {
 		t.Fatalf("skipped: %+v", res.Summary)
 	}
-	if len(store.upserts) != 1 || store.upserts[0].SourceDeckID != slugB {
-		t.Fatalf("only the new deck should be written: %+v", store.upserts)
+	if len(store.upserts) != 1 || store.upserts[0].SourceDeckID != "222" {
+		t.Fatalf("only the changed deck should be written: %+v", store.upserts)
+	}
+}
+
+// A deck the feed listed that is not a deck the corpus wants is counted and stepped over, not a failed run.
+func TestRunSkipsDecksThatDoNotQualify(t *testing.T) {
+	store := &fakeStore{policy: Defaults{}.Policy()}
+	store.policy.BackfillDecks = 2
+	src := fakeSource{name: "src", domain: "src.test"}
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(1):         []byte("bad-111\n222\n"),
+		src.DeckURL("bad-111"): []byte("{}"),
+		src.DeckURL("222"):     deckBody("2026-09-21T00:00:00Z", []string{"com2"}, map[string]int{"bbb": 1}),
+	}}
+	res, err := newFakeRunner(store, getter, src).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Summary.State != "succeeded" {
+		t.Fatalf("an unqualified deck is not a failed run: %+v", res.Summary)
+	}
+	if res.Summary.SkippedUnqualified != 1 || res.Summary.DecksWritten != 1 {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+}
+
+// An exhausted feed ends the walk. Without this the page loop runs to the budget, which for a backfill is ten
+// thousand requests at a source that has already said it has nothing more.
+func TestRunStopsAtAnEmptyFeedPage(t *testing.T) {
+	store := &fakeStore{policy: Defaults{}.Policy()}
+	store.policy.BackfillDecks = 500
+	src := fakeSource{name: "src", domain: "src.test"}
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(1):     []byte("111\n"),
+		src.DeckURL("111"): deckBody("2026-09-20T00:00:00Z", []string{"com1"}, map[string]int{"aaa": 1}),
+		src.ListURL(2):     []byte(""),
+	}}
+	res, err := newFakeRunner(store, getter, src).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Summary.State != "succeeded" || res.Summary.PagesSeen != 2 {
+		t.Fatalf("the walk should end on the empty page: %+v", res.Summary)
+	}
+	if getter.requests[src.ListURL(3)] != 0 {
+		t.Fatal("nothing should be asked for past the end of the feed")
 	}
 }
 
@@ -267,8 +353,37 @@ func TestRunQuarantinesOnMalformedListPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The fake source reads any non-empty body as ids, so the failure lands on the deck fetch; either way the run
+	// fails rather than writing something it did not understand.
 	if res.Summary.State != "failed" || len(store.upserts) != 0 {
 		t.Fatalf("malformed feed should fail the run: %+v", res.Summary)
+	}
+}
+
+// The writes that close a run have to survive the cancellation that ended it: a run left "running" with its claim
+// held is a source wedged until the stale window expires.
+func TestRunFinishesEvenWhenItsContextIsCancelled(t *testing.T) {
+	store := &fakeStore{policy: Defaults{}.Policy()}
+	src := fakeSource{name: "src", domain: "src.test"}
+	getter := &fakeGetter{pages: map[string][]byte{src.ListURL(1): []byte("111\n")}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	res, err := newFakeRunner(store, getter, src).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Summary.Error != "cancelled" {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if len(store.finished) != 1 {
+		t.Fatalf("a cancelled run still records itself: %+v", store.finished)
+	}
+	if store.finishCtxErr != nil {
+		t.Fatalf("the closing writes must not run on the cancelled context: %v", store.finishCtxErr)
+	}
+	if store.claimed != 0 {
+		t.Fatalf("a cancelled run still releases its claim: %d", store.claimed)
 	}
 }
 
@@ -286,5 +401,17 @@ func TestRunWritesThePolicyToTheGetter(t *testing.T) {
 	}
 	if getter.policy.RequestInterval != 1500*time.Millisecond || getter.policy.MaxDecksPerRun != 900 {
 		t.Fatalf("policy not handed over: %+v", getter.policy)
+	}
+}
+
+// The hash describes the deck, not the order the source listed it in. An order-sensitive hash rewrites every row
+// whenever a site reshuffles its card list.
+func TestContentHashIgnoresOrderAndCountsQuantities(t *testing.T) {
+	base := contentHash([]string{"a", "b"}, map[string]int{"x": 1, "y": 2})
+	if got := contentHash([]string{"b", "a"}, map[string]int{"y": 2, "x": 1}); got != base {
+		t.Fatal("the same deck listed in another order is the same deck")
+	}
+	if got := contentHash([]string{"a", "b"}, map[string]int{"x": 1, "y": 3}); got == base {
+		t.Fatal("a different number of copies is a different deck")
 	}
 }

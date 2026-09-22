@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/supabase"
@@ -16,76 +15,92 @@ import (
 type Store interface {
 	// Policy is the crawl's politeness and budget from app_config.<source>.
 	Policy(ctx context.Context) (Policy, error)
-	// CrawlState is the source's cursor/claim/kill-switch row.
+	// CrawlState is the source's cursor, claim, kill switch and deck count.
 	CrawlState(ctx context.Context) (CrawlState, error)
-	// ExistingDecks returns every deck we already hold for the source, keyed by source_deck_id, to diff against.
-	ExistingDecks(ctx context.Context) (map[string]DeckRow, error)
-	// UpsertDecks writes only rows that actually differ; callers pass exactly those.
+	// DeckHashes returns the content hashes we already hold for the given deck ids, so a page can be diffed without
+	// reading the whole corpus. Ids we hold nothing for are absent.
+	DeckHashes(ctx context.Context, ids []string) (map[string]string, error)
+	// UpsertDecks writes rows; the database skips any whose content hash is unchanged.
 	UpsertDecks(ctx context.Context, rows []DeckRow) error
 	// CreateRun makes a crawl_runs row for the source and returns its id, so the claim can point at it.
 	CreateRun(ctx context.Context) (int64, error)
 	// FinishRun closes a run with what it saw and did.
 	FinishRun(ctx context.Context, runID int64, summary RunSummary) error
-	// Claim atomically marks the source as owned by this run. It reports whether the claim landed: when another run
-	// got there first, it is false and no second crawl may start. The condition is applied by PostgREST's WHERE, so
-	// two crons cannot both win.
-	Claim(ctx context.Context, runID int64, clientID string) (bool, error)
-	// ReleaseClaim lets the next run go.
-	ReleaseClaim(ctx context.Context) error
+	// Claim atomically marks the source as owned by this run, taking over a claim left behind by a crawl that died
+	// without releasing it. It reports whether the claim landed: when another live run holds it, it is false and no
+	// second crawl may start.
+	Claim(ctx context.Context, runID int64, clientID string, staleAfter time.Duration) (Claim, error)
+	// ReleaseClaim lets the next run go. It releases only a claim runID still holds.
+	ReleaseClaim(ctx context.Context, runID int64) error
+	// SetCursor records the newest deck the feed offered, so the state row says how far the crawl got.
+	SetCursor(ctx context.Context, lastDeckID string) error
 	// SetProbeOK records that the connectivity probe passed for the source.
 	SetProbeOK(ctx context.Context) error
 	// Disable flips the source's kill switch. Only a human re-enables it (a manual update on the row).
 	Disable(ctx context.Context, reason string) error
 }
 
-// CrawlState mirrors the source's corpus.crawl_state row.
+// CrawlState mirrors the source's corpus.crawl_state row, plus how many decks the corpus already holds for it.
 type CrawlState struct {
-	NextPage       int
 	LastDeckID     string
 	RunningRunID   int64
 	ClientID       string
+	ClaimedAt      *time.Time
 	Disabled       bool
 	DisabledReason string
 	ProbeOK        bool
+	DeckCount      int
 }
 
-// DeckRow mirrors corpus.decks.
+// Claim is the outcome of trying to take a source's single-flight lock.
+type Claim struct {
+	Claimed bool
+	// TookOver reports that the previous holder's claim had gone stale and was seized. Worth logging: it means a
+	// crawl died without releasing, which is normally a deploy landing mid-run.
+	TookOver bool
+	HeldBy   int64
+}
+
+// DeckRow is one scraped deck as it is written. Cards carry their quantities: a deck's basics are most of what
+// distinguishes its mana base, and the deck's size cannot be recovered from a set of distinct cards.
 type DeckRow struct {
-	SourceDeckID    string    `json:"source_deck_id"`
-	Source          string    `json:"source"`
-	Commanders      []string  `json:"commanders"`
-	Cards           []string  `json:"cards"`
-	ContentHash     string    `json:"content_hash"`
-	ListedUpdatedAt time.Time `json:"listed_updated_at"`
-	LastUpdatedAt   time.Time `json:"last_updated_at"`
+	SourceDeckID    string         `json:"source_deck_id"`
+	Commanders      []string       `json:"commanders"`
+	Cards           map[string]int `json:"cards"`
+	DeckSize        int            `json:"deck_size"`
+	ContentHash     string         `json:"content_hash"`
+	ListedUpdatedAt time.Time      `json:"listed_updated_at"`
+	LastUpdatedAt   time.Time      `json:"last_updated_at"`
 }
 
 // RunSummary is written back to crawl_runs (json tags are the column names).
 type RunSummary struct {
-	State            string `json:"state"`
-	PagesSeen        int    `json:"pages_seen"`
-	DecksListed      int    `json:"decks_listed"`
-	DecksFetched     int    `json:"decks_fetched"`
-	DecksWritten     int    `json:"decks_written"`
-	SkippedUnchanged int    `json:"skipped_unchanged"`
-	Blocks           int    `json:"blocks"`
-	Error            string `json:"error,omitempty"`
+	State              string `json:"state"`
+	PagesSeen          int    `json:"pages_seen"`
+	DecksListed        int    `json:"decks_listed"`
+	DecksFetched       int    `json:"decks_fetched"`
+	DecksWritten       int    `json:"decks_written"`
+	SkippedUnchanged   int    `json:"skipped_unchanged"`
+	SkippedUnqualified int    `json:"skipped_unqualified"`
+	Blocks             int    `json:"blocks"`
+	Error              string `json:"error,omitempty"`
 }
 
-// upsertBatch keeps one write to a hundred rows: deck rows are wide (array columns), so an unbounded body would
-// defeat PostgREST's own limits and the crawl's politeness.
+// upsertBatch keeps one write to a hundred decks: deck rows are wide, so an unbounded body would defeat PostgREST's
+// own limits and the crawl's politeness.
 const upsertBatch = 100
 
-// SupabaseStore talks to the hosted database through the Supabase REST API (service role).
+// SupabaseStore talks to the hosted database through the public.crawl_* functions (service role). It never touches a
+// corpus table directly: PostgREST cannot address an unexposed schema, and exposing this one would hand third-party
+// decklists to the API roles.
 type SupabaseStore struct {
 	client   *supabase.Client
 	source   string
 	defaults Defaults
-	now      func() time.Time
 }
 
 func NewSupabaseStore(client *supabase.Client, source string, defaults Defaults) *SupabaseStore {
-	return &SupabaseStore{client: client, source: source, defaults: defaults, now: time.Now}
+	return &SupabaseStore{client: client, source: source, defaults: defaults}
 }
 
 func (s *SupabaseStore) Policy(ctx context.Context) (Policy, error) {
@@ -97,67 +112,41 @@ func (s *SupabaseStore) Policy(ctx context.Context) (Policy, error) {
 }
 
 func (s *SupabaseStore) CrawlState(ctx context.Context) (CrawlState, error) {
-	rows, err := s.client.SelectAll(ctx, "corpus.crawl_state",
-		"next_page,last_deck_id,running_run_id,client_id,disabled,disabled_reason,probe_ok_at",
-		"source=eq."+s.source)
-	if err != nil {
-		return CrawlState{}, err
-	}
-	if len(rows) == 0 {
-		return CrawlState{}, nil
-	}
 	var row struct {
-		NextPage       int        `json:"next_page"`
-		LastDeckID     string     `json:"last_deck_id"`
-		RunningRunID   int64      `json:"running_run_id"`
-		ClientID       string     `json:"client_id"`
+		LastDeckID     string     `json:"lastDeckId"`
+		RunningRunID   int64      `json:"runningRunId"`
+		ClientID       string     `json:"clientId"`
+		ClaimedAt      *time.Time `json:"claimedAt"`
 		Disabled       bool       `json:"disabled"`
-		DisabledReason string     `json:"disabled_reason"`
-		ProbeOKAt      *time.Time `json:"probe_ok_at"`
+		DisabledReason string     `json:"disabledReason"`
+		ProbeOK        bool       `json:"probeOk"`
+		DeckCount      int        `json:"deckCount"`
 	}
-	if err := json.Unmarshal(rows[0], &row); err != nil {
+	if err := s.client.RPCInto(ctx, "crawl_state", map[string]any{"p_source": s.source}, &row); err != nil {
 		return CrawlState{}, err
 	}
-	return CrawlState{
-		NextPage:       row.NextPage,
-		LastDeckID:     row.LastDeckID,
-		RunningRunID:   row.RunningRunID,
-		ClientID:       row.ClientID,
-		Disabled:       row.Disabled,
-		DisabledReason: row.DisabledReason,
-		ProbeOK:        row.ProbeOKAt != nil,
-	}, nil
+	return CrawlState(row), nil
 }
 
-func (s *SupabaseStore) ExistingDecks(ctx context.Context) (map[string]DeckRow, error) {
-	rows, err := s.client.SelectAll(ctx, "corpus.decks",
-		"source,source_deck_id,content_hash,listed_updated_at,last_updated_at", "source=eq."+s.source)
+func (s *SupabaseStore) DeckHashes(ctx context.Context, ids []string) (map[string]string, error) {
+	if len(ids) == 0 {
+		return map[string]string{}, nil
+	}
+	out := map[string]string{}
+	err := s.client.RPCInto(ctx, "crawl_deck_hashes",
+		map[string]any{"p_source": s.source, "p_ids": ids}, &out)
 	if err != nil {
 		return nil, err
-	}
-	out := make(map[string]DeckRow, len(rows))
-	for _, raw := range rows {
-		var row DeckRow
-		if err := json.Unmarshal(raw, &row); err != nil {
-			return nil, err
-		}
-		out[row.SourceDeckID] = row
 	}
 	return out, nil
 }
 
 func (s *SupabaseStore) UpsertDecks(ctx context.Context, rows []DeckRow) error {
-	if len(rows) == 0 {
-		return nil
-	}
-	// The row's source column is the partition; the conflict target is (source, source_deck_id), so the store sets
-	// it rather than trusting the runner to remember.
-	for i := range rows {
-		rows[i].Source = s.source
-	}
 	for start := 0; start < len(rows); start += upsertBatch {
 		end := min(start+upsertBatch, len(rows))
-		if err := s.client.Upsert(ctx, "corpus.decks", rows[start:end], []string{"source", "source_deck_id"}); err != nil {
+		_, err := s.client.RPC(ctx, "crawl_upsert_decks",
+			map[string]any{"p_source": s.source, "p_rows": rows[start:end]})
+		if err != nil {
 			return err
 		}
 	}
@@ -165,64 +154,64 @@ func (s *SupabaseStore) UpsertDecks(ctx context.Context, rows []DeckRow) error {
 }
 
 func (s *SupabaseStore) CreateRun(ctx context.Context) (int64, error) {
-	payload, err := s.client.Insert(ctx, "corpus.crawl_runs",
-		[]map[string]any{{"source": s.source, "state": "queued"}}, "id", nil)
-	if err != nil {
+	var id int64
+	if err := s.client.RPCInto(ctx, "crawl_create_run", map[string]any{"p_source": s.source}, &id); err != nil {
 		return 0, err
 	}
-	// return=representation answers with the inserted row(s); the id is what the claim needs.
-	var rows []struct {
-		ID int64 `json:"id"`
+	if id == 0 {
+		return 0, fmt.Errorf("creating a crawl run returned no id")
 	}
-	if err := json.Unmarshal(payload, &rows); err != nil {
-		return 0, err
-	}
-	if len(rows) == 0 {
-		return 0, fmt.Errorf("creating a crawl run returned no row")
-	}
-	return rows[0].ID, nil
+	return id, nil
 }
 
 func (s *SupabaseStore) FinishRun(ctx context.Context, runID int64, summary RunSummary) error {
-	if summary.State == "" {
-		summary.State = "succeeded"
-	}
 	summary.State = assertState(summary.State)
-	return s.client.Update(ctx, "corpus.crawl_runs", fmt.Sprintf("id=eq.%d", runID), summary)
-}
-
-func (s *SupabaseStore) Claim(ctx context.Context, runID int64, clientID string) (bool, error) {
-	payload, err := s.client.UpdateReturning(
-		ctx,
-		"corpus.crawl_state",
-		"source=eq."+s.source+" and running_run_id=is.null", // the WHERE is the mutex: only an idle source can be claimed
-		"source",
-		map[string]any{"running_run_id": runID, "client_id": clientID},
-	)
+	payload, err := json.Marshal(summary)
 	if err != nil {
-		return false, err
+		return err
 	}
-	// return=representation answers [] when the WHERE matched nothing, meaning someone else already claimed.
-	trimmed := strings.TrimSpace(string(payload))
-	return trimmed != "" && trimmed != "[]", nil
+	_, err = s.client.RPC(ctx, "crawl_finish_run",
+		map[string]any{"p_run_id": runID, "p_summary": json.RawMessage(payload)})
+	return err
 }
 
-func (s *SupabaseStore) ReleaseClaim(ctx context.Context) error {
-	return s.client.Update(ctx, "corpus.crawl_state", "source=eq."+s.source,
-		map[string]any{"running_run_id": nil, "client_id": nil})
+func (s *SupabaseStore) Claim(ctx context.Context, runID int64, clientID string, staleAfter time.Duration) (Claim, error) {
+	var out struct {
+		Claimed  bool  `json:"claimed"`
+		TookOver bool  `json:"tookOver"`
+		HeldBy   int64 `json:"heldBy"`
+	}
+	err := s.client.RPCInto(ctx, "crawl_claim", map[string]any{
+		"p_source":              s.source,
+		"p_run_id":              runID,
+		"p_client_id":           clientID,
+		"p_stale_after_seconds": int(staleAfter.Seconds()),
+	}, &out)
+	if err != nil {
+		return Claim{}, err
+	}
+	return Claim(out), nil
+}
+
+func (s *SupabaseStore) ReleaseClaim(ctx context.Context, runID int64) error {
+	_, err := s.client.RPC(ctx, "crawl_release", map[string]any{"p_source": s.source, "p_run_id": runID})
+	return err
+}
+
+func (s *SupabaseStore) SetCursor(ctx context.Context, lastDeckID string) error {
+	_, err := s.client.RPC(ctx, "crawl_set_cursor",
+		map[string]any{"p_source": s.source, "p_last_deck_id": lastDeckID})
+	return err
 }
 
 func (s *SupabaseStore) SetProbeOK(ctx context.Context) error {
-	return s.client.Update(ctx, "corpus.crawl_state", "source=eq."+s.source,
-		map[string]any{"probe_ok_at": s.now().UTC().Format(time.RFC3339Nano)})
+	_, err := s.client.RPC(ctx, "crawl_probe_ok", map[string]any{"p_source": s.source})
+	return err
 }
 
 func (s *SupabaseStore) Disable(ctx context.Context, reason string) error {
-	return s.client.Update(ctx, "corpus.crawl_state", "source=eq."+s.source, map[string]any{
-		"disabled":        true,
-		"disabled_reason": reason,
-		"disabled_at":     s.now().UTC().Format(time.RFC3339Nano),
-	})
+	_, err := s.client.RPC(ctx, "crawl_disable", map[string]any{"p_source": s.source, "p_reason": reason})
+	return err
 }
 
 func assertState(state string) string {

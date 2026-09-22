@@ -1,9 +1,14 @@
 // Package supabase is a thin PostgREST client for the project's Supabase database — the service_role key over the
 // REST API, which is how the Go API on the VPS reads and writes the hosted database.
 //
-// The Moxfield crawl is the only user today. It mirrors the Typesense client: hand-rolled, status-carrying errors,
-// deliberately no full Supabase SDK. The rows it moves are small and few, so paging is one `limit`/`offset` loop
-// and nothing here tries to be general PostgREST.
+// The deck crawls are the only user today. It mirrors the Typesense client: hand-rolled, status-carrying errors,
+// deliberately no full Supabase SDK.
+//
+// Two call shapes, and no more. `RPC` posts to a security-definer function, which is how everything in the private
+// `corpus` schema is reached: PostgREST can only address schemas on its exposed list, so a table path like
+// `/rest/v1/corpus.decks` is read as a table *named* "corpus.decks" in `public` and answers PGRST205. Exposing
+// `corpus` instead would defeat the point of the schema. `SelectAll` is table access for `public` rows the crawl
+// reads directly (its app_config policy), paging a thousand at a time.
 package supabase
 
 import (
@@ -19,8 +24,7 @@ import (
 	"time"
 )
 
-// MaxRowsPerRequest is the paging step. PostgREST caps at 1000 by default and the crawl's data sets are a few
-// thousand rows, so a loop of this size is one slow request at worst.
+// MaxRowsPerRequest is the paging step, matching PostgREST's own default cap.
 const MaxRowsPerRequest = 1000
 
 type Client struct {
@@ -93,11 +97,36 @@ func (c *Client) do(ctx context.Context, method, path string, body any, prefer s
 	return payload, nil
 }
 
-// SelectAll reads every matching row, paging MaxRowsPerRequest at a time. Returns raw JSON rows; decoding is the
-// caller's, because the crawl decodes three different shapes from the same client.
+// RPC calls a Postgres function through PostgREST and returns its raw JSON result. args is marshalled as the
+// function's named arguments, so the call site reads like the SQL signature.
+func (c *Client) RPC(ctx context.Context, name string, args any) ([]byte, error) {
+	if args == nil {
+		args = map[string]any{}
+	}
+	return c.do(ctx, http.MethodPost, "/rpc/"+url.PathEscape(name), args, "")
+}
+
+// RPCInto calls a function and decodes its result into out.
+func (c *Client) RPCInto(ctx context.Context, name string, args any, out any) error {
+	payload, err := c.RPC(ctx, name, args)
+	if err != nil {
+		return err
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(payload, out); err != nil {
+		return fmt.Errorf("supabase: unreadable %s result: %w", name, err)
+	}
+	return nil
+}
+
+// SelectAll reads every matching row of an exposed (`public`) table, paging MaxRowsPerRequest at a time. Returns raw
+// JSON rows; decoding is the caller's.
 //
-// filter is a PostgREST condition in its native form, e.g. "source_deck_id=in.(\"a\",\"b\")". It is set as a single
-// query parameter and url.Values encodes it, so parens, quotes and dots survive the wire.
+// filter is a single PostgREST condition, `column=operator.value`. It is deliberately one condition: PostgREST has
+// no `a=eq.x and b=is.null` form, and splitting such a string on its first `=` produces a filter that silently
+// matches nothing. Anything needing two conditions belongs in a function.
 func (c *Client) SelectAll(ctx context.Context, table, columns, filter string) ([]json.RawMessage, error) {
 	var all []json.RawMessage
 	offset := 0
@@ -107,7 +136,13 @@ func (c *Client) SelectAll(ctx context.Context, table, columns, filter string) (
 		if filter != "" {
 			key, expr, ok := strings.Cut(filter, "=")
 			if !ok {
-				return nil, fmt.Errorf("supabase: filter %q is not key=expr", filter)
+				return nil, fmt.Errorf("supabase: filter %q is not column=operator.value", filter)
+			}
+			// A second "=" means someone wrote a compound expression. PostgREST has no such form: the whole tail
+			// would become the value of the first condition, match nothing, and read as an empty table rather than
+			// as a mistake. Two conditions belong in a function.
+			if strings.Contains(expr, "=") {
+				return nil, fmt.Errorf("supabase: filter %q is not a single condition", filter)
 			}
 			q.Set(key, expr)
 		}
@@ -129,49 +164,9 @@ func (c *Client) SelectAll(ctx context.Context, table, columns, filter string) (
 	}
 }
 
-// Upsert writes or merges `rows` by the given conflict columns (PostgREST `resolution=merge-duplicates` +
-// `on_conflict`). Always called with rows that actually differ, so a write here is a real change.
-func (c *Client) Upsert(ctx context.Context, table string, rows any, onConflict []string) error {
-	cols := strings.Join(onConflict, ",")
-	_, err := c.do(ctx, http.MethodPost, "/"+table+"?on_conflict="+cols, rows, "resolution=merge-duplicates")
-	return err
-}
-
-// Insert writes rows and returns the created ones (return=representation), so a generated id can be read back. Call
-// with onConflict empty for a pure insert; pass columns to make it an upsert.
-func (c *Client) Insert(ctx context.Context, table string, rows any, selectColumns string, onConflict []string) ([]byte, error) {
-	q := url.Values{}
-	q.Set("select", selectColumns)
-	if len(onConflict) > 0 {
-		q.Set("on_conflict", strings.Join(onConflict, ","))
-	}
-	return c.do(ctx, http.MethodPost, "/"+table+"?"+q.Encode(), rows, "return=representation")
-}
-
-// Update patches the rows matched by filter with `row`. Used for the single crawl_state row.
-func (c *Client) Update(ctx context.Context, table, filter string, row any) error {
-	_, err := c.UpdateReturning(ctx, table, filter, "", row)
-	return err
-}
-
-// UpdateReturning patches matching rows and returns the updated ones, so a caller can tell "nothing matched" from
-// "it went through" - which is the whole mechanism behind an atomic claim. filter may be a compound expression, e.g.
-// "id=eq.1 and running_run_id=is.null", in which case PostgREST only patches when the extra condition holds.
-func (c *Client) UpdateReturning(ctx context.Context, table, filter, selectColumns string, row any) ([]byte, error) {
-	q := url.Values{}
-	key, expr, ok := strings.Cut(filter, "=")
-	if ok {
-		q.Set(key, expr)
-	}
-	if selectColumns != "" {
-		q.Set("select", selectColumns)
-	}
-	return c.do(ctx, http.MethodPatch, "/"+table+"?"+q.Encode(), row, "return=representation")
-}
-
 // AppConfig reads a row's jsonb `value` from public.app_config. Returns the null message when there is no row.
 func (c *Client) AppConfig(ctx context.Context, key string) (json.RawMessage, error) {
-	rows, err := c.SelectAll(ctx, "app_config", "value", "key=eq."+url.QueryEscape(key))
+	rows, err := c.SelectAll(ctx, "app_config", "value", "key=eq."+key)
 	if err != nil {
 		return nil, err
 	}

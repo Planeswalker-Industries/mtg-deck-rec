@@ -20,19 +20,29 @@ import (
 type Deck struct {
 	Slug           string
 	CommanderNames []string
-	Commanders     []string // oracle ids, sorted so a partner pair keys deterministically
-	Cards          []string // oracle ids of the other cards, as listed
+	Commanders     []string       // oracle ids, sorted so a partner pair keys deterministically
+	Cards          map[string]int // the rest of the 100: oracle id to number of copies
+	Size           int            // total copies including the commander(s)
 	UpdatedAt      time.Time
 }
 
 type deckCard struct {
 	OracleID    string
 	Name        string
+	Quantity    int
 	IsCommander bool
 }
 
 // maxEmbedDepth bounds the JSON walk. Moxfield's embeds nest a few levels; anything deeper is not a deck payload.
 const maxEmbedDepth = 6
+
+// deckSize is what a legal Commander deck holds, commander(s) included.
+//
+// This parser reads an embed whose shape is still unpinned, so the size check is doing more work here than it does
+// for Archidekt: a heuristic that finds only half a deck's cards produces a list that looks plausible and is wrong.
+// Refusing anything that is not exactly a hundred cards means an under-reading parser writes nothing at all rather
+// than writing a truncated deck into the corpus.
+const deckSize = 100
 
 // ParseDeckPage extracts the deck from a deck page's HTML. slug comes from the browse link that led here.
 func ParseDeckPage(html []byte, slug string) (Deck, error) {
@@ -45,21 +55,33 @@ func ParseDeckPage(html []byte, slug string) (Deck, error) {
 		return Deck{}, err
 	}
 
-	deck := Deck{Slug: slug, UpdatedAt: updated}
+	deck := Deck{Slug: slug, UpdatedAt: updated, Cards: map[string]int{}}
+	commanders := map[string]string{}
 	for _, card := range cards {
+		quantity := card.Quantity
+		if quantity < 1 {
+			quantity = 1
+		}
+		deck.Size += quantity
 		if card.IsCommander {
-			deck.Commanders = append(deck.Commanders, card.OracleID)
-			if card.Name != "" {
-				deck.CommanderNames = append(deck.CommanderNames, card.Name)
-			}
+			commanders[card.OracleID] = card.Name
 			continue
 		}
-		deck.Cards = append(deck.Cards, card.OracleID)
+		deck.Cards[card.OracleID] += quantity
 	}
-	if len(deck.Commanders) == 0 {
-		return Deck{}, &crawl.ShapeError{What: "deck", Detail: fmt.Sprintf("%s: no commander found", slug)}
+	if len(commanders) == 0 {
+		return Deck{}, &crawl.NotQualified{ID: slug, Reason: "no commander"}
+	}
+	if deck.Size != deckSize {
+		return Deck{}, &crawl.NotQualified{ID: slug, Reason: "not a 100-card deck"}
+	}
+	for oracleID := range commanders {
+		deck.Commanders = append(deck.Commanders, oracleID)
 	}
 	sort.Strings(deck.Commanders)
+	for _, oracleID := range deck.Commanders {
+		deck.CommanderNames = append(deck.CommanderNames, commanders[oracleID])
+	}
 	return deck, nil
 }
 
@@ -147,7 +169,18 @@ func cardFrom(obj map[string]any, underCommanders bool) (deckCard, bool) {
 	if categories, ok := obj["categories"].([]any); ok {
 		commander = commander || containsCommander(categories)
 	}
-	return deckCard{OracleID: id, Name: name, IsCommander: commander}, true
+	return deckCard{OracleID: id, Name: name, Quantity: quantityOf(obj), IsCommander: commander}, true
+}
+
+// quantityOf reads a record's copy count under the key names the embeds have used. A record with none is one copy,
+// which is what a singleton format's records mostly are.
+func quantityOf(obj map[string]any) int {
+	for _, key := range []string{"quantity", "qty", "count"} {
+		if n, ok := obj[key].(float64); ok && n >= 1 {
+			return int(n)
+		}
+	}
+	return 1
 }
 
 // objCommander reads the boolean markers Moxfield's embeds have shipped; a category check covers the format that

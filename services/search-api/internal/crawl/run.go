@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -23,6 +25,10 @@ type Source interface {
 	// ParseList turns a feed page body into the deck ids it listed, in feed order.
 	ParseList(body []byte) ([]Entry, error)
 	// ParseDeck turns a deck page body into the deck's content. id is the entry's ID from the feed.
+	//
+	// A deck the source can read but that does not belong in the corpus - not Commander, not public, not 100 cards -
+	// is a *NotQualified error, which the runner skips quietly. Only a page that stopped looking like itself is a
+	// ShapeError, which quarantines the run.
 	ParseDeck(body []byte, id string) (Deck, error)
 }
 
@@ -32,18 +38,36 @@ type Entry struct {
 	ID string
 }
 
-// Deck is one parsed deck: commander(s) and the other cards, oracle-level, plus its authoritative update time.
+// Deck is one parsed deck: commander(s) and the other cards with their quantities, oracle-level, plus its
+// authoritative update time.
 type Deck struct {
 	ID             string
 	CommanderNames []string
-	Commanders     []string // oracle ids, sorted so a partner pair keys deterministically
-	Cards          []string // oracle ids of the other cards, as listed
+	Commanders     []string       // oracle ids, sorted so a partner pair keys deterministically
+	Cards          map[string]int // the rest of the 100: oracle id to number of copies
+	Size           int            // total copies including the commander(s)
 	UpdatedAt      time.Time
+}
+
+// NotQualified means the page parsed but the deck is not one the corpus wants. It is an ordinary outcome of walking
+// a feed - the browse filters are not a guarantee - so it is counted, not raised.
+type NotQualified struct {
+	ID     string
+	Reason string
+}
+
+func (e *NotQualified) Error() string {
+	return fmt.Sprintf("deck %s does not qualify: %s", e.ID, e.Reason)
 }
 
 // caughtUpLimit unchanged decks in a row means the feed has passed the frontier of what the corpus already holds
 // (the feed is update-ordered, newest first). Past it, every listing is an old, unchanged deck.
 const caughtUpLimit = 10
+
+// finishTimeout bounds the bookkeeping writes that close a run. They run on a context detached from the crawl's, so
+// a shutdown or a cancelled crawl still records its outcome and releases its claim instead of leaving the source
+// locked until the stale window expires.
+const finishTimeout = 15 * time.Second
 
 // Result describes what one invocation of the crawl did: nothing at all when a crawl was already running or the
 // source is disabled (both are normal states the cron should not treat as failures).
@@ -60,6 +84,7 @@ type Status struct {
 	DisabledReason string `json:"disabledReason,omitempty"`
 	Running        bool   `json:"running"`
 	LastDeckID     string `json:"lastDeckId,omitempty"`
+	DeckCount      int    `json:"deckCount"`
 }
 
 // Runner executes one bounded crawl on demand for a source: probe, claim, walk the feed, diff against what we hold,
@@ -93,50 +118,49 @@ func (r *Runner) Run(ctx context.Context) (Result, error) {
 	if state.Disabled {
 		return Result{Summary: RunSummary{State: "failed", Error: "disabled"}}, nil
 	}
-	if state.RunningRunID != 0 {
-		return Result{AlreadyBusy: true}, nil
-	}
 
 	runID, err := r.store.CreateRun(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("creating crawl run: %w", err)
 	}
-	// The write behind the fast-path AlreadyBusy check is atomic (single-flight lives in the store), so two crons
-	// that both pass the check cannot both crawl.
-	claimed, err := r.store.Claim(ctx, runID, r.clientID)
+	// The claim is the only thing that decides whether this run crawls. There is no fast-path read of
+	// running_run_id first: it would be a check with a gap in front of the write, and the claim already answers the
+	// same question atomically.
+	claim, err := r.store.Claim(ctx, runID, r.clientID, policy.StaleClaim)
 	if err != nil {
 		return Result{}, fmt.Errorf("claiming crawl: %w", err)
 	}
-	if !claimed {
-		// Another cron won the claim. Finish our own (unclaimed) run row as failed and report busy; nothing crawled.
+	if !claim.Claimed {
+		// Another cron holds the claim. Close our own (unclaimed) run row and report busy; nothing crawled.
 		if err := r.store.FinishRun(ctx, runID, RunSummary{State: "failed", Error: "already running"}); err != nil {
 			r.log.Error("writing unclaimed run", "run", runID, "err", err)
 		}
 		return Result{RunID: runID, AlreadyBusy: true}, nil
 	}
+	if claim.TookOver {
+		// Normal after a deploy lands mid-crawl, but worth saying out loud: the previous run died without releasing.
+		r.log.Warn("took over a stale crawl claim", "source", r.src.Name(), "run", runID)
+	}
+
 	summary := RunSummary{State: "running"}
 	defer func() {
-		if err := r.store.FinishRun(ctx, runID, summary); err != nil {
+		// Detached from ctx on purpose: these two writes are how a run stops being "running", so they have to
+		// survive the cancellation that ended the crawl.
+		done, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+		defer cancel()
+		if err := r.store.FinishRun(done, runID, summary); err != nil {
 			r.log.Error("writing crawl finish", "run", runID, "err", err)
 		}
-		if err := r.store.ReleaseClaim(ctx); err != nil {
+		if err := r.store.ReleaseClaim(done, runID); err != nil {
 			r.log.Error("releasing crawl claim", "err", err)
 		}
 	}()
 
-	existing, err := r.store.ExistingDecks(ctx)
-	if err != nil {
-		summary.State, summary.Error = "failed", "reading existing decks: "+err.Error()
-		return Result{RunID: runID, Summary: summary}, nil
-	}
-
-	blocks := r.crawl(ctx, policy, existing, &summary)
-	if summary.Error == "" && blocks > 0 {
-		summary.Blocks = blocks
-	}
+	blocks := r.crawl(ctx, policy, state, &summary)
 	// A single 403 or challenge is a definitive block - the source decided it, so the crawl switches it off until a
 	// human re-enables it. Retries are for 429/5xx (done in the fetcher), never for a wall.
 	if blocks > 0 {
+		summary.Blocks = blocks
 		reason := fmt.Sprintf("%d blocked response(s)", blocks)
 		if err := r.store.Disable(ctx, reason); err != nil {
 			r.log.Error("flipping the kill switch", "err", err)
@@ -161,23 +185,21 @@ func (r *Runner) Status(ctx context.Context) (Status, error) {
 		DisabledReason: state.DisabledReason,
 		Running:        state.RunningRunID != 0,
 		LastDeckID:     state.LastDeckID,
+		DeckCount:      state.DeckCount,
 	}, nil
 }
 
 // crawl walks the source's update-ordered feed, diffing each listed deck against the corpus and writing only rows
 // that changed. Returns how many 403/challenge blocks were seen - always 0 or 1, because a single definitive block
 // ends the run and (via Run) flips the kill switch.
-func (r *Runner) crawl(ctx context.Context, policy Policy, existing map[string]DeckRow, summary *RunSummary) int {
-	if existing == nil {
-		existing = map[string]DeckRow{}
-	}
-	budget := policy.Budget(len(existing))
+func (r *Runner) crawl(ctx context.Context, policy Policy, state CrawlState, summary *RunSummary) int {
+	budget := policy.Budget(state.DeckCount)
 	streak := 0
 	probed := false
 
 	// The page count is bounded by the budget rather than a fixed cap: a backfill of ten thousand decks needs more
-	// pages than a daily run of a few hundred, and a page that lists no decks ends the walk anyway. A page costs one
-	// request, so this is also the run's upper bound on listing requests.
+	// pages than a daily run of a few hundred. A page costs one request, so this is also the run's upper bound on
+	// listing requests.
 	for page := 1; page <= budget && budget > 0; page++ {
 		if err := ctx.Err(); err != nil {
 			summary.State, summary.Error = "failed", "cancelled"
@@ -194,14 +216,34 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, existing map[string]D
 			return 0
 		}
 		summary.PagesSeen++
+		// The end of the feed. Sources quarantine an empty page today, but the walk must not depend on that: a feed
+		// that starts answering with an empty list would otherwise be paged all the way to the budget.
+		if len(entries) == 0 {
+			return 0
+		}
 
 		// The first successfully served feed page is the connectivity probe: the whole feature gates on an honest
-		// fetch of an allowed path working. Record it once per run.
+		// fetch of an allowed path working. Record it, and where the feed starts, once per run.
 		if !probed {
 			probed = true
 			if err := r.store.SetProbeOK(ctx); err != nil {
 				r.log.Warn("recording probe success", "err", err)
 			}
+			if err := r.store.SetCursor(ctx, entries[0].ID); err != nil {
+				r.log.Warn("recording the feed cursor", "err", err)
+			}
+		}
+
+		// One lookup per page rather than one per run: the corpus is the thing that grows without bound, and a run
+		// only needs to know about the decks in front of it.
+		ids := make([]string, len(entries))
+		for i, entry := range entries {
+			ids[i] = entry.ID
+		}
+		known, err := r.store.DeckHashes(ctx, ids)
+		if err != nil {
+			summary.State, summary.Error = "failed", "reading deck hashes: "+err.Error()
+			return 0
 		}
 
 		for _, entry := range entries {
@@ -216,13 +258,20 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, existing map[string]D
 				if isBlockErr(err) {
 					return 1
 				}
+				// A deck that does not belong in the corpus is not a failure: the browse filters admit decks that
+				// are not public 100-card Commander decks, and the source adapter is what says so.
+				var unqualified *NotQualified
+				if errors.As(err, &unqualified) {
+					summary.SkippedUnqualified++
+					continue
+				}
 				summary.State, summary.Error = "failed", err.Error()
 				return 0
 			}
 
 			// The diff: a deck we already hold with the same content hash is written to nothing, and counts toward
 			// the caught-up rule. Anything else - new or changed - is one write.
-			if known, ok := existing[entry.ID]; ok && known.ContentHash == row.ContentHash {
+			if hash, ok := known[entry.ID]; ok && hash == row.ContentHash {
 				streak++
 				summary.SkippedUnchanged++
 				if streak >= caughtUpLimit {
@@ -235,7 +284,6 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, existing map[string]D
 				summary.State, summary.Error = "failed", "writing deck: "+err.Error()
 				return 0
 			}
-			existing[entry.ID] = row
 			summary.DecksWritten++
 		}
 	}
@@ -269,17 +317,34 @@ func (r *Runner) fetchDeck(ctx context.Context, id string, summary *RunSummary) 
 		SourceDeckID:    id,
 		Commanders:      deck.Commanders,
 		Cards:           deck.Cards,
+		DeckSize:        deck.Size,
 		ContentHash:     contentHash(deck.Commanders, deck.Cards),
 		ListedUpdatedAt: deck.UpdatedAt,
 		LastUpdatedAt:   deck.UpdatedAt,
 	}, nil
 }
 
-// contentHash identifies a deck's content: its commander(s) and its card set. A re-parse yielding the same hash is
-// the same deck; that is what a daily run compares against instead of rewriting rows.
-func contentHash(commanders, cards []string) string {
+// contentHash identifies a deck's content: its commander(s) and its cards with their quantities. A re-parse yielding
+// the same hash is the same deck; that is what a daily run compares against instead of rewriting rows.
+//
+// Both halves are sorted before hashing, so the hash describes the deck and not the order the source happened to
+// list it in. An unsorted hash would rewrite every row whenever a site reshuffled its card list.
+func contentHash(commanders []string, cards map[string]int) string {
+	sortedCommanders := append([]string(nil), commanders...)
+	sort.Strings(sortedCommanders)
+
+	ids := make([]string, 0, len(cards))
+	for id := range cards {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	pairs := make([]string, len(ids))
+	for i, id := range ids {
+		pairs[i] = id + ":" + strconv.Itoa(cards[id])
+	}
+
 	h := sha256.New()
-	fmt.Fprint(h, strings.Join(commanders, "|"), "\x00", strings.Join(cards, "|"))
+	fmt.Fprint(h, strings.Join(sortedCommanders, "|"), "\x00", strings.Join(pairs, "|"))
 	return hex.EncodeToString(h.Sum(nil))
 }
 

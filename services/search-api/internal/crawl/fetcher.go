@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,10 +18,14 @@ import (
 const userAgent = "MTGDeckRec/0.1 (+https://github.com/Planeswalker-Industries/mtg-deck-rec)"
 
 const (
-	fetchTimeout     = 30 * time.Second
-	maxFetchRetries  = 3
-	challengeMarkers = "challenge-platform" // the JS challenge Cloudflare serves inside a 200 body
+	fetchTimeout    = 30 * time.Second
+	maxFetchRetries = 3
 )
+
+// The markers of a challenge page served inside an otherwise ordinary response. Matched only against HTML: the
+// active source answers JSON, and a substring search over any body would let a deck called "Just a moment" or a
+// card named in an article disable the crawl permanently. A 403 is judged by its status, not by these.
+var challengeMarkers = []string{"challenge-platform", "cf-browser-verification", "just a moment..."}
 
 // Getter is what the run loop needs from a crawler, so the loop can be tested with a scripted fake. *Fetcher
 // implements it.
@@ -102,7 +107,7 @@ func NewFetcher(domains []string, policy Policy, log *slog.Logger) *Fetcher {
 func (f *Fetcher) wireHandlers() {
 	c := f.collector
 	c.OnResponse(func(r *colly.Response) {
-		if isChallengeBody(r.Body) {
+		if isChallenge(r.Headers, r.Body) {
 			// A 200 that is really a challenge counts as blocked too; colly calls OnResponse, not OnError, for it.
 			f.mu.Lock()
 			if f.gotErr == nil {
@@ -116,7 +121,7 @@ func (f *Fetcher) wireHandlers() {
 		f.mu.Unlock()
 	})
 	c.OnError(func(r *colly.Response, err error) {
-		if r.StatusCode == 403 || isChallengeBody(r.Body) {
+		if r.StatusCode == 403 || isChallenge(r.Headers, r.Body) {
 			f.mu.Lock()
 			if f.gotErr == nil {
 				f.gotErr = &Blocked{URL: r.Request.URL.String()}
@@ -136,8 +141,26 @@ func (f *Fetcher) wireHandlers() {
 	})
 }
 
-func isChallengeBody(body []byte) bool {
-	return len(body) > 0 && strings.Contains(strings.ToLower(string(body)), challengeMarkers)
+// isChallenge reports a bot wall dressed as an ordinary response. Cloudflare labels one outright with
+// `cf-mitigated: challenge`; otherwise it is an HTML interstitial, so the body is only searched when the response
+// claims to be HTML.
+func isChallenge(headers *http.Header, body []byte) bool {
+	if headers != nil && strings.EqualFold(strings.TrimSpace(headers.Get("cf-mitigated")), "challenge") {
+		return true
+	}
+	if len(body) == 0 || headers == nil {
+		return false
+	}
+	if contentType := headers.Get("Content-Type"); !strings.Contains(strings.ToLower(contentType), "html") {
+		return false
+	}
+	lowered := strings.ToLower(string(body))
+	for _, marker := range challengeMarkers {
+		if strings.Contains(lowered, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetPolicy updates the politeness and backoff for a run. Only the runner calls it, before crawling starts.

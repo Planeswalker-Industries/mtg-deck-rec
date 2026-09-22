@@ -293,12 +293,14 @@ rewrites its storage rule ("decklists stay in local JSONL"), which describes how
 
 **Priority:** MEDIUM | **Area:** Backend / Data | **Status:** Built on `feature/moxfield-scrape`; Archidekt active, Moxfield shelved 2026-09-22
 
-A shared crawl engine and two sources behind a daily Vercel cron. Web (`vercel.json` → `apps/web/src/app/api/cron/{moxfield,archidekt}-scrape`) → `POST /cron/:source/scrape` on the search API (`services/search-api`), which runs a crawl and writes decklists into the private `corpus` schema (decks, crawl_runs, crawl_state with a per-source cursor and kill switch) through the Supabase REST API. One core, two source adapters:
-- `services/search-api/internal/crawl/` — policy, fetcher (colly, honest User-Agent, robots.txt, 1-request spacing, backoff honouring `Retry-After`), run loop (probe → atomic claim → walk update-ordered feed → diff by content hash → write only changes), Supabase store.
+A shared crawl engine and two sources behind a daily Vercel cron. Web (`vercel.json` → `apps/web/src/app/api/cron/{moxfield,archidekt}-scrape`, authorized by `CRON_SECRET`) → `POST /cron/:source/scrape` on the search API (`services/search-api`), which runs a crawl and writes decklists into the private `corpus` schema (decks, crawl_runs, crawl_state with a cursor, a single-flight claim and a kill switch) through the `public.crawl_*` security-definer functions. One core, two source adapters:
+- `services/search-api/internal/crawl/` — policy, fetcher (colly, honest User-Agent, robots.txt, 1-request spacing, backoff honouring `Retry-After`), run loop (probe → atomic claim → walk update-ordered feed → diff by content hash per page → write only changes), Supabase store over the crawl functions.
 - `services/search-api/internal/archidekt/` — **the active source.** Reads the public API (`/api/decks/v3/?deckFormat=3&size=100&orderBy=-updatedAt` for the browse feed, `/api/decks/<id>/` for decks), which staff allow the project to read and which its own worker has used since 2026-09-14. Oracle ids and commander category come straight from the JSON; parsers are pinned against live fixtures (`internal/archidekt/testdata/`). 3 s pace because 1 s drew 429s.
 - `services/search-api/internal/moxfield/` — built, **blocked**: `moxfield.com/decks/all?orderBy=updated` answers Cloudflare's hard WAF block to the app's honest User-Agent from the VPS (403, 2026-09-22). Per the guardrails, no circumvention: the source stays off until Moxfield grants an accessible path. Its page shapes are still unpinned (the parsers hunt for the embed and quarantine when they cannot find it). Firing it is harmless — the first contact self-disables.
 
-A single 403/challenge flips that source's `corpus.crawl_state.disabled` row until a human re-enables it.
+A single 403/challenge flips that source's `corpus.crawl_state.disabled` row until a human re-enables it, and writes an `audit_log` row so the stop is visible.
+
+**Review fixes (2026-09-22).** The first cut could not have run: it addressed `corpus` tables as PostgREST paths (`/rest/v1/corpus.decks`, which is PGRST205 — the schema is not exposed and must not be), `service_role` had no `usage` on the schema, and the "atomic claim" sent a compound filter PostgREST has no syntax for, so it matched nothing and every run reported itself busy. All three are now the `public.crawl_*` functions, checked against a real PostgREST by `TestLiveStoreRoundTrip` (skipped unless `SUPABASE_TEST_URL`/`SUPABASE_TEST_SERVICE_KEY` are set) rather than only against fakes. The Archidekt parser also dropped every uncategorized card and skipped qualification entirely; it now mirrors `qualifyDeck` (format, public, commander, 100 cards) and keeps quantities. The cron trusted spoofable Vercel headers and now takes `CRON_SECRET`.
 
 **Files:**
 - `supabase/migrations/20260922000100_deck_crawl_corpus.sql` — `corpus` schema + `app_config.{archidekt,moxfield}` policies
@@ -310,10 +312,12 @@ A single 403/challenge flips that source's `corpus.crawl_state.disabled` row unt
 
 **Acceptance criteria:**
 - [x] Archidekt probe from the VPS returns 2xx (2026-09-22)
+- [x] The crawl's database path works against a real PostgREST, not only against fakes (`TestLiveStoreRoundTrip`)
 - [ ] The daily crawl fills `corpus.decks` (source `archidekt`) once the search API is deployed with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SEARCH_API_CRON_TOKEN`
 - [ ] Aggregation of `corpus.decks` into `commander_card_stats` / `card_global_stats` and the weighting it feeds — the follow-up milestone
 - [ ] Moxfield: grants an accessible path (their bot whitelist wants a production domain — T033), confirm the VPS probe returns 2xx, pin the list/deck parsers against live fixtures, then enable its crawl
-- [ ] Slice 6 deploy env/docs when activated: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SEARCH_API_CRON_TOKEN`, README endpoint table
+- [ ] Slice 6 deploy env/docs when activated: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SEARCH_API_CRON_TOKEN` on the VPS, `CRON_SECRET` + `SEARCH_API_URL` + `SEARCH_API_CRON_TOKEN` on Vercel, README endpoint table
+- [ ] **A database role for the crawl that is not `service_role`.** The VPS container now holds a key that bypasses RLS across the whole database, `auth` included, in the same process that serves public read endpoints. The `crawl_*` functions narrow what the crawl does, not what the key could do. Doing this properly means a Postgres role granted execute on those functions and nothing else, plus a JWT minted for it (the project's secret keys map to `service_role`), so it is its own piece of work rather than a line in this one
 
 **Related:** Moxfield out-of-scope line in `docs/roadmap/card-graph-plan.md` points here. T035's plan to crawl the full commander suite sourced from Archidekt is unaffected.
 

@@ -127,3 +127,45 @@ func TestGetHonorsRetryAfter(t *testing.T) {
 		t.Fatalf("Retry-After was not honored: elapsed %v", elapsed)
 	}
 }
+
+// A challenge wall is an HTML interstitial or a labelled Cloudflare response. It is deliberately not "any body
+// containing the word": the active source answers JSON, a single false positive disables that source until a human
+// clears it by hand, and deck and card names are user-written text that reaches these bodies.
+func TestChallengeDetection(t *testing.T) {
+	html := func() *http.Header {
+		h := http.Header{}
+		h.Set("Content-Type", "text/html; charset=utf-8")
+		return &h
+	}
+	json := func() *http.Header {
+		h := http.Header{}
+		h.Set("Content-Type", "application/json")
+		return &h
+	}
+	mitigated := func() *http.Header {
+		h := json()
+		h.Set("cf-mitigated", "challenge")
+		return h
+	}
+
+	for _, tc := range []struct {
+		name    string
+		headers *http.Header
+		body    string
+		want    bool
+	}{
+		{"a Cloudflare interstitial", html(), `<html><script src="/cdn-cgi/challenge-platform/h/b/orchestrate"></script>`, true},
+		{"the Just a moment page", html(), `<html><head><title>Just a moment...</title></head>`, true},
+		{"a labelled response, whatever the body", mitigated(), `{"results":[]}`, true},
+		{"a deck list that mentions a challenge", json(), `{"results":[{"name":"Just a moment... challenge-platform"}]}`, false},
+		{"an ordinary deck page", json(), `{"deckFormat":3}`, false},
+		{"an ordinary HTML page", html(), `<html><body>decks</body></html>`, false},
+		{"no headers at all", nil, `challenge-platform`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isChallenge(tc.headers, []byte(tc.body)); got != tc.want {
+				t.Fatalf("isChallenge = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

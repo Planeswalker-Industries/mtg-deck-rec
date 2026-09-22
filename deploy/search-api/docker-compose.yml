@@ -37,6 +37,11 @@ services:
     build: ../../services/search-api
     image: ${SEARCH_API_IMAGE:-mtg-search-api:local}
     restart: unless-stopped
+    # Docker's default is ten seconds from SIGTERM to SIGKILL, which is less than this process asks for: Fiber waits
+    # up to 30 s for in-flight requests, and then a background deck crawl is given 20 s to notice it was cancelled
+    # and release its database claim. Killed before that, the crawl's claim sits until another run takes it over as
+    # stale, which is a working fallback and a slower one.
+    stop_grace_period: 60s
 
     environment:
       SEARCH_API_ADDR: ":${SEARCH_API_CONTAINER_PORT:-8080}"
@@ -46,6 +51,13 @@ services:
       TYPESENSE_ADMIN_KEY: "${TYPESENSE_ADMIN_KEY:?set TYPESENSE_ADMIN_KEY in .env — the same value the Typesense stack uses}"
       SEARCH_API_TOKEN: "${SEARCH_API_TOKEN:?set SEARCH_API_TOKEN in .env — the web app's read token}"
       SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:?set SEARCH_API_ADMIN_TOKEN in .env — the worker's write token}"
+
+      # The deck crawls (T036). Optional and all-or-nothing: with any of the three unset the /cron endpoints answer
+      # 503 and everything else serves exactly as before, which is why these have empty defaults rather than the
+      # `:?` guards above. A stack that predates the crawls keeps booting on three secrets.
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      SEARCH_API_CRON_TOKEN: "${SEARCH_API_CRON_TOKEN:-}"
 
     # Two different ports, and only the first can ever collide with anything else on the machine:
     #

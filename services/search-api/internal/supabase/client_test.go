@@ -3,6 +3,7 @@ package supabase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -69,7 +70,7 @@ func TestSelectAllPagesUntilTheTableRunsOut(t *testing.T) {
 	f := newFakeDB(t, MaxRowsPerRequest+5)
 	c := newClient(f)
 
-	rows, err := c.SelectAll(context.Background(), "corpus.decks", "source_deck_id,content_hash", "")
+	rows, err := c.SelectAll(context.Background(), "app_config", "key,value", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +80,7 @@ func TestSelectAllPagesUntilTheTableRunsOut(t *testing.T) {
 	if len(f.paths) != 2 {
 		t.Fatalf("got %d requests, want 2 (full page + tail)", len(f.paths))
 	}
-	if !strings.HasPrefix(f.paths[0], "GET /rest/v1/corpus.decks?") {
+	if !strings.HasPrefix(f.paths[0], "GET /rest/v1/app_config?") {
 		t.Fatalf("unexpected first request: %s", f.paths[0])
 	}
 }
@@ -88,47 +89,75 @@ func TestSelectAllEncodesTheFilter(t *testing.T) {
 	f := newFakeDB(t, 3)
 	c := newClient(f)
 
-	_, err := c.SelectAll(context.Background(), "corpus.decks", "source_deck_id", `source_deck_id=in.("a b","c)")`)
+	_, err := c.SelectAll(context.Background(), "app_config", "key", `key=in.("a b","c)")`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := f.paths[0]
-	for _, want := range []string{"select=source_deck_id", "source_deck_id=in.", "a+b", "c%29"} {
+	for _, want := range []string{"select=key", "key=in.", "a+b", "c%29"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("%q is missing %q", got, want)
 		}
 	}
 }
 
-func TestUpsertSendsTheMergePreferenceAndConflictColumns(t *testing.T) {
+// The crawl reaches the private corpus schema only through functions: PostgREST addresses tables in the schemas on
+// its exposed list, and a path like /rest/v1/corpus.decks is read as a table *named* "corpus.decks" in public.
+func TestRPCPostsToTheFunctionPath(t *testing.T) {
 	f := newFakeDB(t, 0)
 	c := newClient(f)
 
-	rows := []map[string]any{{"source_deck_id": "abc123"}}
-	if err := c.Upsert(context.Background(), "corpus.decks", rows, []string{"source", "source_deck_id"}); err != nil {
+	var out struct {
+		N int `json:"n"`
+	}
+	f.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.paths = append(f.paths, r.Method+" "+r.URL.Path)
+		body, _ := io.ReadAll(r.Body)
+		f.upserts = append(f.upserts, json.RawMessage(body))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"n":7}`)
+	})
+	if err := c.RPCInto(context.Background(), "crawl_state", map[string]any{"p_source": "archidekt"}, &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.paths) != 1 || !strings.HasPrefix(f.paths[0], "POST /rest/v1/corpus.decks?on_conflict=source,source_deck_id") {
+	if len(f.paths) != 1 || f.paths[0] != "POST /rest/v1/rpc/crawl_state" {
 		t.Fatalf("got %v", f.paths)
 	}
-	if len(f.prefers) != 1 || f.prefers[0] != "resolution=merge-duplicates" {
-		t.Fatalf("Prefer header: %v", f.prefers)
+	if !strings.Contains(string(f.upserts[0]), `"p_source":"archidekt"`) {
+		t.Fatalf("named arguments should travel as the body: %s", f.upserts[0])
+	}
+	if out.N != 7 {
+		t.Fatalf("result not decoded: %+v", out)
 	}
 }
 
-func TestUpdatePatchesTheMatchingRow(t *testing.T) {
+func TestRPCReportsTheStatus(t *testing.T) {
+	f := newFakeDB(t, 0)
+	c := newClient(f)
+	f.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `{"message":"permission denied for function crawl_state"}`)
+	})
+
+	_, err := c.RPC(context.Background(), "crawl_state", map[string]any{"p_source": "archidekt"})
+	var restErr *Error
+	if !errors.As(err, &restErr) || restErr.Status != http.StatusForbidden {
+		t.Fatalf("want a 403 Error, got %v", err)
+	}
+}
+
+// PostgREST has no "a=eq.x and b=is.null" query form: splitting such a string on its first "=" builds a filter whose
+// value is the rest of the expression, which matches nothing and reads as "no rows" rather than as a mistake.
+func TestSelectAllRefusesACompoundFilter(t *testing.T) {
 	f := newFakeDB(t, 0)
 	c := newClient(f)
 
-	row := map[string]any{"next_page": 4}
-	if err := c.Update(context.Background(), "corpus.crawl_state", "id=eq.1", row); err != nil {
-		t.Fatal(err)
+	_, err := c.SelectAll(context.Background(), "app_config", "value", "source=eq.archidekt and running_run_id=is.null")
+	if err == nil {
+		t.Fatal("a compound filter should be refused, not silently matched against nothing")
 	}
-	if len(f.paths) != 1 || !strings.HasPrefix(f.paths[0], "PATCH /rest/v1/corpus.crawl_state?id=eq.1") {
-		t.Fatalf("got %v", f.paths)
-	}
-	if len(f.prefers) != 1 || f.prefers[0] != "return=representation" {
-		t.Fatalf("Prefer header: %v", f.prefers)
+	if len(f.paths) != 0 {
+		t.Fatalf("nothing should have been requested: %v", f.paths)
 	}
 }
 

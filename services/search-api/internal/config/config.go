@@ -25,10 +25,13 @@ type Config struct {
 	ReadToken  string
 	AdminToken string
 
-	// The Moxfield crawl. Optional: when any of these is empty the crawl endpoints answer 503, a configured-but-
+	// The deck crawls. Optional: when any of these is empty the crawl endpoints answer 503, a configured-but-
 	// disabled state, and the existing deploy boots unchanged.
-	SupabaseURL        string // the project URL, e.g. https://<ref>.supabase.co
-	SupabaseServiceKey string // service_role: the crawl writes third-party decklists, so no lesser key is right
+	SupabaseURL string // the project URL, e.g. https://<ref>.supabase.co
+	// service_role, today. It bypasses RLS across the whole database, which is more than the crawl needs: the
+	// public.crawl_* functions are what narrow the crawl to its own schema, and a dedicated role is open work
+	// (T036). Supabase's secret keys map to service_role, so a lesser one means minting a JWT for a custom role.
+	SupabaseServiceKey string
 	CronToken          string // the web app's. It can trigger a scrape, nothing else (the split the tokens exist for)
 	SupabaseTimeout    time.Duration
 }
@@ -68,7 +71,7 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// CrawlConfigured reports whether the Moxfield scrape is wired up: a project URL, a service key and a cron token.
+// CrawlConfigured reports whether the deck crawls are wired up: a project URL, a service key and a cron token.
 // All three are needed; the crawl endpoints answer 503 when it is false, so a deploy that predates the scrape
 // still boots and serves search unchanged.
 func (c Config) CrawlConfigured() bool {
