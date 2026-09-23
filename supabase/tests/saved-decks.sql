@@ -78,6 +78,18 @@ select public.save_deck(:'deck_a', 'With A Bogus Card',
   ), null);
 select chk('unknown card id ignored, not an error', (select count(*) = 1 from public.deck_cards where deck_id = :'deck_a'));
 
+-- The deckbuilder once sent each commander twice, and one upsert cannot touch a row twice.
+select public.save_deck(:'deck_a', 'Repeated Rows',
+  jsonb_build_array(
+    jsonb_build_object('cardId', :cmd, 'quantity', 1, 'section', 'commander'),
+    jsonb_build_object('cardId', :cmd, 'quantity', 1, 'section', 'commander'),
+    jsonb_build_object('cardId', :c1, 'quantity', 1, 'section', 'main'),
+    jsonb_build_object('cardId', :c1, 'quantity', 1, 'section', 'main')
+  ), null);
+select chk('repeated rows fold into one per card and section',
+  (select count(*) = 2 and sum(quantity) filter (where section = 'commander') = 1 and sum(quantity) filter (where section = 'main') = 2
+   from public.deck_cards where deck_id = :'deck_a'));
+
 do $$ begin
   perform public.save_deck(null, '   ', '[]'::jsonb, null);
   insert into t values ('blank name refused', false, 'no error raised');

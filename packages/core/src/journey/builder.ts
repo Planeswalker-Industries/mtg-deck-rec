@@ -76,3 +76,30 @@ export function swapCard(deck: DeckInput, target: Pick<CardSummary, 'id' | 'type
   if (mainCopies(deck, target.id) === 0 || !canAdd(deck, replacement)) return deck;
   return addCard(setQuantity(deck, target, mainCopies(deck, target.id) - 1), replacement);
 }
+
+/** One row of a deck as save_deck stores it: the 99 and the commanders, nothing from other boards. */
+export type DeckSaveRow = {
+  cardId: CardId;
+  quantity: number;
+  section: 'commander' | 'main';
+};
+
+/**
+ * Flattens a DeckInput into one row per card and section, the rows save_deck expects. A commander sits in both
+ * `commanders` and `cards`, and save_deck writes all rows in one upsert that fails when a key repeats, so each
+ * commander must come out once. Repeated main entries add up. Sideboard, maybeboard and companion are left out.
+ */
+export function deckSaveRows(deck: DeckInput): DeckSaveRow[] {
+  const rows = new Map<string, DeckSaveRow>();
+  const put = (cardId: CardId, section: DeckSaveRow['section'], quantity: number) => {
+    const key = `${section}:${cardId}`;
+    const existing = rows.get(key);
+    if (section === 'commander') rows.set(key, { cardId, quantity: 1, section });
+    else rows.set(key, { cardId, quantity: (existing?.quantity ?? 0) + quantity, section });
+  };
+  for (const cardId of deck.commanders) put(cardId, 'commander', 1);
+  for (const c of deck.cards) {
+    if (c.section === 'commander' || c.section === 'main') put(c.cardId, c.section, c.quantity);
+  }
+  return [...rows.values()];
+}
