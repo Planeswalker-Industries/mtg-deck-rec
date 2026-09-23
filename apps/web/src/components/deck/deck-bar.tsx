@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Bracket, DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { displayName } from "@/lib/cards";
+import { DECK_BAR_HEIGHT_VAR } from "@/lib/constants";
 import { ColorIdentity } from "./color-identity";
 import { DeckControls } from "./deck-controls";
 import type { CollectionMode } from "./use-deck-tool";
@@ -29,9 +31,24 @@ export function DeckBar({
 }) {
   const commanders = analysis.commanderKey.commanders;
   const art = commanders[0]?.images?.front.artCrop;
+  const bar = useRef<HTMLDivElement>(null);
+
+  // Sticky surfaces below the bar read its height from a CSS variable, since the bar's height changes with the
+  // commander's name and the controls wrapping. Removed on unmount, so pages without the bar fall back to 0.
+  useEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => root.style.setProperty(DECK_BAR_HEIGHT_VAR, `${el.offsetHeight}px`));
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty(DECK_BAR_HEIGHT_VAR);
+    };
+  }, []);
 
   return (
-    <div className="sticky top-0 z-30 -mx-4 border-b border-seam bg-background/95 px-4 py-3 backdrop-blur-sm">
+    <div ref={bar} data-deck-bar="" className="sticky top-0 z-30 -mx-4 border-b border-seam bg-background/95 px-4 py-3 backdrop-blur-sm">
       <div className="flex items-center gap-3">
         {art && (
           <Image

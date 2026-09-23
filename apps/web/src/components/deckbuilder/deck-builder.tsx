@@ -92,7 +92,8 @@ const GRID = "grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-4 xl:grid-cols-5";
 
 /**
  * The deckbuilder: the deck by card type with every card editable, and a search to add more. On a phone the two are
- * tabs; from `lg` up they sit side by side and the search stays in view while the deck scrolls.
+ * tabs; from `lg` up they sit side by side, the search stays in view while the deck scrolls, and its filters stay in
+ * view while its results scroll.
  *
  * `analysis` is the host's latest reading of the deck (legality, bracket, commander), used for the problems list and
  * for asking for replacements; it lags an edit by the host's debounce, which is why card counts come from the builder.
@@ -207,7 +208,13 @@ export function DeckBuilder({
             </section>
           ))}
         </section>
-        <aside className={cn("lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto", tab === "deck" && "hidden lg:block")}>
+        {/* Below the deck tool's sticky deck bar when there is one (--deck-bar-height, set by DeckBar), else at the top. */}
+        <aside
+          className={cn(
+            "lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] lg:overflow-y-auto",
+            tab === "deck" && "hidden lg:block",
+          )}
+        >
           <CardSearchPanel builder={builder} colorIdentity={identity} />
         </aside>
       </div>

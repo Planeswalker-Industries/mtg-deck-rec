@@ -28,6 +28,13 @@ const MIN_NAME_CHARS = 2;
 const TYPES: CardCategory[] = ["creature", "instant", "sorcery", "artifact", "enchantment", "planeswalker", "land", "battle"];
 const MANA_VALUES = Array.from({ length: CURVE_TOP_MANA_VALUE + 1 }, (_, i) => i);
 
+/**
+ * A row of pills: one line that scrolls sideways on a phone, so the stuck filter block stays short enough to leave
+ * room for results; wrapped from `lg`, where the sidebar is its own scroll area and height is cheaper.
+ */
+const PILL_ROW =
+  "-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0";
+
 interface Query {
   name: string;
   cardType: CardCategory | undefined;
@@ -64,7 +71,7 @@ function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "rounded-full border px-3 py-1 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         pressed ? "border-primary/50 bg-primary/15 text-primary" : "border-seam text-muted-foreground hover:text-foreground",
       )}
     >
@@ -152,39 +159,46 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
 
   return (
     <section aria-label="Add cards" className="flex flex-col gap-3">
-      <div className="relative">
-        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          aria-label="Card name"
-          placeholder="Search by card name"
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            change({ name: e.target.value.trim() });
-          }}
-          className="bg-sleeve pl-9 text-base sm:text-sm"
-        />
-      </div>
-      <div role="group" aria-label="Card type" className="flex flex-wrap gap-1.5">
-        <Pill pressed={query.cardType === undefined} onClick={() => change({ cardType: undefined })}>
-          All types
-        </Pill>
-        {TYPES.map((t) => (
-          <Pill key={t} pressed={query.cardType === t} onClick={() => change({ cardType: query.cardType === t ? undefined : t })}>
-            {cardCategoryLabel[t]}
+      {/*
+        Stuck while the results scroll. On a phone the page scrolls, so it stops below the deck tool's sticky deck bar
+        (--deck-bar-height, 0 where there is none) and bleeds to the screen edge like that bar; from lg the sidebar is
+        the scroll area, so it sticks to the sidebar's top.
+      */}
+      <div className="sticky top-[var(--deck-bar-height,0px)] z-20 -mx-4 flex flex-col gap-2 border-b border-seam bg-background/95 px-4 py-3 backdrop-blur-sm lg:top-0 lg:mx-0 lg:px-0 lg:pt-0">
+        <div className="relative">
+          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            aria-label="Card name"
+            placeholder="Search by card name"
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              change({ name: e.target.value.trim() });
+            }}
+            className="bg-sleeve pl-9 text-base sm:text-sm"
+          />
+        </div>
+        <div role="group" aria-label="Card type" className={PILL_ROW}>
+          <Pill pressed={query.cardType === undefined} onClick={() => change({ cardType: undefined })}>
+            All types
           </Pill>
-        ))}
-      </div>
-      <div role="group" aria-label="Mana value" className="flex flex-wrap gap-1.5">
-        <Pill pressed={query.manaValue === undefined} onClick={() => change({ manaValue: undefined })}>
-          Any cost
-        </Pill>
-        {MANA_VALUES.map((mv) => (
-          <Pill key={mv} pressed={query.manaValue === mv} onClick={() => change({ manaValue: query.manaValue === mv ? undefined : mv })}>
-            {mv === CURVE_TOP_MANA_VALUE ? `${mv}+` : mv}
+          {TYPES.map((t) => (
+            <Pill key={t} pressed={query.cardType === t} onClick={() => change({ cardType: query.cardType === t ? undefined : t })}>
+              {cardCategoryLabel[t]}
+            </Pill>
+          ))}
+        </div>
+        <div role="group" aria-label="Mana value" className={PILL_ROW}>
+          <Pill pressed={query.manaValue === undefined} onClick={() => change({ manaValue: undefined })}>
+            Any cost
           </Pill>
-        ))}
+          {MANA_VALUES.map((mv) => (
+            <Pill key={mv} pressed={query.manaValue === mv} onClick={() => change({ manaValue: query.manaValue === mv ? undefined : mv })}>
+              {mv === CURVE_TOP_MANA_VALUE ? `${mv}+` : mv}
+            </Pill>
+          ))}
+        </div>
       </div>
 
       {results.status === "idle" && !searching && (

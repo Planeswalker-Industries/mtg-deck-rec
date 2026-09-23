@@ -87,6 +87,57 @@ test("the deckbuilder search shows nothing once the name box is emptied", async 
   await expect(search.getByText(/^Type a card name/)).toBeVisible();
 });
 
+/** The deck bar's bottom edge, which a stuck filter block must sit at or below. */
+async function deckBarBottom(page: Page) {
+  const bar = await page.locator("[data-deck-bar]").boundingBox();
+  if (!bar) throw new Error("deck bar not on screen");
+  return bar.y + bar.height;
+}
+
+/** Rounding slack for comparing layout boxes, in CSS pixels. */
+const LAYOUT_SLACK_PX = 1;
+
+test("the deckbuilder search filters stay on screen while a phone scrolls the results", async ({ page }) => {
+  const { search } = await openCardSearch(page);
+  await search.getByRole("button", { name: "Instants" }).click();
+  await expect(search.getByRole("list", { name: "Search results" }).getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
+
+  const types = search.getByRole("group", { name: "Card type" });
+  const before = await types.boundingBox();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  // Precondition: the page scrolled past where the filters started, so staying visible means they stuck.
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(before?.y ?? 0);
+
+  await expect(types).toBeInViewport();
+  const after = await types.boundingBox();
+  expect(after?.y ?? 0).toBeGreaterThanOrEqual((await deckBarBottom(page)) - LAYOUT_SLACK_PX);
+  // The pill rows scroll inside themselves; the page never scrolls sideways.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test.describe("on a wide screen", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("the deckbuilder search filters stay on screen while the sidebar scrolls the results", async ({ page }) => {
+    const { search } = await openCardSearch(page);
+    await search.getByRole("button", { name: "Instants" }).click();
+    await expect(search.getByRole("list", { name: "Search results" }).getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
+
+    const sidebar = search.locator("xpath=ancestor::aside[1]");
+    const scrolled = await sidebar.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+      return el.scrollTop;
+    });
+    // Precondition: the sidebar has more results than fit, so there was something to scroll.
+    expect(scrolled).toBeGreaterThan(0);
+
+    const types = search.getByRole("group", { name: "Card type" });
+    await expect(types).toBeInViewport();
+    const box = await types.boundingBox();
+    expect(box?.y ?? 0).toBeGreaterThanOrEqual((await deckBarBottom(page)) - LAYOUT_SLACK_PX);
+  });
+});
+
 test("remembers the list view for the next visit", async ({ page }) => {
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
