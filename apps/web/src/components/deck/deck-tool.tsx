@@ -104,9 +104,9 @@ export function DeckTool() {
   const journey = useDeckJourney({ analysis, context, lines: tool.lines, cut: tool.cut });
 
   /*
-   * Open where the player left off: a featured deck when the link named one, a saved deck when the link
-   * named one, otherwise the deck from their last visit, analyzed again. Waits for the saved collection
-   * so owned-only suggestions apply from the first load.
+   * Open where the player left off: a featured deck when the link named one and a saved deck when the link named one,
+   * both analyzed; otherwise the deck from their last visit goes back in the decklist box, unanalyzed, for them to
+   * run or clear. Waits for the saved collection so owned-only suggestions apply from the first load.
    */
   useEffect(() => {
     if (restoreStarted.current || !collectionLoaded) return;
@@ -127,16 +127,20 @@ export function DeckTool() {
       // Unknown slug falls through to the remembered deck
     }
 
-    const opened = openCode === null ? tool.restoreLastDeck() : tool.openSavedDeck(openCode).then((r) => {
-      if (r.ok) return r.data;
-      setOpenError(r.error.message);
-      // Fall back to the remembered deck rather than an empty box: the link failing shouldn't cost them their work.
-      return tool.restoreLastDeck();
-    });
-    void opened.then((restored) => {
-      if (!restored.parsed) return;
+    if (openCode === null) {
+      tool.restoreLastDeck();
+      return;
+    }
+    void tool.openSavedDeck(openCode).then((r) => {
+      if (!r.ok) {
+        setOpenError(r.error.message);
+        // Fall back to the remembered deck, in the box, rather than an empty one: the link failing shouldn't cost them their work.
+        tool.restoreLastDeck();
+        return;
+      }
+      if (!r.data.parsed) return;
       setEditing(false);
-      void lookup.check(restored.analysis);
+      void lookup.check(r.data.analysis);
     });
   }, [tool, lookup, collectionLoaded, openCode, commanderSlug]);
   const showInput = editing || !analysis;
@@ -212,6 +216,12 @@ export function DeckTool() {
               Paste your Commander decklist, or a link to a public Archidekt deck, to see cards to cut, cards to add, and
               replacements that do the same job.
             </p>
+            {tool.showsRestoredDeck && (
+              <p role="status" className="mt-2 max-w-prose text-sm text-muted-foreground">
+                Your last decklist is back in the box. Analyze it to pick up where you left off, or clear it to start a new
+                one.
+              </p>
+            )}
             {/* Two ways in: a deck first, or a collection first so suggestions can lean on cards already owned. */}
             {source.kind === "none" && (
               <p className="mt-2 max-w-prose text-sm text-muted-foreground">

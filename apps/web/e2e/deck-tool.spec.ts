@@ -138,7 +138,7 @@ test.describe("on a wide screen", () => {
   });
 });
 
-test("remembers the list view for the next visit", async ({ page }) => {
+test("puts the last decklist back in the box without analyzing it, and remembers the list view", async ({ page }) => {
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
@@ -147,11 +147,25 @@ test("remembers the list view for the next visit", async ({ page }) => {
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
   await recs.getByRole("button", { name: "List" }).click();
 
-  // The deck and the view both come back after a reload: the Cut phase opens as the list of the whole deck.
+  // A reload brings the deck back into the box and waits: opening the tool never analyzes an old deck by itself.
   await page.reload();
+  const box = page.getByRole("textbox", { name: "Decklist" });
+  await expect(box).not.toHaveValue("", { timeout: 30_000 });
+  await expect(page.getByText("Your last decklist is back in the box.")).toBeVisible();
+  await expect(recs).toBeHidden();
+
+  // Analyzing it picks up where the player left off, list view included.
+  await page.getByRole("button", { name: "Analyze deck" }).click();
   await expect(recs).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
   await expect(recs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
   await expect(recs.getByRole("region", { name: "Your deck" })).toBeVisible({ timeout: 60_000 });
+
+  // Clearing the box forgets it, and the note goes with it.
+  await page.getByRole("button", { name: "Edit decklist" }).click();
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(box).toHaveValue("");
+  await expect(page.getByText("Your last decklist is back in the box.")).toBeHidden();
 });
 
 test("takes a decklist as a file, and reduces a CSV export to quantities and names", async ({ page }) => {
