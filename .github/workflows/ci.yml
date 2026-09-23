@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read # the ghcr.io login below
 
 jobs:
   checks:
@@ -55,6 +56,14 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.110.0
+
+      # The CLI pulls its images from ghcr.io. Anonymous pulls share a budget with every other runner and were refused
+      # with `toomanyrequests` on 2026-09-23; signed in with the job's own token, they count against this repo instead.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # Applies every migration to an empty database, so a migration that only works on top of local data fails here.
       - name: Start Supabase
