@@ -50,6 +50,13 @@ const isLegendaryCreature = (card: CardSummary) => {
   return /\bLegendary\b/.test(front) && /\bCreature\b/.test(front);
 };
 
+/**
+ * A search needs a name of two letters or more, or a type or cost pill. The commander's colours alone are not a
+ * search: they narrow every search, but browsing on them alone filled the panel whenever the box was emptied, with
+ * cards that looked like results for the last letter left in it.
+ */
+const searchable = (q: Query) => q.name.length >= MIN_NAME_CHARS || q.cardType !== undefined || q.manaValue !== undefined;
+
 function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -91,10 +98,6 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
     },
     [],
   );
-
-  /** A name of two letters or more, or a filter: an empty search in no colours would be the whole catalog. */
-  const searchable = (q: Query) =>
-    q.name.length >= MIN_NAME_CHARS || q.cardType !== undefined || q.manaValue !== undefined || colorIdentity !== undefined;
 
   async function search(q: Query, offset: number) {
     const id = ++request.current;

@@ -1,4 +1,25 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+/** Analyzes the sample deck and switches to the deckbuilder. Returns the recommendations region. */
+async function openDeckbuilder(page: Page) {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+  // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  return recs;
+}
+
+/** Opens the deckbuilder's card search: its own tab on a phone, beside the deck on a wide screen. */
+async function openCardSearch(page: Page) {
+  const recs = await openDeckbuilder(page);
+  const addTab = recs.getByRole("button", { name: "Add cards" });
+  if (await addTab.isVisible()) await addTab.click();
+  return { recs, search: recs.getByRole("region", { name: "Add cards" }) };
+}
 
 test("analyzes the sample deck, and the deckbuilder swaps a card for a replacement", async ({ page }) => {
   await page.goto("/deck");
@@ -38,18 +59,7 @@ test("analyzes the sample deck, and the deckbuilder swaps a card for a replaceme
 });
 
 test("the deckbuilder adds a card from search, within the commander's colours", async ({ page }) => {
-  await page.goto("/deck");
-  await page.getByRole("button", { name: "Use sample deck" }).click();
-  await page.getByRole("button", { name: "Analyze deck" }).click();
-  const recs = page.getByRole("region", { name: "Recommendations" });
-  await expect(recs).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  await recs.getByRole("button", { name: "Deckbuilder" }).click();
-
-  // On a phone the search is its own tab; on a wide screen it sits beside the deck.
-  const addTab = recs.getByRole("button", { name: "Add cards" });
-  if (await addTab.isVisible()) await addTab.click();
-  const search = recs.getByRole("region", { name: "Add cards" });
+  const { search } = await openCardSearch(page);
   await search.getByRole("button", { name: "Creatures" }).click();
   const results = search.getByRole("list", { name: "Search results" });
   const add = results.getByRole("button", { name: /^Add / }).first();
@@ -58,6 +68,23 @@ test("the deckbuilder adds a card from search, within the commander's colours", 
   await add.click();
   // Once in, the card can't be added twice.
   await expect(results.getByRole("button", { name: `${name} is in the deck` })).toBeVisible();
+});
+
+test("the deckbuilder search shows nothing once the name box is emptied", async ({ page }) => {
+  const { search } = await openCardSearch(page);
+  const box = search.getByRole("searchbox", { name: "Card name" });
+  const results = search.getByRole("list", { name: "Search results" });
+
+  await box.fill("sol");
+  await expect(results).toBeVisible({ timeout: 60_000 });
+  // One letter is not a search, and the commander's colours alone are not either.
+  await box.fill("s");
+  await expect(results).toBeHidden();
+  await box.fill("sol");
+  await expect(results).toBeVisible({ timeout: 60_000 });
+  await box.fill("");
+  await expect(results).toBeHidden();
+  await expect(search.getByText(/^Type a card name/)).toBeVisible();
 });
 
 test("remembers the list view for the next visit", async ({ page }) => {
