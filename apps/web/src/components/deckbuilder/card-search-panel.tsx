@@ -240,7 +240,8 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
                   <ZoomableCard card={card}>
                     <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 120px, 30vw" className={cn(!addable && "opacity-50")} />
                   </ZoomableCard>
-                  <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(card)}</span>
+                  {/* Two lines whatever the name, so the Add buttons line up across the row. */}
+                  <span className="line-clamp-2 min-h-[2lh] text-[0.8125rem] leading-tight font-bold">{displayName(card)}</span>
                   <Button
                     type="button"
                     size="sm"

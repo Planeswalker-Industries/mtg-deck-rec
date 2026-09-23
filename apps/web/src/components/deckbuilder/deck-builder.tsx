@@ -39,7 +39,7 @@ function IconButton({ label, onClick, children, tone }: { label: string; onClick
   );
 }
 
-/** One card in the deck: its image, its name, and what can be done to it. */
+/** One card in the deck: its image, its name, and what can be done to it, with the actions at the foot of the cell so a row's buttons line up. */
 function DeckCard({
   card,
   quantity,
@@ -59,9 +59,12 @@ function DeckCard({
       <ZoomableCard card={card}>
         <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 140px, 30vw" />
       </ZoomableCard>
-      <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{name}</span>
+      <span className="line-clamp-2 min-h-[2lh] text-[0.8125rem] leading-tight font-bold">{name}</span>
       {card.gameChanger && <GameChangerBadge />}
-      <div className="flex flex-wrap items-center gap-0.5">
+      {/* Pinned to the bottom of the grid cell: a Game Changer badge or wrapped quantity buttons elsewhere in the row
+          then change nothing about where Remove sits. Grid items stretch to the row's height, which is what makes
+          mt-auto work here. */}
+      <div className="mt-auto flex flex-wrap items-center gap-0.5">
         {onQuantity && (
           <>
             <IconButton label={`One fewer ${name}`} onClick={() => onQuantity(quantity - 1)}>

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /** Analyzes the sample deck and switches to the deckbuilder. Returns the recommendations region. */
 async function openDeckbuilder(page: Page) {
@@ -216,4 +216,40 @@ test("a name search's next page continues the list rather than repeating it", as
   test.skip(first.length === 0, "no catalog loaded");
   const second = await page(first.length);
   expect(second.filter((id) => first.includes(id))).toEqual([]);
+});
+
+/**
+ * Checks that, in every row of a card grid, the first button matching `button` in each card sits at the same height.
+ * Rows are found from the cards' own top edges, so the check holds whatever the column count.
+ */
+async function expectButtonsAligned(list: Locator, button: RegExp) {
+  const items = list.getByRole("listitem");
+  const count = await items.count();
+  const rows = new Map<number, number[]>();
+  for (let i = 0; i < count; i++) {
+    const item = items.nth(i);
+    const [itemBox, buttonBox] = await Promise.all([item.boundingBox(), item.getByRole("button", { name: button }).first().boundingBox()]);
+    if (!itemBox || !buttonBox) continue;
+    const row = Math.round(itemBox.y);
+    rows.set(row, [...(rows.get(row) ?? []), buttonBox.y]);
+  }
+  expect(rows.size).toBeGreaterThan(0);
+  for (const ys of rows.values()) expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(LAYOUT_SLACK_PX);
+}
+
+test("the deckbuilder's search results line up their Add buttons", async ({ page }) => {
+  const { search } = await openCardSearch(page);
+  await search.getByRole("button", { name: "Instants" }).click();
+  const results = search.getByRole("list", { name: "Search results" });
+  await expect(results.getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
+  await expectButtonsAligned(results, /^Add |is in the deck$/);
+});
+
+test("the deckbuilder's deck cards line up their buttons", async ({ page }) => {
+  const recs = await openDeckbuilder(page);
+  const deckList = recs.getByRole("region", { name: "Deck list" });
+  await expect(deckList.getByRole("button", { name: /^Remove / }).first()).toBeVisible({ timeout: 60_000 });
+  // Every group in the deck, commanders included.
+  const grids = deckList.getByRole("list");
+  for (let i = 0; i < (await grids.count()); i++) await expectButtonsAligned(grids.nth(i), /^Remove /);
 });
