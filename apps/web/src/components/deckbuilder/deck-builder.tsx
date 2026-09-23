@@ -39,7 +39,7 @@ function IconButton({ label, onClick, children, tone }: { label: string; onClick
   );
 }
 
-/** One card in the deck: its image, its name, and what can be done to it. */
+/** One card in the deck: its image, its name, and what can be done to it, with the actions at the foot of the cell so a row's buttons line up. */
 function DeckCard({
   card,
   quantity,
@@ -59,9 +59,12 @@ function DeckCard({
       <ZoomableCard card={card}>
         <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 140px, 30vw" />
       </ZoomableCard>
-      <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{name}</span>
+      <span className="line-clamp-2 min-h-[2lh] text-[0.8125rem] leading-tight font-bold">{name}</span>
       {card.gameChanger && <GameChangerBadge />}
-      <div className="flex flex-wrap items-center gap-0.5">
+      {/* Pinned to the bottom of the grid cell: a Game Changer badge or wrapped quantity buttons elsewhere in the row
+          then change nothing about where Remove sits. Grid items stretch to the row's height, which is what makes
+          mt-auto work here. */}
+      <div className="mt-auto flex flex-wrap items-center gap-0.5">
         {onQuantity && (
           <>
             <IconButton label={`One fewer ${name}`} onClick={() => onQuantity(quantity - 1)}>
@@ -92,7 +95,8 @@ const GRID = "grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-4 xl:grid-cols-5";
 
 /**
  * The deckbuilder: the deck by card type with every card editable, and a search to add more. On a phone the two are
- * tabs; from `lg` up they sit side by side and the search stays in view while the deck scrolls.
+ * tabs; from `lg` up they sit side by side, the search stays in view while the deck scrolls, and its filters stay in
+ * view while its results scroll.
  *
  * `analysis` is the host's latest reading of the deck (legality, bracket, commander), used for the problems list and
  * for asking for replacements; it lags an edit by the host's debounce, which is why card counts come from the builder.
@@ -207,7 +211,13 @@ export function DeckBuilder({
             </section>
           ))}
         </section>
-        <aside className={cn("lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto", tab === "deck" && "hidden lg:block")}>
+        {/* Below the deck tool's sticky deck bar when there is one (--deck-bar-height, set by DeckBar), else at the top. */}
+        <aside
+          className={cn(
+            "lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] lg:overflow-y-auto",
+            tab === "deck" && "hidden lg:block",
+          )}
+        >
           <CardSearchPanel builder={builder} colorIdentity={identity} />
         </aside>
       </div>

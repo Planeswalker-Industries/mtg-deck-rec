@@ -1,4 +1,30 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+/** Tailwind's `lg` breakpoint, where the deckbuilder shows search beside the deck instead of its own tab. */
+const LG_BREAKPOINT_PX = 1024;
+/** Rounding slack for comparing layout boxes, in CSS pixels. */
+const LAYOUT_SLACK_PX = 1;
+
+/** Analyzes the sample deck and switches to the deckbuilder. Returns the recommendations region. */
+async function openDeckbuilder(page: Page) {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+  // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  return recs;
+}
+
+/** Opens the deckbuilder's card search: its own tab on a phone, beside the deck on a wide screen. */
+async function openCardSearch(page: Page) {
+  const recs = await openDeckbuilder(page);
+  const width = page.viewportSize()?.width ?? 0;
+  if (width < LG_BREAKPOINT_PX) await recs.getByRole("button", { name: "Add cards" }).click();
+  return { recs, search: recs.getByRole("region", { name: "Add cards" }) };
+}
 
 test("analyzes the sample deck, and the deckbuilder swaps a card for a replacement", async ({ page }) => {
   await page.goto("/deck");
@@ -38,18 +64,7 @@ test("analyzes the sample deck, and the deckbuilder swaps a card for a replaceme
 });
 
 test("the deckbuilder adds a card from search, within the commander's colours", async ({ page }) => {
-  await page.goto("/deck");
-  await page.getByRole("button", { name: "Use sample deck" }).click();
-  await page.getByRole("button", { name: "Analyze deck" }).click();
-  const recs = page.getByRole("region", { name: "Recommendations" });
-  await expect(recs).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  await recs.getByRole("button", { name: "Deckbuilder" }).click();
-
-  // On a phone the search is its own tab; on a wide screen it sits beside the deck.
-  const addTab = recs.getByRole("button", { name: "Add cards" });
-  if (await addTab.isVisible()) await addTab.click();
-  const search = recs.getByRole("region", { name: "Add cards" });
+  const { search } = await openCardSearch(page);
   await search.getByRole("button", { name: "Creatures" }).click();
   const results = search.getByRole("list", { name: "Search results" });
   const add = results.getByRole("button", { name: /^Add / }).first();
@@ -60,7 +75,90 @@ test("the deckbuilder adds a card from search, within the commander's colours", 
   await expect(results.getByRole("button", { name: `${name} is in the deck` })).toBeVisible();
 });
 
-test("remembers the list view for the next visit", async ({ page }) => {
+test("the deckbuilder search shows nothing once the name box is emptied", async ({ page }) => {
+  const { search } = await openCardSearch(page);
+  const box = search.getByRole("searchbox", { name: "Card name" });
+  const results = search.getByRole("list", { name: "Search results" });
+
+  await box.fill("sol");
+  await expect(results).toBeVisible({ timeout: 60_000 });
+  // One letter is not a search, and the commander's colours alone are not either.
+  await box.fill("s");
+  await expect(results).toBeHidden();
+  await box.fill("sol");
+  await expect(results).toBeVisible({ timeout: 60_000 });
+  await box.fill("");
+  await expect(results).toBeHidden();
+  await expect(search.getByText(/^Type a card name/)).toBeVisible();
+});
+
+/** The deck bar's bottom edge, which a stuck filter block must sit at or below. */
+async function deckBarBottom(page: Page) {
+  const bar = await page.locator("[data-deck-bar]").boundingBox();
+  if (!bar) throw new Error("deck bar not on screen");
+  return bar.y + bar.height;
+}
+
+test("the deckbuilder search filters stay on screen while a phone scrolls the results", async ({ page }) => {
+  const { search } = await openCardSearch(page);
+  await search.getByRole("button", { name: "Instants" }).click();
+  await expect(search.getByRole("list", { name: "Search results" }).getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
+
+  const types = search.getByRole("group", { name: "Card type" });
+  const before = await types.boundingBox();
+  // before.y is viewport-relative; record the page's own scroll offset so the precondition compares document-relative
+  // positions instead of mixing the two.
+  const initialScrollY = await page.evaluate(() => window.scrollY);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  // Precondition: the page scrolled past where the filters started, so staying visible means they stuck.
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan((before?.y ?? 0) + initialScrollY);
+
+  await expect(types).toBeInViewport();
+  const after = await types.boundingBox();
+  expect(after?.y ?? 0).toBeGreaterThanOrEqual((await deckBarBottom(page)) - LAYOUT_SLACK_PX);
+  // The pill rows scroll inside themselves; the page never scrolls sideways.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test.describe("on a wide screen", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("the deckbuilder search filters stay on screen while the sidebar scrolls the results", async ({ page }) => {
+    const { search } = await openCardSearch(page);
+    await search.getByRole("button", { name: "Instants" }).click();
+    await expect(search.getByRole("list", { name: "Search results" }).getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
+
+    // The aside is sticky relative to the page's own scroll, not the sidebar's internal one, so it only sticks once
+    // the page has scrolled past where the aside starts. The site footer sits below the two-column layout, so
+    // scrolling to the document's own bottom overshoots the layout's containing block and un-sticks the aside again;
+    // scroll only as far as bringing that layout's own bottom to the viewport's bottom.
+    const sidebar = search.locator("xpath=ancestor::aside[1]");
+    const target = await sidebar.evaluate((el) => {
+      const layout = el.parentElement ?? el;
+      return Math.max(0, layout.getBoundingClientRect().bottom + window.scrollY - window.innerHeight);
+    });
+    await page.evaluate((y) => window.scrollTo(0, y), target);
+    // Precondition: the page actually scrolled, so the aside had a chance to stick.
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+    const scrolled = await sidebar.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+      return el.scrollTop;
+    });
+    // Precondition: the sidebar has more results than fit, so there was something to scroll.
+    expect(scrolled).toBeGreaterThan(0);
+
+    const types = search.getByRole("group", { name: "Card type" });
+    await expect(types).toBeInViewport();
+    const barBottom = await deckBarBottom(page);
+    const asideBox = await sidebar.boundingBox();
+    expect(asideBox?.y ?? 0).toBeGreaterThanOrEqual(barBottom - LAYOUT_SLACK_PX);
+    const typesBox = await types.boundingBox();
+    expect(typesBox?.y ?? 0).toBeGreaterThanOrEqual(barBottom - LAYOUT_SLACK_PX);
+  });
+});
+
+test("puts the last decklist back in the box without analyzing it, and remembers the list view", async ({ page }) => {
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
@@ -69,11 +167,35 @@ test("remembers the list view for the next visit", async ({ page }) => {
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
   await recs.getByRole("button", { name: "List" }).click();
 
-  // The deck and the view both come back after a reload: the Cut phase opens as the list of the whole deck.
+  // A reload brings the deck back into the box and waits: opening the tool never analyzes an old deck by itself.
   await page.reload();
+  const box = page.getByRole("textbox", { name: "Decklist" });
+  await expect(box).not.toHaveValue("", { timeout: 30_000 });
+  const note = page.getByText("Your last decklist is back in the box.");
+  await expect(note).toBeVisible();
+  await expect(recs).toBeHidden();
+
+  // Editing the restored text hides the note: it stops describing the box the moment the box changes.
+  const restoredText = await box.inputValue();
+  await box.press("End");
+  await box.type("\n");
+  await expect(note).toBeHidden();
+  // Putting the exact restored text back brings the note back, before analyzing.
+  await box.fill(restoredText);
+  await expect(note).toBeVisible();
+
+  // Analyzing it picks up where the player left off, list view included.
+  await page.getByRole("button", { name: "Analyze deck" }).click();
   await expect(recs).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
   await expect(recs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
   await expect(recs.getByRole("region", { name: "Your deck" })).toBeVisible({ timeout: 60_000 });
+
+  // Clearing the box forgets it, and the note goes with it.
+  await page.getByRole("button", { name: "Edit decklist" }).click();
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(box).toHaveValue("");
+  await expect(page.getByText("Your last decklist is back in the box.")).toBeHidden();
 });
 
 test("takes a decklist as a file, and reduces a CSV export to quantities and names", async ({ page }) => {
@@ -138,4 +260,40 @@ test("a name search's next page continues the list rather than repeating it", as
   test.skip(first.length === 0, "no catalog loaded");
   const second = await page(first.length);
   expect(second.filter((id) => first.includes(id))).toEqual([]);
+});
+
+/**
+ * Checks that, in every row of a card grid, the first button matching `button` in each card sits at the same height.
+ * Rows are found from the cards' own top edges, so the check holds whatever the column count.
+ */
+async function expectButtonsAligned(list: Locator, button: RegExp) {
+  const items = list.getByRole("listitem");
+  const count = await items.count();
+  const rows = new Map<number, number[]>();
+  for (let i = 0; i < count; i++) {
+    const item = items.nth(i);
+    const [itemBox, buttonBox] = await Promise.all([item.boundingBox(), item.getByRole("button", { name: button }).first().boundingBox()]);
+    if (!itemBox || !buttonBox) continue;
+    const row = Math.round(itemBox.y);
+    rows.set(row, [...(rows.get(row) ?? []), buttonBox.y]);
+  }
+  expect(rows.size).toBeGreaterThan(0);
+  for (const ys of rows.values()) expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(LAYOUT_SLACK_PX);
+}
+
+test("the deckbuilder's search results line up their Add buttons", async ({ page }) => {
+  const { search } = await openCardSearch(page);
+  await search.getByRole("button", { name: "Instants" }).click();
+  const results = search.getByRole("list", { name: "Search results" });
+  await expect(results.getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
+  await expectButtonsAligned(results, /^Add |is in the deck$/);
+});
+
+test("the deckbuilder's deck cards line up their buttons", async ({ page }) => {
+  const recs = await openDeckbuilder(page);
+  const deckList = recs.getByRole("region", { name: "Deck list" });
+  await expect(deckList.getByRole("button", { name: /^Remove / }).first()).toBeVisible({ timeout: 60_000 });
+  // Every group in the deck, commanders included.
+  const grids = deckList.getByRole("list");
+  for (let i = 0; i < (await grids.count()); i++) await expectButtonsAligned(grids.nth(i), /^Remove /);
 });

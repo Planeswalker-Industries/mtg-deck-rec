@@ -28,6 +28,16 @@ const MIN_NAME_CHARS = 2;
 const TYPES: CardCategory[] = ["creature", "instant", "sorcery", "artifact", "enchantment", "planeswalker", "land", "battle"];
 const MANA_VALUES = Array.from({ length: CURVE_TOP_MANA_VALUE + 1 }, (_, i) => i);
 
+/**
+ * A row of pills: one line that scrolls sideways only below `sm` (phones), so the stuck filter block stays short
+ * enough to leave room for results; wrapped from `sm` up, where there's enough width to show every pill without
+ * needing a mouse-hostile sideways scroll (a tablet or a narrow desktop window has neither the touch gesture nor the
+ * `lg` sidebar layout to make the scrolling row usable). `py-1 -my-1` gives the scrolling row's focus ring room so
+ * `overflow-x-auto` doesn't clip it top and bottom, without changing the row's outer height.
+ */
+const PILL_ROW =
+  "-mx-4 flex gap-1.5 overflow-x-auto px-4 py-1 -my-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0";
+
 interface Query {
   name: string;
   cardType: CardCategory | undefined;
@@ -50,6 +60,13 @@ const isLegendaryCreature = (card: CardSummary) => {
   return /\bLegendary\b/.test(front) && /\bCreature\b/.test(front);
 };
 
+/**
+ * A search needs a name of two letters or more, or a type or cost pill. The commander's colours alone are not a
+ * search: they narrow every search, but browsing on them alone filled the panel whenever the box was emptied, with
+ * cards that looked like results for the last letter left in it.
+ */
+const searchable = (q: Query) => q.name.length >= MIN_NAME_CHARS || q.cardType !== undefined || q.manaValue !== undefined;
+
 function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -57,7 +74,7 @@ function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "rounded-full border px-3 py-1 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         pressed ? "border-primary/50 bg-primary/15 text-primary" : "border-seam text-muted-foreground hover:text-foreground",
       )}
     >
@@ -68,7 +85,8 @@ function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
 
 /**
  * Finds cards to put in the deck: a name, a card type and a mana value, always within the commander's colours. With no
- * name it browses the filtered cards by how widely Commander decks play them, which is how a deck gets its lands.
+ * name, picking a type or a cost pill browses the filtered cards by how widely Commander decks play them, which is how
+ * a deck gets its lands; the commander's colours alone are not a search, so an empty box with no pill shows nothing.
  *
  * Requests go out from the controls' own handlers, a short pause after the last change. A newer search aborts the one
  * before it and a counter drops any answer that still arrives, and the cards already found stay on screen, dimmed,
@@ -91,10 +109,6 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
     },
     [],
   );
-
-  /** A name of two letters or more, or a filter: an empty search in no colours would be the whole catalog. */
-  const searchable = (q: Query) =>
-    q.name.length >= MIN_NAME_CHARS || q.cardType !== undefined || q.manaValue !== undefined || colorIdentity !== undefined;
 
   async function search(q: Query, offset: number) {
     const id = ++request.current;
@@ -149,39 +163,46 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
 
   return (
     <section aria-label="Add cards" className="flex flex-col gap-3">
-      <div className="relative">
-        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          aria-label="Card name"
-          placeholder="Search by card name"
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            change({ name: e.target.value.trim() });
-          }}
-          className="bg-sleeve pl-9 text-base sm:text-sm"
-        />
-      </div>
-      <div role="group" aria-label="Card type" className="flex flex-wrap gap-1.5">
-        <Pill pressed={query.cardType === undefined} onClick={() => change({ cardType: undefined })}>
-          All types
-        </Pill>
-        {TYPES.map((t) => (
-          <Pill key={t} pressed={query.cardType === t} onClick={() => change({ cardType: query.cardType === t ? undefined : t })}>
-            {cardCategoryLabel[t]}
+      {/*
+        Stuck while the results scroll. On a phone the page scrolls, so it stops below the deck tool's sticky deck bar
+        (--deck-bar-height, 0 where there is none) and bleeds to the screen edge like that bar; from lg the sidebar is
+        the scroll area, so it sticks to the sidebar's top.
+      */}
+      <div className="sticky top-[var(--deck-bar-height,0px)] z-20 -mx-4 flex flex-col gap-2 border-b border-seam bg-background/95 px-4 py-3 backdrop-blur-sm lg:top-0 lg:mx-0 lg:bg-background lg:px-0 lg:pt-0">
+        <div className="relative">
+          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            aria-label="Card name"
+            placeholder="Search by card name"
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              change({ name: e.target.value.trim() });
+            }}
+            className="bg-sleeve pl-9 text-base sm:text-sm"
+          />
+        </div>
+        <div role="group" aria-label="Card type" className={PILL_ROW}>
+          <Pill pressed={query.cardType === undefined} onClick={() => change({ cardType: undefined })}>
+            All types
           </Pill>
-        ))}
-      </div>
-      <div role="group" aria-label="Mana value" className="flex flex-wrap gap-1.5">
-        <Pill pressed={query.manaValue === undefined} onClick={() => change({ manaValue: undefined })}>
-          Any cost
-        </Pill>
-        {MANA_VALUES.map((mv) => (
-          <Pill key={mv} pressed={query.manaValue === mv} onClick={() => change({ manaValue: query.manaValue === mv ? undefined : mv })}>
-            {mv === CURVE_TOP_MANA_VALUE ? `${mv}+` : mv}
+          {TYPES.map((t) => (
+            <Pill key={t} pressed={query.cardType === t} onClick={() => change({ cardType: query.cardType === t ? undefined : t })}>
+              {cardCategoryLabel[t]}
+            </Pill>
+          ))}
+        </div>
+        <div role="group" aria-label="Mana value" className={PILL_ROW}>
+          <Pill pressed={query.manaValue === undefined} onClick={() => change({ manaValue: undefined })}>
+            Any cost
           </Pill>
-        ))}
+          {MANA_VALUES.map((mv) => (
+            <Pill key={mv} pressed={query.manaValue === mv} onClick={() => change({ manaValue: query.manaValue === mv ? undefined : mv })}>
+              {mv === CURVE_TOP_MANA_VALUE ? `${mv}+` : mv}
+            </Pill>
+          ))}
+        </div>
       </div>
 
       {results.status === "idle" && !searching && (
@@ -223,7 +244,8 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
                   <ZoomableCard card={card}>
                     <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 120px, 30vw" className={cn(!addable && "opacity-50")} />
                   </ZoomableCard>
-                  <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(card)}</span>
+                  {/* Two lines whatever the name, so the Add buttons line up across the row. */}
+                  <span className="line-clamp-2 min-h-[2lh] text-[0.8125rem] leading-tight font-bold">{displayName(card)}</span>
                   <Button
                     type="button"
                     size="sm"
