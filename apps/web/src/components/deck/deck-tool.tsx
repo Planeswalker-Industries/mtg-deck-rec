@@ -106,31 +106,39 @@ export function DeckTool() {
   /*
    * Open where the player left off: a featured deck when the link named one and a saved deck when the link named one,
    * both analyzed; otherwise the deck from their last visit goes back in the decklist box, unanalyzed, for them to
-   * run or clear. Waits for the saved collection so owned-only suggestions apply from the first load.
+   * run or clear. The two link paths analyze, so they wait for the saved collection first, so owned-only suggestions
+   * apply from the first load; the remembered deck only fills the box, so it restores at once rather than risking the
+   * player's own paste or "Use sample deck" click, made while the collection is still loading, being overwritten.
    */
   useEffect(() => {
-    if (restoreStarted.current || !collectionLoaded) return;
-    restoreStarted.current = true;
+    if (restoreStarted.current) return;
 
-    // ?commander=<slug> loads a featured deck from the landing page carousel
-    if (commanderSlug !== null) {
-      const featured = FEATURED_DECKS.find((d) => d.slug === commanderSlug);
-      if (featured) {
-        void tool.submit({ text: featured.decklist, bracketOverride: null, gameChangerOverride: null, importedFrom: null }).then((outcome) => {
-          if (outcome.parsed) {
-            setEditing(false);
-            void lookup.check(outcome.analysis);
-          }
-        });
-        return;
-      }
-      // Unknown slug falls through to the remembered deck
-    }
+    // ?commander=<slug> loads a featured deck from the landing page carousel; an unknown slug falls through to the
+    // remembered deck, same as no slug at all.
+    const featured = commanderSlug !== null ? FEATURED_DECKS.find((d) => d.slug === commanderSlug) : undefined;
+    const hasLink = openCode !== null || featured !== undefined;
 
-    if (openCode === null) {
+    if (!hasLink) {
+      restoreStarted.current = true;
       tool.restoreLastDeck();
       return;
     }
+
+    if (!collectionLoaded) return;
+    restoreStarted.current = true;
+
+    if (featured) {
+      void tool.submit({ text: featured.decklist, bracketOverride: null, gameChangerOverride: null, importedFrom: null }).then((outcome) => {
+        if (outcome.parsed) {
+          setEditing(false);
+          void lookup.check(outcome.analysis);
+        }
+      });
+      return;
+    }
+    // hasLink is true and featured is undefined here, so openCode must be set; the check just gives TS proof of it.
+    if (openCode === null) return;
+
     void tool.openSavedDeck(openCode).then((r) => {
       if (!r.ok) {
         setOpenError(r.error.message);
@@ -217,7 +225,7 @@ export function DeckTool() {
               replacements that do the same job.
             </p>
             {tool.showsRestoredDeck && (
-              <p role="status" className="mt-2 max-w-prose text-sm text-muted-foreground">
+              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
                 Your last decklist is back in the box. Analyze it to pick up where you left off, or clear it to start a new
                 one.
               </p>
