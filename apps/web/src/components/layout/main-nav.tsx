@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { Menu, X } from "lucide-react";
 import { cn } from "cn";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -29,8 +29,25 @@ const NAV_LINK =
 const ICON_BUTTON =
   "flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
-function isCurrent(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isCurrent(pathname: string | null, href: string) {
+  return pathname !== null && (pathname === href || pathname.startsWith(`${href}/`));
+}
+
+function InlineLinks({ items, pathname }: { items: readonly NavItem[]; pathname: string | null }) {
+  return items.map((item) => (
+    <Link
+      key={item.href}
+      href={item.href}
+      className={NAV_LINK}
+      aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
+    >
+      {item.label}
+    </Link>
+  ));
+}
+
+function InlineLinksAtPath({ items }: { items: readonly NavItem[] }) {
+  return <InlineLinks items={items} pathname={usePathname()} />;
 }
 
 /**
@@ -38,22 +55,16 @@ function isCurrent(pathname: string, href: string) {
  * account control (`children`) never gets pushed off a phone screen. Decks and collection only show when signed in.
  */
 export function MainNav({ signedIn, children }: { signedIn: boolean; children: ReactNode }) {
-  const pathname = usePathname();
   const items = NAV_ITEMS.filter((item) => signedIn || !item.accountOnly);
 
   return (
     <>
       <nav aria-label="Main" className="hidden items-center gap-1 lg:flex">
-        {items.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={NAV_LINK}
-            aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {/* The path is request data on dynamic routes, and the signed-out nav is itself a Suspense fallback, so
+            reading it here unguarded fails the prerender. Until it resolves the links render with none marked. */}
+        <Suspense fallback={<InlineLinks items={items} pathname={null} />}>
+          <InlineLinksAtPath items={items} />
+        </Suspense>
       </nav>
       {children}
       <Sheet>
@@ -69,44 +80,7 @@ export function MainNav({ signedIn, children }: { signedIn: boolean; children: R
             </SheetClose>
           </div>
           <nav aria-label="Main" className="px-2 py-2">
-            <ul>
-              {items.map((item) => {
-                const current = isCurrent(pathname, item.href);
-                return (
-                  <li key={item.href}>
-                    <SheetClose asChild>
-                      <Link
-                        href={item.href}
-                        aria-current={current ? "page" : undefined}
-                        className="group flex items-center gap-3 rounded-md px-3 py-3 transition-colors hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                      >
-                        {/* The lamp from the logo marks the page you are on. */}
-                        <span
-                          aria-hidden
-                          className={cn(
-                            "size-2 shrink-0 rounded-full",
-                            current
-                              ? "bg-primary shadow-[0_0_10px_color-mix(in_oklch,var(--primary)_60%,transparent)]"
-                              : "bg-seam",
-                          )}
-                        />
-                        <span className="flex min-w-0 flex-col">
-                          <span
-                            className={cn(
-                              "font-heading text-xl leading-tight font-semibold",
-                              current ? "text-foreground" : "text-foreground/85 group-hover:text-foreground",
-                            )}
-                          >
-                            {item.label}
-                          </span>
-                          <span className="text-sm text-muted-foreground">{item.hint}</span>
-                        </span>
-                      </Link>
-                    </SheetClose>
-                  </li>
-                );
-              })}
-            </ul>
+            <MenuLinks items={items} />
             {!signedIn && (
               <p className="mt-1 border-t border-seam px-3 pt-3 pb-2 text-sm text-muted-foreground">
                 <SheetClose asChild>
@@ -121,5 +95,50 @@ export function MainNav({ signedIn, children }: { signedIn: boolean; children: R
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+/** The phone menu's list. It only mounts once the menu opens, in the browser, so reading the path here is safe. */
+function MenuLinks({ items }: { items: readonly NavItem[] }) {
+  const pathname = usePathname();
+  return (
+    <ul>
+      {items.map((item) => {
+        const current = isCurrent(pathname, item.href);
+        return (
+          <li key={item.href}>
+            <SheetClose asChild>
+              <Link
+                href={item.href}
+                aria-current={current ? "page" : undefined}
+                className="group flex items-center gap-3 rounded-md px-3 py-3 transition-colors hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+              >
+                {/* The lamp from the logo marks the page you are on. */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    current
+                      ? "bg-primary shadow-[0_0_10px_color-mix(in_oklch,var(--primary)_60%,transparent)]"
+                      : "bg-seam",
+                  )}
+                />
+                <span className="flex min-w-0 flex-col">
+                  <span
+                    className={cn(
+                      "font-heading text-xl leading-tight font-semibold",
+                      current ? "text-foreground" : "text-foreground/85 group-hover:text-foreground",
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                  <span className="text-sm text-muted-foreground">{item.hint}</span>
+                </span>
+              </Link>
+            </SheetClose>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
