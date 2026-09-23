@@ -163,6 +163,11 @@ export function useDeckTool(source: CollectionSource) {
   /** The decklist the player brought, before any journey result replaced it: what Start over goes back to. */
   const [originText, setOriginText] = useState<string | null>(null);
   /**
+   * The remembered deck put back in the box on this visit, with its bracket and Game Changer choices. Analyze replays
+   * those choices only while the box still holds that exact text: an edited deck is a new deck.
+   */
+  const [restored, setRestored] = useState<SavedDeck | null>(null);
+  /**
    * The same deck as analyzed, for saving beside the result. A ref, like the open deck: submit() persists in the same
    * handler that may have just set it.
    */
@@ -267,12 +272,16 @@ export function useDeckTool(source: CollectionSource) {
 
   /**
    * Parses (or imports) the decklist and loads recommendations, then remembers the deck in this browser. `restore`
-   * replays a deck saved on an earlier visit, with its bracket and Game Changer choices. `keepOrigin` marks a result
-   * the tool produced (a journey commit, applied swaps), so Start over still goes back to the deck the player brought.
+   * replays a given deck with its bracket and Game Changer choices; without it, the remembered deck put back in the
+   * box is replayed the same way while its text is unchanged. `keepOrigin` marks a result the tool produced (a
+   * journey commit, applied swaps), so Start over still goes back to the deck the player brought.
    */
   async function submit(restore?: SavedDeck, { keepOrigin = false }: { keepOrigin?: boolean } = {}): Promise<SubmitOutcome> {
+    // Analyzing the remembered deck untouched keeps the choices it was saved with.
+    const replay = restore ?? (restored !== null && restored.text === text ? restored : undefined);
+    setRestored(null);
     setParse({ status: "loading" });
-    const deckText = restore?.text ?? text;
+    const deckText = replay?.text ?? text;
     const input = deckText.trim();
     const { actions } = getApis();
     const r: Result<ParseDeckResult | ImportDeckUrlResult> = DECK_LINK.test(input)
@@ -283,10 +292,10 @@ export function useDeckTool(source: CollectionSource) {
       return { parsed: false, analysis: null };
     }
     const wasImported = "sourceUrl" in r.data;
-    const source = "sourceUrl" in r.data ? { source: r.data.source, url: r.data.sourceUrl } : (restore?.importedFrom ?? null);
+    const source = "sourceUrl" in r.data ? { source: r.data.source, url: r.data.sourceUrl } : (replay?.importedFrom ?? null);
     const finalText = wasImported ? decklistText(r.data.lines) : deckText;
-    const bracket = restore?.bracketOverride ?? null;
-    const includeGameChangers = restore?.gameChangerOverride ?? null;
+    const bracket = replay?.bracketOverride ?? null;
+    const includeGameChangers = replay?.gameChangerOverride ?? null;
 
     recsRequest.current++;
     swapRequest.current++;
@@ -315,12 +324,16 @@ export function useDeckTool(source: CollectionSource) {
     return { parsed: true, analysis: r.data.analysis };
   }
 
-  /** Brings back the deck from the last visit and analyzes it again. `parsed` is false when there was none to restore. */
-  async function restoreLastDeck(): Promise<SubmitOutcome> {
+  /**
+   * Puts the deck from the last visit back in the decklist box without analyzing it: opening the tool must not run an
+   * old deck on its own. Returns false when there was none to restore.
+   */
+  function restoreLastDeck(): boolean {
     const saved = loadSavedDeck();
-    if (!saved) return { parsed: false, analysis: null };
+    if (!saved) return false;
     setText(saved.text);
-    return submit(saved);
+    setRestored(saved);
+    return true;
   }
 
   /**
@@ -388,6 +401,7 @@ export function useDeckTool(source: CollectionSource) {
   /** Forgets the deck here and in this browser's storage. */
   function clearDeck() {
     clearSavedDeck();
+    setRestored(null);
     setOriginText(null);
     originDeckRef.current = null;
     setOriginDeck(null);
@@ -460,6 +474,8 @@ export function useDeckTool(source: CollectionSource) {
     closeSavedDeck,
     trackSavedDeck,
     restoreLastDeck,
+    /** True while the box holds the remembered deck, untouched, and it has not been analyzed yet. */
+    showsRestoredDeck: restored !== null && restored.text === text,
     refreshRecommendations,
     applySwaps,
     commitText,
