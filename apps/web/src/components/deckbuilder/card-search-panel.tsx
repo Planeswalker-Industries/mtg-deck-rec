@@ -29,11 +29,14 @@ const TYPES: CardCategory[] = ["creature", "instant", "sorcery", "artifact", "en
 const MANA_VALUES = Array.from({ length: CURVE_TOP_MANA_VALUE + 1 }, (_, i) => i);
 
 /**
- * A row of pills: one line that scrolls sideways on a phone, so the stuck filter block stays short enough to leave
- * room for results; wrapped from `lg`, where the sidebar is its own scroll area and height is cheaper.
+ * A row of pills: one line that scrolls sideways only below `sm` (phones), so the stuck filter block stays short
+ * enough to leave room for results; wrapped from `sm` up, where there's enough width to show every pill without
+ * needing a mouse-hostile sideways scroll (a tablet or a narrow desktop window has neither the touch gesture nor the
+ * `lg` sidebar layout to make the scrolling row usable). `py-1 -my-1` gives the scrolling row's focus ring room so
+ * `overflow-x-auto` doesn't clip it top and bottom, without changing the row's outer height.
  */
 const PILL_ROW =
-  "-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0";
+  "-mx-4 flex gap-1.5 overflow-x-auto px-4 py-1 -my-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0";
 
 interface Query {
   name: string;
@@ -82,7 +85,8 @@ function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
 
 /**
  * Finds cards to put in the deck: a name, a card type and a mana value, always within the commander's colours. With no
- * name it browses the filtered cards by how widely Commander decks play them, which is how a deck gets its lands.
+ * name, picking a type or a cost pill browses the filtered cards by how widely Commander decks play them, which is how
+ * a deck gets its lands; the commander's colours alone are not a search, so an empty box with no pill shows nothing.
  *
  * Requests go out from the controls' own handlers, a short pause after the last change. A newer search aborts the one
  * before it and a counter drops any answer that still arrives, and the cards already found stay on screen, dimmed,
@@ -164,7 +168,7 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
         (--deck-bar-height, 0 where there is none) and bleeds to the screen edge like that bar; from lg the sidebar is
         the scroll area, so it sticks to the sidebar's top.
       */}
-      <div className="sticky top-[var(--deck-bar-height,0px)] z-20 -mx-4 flex flex-col gap-2 border-b border-seam bg-background/95 px-4 py-3 backdrop-blur-sm lg:top-0 lg:mx-0 lg:px-0 lg:pt-0">
+      <div className="sticky top-[var(--deck-bar-height,0px)] z-20 -mx-4 flex flex-col gap-2 border-b border-seam bg-background/95 px-4 py-3 backdrop-blur-sm lg:top-0 lg:mx-0 lg:bg-background lg:px-0 lg:pt-0">
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
