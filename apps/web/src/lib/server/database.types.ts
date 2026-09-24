@@ -1355,6 +1355,55 @@ export type Database = {
     }
     Functions: {
       admin_delete_user: { Args: { p_user_id: string }; Returns: undefined }
+      admin_crawl_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          claimed_at: string
+          decks: number
+          disabled: boolean
+          disabled_reason: string
+          last_fetched_at: string
+          last_run_decks_written: number
+          last_run_error: string
+          last_run_finished_at: string
+          last_run_id: number
+          last_run_started_at: string
+          last_run_state: string
+          probe_ok_at: string
+          running_run_id: number
+          source: string
+        }[]
+      }
+      admin_crawled_deck_cards: {
+        Args: { p_deck_id: number }
+        Returns: {
+          name: string
+          oracle_id: string
+          quantity: number
+          type_line: string
+        }[]
+      }
+      admin_list_crawled_decks: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+          p_source?: string
+        }
+        Returns: {
+          commander_names: string[]
+          content_hash: string
+          deck_size: number
+          distinct_cards: number
+          fetched_at: string
+          id: number
+          last_updated_at: string
+          listed_updated_at: string
+          source: string
+          source_deck_id: string
+          total_count: number
+        }[]
+      }
       admin_list_sync_runs: {
         Args: {
           p_ascending?: boolean

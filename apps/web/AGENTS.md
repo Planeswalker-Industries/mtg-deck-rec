@@ -60,6 +60,8 @@ The one part of the app not built on the contract or on shadcn.
 - Emails render as plain text in lists, `mailto:` only on the Show screen
 - A signed-in non-admin gets **404, not 403** from both the page and the API
 - The only link to `/admin` is on `/account`, shown to admins only
+- **`/admin/crawls` is not a React Admin resource.** It is a static segment, so it wins over `/admin/[...slug]`, and it is built in the site's own shadcn and tokens because it is read rather than administered. It inherits the proxy gate, checks `requirePlatformAdmin` itself, and its two `/api/admin/crawls*` routes check again. The sidebar link hands the click to Next's router, since react-router knows nothing about that page
+- **It is the one place third-party decklists are rendered** (owner decision, 2026-09-24; see Hard constraints in `../../CLAUDE.md`). `corpus` stays off PostgREST's exposed schema list: the page reads it through `admin_crawl_overview`, `admin_list_crawled_decks` and `admin_crawled_deck_cards`, each opening with `require_platform_admin()`. Checks: `supabase/tests/admin-crawled-decks.sql` (14)
 
 ## Coding Policy
 
