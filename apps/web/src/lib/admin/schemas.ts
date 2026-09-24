@@ -7,6 +7,7 @@ import {
   ADMIN_TAG_SORTS,
   ADMIN_USER_SORTS,
   MAX_ADMIN_NOTE_CHARS,
+  MAX_ADMIN_SEARCH_CHARS,
   MAX_DISPLAY_NAME_CHARS,
   MAX_TAG_REASON_CHARS,
   type AdminSyncJob,
@@ -114,4 +115,27 @@ export const listAdminSyncRunsInputSchema: InputSchema<ListAdminSyncRunsInput> =
   ascending: z.boolean().default(false),
   offset: z.int().min(0).max(100_000).default(0),
   limit: z.int().min(1).max(ADMIN_PER_PAGE_MAX).default(25),
+});
+
+export interface ListAdminCrawledDecksInput {
+  source?: string;
+  search?: string;
+  offset: number;
+  limit: number;
+}
+
+export const listAdminCrawledDecksInputSchema: InputSchema<ListAdminCrawledDecksInput> = z.object({
+  // The two crawl sources. A closed set rather than free text: it reaches a filter on a schema nothing else can see.
+  source: z.enum(["archidekt", "moxfield"]).optional(),
+  search: z.string().max(MAX_ADMIN_SEARCH_CHARS).optional(),
+  offset: z.int().min(0).max(100_000).default(0),
+  limit: z.int().min(1).max(ADMIN_PER_PAGE_MAX).default(25),
+});
+
+export interface AdminCrawledDeckCardsInput {
+  deckId: number;
+}
+
+export const adminCrawledDeckCardsInputSchema: InputSchema<AdminCrawledDeckCardsInput> = z.object({
+  deckId: z.int().min(1),
 });
