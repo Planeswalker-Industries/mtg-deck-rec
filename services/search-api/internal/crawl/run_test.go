@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -82,6 +83,9 @@ type fakeGetter struct {
 	blockAll bool
 	policy   Policy
 	requests map[string]int
+	// URLs that answer an HTTP status instead of a body, so a test can stage a deck that has gone since it was
+	// listed - the ordinary consequence of crawling an update-ordered feed at one request a second.
+	statuses map[string]int
 }
 
 func (g *fakeGetter) Get(_ context.Context, rawurl string) ([]byte, error) {
@@ -91,6 +95,9 @@ func (g *fakeGetter) Get(_ context.Context, rawurl string) ([]byte, error) {
 	g.requests[rawurl]++
 	if g.blockAll {
 		return nil, &Blocked{URL: rawurl}
+	}
+	if status, ok := g.statuses[rawurl]; ok {
+		return nil, &HTTPError{Status: status, URL: rawurl}
 	}
 	if body, ok := g.pages[rawurl]; ok {
 		return body, nil
@@ -413,5 +420,119 @@ func TestContentHashIgnoresOrderAndCountsQuantities(t *testing.T) {
 	}
 	if got := contentHash([]string{"a", "b"}, map[string]int{"x": 1, "y": 3}); got == base {
 		t.Fatal("a different number of copies is a different deck")
+	}
+}
+
+// A deck that has gone since the feed listed it. The feed is update-ordered and the loop runs at one request a
+// second, so minutes pass between listing and fetching; deletions in that window are ordinary. Before this, one of
+// them ended the whole run - and since the next run walks the same feed, it ended every run after it too.
+func TestRunSkipsDecksThatHaveGone(t *testing.T) {
+	store := &fakeStore{policy: Defaults{}.Policy()}
+	store.policy.BackfillDecks = 3
+	src := fakeSource{name: "src", domain: "src.test"}
+	getter := &fakeGetter{
+		pages: map[string][]byte{
+			src.ListURL(1):     []byte("111\n222\n333\n"),
+			src.DeckURL("111"): deckBody("2026-09-21T00:00:00Z", []string{"com1"}, map[string]int{"aaa": 1}),
+			src.DeckURL("333"): deckBody("2026-09-21T00:00:00Z", []string{"com3"}, map[string]int{"ccc": 1}),
+		},
+		statuses: map[string]int{src.DeckURL("222"): http.StatusNotFound},
+	}
+	res, err := newFakeRunner(store, getter, src).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Summary.State != "succeeded" {
+		t.Fatalf("a deck that is gone is not a failed run: %+v", res.Summary)
+	}
+	if res.Summary.SkippedMissing != 1 {
+		t.Fatalf("the missing deck should be counted: %+v", res.Summary)
+	}
+	// The decks either side of it are still crawled: the run steps over the gap rather than stopping at it.
+	if res.Summary.DecksWritten != 2 {
+		t.Fatalf("the run should have continued past the gap: %+v", res.Summary)
+	}
+	// Counted apart, so nobody reads "the browse filters are wrong" from a deck that simply no longer exists.
+	if res.Summary.SkippedUnqualified != 0 {
+		t.Fatalf("a missing deck is not an unqualified one: %+v", res.Summary)
+	}
+}
+
+// 410 means the same thing as 404 here and is treated the same.
+func TestRunSkipsDecksThatAreGone410(t *testing.T) {
+	store := &fakeStore{policy: Defaults{}.Policy()}
+	store.policy.BackfillDecks = 2
+	src := fakeSource{name: "src", domain: "src.test"}
+	getter := &fakeGetter{
+		pages: map[string][]byte{
+			src.ListURL(1):     []byte("111\n222\n"),
+			src.DeckURL("222"): deckBody("2026-09-21T00:00:00Z", []string{"com2"}, map[string]int{"bbb": 1}),
+		},
+		statuses: map[string]int{src.DeckURL("111"): http.StatusGone},
+	}
+	res, err := newFakeRunner(store, getter, src).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Summary.State != "succeeded" || res.Summary.SkippedMissing != 1 || res.Summary.DecksWritten != 1 {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+}
+
+// The ceiling. Skipping missing decks without one would trade a loud failure for a silent nightly no-op: if the deck
+// endpoint moved, every deck would be "gone" and the run would report success over an empty corpus.
+func TestRunFailsWhenTheWholeFeedIsMissing(t *testing.T) {
+	store := &fakeStore{policy: Defaults{}.Policy()}
+	store.policy.BackfillDecks = 60
+	src := fakeSource{name: "src", domain: "src.test"}
+	var ids []string
+	statuses := map[string]int{}
+	for i := range 60 {
+		id := fmt.Sprintf("%d", 1000+i)
+		ids = append(ids, id)
+		statuses[src.DeckURL(id)] = http.StatusNotFound
+	}
+	getter := &fakeGetter{
+		pages:    map[string][]byte{src.ListURL(1): []byte(strings.Join(ids, "\n") + "\n")},
+		statuses: statuses,
+	}
+	res, err := newFakeRunner(store, getter, src).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Summary.State != "failed" {
+		t.Fatalf("a feed where nothing resolves is a broken adapter, not a quiet success: %+v", res.Summary)
+	}
+	if !strings.Contains(res.Summary.Error, "missing") {
+		t.Fatalf("the run should say why it stopped: %q", res.Summary.Error)
+	}
+	// It stops as soon as it is sure, rather than walking the whole budget proving it.
+	if res.Summary.SkippedMissing > missingDeckFloor+1 {
+		t.Fatalf("stopped too late, after %d misses", res.Summary.SkippedMissing)
+	}
+}
+
+// A few missing decks in a short run must not trip the ceiling: that is bad luck, not a broken feed.
+func TestRunToleratesMissingDecksBelowTheFloor(t *testing.T) {
+	store := &fakeStore{policy: Defaults{}.Policy()}
+	store.policy.BackfillDecks = 3
+	src := fakeSource{name: "src", domain: "src.test"}
+	getter := &fakeGetter{
+		pages: map[string][]byte{
+			src.ListURL(1):     []byte("111\n222\n333\n"),
+			src.DeckURL("333"): deckBody("2026-09-21T00:00:00Z", []string{"com3"}, map[string]int{"ccc": 1}),
+		},
+		statuses: map[string]int{
+			src.DeckURL("111"): http.StatusNotFound,
+			src.DeckURL("222"): http.StatusNotFound,
+		},
+	}
+	res, err := newFakeRunner(store, getter, src).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two of three missing is past the share but nowhere near the floor, so the run carries on and succeeds.
+	if res.Summary.State != "succeeded" || res.Summary.SkippedMissing != 2 || res.Summary.DecksWritten != 1 {
+		t.Fatalf("summary: %+v", res.Summary)
 	}
 }

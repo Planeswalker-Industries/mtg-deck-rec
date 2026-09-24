@@ -85,6 +85,22 @@ worker's `qualifyDeck`:
 A deck failing any of them is a `NotQualified`: counted in `crawl_runs.skipped_unqualified` and stepped over. Only a
 page that stopped looking like itself is a `ShapeError`, which quarantines the whole run rather than guessing.
 
+A deck that answers **404 or 410** is stepped over too, counted in `crawl_runs.skipped_missing`. The feed is
+update-ordered and the loop runs at one request a second, so minutes pass between a deck being listed and being
+fetched; in that window it can be deleted, made private or have its id retired. That is ordinary at this rate. It used
+to fail the whole run — observed 2026-09-24, a crawl died on deck 26724957 after about a hundred decks, and because
+the next run walks the same feed it would have died on the same id every night.
+
+The two counters are separate on purpose: a rising `skipped_unqualified` says the browse filters admit decks the
+corpus does not want, while a rising `skipped_missing` says the feed is stale or the crawl is falling behind
+deletions.
+
+Skipping has a ceiling. Once a run has seen at least `missingDeckFloor` (20) missing decks **and** they are more than
+`missingDeckShare` (half) of what it attempted, it fails with `N of M listed decks were missing`. Without it, a deck
+endpoint that moved would make every deck "gone" and the run would report a cheerful success over an empty corpus —
+the same silent-failure shape the cron's preflight exists to prevent. Both conditions are required: the share alone
+would fail a five-deck run that met three deletions, the floor alone a healthy thousand-deck backfill that met twenty.
+
 Two details that are easy to get backwards:
 
 - **A card with no category is in the deck.** Uncategorised is the default state of a card someone just added.
@@ -144,7 +160,7 @@ Three tables in `corpus`, and nothing in the app reads them yet.
 | Table | |
 |---|---|
 | `corpus.decks` | one row per scraped deck: `commanders text[]`, `cards jsonb` (`{oracle id: quantity}`), `deck_size`, `content_hash`, the update times |
-| `corpus.crawl_runs` | one row per run, shaped like `sync_runs`: pages, decks listed/fetched/written, skipped unchanged, skipped unqualified, blocks, error |
+| `corpus.crawl_runs` | one row per run, shaped like `sync_runs`: pages, decks listed/fetched/written, skipped unchanged, skipped unqualified, skipped missing, blocks, error |
 | `corpus.crawl_state` | one row per source: cursor, claim, kill switch, probe |
 
 `content_hash` is sha256 over **sorted** commanders and **sorted** card/quantity pairs. Sorted because the hash has
@@ -252,7 +268,7 @@ Read what runs have done:
 
 ```sql
 select id, state, started_at, finished_at, decks_listed, decks_written,
-       skipped_unchanged, skipped_unqualified, blocks, error
+       skipped_unchanged, skipped_unqualified, skipped_missing, blocks, error
   from corpus.crawl_runs where source = 'archidekt' order by id desc limit 20;
 ```
 
