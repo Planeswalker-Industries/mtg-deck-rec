@@ -79,6 +79,21 @@ async function main() {
   const refused = await get({ authorization: `Bearer ${SECRET}` });
   check("a disabled crawl is reported upstream as refused", refused.status === 503, "503");
 
+  // 5. A crawl that could not start must reach Vercel as a failure, not as a cheerful 202. The search API answers 502
+  //    when its preflight read fails, and this route's only job is not to soften it: a cron whose failure looks like
+  //    success is how a crawl stopped for eight days without anyone noticing.
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ error: "the crawl's database did not answer, so no crawl was started" }), {
+      status: 502,
+    })) as typeof fetch;
+  const unreachable = await get({ authorization: `Bearer ${SECRET}` });
+  const unreachableBody = (await unreachable.json()) as { ok: boolean; started: boolean; upstreamStatus: number };
+  check(
+    "a crawl that could not start is a failed cron, not a silent one",
+    unreachable.status === 502 && !unreachableBody.ok && !unreachableBody.started && unreachableBody.upstreamStatus === 502,
+    JSON.stringify(unreachableBody),
+  );
+
   globalThis.fetch = realFetch;
   const restore = (name: string, value: string | undefined) => {
     if (value === undefined) delete process.env[name];

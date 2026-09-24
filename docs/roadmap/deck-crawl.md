@@ -34,6 +34,11 @@ Vercel cron (daily)
 The web route does nothing but authorize and forward. The crawl is asynchronous because a backfill runs for hours
 and a serverless function must not: the search API answers `202 {"started": true}` and keeps going.
 
+The 202 means *a crawl began*, not *a request arrived*. Before it answers, the scrape makes the same database read the
+run makes first, and a failure is a **502** the web route passes straight through to Vercel's cron log. That read is
+the difference between a crawl that stopped and a crawl nobody noticed had stopped: the background half reports itself
+only to the container log, so anything knowable at trigger time has to be said while the caller is still listening.
+
 ### The pieces
 
 | Path | What it is |
@@ -222,8 +227,26 @@ three VPS variables is missing; `502` means they are set and wrong.
 Trigger a run by hand:
 
 ```sh
-curl -X POST -H "Authorization: Bearer $SEARCH_API_CRON_TOKEN" https://<host>/cron/archidekt/scrape
+curl -i -X POST -H "Authorization: Bearer $SEARCH_API_CRON_TOKEN" https://<host>/cron/archidekt/scrape
 ```
+
+| Answer | What it means |
+|---|---|
+| `202 {"started": true}` | the database answered and a crawl is running; everything after this is in the log |
+| `202 {"started": false, "reason": "already running"}` | this host already has a goroutine for the source; no database call was made |
+| `502` | the crawl's database did not answer, and **nothing was started** — the container log has the status and body |
+| `503` | one of `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SEARCH_API_CRON_TOKEN` is unset on this host |
+
+On a 502, the log line names the cause:
+
+```sh
+docker logs --since 10m <search-api> 2>&1 | grep "crawl preflight failed"
+```
+
+`supabase: HTTP 401` is the key; `HTTP 404` or an HTML body is `SUPABASE_URL` (note the client appends `/rest/v1`
+itself, so a URL that already ends in it produces `/rest/v1/rest/v1` and 404s); a `dial tcp` or
+`context deadline exceeded` with no `supabase:` prefix is egress or DNS. `PGRST301: Expected 3 parts in JWT` means a
+non-JWT key reached PostgREST — a new-style `sb_secret_…` key where a legacy `service_role` JWT was expected.
 
 Read what runs have done:
 

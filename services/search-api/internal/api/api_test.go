@@ -2,13 +2,16 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +19,7 @@ import (
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/api"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/crawl"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
@@ -571,5 +575,94 @@ func TestCardsBrowseHasNoInfix(t *testing.T) {
 	// A browse has no query_by at all, and an infix value without one is a request Typesense rejects.
 	if fake.searches[0].Infix != "" {
 		t.Fatalf("a browse has nothing to match inside: %q", fake.searches[0].Infix)
+	}
+}
+
+// --- the crawl cron's preflight ---
+//
+// A scrape answers 202 and then crawls detached, so a configuration failure used to be indistinguishable from a
+// healthy start: the cron saw 202, the database saw nothing, and the only evidence was a line in the container log.
+// These pin the one read that now happens before the answer.
+
+// stubStore embeds the interface, so any method these tests do not define panics if the handler calls it. That is the
+// assertion: a scrape must touch the database exactly once before it answers, and a busy one not at all.
+type stubStore struct {
+	crawl.Store
+	policyErr error
+	calls     *int32
+}
+
+func (s stubStore) Policy(context.Context) (crawl.Policy, error) {
+	atomic.AddInt32(s.calls, 1)
+	return crawl.Policy{}, s.policyErr
+}
+
+// The run's second call. It errors so a background crawl started by the success case ends immediately instead of
+// trying to fetch anything: these tests are about what happens before the answer, not about crawling.
+func (stubStore) CrawlState(context.Context) (crawl.CrawlState, error) {
+	return crawl.CrawlState{}, errors.New("stub: the run stops here")
+}
+
+type stubSource struct{ crawl.Source }
+
+func (stubSource) Name() string { return "archidekt" }
+
+type stubGetter struct{ crawl.Getter }
+
+func (stubGetter) SetPolicy(crawl.Policy) {}
+
+func newCrawlApp(t *testing.T, fake *fakeTypesense, policyErr error) (*fiber.App, *int32) {
+	t.Helper()
+	var calls int32
+	runner := crawl.NewRunner(stubSource{}, stubGetter{}, stubStore{policyErr: policyErr, calls: &calls}, discardLogger(), "test")
+	cfg := config.Config{ReadToken: readToken, AdminToken: adminToken, CronToken: cronToken}
+	client := typesense.New(fake.server.URL, "key", 5*time.Second)
+	return api.New(cfg, client, discardLogger(), map[string]*crawl.Runner{"archidekt": runner}), &calls
+}
+
+func TestScrapeRefusesWhenTheDatabaseDoesNotAnswer(t *testing.T) {
+	app, calls := newCrawlApp(t, newFakeTypesense(t), errors.New("supabase: HTTP 401: invalid api key"))
+
+	res, body := do(t, app, http.MethodPost, "/cron/archidekt/scrape", cronToken, "")
+	// 502, not 202: Vercel records a failed cron, so a crawl that cannot start stops being silence.
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("got %d, want 502", res.StatusCode)
+	}
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "no crawl was started") {
+		t.Fatalf("the answer should say nothing was started: %q", msg)
+	}
+	if atomic.LoadInt32(calls) != 1 {
+		t.Fatalf("preflight should be exactly one read, got %d", *calls)
+	}
+}
+
+func TestScrapeStartsWhenTheDatabaseAnswers(t *testing.T) {
+	app, calls := newCrawlApp(t, newFakeTypesense(t), nil)
+
+	res, body := do(t, app, http.MethodPost, "/cron/archidekt/scrape", cronToken, "")
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("got %d, want 202", res.StatusCode)
+	}
+	if started, _ := body["started"].(bool); !started {
+		t.Fatalf("a reachable database should start a crawl: %v", body)
+	}
+	if atomic.LoadInt32(calls) < 1 {
+		t.Fatal("the preflight read should have happened")
+	}
+}
+
+func TestFailedPreflightLeavesTheSourceStartable(t *testing.T) {
+	// The in-memory "already running" flag is set before the preflight, so a failure that did not clear it would wedge
+	// the source until the container restarted - turning a transient outage into a permanent one.
+	app, _ := newCrawlApp(t, newFakeTypesense(t), errors.New("supabase: HTTP 401"))
+
+	for i := range 3 {
+		res, body := do(t, app, http.MethodPost, "/cron/archidekt/scrape", cronToken, "")
+		if res.StatusCode != http.StatusBadGateway {
+			t.Fatalf("attempt %d: got %d, want 502 every time", i+1, res.StatusCode)
+		}
+		if reason, _ := body["reason"].(string); reason == "already running" {
+			t.Fatalf("attempt %d: the source was left claimed by a failed preflight", i+1)
+		}
 	}
 }
