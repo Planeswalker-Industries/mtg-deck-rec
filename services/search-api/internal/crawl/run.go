@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,6 +65,16 @@ func (e *NotQualified) Error() string {
 // (the feed is update-ordered, newest first). Past it, every listing is an old, unchanged deck.
 const caughtUpLimit = 10
 
+// When missing decks mean the feed is broken rather than merely stale. Both have to be exceeded together: the share
+// alone would fail a five-deck run that happened to meet three deletions, and the floor alone would fail a healthy
+// thousand-deck backfill that met twenty.
+const (
+	// Below this many, a run concludes nothing: decks really do disappear in the minutes a crawl takes.
+	missingDeckFloor = 20
+	// Above this share of the decks a run attempted, the feed is not listing what it claims to.
+	missingDeckShare = 0.5
+)
+
 // finishTimeout bounds the bookkeeping writes that close a run. They run on a context detached from the crawl's, so
 // a shutdown or a cancelled crawl still records its outcome and releases its claim instead of leaving the source
 // locked until the stale window expires.
@@ -100,6 +111,24 @@ type Runner struct {
 
 func NewRunner(src Source, getter Getter, store Store, log *slog.Logger, clientID string) *Runner {
 	return &Runner{src: src, getter: getter, store: store, log: log, clientID: clientID}
+}
+
+// Preflight makes the one read Run would make first, so a caller can find out whether this crawl can reach its
+// database *before* it commits to a background run it will never hear about again.
+//
+// It exists because a scrape answers 202 and then crawls detached: a total configuration failure — a rejected service
+// key, a wrong SUPABASE_URL, no egress — looked exactly like a healthy start, and the only trace was one line in the
+// container log. A cron that cannot see failure is a cron nobody notices has stopped. Measured the hard way: a crawl
+// that had not run since 2026-09-14 was found by reading pg_stat_statements.
+//
+// Deliberately the same call as Run's first (the policy read), so the two cannot drift into "preflight passes, run
+// fails". It is one round trip and it returns nothing: the run reads the policy again for itself a moment later,
+// because between the two the answer is allowed to change.
+func (r *Runner) Preflight(ctx context.Context) error {
+	if _, err := r.store.Policy(ctx); err != nil {
+		return fmt.Errorf("reading crawl policy: %w", err)
+	}
+	return nil
 }
 
 // Run performs one crawl. A disabled source or an already-running crawl is a Result with no error; an unexpected
@@ -265,6 +294,21 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, state CrawlState, sum
 					summary.SkippedUnqualified++
 					continue
 				}
+				// A deck that is gone. The feed is update-ordered and this loop runs at one request a second, so
+				// minutes pass between a deck being listed and being fetched; in that window it can be deleted, made
+				// private or have its id retired. That is ordinary at this rate, and it used to abort the whole run.
+				var httpErr *HTTPError
+				if errors.As(err, &httpErr) && (httpErr.Status == http.StatusNotFound || httpErr.Status == http.StatusGone) {
+					summary.SkippedMissing++
+					if feedMostlyMissing(summary) {
+						summary.State = "failed"
+						summary.Error = fmt.Sprintf("%d of %d listed decks were missing: the feed or the deck API changed",
+							summary.SkippedMissing, summary.DecksListed)
+						return 0
+					}
+					r.log.Info("deck gone since the feed listed it", "source", r.src.Name(), "deck", entry.ID, "status", httpErr.Status)
+					continue
+				}
 				summary.State, summary.Error = "failed", err.Error()
 				return 0
 			}
@@ -288,6 +332,16 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, state CrawlState, sum
 		}
 	}
 	return 0
+}
+
+// feedMostlyMissing decides when missing decks stop being ordinary attrition and start being a broken adapter.
+//
+// Skipping them without a ceiling would trade one loud failure for a silent nightly no-op: if the deck endpoint moved
+// or started answering 404 for everyone, every deck would be "gone" and the run would report a cheerful success over
+// an empty corpus. The floor exists so a short run cannot conclude anything from bad luck — a handful of decks really
+// can disappear in the minutes a crawl takes.
+func feedMostlyMissing(s *RunSummary) bool {
+	return s.SkippedMissing >= missingDeckFloor && float64(s.SkippedMissing) > missingDeckShare*float64(s.DecksListed)
 }
 
 func (r *Runner) listPage(ctx context.Context, page int) ([]Entry, error) {

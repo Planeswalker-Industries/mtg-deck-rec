@@ -1,6 +1,7 @@
 import type { ApiError } from "@mtg/core/contract";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+  ListAdminCrawledDecksInput,
   ListAdminSyncRunsInput,
   ListAdminTagsInput,
   ListAdminUsersInput,
@@ -8,6 +9,9 @@ import type {
   UpdateAdminUserInput,
 } from "@/lib/admin/schemas";
 import type {
+  AdminCrawledDeckCard,
+  AdminCrawledDeckPage,
+  AdminCrawlSource,
   AdminSyncJob,
   AdminSyncRun,
   AdminSyncRunPage,
@@ -284,3 +288,74 @@ function toAdminSyncRun(row: Database["public"]["Functions"]["admin_list_sync_ru
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The crawled corpus, for /admin/crawls.
+ *
+ * Like every other read here, this runs as the *visitor*: the three `admin_*` crawl functions check
+ * `is_platform_admin()` themselves, and `corpus` is reachable no other way — it is off PostgREST's exposed schema
+ * list precisely because it holds third-party decklists.
+ */
+export async function listAdminCrawlSources(db: AuthedClient): Promise<AdminCrawlSource[]> {
+  const { data, error } = await db.rpc("admin_crawl_overview");
+  if (error) throw asAdminError(error);
+  return (data ?? []).map((row) => ({
+    source: row.source,
+    decks: Number(row.decks),
+    lastFetchedAt: row.last_fetched_at,
+    disabled: row.disabled,
+    disabledReason: row.disabled_reason,
+    probeOkAt: row.probe_ok_at,
+    runningRunId: row.running_run_id === null ? null : Number(row.running_run_id),
+    claimedAt: row.claimed_at,
+    // A source that has never run has no last run, rather than a run full of nulls.
+    lastRun:
+      row.last_run_id === null
+        ? null
+        : {
+            id: Number(row.last_run_id),
+            state: row.last_run_state ?? "unknown",
+            startedAt: row.last_run_started_at ?? "",
+            finishedAt: row.last_run_finished_at,
+            decksWritten: row.last_run_decks_written ?? 0,
+            error: row.last_run_error,
+          },
+  }));
+}
+
+export async function listAdminCrawledDecks(db: AuthedClient, input: ListAdminCrawledDecksInput): Promise<AdminCrawledDeckPage> {
+  const { data, error } = await db.rpc("admin_list_crawled_decks", {
+    ...(input.source ? { p_source: input.source } : {}),
+    ...(input.search ? { p_search: input.search } : {}),
+    p_offset: input.offset,
+    p_limit: input.limit,
+  });
+  if (error) throw asAdminError(error);
+  const rows = data ?? [];
+  return {
+    decks: rows.map((row) => ({
+      id: Number(row.id),
+      source: row.source,
+      sourceDeckId: row.source_deck_id,
+      commanderNames: row.commander_names ?? [],
+      deckSize: row.deck_size,
+      distinctCards: row.distinct_cards,
+      listedUpdatedAt: row.listed_updated_at,
+      lastUpdatedAt: row.last_updated_at,
+      fetchedAt: row.fetched_at,
+      contentHash: row.content_hash,
+    })),
+    total: rows[0] ? Number(rows[0].total_count) : 0,
+  };
+}
+
+export async function getAdminCrawledDeckCards(db: AuthedClient, deckId: number): Promise<AdminCrawledDeckCard[]> {
+  const { data, error } = await db.rpc("admin_crawled_deck_cards", { p_deck_id: deckId });
+  if (error) throw asAdminError(error);
+  return (data ?? []).map((row) => ({
+    oracleId: row.oracle_id,
+    name: row.name,
+    typeLine: row.type_line,
+    quantity: row.quantity,
+  }));
+}
