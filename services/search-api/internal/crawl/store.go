@@ -82,8 +82,12 @@ type RunSummary struct {
 	DecksWritten       int    `json:"decks_written"`
 	SkippedUnchanged   int    `json:"skipped_unchanged"`
 	SkippedUnqualified int    `json:"skipped_unqualified"`
-	Blocks             int    `json:"blocks"`
-	Error              string `json:"error,omitempty"`
+	// Decks the feed listed that were gone by the time the crawl asked for them. Apart from SkippedUnqualified
+	// because the two say different things: unqualified means the browse filters admit decks the corpus does not
+	// want, missing means the feed is stale or the crawl is falling behind deletions.
+	SkippedMissing int    `json:"skipped_missing"`
+	Blocks         int    `json:"blocks"`
+	Error          string `json:"error,omitempty"`
 }
 
 // upsertBatch keeps one write to a hundred decks: deck rows are wide, so an unbounded body would defeat PostgREST's
