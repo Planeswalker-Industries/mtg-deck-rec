@@ -102,6 +102,24 @@ func NewRunner(src Source, getter Getter, store Store, log *slog.Logger, clientI
 	return &Runner{src: src, getter: getter, store: store, log: log, clientID: clientID}
 }
 
+// Preflight makes the one read Run would make first, so a caller can find out whether this crawl can reach its
+// database *before* it commits to a background run it will never hear about again.
+//
+// It exists because a scrape answers 202 and then crawls detached: a total configuration failure — a rejected service
+// key, a wrong SUPABASE_URL, no egress — looked exactly like a healthy start, and the only trace was one line in the
+// container log. A cron that cannot see failure is a cron nobody notices has stopped. Measured the hard way: a crawl
+// that had not run since 2026-09-14 was found by reading pg_stat_statements.
+//
+// Deliberately the same call as Run's first (the policy read), so the two cannot drift into "preflight passes, run
+// fails". It is one round trip and it returns nothing: the run reads the policy again for itself a moment later,
+// because between the two the answer is allowed to change.
+func (r *Runner) Preflight(ctx context.Context) error {
+	if _, err := r.store.Policy(ctx); err != nil {
+		return fmt.Errorf("reading crawl policy: %w", err)
+	}
+	return nil
+}
+
 // Run performs one crawl. A disabled source or an already-running crawl is a Result with no error; an unexpected
 // failure is both a Result with a failed summary and an error.
 func (r *Runner) Run(ctx context.Context) (Result, error) {

@@ -14,8 +14,18 @@ import (
 // long enough to record that it stopped and let go of its claim", which is two database calls.
 const crawlDrainTimeout = 20 * time.Second
 
-// crawlScrape kicks off a crawl for the named source and answers immediately. The crawl runs in the background: a
-// backfill can take hours, and the web app's cron function must not wait on the crawl's lifetime.
+// crawlPreflightTimeout bounds the one read a scrape makes before it answers. It is deliberately well under the web
+// app's 30 s trigger timeout and under the Supabase client's own 30 s: a network that swallows the request would
+// otherwise let the preflight run until the caller had already given up, and the cron would record a fetch abort
+// instead of the 502 that says what is wrong.
+const crawlPreflightTimeout = 10 * time.Second
+
+// crawlScrape kicks off a crawl for the named source and answers without waiting for it. The crawl runs in the
+// background: a backfill can take hours, and the web app's cron function must not wait on the crawl's lifetime.
+//
+// What it does *not* do is answer before it knows the crawl can start. The 202 means "a crawl began", so it is
+// preceded by one read against the crawl's database — the same read the run makes first. Everything after that point
+// is genuinely fire-and-forget and reports itself only to the log; everything before it is the caller's to hear about.
 //
 // At most one goroutine per source exists at a time. The database claim already makes a second crawl a no-op, but a
 // caller that can reach this endpoint should not be able to spend a round trip to the database per request either.
@@ -27,6 +37,20 @@ func (s *Server) crawlScrape(c fiber.Ctx) error {
 	}
 	if _, busy := s.crawling.LoadOrStore(source, true); busy {
 		return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"started": false, "reason": "already running"})
+	}
+	// One read on the request's own context, before the 202. A crawl that cannot reach its database fails on this
+	// exact call a moment later, in the background, where the only evidence is a line in the container log — so the
+	// caller is told now, while it is still listening. Vercel records a failed cron; silence is no longer the symptom.
+	//
+	// After the busy check on purpose: an already-running source still answers without touching the database, which
+	// is what keeps a caller that can reach this endpoint from spending a round trip per request.
+	preflightCtx, cancel := context.WithTimeout(c.Context(), crawlPreflightTimeout)
+	defer cancel()
+	if err := runner.Preflight(preflightCtx); err != nil {
+		s.crawling.Delete(source)
+		s.log.Error("crawl preflight failed", "source", source, "err", err)
+		return &apiError{status: fiber.StatusBadGateway,
+			message: "the crawl's database did not answer, so no crawl was started (check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on this host)"}
 	}
 	s.crawlWG.Add(1)
 	go func() {
