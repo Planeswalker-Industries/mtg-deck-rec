@@ -44,7 +44,10 @@ export function AddPhase({ journey, view }: { journey: DeckJourney; view: "swipe
   const asOf = queue.find((s) => s.card.price)?.card.price?.asOf;
 
   const intro = (
-    <PhaseIntro title="Add">
+    <PhaseIntro
+      title="Add"
+      brief={view === "swipe" && open > 0 ? "Swipe right to add, left to skip." : undefined}
+    >
       {open === 0
         ? "Every slot is filled again."
         : `${open} of ${slots} slot${slots === 1 ? "" : "s"} open. Cards decks like yours run and this one doesn't, best first${landsShort ? ", lands first while the mana base is short" : ""}. Each card you add changes what's suggested next.`}
