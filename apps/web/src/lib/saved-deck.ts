@@ -5,7 +5,6 @@ import type { ImportedFrom } from "@/components/deck/use-deck-tool";
 export interface SavedDeck {
   text: string;
   bracketOverride: Bracket | null;
-  gameChangerOverride: boolean | null;
   importedFrom: ImportedFrom | null;
 }
 
@@ -37,7 +36,6 @@ function readStored(): StoredDeck | null {
       typeof v.savedAt === "number" &&
       Date.now() - v.savedAt <= MAX_AGE_MS &&
       (v.bracketOverride === null || isBracket(v.bracketOverride)) &&
-      (v.gameChangerOverride === null || typeof v.gameChangerOverride === "boolean") &&
       importedOk;
     return valid ? (v as unknown as StoredDeck) : null;
   } catch {
@@ -51,8 +49,8 @@ export function loadSavedDeck(): SavedDeck | null {
     clearSavedDeck();
     return null;
   }
-  const { text, bracketOverride, gameChangerOverride, importedFrom } = stored;
-  return { text, bracketOverride, gameChangerOverride, importedFrom };
+  const { text, bracketOverride, importedFrom } = stored;
+  return { text, bracketOverride, importedFrom };
 }
 
 export function saveDeck(deck: SavedDeck): void {
@@ -64,8 +62,8 @@ export function saveDeck(deck: SavedDeck): void {
   }
 }
 
-/** Keeps a bracket or Game Changer choice for the saved deck, if there is one. */
-export function updateSavedDeck(changes: Partial<Pick<SavedDeck, "bracketOverride" | "gameChangerOverride">>): void {
+/** Keeps a bracket choice for the saved deck, if there is one. */
+export function updateSavedDeck(changes: Partial<Pick<SavedDeck, "bracketOverride">>): void {
   const stored = loadSavedDeck();
   if (stored) saveDeck({ ...stored, ...changes });
 }

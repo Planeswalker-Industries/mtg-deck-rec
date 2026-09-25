@@ -35,7 +35,7 @@ export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSel
                 aria-current={current ? "step" : undefined}
                 onClick={() => onSelect(step)}
                 className={cn(
-                  "flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-bold transition-colors",
+                  "flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-bold transition-colors",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default",
                   current ? cn("bg-sleeve text-foreground", glow) : done ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/50",
                 )}
@@ -51,8 +51,20 @@ export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSel
   );
 }
 
-/** The heading and one line of explanation each phase opens with. */
-export function PhaseIntro({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * The heading and one line of explanation each phase opens with. In the swipe view the stepper above already names
+ * the phase and each card carries its own reasons, so `brief` replaces both with a single line of what to do, and the
+ * heading stays for screen readers: on a phone that line is the difference between the card fitting and not.
+ */
+export function PhaseIntro({ title, children, brief }: { title: string; children: ReactNode; brief?: ReactNode }) {
+  if (brief !== undefined) {
+    return (
+      <div>
+        <h2 className="sr-only">{title}</h2>
+        <p className="text-sm text-muted-foreground">{brief}</p>
+      </div>
+    );
+  }
   return (
     <div>
       <h2 className="font-heading text-3xl leading-none font-extrabold tracking-tight">{title}</h2>

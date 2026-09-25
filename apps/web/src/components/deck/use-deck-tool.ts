@@ -102,7 +102,6 @@ interface CollectionUse {
 function buildContext(
   analysis: DeckAnalysis,
   bracketOverride: Bracket | null,
-  gameChangerOverride: boolean | null,
   collection: CollectionUse | null,
 ): RecContext {
   const bracket = bracketOverride ?? analysis.estimatedBracket;
@@ -110,7 +109,7 @@ function buildContext(
     deck: analysis.deck,
     bracket,
     bracketSource: bracketOverride === null ? "inferred" : "user",
-    includeGameChangers: gameChangerOverride ?? defaultIncludeGameChangers(bracket),
+    includeGameChangers: defaultIncludeGameChangers(bracket),
     ownership: collection?.ownership ?? null,
     ...(collection ? { ownershipMode: collection.mode } : {}),
   };
@@ -154,7 +153,6 @@ export function useDeckTool(source: CollectionSource) {
   const [lines, setLines] = useState<ResolvedLine[]>([]);
   const [analysis, setAnalysis] = useState<DeckAnalysis | null>(null);
   const [bracketOverride, setBracketOverride] = useState<Bracket | null>(null);
-  const [gameChangerOverride, setGameChangerOverride] = useState<boolean | null>(null);
   const [add, setAdd] = useState<Async<AddResult>>({ status: "idle" });
   const [cut, setCut] = useState<Async<CutResult>>({ status: "idle" });
   const [swap, setSwap] = useState<SwapState | null>(null);
@@ -201,7 +199,7 @@ export function useDeckTool(source: CollectionSource) {
   };
   const ownership = ownershipFor(collectionMode);
 
-  const context = analysis ? buildContext(analysis, bracketOverride, gameChangerOverride, ownership) : null;
+  const context = analysis ? buildContext(analysis, bracketOverride, ownership) : null;
 
   async function loadSwap(ctx: RecContext, targetCardId: CardId) {
     const id = ++swapRequest.current;
@@ -266,7 +264,7 @@ export function useDeckTool(source: CollectionSource) {
     setText(deckText);
     return {
       ok: true,
-      data: await submit({ text: deckText, bracketOverride: bracket ?? null, gameChangerOverride: null, importedFrom: null }),
+      data: await submit({ text: deckText, bracketOverride: bracket ?? null, importedFrom: null }),
     };
   }
 
@@ -295,7 +293,6 @@ export function useDeckTool(source: CollectionSource) {
     const source = "sourceUrl" in r.data ? { source: r.data.source, url: r.data.sourceUrl } : (replay?.importedFrom ?? null);
     const finalText = wasImported ? decklistText(r.data.lines) : deckText;
     const bracket = replay?.bracketOverride ?? null;
-    const includeGameChangers = replay?.gameChangerOverride ?? null;
 
     recsRequest.current++;
     swapRequest.current++;
@@ -310,11 +307,10 @@ export function useDeckTool(source: CollectionSource) {
     setLines(r.data.lines);
     setAnalysis(r.data.analysis);
     setBracketOverride(bracket);
-    setGameChangerOverride(includeGameChangers);
     setSwap(null);
-    saveDeck({ text: finalText, bracketOverride: bracket, gameChangerOverride: includeGameChangers, importedFrom: source });
+    saveDeck({ text: finalText, bracketOverride: bracket, importedFrom: source });
     if (r.data.analysis) {
-      void loadRecs(buildContext(r.data.analysis, bracket, includeGameChangers, ownership), null);
+      void loadRecs(buildContext(r.data.analysis, bracket, ownership), null);
       // Every path that changes the deck goes through here, so this is the one place auto-save has to hang off.
       if (openDeckRef.current) pendingSave.current = persist(r.data.analysis, bracket);
     } else {
@@ -351,7 +347,7 @@ export function useDeckTool(source: CollectionSource) {
     // A newer deck or setting change owns the panels now; the analysis still tells the caller what the lookup found.
     if (id !== recsRequest.current) return analyzed.data;
     setAnalysis(analyzed.data);
-    const ctx = buildContext(analyzed.data, bracketOverride, gameChangerOverride, ownership);
+    const ctx = buildContext(analyzed.data, bracketOverride, ownership);
     setCut({ status: "loading" });
     setAdd({ status: "loading" });
     const [cutResult] = await Promise.all([recs.cut({ context: ctx }), onStage("cuts")]);
@@ -383,13 +379,13 @@ export function useDeckTool(source: CollectionSource) {
     });
     const nextText = editedInPlace ? textLines.join("\n") : decklistText(nextLines);
     setText(nextText);
-    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom }, { keepOrigin: true });
+    return submit({ text: nextText, bracketOverride, importedFrom }, { keepOrigin: true });
   }
 
   /** Puts a decklist the tool produced (a journey's result) in the box and analyzes it, keeping the player's settings. */
   function commitText(nextText: string): Promise<SubmitOutcome> {
     setText(nextText);
-    return submit({ text: nextText, bracketOverride, gameChangerOverride, importedFrom: null }, { keepOrigin: true });
+    return submit({ text: nextText, bracketOverride, importedFrom: null }, { keepOrigin: true });
   }
 
   /** Goes back to the decklist the player brought and analyzes it again. */
@@ -416,7 +412,6 @@ export function useDeckTool(source: CollectionSource) {
     setAnalysis(null);
     setImportedFrom(null);
     setBracketOverride(null);
-    setGameChangerOverride(null);
     setAdd({ status: "idle" });
     setCut({ status: "idle" });
     setSwap(null);
@@ -426,22 +421,17 @@ export function useDeckTool(source: CollectionSource) {
     setBracketOverride(bracket);
     updateSavedDeck({ bracketOverride: bracket });
     if (!analysis) return;
-    void loadRecs(buildContext(analysis, bracket, gameChangerOverride, ownership), swap?.targetCardId ?? null);
+    void loadRecs(buildContext(analysis, bracket, ownership), swap?.targetCardId ?? null);
     // The bracket is stored on the deck, so it is a change to write back; the cards are unchanged.
     if (openDeckRef.current) void persist(analysis, bracket);
   }
 
-  function changeIncludeGameChangers(include: boolean) {
-    setGameChangerOverride(include);
-    updateSavedDeck({ gameChangerOverride: include });
-    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, include, ownership), swap?.targetCardId ?? null);
-  }
 
   /** Switches owned-only suggestions on or off and reloads cuts, adds and any open swap with the new pool. */
   function changeCollectionMode(mode: CollectionMode) {
     setCollectionMode(mode);
     writeCollectionMode(mode);
-    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, gameChangerOverride, ownershipFor(mode)), swap?.targetCardId ?? null);
+    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, ownershipFor(mode)), swap?.targetCardId ?? null);
   }
 
   function openSwap(targetCardId: CardId) {
@@ -493,7 +483,6 @@ export function useDeckTool(source: CollectionSource) {
     analysis,
     context,
     changeBracket,
-    changeIncludeGameChangers,
     /** null when there's no collection to limit suggestions to. */
     /** null when there's no collection to apply. */
     collectionMode: hasCollection ? collectionMode : null,

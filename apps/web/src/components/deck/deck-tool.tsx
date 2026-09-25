@@ -15,7 +15,7 @@ import { DeckBar } from "./deck-bar";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
-import { FileDrop } from "@/components/collection/file-drop";
+import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
@@ -63,7 +63,7 @@ function Segmented<T extends string>({
           aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
+            "rounded-md px-4 py-1 text-sm font-medium transition-colors",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             value === o.value ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
           )}
@@ -99,6 +99,9 @@ export function DeckTool() {
   /** Review's Save on a deck that isn't saved yet opens the name form in the header. */
   const [saveAsked, setSaveAsked] = useState(false);
   const [committing, setCommitting] = useState(false);
+  /** The last file read into the decklist box, and whether its text is on show (see `LoadedFile`). */
+  const [deckFile, setDeckFile] = useState<{ name: string; text: string } | null>(null);
+  const [fileTextShown, setFileTextShown] = useState(false);
   const restoreStarted = useRef(false);
   const { analysis, context } = tool;
   const journey = useDeckJourney({ analysis, context, lines: tool.lines, cut: tool.cut });
@@ -128,7 +131,7 @@ export function DeckTool() {
     restoreStarted.current = true;
 
     if (featured) {
-      void tool.submit({ text: featured.decklist, bracketOverride: null, gameChangerOverride: null, importedFrom: null }).then((outcome) => {
+      void tool.submit({ text: featured.decklist, bracketOverride: null, importedFrom: null }).then((outcome) => {
         if (outcome.parsed) {
           setEditing(false);
           void lookup.check(outcome.analysis);
@@ -152,6 +155,10 @@ export function DeckTool() {
     });
   }, [tool, lookup, collectionLoaded, openCode, commanderSlug]);
   const showInput = editing || !analysis;
+  // The chip stands for the file only while the box still holds what the file put there: an edit, the sample deck or
+  // Clear all make it a plain decklist again.
+  const fileInBox = deckFile !== null && deckFile.text === tool.text ? deckFile : null;
+  const textHidden = fileInBox !== null && !fileTextShown;
 
   /** A saved deck's deckbuilder has its own address; the commander segment is decoration, the code finds the deck. */
   const editorUrl = (code: string) => `/decks/${analysis?.commanderKey.commanders[0]?.slug ?? "deck"}/${code}/edit` as Route;
@@ -170,6 +177,12 @@ export function DeckTool() {
     ? analysis.deck.commanders.length +
       analysis.deck.cards.filter((c) => c.section === "main").reduce((n, c) => n + c.quantity, 0)
     : 0;
+
+  /** The deck bar's pencil: the decklist box opens at the top of the page, so the page goes there with it. */
+  function editDecklist() {
+    setEditing(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   function changeView(next: ReviewView) {
     setView(next);
@@ -212,7 +225,7 @@ export function DeckTool() {
     <div className="flex flex-col gap-5">
       {/* The open deck stays named while its decklist is being edited: it is still the deck being worked on. */}
       {tool.openDeck && (
-        <OpenDeckBar deck={tool.openDeck} editing={showInput} onEdit={() => setEditing(true)} onClose={tool.closeSavedDeck} />
+        <OpenDeckBar deck={tool.openDeck} onClose={tool.closeSavedDeck} />
       )}
       {showInput ? (
         <section aria-labelledby="deck-input-heading" className="flex flex-col gap-4">
@@ -257,23 +270,44 @@ export function DeckTool() {
             <Label htmlFor="decklist" className="sr-only">
               Decklist
             </Label>
-            {/* A CSV deck export collapses to quantity and name: a deck is oracle-level, so the printing is noise. */}
-            <FileDrop
-              note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. A CSV is reduced to quantities and card names."
-              disabled={tool.parse.status === "loading"}
-              onFile={(contents) => tool.setText(decklistFromFile(contents))}
-            />
-            <Textarea
-              id="decklist"
-              rows={8}
-              value={tool.text}
-              onChange={(e) => tool.setText(e.target.value)}
-              placeholder={PLACEHOLDER}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
-              className="bg-sleeve text-base sm:text-sm"
-            />
+            {fileInBox ? (
+              <LoadedFile
+                name={fileInBox.name}
+                lines={lineCount(fileInBox.text)}
+                textShown={fileTextShown}
+                onToggleText={() => setFileTextShown((shown) => !shown)}
+                onRemove={() => {
+                  tool.setText("");
+                  setDeckFile(null);
+                }}
+                disabled={tool.parse.status === "loading"}
+              />
+            ) : (
+              // A CSV deck export collapses to quantity and name: a deck is oracle-level, so the printing is noise.
+              <FileDrop
+                note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. A CSV is reduced to quantities and card names."
+                disabled={tool.parse.status === "loading"}
+                onFile={(contents, name) => {
+                  const text = decklistFromFile(contents);
+                  tool.setText(text);
+                  setDeckFile({ name, text });
+                  setFileTextShown(false);
+                }}
+              />
+            )}
+            {!textHidden && (
+              <Textarea
+                id="decklist"
+                rows={8}
+                value={tool.text}
+                onChange={(e) => tool.setText(e.target.value)}
+                placeholder={PLACEHOLDER}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                className={IMPORT_TEXT_BOX}
+              />
+            )}
             <div className="flex flex-wrap gap-2">
               <Button type="submit" size="lg" disabled={!tool.text.trim() || tool.parse.status === "loading"}>
                 {tool.parse.status === "loading" ? "Reading decklist…" : "Analyze deck"}
@@ -304,29 +338,7 @@ export function DeckTool() {
           </form>
           {!analysis && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
         </section>
-      ) : tool.openDeck ? null : (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {analysis && (
-            <SaveDeckButton
-              key={saveAsked ? "asked" : "idle"}
-              analysis={analysis}
-              bracket={context?.bracket ?? null}
-              onSaved={(deck) => {
-                setSaveAsked(false);
-                tool.trackSavedDeck(deck);
-                // Saving opens the deck in its deckbuilder, at the address it keeps from now on.
-                router.push(editorUrl(deck.code));
-              }}
-              defaultOpen={saveAsked}
-              original={tool.original}
-              beforeSave={async () => (flushEdits.current ? flushEdits.current() : null)}
-            />
-          )}
-          <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
-            Edit decklist
-          </Button>
-        </div>
-      )}
+      ) : null}
       {openError && (
         <p role="alert" className="text-sm text-destructive">
           {openError}
@@ -346,18 +358,18 @@ export function DeckTool() {
       <ResolutionIssues unresolved={tool.unresolvedLines} issues={analysis?.issues ?? []} />
 
       {analysis && context && (
-        <section aria-label="Recommendations" className="flex flex-col gap-4">
+        <section aria-label="Recommendations" className="flex flex-col gap-2">
           <DeckBar
             analysis={analysis}
             context={context}
             cardCount={cardCount}
             onBracketChange={tool.changeBracket}
-            onIncludeGameChangersChange={tool.changeIncludeGameChangers}
             collectionMode={tool.collectionMode}
             onCollectionModeChange={tool.changeCollectionMode}
+            onEditDecklist={showInput ? undefined : editDecklist}
           />
           <CommanderLookupBar lookup={lookup} />
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <Segmented
               label="What to do with the deck"
               options={[
@@ -378,10 +390,29 @@ export function DeckTool() {
                 onChange={changeView}
               />
             )}
+            {/* Saving is asked for, never automatic: a new deck is public. Upgrade saves from its Review step, which
+                brings the player here with the name form open; the deckbuilder saves from this slot. An open deck
+                already writes back on its own. */}
+            {mode === "edit" && !tool.openDeck && (
+              <SaveDeckButton
+                key={saveAsked ? "asked" : "idle"}
+                analysis={analysis}
+                bracket={context.bracket}
+                onSaved={(deck) => {
+                  setSaveAsked(false);
+                  tool.trackSavedDeck(deck);
+                  // Saving opens the deck in its deckbuilder, at the address it keeps from now on.
+                  router.push(editorUrl(deck.code));
+                }}
+                defaultOpen={saveAsked}
+                original={tool.original}
+                beforeSave={async () => (flushEdits.current ? flushEdits.current() : null)}
+              />
+            )}
           </div>
           {mode === "upgrade" ? (
             journey.state && (
-              <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-3">
                 <JourneyStepper phase={journey.state.phase} onSelect={(phase) => journey.goTo(phase)} />
                 {journey.state.phase === "cut" && <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />}
                 {journey.state.phase === "add" && <AddPhase journey={journey} view={view} />}

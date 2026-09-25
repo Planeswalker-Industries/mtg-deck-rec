@@ -88,7 +88,7 @@ export function CutPhase({
   const next = undecided[0];
   return (
     <div className="flex flex-col gap-4">
-      <PhaseIntro title="Cut">
+      <PhaseIntro title="Cut" brief="Swipe right to cut, left to keep.">
         Cards that work against this deck: they break a rule, or this commander&apos;s decks all but never run them. Swipe
         right to cut, left to keep.
       </PhaseIntro>
