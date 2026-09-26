@@ -32,6 +32,8 @@ test("saves a deck, then renames, duplicates and deletes it from the list", asyn
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
 
+  // Save deck sits in Deckbuilder mode; Upgrade saves from its Review step.
+  await page.getByRole("region", { name: "Recommendations" }).getByRole("button", { name: "Deckbuilder" }).click({ timeout: 60_000 });
   const save = page.getByRole("button", { name: "Save deck" });
   await expect(save).toBeVisible({ timeout: 60_000 });
   await save.click();
@@ -73,7 +75,9 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
-  await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
+  // Save deck sits in Deckbuilder mode; Upgrade saves from its Review step.
+  await page.getByRole("region", { name: "Recommendations" }).getByRole("button", { name: "Deckbuilder" }).click({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Save deck" }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expectEditor(page);
 
@@ -134,7 +138,9 @@ test("reopens a saved deck in the tool, and edits go back to it", async ({ page,
   const decklist = await page.getByRole("textbox", { name: "Decklist" }).inputValue();
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
-  await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
+  // Save deck sits in Deckbuilder mode; Upgrade saves from its Review step.
+  await page.getByRole("region", { name: "Recommendations" }).getByRole("button", { name: "Deckbuilder" }).click({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Save deck" }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expectEditor(page);
 
@@ -215,7 +221,9 @@ test("the deckbuilder edits a saved deck, and every change is saved", async ({ p
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
-  await page.getByRole("button", { name: "Save deck" }).click({ timeout: 60_000 });
+  // Save deck sits in Deckbuilder mode; Upgrade saves from its Review step.
+  await page.getByRole("region", { name: "Recommendations" }).getByRole("button", { name: "Deckbuilder" }).click({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Save deck" }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expectEditor(page);
 

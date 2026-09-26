@@ -20,14 +20,9 @@ const STATUS: Record<OpenDeck["status"], string> = {
  */
 export function OpenDeckBar({
   deck,
-  editing,
-  onEdit,
   onClose,
 }: {
   deck: OpenDeck;
-  /** The decklist box is already open, so the control that opens it has nothing to do. */
-  editing: boolean;
-  onEdit: () => void;
   onClose: () => void;
 }) {
   return (
@@ -48,11 +43,6 @@ export function OpenDeckBar({
         >
           Deck page
         </Link>
-        {!editing && (
-          <Button type="button" size="sm" variant="outline" onClick={onEdit}>
-            Edit decklist
-          </Button>
-        )}
         <Button type="button" size="sm" variant="ghost" onClick={onClose}>
           Close deck
         </Button>

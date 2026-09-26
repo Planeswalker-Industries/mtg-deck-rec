@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { CollectionTotals, ResolvedCollectionRow, UnresolvedCollectionRow } from "@mtg/core/contract";
 import { appendCsvPage, collectionLink } from "@mtg/core/parse";
 import { importCollectionFromLinkAction } from "@/app/collection/actions";
-import { FileDrop } from "./file-drop";
+import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "./file-drop";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -57,6 +57,8 @@ export function CollectionTool() {
   const [text, setText] = useState("");
   /** The file the text came from, so the import can say what it is working on. */
   const [fileName, setFileName] = useState<string | null>(null);
+  /** A file's text stays out of sight unless asked for: see `LoadedFile`. */
+  const [fileTextShown, setFileTextShown] = useState(false);
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   /** Lines that didn't match in the last import to the account, which doesn't keep them. */
@@ -211,6 +213,9 @@ export function CollectionTool() {
   }
 
   const importing = progress !== null;
+  const textHidden = fileName !== null && !fileTextShown;
+  // A large export is tens of thousands of lines, and the form re-renders on every progress tick.
+  const fileLines = useMemo(() => (fileName === null ? 0 : lineCount(text)), [fileName, text]);
   const isLink = collectionLink(text) !== null;
 
   return (
@@ -263,44 +268,59 @@ export function CollectionTool() {
           void importText();
         }}
       >
-        <Label htmlFor="collection-text" className="font-bold">
+        <Label htmlFor={textHidden ? undefined : "collection-text"} className="font-bold">
           {hasCollection ? "Replace with a new export" : "Collection export"}
         </Label>
-        <FileDrop
-          note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. It stays in your browser."
-          disabled={importing}
-          onFile={(contents, name) => {
-            setProblem(null);
-            setText(contents);
-            setFileName(name);
-          }}
-        />
-        {fileName !== null && (
-          <p className="text-sm text-muted-foreground">
-            Read <span className="font-bold text-foreground">{fileName}</span>. Check it below, then import.
+        {fileName !== null ? (
+          <LoadedFile
+            name={fileName}
+            lines={fileLines}
+            textShown={fileTextShown}
+            onToggleText={() => setFileTextShown((shown) => !shown)}
+            onRemove={() => {
+              setText("");
+              setFileName(null);
+              setProblem(null);
+            }}
+            disabled={importing}
+          />
+        ) : (
+          <FileDrop
+            note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. It stays in your browser."
+            disabled={importing}
+            onFile={(contents, name) => {
+              setProblem(null);
+              setText(contents);
+              setFileName(name);
+              setFileTextShown(false);
+            }}
+          />
+        )}
+        {!textHidden && (
+          <Textarea
+            id="collection-text"
+            rows={8}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setFileName(null);
+              // The last problem was about the last text; leaving it up makes the new text look wrong too.
+              setProblem(null);
+            }}
+            placeholder={PLACEHOLDER}
+            aria-describedby={fileName === null ? "collection-text-hint" : undefined}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            disabled={importing}
+            className={IMPORT_TEXT_BOX}
+          />
+        )}
+        {fileName === null && (
+          <p id="collection-text-hint" className="text-sm text-muted-foreground">
+            Or paste a link to a public Archidekt collection, like https://archidekt.com/collection/v2/123456.
           </p>
         )}
-        <Textarea
-          id="collection-text"
-          rows={8}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setFileName(null);
-            // The last problem was about the last text; leaving it up makes the new text look wrong too.
-            setProblem(null);
-          }}
-          placeholder={PLACEHOLDER}
-          aria-describedby="collection-text-hint"
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          disabled={importing}
-          className="bg-sleeve text-base sm:text-sm"
-        />
-        <p id="collection-text-hint" className="text-sm text-muted-foreground">
-          Or paste a link to a public Archidekt collection, like https://archidekt.com/collection/v2/123456.
-        </p>
         {progress && (
           <div className="flex flex-col gap-1.5" aria-live="polite">
             <p className="text-sm font-bold tabular-nums">
