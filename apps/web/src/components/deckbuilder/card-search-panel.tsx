@@ -101,6 +101,12 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** The call in flight, so a newer search can stop it rather than just ignore what it eventually says. */
   const inFlight = useRef<AbortController | null>(null);
+  /**
+   * The commander's colours as of the latest render. A search waits out the typing pause, and the commander can change
+   * in the meantime (the Commander button on a result), so it reads them when it goes out.
+   */
+  const identityRef = useRef(colorIdentity);
+  const searchedIdentity = useRef(colorIdentity);
 
   useEffect(
     () => () => {
@@ -111,6 +117,7 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
   );
 
   async function search(q: Query, offset: number) {
+    const colorIdentity = identityRef.current;
     const id = ++request.current;
     inFlight.current?.abort();
     const controller = new AbortController();
@@ -141,6 +148,20 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
       more: r.data.length === PAGE_SIZE,
     }));
   }
+
+  // A new commander means new colours: the results on screen were found for the old ones, so the search runs again,
+  // after the same pause as typing. An effect because the colours change with the deck, which the builder owns, not
+  // with anything this panel handles.
+  useEffect(() => {
+    identityRef.current = colorIdentity;
+    if (searchedIdentity.current === colorIdentity) return;
+    searchedIdentity.current = colorIdentity;
+    if (!searchable(query)) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void search(query, 0), SEARCH_DEBOUNCE_MS);
+    // Keyed on the colours alone: a query change searches from its own handler.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colorIdentity]);
 
   function change(next: Partial<Query>) {
     const q: Query = { ...query, ...next };

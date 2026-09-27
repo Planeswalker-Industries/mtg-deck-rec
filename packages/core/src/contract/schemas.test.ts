@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_ADD_EXCLUDE,
   MAX_COLLECTION_ROWS_PER_CALL,
   MAX_DECK_ENTRIES,
   MAX_DECKLIST_CHARS,
   MAX_VOTE_CANDIDATES_SHOWN,
+  addInputSchema,
   castVoteInputSchema,
   commanderRequestInputSchema,
   parseDeckInputSchema,
@@ -74,6 +76,15 @@ describe('action and route inputs', () => {
     expect(!tooLong.ok && tooLong.error.code).toBe('PAYLOAD_TOO_LARGE');
     const notText = parseInput(parseDeckInputSchema, { text: 42 });
     expect(!notText.ok && notText.error.message).toBe('Send the decklist as text.');
+  });
+
+  it('takes cards to leave out of adds, within a limit', () => {
+    const r = parseInput(addInputSchema, { context: context(), excludeCardIds: [5, 6] });
+    expect(r.ok && r.data.excludeCardIds).toEqual([5, 6]);
+    expect(parseInput(addInputSchema, { context: context() }).ok).toBe(true);
+    expect(parseInput(addInputSchema, { context: context(), excludeCardIds: [0] }).ok).toBe(false);
+    const tooMany = Array.from({ length: MAX_ADD_EXCLUDE + 1 }, (_, i) => i + 1);
+    expect(parseInput(addInputSchema, { context: context(), excludeCardIds: tooMany }).ok).toBe(false);
   });
 
   it('accepts only numeric lookup ids', () => {

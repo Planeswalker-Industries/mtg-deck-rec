@@ -29,7 +29,8 @@ import type { AddResult, CutResult, RaterDeal, RecContext, SwapResult, VoteConte
  */
 export interface RecsApi {
   swap(input: { context: RecContext; targetCardId: CardId; limit?: number }): Promise<Result<SwapResult>>;
-  add(input: { context: RecContext; limitPerCategory?: number }): Promise<Result<AddResult>>;
+  /** `excludeCardIds`: cards the player has already passed on, left out like the deck's own cards (v17). */
+  add(input: { context: RecContext; limitPerCategory?: number; excludeCardIds?: CardId[] }): Promise<Result<AddResult>>;
   cut(input: { context: RecContext; limit?: number }): Promise<Result<CutResult>>;
 }
 

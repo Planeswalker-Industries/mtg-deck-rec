@@ -69,8 +69,15 @@ export function ReplacePhase({
   const picked = swaps.map((s) => ({ target: s.target, replacement: s.replacement }));
   const onPick = (swap: { target: CardSummary; replacement: CardSummary }) =>
     journey.dispatch({ type: "swap", target: swap.target, replacement: swap.replacement });
+  const onKeep = (card: CardSummary) => journey.replace.keep(card.id);
+  const onDecline = (target: CardSummary, replacement: CardSummary) => journey.replace.decline(target.id, replacement.id);
+  // A target that an undone swap took back out of the deck is no longer there to replace. The list drops it; the swipe
+  // view steps over it when its turn comes, since it deals by position.
+  const skipTarget = (card: CardSummary) => !journey.replace.inDeck(card.id);
   const toSwipe = targets.map((s) => ({ card: s.card, reasons: s.reasons }));
-  const focused = focus === null ? null : toSwipe.find((t) => t.card.id === focus);
+  const inDeckTargets = targets.filter((s) => !skipTarget(s.card));
+  const focused = focus === null ? null : toSwipe.find((t) => t.card.id === focus && !skipTarget(t.card));
+  const declined = journey.replace.declined;
 
   const swapList =
     swaps.length > 0 ? (
@@ -116,17 +123,20 @@ export function ReplacePhase({
             commanderKeyId={commanderKeyId}
             picked={picked}
             onPick={onPick}
+            onKeep={onKeep}
+            onDecline={onDecline}
+            declined={declined}
             onFinish={() => setFocus(null)}
           />
         )}
-        {targets.length === 0 ? (
+        {inDeckTargets.length === 0 ? (
           nothingLeft
         ) : (
           <PocketGrid
             zoomable
             label="Cards worth replacing"
             onSelect={(card: CardSummary) => setFocus(card.id)}
-            items={targets.map((s) => ({
+            items={inDeckTargets.map((s) => ({
               card: s.card,
               selected: s.card.id === focus,
               caption: (
@@ -155,7 +165,21 @@ export function ReplacePhase({
       {targets.length === 0 ? (
         nothingLeft
       ) : (
-        <SwipeRater targets={toSwipe} context={context} commanderKeyId={commanderKeyId} picked={picked} onPick={onPick} onFinish={toReview} />
+        // Keyed by the targets' version: new settings ask for new targets, and replacements already fetched were made
+        // with the old ones, so the sitting starts over rather than keep them.
+        <SwipeRater
+          key={journey.replace.version}
+          targets={toSwipe}
+          context={context}
+          commanderKeyId={commanderKeyId}
+          picked={picked}
+          onPick={onPick}
+          onKeep={onKeep}
+          onDecline={onDecline}
+          declined={declined}
+          skipTarget={skipTarget}
+          onFinish={toReview}
+        />
       )}
       {swapList}
     </div>

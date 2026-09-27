@@ -25,7 +25,10 @@ export function SaveDeckButton({
   beforeSave,
 }: {
   analysis: DeckAnalysis;
-  /** The bracket on screen, stored with the deck so reopening it comes back the same. */
+  /**
+   * The bracket the player chose, stored with the deck so reopening it comes back the same. Null while the bracket is
+   * only estimated: an estimate isn't pinned, so reopening estimates it again from the cards the deck has by then.
+   */
   bracket: Bracket | null;
   onSaved: (deck: { deckId: DeckId; code: string; name: string }) => void;
   /** Opens on the name form, for when the player has already asked to save (the journey's Review). */
