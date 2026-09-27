@@ -23,7 +23,6 @@ function Curve({ curve, max, label, tone }: { curve: number[]; max: number; labe
   const barLabel = (i: number) => (i === CURVE_TOP_MANA_VALUE ? `${i}+` : String(i));
   return (
     <figure className="flex flex-col gap-1">
-      <figcaption className="text-xs text-muted-foreground">Mana curve, nonland cards</figcaption>
       <div aria-hidden className="flex h-20 items-end gap-0.5 border-b border-seam">
         {curve.map((count, i) => (
           <div key={i} className="group relative flex h-full flex-1 items-end justify-center" title={`Mana value ${barLabel(i)}: ${count}`}>
