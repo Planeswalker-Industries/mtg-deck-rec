@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
+import type { DeckAnalysis } from "@mtg/core/contract";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -19,13 +20,14 @@ import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/c
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
-import { ToolDeckEditor, type FlushEdits } from "@/components/deckbuilder/tool-deck-editor";
+import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { AddPhase } from "./journey/add-phase";
+import { BracketCheckPanel } from "./journey/bracket-check-panel";
 import { CutPhase } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
-import { useDeckJourney } from "./journey/use-deck-journey";
+import { useDeckJourney, type DeckJourney } from "./journey/use-deck-journey";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
@@ -78,6 +80,9 @@ function Segmented<T extends string>({
 /** "upgrade" walks the deck through the journey; "edit" is the deckbuilder. */
 type ToolMode = "upgrade" | "edit";
 
+/** A deck's commanders as one comparable value, to tell whether the deck lookup offer needs checking again. */
+const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join(",");
+
 export function DeckTool() {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
   // ?commander=<slug> opens a featured deck from the landing page carousel.
@@ -86,16 +91,28 @@ export function DeckTool() {
   const commanderSlug = searchParams.get("commander");
   const { source } = useCollectionSource();
   const collectionLoaded = source.kind !== "loading";
-  const tool = useDeckTool(source);
+  /**
+   * The journey as of the latest render. The tool is created first (the journey is built on its analysis) but tells
+   * the journey when settings change, so it reaches it through this.
+   */
+  const journeyRef = useRef<DeckJourney | null>(null);
+  const tool = useDeckTool(source, {
+    onContextChange: (ctx, change) => journeyRef.current?.reload(ctx, change) ?? Promise.resolve(),
+  });
   const lookup = useCommanderLookup(tool.refreshRecommendations);
+  /** The commanders the deck lookup offer was last checked for; a deckbuilder edit that changes them checks again. */
+  const lookupCheckedFor = useRef<string | null>(null);
   const deckGroups = useDeckGroups(tool.lines);
   const [editing, setEditing] = useState(true);
   const [openError, setOpenError] = useState<string | null>(null);
   const [view, setView] = useState<ReviewView>(readReviewView);
   const [mode, setMode] = useState<ToolMode>("upgrade");
   const router = useRouter();
-  /** The inline deckbuilder's pending-edit flush, while it is on screen, so Save saves the deck as edited. */
-  const flushEdits = useRef<FlushEdits | null>(null);
+  /**
+   * The inline deckbuilder's waiting edit, while it is on screen: flushed so Save and the decklist box see the deck as
+   * edited, and discarded when the deck is about to be replaced, so an edit to the old deck cannot land on the new one.
+   */
+  const editorHandle = useRef<EditorHandle | null>(null);
   /** Review's Save on a deck that isn't saved yet opens the name form in the header. */
   const [saveAsked, setSaveAsked] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -104,7 +121,16 @@ export function DeckTool() {
   const [fileTextShown, setFileTextShown] = useState(false);
   const restoreStarted = useRef(false);
   const { analysis, context } = tool;
-  const journey = useDeckJourney({ analysis, context, lines: tool.lines, cut: tool.cut });
+  const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut });
+  useEffect(() => {
+    journeyRef.current = journey;
+  });
+
+  /** Offers a deck lookup when the deck's commander has no play data, remembering which commanders it checked. */
+  function checkLookup(checked: DeckAnalysis | null) {
+    lookupCheckedFor.current = checked ? commandersOf(checked) : null;
+    void lookup.check(checked);
+  }
 
   /*
    * Open where the player left off: a featured deck when the link named one and a saved deck when the link named one,
@@ -134,7 +160,7 @@ export function DeckTool() {
       void tool.submit({ text: featured.decklist, bracketOverride: null, importedFrom: null }).then((outcome) => {
         if (outcome.parsed) {
           setEditing(false);
-          void lookup.check(outcome.analysis);
+          checkLookup(outcome.analysis);
         }
       });
       return;
@@ -151,8 +177,10 @@ export function DeckTool() {
       }
       if (!r.data.parsed) return;
       setEditing(false);
-      void lookup.check(r.data.analysis);
+      checkLookup(r.data.analysis);
     });
+    // checkLookup is rebuilt with every render, like tool and lookup; restoreStarted is what keeps this to one run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, lookup, collectionLoaded, openCode, commanderSlug]);
   const showInput = editing || !analysis;
   // The chip stands for the file only while the box still holds what the file put there: an edit, the sample deck or
@@ -163,13 +191,22 @@ export function DeckTool() {
   /** A saved deck's deckbuilder has its own address; the commander segment is decoration, the code finds the deck. */
   const editorUrl = (code: string) => `/decks/${analysis?.commanderKey.commanders[0]?.slug ?? "deck"}/${code}/edit` as Route;
 
-  /** Edit deck: a saved deck opens in its own editor once its last change has been written; an unsaved one edits here. */
+  /**
+   * Edit deck: a saved deck opens in its own editor once its last change has been written; an unsaved one edits here.
+   * Back to Upgrade: the deckbuilder's waiting edit goes in first, with the cuts Upgrade opens on; without one, the cuts
+   * the deckbuilder's edits left waiting are loaded.
+   */
   async function changeMode(next: ToolMode) {
     const open = tool.openDeck;
     if (next === "edit" && open) {
       await tool.whenSaved();
       router.push(editorUrl(open.code));
       return;
+    }
+    if (next === "upgrade" && mode === "edit") {
+      const handle = editorHandle.current;
+      if (handle?.hasPending()) void handle.flush({ recs: true });
+      else tool.ensureCuts();
     }
     setMode(next);
   }
@@ -178,8 +215,12 @@ export function DeckTool() {
       analysis.deck.cards.filter((c) => c.section === "main").reduce((n, c) => n + c.quantity, 0)
     : 0;
 
-  /** The deck bar's pencil: the decklist box opens at the top of the page, so the page goes there with it. */
-  function editDecklist() {
+  /**
+   * The deck bar's pencil: the decklist box opens at the top of the page, so the page goes there with it. A deckbuilder
+   * edit still waiting goes into the box first, so it can't land on top of what the player types there.
+   */
+  async function editDecklist() {
+    await editorHandle.current?.flush();
     setEditing(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -189,11 +230,18 @@ export function DeckTool() {
     writeReviewView(next);
   }
 
+  /**
+   * Analyzes the decklist box. A deckbuilder edit still waiting belongs to the deck being replaced, so it is dropped. A
+   * decklist that couldn't be read keeps the box open with the error, rather than folding it away over the last deck's
+   * suggestions.
+   */
   async function analyze() {
+    editorHandle.current?.discard();
     const outcome = await tool.submit();
+    if (!outcome.parsed) return;
     setEditing(false);
     setMode("upgrade");
-    if (outcome.parsed) void lookup.check(outcome.analysis);
+    checkLookup(outcome.analysis);
   }
 
   /**
@@ -321,8 +369,10 @@ export function DeckTool() {
                   size="lg"
                   variant="ghost"
                   onClick={() => {
+                    editorHandle.current?.discard();
                     tool.clearDeck();
                     lookup.reset();
+                    lookupCheckedFor.current = null;
                     setEditing(true);
                   }}
                 >
@@ -366,7 +416,7 @@ export function DeckTool() {
             onBracketChange={tool.changeBracket}
             collectionMode={tool.collectionMode}
             onCollectionModeChange={tool.changeCollectionMode}
-            onEditDecklist={showInput ? undefined : editDecklist}
+            onEditDecklist={showInput ? undefined : () => void editDecklist()}
           />
           <CommanderLookupBar lookup={lookup} />
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -397,7 +447,7 @@ export function DeckTool() {
               <SaveDeckButton
                 key={saveAsked ? "asked" : "idle"}
                 analysis={analysis}
-                bracket={context.bracket}
+                bracket={tool.bracketOverride}
                 onSaved={(deck) => {
                   setSaveAsked(false);
                   tool.trackSavedDeck(deck);
@@ -406,7 +456,7 @@ export function DeckTool() {
                 }}
                 defaultOpen={saveAsked}
                 original={tool.original}
-                beforeSave={async () => (flushEdits.current ? flushEdits.current() : null)}
+                beforeSave={async () => (editorHandle.current ? editorHandle.current.flush() : null)}
               />
             )}
           </div>
@@ -414,7 +464,20 @@ export function DeckTool() {
             journey.state && (
               <div className="flex flex-col gap-3">
                 <JourneyStepper phase={journey.state.phase} onSelect={(phase) => journey.goTo(phase)} />
-                {journey.state.phase === "cut" && <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />}
+                {journey.state.phase === "cut" &&
+                  (journey.bracketCheck ? (
+                    // A bracket change part way through made cards must-cuts: the step's Next becomes a choice.
+                    <BracketCheckPanel
+                      check={journey.bracketCheck}
+                      onCutAndContinue={journey.cutAndContinue}
+                      onRevert={() => {
+                        const previous = journey.revertCheck();
+                        if (previous !== undefined) tool.restoreBracket(previous);
+                      }}
+                    />
+                  ) : (
+                    <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />
+                  ))}
                 {journey.state.phase === "add" && <AddPhase journey={journey} view={view} />}
                 {journey.state.phase === "replace" && (
                   <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />
@@ -423,6 +486,7 @@ export function DeckTool() {
                   <ReviewPhase
                     journey={journey}
                     busy={committing}
+                    stale={tool.stale}
                     onSave={() => void commitJourney("save")}
                     onReanalyze={() => void commitJourney("reanalyze")}
                     onStartOver={() => void commitJourney("startOver")}
@@ -432,7 +496,15 @@ export function DeckTool() {
             )
           ) : (
             // Remounted when the player pastes a new decklist, so the builder starts from it rather than its old state.
-            <ToolDeckEditor key={tool.originText ?? "deck"} tool={tool} flushRef={flushEdits} />
+            <ToolDeckEditor
+              key={tool.originText ?? "deck"}
+              tool={tool}
+              handleRef={editorHandle}
+              onCommitted={(committed) => {
+                // A new commander from the deckbuilder gets the same deck lookup offer as a pasted one.
+                if (committed && commandersOf(committed) !== lookupCheckedFor.current) checkLookup(committed);
+              }}
+            />
           )}
         </section>
       )}

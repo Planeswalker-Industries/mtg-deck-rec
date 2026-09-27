@@ -14,6 +14,8 @@ export type InputSchema<T> = z.ZodType<T>;
 export const MAX_DECKLIST_CHARS = 20_000;
 export const MAX_DECK_ENTRIES = 400;
 export const MAX_OWNED_CARDS = 60_000;
+/** Cards an add request may leave out: a round can pass on at most as many cards as a deck can list. */
+export const MAX_ADD_EXCLUDE = MAX_DECK_ENTRIES;
 const MAX_URL_CHARS = 2_000;
 const MAX_COPIES = 250;
 
@@ -72,7 +74,17 @@ export const swapInputSchema = z.object(
   { context: recContextSchema, targetCardId: cardId('Pick a card to replace.'), limit },
   request,
 );
-export const addInputSchema = z.object({ context: recContextSchema, limitPerCategory: limit }, request);
+export const addInputSchema = z.object(
+  {
+    context: recContextSchema,
+    limitPerCategory: limit,
+    excludeCardIds: z
+      .array(cardId('Invalid card to leave out.'))
+      .max(MAX_ADD_EXCLUDE, 'Too many cards to leave out.')
+      .optional(),
+  },
+  request,
+);
 export const cutInputSchema = z.object({ context: recContextSchema, limit }, request);
 
 export const parseDeckInputSchema = z.object(

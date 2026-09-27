@@ -215,7 +215,7 @@ export async function loadSwapPool(
   ]);
   if (candidatesResult.error) {
     if (isStatementTimeout(candidatesResult.error)) {
-      recordRecTimeout(db, { fn: "swap", targetCardId, commanderIds, identityMask, ownedOnly: owned !== undefined });
+      recordRecTimeout(db, { fn: "swap", targetCardId, commanderIds, identityMask, ownedOnly: owned !== null });
     }
     throw new Error(`Swap candidates failed: ${candidatesResult.error.message}`);
   }
@@ -429,7 +429,16 @@ export async function getCutSuggestions(
  */
 export async function getAddSuggestions(
   db: PublicClient,
-  { context, limitPerCategory = 8 }: { context: RecContext; limitPerCategory?: number },
+  {
+    context,
+    limitPerCategory = 8,
+    excludeCardIds = [],
+  }: {
+    context: RecContext;
+    limitPerCategory?: number | undefined;
+    /** Cards the player passed on: left out of the pool like the deck's own, but not read as part of the deck. */
+    excludeCardIds?: readonly number[] | undefined;
+  },
 ): Promise<AddResult> {
   const deckIds = [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])];
   const mainIds = mainDeckIds(context);
@@ -461,7 +470,7 @@ export async function getAddSuggestions(
       p_key_weights: useCommander ? corpus.sources.map((s) => s.weight) : [],
       p_alpha: corpus.settings.shrinkAlpha,
       p_identity_mask: identityMaskOf(context, rows),
-      p_exclude: deckIds,
+      p_exclude: [...new Set([...deckIds, ...excludeCardIds])],
       p_allow_game_changers: context.includeGameChangers,
       p_owned: only ? [...only] : undefined,
       p_limit: ADD_POOL,

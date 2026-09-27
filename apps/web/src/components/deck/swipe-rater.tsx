@@ -3,7 +3,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { Check, X } from "lucide-react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
-import type { CommanderKeyId, RecContext } from "@mtg/core/contract";
+import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { ZoomableCard } from "@/components/cards/card-zoom";
@@ -246,6 +246,10 @@ export function SwipeRater({
   picked,
   onPick,
   onVote,
+  onKeep,
+  onDecline,
+  declined,
+  skipTarget,
   onFinish,
   viewRef,
 }: {
@@ -257,11 +261,32 @@ export function SwipeRater({
   picked?: readonly PickedSwap[];
   onPick?: (swap: PickedSwap) => void;
   onVote?: (vote: SwipeVote) => void;
+  /** Deck tool: the player kept the card on screen instead of swapping it. */
+  onKeep?: (card: CardSummary) => void;
+  /** Deck tool: the player passed on a replacement for the card on screen. */
+  onDecline?: (target: CardSummary, replacement: CardSummary) => void;
+  /** Deck tool: replacements passed on in earlier sittings, not offered again for that card. */
+  declined?: readonly { targetId: CardId; replacementId: CardId }[];
+  /** Deck tool: a card to step over when its turn comes (no longer in the deck). */
+  skipTarget?: (card: CardSummary) => boolean;
   onFinish: () => void;
   /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
   viewRef?: (element: HTMLElement | null) => void;
 }) {
-  const rater = useSwipeRater({ targets, context, commanderKeyId, mode, picked, onPick, onVote, onFinish });
+  const rater = useSwipeRater({
+    targets,
+    context,
+    commanderKeyId,
+    mode,
+    picked,
+    onPick,
+    onVote,
+    onKeep,
+    onDecline,
+    declined,
+    skipTarget,
+    onFinish,
+  });
   const reduceMotion = useReducedMotion();
   const card = useRef<SwipeHandle>(null);
   const [drag, setDrag] = useState(0);

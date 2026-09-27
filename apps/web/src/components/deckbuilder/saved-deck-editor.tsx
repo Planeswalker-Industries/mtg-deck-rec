@@ -107,12 +107,16 @@ export function SavedDeckEditor({
       setRenaming(false);
       return;
     }
+    // Every save writes the name, so a save sent while the rename is on its way must already carry the new one, or it
+    // would land after the rename and put the old name back.
+    const previous = nameRef.current;
+    nameRef.current = trimmed;
     const r = await getApis().actions.renameDeck({ deckId, name: trimmed });
     if (r.ok) {
-      nameRef.current = trimmed;
       setName(trimmed);
       setRenaming(false);
     } else {
+      nameRef.current = previous;
       setStatus({ kind: "error", message: r.error.message });
     }
   }

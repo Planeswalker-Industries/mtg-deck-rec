@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId, CardSummary, DeckInput, IsoDateTime } from '../contract';
 import { deckStats } from './deck-stats';
-import { decklistFor, deckDiff, deckSize, journeyReducer, openSlots, startJourney, workingDeck, type JourneyAction, type JourneyState } from './journey';
+import { bracketMustCuts } from './bracket-check';
+import {
+  copiesInDeck,
+  decklistFor,
+  deckDiff,
+  deckSize,
+  journeyReducer,
+  openSlots,
+  removeFromDeck,
+  startJourney,
+  withoutCards,
+  workingDeck,
+  type JourneyAction,
+  type JourneyState,
+} from './journey';
+import type { Bracket, CutSuggestion } from '../contract';
 
 const card = (id: number, overrides: Partial<CardSummary> = {}): CardSummary => ({
   id: id as CardId,
@@ -115,6 +130,24 @@ describe('journey reducer', () => {
     expect(kept.keptInReplace).toEqual([3]);
   });
 
+  it('ignores a swap for a card no longer in the deck', () => {
+    const state = run({ type: 'cut', card: card(3) }, { type: 'swap', target: card(3), replacement: card(20) });
+    expect(state.swaps).toEqual([]);
+  });
+
+  it('undoing a swap also drops a later swap of the card it brought in', () => {
+    const state = run({ type: 'swap', target: card(3), replacement: card(20) }, { type: 'swap', target: card(20), replacement: card(21) });
+    expect(mainOf(workingDeck(state))[21]).toBe(1);
+    const undone = journeyReducer(state, { type: 'unswap', targetId: 3 as CardId });
+    expect(undone.swaps).toEqual([]);
+    expect(mainOf(workingDeck(undone))).toEqual({ 2: 1, 3: 1, 4: 1, [PLAINS]: FULL_PLAINS });
+  });
+
+  it('remembers each declined replacement once', () => {
+    const decline: JourneyAction = { type: 'declineSwap', targetId: 3 as CardId, replacementId: 20 as CardId };
+    expect(run(decline, decline).declinedSwaps).toEqual([{ targetId: 3, replacementId: 20 }]);
+  });
+
   it('moves between phases and resets to a new round', () => {
     const state = run({ type: 'cut', card: card(2) }, { type: 'goto', phase: 'review' });
     expect(state.phase).toBe('review');
@@ -162,5 +195,55 @@ describe('deckStats', () => {
       { label: 'Creature', count: 2 },
       { label: 'Land', count: 4 },
     ]);
+  });
+});
+
+describe('taking cards out of the deck as it stands', () => {
+  it('cuts a card from the starting deck, takes back an addition, and undoes a swap along with the card it replaced', () => {
+    const state = run({ type: 'cut', card: card(2) }, { type: 'add', card: card(10) }, { type: 'swap', target: card(3), replacement: card(20) });
+    expect(removeFromDeck(state, card(4))).toEqual([{ type: 'cut', card: card(4) }]);
+    expect(removeFromDeck(state, card(10))).toEqual([{ type: 'unadd', cardId: 10 }]);
+    expect(removeFromDeck(state, card(20))).toEqual([{ type: 'unswap', targetId: 3 }, { type: 'cut', card: card(3) }]);
+    expect(removeFromDeck(state, card(99))).toEqual([]);
+
+    const after = withoutCards(state, [card(4), card(10), card(20)]);
+    for (const id of [4, 10, 20, 3]) expect(copiesInDeck(after, id as CardId)).toBe(0);
+    expect(openSlots(after)).toBe(3);
+  });
+
+  it('follows a swap of an added card back to the addition', () => {
+    const state = run({ type: 'cut', card: card(2) }, { type: 'add', card: card(10) }, { type: 'swap', target: card(10), replacement: card(21) });
+    const after = withoutCards(state, [card(21)]);
+    expect(after.adds).toEqual([]);
+    expect(after.swaps).toEqual([]);
+    expect(copiesInDeck(after, 21 as CardId)).toBe(0);
+  });
+});
+
+describe('bracketMustCuts', () => {
+  const suggestion = (id: number, reasons: CutSuggestion['reasons'], inclusionRate = 0.5): CutSuggestion => ({
+    card: card(id, { gameChanger: true }),
+    cutScore: 1,
+    reasons,
+    severity: 'mandatory',
+    corpus: { scope: 'commander', decksWith: 1, commanderDeckCount: 2, inclusionRate, synergy: 0, limited: false },
+    owned: null,
+  });
+
+  it('makes every Game Changer a must-cut when the bracket allows none', () => {
+    const cuts = bracketMustCuts([suggestion(1, ['GAME_CHANGER_EXCLUDED']), suggestion(2, ['GAME_CHANGER_EXCLUDED'])], 2 as Bracket);
+    expect(cuts.map((c) => [c.card.id, c.reason])).toEqual([
+      [1, 'GAME_CHANGER_EXCLUDED'],
+      [2, 'GAME_CHANGER_EXCLUDED'],
+    ]);
+  });
+
+  it('cuts only the excess over a limit, least played first', () => {
+    const over = [0.9, 0.1, 0.5, 0.3, 0.7].map((rate, i) => suggestion(i + 1, ['OVER_BRACKET_GC_LIMIT'], rate));
+    expect(bracketMustCuts(over, 3 as Bracket).map((c) => c.card.id)).toEqual([2, 4]);
+  });
+
+  it('ignores rule problems the bracket does not set', () => {
+    expect(bracketMustCuts([suggestion(1, ['NOT_LEGAL'])], 2 as Bracket)).toEqual([]);
   });
 });

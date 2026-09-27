@@ -57,5 +57,9 @@
  * v16 (2026-09-22): CatalogApi.searchCards takes optional CallOptions, so a search-as-you-type field can abort the
  * calls it has already superseded. Additive and transport-only: it carries no payload, an implementation that ignores
  * it still satisfies the interface, and every existing caller type-checks unchanged.
+ *
+ * v17 (2026-09-27): RecsApi.add takes optional excludeCardIds, the cards the player has passed on this round, so a
+ * reloaded list offers cards they have not seen instead of filling its per-category window with ones they declined.
+ * Additive: an omitted list means nothing extra is left out, which is what earlier clients got. Signed off 2026-09-27.
  */
-export const CONTRACT_VERSION = 16;
+export const CONTRACT_VERSION = 17;
