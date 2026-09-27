@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read # the ghcr.io sign-in before Start Supabase
 
 jobs:
   checks:
@@ -56,13 +57,24 @@ jobs:
         with:
           version: 2.110.0
 
+      # The CLI's image fallback below reaches ghcr.io; signed in with the job's own token, pulls there count against
+      # this repo instead of the budget every shared runner draws on.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       # Applies every migration to an empty database, so a migration that only works on top of local data fails here.
-      # setup-cli points the CLI at ghcr.io, which refused image pulls with `toomanyrequests` on 2026-09-23 even when
-      # signed in; ECR Public is the CLI's own default. A pull refused mid-way is retried rather than failing the run.
+      #
+      # Image registries refuse pulls now and then: ghcr.io with `toomanyrequests` on 2026-09-23, ECR Public with
+      # `toomanyrequests: Data limit exceeded` on 2026-09-27. With SUPABASE_INTERNAL_IMAGE_REGISTRY unset, the CLI
+      # (2.110.0, `GetRegistryImageUrls`) tries each image on ECR Public, then ghcr.io, then Docker Hub, so one registry
+      # refusing no longer fails the run. Any value pins it to that one registry, and setup-cli exports ghcr.io, so the
+      # step clears it. A start that still fails is retried after a pause, since these limits are per time window.
       - name: Start Supabase
-        env:
-          SUPABASE_INTERNAL_IMAGE_REGISTRY: public.ecr.aws
         run: |
+          unset SUPABASE_INTERNAL_IMAGE_REGISTRY
           for attempt in 1 2 3; do
             supabase start -x studio,imgproxy,realtime,storage-api,edge-runtime,logflare,vector,supavisor,mailpit && exit 0
             echo "supabase start failed (attempt $attempt), retrying in 30 s"
