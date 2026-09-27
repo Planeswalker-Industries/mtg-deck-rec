@@ -67,8 +67,9 @@ test("imports a CSV export from a file, keeping its Scryfall ids", async ({ page
   ].join("\n");
 
   await page.locator("input[type=file]").setInputFiles({ name: "manabox_export.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
-  // The file is read in the browser, so its contents land in the box for review before anything is sent.
-  await expect(page.getByText("Read manabox_export.csv")).toBeVisible();
+  // The file is read in the browser and stands in for the text box, so Import stays in reach whatever its length.
+  await expect(page.getByText("manabox_export.csv")).toBeVisible();
+  await expect(page.getByText("4 lines")).toBeVisible();
 
   await page.getByRole("button", { name: "Import collection" }).click();
   const summary = page.getByRole("region", { name: "Saved collection" });

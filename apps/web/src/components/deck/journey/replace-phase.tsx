@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { CardId, CardSummary, CommanderKeyId } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -16,6 +16,12 @@ import type { DeckJourney } from "./use-deck-journey";
 
 /** Reasons under a card in the list. */
 const MAX_REASONS = 2;
+/**
+ * Everything on a phone's screen above and around the swipe sitting's two cards: the deck bar, the mode row, the
+ * stepper, the hint and the sitting's own text. The cards share what's left, so ✓ and ✕ stay on screen without
+ * scrolling. Read by the card sizes in `SwipeRater` through --swipe-chrome.
+ */
+const SWIPE_CHROME = { "--swipe-chrome": "38rem" } as CSSProperties;
 
 /**
  * Replace: the deck is looked at again as it now stands, and its weaker fits are dealt with a replacement each, like
@@ -37,7 +43,7 @@ export function ReplacePhase({
   const context = journey.workingContext;
 
   const intro = (
-    <PhaseIntro title="Replace">
+    <PhaseIntro title="Replace" brief={view === "swipe" ? "Swipe right to swap in, left for the next one." : undefined}>
       Cards that do their job less well than something else could. Swipe right on a replacement to swap it in, left to see
       the next one, or keep the card.
     </PhaseIntro>
@@ -144,7 +150,7 @@ export function ReplacePhase({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" style={SWIPE_CHROME}>
       {intro}
       {targets.length === 0 ? (
         nothingLeft

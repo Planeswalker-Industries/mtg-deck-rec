@@ -82,11 +82,11 @@ export function SingleSwipe({
       <p className="text-sm text-muted-foreground tabular-nums">
         Card {position} of {total}
       </p>
-      <div className="mt-2 grid grid-cols-[3.5rem_1fr_3.5rem] items-center gap-2">
+      <div className="mt-2 grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] items-center gap-2">
         <SideButton kind="pass" label={passLabel} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
         {/* Keyed by card: reusing the card that just flew off would leave it off-screen and still marked as leaving. */}
         <SwipeCard key={card.id} ref={handle} onDrag={setDrag} canSwipe={canSwipe} onSwipe={swiped}>
-          <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100dvh_-_30rem)*0.72),17rem)]">
+          <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100dvh_-_33rem)*0.72),17rem)] max-w-full">
             <ZoomableCard card={card}>
               <CardImage card={card} variant="large" alt={card.name} sizes="272px" eager />
             </ZoomableCard>

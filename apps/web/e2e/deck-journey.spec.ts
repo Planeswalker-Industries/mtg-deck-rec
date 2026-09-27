@@ -80,7 +80,7 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
 
 test("the Cut list crosses out recommended cuts and lets any card be cut", async ({ page }) => {
   const recs = await analyzeDeck(page);
-  await recs.getByRole("button", { name: "List" }).click();
+  await recs.getByRole("button", { name: "List", exact: true }).click();
   const deck = recs.getByRole("region", { name: "Your deck" });
   await expect(deck).toBeVisible({ timeout: 60_000 });
 

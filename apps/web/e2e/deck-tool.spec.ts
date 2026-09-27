@@ -165,7 +165,7 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  await recs.getByRole("button", { name: "List" }).click();
+  await recs.getByRole("button", { name: "List", exact: true }).click();
 
   // A reload brings the deck back into the box and waits: opening the tool never analyzes an old deck by itself.
   await page.reload();
@@ -188,7 +188,7 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  await expect(recs.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+  await expect(recs.getByRole("button", { name: "List", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(recs.getByRole("region", { name: "Your deck" })).toBeVisible({ timeout: 60_000 });
 
   // Clearing the box forgets it, and the note goes with it.
@@ -210,6 +210,10 @@ test("takes a decklist as a file, and reduces a CSV export to quantities and nam
   ].join("\n");
 
   await page.locator("input[type=file]").setInputFiles({ name: "deck.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  // The file stands in for the decklist box, so Analyze stays right under it; its text is a tap away.
+  await expect(page.getByText("deck.csv")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Decklist" })).toBeHidden();
+  await page.getByRole("button", { name: "Show text" }).click();
   // The two Sol Ring rows are one card the deck runs twice; the printings are gone.
   await expect(page.getByRole("textbox", { name: "Decklist" })).toHaveValue("2 Sol Ring\n1 Liesa, Forgotten Archangel");
 });
