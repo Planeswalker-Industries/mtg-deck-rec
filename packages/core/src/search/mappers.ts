@@ -1,3 +1,4 @@
+import { cardCategory } from "../scoring/add";
 import {
   colorsToMask,
   maskToColors,
@@ -131,6 +132,8 @@ export function toCardDocument(row: CardIndexRow, updatedAt = Date.now()): CardD
     name_head: headWords([row.name_normalized, ...(row.names ?? [])]),
     slug: row.slug,
     type_line: row.type_line,
+    // Derived once here rather than at read time: the whole point of the field is that a filter can match on it.
+    card_category: cardCategory(row.type_line),
     mana_value: row.mana_value,
     color_identity: row.color_identity,
     colors: maskToColors(row.color_identity),

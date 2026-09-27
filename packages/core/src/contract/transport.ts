@@ -33,10 +33,26 @@ export interface RecsApi {
   cut(input: { context: RecContext; limit?: number }): Promise<Result<CutResult>>;
 }
 
+/**
+ * Transport options for a call the caller may give up on before it answers. This is plumbing, not payload: nothing
+ * here is sent to the server or validated by a schema, and an implementation is free to ignore it.
+ *
+ * It exists because a search-as-you-type field starts a call per keystroke and only ever uses the last one. Dropping
+ * the stale *answers* (what a request counter does) is not the same as stopping the stale *requests*: measured on a
+ * throttled connection, seventeen keystrokes left seventeen live requests competing for the connection and pushed the
+ * last one's latency from 94 ms to over 800 ms.
+ */
+export interface CallOptions {
+  signal?: AbortSignal;
+}
+
 /** Card lookups for pickers. Transport: GET Route Handlers under /api/cards (cacheable, parallel). */
 export interface CatalogApi {
-  /** Cards whose name matches `q` (at least 2 characters), best match first; `commanderEligible` keeps only cards that can lead a deck. */
-  searchCards(input: CardSearchInput): Promise<Result<CardSummary[]>>;
+  /**
+   * Cards whose name matches `q` (at least 2 characters), best match first; `commanderEligible` keeps only cards that
+   * can lead a deck. An aborted call answers like a failed one, which the caller's request counter already discards.
+   */
+  searchCards(input: CardSearchInput, options?: CallOptions): Promise<Result<CardSummary[]>>;
   /** Functional tags per card, for grouping a deck by what its cards do. Cards with no tags are omitted. */
   cardTags(input: { cardIds: CardId[] }): Promise<Result<{ cardId: CardId; tags: TagRef[] }[]>>;
   /**

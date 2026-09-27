@@ -2,7 +2,7 @@
 
 Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up.
 
-Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-21** (develop at PR #71: deck export, admin tag and sync pages, collection import by link). `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
+Checked against [`docs/roadmap/status.md`](roadmap/status.md) and the code on **2026-09-23** (develop at PR #98: deck journey, deckbuilder, collection editing, deck crawls, every search on the index; contract v16). `status.md` is the narrative — why things are the way they are; this file is the queue. When they disagree, the code wins and both get corrected.
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -141,7 +141,7 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 **Context:** The `cards_rec_pool` covering index already reduced reads from ~165 MB to ~46 MB. But the anon 3s statement timeout still fires on cold databases. The retry mechanism (up to 3 attempts) works because pages stay in `shared_buffers`, but it's a mitigation, not a fix.
 
-**Changed by the search index (2026-09-19):** a swap request no longer fetches its 220 candidate card rows or the card-shaped half of `loadCardCorpus` from Postgres, leaving `rec_swap_candidates` itself as the one query. Whether that alone stops the timeouts is a hosted measurement nobody has taken — **re-read `rec_timeouts` a week after T032 lands before designing anything here.** The answer may be that this ticket is smaller than it looks, or already done.
+**Changed by the search index (2026-09-19):** a swap request no longer fetches its 220 candidate card rows or the card-shaped half of `loadCardCorpus` from Postgres, leaving `rec_swap_candidates` itself as the one query. Whether that alone stops the timeouts is a hosted measurement nobody has taken — **re-read `rec_timeouts` around 2026-09-30 (a week after T032 went live) before designing anything here.** The answer may be that this ticket is smaller than it looks, or already done.
 
 **Acceptance criteria:**
 - [ ] Design a caching strategy (Supabase materialized view, Redis, or extended `use cache` TTL)
@@ -153,9 +153,9 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 ### T032: Deploy the search index to the VPS
 
-**Priority:** HIGH | **Area:** Infrastructure | **Status:** Not started (the code is built and merged)
+**Priority:** HIGH | **Area:** Infrastructure | **Status:** Live (owner confirmed 2026-09-23); follow-up checks open
 
-The index and the Go service in front of it are built, tested and documented, and nothing uses them until they are running. Every read path falls back to Postgres while `SEARCH_API_URL` is unset, so this is safe to leave undone — it just means the work buys nothing.
+The index and the search API run on the VPS (two Dokploy stacks, Traefik in front), Vercel reads through it, and the index was rebuilt after #96 added `card_category` and the sortable and infix name fields. What remains is measurement: the hosted parity check, the RAM figure, and the week-later `rec_timeouts` read that decides T008.
 
 **Files:**
 - `deploy/typesense/` and `deploy/search-api/` — two independently deployed compose files; `deploy/README.md` is how they fit together
@@ -165,14 +165,15 @@ The index and the Go service in front of it are built, tested and documented, an
 **Context:** Self-hosted rather than Typesense Cloud (owner decision, 2026-09-19; the cheapest Cloud node is ~$21.60/mo plus egress). Typesense terminates no TLS of its own and its API key is its entire access control, so it is not exposed at all: `services/search-api` (Go, Fiber) is the only thing that talks to it, and that is what goes behind the reverse proxy.
 
 **Acceptance criteria:**
-- [ ] `docker network create mtg-search`, then `docker compose up -d` in `deploy/typesense/` and `deploy/search-api/`, both healthy, **search-api** behind the reverse proxy with TLS (Typesense publishes no port and must stay that way)
-- [ ] Three secrets generated: `TYPESENSE_ADMIN_KEY` (stays on the VPS), `SEARCH_API_ADMIN_TOKEN` (worker), `SEARCH_API_TOKEN` (web app)
-- [ ] `SEARCH_API_URL` + `SEARCH_API_TOKEN` on Vercel **Production and Preview**; `SEARCH_API_URL` + `SEARCH_API_ADMIN_TOKEN` in GitHub Actions secrets and `apps/worker/.env.hosted`
-- [ ] `cli:hosted sync:typesense --rebuild` once, then confirm the daily sync drains the queue
+- [x] `docker network create mtg-search`, then `docker compose up -d` in `deploy/typesense/` and `deploy/search-api/`, both healthy, **search-api** behind the reverse proxy with TLS (Typesense publishes no port and must stay that way)
+- [x] Three secrets generated: `TYPESENSE_ADMIN_KEY` (stays on the VPS), `SEARCH_API_ADMIN_TOKEN` (worker), `SEARCH_API_TOKEN` (web app)
+- [x] `SEARCH_API_URL` + `SEARCH_API_TOKEN` on Vercel **Production and Preview**; `SEARCH_API_URL` + `SEARCH_API_ADMIN_TOKEN` in GitHub Actions secrets and `apps/worker/.env.hosted`
+- [x] `cli:hosted sync:typesense --rebuild` once (again after #96's schema change)
+- [ ] Confirm the daily sync drains the queue
 - [ ] `scripts/search-parity-check.ts` passes against hosted data (the local run has no deck corpus, so `commanders` and `commander_cards` have never been exercised with real rows)
 - [ ] Measure RAM after the first build (`/metrics.json`) and record it in the runbook beside the estimate
-- [ ] `services/search-api` reachable over TLS; `curl https://<host>/v1/health` returns `{"ok":true}` **without** `-k`
-- [ ] A week later, re-read `rec_timeouts` and update T008
+- [x] `services/search-api` reachable over TLS; `curl https://<host>/v1/health` returns `{"ok":true}` **without** `-k`
+- [ ] Around 2026-09-30, re-read `rec_timeouts` and update T008
 
 ---
 
@@ -260,6 +261,43 @@ Recommendation: 1 first, 2 when a real collection needs it, 3 only if 2 isn't en
 - [ ] Apply option 1, and option 2 if the numbers call for it
 - [ ] Filter counts stay exact, and collapsing a group still works
 - [ ] `e2e/collection.spec.ts` still passes
+
+---
+
+### T037: Tune the owned-first boost
+
+**Priority:** LOW | **Area:** Scoring | **Status:** Not started
+
+"Owned first" (contract v13) sorts owned cards as if they scored `app_config.ownership.firstBoost` (0.1) higher. On Liesa the top eight creatures to add span 0.78–0.87, so 0.1 puts almost any owned card ahead of nearly every top suggestion. That may be stronger than players want: an owned filler card can outrank a clearly better unowned one.
+
+**Files:**
+- `packages/core/src/scoring/owned.ts` — `rankKey`
+- `supabase/migrations/20260922000200_ownership_config.sql` — the setting's default
+- `apps/web/src/lib/server/recs.ts` — where the setting is read
+
+**Acceptance criteria:**
+- [ ] Measure how far down owned cards are pulled up across several commanders and real collections
+- [ ] Pick a value (or a rule, e.g. a boost that shrinks with the score gap) and record why
+- [ ] Change it in `app_config` with a migration that updates only that key
+
+---
+
+### T038: Start a collection by hand
+
+**Priority:** LOW | **Area:** Frontend / Collections | **Status:** Not started
+
+Editing by hand (contract v15) works only on a collection that already exists. With none, `/collection` shows "No collection yet" and links to `/collection/import`. A player with a handful of cards has no way in except making a file or a paste.
+
+**Files:**
+- `apps/web/src/components/collection/collection-view.tsx` — the empty state
+- `apps/web/src/components/collection/collection-edit.tsx`, `use-collection-editor.ts` — the edit mode and its writes
+- `packages/core/src/collection/` — `setCardQuantity` for a browser collection
+
+**Acceptance criteria:**
+- [ ] The empty state offers "Add cards by hand" beside the import
+- [ ] Signed in: the first added card creates the account collection through the existing `set_collection_card_quantity` (check it accepts an account with no rows)
+- [ ] Signed out: the first added card creates a browser collection with the usual 7-day expiry
+- [ ] e2e covers starting from empty
 
 ---
 
@@ -543,6 +581,8 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite 0.65 ta
 ## Closed
 
 Kept so the gaps in the numbering have a reason. Do not reuse these ids.
+
+**Shipped without tickets (2026-09-22, contract v11–v16).** The deck journey plan (six phases, one PR each) never went through this queue, so it is recorded here: the Cut → Add → Replace → Review round (#84), deck originals and restore (#85), owned-first suggestions (#86), the deckbuilder and the saved-deck edit route (#87), collection editing by hand (#92), and every search on the index with small grid images (#96). Follow-ups are T037 and T038. `status.md` has the details.
 
 - **T026 — Collection import from a share link.** Closed 2026-09-21 for Archidekt. A lone link to a public Archidekt collection in `/collection/import` downloads it through Archidekt's own export endpoint (CSV with Scryfall ids, 2,500 rows a page, a second apart, four pages per server call) and imports it like an uploaded file; a 4,651-row collection took about 30 s end to end locally. ManaBox, Moxfield and TCGplayer links get a message saying how to export from that app: ManaBox and TCGplayer publish no share-link format, and Moxfield's API needs an account. **Open:** if the owner has a real ManaBox or TCGplayer share link, it can be looked at and added as a second source behind the same action. **Owner check:** a large collection is several requests to Archidekt (spaced a second apart, capped at 20), which departs from the "one request per user action" wording in CLAUDE.md's Hard constraints.
 - **T019 — Admin pages (tag kill switch, sync status).** Closed 2026-09-21. `/admin/tags` lists every tag with its card count, specificity and whether recommendations use it, filters to switched-off or functional tags, and switches a tag off with a reason (`admin_set_tag_disabled`, audited). `/admin/sync-runs` shows each job's latest run and the full history with row counts, duration, metrics and errors (`admin_list_sync_runs`). Both are security-definer functions behind `require_platform_admin()`, reached through new `/api/admin` routes with the same guard; `supabase/tests/platform-admins.sql` grew to 53 checks and `e2e/admin.spec.ts` covers both pages.

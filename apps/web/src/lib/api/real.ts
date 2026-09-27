@@ -82,7 +82,7 @@ export const realActions: ActionsApi = {
 
 /** Card lookups run as GET Route Handlers, so the CDN can keep results and searches don't queue behind actions. */
 export const realCatalog: CatalogApi = {
-  async searchCards({ q, commanderEligible, limit, colorIdentity, cardType, manaValue, offset }) {
+  async searchCards({ q, commanderEligible, limit, colorIdentity, cardType, manaValue, offset }, options) {
     const params = new URLSearchParams({ q });
     if (commanderEligible) params.set("commander", "1");
     if (limit !== undefined) params.set("limit", String(limit));
@@ -91,9 +91,18 @@ export const realCatalog: CatalogApi = {
     if (manaValue !== undefined) params.set("mv", String(manaValue));
     if (offset !== undefined) params.set("offset", String(offset));
     try {
-      const res = await fetch(`/api/cards/search?${params.toString()}`);
+      const res = await fetch(`/api/cards/search?${params.toString()}`, options?.signal ? { signal: options.signal } : {});
+      // Which backend answered, in the console, because the alternative is reading server logs. `x-vercel-cache: HIT`
+      // means the edge answered and no function ran, so the source is whatever was true when that entry was cached —
+      // add `&fresh=1` to bypass it.
+      console.info(
+        `[search] ${res.headers.get("x-search-source") ?? "unknown"}` +
+          ` (cache: ${res.headers.get("x-vercel-cache") ?? "none"})`,
+      );
       return (await res.json()) as Result<CardSummary[]>;
     } catch {
+      // An abort lands here too. The caller asked for this one to stop, and its own request counter discards the
+      // answer, so there is nothing to tell apart: a search it no longer wants cannot be an error it has to show.
       return { ok: false, error: offline };
     }
   },

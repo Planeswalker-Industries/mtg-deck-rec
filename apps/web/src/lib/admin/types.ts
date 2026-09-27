@@ -46,6 +46,9 @@ export const MAX_DISPLAY_NAME_CHARS = 60;
 export const MAX_ADMIN_NOTE_CHARS = 200;
 export const ADMIN_PER_PAGE_MAX = 200;
 
+/** A deck search is an id or a commander name; longer than this is not either of those. */
+export const MAX_ADMIN_SEARCH_CHARS = 80;
+
 /** A Tagger tag as the kill-switch page shows it. */
 export interface AdminTag {
   id: string;
@@ -115,3 +118,58 @@ export const ADMIN_SYNC_STATUSES = ["running", "succeeded", "skipped_unchanged",
 
 export type AdminSyncJob = (typeof ADMIN_SYNC_JOBS)[number];
 export type AdminSyncStatus = (typeof ADMIN_SYNC_STATUSES)[number];
+
+/**
+ * The crawled deck corpus, for the operations page at /admin/crawls.
+ *
+ * These are third-party decklists. They are aggregate-only everywhere else in the app and reachable here solely by a
+ * platform admin, through security-definer functions that check `auth.uid()` themselves — `corpus` stays off
+ * PostgREST's exposed schema list. See the hard constraints in CLAUDE.md.
+ */
+export interface AdminCrawlSource {
+  source: string;
+  decks: number;
+  lastFetchedAt: string | null;
+  disabled: boolean;
+  disabledReason: string | null;
+  probeOkAt: string | null;
+  /** Non-null while a run holds the claim. */
+  runningRunId: number | null;
+  claimedAt: string | null;
+  lastRun: {
+    id: number;
+    state: string;
+    startedAt: string;
+    finishedAt: string | null;
+    decksWritten: number;
+    error: string | null;
+  } | null;
+}
+
+export interface AdminCrawledDeck {
+  id: number;
+  source: string;
+  sourceDeckId: string;
+  /** Resolved in the database: the stored oracle ids mean nothing on screen. */
+  commanderNames: string[];
+  deckSize: number;
+  /** Keys in the cards object, so lower than deckSize wherever a deck runs basics. */
+  distinctCards: number;
+  listedUpdatedAt: string;
+  lastUpdatedAt: string;
+  fetchedAt: string;
+  contentHash: string;
+}
+
+export interface AdminCrawledDeckPage {
+  decks: AdminCrawledDeck[];
+  total: number;
+}
+
+export interface AdminCrawledDeckCard {
+  oracleId: string;
+  /** Null when the catalog has no card for this oracle id — worth seeing rather than hiding. */
+  name: string | null;
+  typeLine: string | null;
+  quantity: number;
+}

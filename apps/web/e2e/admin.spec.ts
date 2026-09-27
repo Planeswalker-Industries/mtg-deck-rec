@@ -15,7 +15,7 @@ test("signed out, /admin redirects to sign in", async ({ page }) => {
 });
 
 /** Every admin endpoint, so a new one can't ship without the same guard. */
-const ADMIN_API = ["/api/admin/users", "/api/admin/tags", "/api/admin/sync-runs"] as const;
+const ADMIN_API = ["/api/admin/users", "/api/admin/tags", "/api/admin/sync-runs", "/api/admin/crawls", "/api/admin/crawls/decks?deckId=1"] as const;
 
 test("signed out, the admin API refuses", async ({ request }) => {
   for (const path of ADMIN_API) {
@@ -33,6 +33,11 @@ test("a signed-in visitor who isn't an admin gets a real 404", async ({ page, re
   const res = await page.goto("/admin");
   expect(res?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+
+  // /admin/crawls is its own route rather than part of the React Admin app, so it needs its own proof: it shows
+  // third-party decklists, and a page that streams cannot refuse anyone by itself.
+  const crawls = await page.goto("/admin/crawls");
+  expect(crawls?.status()).toBe(404);
 
   // The API answers the same way, so nothing about the area is confirmed by either door.
   for (const path of ADMIN_API) {

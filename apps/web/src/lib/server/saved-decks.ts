@@ -1,4 +1,5 @@
 import type { Bracket, CardId, CardSummary, DeckId, DeckInput, SavedDeckContents, SavedDeckSummary } from "@mtg/core/contract";
+import { deckSaveRows } from "@mtg/core/journey";
 import { decklistText } from "@mtg/core/parse";
 import { fetchCardsById, toCardSummary } from "./cards";
 import type { createAuthClient } from "./auth";
@@ -129,17 +130,6 @@ export async function openSavedDeck(db: AuthClient, code: string, userId: string
   };
 }
 
-/** Flattens a DeckInput into the rows save_deck expects. Commanders keep their section so the database can find them. */
-function deckRows(deck: DeckInput): { cardId: CardId; quantity: number; section: string }[] {
-  return [
-    ...deck.commanders.map((cardId) => ({ cardId, quantity: 1, section: "commander" })),
-    // Anything outside the 99 (sideboard, maybeboard, companion) is not part of a saved Commander deck.
-    ...deck.cards
-      .filter((c) => c.section === "main" || c.section === "commander")
-      .map((c) => ({ cardId: c.cardId, quantity: c.quantity, section: c.section === "commander" ? "commander" : "main" })),
-  ];
-}
-
 export async function saveDeck(
   db: AuthClient,
   input: { deckId?: DeckId; name: string; deck: DeckInput; isPublic: boolean; bracket?: Bracket; original?: DeckInput },
@@ -147,7 +137,7 @@ export async function saveDeck(
   const { data, error } = await db.rpc("save_deck", {
     p_deck_id: input.deckId ?? undefined,
     p_name: input.name,
-    p_cards: deckRows(input.deck),
+    p_cards: deckSaveRows(input.deck),
     p_bracket: input.bracket ?? undefined,
   });
   if (error) rethrow(error.message);
@@ -161,7 +151,7 @@ export async function saveDeck(
 
   // Written once per deck; the function leaves an existing original alone.
   if (input.original) {
-    const { error: originalError } = await db.rpc("save_deck_original", { p_deck_id: deckId, p_cards: deckRows(input.original) });
+    const { error: originalError } = await db.rpc("save_deck_original", { p_deck_id: deckId, p_cards: deckSaveRows(input.original) });
     if (originalError) rethrow(originalError.message);
   }
 

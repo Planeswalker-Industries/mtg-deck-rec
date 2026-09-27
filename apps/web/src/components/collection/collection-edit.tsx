@@ -50,7 +50,7 @@ export function EditableCards({ label, items, editor }: { label: string; items: 
       {items.map((item) => (
         <li key={item.card.id} className="flex min-w-0 flex-col gap-1">
           <ZoomableCard card={item.card}>
-            <CardImage card={item.card} alt="" sizes="(min-width: 1024px) 160px, 30vw" />
+            <CardImage card={item.card} variant="small" alt="" sizes="(min-width: 1024px) 160px, 30vw" />
           </ZoomableCard>
           <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(item.card)}</span>
           <CopyStepper card={item.card} quantity={item.quantity} editor={editor} />
@@ -117,7 +117,7 @@ export function AddToCollection({ editor }: { editor: CollectionEditor }) {
             return (
               <li key={card.id} className="flex min-w-0 flex-col gap-1">
                 <ZoomableCard card={card}>
-                  <CardImage card={card} alt="" sizes="(min-width: 1024px) 160px, 30vw" />
+                  <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 160px, 30vw" />
                 </ZoomableCard>
                 <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(card)}</span>
                 {owned === 0 ? (

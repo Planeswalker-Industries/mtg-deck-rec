@@ -47,6 +47,15 @@ crawl unconfigured they answer `503`, so a deploy predating it serves search on 
 The admin token also satisfies the read endpoints; the read token is refused on admin ones, and the service will not
 start if the two are equal.
 
+## Logs
+
+One line per request — method, path, status and duration — as JSON on stdout, which is what a panel shows. Health
+probes are skipped (the container asks one every few seconds) and the **query string is never logged**: a search term
+is the person's words, and the path alone says which endpoint was reached.
+
+This exists because the service used to log only failures, which made "is the app calling this at all?" unanswerable
+from outside — a successful search and no search whatsoever produced identical output.
+
 ## Documents
 
 Documents pass through as opaque JSON. Their shape is defined once, in `packages/core/src/search/documents.ts`, and

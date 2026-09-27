@@ -33,7 +33,7 @@ export function SlotTray({ slots, adds, onTakeOut }: { slots: number; adds: read
               onClick={() => onTakeOut(card)}
               className="block w-full rounded-[4.75%/3.4%] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              <CardImage card={card} alt="" sizes="48px" className="shadow-[0_0_0_1.5px_var(--add),0_0_10px_color-mix(in_oklch,var(--add),transparent_50%)]" />
+              <CardImage card={card} variant="small" alt="" sizes="48px" className="shadow-[0_0_0_1.5px_var(--add),0_0_10px_color-mix(in_oklch,var(--add),transparent_50%)]" />
             </button>
           </motion.li>
         ))}

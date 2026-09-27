@@ -24,6 +24,13 @@ export interface PocketItem {
 
 const GRID_SIZES = "(min-width: 1024px) 160px, (min-width: 640px) 25vw, 33vw";
 
+/**
+ * Every pocket is a thumbnail, at most 160 CSS px wide, so the grid takes Scryfall's `small` printing: `normal` is
+ * 488x680 and ~93 KB a card, which for a hundred-card deck page is nine megabytes of images nobody is reading the
+ * rules text off. The grid is where a card is recognised, not read; enlarging one (`zoomable`) fetches `large`.
+ */
+const GRID_VARIANT = "small";
+
 /** The mark's glow, in the job's colour. */
 const MARK_GLOW = {
   cut: "shadow-[0_0_0_2px_var(--cut),0_0_18px_color-mix(in_oklch,var(--cut),transparent_35%)]",
@@ -31,11 +38,11 @@ const MARK_GLOW = {
 } as const;
 
 function MarkedImage({ card, mark }: { card: CardSummary; mark: "cut" | "add" | undefined }) {
-  if (!mark) return <CardImage card={card} alt="" sizes={GRID_SIZES} />;
+  if (!mark) return <CardImage card={card} variant={GRID_VARIANT} alt="" sizes={GRID_SIZES} />;
   const Icon = mark === "cut" ? X : Check;
   return (
     <span className="relative block">
-      <CardImage card={card} alt="" sizes={GRID_SIZES} className={cn(MARK_GLOW[mark], mark === "cut" && "saturate-50")} />
+      <CardImage card={card} variant={GRID_VARIANT} alt="" sizes={GRID_SIZES} className={cn(MARK_GLOW[mark], mark === "cut" && "saturate-50")} />
       {/* Upper 60% only: Scryfall's artist and copyright line along the bottom must stay visible. */}
       <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex h-3/5 items-center justify-center">
         <Icon

@@ -8,6 +8,8 @@
  *   yarn workspace @mtg/worker cli sync:typesense --rebuild
  *   yarn workspace @mtg/web tsx --env-file=.env.local scripts/search-parity-check.ts
  */
+import { CURVE_TOP_MANA_VALUE } from "@mtg/core/journey";
+import { cardCategory } from "@mtg/core/scoring";
 import { searchCards } from "../src/lib/server/card-search";
 import { fetchCardTags } from "../src/lib/server/card-tags";
 import { fetchCardsById } from "../src/lib/server/cards";
@@ -63,7 +65,10 @@ async function main() {
   //    Doubling Season rather than Doubling Chant, and a typo'd "lightening bolt" gives Lightning Bolt rather than
   //    the double-faced card whose back is Lightning Bolt.
   for (const q of QUERIES) {
-    const [indexed, postgres] = [await searchCards(db, { q, limit: 8 }), await withoutIndex(() => searchCards(db, { q, limit: 8 }))];
+    const [{ cards: indexed }, { cards: postgres }] = [
+      await searchCards(db, { q, limit: 8 }),
+      await withoutIndex(() => searchCards(db, { q, limit: 8 })),
+    ];
     const top = indexed[0];
     const known = top !== undefined && postgres.some((p) => p.id === top.id);
     const overlap = indexed.filter((c) => postgres.some((p) => p.id === c.id)).length;
@@ -73,10 +78,58 @@ async function main() {
 
   // The commander picker filters the same pool down to cards that can actually lead a deck.
   {
-    const commanders = await searchCards(db, { q: "atraxa", commanderEligible: true, limit: 5 });
-    const fromDb = await withoutIndex(() => searchCards(db, { q: "atraxa", commanderEligible: true, limit: 5 }));
+    const { cards: commanders } = await searchCards(db, { q: "atraxa", commanderEligible: true, limit: 5 });
+    const { cards: fromDb } = await withoutIndex(() => searchCards(db, { q: "atraxa", commanderEligible: true, limit: 5 }));
     const sameSet = commanders.length === fromDb.length && commanders.every((c) => fromDb.some((d) => d.id === c.id));
     check("commander-only search returns the same cards", sameSet, `${commanders.length} commander(s): ${commanders.map((c) => c.name).join(", ")}`);
+  }
+
+  // 1b. The deckbuilder's search, which moved off Postgres once the documents gained `card_category`.
+  //
+  //     What is asserted is the *filtering*, not the order. Both sides rank by play rate and break ties on the name,
+  //     but they collate names differently, so with an empty corpus — every rate 0, the tiebreak deciding everything —
+  //     the two walk the catalog in slightly different orders. What must never differ is which cards are eligible:
+  //     a card outside the deck's colours, of the wrong type or in the wrong mana bar is a wrong answer either way.
+  {
+    const FILTERED: { label: string; input: Parameters<typeof searchCards>[1] }[] = [
+      { label: "browse WB", input: { q: "", colorIdentity: "WB", limit: 50 } },
+      { label: "browse WB creatures", input: { q: "", colorIdentity: "WB", cardType: "creature", limit: 50 } },
+      { label: "browse WB lands", input: { q: "", colorIdentity: "WB", cardType: "land", limit: 50 } },
+      { label: "browse colourless", input: { q: "", colorIdentity: "", limit: 50 } },
+      { label: "browse WB mana value 3", input: { q: "", colorIdentity: "WB", manaValue: 3, limit: 50 } },
+      { label: "browse WB mana value 7+", input: { q: "", colorIdentity: "WB", manaValue: 7, limit: 50 } },
+      { label: "name within WB", input: { q: "angel", colorIdentity: "WB", limit: 50 } },
+    ];
+    for (const { label, input } of FILTERED) {
+      const { cards, source } = await searchCards(db, input);
+      const wrongColor = cards.filter((c) => [..."WUBRG"].some((l) => !(input.colorIdentity ?? "WUBRG").includes(l) && c.colorIdentity.includes(l)));
+      const wrongType = input.cardType === undefined ? [] : cards.filter((c) => cardCategory(c.typeLine) !== input.cardType);
+      const wrongMana =
+        input.manaValue === undefined
+          ? []
+          : cards.filter((c) => (input.manaValue! >= CURVE_TOP_MANA_VALUE ? c.manaValue < CURVE_TOP_MANA_VALUE : Math.floor(c.manaValue) !== input.manaValue));
+      const bad = wrongColor.length + wrongType.length + wrongMana.length;
+      check(
+        `filtered search "${label}"`,
+        source === "index-filtered" && cards.length > 0 && bad === 0,
+        `${cards.length} from ${source}${bad === 0 ? ", every one within the filters" : `, ${bad} outside them (first: ${(wrongColor[0] ?? wrongType[0] ?? wrongMana[0])?.name})`}`,
+      );
+    }
+
+    // "More cards" walks forward by a page. Pages that repeat or skip a card mean the sort is not total.
+    const pages = await Promise.all([0, 50, 100].map((offset) => searchCards(db, { q: "", colorIdentity: "WB", cardType: "creature", limit: 50, offset })));
+    const names = pages.flatMap((p) => p.cards.map((c) => c.name));
+    check("paging is disjoint", new Set(names).size === names.length, `${names.length} cards over 3 pages, ${new Set(names).size} distinct`);
+
+    // The regression that made infix necessary: Typesense matches whole tokens, so without it "bolt" stops at
+    // Guiding Bolt and never reaches General Thunderbolt Ross, which Postgres's `%bolt%` always found.
+    const { cards: midWord } = await searchCards(db, { q: "thunderbolt", limit: 8 });
+    const { cards: inside } = await searchCards(db, { q: "underbolt", limit: 8 });
+    check(
+      "a name matches from inside a word",
+      inside.length > 0 && midWord.length > 0,
+      `"underbolt" gives ${inside.length} result(s): ${inside.slice(0, 3).map((c) => c.name).join(", ") || "(none)"}`,
+    );
   }
 
   // 2. Card rows: a document must rebuild a row byte for byte, or something downstream is reading a different card.

@@ -83,14 +83,25 @@ function SearchField({ autoFocus = false, onPicked }: { autoFocus?: boolean; onP
   const [focused, setFocused] = useState(false);
   const request = useRef(0);
   const timer = useRef<number | undefined>(undefined);
+  /** The call in flight, so a newer search can stop it competing for the connection with the one that matters. */
+  const inFlight = useRef<AbortController | null>(null);
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      inFlight.current?.abort();
+    },
+    [],
+  );
 
   function search(value: string) {
     setQuery(value);
     window.clearTimeout(timer.current);
-    // A counter, not an abort: a slow earlier response must never overwrite a newer one.
+    // The counter is what keeps a slow earlier response from overwriting a newer one; the abort is what stops that
+    // response ever arriving. Both are needed: a discarded answer still cost the round trip it was queued behind.
     const current = ++request.current;
+    inFlight.current?.abort();
+    inFlight.current = null;
     const q = value.trim();
     if (q.length < MIN_QUERY) {
       setResults([]);
@@ -99,10 +110,13 @@ function SearchField({ autoFocus = false, onPicked }: { autoFocus?: boolean; onP
     }
     setStatus("searching");
     timer.current = window.setTimeout(() => {
+      const controller = new AbortController();
+      inFlight.current = controller;
       void getApis()
-        .catalog.searchCards({ q, commanderEligible: false, limit: LIMIT })
+        .catalog.searchCards({ q, commanderEligible: false, limit: LIMIT }, { signal: controller.signal })
         .then((r) => {
           if (current !== request.current) return;
+          inFlight.current = null;
           if (r.ok) {
             setResults(r.data);
             setActive(0);
@@ -192,7 +206,11 @@ function SearchField({ autoFocus = false, onPicked }: { autoFocus?: boolean; onP
           className="absolute top-full right-0 left-0 z-50 mt-1 flex max-h-[70vh] flex-col divide-y divide-seam overflow-y-auto rounded-lg border border-seam bg-sleeve shadow-lg sm:max-h-96"
         >
           {results.map((card, i) => {
-            const art = card.images?.front.artCrop;
+            // The card's `small` printing, not `artCrop`: this box is 56x36, and the art crop is a 626x457 JPEG at
+            // ~72 KB against `small`'s ~13 KB, so eight results cost half a megabyte for thumbnails. Cropped to the
+            // art band — a card scaled to this width puts its art between roughly 10% and 57% of its height, and
+            // 20% from the top centres that band in the window.
+            const art = card.images?.front.small;
             return (
               <li
                 key={card.id}
@@ -208,10 +226,10 @@ function SearchField({ autoFocus = false, onPicked }: { autoFocus?: boolean; onP
                   <Image
                     src={art}
                     alt=""
-                    width={64}
-                    height={46}
+                    width={146}
+                    height={204}
                     unoptimized
-                    className="h-9 w-14 shrink-0 rounded-md object-cover ring-1 ring-seam"
+                    className="h-9 w-14 shrink-0 rounded-md object-cover object-[50%_20%] ring-1 ring-seam"
                   />
                 ) : (
                   <span aria-hidden className="h-9 w-14 shrink-0 rounded-md bg-seam" />

@@ -97,9 +97,43 @@ export class SearchClient {
     return result.cards ?? [];
   }
 
-  async searchCards({ q, commanderOnly = false, limit = 8 }: { q: string; commanderOnly?: boolean; limit?: number }): Promise<CardDocument[]> {
+  /**
+   * Cards by name, and the deckbuilder's narrowed search.
+   *
+   * With `colorIdentity`, `cardType` or `manaValue` set this is the deckbuilder asking, and an empty `q` means browse
+   * the filtered cards by play rate rather than search for nothing. `colorIdentity` is the deck's identity as WUBRG
+   * letters, and `""` is a colourless deck — which is why it travels beside a `colorless` flag: an empty string and
+   * an absent one are different questions and a query string cannot tell them apart.
+   */
+  async searchCards({
+    q,
+    commanderOnly = false,
+    limit = 8,
+    colorIdentity,
+    cardType,
+    manaValue,
+    offset,
+    builder = false,
+  }: {
+    q: string;
+    commanderOnly?: boolean;
+    limit?: number;
+    colorIdentity?: string | undefined;
+    cardType?: string | undefined;
+    manaValue?: number | undefined;
+    offset?: number | undefined;
+    builder?: boolean;
+  }): Promise<CardDocument[]> {
     const query = new URLSearchParams({ q, limit: String(limit) });
     if (commanderOnly) query.set("commanderOnly", "1");
+    if (colorIdentity !== undefined) {
+      query.set("colors", colorIdentity);
+      if (colorIdentity === "") query.set("colorless", "1");
+    }
+    if (cardType !== undefined) query.set("type", cardType);
+    if (manaValue !== undefined) query.set("mv", String(manaValue));
+    if (offset !== undefined && offset > 0) query.set("offset", String(offset));
+    if (builder) query.set("builder", "1");
     const result = await this.request<{ cards: CardDocument[] }>(`/v1/cards/search?${query}`);
     return result.cards ?? [];
   }

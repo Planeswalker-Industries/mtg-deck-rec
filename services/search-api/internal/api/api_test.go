@@ -1,12 +1,17 @@
 package api_test
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,6 +19,7 @@ import (
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/api"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
+	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/crawl"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/typesense"
 )
 
@@ -216,8 +222,10 @@ func TestCardsSearchRanking(t *testing.T) {
 	if got.FilterBy != "" {
 		t.Fatalf("no commander filter was asked for: %s", got.FilterBy)
 	}
-	if got.PerPage != 5 {
-		t.Fatalf("limit not honoured: %d", got.PerPage)
+	// Limit/Offset rather than PerPage/Page: the endpoint pages by row offset now, because the deckbuilder's
+	// "More cards" asks for the next twenty from where it got to.
+	if got.Limit != 5 {
+		t.Fatalf("limit not honoured: %d", got.Limit)
 	}
 }
 
@@ -380,4 +388,281 @@ func countRequests(requests []string, want string) int {
 		}
 	}
 	return n
+}
+
+// The log is the only way to answer "is anything calling this?" from outside: a successful request is otherwise
+// indistinguishable from no request at all.
+func TestRequestsAreLogged(t *testing.T) {
+	var buf bytes.Buffer
+	fake := newFakeTypesense(t)
+	cfg := config.Config{ReadToken: readToken, AdminToken: adminToken}
+	app := api.New(cfg, typesense.New(fake.server.URL, "key", 5*time.Second),
+		slog.New(slog.NewJSONHandler(&buf, nil)), nil)
+
+	res, err := app.Test(httptest.NewRequest(http.MethodGet, "/v1/tags", nil))
+	if err == nil {
+		_ = res.Body.Close()
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, `"msg":"request"`) || !strings.Contains(logged, `"path":"/v1/tags"`) {
+		t.Fatalf("a served request should be logged: %s", logged)
+	}
+
+	// A search term is the person's words and must not be in the log.
+	buf.Reset()
+	req := httptest.NewRequest(http.MethodGet, "/v1/cards/search?q=sol+ring", nil)
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	if res, err := app.Test(req); err == nil {
+		_ = res.Body.Close()
+	}
+	if strings.Contains(buf.String(), "sol") {
+		t.Fatalf("the query string must not reach the log: %s", buf.String())
+	}
+
+	// Health probes arrive every few seconds; a log that is mostly health checks is one nobody reads.
+	buf.Reset()
+	if res, err := app.Test(httptest.NewRequest(http.MethodGet, "/v1/health/live", nil)); err == nil {
+		_ = res.Body.Close()
+	}
+	if strings.Contains(buf.String(), `"msg":"request"`) {
+		t.Fatalf("health probes should not be logged: %s", buf.String())
+	}
+}
+
+// The deckbuilder's search, which used to be a Postgres function. Each of these pins one thing the app depends on:
+// the colour rule, the type filter that needed a new field, the mana bar, paging, and the browse with no name.
+
+func TestCardsSearchBuilderColours(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=angel&colors=WB&builder=1", readToken, "")
+	got := fake.searches[0]
+	// Typesense has no bitwise operators, so the Postgres condition `(color_identity & ~mask) = 0` is written as the
+	// colours a card may not carry. Green, blue and red are out; colourless cards pass because their array is empty.
+	if !strings.Contains(got.FilterBy, "colors:!=[U,R,G]") {
+		t.Fatalf("identity filter wrong: %q", got.FilterBy)
+	}
+	if !strings.Contains(got.FilterBy, "legal_commander:=legal") {
+		t.Fatalf("commander legality is not optional: %q", got.FilterBy)
+	}
+	// The deckbuilder breaks ties on play rate, not on how often the card leads a deck.
+	if got.SortBy != "_text_match:desc,baseline_rate:desc,name:asc" {
+		t.Fatalf("builder sort changed: %s", got.SortBy)
+	}
+}
+
+func TestCardsSearchColourlessIsNotAbsent(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	// A colourless deck sends an empty `colors`, which a query string cannot tell from an absent one - hence the flag.
+	do(t, app, http.MethodGet, "/v1/cards/search?q=sol&colors=&colorless=1", readToken, "")
+	if !strings.Contains(fake.searches[0].FilterBy, "colors:!=[W,U,B,R,G]") {
+		t.Fatalf("a colourless deck must exclude every colour: %q", fake.searches[0].FilterBy)
+	}
+}
+
+func TestCardsSearchFiveColoursFilterNothing(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=sol&colors=WUBRG", readToken, "")
+	if strings.Contains(fake.searches[0].FilterBy, "colors:") {
+		t.Fatalf("a five-colour deck excludes nothing: %q", fake.searches[0].FilterBy)
+	}
+}
+
+func TestCardsSearchCategoryAndManaValue(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&type=creature&mv=3", readToken, "")
+	got := fake.searches[0].FilterBy
+	if !strings.Contains(got, "card_category:=creature") {
+		t.Fatalf("type filter missing: %q", got)
+	}
+	// mana_value is a float, so a whole-number bar is a half-open range rather than an equality.
+	if !strings.Contains(got, "mana_value:>=3 && mana_value:<4") {
+		t.Fatalf("mana bar wrong: %q", got)
+	}
+}
+
+func TestCardsSearchManaValueTopIsOrMore(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&mv=7", readToken, "")
+	if !strings.Contains(fake.searches[0].FilterBy, "mana_value:>=7") {
+		t.Fatalf("the last bar of the curve means 7 or more: %q", fake.searches[0].FilterBy)
+	}
+	if strings.Contains(fake.searches[0].FilterBy, "mana_value:<") {
+		t.Fatalf("7+ has no upper bound: %q", fake.searches[0].FilterBy)
+	}
+}
+
+func TestCardsSearchBrowseHasNoQueryToScore(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&limit=20", readToken, "")
+	got := fake.searches[0]
+	if got.Q != "*" {
+		t.Fatalf("a browse asks for every document: %q", got.Q)
+	}
+	// No text match to rank by, so play rate is the whole ranking - and the name breaks ties so paging is stable.
+	if got.SortBy != "baseline_rate:desc,name:asc" {
+		t.Fatalf("browse sort changed: %s", got.SortBy)
+	}
+	if got.QueryBy != "" {
+		t.Fatalf("nothing to query by when there is no name: %q", got.QueryBy)
+	}
+}
+
+func TestCardsSearchPages(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&limit=20&offset=40", readToken, "")
+	if fake.searches[0].Offset != 40 || fake.searches[0].Limit != 20 {
+		t.Fatalf("paging not passed through: offset %d limit %d", fake.searches[0].Offset, fake.searches[0].Limit)
+	}
+}
+
+func TestCardsSearchRejectsBadFilters(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	for _, query := range []string{"q=sol&type=wizard", "q=sol&mv=99", "q=sol&mv=abc", "q=&colors=WB&offset=100000"} {
+		res, _ := do(t, app, http.MethodGet, "/v1/cards/search?"+query, readToken, "")
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: got %d, want 400", query, res.StatusCode)
+		}
+	}
+	if len(fake.searches) != 0 {
+		t.Fatal("a bad filter must never reach Typesense as a silently dropped condition")
+	}
+}
+
+func TestCardsSearchNoNameAndNoFiltersIsEmpty(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	// Otherwise this is "the whole catalog by play rate", which nothing asks for and the engine should not prove.
+	do(t, app, http.MethodGet, "/v1/cards/search?q=", readToken, "")
+	if len(fake.searches) != 0 {
+		t.Fatal("nothing should have reached Typesense")
+	}
+}
+
+func TestCardsSearchMatchesMidWord(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=bolt", readToken, "")
+	// Without this, "bolt" finds Guiding Bolt and stops: Typesense matches whole tokens, so General Thunderbolt Ross
+	// is invisible. Postgres matched `%bolt%` and found it, and the deckbuilder's search moved off Postgres.
+	if fake.searches[0].Infix != "off,always,always" {
+		t.Fatalf("mid-word matching lost: %q", fake.searches[0].Infix)
+	}
+}
+
+func TestCardsBrowseHasNoInfix(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB", readToken, "")
+	// A browse has no query_by at all, and an infix value without one is a request Typesense rejects.
+	if fake.searches[0].Infix != "" {
+		t.Fatalf("a browse has nothing to match inside: %q", fake.searches[0].Infix)
+	}
+}
+
+// --- the crawl cron's preflight ---
+//
+// A scrape answers 202 and then crawls detached, so a configuration failure used to be indistinguishable from a
+// healthy start: the cron saw 202, the database saw nothing, and the only evidence was a line in the container log.
+// These pin the one read that now happens before the answer.
+
+// stubStore embeds the interface, so any method these tests do not define panics if the handler calls it. That is the
+// assertion: a scrape must touch the database exactly once before it answers, and a busy one not at all.
+type stubStore struct {
+	crawl.Store
+	policyErr error
+	calls     *int32
+}
+
+func (s stubStore) Policy(context.Context) (crawl.Policy, error) {
+	atomic.AddInt32(s.calls, 1)
+	return crawl.Policy{}, s.policyErr
+}
+
+// The run's second call. It errors so a background crawl started by the success case ends immediately instead of
+// trying to fetch anything: these tests are about what happens before the answer, not about crawling.
+func (stubStore) CrawlState(context.Context) (crawl.CrawlState, error) {
+	return crawl.CrawlState{}, errors.New("stub: the run stops here")
+}
+
+type stubSource struct{ crawl.Source }
+
+func (stubSource) Name() string { return "archidekt" }
+
+type stubGetter struct{ crawl.Getter }
+
+func (stubGetter) SetPolicy(crawl.Policy) {}
+
+func newCrawlApp(t *testing.T, fake *fakeTypesense, policyErr error) (*fiber.App, *int32) {
+	t.Helper()
+	var calls int32
+	runner := crawl.NewRunner(stubSource{}, stubGetter{}, stubStore{policyErr: policyErr, calls: &calls}, discardLogger(), "test")
+	cfg := config.Config{ReadToken: readToken, AdminToken: adminToken, CronToken: cronToken}
+	client := typesense.New(fake.server.URL, "key", 5*time.Second)
+	return api.New(cfg, client, discardLogger(), map[string]*crawl.Runner{"archidekt": runner}), &calls
+}
+
+func TestScrapeRefusesWhenTheDatabaseDoesNotAnswer(t *testing.T) {
+	app, calls := newCrawlApp(t, newFakeTypesense(t), errors.New("supabase: HTTP 401: invalid api key"))
+
+	res, body := do(t, app, http.MethodPost, "/cron/archidekt/scrape", cronToken, "")
+	// 502, not 202: Vercel records a failed cron, so a crawl that cannot start stops being silence.
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("got %d, want 502", res.StatusCode)
+	}
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "no crawl was started") {
+		t.Fatalf("the answer should say nothing was started: %q", msg)
+	}
+	if atomic.LoadInt32(calls) != 1 {
+		t.Fatalf("preflight should be exactly one read, got %d", *calls)
+	}
+}
+
+func TestScrapeStartsWhenTheDatabaseAnswers(t *testing.T) {
+	app, calls := newCrawlApp(t, newFakeTypesense(t), nil)
+
+	res, body := do(t, app, http.MethodPost, "/cron/archidekt/scrape", cronToken, "")
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("got %d, want 202", res.StatusCode)
+	}
+	if started, _ := body["started"].(bool); !started {
+		t.Fatalf("a reachable database should start a crawl: %v", body)
+	}
+	if atomic.LoadInt32(calls) < 1 {
+		t.Fatal("the preflight read should have happened")
+	}
+}
+
+func TestFailedPreflightLeavesTheSourceStartable(t *testing.T) {
+	// The in-memory "already running" flag is set before the preflight, so a failure that did not clear it would wedge
+	// the source until the container restarted - turning a transient outage into a permanent one.
+	app, _ := newCrawlApp(t, newFakeTypesense(t), errors.New("supabase: HTTP 401"))
+
+	for i := range 3 {
+		res, body := do(t, app, http.MethodPost, "/cron/archidekt/scrape", cronToken, "")
+		if res.StatusCode != http.StatusBadGateway {
+			t.Fatalf("attempt %d: got %d, want 502 every time", i+1, res.StatusCode)
+		}
+		if reason, _ := body["reason"].(string); reason == "already running" {
+			t.Fatalf("attempt %d: the source was left claimed by a failed preflight", i+1)
+		}
+	}
 }

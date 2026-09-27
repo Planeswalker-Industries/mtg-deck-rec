@@ -1,8 +1,9 @@
 -- Card search for the deckbuilder: an optional name, narrowed to a commander's colours, a card type and a mana value.
 -- With no name it browses: the filtered cards most played across Commander decks come first.
 --
--- It stays in Postgres rather than the search index for now: the index has no card-type field, and adding one means a
--- schema change and a full rebuild on the VPS. Plain name search (search_cards) keeps using the index.
+-- This is the **fallback**. The search index now carries `card_category` and answers this search first; everything
+-- below is what runs when no index is configured (CI, a fresh checkout) or the one configured did not answer. Keep the
+-- two in step: the app cannot tell a visitor which side served them, so they have to agree.
 --
 -- p_category is the deck-grouping category (the same precedence as cardCategory in @mtg/core/scoring: an artifact
 -- creature is a creature, an artifact land an artifact). p_mana_value at or above p_mana_value_top means "that or more",

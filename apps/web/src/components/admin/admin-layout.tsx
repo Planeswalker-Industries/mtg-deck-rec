@@ -1,8 +1,10 @@
 "use client";
 
 import { Box } from "@mui/material";
-import { Suspense } from "react";
-import { AppBar, Inspector, Loading, Menu, Sidebar, SkipNavigationButton, TitlePortal, type LayoutProps } from "react-admin";
+import { useRouter } from "next/navigation";
+import { Suspense, type MouseEvent } from "react";
+import { AppBar, Inspector, Loading, Menu, MenuItemLink, Sidebar, SkipNavigationButton, TitlePortal, type LayoutProps } from "react-admin";
+import LayersIcon from "@mui/icons-material/Layers";
 import { ADMIN_TOKENS } from "./theme";
 
 /**
@@ -24,6 +26,26 @@ import { ADMIN_TOKENS } from "./theme";
  *    somewhere no scroll could reach and cut the site header off mid-word. The frame stays within the viewport here
  *    and the table scrolls inside its own card instead.
  */
+
+/**
+ * The link out of the single-page admin app to /admin/crawls, which is an ordinary Next route rather than a React
+ * Admin resource. MenuItemLink renders a react-router link, and react-router knows nothing about that page, so the
+ * click is handed to Next's router instead — a client navigation, not a reload, since both live under /admin.
+ */
+const CrawlsMenuItem = () => {
+  const router = useRouter();
+  return (
+    <MenuItemLink
+      to="/crawls"
+      primaryText="Deck crawls"
+      leftIcon={<LayersIcon />}
+      onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        router.push("/admin/crawls");
+      }}
+    />
+  );
+};
 
 /** The title and the reload control, and nothing that the site header already provides. */
 const AdminAppBar = () => (
@@ -53,7 +75,16 @@ export const AdminLayout = ({ children }: LayoutProps) => (
       <AdminAppBar />
       <Box className="RaLayout-contentWithSidebar" sx={{ display: "flex", flexGrow: 1, minWidth: 0, transition: "none" }}>
         <Sidebar>
-          <Menu />
+          {/*
+            The crawls page is not a React Admin resource — it is the site's own page at /admin/crawls, because it is
+            read rather than administered. It still belongs in this menu, which is where someone goes looking for the
+            admin area's parts, so it is added by hand. `to` is an absolute path: the router's basename is /admin, and
+            a relative one would resolve to /admin/admin/crawls.
+          */}
+          <Menu>
+            <Menu.ResourceItems />
+            <CrawlsMenuItem />
+          </Menu>
         </Sidebar>
         <Box
           id="main-content"

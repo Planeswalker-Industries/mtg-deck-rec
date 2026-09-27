@@ -53,5 +53,9 @@
  *
  * v15 (2026-09-22): editing a collection by hand. ActionsApi.setCollectionCardQuantity sets a card's total copies in
  * the signed-in user's collection (0 removes it).
+ *
+ * v16 (2026-09-22): CatalogApi.searchCards takes optional CallOptions, so a search-as-you-type field can abort the
+ * calls it has already superseded. Additive and transport-only: it carries no payload, an implementation that ignores
+ * it still satisfies the interface, and every existing caller type-checks unchanged.
  */
-export const CONTRACT_VERSION = 15;
+export const CONTRACT_VERSION = 16;
