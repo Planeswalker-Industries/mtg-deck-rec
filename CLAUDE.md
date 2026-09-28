@@ -49,7 +49,7 @@ yarn workspace @mtg/worker cli import:edhrec [--force]   # EDHREC commander page
 yarn workspace @mtg/worker cli:hosted <command>          # any worker command against the hosted database: loads apps/worker/.env.hosted (copy .env.example); plain `cli` always means local
 yarn workspace @mtg/worker cli serve:commander-requests  # serve deck lookups queued from the deck tool until stopped (--once: until the queue is empty); run detached with a log
 yarn workspace @mtg/worker cli spike:corpus:stability    # split-half resampling report → X:\mtg_proj\reports (sets minDecks/fullDecks evidence)
-yarn workspace @mtg/worker cli spike:edhrec:prior      # holdout test: EDHREC vs the colour baseline as the prior for commanders with few decks → X:\mtg_projeports
+yarn workspace @mtg/worker cli spike:edhrec:prior      # holdout test: EDHREC vs the colour baseline as the prior for commanders with few decks → X:\mtg_proj\reports
 yarn workspace @mtg/worker cli spike:archidekt:rank     # rank legal commanders by update rate of their 100-card Archidekt decks, plus deck counts (1 req each, ~1 h, resumable) → X:\mtg_proj\archidekt\spike\commanders.json
 yarn workspace @mtg/worker cli spike:archidekt:verify --top 100   # discount top commanders by share of listed decks they actually lead (~10 min)
 yarn workspace @mtg/worker cli spike:archidekt:crawl --commander "Liesa, Forgotten Archangel"   # crawl specific commanders by exact card name (no ranking needed); then aggregate:corpus
