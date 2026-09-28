@@ -37,7 +37,7 @@ interface Trial {
 }
 
 /** Deterministic PRNG (mulberry32) so a re-run reproduces the report. */
-function random(seed: number): () => number {
+export function random(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
@@ -48,7 +48,7 @@ function random(seed: number): () => number {
   };
 }
 
-function shuffled<T>(items: readonly T[], next: () => number): T[] {
+export function shuffled<T>(items: readonly T[], next: () => number): T[] {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(next() * (i + 1));
@@ -73,7 +73,7 @@ function ranks(values: readonly number[]): number[] {
   return result;
 }
 
-function spearman(a: readonly number[], b: readonly number[]): number {
+export function spearman(a: readonly number[], b: readonly number[]): number {
   const ra = ranks(a);
   const rb = ranks(b);
   const mean = (ra.length + 1) / 2;
@@ -90,7 +90,7 @@ function spearman(a: readonly number[], b: readonly number[]): number {
   return va === 0 || vb === 0 ? 0 : cov / Math.sqrt(va * vb);
 }
 
-function quantile(values: readonly number[], q: number): number {
+export function quantile(values: readonly number[], q: number): number {
   if (values.length === 0) return Number.NaN;
   const sorted = [...values].sort((a, b) => a - b);
   const position = (sorted.length - 1) * q;
@@ -99,7 +99,7 @@ function quantile(values: readonly number[], q: number): number {
   return (sorted[low] ?? 0) + ((sorted[high] ?? 0) - (sorted[low] ?? 0)) * (position - low);
 }
 
-const median = (values: readonly number[]) => quantile(values, 0.5);
+export const median = (values: readonly number[]) => quantile(values, 0.5);
 
 export async function measureCorpusStability({
   file = DEFAULT_CORPUS_FILE,
