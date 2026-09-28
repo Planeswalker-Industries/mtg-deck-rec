@@ -2,6 +2,7 @@ import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { measureCorpusStability } from './jobs/corpus-stability';
 import { profileTags } from './jobs/profile-tags';
 import { serveCommanderRequests } from './jobs/serve-commander-requests';
+import { evaluateEdhrecPrior } from './jobs/edhrec-prior-eval';
 import { importEdhrec } from './jobs/import-edhrec';
 import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
 import { syncCatalog } from './jobs/sync-catalog';
@@ -29,6 +30,8 @@ Commands:
                             Serve deck lookups the web app queues for commanders with too few decks (--once: until the queue is empty)
   spike:corpus:stability [--repeats N]
                             How many decks a commander needs for stable card rankings (split-half resampling report)
+  spike:edhrec:prior [--repeats N]
+                            Holdout test: does EDHREC beat the colour baseline as the prior for commanders with few decks?
   spike:archidekt:rank      Rank our legal commanders by how often their 100-card Archidekt decks are updated (1 request each, resumable)
   spike:archidekt:verify [--top N]
                             Discount the top ranked commanders by how many of their listed decks they actually lead
@@ -83,6 +86,8 @@ async function main(): Promise<void> {
       return serveCommanderRequests({ once: args.includes('--once') });
     case 'spike:corpus:stability':
       return measureCorpusStability({ repeats: numberFlag(args, 'repeats') });
+    case 'spike:edhrec:prior':
+      return evaluateEdhrecPrior({ repeats: numberFlag(args, 'repeats') });
     case 'spike:archidekt:rank':
       return rankCommanders();
     case 'spike:archidekt:verify':

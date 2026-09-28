@@ -249,6 +249,22 @@ create table public.external_commander_card_stats (
 
 EDHREC trims its lists near 5% of decks for big commanders, so a missing row means "not published".
 
+**Prior evaluation (2026-09-28, `spike:edhrec:prior`).** For 49 commanders with at least 200 of our decks: hide all but
+50 as the answer key, estimate each card's inclusion from n of the 50 shrunk toward the colour baseline (today) or
+toward EDHREC's inclusion for that commander, and grade the top 50 against the hidden decks.
+
+| Our decks | Top-50 synergy overlap, colour | EDHREC | Commanders where EDHREC wins |
+|---|---|---|---|
+| 0 | 6% | 80% | 49 of 49 |
+| 5 | 58% | 82% | 49 of 49 |
+| 10 | 70% | 81% | 48 of 49 |
+| 20 | 78% | 83% | 43 of 49 |
+| 50 | 86% | 88% | 35 of 49 |
+
+EDHREC's inclusion estimates also had lower mean absolute error for all 49 commanders at every n. The gate for
+slice 11 is passed; wiring the prior into `corpusComponent` and `rec_add_candidates` is the next step. EDHREC's sample
+includes some of the Archidekt decks hidden here, but it is at least 12× ours for these commanders (median 92×).
+
 - **As a prior.** For a commander below `minDecks`, `p̂(B|K)` shrinks toward EDHREC's inclusion instead of the
   baseline p0: `(x + α·p_ext) / (n + α)`. As our own decks grow, our numbers take over, so a gap in EDHREC's
   coverage never decides a recommendation. The pair layers stay ours alone.
