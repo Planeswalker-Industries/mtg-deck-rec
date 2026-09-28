@@ -176,3 +176,15 @@ describe('mock collection modes', () => {
     expect(cut.ok && cut.data.suggestions.every((s) => !s.reasons.includes('NOT_OWNED'))).toBe(true);
   });
 });
+
+describe('mock add exclusions', () => {
+  it('leaves out cards the player passed on, and offers the next ones instead', async () => {
+    const { apis, context } = await setup();
+    const ids = (r: Awaited<ReturnType<typeof apis.recs.add>>) => (r.ok ? r.data.groups.flatMap((g) => g.suggestions.map((s) => s.card.id)) : []);
+    const before = ids(await apis.recs.add({ context: context() }));
+    expect(before.length).toBeGreaterThan(0);
+    const passed = before.slice(0, 2);
+    const after = ids(await apis.recs.add({ context: context(), excludeCardIds: passed }));
+    expect(after.some((id) => passed.includes(id))).toBe(false);
+  });
+});

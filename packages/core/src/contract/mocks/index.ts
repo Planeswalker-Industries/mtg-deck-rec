@@ -339,12 +339,12 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       }
     },
 
-    async add({ context, limitPerCategory = 5 }) {
+    async add({ context, limitPerCategory = 5, excludeCardIds = [] }) {
       try {
         const owned = ownedIds(context.ownership);
         const only = ownedOnly(context) ? owned : null;
         const boost = ownedFirst(context) ? MOCK_OWNED_FIRST_BOOST : 0;
-        const inDeck = deckCardIds(context.deck);
+        const inDeck = new Set<number>([...deckCardIds(context.deck), ...excludeCardIds]);
         const identity = deckIdentity(context.deck);
         const groups = new Map<CardCategory, AddSuggestion[]>();
         for (const c of mockCards) {

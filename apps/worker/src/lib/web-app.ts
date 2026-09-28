@@ -8,6 +8,7 @@ const TAGS_BY_JOB: Record<SyncJob, CacheTag[]> = {
   scryfall_printings: ['catalog', 'recs'],
   oracle_tags: ['catalog', 'recs'],
   corpus_aggregate: ['corpus', 'recs'],
+  edhrec_stats: [], // nothing the web app caches reads it yet
 };
 
 const TIMEOUT_MS = 10_000;
@@ -21,6 +22,7 @@ export async function refreshWebCaches(job: SyncJob): Promise<void> {
   const base = process.env.WEB_APP_URL;
   const secret = process.env.REVALIDATE_SECRET;
   const tags = TAGS_BY_JOB[job];
+  if (tags.length === 0) return;
   if (!base || !secret) {
     console.log(`${job}: WEB_APP_URL or REVALIDATE_SECRET isn't set, so web caches (${tags.join(', ')}) weren't refreshed.`);
     return;

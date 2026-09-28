@@ -1,11 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  AddResult,
   Bracket,
   CardId,
-  CardSummary,
   CutResult,
   DeckAnalysis,
   DeckId,
@@ -58,6 +56,17 @@ export interface ImportedFrom {
 export interface SubmitOutcome {
   parsed: boolean;
   analysis: DeckAnalysis | null;
+}
+
+/**
+ * How a submit goes. `keepOrigin` marks a result the tool produced (a journey commit, a deckbuilder edit), so Start
+ * over still goes back to the deck the player brought. `recs: false` leaves the cuts to load later (`ensureCuts`), for
+ * the deckbuilder, which shows none. `persist: false` skips writing back to the open deck, for the read that opened it.
+ */
+export interface SubmitOptions {
+  keepOrigin?: boolean;
+  recs?: boolean;
+  persist?: boolean;
 }
 
 /**
@@ -115,8 +124,26 @@ function buildContext(
   };
 }
 
+/**
+ * The collection setting a context carries, as one comparable value: when it changes under suggestions already on
+ * screen (a collection that finished loading after the deck was analyzed), they were made without it.
+ */
+function collectionKey(collection: CollectionUse | null): string {
+  if (!collection) return "off";
+  const { ownership, mode } = collection;
+  return ownership.kind === "session"
+    ? `session:${ownership.catalogEpoch}:${ownership.ownedCardIds.length}:${mode}`
+    : `${ownership.kind}:${mode}`;
+}
+
 /** What a collection does to suggestions: nothing, owned cards first, or owned cards only. */
 export type CollectionMode = "off" | OwnershipMode;
+
+/**
+ * Why the settings suggestions are made with changed. A bracket change says what the bracket was, so a journey part
+ * way through can check the deck against the new one and offer to go back.
+ */
+export type ContextChange = { kind: "bracket"; previous: Bracket | null } | { kind: "collection" } | { kind: "playRates" };
 
 /**
  * The player's last choice, remembered in this browser. The key predates "owned first", when "1" meant owned-only and
@@ -144,18 +171,27 @@ function writeCollectionMode(mode: CollectionMode) {
 }
 
 /**
- * State for the deck tool. Requests fire from event handlers (not effects);
- * request counters drop responses that arrive after a newer request started.
+ * State for the deck tool. Requests fire from event handlers (not effects), except when the collection arrives after
+ * the deck was analyzed; request counters drop responses that arrive after a newer request started.
+ *
+ * `onContextChange` hears about every change to the settings suggestions are made with while the deck stays the same
+ * (bracket, collection, new play-rate data), so lists built on top of the tool (the journey's) can reload. It resolves
+ * once they have.
  */
-export function useDeckTool(source: CollectionSource) {
+export function useDeckTool(
+  source: CollectionSource,
+  { onContextChange }: { onContextChange?: (context: RecContext, change: ContextChange) => Promise<void> } = {},
+) {
   const [text, setText] = useState("");
   const [parse, setParse] = useState<Async<null>>({ status: "idle" });
   const [lines, setLines] = useState<ResolvedLine[]>([]);
   const [analysis, setAnalysis] = useState<DeckAnalysis | null>(null);
+  /** The decklist text `analysis` was read from: when the box no longer holds it, the analysis is out of date. */
+  const [analyzedText, setAnalyzedText] = useState<string | null>(null);
+  /** Counts analyses, so whatever builds on one (the journey) can tell a new deck from new settings for the same one. */
+  const [round, setRound] = useState(0);
   const [bracketOverride, setBracketOverride] = useState<Bracket | null>(null);
-  const [add, setAdd] = useState<Async<AddResult>>({ status: "idle" });
   const [cut, setCut] = useState<Async<CutResult>>({ status: "idle" });
-  const [swap, setSwap] = useState<SwapState | null>(null);
   const [importedFrom, setImportedFrom] = useState<ImportedFrom | null>(null);
   const [openDeck, setOpenDeck] = useState<OpenDeck | null>(null);
   /** The decklist the player brought, before any journey result replaced it: what Start over goes back to. */
@@ -180,7 +216,12 @@ export function useDeckTool(source: CollectionSource) {
   /** The write auto-save has in flight, so a caller can wait for the account to have the deck before leaving. */
   const pendingSave = useRef<Promise<void>>(Promise.resolve());
   const recsRequest = useRef(0);
-  const swapRequest = useRef(0);
+  /** The collection setting the analysis's suggestions were made with; null before there is an analysis. */
+  const suggestedWith = useRef<string | null>(null);
+  const contextChange = useRef(onContextChange);
+  useEffect(() => {
+    contextChange.current = onContextChange;
+  });
 
   const [collectionMode, setCollectionMode] = useState<CollectionMode>(readCollectionMode);
   const browserCollection = source.kind === "browser" ? source.collection : null;
@@ -198,27 +239,41 @@ export function useDeckTool(source: CollectionSource) {
     return source.kind === "account" ? { ownership: { kind: "account" }, mode } : null;
   };
   const ownership = ownershipFor(collectionMode);
+  const ownershipKey = collectionKey(ownership);
 
   const context = analysis ? buildContext(analysis, bracketOverride, ownership) : null;
 
-  async function loadSwap(ctx: RecContext, targetCardId: CardId) {
-    const id = ++swapRequest.current;
-    setSwap({ targetCardId, result: { status: "loading" } });
-    const r = await getApis().recs.swap({ context: ctx, targetCardId });
-    if (id === swapRequest.current) setSwap({ targetCardId, result: toAsync(r) });
+  async function loadCuts(ctx: RecContext, collection: CollectionUse | null) {
+    const id = ++recsRequest.current;
+    suggestedWith.current = collectionKey(collection);
+    setCut({ status: "loading" });
+    const r = await getApis().recs.cut({ context: ctx });
+    if (id === recsRequest.current) setCut(toAsync(r));
   }
 
-  async function loadRecs(ctx: RecContext, swapTarget: CardId | null) {
-    const id = ++recsRequest.current;
-    setAdd({ status: "loading" });
-    setCut({ status: "loading" });
-    if (swapTarget !== null) void loadSwap(ctx, swapTarget);
-    const { recs } = getApis();
-    const [addResult, cutResult] = await Promise.all([recs.add({ context: ctx }), recs.cut({ context: ctx })]);
-    if (id !== recsRequest.current) return;
-    setAdd(toAsync(addResult));
-    setCut(toAsync(cutResult));
+  /**
+   * The same deck under new settings: reloads the cuts (unless the deckbuilder has them waiting for Upgrade) and tells
+   * whatever builds on the tool.
+   */
+  function reloadFor(ctx: RecContext, collection: CollectionUse | null, change: ContextChange) {
+    if (cut.status === "idle") suggestedWith.current = collectionKey(collection);
+    else void loadCuts(ctx, collection);
+    void contextChange.current?.(ctx, change);
   }
+
+  /*
+   * The collection is read after the page mounts, so a deck analyzed first had its suggestions made without it. When
+   * the collection (or its setting) differs from the one they were made with, they are made again. The handlers that
+   * change the setting reload on their own and record it first, so this only acts on changes from outside. It also
+   * runs on each new analysis, since a collection that arrived while the decklist was being read was not in the
+   * request that read it.
+   */
+  useEffect(() => {
+    if (!analysis || suggestedWith.current === null || suggestedWith.current === ownershipKey) return;
+    reloadFor(buildContext(analysis, bracketOverride, ownership), ownership, { kind: "collection" });
+    // Keyed on the collection and the analysis: the bracket has a handler of its own that reloads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownershipKey, analysis]);
 
   function trackOpenDeck(next: OpenDeck | null) {
     openDeckRef.current = next;
@@ -254,7 +309,7 @@ export function useDeckTool(source: CollectionSource) {
 
   /**
    * Opens one of the signed-in player's saved decks and analyzes it, so editing carries on where they left off.
-   * Every later change is written back to the same deck.
+   * Every later change is written back to the same deck; the read that opens it is not, since nothing has changed.
    */
   async function openSavedDeck(code: string): Promise<Result<SubmitOutcome>> {
     const r = await getApis().actions.openSavedDeck({ code });
@@ -264,17 +319,19 @@ export function useDeckTool(source: CollectionSource) {
     setText(deckText);
     return {
       ok: true,
-      data: await submit({ text: deckText, bracketOverride: bracket ?? null, importedFrom: null }),
+      data: await submit({ text: deckText, bracketOverride: bracket ?? null, importedFrom: null }, { persist: false }),
     };
   }
 
   /**
    * Parses (or imports) the decklist and loads recommendations, then remembers the deck in this browser. `restore`
    * replays a given deck with its bracket and Game Changer choices; without it, the remembered deck put back in the
-   * box is replayed the same way while its text is unchanged. `keepOrigin` marks a result the tool produced (a
-   * journey commit, applied swaps), so Start over still goes back to the deck the player brought.
+   * box is replayed the same way while its text is unchanged. See SubmitOptions for the rest.
    */
-  async function submit(restore?: SavedDeck, { keepOrigin = false }: { keepOrigin?: boolean } = {}): Promise<SubmitOutcome> {
+  async function submit(
+    restore?: SavedDeck,
+    { keepOrigin = false, recs = true, persist: writeBack = true }: SubmitOptions = {},
+  ): Promise<SubmitOutcome> {
     // Analyzing the remembered deck untouched keeps the choices it was saved with.
     const replay = restore ?? (restored !== null && restored.text === text ? restored : undefined);
     setRestored(null);
@@ -295,8 +352,9 @@ export function useDeckTool(source: CollectionSource) {
     const bracket = replay?.bracketOverride ?? null;
 
     recsRequest.current++;
-    swapRequest.current++;
+    setRound((n) => n + 1);
     setText(finalText);
+    setAnalyzedText(finalText);
     if (!keepOrigin) {
       setOriginText(finalText);
       originDeckRef.current = r.data.analysis?.deck ?? null;
@@ -307,17 +365,28 @@ export function useDeckTool(source: CollectionSource) {
     setLines(r.data.lines);
     setAnalysis(r.data.analysis);
     setBracketOverride(bracket);
-    setSwap(null);
     saveDeck({ text: finalText, bracketOverride: bracket, importedFrom: source });
     if (r.data.analysis) {
-      void loadRecs(buildContext(r.data.analysis, bracket, ownership), null);
+      if (recs) void loadCuts(buildContext(r.data.analysis, bracket, ownership), ownership);
+      else {
+        suggestedWith.current = ownershipKey;
+        setCut({ status: "idle" });
+      }
       // Every path that changes the deck goes through here, so this is the one place auto-save has to hang off.
-      if (openDeckRef.current) pendingSave.current = persist(r.data.analysis, bracket);
+      if (writeBack && openDeckRef.current) pendingSave.current = persist(r.data.analysis, bracket);
     } else {
-      setAdd({ status: "idle" });
+      suggestedWith.current = null;
       setCut({ status: "idle" });
     }
     return { parsed: true, analysis: r.data.analysis };
+  }
+
+  /**
+   * Loads the cuts a deckbuilder edit left waiting (`recs: false`), for when the player goes back to Upgrade. Does
+   * nothing when they are already loaded or loading.
+   */
+  function ensureCuts() {
+    if (analysis && context && cut.status === "idle") void loadCuts(context, ownership);
   }
 
   /**
@@ -333,8 +402,9 @@ export function useDeckTool(source: CollectionSource) {
   }
 
   /**
-   * Analyzes the current deck again and reloads cuts, then adds, reporting each stage. Used when a commander deck
-   * lookup has rebuilt the play-rate data. Each stage waits for both its request and the promise `onStage` returns, so
+   * Analyzes the current deck again and reloads cuts, then whatever builds on the tool, reporting each stage. Used
+   * when a commander deck lookup has rebuilt the play-rate data. The deck is unchanged, so this is not a new round:
+   * the journey keeps the player's choices. Each stage waits for both its work and the promise `onStage` returns, so
    * the caller can keep a stage on screen long enough to read. Resolves to the new analysis, or null when there's no
    * deck or it failed.
    */
@@ -348,44 +418,19 @@ export function useDeckTool(source: CollectionSource) {
     if (id !== recsRequest.current) return analyzed.data;
     setAnalysis(analyzed.data);
     const ctx = buildContext(analyzed.data, bracketOverride, ownership);
+    suggestedWith.current = ownershipKey;
     setCut({ status: "loading" });
-    setAdd({ status: "loading" });
     const [cutResult] = await Promise.all([recs.cut({ context: ctx }), onStage("cuts")]);
     if (id !== recsRequest.current) return analyzed.data;
     setCut(toAsync(cutResult));
-    const [addResult] = await Promise.all([recs.add({ context: ctx }), onStage("adds")]);
-    if (id !== recsRequest.current) return analyzed.data;
-    setAdd(toAsync(addResult));
-    if (swap) void loadSwap(ctx, swap.targetCardId);
+    await Promise.all([contextChange.current?.(ctx, { kind: "playRates" }), onStage("adds")]);
     return analyzed.data;
   }
 
-  /**
-   * Puts picked replacements into the decklist, each on its cut card's line, then analyzes the deck again. Edits the
-   * player's own text where the line can be found, so their sections and notes survive.
-   */
-  async function applySwaps(swaps: readonly { target: CardSummary; replacement: CardSummary }[]): Promise<SubmitOutcome> {
-    const byTarget = new Map(swaps.map((s) => [s.target.id, s.replacement]));
-    const textLines = text.split("\n");
-    let editedInPlace = true;
-    const nextLines = lines.map((l) => {
-      const replacement = l.resolution.status === "resolved" && l.line.section === "main" ? byTarget.get(l.resolution.card.id) : undefined;
-      if (!replacement) return l;
-      const raw = `1 ${replacement.name}`;
-      const at = [l.line.lineNo - 1, l.line.lineNo].find((i) => textLines[i]?.trim() === l.line.raw.trim());
-      if (at === undefined) editedInPlace = false;
-      else textLines[at] = raw;
-      return { ...l, line: { ...l.line, raw } };
-    });
-    const nextText = editedInPlace ? textLines.join("\n") : decklistText(nextLines);
+  /** Puts a decklist the tool produced (a journey's result, a deckbuilder edit) in the box and analyzes it, keeping the player's settings. */
+  function commitText(nextText: string, { recs = true }: { recs?: boolean } = {}): Promise<SubmitOutcome> {
     setText(nextText);
-    return submit({ text: nextText, bracketOverride, importedFrom }, { keepOrigin: true });
-  }
-
-  /** Puts a decklist the tool produced (a journey's result) in the box and analyzes it, keeping the player's settings. */
-  function commitText(nextText: string): Promise<SubmitOutcome> {
-    setText(nextText);
-    return submit({ text: nextText, bracketOverride, importedFrom: null }, { keepOrigin: true });
+    return submit({ text: nextText, bracketOverride, importedFrom: null }, { keepOrigin: true, recs });
   }
 
   /** Goes back to the decklist the player brought and analyzes it again. */
@@ -405,42 +450,47 @@ export function useDeckTool(source: CollectionSource) {
     trackOpenDeck(null);
     saveRequest.current++;
     recsRequest.current++;
-    swapRequest.current++;
+    suggestedWith.current = null;
+    setRound((n) => n + 1);
     setText("");
+    setAnalyzedText(null);
     setParse({ status: "idle" });
     setLines([]);
     setAnalysis(null);
     setImportedFrom(null);
     setBracketOverride(null);
-    setAdd({ status: "idle" });
     setCut({ status: "idle" });
-    setSwap(null);
   }
 
   function changeBracket(bracket: Bracket) {
     setBracketOverride(bracket);
     updateSavedDeck({ bracketOverride: bracket });
     if (!analysis) return;
-    void loadRecs(buildContext(analysis, bracket, ownership), swap?.targetCardId ?? null);
-    // The bracket is stored on the deck, so it is a change to write back; the cards are unchanged.
-    if (openDeckRef.current) void persist(analysis, bracket);
+    reloadFor(buildContext(analysis, bracket, ownership), ownership, { kind: "bracket", previous: bracketOverride });
+    // The bracket is stored on the deck, so it is a change to write back; the cards are unchanged. Tracked like any
+    // other write, so leaving for the deck's editor waits for it.
+    if (openDeckRef.current) pendingSave.current = persist(analysis, bracket);
   }
 
-
-  /** Switches owned-only suggestions on or off and reloads cuts, adds and any open swap with the new pool. */
+  /** Changes what the collection does to suggestions and reloads them with it. */
   function changeCollectionMode(mode: CollectionMode) {
     setCollectionMode(mode);
     writeCollectionMode(mode);
-    if (analysis) void loadRecs(buildContext(analysis, bracketOverride, ownershipFor(mode)), swap?.targetCardId ?? null);
+    const collection = ownershipFor(mode);
+    if (analysis) reloadFor(buildContext(analysis, bracketOverride, collection), collection, { kind: "collection" });
   }
 
-  function openSwap(targetCardId: CardId) {
-    if (context) void loadSwap(context, targetCardId);
-  }
-
-  function closeSwap() {
-    swapRequest.current++;
-    setSwap(null);
+  /**
+   * Puts back the bracket from before a change the player then took back (the journey's Revert). Only the cuts reload:
+   * whatever builds on the tool kept its lists from before the change, so it isn't told.
+   */
+  function restoreBracket(bracket: Bracket | null) {
+    setBracketOverride(bracket);
+    updateSavedDeck({ bracketOverride: bracket });
+    if (!analysis) return;
+    if (cut.status !== "idle") void loadCuts(buildContext(analysis, bracket, ownership), ownership);
+    // An estimated bracket has nothing to write: the deck keeps the one the change stored until the player picks again.
+    if (openDeckRef.current && bracket !== null) pendingSave.current = persist(analysis, bracket);
   }
 
   /** Stops editing the account deck but keeps the decklist on screen: Clear is what empties the tool. */
@@ -467,7 +517,6 @@ export function useDeckTool(source: CollectionSource) {
     /** True while the box holds the remembered deck, untouched, and it has not been analyzed yet. */
     showsRestoredDeck: restored !== null && restored.text === text,
     refreshRecommendations,
-    applySwaps,
     commitText,
     /** Resolves once the open deck's last auto-save has landed (or failed, which the open deck bar reports). */
     whenSaved: () => pendingSave.current,
@@ -481,17 +530,20 @@ export function useDeckTool(source: CollectionSource) {
     lines,
     unresolvedLines: lines.filter((l) => l.resolution.status !== "resolved"),
     analysis,
+    /** Changes with each analysis (and Clear), not with settings. */
+    round,
+    /** True when the decklist box no longer holds the text the analysis on screen was read from. */
+    stale: analysis !== null && text !== analyzedText,
     context,
+    /** The player's own bracket choice; null while the bracket is estimated. */
+    bracketOverride,
     changeBracket,
-    /** null when there's no collection to limit suggestions to. */
+    restoreBracket,
     /** null when there's no collection to apply. */
     collectionMode: hasCollection ? collectionMode : null,
     changeCollectionMode,
-    add,
     cut,
-    swap,
-    openSwap,
-    closeSwap,
+    ensureCuts,
   };
 }
 

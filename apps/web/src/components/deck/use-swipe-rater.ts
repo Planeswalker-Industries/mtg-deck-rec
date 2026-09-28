@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CardSummary, CommanderKeyId, CutReason, RecContext, SwapSuggestion } from "@mtg/core/contract";
+import type { CardId, CardSummary, CommanderKeyId, CutReason, RecContext, SwapSuggestion } from "@mtg/core/contract";
 import { getApis } from "@/lib/api/client";
 import { shuffled } from "@/lib/shuffle";
 
@@ -49,6 +49,10 @@ export function useSwipeRater({
   picked = [],
   onPick,
   onVote,
+  onKeep,
+  onDecline,
+  declined = [],
+  skipTarget,
   onFinish,
 }: {
   targets: readonly RaterTarget[];
@@ -58,23 +62,42 @@ export function useSwipeRater({
   picked?: readonly PickedSwap[] | undefined;
   onPick?: ((swap: PickedSwap) => void) | undefined;
   onVote?: ((vote: SwipeVote) => void) | undefined;
+  /** Deck tool: the player kept the card rather than swap it, so its host can remember the choice. */
+  onKeep?: ((card: CardSummary) => void) | undefined;
+  /** Deck tool: the player passed on a replacement for a card, so its host can stop offering it. */
+  onDecline?: ((target: CardSummary, replacement: CardSummary) => void) | undefined;
+  /**
+   * Deck tool: replacements already passed on, by card. Read once, when the sitting opens: one passed on during it is
+   * stepped past by position, and dropping it from the list as well would skip the one after it.
+   */
+  declined?: readonly { targetId: CardId; replacementId: CardId }[] | undefined;
+  /** Deck tool: a card to step over when its turn comes, e.g. one no longer in the deck. */
+  skipTarget?: ((card: CardSummary) => boolean) | undefined;
   onFinish: () => void;
 }) {
   const [targetIndex, setTargetIndex] = useState(0);
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [results, setResults] = useState<ReadonlyMap<number, Candidates>>(new Map());
   const [voteError, setVoteError] = useState<string | null>(null);
+  const [declinedAtStart] = useState(() => new Set(declined.map((d) => `${d.targetId}:${d.replacementId}`)));
   const requested = useRef(new Set<number>());
   const sessionId = useRef<string | null>(null);
 
-  // The rater passes over cards that turn out to have no replacements: there's nothing to rate.
+  // Cards to step over come off the list as their turn comes, rather than out of it: the list is dealt by position.
+  // The rater also passes over cards that turn out to have no replacements: there's nothing to rate.
   let index = targetIndex;
-  while (mode === "rater" && index < targets.length) {
-    const r = results.get(targets[index]?.card.id ?? -1);
+  while (index < targets.length) {
+    const card = targets[index]!.card;
+    if (skipTarget?.(card)) {
+      index++;
+      continue;
+    }
+    if (mode !== "rater") break;
+    const r = results.get(card.id);
     if (r?.status !== "ready" || r.suggestions.length > 0) break;
     index++;
   }
-  const allSkipped = mode === "rater" && targets.length > 0 && index >= targets.length;
+  const allSkipped = targets.length > 0 && index >= targets.length;
 
   useEffect(() => {
     if (allSkipped) onFinish();
@@ -97,9 +120,16 @@ export function useSwipeRater({
 
   const target = targets[index] ?? null;
   const loaded = target ? results.get(target.card.id) : undefined;
-  // In the deck tool, a card already picked for an earlier cut is in the deck now, so it isn't offered again.
+  // In the deck tool, a card already swapped in is in the deck now, and one swapped out was just taken out, so neither
+  // is offered again; nor is one the player passed on for this card in an earlier sitting.
   const candidates =
-    loaded?.status === "ready" ? loaded.suggestions.filter((s) => !picked.some((p) => p.replacement.id === s.card.id)) : [];
+    loaded?.status === "ready" && target
+      ? loaded.suggestions.filter(
+          (s) =>
+            !picked.some((p) => p.replacement.id === s.card.id || p.target.id === s.card.id) &&
+            !declinedAtStart.has(`${target.card.id}:${s.card.id}`),
+        )
+      : [];
   const candidate = candidates[candidateIndex] ?? null;
 
   function nextTarget() {
@@ -140,6 +170,7 @@ export function useSwipeRater({
       onPick?.({ target: target.card, replacement: candidate.card });
       nextTarget();
     } else {
+      onDecline?.(target.card, candidate.card);
       setCandidateIndex(candidateIndex + 1);
     }
   }
@@ -157,6 +188,9 @@ export function useSwipeRater({
     swapIn: () => vote(1),
     pass: () => vote(-1),
     /** Moves on to the next card without a vote: keeps the card in the deck tool, skips it in the rater. */
-    keep: nextTarget,
+    keep: () => {
+      if (mode === "deck" && target) onKeep?.(target.card);
+      nextTarget();
+    },
   };
 }

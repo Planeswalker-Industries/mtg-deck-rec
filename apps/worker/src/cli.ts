@@ -2,6 +2,8 @@ import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { measureCorpusStability } from './jobs/corpus-stability';
 import { profileTags } from './jobs/profile-tags';
 import { serveCommanderRequests } from './jobs/serve-commander-requests';
+import { evaluateEdhrecPrior } from './jobs/edhrec-prior-eval';
+import { importEdhrec } from './jobs/import-edhrec';
 import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
 import { syncCatalog } from './jobs/sync-catalog';
 import { syncSearchIndex } from './jobs/sync-search-index';
@@ -22,10 +24,14 @@ Commands:
                             collection from scratch and move the aliases when it is done)
   aggregate:corpus [--file path] [--force]
                             Deck corpus (JSONL of slim decks; default: the Archidekt spike) → commander and card play-rate stats
+  import:edhrec [--dir path] [--force]
+                            EDHREC commander pages saved by X:\mtg_proj\tools\edhrec-crawl.mjs → external commander and card stats
   serve:commander-requests [--once]
                             Serve deck lookups the web app queues for commanders with too few decks (--once: until the queue is empty)
   spike:corpus:stability [--repeats N]
                             How many decks a commander needs for stable card rankings (split-half resampling report)
+  spike:edhrec:prior [--repeats N]
+                            Holdout test: does EDHREC beat the colour baseline as the prior for commanders with few decks?
   spike:archidekt:rank      Rank our legal commanders by how often their 100-card Archidekt decks are updated (1 request each, resumable)
   spike:archidekt:verify [--top N]
                             Discount the top ranked commanders by how many of their listed decks they actually lead
@@ -71,10 +77,17 @@ async function main(): Promise<void> {
       await aggregateCorpus({ file: fileIndex === -1 ? undefined : args[fileIndex + 1], force });
       return;
     }
+    case 'import:edhrec': {
+      const dirIndex = args.indexOf('--dir');
+      await importEdhrec({ dir: dirIndex >= 0 ? args[dirIndex + 1] : undefined, force });
+      return;
+    }
     case 'serve:commander-requests':
       return serveCommanderRequests({ once: args.includes('--once') });
     case 'spike:corpus:stability':
       return measureCorpusStability({ repeats: numberFlag(args, 'repeats') });
+    case 'spike:edhrec:prior':
+      return evaluateEdhrecPrior({ repeats: numberFlag(args, 'repeats') });
     case 'spike:archidekt:rank':
       return rankCommanders();
     case 'spike:archidekt:verify':

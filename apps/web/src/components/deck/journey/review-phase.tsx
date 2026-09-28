@@ -23,7 +23,6 @@ function Curve({ curve, max, label, tone }: { curve: number[]; max: number; labe
   const barLabel = (i: number) => (i === CURVE_TOP_MANA_VALUE ? `${i}+` : String(i));
   return (
     <figure className="flex flex-col gap-1">
-      <figcaption className="text-xs text-muted-foreground">Mana curve, nonland cards</figcaption>
       <div aria-hidden className="flex h-20 items-end gap-0.5 border-b border-seam">
         {curve.map((count, i) => (
           <div key={i} className="group relative flex h-full flex-1 items-end justify-center" title={`Mana value ${barLabel(i)}: ${count}`}>
@@ -95,6 +94,7 @@ function StatsColumn({ title, stats, size, curveMax, tone }: { title: string; st
 export function ReviewPhase({
   journey,
   busy,
+  stale = false,
   onSave,
   onReanalyze,
   onStartOver,
@@ -102,6 +102,11 @@ export function ReviewPhase({
   journey: DeckJourney;
   /** A commit is under way (re-parsing the result); the actions wait. */
   busy: boolean;
+  /**
+   * The decklist box has changed since this round's deck was analyzed. Saving or re-analyzing the round would write its
+   * result over those edits, so both wait until the new decklist is analyzed.
+   */
+  stale?: boolean;
   onSave: () => void;
   onReanalyze: () => void;
   onStartOver: () => void;
@@ -150,16 +155,21 @@ export function ReviewPhase({
       </PhaseIntro>
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="lg" onClick={onSave} disabled={busy}>
+        <Button type="button" size="lg" onClick={onSave} disabled={busy || stale}>
           Save
         </Button>
-        <Button type="button" size="lg" variant="outline" onClick={onReanalyze} disabled={busy}>
+        <Button type="button" size="lg" variant="outline" onClick={onReanalyze} disabled={busy || stale}>
           Re-analyze
         </Button>
         <Button type="button" size="lg" variant="ghost" onClick={onStartOver} disabled={busy}>
           Start over
         </Button>
       </div>
+      {stale && (
+        <p role="status" className="-mt-2 text-sm text-muted-foreground">
+          The decklist has changed since this deck was analyzed. Analyze it to save or re-analyze from here.
+        </p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <StatsColumn title="Before" stats={before} size={beforeSize} curveMax={curveMax} tone="before" />

@@ -177,6 +177,24 @@ The index and the search API run on the VPS (two Dokploy stacks, Traefik in fron
 
 ---
 
+### T039: Take votes off the Server Action queue
+
+**Priority:** LOW | **Area:** Frontend / Performance | **Status:** Not started
+
+Server Actions run one at a time per page. Every swipe in the Replace phase fires `castVote` (a Server Action), and a running deck lookup polls `getCommanderRequest` every 2 s, so parse, analyze and save calls can queue behind them: Review's Save waits for every vote swiped before it. Found in the deck-flow audit of 2026-09-27 and left out of its fixes, because it changes a transport rather than fixing a bug.
+
+**Files:**
+- `apps/web/src/lib/api/real.ts` — `realActions.castVote`
+- `apps/web/src/app/deck/actions.ts` — `castVoteAction`, `getCommanderRequestAction`
+- `apps/web/src/lib/server/recs-route.ts` — the route-handler pattern to follow (rate limit, schema, visitor key)
+
+**Acceptance criteria:**
+- [ ] `POST /api/votes` with the `vote` rate-limit bucket and `castVoteInputSchema`; `realActions.castVote` calls it with fetch (the contract interface doesn't change)
+- [ ] Decide whether the lookup poll moves the same way
+- [ ] Measure Review's Save after a fast Replace sitting, before and after
+
+---
+
 ## Accounts and Collections
 
 ### T025: Google sign-in credentials

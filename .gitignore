@@ -44,3 +44,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Local captures (HAR files hold session cookies)
+docs/local_data/
