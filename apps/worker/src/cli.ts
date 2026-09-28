@@ -2,6 +2,7 @@ import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { measureCorpusStability } from './jobs/corpus-stability';
 import { profileTags } from './jobs/profile-tags';
 import { serveCommanderRequests } from './jobs/serve-commander-requests';
+import { importEdhrec } from './jobs/import-edhrec';
 import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
 import { syncCatalog } from './jobs/sync-catalog';
 import { syncSearchIndex } from './jobs/sync-search-index';
@@ -22,6 +23,8 @@ Commands:
                             collection from scratch and move the aliases when it is done)
   aggregate:corpus [--file path] [--force]
                             Deck corpus (JSONL of slim decks; default: the Archidekt spike) → commander and card play-rate stats
+  import:edhrec [--dir path] [--force]
+                            EDHREC commander pages saved by X:\mtg_proj\tools\edhrec-crawl.mjs → external commander and card stats
   serve:commander-requests [--once]
                             Serve deck lookups the web app queues for commanders with too few decks (--once: until the queue is empty)
   spike:corpus:stability [--repeats N]
@@ -69,6 +72,11 @@ async function main(): Promise<void> {
     case 'aggregate:corpus': {
       const fileIndex = args.indexOf('--file');
       await aggregateCorpus({ file: fileIndex === -1 ? undefined : args[fileIndex + 1], force });
+      return;
+    }
+    case 'import:edhrec': {
+      const dirIndex = args.indexOf('--dir');
+      await importEdhrec({ dir: dirIndex >= 0 ? args[dirIndex + 1] : undefined, force });
       return;
     }
     case 'serve:commander-requests':

@@ -211,8 +211,10 @@ Consent covers the data. These rules cover how it is fetched, and they don't cha
   `/embed/decklist`.
 - **An honest User-Agent**, with no fingerprint spoofing, UA rotation, proxies or challenge solvers.
 - **A block stops the source.** A 403, a Cloudflare challenge or a bot wall switches that source off, the same way
-  the share-import kill switch does, until someone re-enables it by hand. `json.edhrec.com` already returned 403 to
-  an automated fetch on 2026-09-21, so the EDHREC adapter reads the public HTML commander pages instead.
+  the share-import kill switch does, until someone re-enables it by hand. `json.edhrec.com` is a static S3 bucket
+  behind CloudFront: a key that doesn't exist answers 403 `AccessDenied`, which is what the 2026-09-21 fetch saw. It
+  serves every commander page as JSON (all 8,135 fetched on 2026-09-28), so the adapter reads that, and counts
+  S3's `AccessDenied` as a missing page rather than a block.
 
 ## External statistics (EDHREC)
 
@@ -220,18 +222,32 @@ EDHREC publishes aggregates, not decklists, and its data comes from Moxfield and
 **statistics source, never a deck source**. Adding it to deck counts would count Archidekt decks twice and still
 yield no pairs.
 
+Loaded locally on 2026-09-28 (`import:edhrec`, migration `20260928000200_external_commander_stats.sql`). Commanders
+are keyed by their own cards rather than `commander_keys`, because EDHREC covers ~6,800 commanders and `commander_keys`
+rows are commander pages:
+
 ```sql
+create table public.external_commanders (
+  id integer generated always as identity primary key,
+  source text not null,                           -- 'edhrec'
+  slug text not null,                             -- the source's page slug
+  commander_1 integer not null references public.cards (id),
+  commander_2 integer references public.cards (id),
+  deck_count integer not null,                    -- their published sample size
+  fetched_at timestamptz not null,
+  unique (source, slug)
+);
 create table public.external_commander_card_stats (
-  source           text not null,                 -- 'edhrec'
-  commander_key_id integer not null references public.commander_keys (id) on delete cascade,
-  card_id          integer not null references public.cards (id) on delete cascade,
-  inclusion        real not null,                 -- their published share
-  synergy          real,
-  deck_count       integer,                       -- their published sample size
-  fetched_at       timestamptz not null,
-  primary key (source, commander_key_id, card_id)
+  external_commander_id integer not null references public.external_commanders (id),
+  card_id          integer not null references public.cards (id),
+  decks_with       integer not null,              -- inclusion = decks_with / potential_decks
+  potential_decks  integer not null,              -- below deck_count for cards newer than some decks
+  synergy          real,                          -- theirs, as published
+  primary key (external_commander_id, card_id)
 );
 ```
+
+EDHREC trims its lists near 5% of decks for big commanders, so a missing row means "not published".
 
 - **As a prior.** For a commander below `minDecks`, `p̂(B|K)` shrinks toward EDHREC's inclusion instead of the
   baseline p0: `(x + α·p_ext) / (n + α)`. As our own decks grow, our numbers take over, so a gap in EDHREC's
