@@ -43,7 +43,7 @@ export function ReplacePhase({
   const context = journey.workingContext;
 
   const intro = (
-    <PhaseIntro title="Replace" brief={view === "swipe" ? "Swipe right to swap in, left for the next one." : undefined}>
+    <PhaseIntro title="Swap" brief={view === "swipe" ? "Swipe right to swap in, left for the next one." : undefined}>
       Cards that do their job less well than something else could. Swipe right on a replacement to swap it in, left to see
       the next one, or keep the card.
     </PhaseIntro>

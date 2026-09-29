@@ -60,7 +60,7 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
   await recs.getByRole("button", { name: "Done adding for now" }).click();
 
   // Replace: weaker fits, each with a replacement. The deck may have none, which goes on to Review.
-  await expect(steps.getByRole("button", { name: "Replace" })).toHaveAttribute("aria-current", "step");
+  await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const toReview = recs.getByRole("button", { name: "Next: review the deck" });
   await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });
@@ -68,7 +68,7 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
   else await toReview.click();
 
   // Review: before and after, and what changed.
-  await expect(recs.getByRole("heading", { name: "Review" })).toBeVisible();
+  await expect(recs.getByRole("heading", { name: "Done" })).toBeVisible();
   await expect(recs.getByRole("region", { name: "After" })).toBeVisible();
   await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
 

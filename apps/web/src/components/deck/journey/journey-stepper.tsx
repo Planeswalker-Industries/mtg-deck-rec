@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors; tone: string; glow: string }> = {
   cut: { name: "Cut", Icon: Scissors, tone: "text-cut", glow: "shadow-[inset_0_-2px_0_var(--cut)]" },
   add: { name: "Add", Icon: Plus, tone: "text-add", glow: "shadow-[inset_0_-2px_0_var(--add)]" },
-  replace: { name: "Replace", Icon: Repeat2, tone: "text-replace", glow: "shadow-[inset_0_-2px_0_var(--replace)]" },
-  review: { name: "Review", Icon: ClipboardList, tone: "text-primary", glow: "shadow-[inset_0_-2px_0_var(--primary)]" },
+  replace: { name: "Swap", Icon: Repeat2, tone: "text-replace", glow: "shadow-[inset_0_-2px_0_var(--replace)]" },
+  review: { name: "Done", Icon: ClipboardList, tone: "text-primary", glow: "shadow-[inset_0_-2px_0_var(--primary)]" },
 };
 
 /**

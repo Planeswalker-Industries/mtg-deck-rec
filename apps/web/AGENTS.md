@@ -55,7 +55,7 @@ This app targets Next.js 16.3. APIs differ from older versions. Read the bundled
 
 ### Deck tool (`/deck`)
 
-- **Upgrade mode (deck journey, contract v11)** is a guided round of Cut → Add → Replace → Review; the other mode is the Deckbuilder. The round's state is a pure reducer in `@mtg/core/journey` (tested), driven by `components/deck/journey/use-deck-journey.ts`
+- **Upgrade mode (deck journey, contract v11)** is a guided round of Cut → Add → Replace → Review (on screen: Cut, Add, Swap, Done); the other mode is the Deckbuilder. The round's state is a pure reducer in `@mtg/core/journey` (tested), driven by `components/deck/journey/use-deck-journey.ts`
   - **Cut** deals `CutSuggestion.severity === 'mandatory'`: rule problems plus severe misfits (play-rate score under `app_config.corpus.severeSynergyScore`). The list view pre-marks them and lets the player cut any card. **Replace** deals the `suggested` ones, each with a replacement, through `SwipeRater`
   - **Add** fills `openSlots`: room below 100 cards, not the number of cuts. Accepting a card asks `recs.add` again against the deck as it stands; passing only moves on, until every card on hand has been passed. Every add request sends the round's passed cards as `excludeCardIds` (contract v17). Entering Add with no open slots asks for nothing
   - Every rec call uses `workingDeck(state)`, so nothing is re-parsed until Review commits: Save and Re-analyze write `decklistFor(...)` into the box and analyze it (`useDeckTool.commitText`); Start over goes back to `originText`. Save and Re-analyze wait while `useDeckTool.stale`, so a round can't overwrite unanalyzed edits

@@ -145,7 +145,7 @@ export function ReviewPhase({
 
   return (
     <div className="flex flex-col gap-5">
-      <PhaseIntro title="Review">
+      <PhaseIntro title="Done">
         {changed
           ? `${removed.reduce((n, e) => n + e.quantity, 0)} out, ${added.reduce((n, e) => n + e.quantity, 0)} in.`
           : "No changes this round."}{" "}

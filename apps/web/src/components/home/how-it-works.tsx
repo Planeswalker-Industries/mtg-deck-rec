@@ -37,7 +37,7 @@ const STEPS: { step: number; title: string; desc: string; media: StepMedia }[] =
   },
   {
     step: 3,
-    title: "Cut/Add/Replace",
+    title: "Cut/Add/Swap",
     desc: "Tailored recommendations to swap out expensive cards or improve your existing deck with the cards you already own.",
     media: { src: "/swipe_gif.gif", hiSrc: "/swipe_gif_hi.gif", width: 374, height: 378 },
   },
