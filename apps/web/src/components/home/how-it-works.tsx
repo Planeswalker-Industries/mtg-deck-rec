@@ -8,12 +8,11 @@ import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { sampleCard } from "@/lib/sample-cards";
 
-/** Placeholder copy for the column beside the steps; the owner will replace it. */
 const HOW_IT_WORKS_BLURB =
-  "Bring the cards you own and the deck you play. We read both, then show what to cut, what to add, and which of your own cards can stand in for the expensive singles.";
+  "It's exhausting scrolling sites like Moxfield and EDHREC, seeing awesome decks and being unsure what to swap in where. Whether you want to tune up your own deck, build a netdeck from the cards you already own, or have us assemble a starting point around the cool legendary you just pulled, we've got you covered.";
 
-/** Thumbnails in the vignettes render at about 64 px, well inside Scryfall's `small`. */
-const THUMB_SIZES = "64px";
+/** Thumbnails in the vignettes render at about 48 px, well inside Scryfall's `small`. */
+const THUMB_SIZES = "48px";
 
 /** Step 1: a few cards out of a binder, each with how many you own. Offsets fan them like a loose pile. */
 const COLLECTION_PILE: { card: CardSummary; owned: number; className: string }[] = [
@@ -36,8 +35,8 @@ const ADD_CARD = sampleCard("Guardian Project");
 const REPLACE_FROM = sampleCard("Three Visits");
 const REPLACE_TO = sampleCard("Farseek");
 
-/** `width` is a Tailwind width class; thumbnails default to 64 px. */
-function Thumb({ card, width = "w-16", className }: { card: CardSummary; width?: string; className?: string }) {
+/** `width` is a Tailwind width class; thumbnails default to 48 px. */
+function Thumb({ card, width = "w-12", className }: { card: CardSummary; width?: string; className?: string }) {
   return (
     <div className={cn("shrink-0", width, className)}>
       <CardImage card={card} variant="small" sizes={THUMB_SIZES} alt="" />
@@ -47,11 +46,11 @@ function Thumb({ card, width = "w-16", className }: { card: CardSummary; width?:
 
 function CollectionVignette() {
   return (
-    <div className="flex items-center justify-center -space-x-5">
+    <div className="flex items-center justify-center -space-x-4">
       {COLLECTION_PILE.map(({ card, owned, className }) => (
         <div key={card.name} className={cn("relative", className)}>
           <Thumb card={card} />
-          <span className="absolute -top-2 -right-2 rounded-sm border border-seam bg-background px-1.5 text-xs font-bold tabular-nums text-primary">
+          <span className="absolute -top-2 -right-2 rounded-sm border border-seam bg-background px-1 text-[0.625rem] font-bold tabular-nums text-primary">
             ×{owned}
           </span>
         </div>
@@ -62,7 +61,7 @@ function CollectionVignette() {
 
 function DecklistVignette() {
   return (
-    <div className="w-full max-w-[13rem] rotate-[-1.5deg] rounded-sm border border-seam bg-sleeve px-3 py-2 text-left text-xs leading-relaxed text-foreground/80 shadow-[0_8px_18px_-10px_rgb(0_0_0/0.8)]">
+    <div className="w-full max-w-[11.5rem] rotate-[-1.5deg] rounded-sm border border-seam bg-sleeve px-2.5 py-1.5 text-left text-[0.6875rem] leading-snug text-foreground/80 shadow-[0_8px_18px_-10px_rgb(0_0_0/0.8)]">
       {DECKLIST_LINES.map((line) => (
         <p key={line} className="truncate">
           {line}
@@ -78,19 +77,19 @@ function Marked({ card, tone }: { card: CardSummary; tone: "cut" | "add" | "repl
   return (
     <div className="flex flex-col gap-1">
       <span className={cn("h-1 rounded-full", bar)} />
-      <Thumb card={card} width="w-11" />
+      <Thumb card={card} width="w-9" />
     </div>
   );
 }
 
 function JobsVignette() {
   return (
-    <div className="flex items-end justify-center gap-2">
+    <div className="flex items-end justify-center gap-1.5">
       <Marked card={CUT_CARD} tone="cut" />
       <Marked card={ADD_CARD} tone="add" />
       <div className="flex items-center gap-1">
         <Marked card={REPLACE_FROM} tone="replace" />
-        <ArrowRight aria-hidden className="size-3.5 shrink-0 text-replace" />
+        <ArrowRight aria-hidden className="size-3 shrink-0 text-replace" />
         <Marked card={REPLACE_TO} tone="replace" />
       </div>
     </div>
@@ -126,10 +125,12 @@ export function HowItWorks() {
   return (
     <Band
       aria-labelledby="how-it-works"
-      inner="grid gap-6 py-10 md:py-14 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-10"
+      inner="grid gap-6 py-10 md:py-12 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-10"
     >
       <div>
-        <SectionHeading id="how-it-works">How it works</SectionHeading>
+        <SectionHeading id="how-it-works" eyebrow="How it works">
+          No more sifting through chaff
+        </SectionHeading>
         <p className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">{HOW_IT_WORKS_BLURB}</p>
       </div>
       <div role="list" className="flex flex-col gap-3 md:flex-row md:items-stretch md:gap-1.5">
@@ -137,22 +138,22 @@ export function HowItWorks() {
           <Fragment key={step}>
             <Panel role="listitem" padding="none" surface="table" className="flex flex-1 flex-col overflow-hidden">
               {/* The vignette is illustration; the heading and sentence below carry the meaning. */}
-              <div aria-hidden className="flex h-28 items-center justify-center border-b border-seam px-3">
+              <div aria-hidden className="flex h-24 items-center justify-center border-b border-seam px-3">
                 {vignette}
               </div>
-              <div className="flex gap-3 p-4">
-                <span aria-hidden className="font-heading text-2xl leading-none font-semibold text-primary">
-                  {step}
+              <div className="flex gap-2 px-4 py-3.5">
+                <span aria-hidden className="text-[0.9375rem] leading-snug font-bold text-primary tabular-nums">
+                  {step}.
                 </span>
                 <div>
-                  <h3 className="font-heading text-lg leading-tight font-semibold">{title}</h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{desc}</p>
+                  <h3 className="text-[0.9375rem] leading-snug font-bold">{title}</h3>
+                  <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">{desc}</p>
                 </div>
               </div>
             </Panel>
             {i < STEPS.length - 1 && (
               <div aria-hidden className="hidden shrink-0 items-center justify-center text-muted-foreground md:flex">
-                <ChevronRight className="size-4" />
+                <ChevronRight className="size-3.5" />
               </div>
             )}
           </Fragment>

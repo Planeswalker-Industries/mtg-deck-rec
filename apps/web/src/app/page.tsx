@@ -35,18 +35,22 @@ function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
 async function FeaturedCommandersSection() {
   const commanders = await getFeaturedCommanders();
   return (
-    <section role="region" aria-label="Popular Commanders" className="py-10 md:py-12 lg:col-span-2 lg:pr-8">
-      <SectionHeading>Popular Commanders</SectionHeading>
-      <div className="mt-6">
-        <FeaturedCommanders commanders={commanders} />
-      </div>
+    <section aria-labelledby="hot-commanders" className="py-10 md:py-12 lg:col-span-2 lg:pr-8">
+      <FeaturedCommanders
+        commanders={commanders}
+        intro={
+          <SectionHeading id="hot-commanders" eyebrow="Featured">
+            Hot Commanders
+          </SectionHeading>
+        }
+      />
     </section>
   );
 }
 
 /**
  * The closing line, one short sentence to a line, over art that runs to the window edge. The seam on its left divides
- * it from Popular Commanders. Credits its art only when it isn't the hero's.
+ * it from Hot Commanders. Credits its art only when it isn't the hero's.
  */
 function StrongestDecks() {
   return (
@@ -86,9 +90,15 @@ export default function Home() {
       <section className="relative isolate mx-[calc(50%-50vw)] -mt-4 w-[100vw] overflow-hidden border-b border-seam">
         <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" priority />
 
-        <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 pt-8 pb-10 md:min-h-[30rem] md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-center md:gap-4 md:py-14 lg:min-h-[36rem] lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
+        {/* The columns stretch, so the credit at the foot of the fan's column ends level with "No account necessary". */}
+        <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 pt-4 pb-5 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-4 md:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
           {/* Cards come first on a phone: they say what this is faster than any sentence. */}
-          <HeroFan />
+          <div className="order-first flex flex-col md:order-last">
+            <div className="flex flex-1 items-center justify-center">
+              <HeroFan />
+            </div>
+            <ArtCredit vista={HERO_VISTA} className="hidden text-right text-xs leading-5 text-muted-foreground md:block" />
+          </div>
 
           <div className="relative z-20 max-w-2xl">
             <h1 className="font-heading text-[2.25rem] leading-[1.04] font-semibold tracking-[-0.02em] sm:text-[2.75rem] lg:text-[3.5rem]">
@@ -123,12 +133,9 @@ export default function Home() {
                 Import your collection
               </Link>
             </div>
-            <p className="mt-3 text-sm text-muted-foreground">No account necessary</p>
+            <p className="mt-3 text-sm leading-5 text-muted-foreground">No account necessary</p>
+            <ArtCredit vista={HERO_VISTA} className="mt-5 text-xs text-muted-foreground md:hidden" />
           </div>
-        </div>
-
-        <div className="mx-auto w-full max-w-6xl px-4 pb-3 md:absolute md:inset-x-0 md:bottom-0 md:flex md:justify-end">
-          <ArtCredit vista={HERO_VISTA} />
         </div>
       </section>
 

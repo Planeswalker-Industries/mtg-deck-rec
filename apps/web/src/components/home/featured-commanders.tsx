@@ -2,13 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Image from "next/image";
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { cn } from "cn";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "motion/react";
 import type { FeaturedCommander } from "@/lib/server/featured";
 import { ColorIdentity } from "@/components/deck/color-identity";
-import { buttonVariants } from "@/components/ui/button";
 import { formatDeckCount } from "@/lib/labels";
 import type { ColorKey } from "@/lib/featured-decks";
 import { DeckOverview } from "./deck-overview";
@@ -16,10 +13,8 @@ import { DeckOverview } from "./deck-overview";
 type Direction = 1 | -1;
 
 const AUTO_ADVANCE_MS = 7_000;
-/** The detail slides sideways, the way the tiles run, and only this far: the tiles sit right above it. */
+/** The wheel slides sideways, the way the tiles run, and only this far. */
 const DETAIL_SLIDE_PX = 32;
-
-const COLOR_NAME: Record<string, string> = { W: "White", U: "Blue", B: "Black", R: "Red", G: "Green" };
 
 const IDENTITY_ORDER: readonly ColorKey[] = ["W", "U", "B", "R", "G"];
 
@@ -31,22 +26,23 @@ function fixtureIdentity(counts: Record<ColorKey, number>): string {
   return IDENTITY_ORDER.filter((key) => counts[key] > 0).join("");
 }
 
-/** "White, Black" for the plan's subtitle; "Colorless" when the identity is empty. */
-function colorNames(identity: string): string {
-  const names = [...identity].map((c) => COLOR_NAME[c] ?? c);
-  return names.length > 0 ? names.join(", ") : "Colorless";
-}
-
 /**
- * The featured commanders: the selected deck's overview wheel beside a row of tiles (art, colours, deck count), and
- * the selected commander's name and Build this Deck under both.
+ * The featured commanders: the section heading and the selected deck's overview wheel beside a row of tiles (art,
+ * colours, deck count).
  * Takes all three commanders' server-rendered data as props. Auto-advances on a timer, takes manual input from
  * the tiles and the arrow keys, pauses on hover and focus, and respects reduced motion.
  *
- * Only the selected commander's wheel and name are in the DOM. Tile names are not headings: the detail's `h3` is the
- * commander on show.
+ * Only the selected commander's wheel is in the DOM. The selected tile's gold border and `aria-current` say which
+ * commander it belongs to.
  */
-export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommander[] }) {
+export function FeaturedCommanders({
+  commanders,
+  intro,
+}: {
+  commanders: FeaturedCommander[];
+  /** The section heading, set above the wheel. */
+  intro: ReactNode;
+}) {
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState<Direction>(1);
   const [tick, setTick] = useState(0);
@@ -93,8 +89,6 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
   const current = commanders[index];
   if (!current || count === 0) return null;
 
-  const card = current.card;
-
   // Reduced motion: a cross-fade in place of the slide (motion.dev's accessibility guidance).
   const variants: Variants = reduceMotion
     ? {
@@ -109,7 +103,7 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
         exit: (d: Direction) => ({ x: -d * DETAIL_SLIDE_PX, opacity: 0 }),
       };
 
-  // One selection change animates two places (the wheel and the name row); both use the same keyed swap.
+  // The wheel swaps with the selection; a keyed presence so the old deck fades out before the new one comes in.
   const swap = (key: string, content: ReactNode) => (
     <AnimatePresence mode="wait" custom={direction} initial={false}>
       <motion.div
@@ -132,7 +126,7 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
   return (
     <div
       aria-live="polite"
-      className="relative flex flex-col gap-5"
+      className="relative"
       onMouseEnter={() => {
         pausedRef.current = true;
       }}
@@ -146,16 +140,20 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
         pausedRef.current = false;
       }}
     >
-      {/* The wheel is fixed-width so a deck with more legend rows doesn't shove the tiles sideways. */}
-      <div className="grid gap-5 md:grid-cols-[16.5rem_minmax(0,1fr)] md:items-start md:gap-6">
-        {swap(
-          `overview-${current.deck.slug}`,
-          <DeckOverview
-            composition={current.deck.composition}
-            colorCounts={current.deck.colorCounts}
-            cardCount={current.deck.cardCount}
-          />,
-        )}
+      {/* The section's heading and the selected deck's wheel on the left, the tiles on the right. */}
+      <div className="grid gap-6 md:grid-cols-[14rem_minmax(0,1fr)] md:items-start md:gap-8">
+        <div className="flex flex-col gap-5">
+          {intro}
+          {swap(
+            `overview-${current.deck.slug}`,
+            <DeckOverview
+              composition={current.deck.composition}
+              colorCounts={current.deck.colorCounts}
+              cardCount={current.deck.cardCount}
+              compact
+            />,
+          )}
+        </div>
 
         {/* Tiles: click to select, arrow keys when focused. The gold border moves with the selection. */}
         <div
@@ -217,36 +215,6 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
           })}
         </div>
       </div>
-
-      {/* The commander on show and the one action. */}
-      {swap(
-        `detail-${current.deck.slug}`,
-        <div className="flex flex-col gap-4 border-t border-seam pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h3 className="font-heading text-xl font-semibold">{current.deck.commanderName}</h3>
-              {card && <ColorIdentity identity={card.colorIdentity} />}
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Commander
-              {card ? ` · ${colorNames(card.colorIdentity)}` : ""}
-              {current.deckCount !== null ? ` · ${formatDeckCount(current.deckCount)}` : ""}
-            </p>
-          </div>
-          <Link
-            href={`/deck?commander=${current.deck.slug}`}
-            className={cn(
-              buttonVariants({ variant: "outline" }),
-              "shrink-0 gap-2 self-start border-primary bg-background text-primary sm:self-auto",
-              "hover:border-primary hover:bg-background hover:text-primary",
-              "dark:border-primary dark:bg-background dark:hover:bg-background dark:hover:text-primary",
-            )}
-          >
-            Build this Deck
-            <ArrowRight aria-hidden className="size-4" />
-          </Link>
-        </div>,
-      )}
     </div>
   );
 }

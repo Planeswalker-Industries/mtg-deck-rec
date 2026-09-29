@@ -20,5 +20,5 @@ const CAVERN_OF_SOULS: Vista = {
 /** Behind the hero, full width. */
 export const HERO_VISTA: Vista = CAVERN_OF_SOULS;
 
-/** Behind the closing panel beside Popular Commanders. */
+/** Behind the closing panel beside Hot Commanders. */
 export const CLOSING_VISTA: Vista = CAVERN_OF_SOULS;

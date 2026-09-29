@@ -63,7 +63,7 @@ const FAN_TOP_Z = 10;
 /** The hero's card fan, dealt once on load (`.fan-card` in globals.css). Decorative: the headline says what it is. */
 export function HeroFan() {
   return (
-    <div aria-hidden className="order-first md:order-last">
+    <div aria-hidden className="w-full">
       <div className="relative mx-auto h-[14rem] w-[9.5rem] sm:h-[16rem] sm:w-[9rem] md:h-[17rem] md:w-[12rem] lg:h-[21rem] lg:w-[15rem]">
         {FAN.map((pocket, i) => (
           <div

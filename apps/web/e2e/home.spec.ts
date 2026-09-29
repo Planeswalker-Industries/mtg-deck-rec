@@ -24,55 +24,39 @@ test("ring aria-label names every category", async ({ page }) => {
 
 test("deck overview shows its mana-symbol split", async ({ page }) => {
   await page.goto("/");
-  const region = page.getByRole("region", { name: "Popular Commanders" });
+  const region = page.getByRole("region", { name: "Hot Commanders" });
   // The Ur-Dragon is five-color, so every pip including colorless renders.
   await expect(region.getByAltText("Colorless")).toBeVisible({ timeout: 10_000 });
   await expect(region.getByAltText("White")).toBeVisible();
   await expect(region.getByAltText("Red")).toBeVisible();
 });
 
-test("clicking a dot swaps the commander name", async ({ page }) => {
+test("clicking a tile selects that commander", async ({ page }) => {
   await page.goto("/");
-  const region = page.getByRole("region", { name: "Popular Commanders" });
-  const dots = region.locator('[role="group"][aria-label="Featured commanders"] button');
-  await expect(dots.first()).toBeVisible({ timeout: 10_000 });
+  const region = page.getByRole("region", { name: "Hot Commanders" });
+  const tiles = region.getByRole("group", { name: "Featured commanders" }).getByRole("button");
+  await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
+  await expect(tiles.first()).toHaveAttribute("aria-current", "true");
 
-  // Get the initial commander name
-  const name = region.getByRole("heading", { level: 3 });
-  const firstName = await name.textContent();
+  await tiles.nth(1).click();
 
-  // Click the second dot (index 1)
-  await dots.nth(1).click();
-
-  // The commander name should have changed
-  await expect(name).not.toHaveText(firstName!);
+  await expect(tiles.nth(1)).toHaveAttribute("aria-current", "true");
+  await expect(tiles.first()).toHaveAttribute("aria-current", "false");
 });
 
-test("Build this Deck navigates to /deck?commander=", async ({ page }) => {
+test("pointing at a ring slice names it in the centre", async ({ page }) => {
   await page.goto("/");
-  const link = page.getByRole("link", { name: "Build this Deck" });
-  await expect(link).toBeVisible({ timeout: 10_000 });
+  const ring = page.getByRole("region", { name: "Hot Commanders" }).locator("svg[role='img'][aria-label]");
+  await expect(ring).toBeVisible({ timeout: 10_000 });
+  await expect(ring).toContainText("cards");
 
-  // The button wears the page shade and the lamp itself, not the outline variant's dark-mode input fill.
-  // Read the tokens rather than hardcoding, so a palette tweak can't fail this.
-  const tokens = await page.evaluate(() => {
-    const root = getComputedStyle(document.documentElement);
-    const resolve = (value: string) => {
-      const probe = document.createElement("span");
-      probe.style.color = value.trim();
-      document.body.appendChild(probe);
-      const color = getComputedStyle(probe).color;
-      probe.remove();
-      return color;
-    };
-    return {
-      background: resolve(root.getPropertyValue("--background")),
-      primary: resolve(root.getPropertyValue("--primary")),
-    };
-  });
-  await expect(link).toHaveCSS("background-color", tokens.background);
-  await expect(link).toHaveCSS("border-top-color", tokens.primary);
-
-  await link.click();
-  await expect(page).toHaveURL(/\/deck\?commander=/);
+  // Lands are the first slice, drawn clockwise from twelve o'clock, so a point just right of the top lands on them.
+  // Retried: a pointer that arrives before hydration has no handler to reach, so move off and back on.
+  await ring.scrollIntoViewIfNeeded();
+  await expect(async () => {
+    const box = (await ring.boundingBox())!;
+    await page.mouse.move(0, 0);
+    await ring.hover({ position: { x: box.width * 0.55, y: box.height * 0.08 } });
+    await expect(ring).toContainText("lands", { timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
 });
