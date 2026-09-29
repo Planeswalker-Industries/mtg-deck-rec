@@ -7,7 +7,7 @@ export function SiteHeader() {
   return (
     <header className="border-b border-seam bg-sleeve">
       {/* One flat row, so `order-*` can seat the nav (rendered inside AccountLink) beside the logo on wide screens. */}
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-1 px-4 sm:gap-2">
+      <div className="page-column flex h-16 items-center gap-1 sm:gap-2">
         <Link
           href="/"
           className="group order-0 mr-auto flex min-w-0 items-center gap-2 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary lg:mr-6"

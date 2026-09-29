@@ -3,7 +3,7 @@ import Link from "next/link";
 export function SiteFooter() {
   return (
     <footer className="border-t border-seam text-xs text-muted-foreground">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-6">
+      <div className="page-column flex flex-col gap-2 py-6">
         <p className="max-w-prose">
           Card data and images from{" "}
           <a href="https://scryfall.com" className="underline underline-offset-2 hover:text-foreground">

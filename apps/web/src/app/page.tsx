@@ -16,9 +16,9 @@ const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
 
 /**
  * How far the closing art reaches past its cell on the right: the column's 1rem gutter, plus the margin beside the
- * 72rem column once the window is wider than it. So the art always meets the window edge.
+ * page column (`--page-column`, globals.css) once the window is wider than it. So the art always meets the window edge.
  */
-const CLOSING_ART_RIGHT = "calc(min(0px, (72rem - 100vw) / 2) - 1rem)";
+const CLOSING_ART_RIGHT = "calc(min(0px, (var(--page-column) - 100vw) / 2) - 1rem)";
 
 function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
   return (
@@ -35,12 +35,12 @@ function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
 async function FeaturedCommandersSection() {
   const commanders = await getFeaturedCommanders();
   return (
-    <section aria-labelledby="hot-commanders" className="py-10 md:py-12 lg:col-span-2 lg:pr-8">
+    <section aria-labelledby="popular-decks" className="py-10 md:py-12 lg:col-span-2 lg:pr-8">
       <FeaturedCommanders
         commanders={commanders}
         intro={
-          <SectionHeading id="hot-commanders" eyebrow="Featured">
-            Hot Commanders
+          <SectionHeading id="popular-decks" eyebrow="Featured" nowrap>
+            Popular Decks
           </SectionHeading>
         }
       />
@@ -50,7 +50,7 @@ async function FeaturedCommandersSection() {
 
 /**
  * The closing line, one short sentence to a line, over art that runs to the window edge. The seam on its left divides
- * it from Hot Commanders. Credits its art only when it isn't the hero's.
+ * it from Popular Decks. Credits its art only when it isn't the hero's.
  */
 function StrongestDecks() {
   return (
@@ -91,7 +91,7 @@ export default function Home() {
         <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" priority />
 
         {/* The columns stretch, so the credit at the foot of the fan's column ends level with "No account necessary". */}
-        <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 pt-4 pb-5 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-4 md:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
+        <div className="page-column grid gap-6 pt-4 pb-5 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-4 md:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
           {/* Cards come first on a phone: they say what this is faster than any sentence. */}
           <div className="order-first flex flex-col md:order-last">
             <div className="flex flex-1 items-center justify-center">

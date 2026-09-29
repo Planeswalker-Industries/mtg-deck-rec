@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "cn";
 
 /**
  * A section's name: a small gold-ruled label saying what kind of section it is, over the heading that says what it is
@@ -9,8 +10,11 @@ export function SectionHeading({
   eyebrow,
   children,
   className,
+  nowrap = false,
 }: {
   id?: string;
+  /** Keep the heading on one line; for short names in narrow columns. */
+  nowrap?: boolean;
   /** The small label above the heading. */
   eyebrow: string;
   children: ReactNode;
@@ -22,7 +26,13 @@ export function SectionHeading({
         <span aria-hidden className="h-0.5 w-5 shrink-0 bg-primary" />
         {eyebrow}
       </p>
-      <h2 id={id} className="mt-2 font-heading text-[1.75rem] leading-[1.12] font-semibold tracking-[-0.01em]">
+      <h2
+        id={id}
+        className={cn(
+          "mt-2 font-heading text-[1.75rem] leading-[1.12] font-semibold tracking-[-0.01em]",
+          nowrap && "whitespace-nowrap",
+        )}
+      >
         {children}
       </h2>
     </div>

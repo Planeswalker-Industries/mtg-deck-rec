@@ -24,7 +24,7 @@ test("ring aria-label names every category", async ({ page }) => {
 
 test("deck overview shows its mana-symbol split", async ({ page }) => {
   await page.goto("/");
-  const region = page.getByRole("region", { name: "Hot Commanders" });
+  const region = page.getByRole("region", { name: "Popular Decks" });
   // The Ur-Dragon is five-color, so every pip including colorless renders.
   await expect(region.getByAltText("Colorless")).toBeVisible({ timeout: 10_000 });
   await expect(region.getByAltText("White")).toBeVisible();
@@ -33,7 +33,7 @@ test("deck overview shows its mana-symbol split", async ({ page }) => {
 
 test("clicking a tile selects that commander", async ({ page }) => {
   await page.goto("/");
-  const region = page.getByRole("region", { name: "Hot Commanders" });
+  const region = page.getByRole("region", { name: "Popular Decks" });
   const tiles = region.getByRole("group", { name: "Featured commanders" }).getByRole("button");
   await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
   await expect(tiles.first()).toHaveAttribute("aria-current", "true");
@@ -46,7 +46,7 @@ test("clicking a tile selects that commander", async ({ page }) => {
 
 test("pointing at a ring slice names it in the centre", async ({ page }) => {
   await page.goto("/");
-  const ring = page.getByRole("region", { name: "Hot Commanders" }).locator("svg[role='img'][aria-label]");
+  const ring = page.getByRole("region", { name: "Popular Decks" }).locator("svg[role='img'][aria-label]");
   await expect(ring).toBeVisible({ timeout: 10_000 });
   await expect(ring).toContainText("cards");
 

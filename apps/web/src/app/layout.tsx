@@ -42,7 +42,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <SiteHeader />
         <AdSlot slot="leaderboard" />
-        <div className="mx-auto flex w-full max-w-6xl flex-1 gap-6 px-4 pt-4 pb-10">
+        <div className="page-column flex flex-1 gap-6 pt-4 pb-10">
           <main className="min-w-0 flex-1">{children}</main>
           <AdSlot slot="rail" />
         </div>
