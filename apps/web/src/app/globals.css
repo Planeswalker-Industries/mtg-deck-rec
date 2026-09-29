@@ -65,23 +65,23 @@
   --radius: 0.375rem;
 
   /* The light falls from the top of the page, so surfaces get warmer as they rise. */
-  --background: #00090e; /* the table, in shadow */
+  --background: #0a1015; /* the table at night: slate, lifted enough that sections read as bands */
   --foreground: #e9e5dd; /* warm off-white: paper under a lamp, never pure white */
-  --sleeve: #050e13; /* a card sleeve lying on the table */
-  --seam: #1b2a30; /* where two surfaces meet, and the divider inside a card */
+  --sleeve: #0f171d; /* a card sleeve lying on the table */
+  --seam: #1f2c34; /* where two surfaces meet, and the divider inside a card */
 
   --card: var(--sleeve);
   --card-foreground: var(--foreground);
-  --popover: #08151b;
+  --popover: #121c23;
   --popover-foreground: var(--foreground);
 
   --primary: #e3ab6e; /* the lamp: the only thing that is lit */
   --primary-foreground: #08161a;
-  --secondary: #10202a;
+  --secondary: #152229;
   --secondary-foreground: var(--foreground);
-  --muted: #0c1a21;
+  --muted: #111c23;
   --muted-foreground: #80909f; /* far enough from the surface to stay readable */
-  --accent: #10202a;
+  --accent: #152229;
   --accent-foreground: var(--foreground);
 
   /* Cut, add and replace. Rose, jade and violet sit clear of W/U/B/R/G. */
@@ -106,8 +106,18 @@
   --gc-bg: #3a2d13;
 
   --border: var(--seam);
-  --input: #1e3038;
+  --input: #243640;
   --ring: var(--primary);
+
+  /* v2 surfaces (before the 2026-09 facelift). Kept so the earlier values can be restored. */
+  --backgroundv2: #00090e;
+  --sleevev2: #050e13;
+  --seamv2: #1b2a30;
+  --popoverv2: #08151b;
+  --secondaryv2: #10202a;
+  --mutedv2: #0c1a21;
+  --accentv2: #10202a;
+  --inputv2: #1e3038;
 
   /* v1 palette (pre-homepage redesign). Kept so the earlier values can be restored. */
   --backgroundv1: #10131a;

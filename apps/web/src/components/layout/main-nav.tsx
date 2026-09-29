@@ -22,9 +22,10 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/collection", label: "Your collection", hint: "The cards you own", accountOnly: true },
 ];
 
-// Quiet until you reach for them: gold is the lamp, and it belongs on the one action that matters.
+// Quiet until you reach for them: gold is the lamp, and it belongs on the one action that matters. The page you are on
+// gets a gold edge along the header's foot, where the header meets the page.
 const NAV_LINK =
-  "whitespace-nowrap rounded-md px-3 py-2 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary aria-[current=page]:text-foreground";
+  "relative flex h-16 items-center whitespace-nowrap px-3 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:text-foreground after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-primary after:opacity-0 aria-[current=page]:after:opacity-100";
 
 const ICON_BUTTON =
   "flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -51,49 +52,52 @@ function InlineLinksAtPath({ items }: { items: readonly NavItem[] }) {
 }
 
 /**
- * The header's links. Wide screens get them inline; below `lg` they fold into a menu that drops from the top, so the
- * account control (`children`) never gets pushed off a phone screen. Decks and collection only show when signed in.
+ * The header's links. Wide screens get them inline (`order-1`, beside the logo in `SiteHeader`'s flat row); below `lg`
+ * they fold into a menu that drops from the top, so the account control (`children`, `order-3`) never gets pushed off
+ * a phone screen. Decks and collection only show when signed in.
  */
 export function MainNav({ signedIn, children }: { signedIn: boolean; children: ReactNode }) {
   const items = NAV_ITEMS.filter((item) => signedIn || !item.accountOnly);
 
   return (
     <>
-      <nav aria-label="Main" className="hidden items-center gap-1 lg:flex">
+      <nav aria-label="Main" className="order-1 hidden self-stretch lg:flex">
         {/* The path is request data on dynamic routes, and the signed-out nav is itself a Suspense fallback, so
             reading it here unguarded fails the prerender. Until it resolves the links render with none marked. */}
         <Suspense fallback={<InlineLinks items={items} pathname={null} />}>
           <InlineLinksAtPath items={items} />
         </Suspense>
       </nav>
-      {children}
-      <Sheet>
-        <SheetTrigger className={cn(ICON_BUTTON, "lg:hidden")} aria-label="Menu">
-          <Menu aria-hidden className="size-5" />
-        </SheetTrigger>
-        <SheetContent side="top" showCloseButton={false} className="gap-0 border-seam bg-sleeve lg:hidden">
-          <div className="flex h-14 items-center justify-between border-b border-seam px-4">
-            <SheetTitle className="text-xl font-semibold">Menu</SheetTitle>
-            <SheetDescription className="sr-only">Pages on MTG Deck Rec</SheetDescription>
-            <SheetClose className={ICON_BUTTON} aria-label="Close menu">
-              <X aria-hidden className="size-5" />
-            </SheetClose>
-          </div>
-          <nav aria-label="Main" className="px-2 py-2">
-            <MenuLinks items={items} />
-            {!signedIn && (
-              <p className="mt-1 border-t border-seam px-3 pt-3 pb-2 text-sm text-muted-foreground">
-                <SheetClose asChild>
-                  <Link href="/sign-in" className="font-bold text-primary underline-offset-4 hover:underline">
-                    Sign in
-                  </Link>
-                </SheetClose>{" "}
-                to save decks and keep your collection.
-              </p>
-            )}
-          </nav>
-        </SheetContent>
-      </Sheet>
+      <div className="order-3 flex shrink-0 items-center gap-1 sm:gap-2">
+        {children}
+        <Sheet>
+          <SheetTrigger className={cn(ICON_BUTTON, "lg:hidden")} aria-label="Menu">
+            <Menu aria-hidden className="size-5" />
+          </SheetTrigger>
+          <SheetContent side="top" showCloseButton={false} className="gap-0 border-seam bg-sleeve lg:hidden">
+            <div className="flex h-14 items-center justify-between border-b border-seam px-4">
+              <SheetTitle className="text-xl font-semibold">Menu</SheetTitle>
+              <SheetDescription className="sr-only">Pages on MTG Deck Rec</SheetDescription>
+              <SheetClose className={ICON_BUTTON} aria-label="Close menu">
+                <X aria-hidden className="size-5" />
+              </SheetClose>
+            </div>
+            <nav aria-label="Main" className="px-2 py-2">
+              <MenuLinks items={items} />
+              {!signedIn && (
+                <p className="mt-1 border-t border-seam px-3 pt-3 pb-2 text-sm text-muted-foreground">
+                  <SheetClose asChild>
+                    <Link href="/sign-in" className="font-bold text-primary underline-offset-4 hover:underline">
+                      Sign in
+                    </Link>
+                  </SheetClose>{" "}
+                  to save decks and keep your collection.
+                </p>
+              )}
+            </nav>
+          </SheetContent>
+        </Sheet>
+      </div>
     </>
   );
 }

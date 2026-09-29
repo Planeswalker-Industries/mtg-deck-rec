@@ -129,7 +129,7 @@ export function DeckOverview({
           </div>
         </div>
 
-        <ul className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-1">
+        <ul className="grid flex-1 grid-cols-2 gap-x-8 gap-y-1.5">
           {rows.map((cat) => (
             <li key={cat} className="flex items-center gap-2 text-sm">
               <span
