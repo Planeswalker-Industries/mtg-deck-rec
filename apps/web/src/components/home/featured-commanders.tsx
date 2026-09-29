@@ -135,7 +135,7 @@ export function FeaturedCommanders({
                 className={cn(
                   "group flex min-w-0 flex-row overflow-hidden rounded-lg border bg-sleeve text-left transition-colors md:flex-col",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  selected ? "border-primary" : "border-seam hover:border-muted-foreground/60",
+                  selected ? "border-primary" : "border-seam hover:border-primary/60 focus-visible:border-primary/60",
                 )}
               >
                 <div className="relative aspect-[4/3] w-16 shrink-0 bg-muted md:aspect-[16/10] md:w-full">

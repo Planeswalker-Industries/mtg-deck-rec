@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { cn } from "cn";
 import Link from "next/link";
 import type { CollectionTotals, ResolvedCollectionRow, UnresolvedCollectionRow } from "@mtg/core/contract";
 import { appendCsvPage, collectionLink } from "@mtg/core/parse";
@@ -12,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Textarea } from "@/components/ui/textarea";
 import { getApis } from "@/lib/api/client";
-import { COLLECTION_MAX_IMPORT_ROWS } from "@/lib/constants";
+import { COLLECTION_MAX_IMPORT_ROWS, TEXT_LINK } from "@/lib/constants";
 import {
   clearCollection,
   collectionTotals,
@@ -49,7 +50,7 @@ interface Problem {
   message: string;
 }
 
-const LINK = "font-semibold text-primary underline-offset-4 hover:underline";
+const LINK = cn(TEXT_LINK, "font-semibold");
 
 export function CollectionTool() {
   const { source, setSource } = useCollectionSource();

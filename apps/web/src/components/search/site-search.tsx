@@ -30,7 +30,7 @@ export function SiteSearch() {
         type="button"
         onClick={() => setOpenOnPhone(true)}
         aria-label="Search cards"
-        className="flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:hidden"
+        className="flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-primary focus-visible:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:hidden"
       >
         <Search aria-hidden className="size-5" />
       </button>
@@ -63,7 +63,7 @@ function PhoneSearchLayer({ onClose }: { onClose: () => void }) {
           type="button"
           onClick={onClose}
           aria-label="Close search"
-          className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-primary focus-visible:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <X aria-hidden className="size-5" />
         </button>

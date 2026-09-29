@@ -1,6 +1,7 @@
 "use client";
 
 import type { Route } from "next";
+import { cn } from "cn";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { sendSignInEmailAction, startGoogleSignInAction, verifySignInCodeAction } from "@/app/sign-in/actions";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { safeNextPath } from "@/lib/safe-path";
+import { TEXT_LINK } from "@/lib/constants";
 
 const RETURN_ERRORS: Record<string, string> = {
   link: "That sign-in link didn't work or has expired. Send yourself a new code.",
@@ -102,7 +104,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
         </div>
         <button
           type="button"
-          className="self-start text-sm font-semibold text-primary underline-offset-4 hover:underline"
+          className={cn(TEXT_LINK, "self-start text-sm font-semibold")}
           onClick={() => {
             setStep("email");
             setError(null);

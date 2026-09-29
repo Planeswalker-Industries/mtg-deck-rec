@@ -15,6 +15,7 @@ import { deckExportEntries } from "@/lib/server/deck-export";
 import { loadDeckPage } from "@/lib/server/deck-page";
 import { displayName } from "@/lib/cards";
 import { cardCategoryLabel } from "@/lib/labels";
+import { TEXT_LINK } from "@/lib/constants";
 
 const WUBRG = "WUBRG";
 
@@ -140,7 +141,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             )}&body=${encodeURIComponent(`Deck: ${deck.id}\n\nWhat's wrong with it:`)}`}
             target="_blank"
             rel="noreferrer"
-            className="underline underline-offset-2 hover:text-foreground"
+            className={TEXT_LINK}
           >
             Report it
           </a>{" "}

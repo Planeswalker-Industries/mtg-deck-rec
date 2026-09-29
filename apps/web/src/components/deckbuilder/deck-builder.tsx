@@ -29,7 +29,7 @@ function IconButton({ label, onClick, children, tone }: { label: string; onClick
       title={label}
       onClick={onClick}
       className={cn(
-        "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary",
         // 44 px tall to a thumb; not wider, since the buttons sit side by side in a narrow cell.
         "relative after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",

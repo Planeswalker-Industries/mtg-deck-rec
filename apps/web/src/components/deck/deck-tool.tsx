@@ -33,6 +33,7 @@ import { useCollectionSource } from "@/components/collection/use-collection-sour
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
+import { TEXT_LINK } from "@/lib/constants";
 
 const PLACEHOLDER = `Commander
 1 Liesa, Forgotten Archangel
@@ -93,7 +94,7 @@ function ViewToggle({ view, onChange }: { view: ReviewView; onChange: (view: Rev
       aria-label={label}
       title={label}
       onClick={() => onChange(toList ? "list" : "swipe")}
-      className="bg-muted text-muted-foreground hover:text-foreground sm:hidden"
+      className="bg-muted text-muted-foreground hover:text-primary focus-visible:text-primary sm:hidden"
     >
       {toList ? <List aria-hidden className="size-4" /> : <GalleryHorizontalEnd aria-hidden className="size-4" />}
     </Button>
@@ -318,7 +319,7 @@ export function DeckTool() {
             {source.kind === "none" && (
               <p className="mt-2 max-w-prose text-sm text-muted-foreground">
                 Building from cards you own?{" "}
-                <Link href="/collection/import" className="font-semibold text-primary underline-offset-4 hover:underline">
+                <Link href="/collection/import" className={cn(TEXT_LINK, "font-semibold")}>
                   Import your collection first
                 </Link>
                 , and suggestions will put your cards ahead of the rest.
@@ -421,7 +422,7 @@ export function DeckTool() {
       {tool.importedFrom && tool.parse.status === "ready" && (
         <p className="text-sm text-muted-foreground">
           Imported from{" "}
-          <a href={tool.importedFrom.url} target="_blank" rel="noreferrer" className="font-normal text-primary underline underline-offset-2">
+          <a href={tool.importedFrom.url} target="_blank" rel="noreferrer" className={TEXT_LINK}>
             Archidekt
           </a>
           . Edit the decklist to change it here.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { cn } from "cn";
 import Image from "next/image";
 import Link from "next/link";
 import { Pencil } from "lucide-react";
@@ -8,7 +9,7 @@ import type { Bracket, DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { displayName } from "@/lib/cards";
-import { DECK_BAR_HEIGHT_VAR } from "@/lib/constants";
+import { DECK_BAR_HEIGHT_VAR, TEXT_LINK } from "@/lib/constants";
 import { bracketLabel, collectionModeLabel } from "@/lib/labels";
 import { ColorIdentity } from "./color-identity";
 import { DeckIssuesChip } from "./resolution-issues";
@@ -85,7 +86,7 @@ export function DeckBar({
           {analysis.commanderKey.slug && analysis.commanderKey.deckCount > 0 ? (
             <Link
               href={`/commander/${analysis.commanderKey.slug}`}
-              className="underline decoration-seam decoration-2 underline-offset-4 hover:decoration-primary"
+              className={TEXT_LINK}
             >
               {name}
             </Link>
@@ -119,7 +120,7 @@ export function DeckBar({
         )}
       </p>
       {collectionMode === null ? (
-        <Link href="/collection/import" className="justify-self-end text-xs font-semibold text-primary underline-offset-4 hover:underline">
+        <Link href="/collection/import" className={cn(TEXT_LINK, "justify-self-end text-xs font-semibold")}>
           Add collection
         </Link>
       ) : (

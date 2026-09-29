@@ -11,6 +11,7 @@ import { ColorIdentity } from "@/components/deck/color-identity";
 import { Input } from "@/components/ui/input";
 import { getApis } from "@/lib/api/client";
 import { displayName } from "@/lib/cards";
+import { TEXT_LINK } from "@/lib/constants";
 
 /** Below this many decks a filter box is clutter; the cap is 100, so it earns its place well before then. */
 const FILTER_FROM = 8;
@@ -92,7 +93,7 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
                     <Link
                       href={`/deck?deck=${deck.code}` as Route}
                       aria-label={`Open ${deck.name} in the deck tool`}
-                      className="flex min-h-11 items-center rounded-md px-3 text-sm font-semibold text-muted-foreground sm:min-h-0 sm:px-2 sm:py-1.5 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      className={cn(TEXT_LINK, "flex min-h-11 items-center rounded-md px-3 text-sm font-semibold sm:min-h-0 sm:px-2 sm:py-1.5")}
                     >
                       Open
                     </Link>
@@ -146,7 +147,7 @@ function RowButton({
       title={label}
       className={cn(
         "flex size-11 items-center justify-center rounded-md text-muted-foreground sm:size-9 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        destructive ? "hover:text-destructive" : "hover:text-foreground",
+        destructive ? "hover:text-destructive focus-visible:text-destructive" : "hover:text-primary focus-visible:text-primary",
       )}
     >
       {children}

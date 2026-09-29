@@ -1,4 +1,5 @@
 import type { CommanderLegality } from "@mtg/core/contract";
+import { cn } from "cn";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -13,6 +14,7 @@ import { displayName } from "@/lib/cards";
 import { describeCostDelta, formatAsOf, formatPercent, formatUsd } from "@/lib/format";
 import { emptySwapMessage } from "@/lib/labels";
 import { getCardPage } from "@/lib/server/recs-cache";
+import { TEXT_LINK } from "@/lib/constants";
 
 const LEGALITY: Record<CommanderLegality, string> = {
   legal: "Legal in Commander",
@@ -129,7 +131,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
                 {name} as a commander
               </Link>
             )}
-            <a href={card.scryfallUri} className="inline-flex min-h-11 items-center font-normal text-primary underline underline-offset-2 sm:min-h-0">
+            <a href={card.scryfallUri} className={cn(TEXT_LINK, "inline-flex min-h-11 items-center sm:min-h-0")}>
               View on Scryfall
             </a>
           </div>
@@ -142,7 +144,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
           Cards that do the same job
         </h2>
         <p className="max-w-prose text-sm text-muted-foreground">
-          In {name}&apos;s colors, best fit first. <Link href="/deck" className="text-primary underline underline-offset-2">Paste your deck</Link> to see
+          In {name}&apos;s colors, best fit first. <Link href="/deck" className={TEXT_LINK}>Paste your deck</Link> to see
           replacements picked for your commander.
         </p>
         {alternatives.suggestions.length === 0 ? (
@@ -178,7 +180,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
         {priceAsOf && <p>Prices are Scryfall estimates from {formatAsOf(priceAsOf)}.</p>}
         <p>
           Deck counts come from decks shared publicly on{" "}
-          <a href="https://archidekt.com" className="underline underline-offset-2">
+          <a href="https://archidekt.com" className={TEXT_LINK}>
             Archidekt
           </a>
           , counted only since the card came out.

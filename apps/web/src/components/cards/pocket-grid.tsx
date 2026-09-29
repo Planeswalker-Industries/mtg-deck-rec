@@ -102,7 +102,7 @@ export function PocketGrid({
           ) : item.href ? (
             <Link
               href={item.href as Route}
-              className="block rounded-lg p-1 transition-colors hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="block rounded-lg p-1 transition-[background-color,transform] duration-180 ease-table hover:-translate-y-0.5 hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {content}
             </Link>

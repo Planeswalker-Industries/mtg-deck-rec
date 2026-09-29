@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
+import { TEXT_LINK } from "@/lib/constants";
 
 /** What the four collection apps export. Anything else is almost certainly a mistake worth naming. */
 const ACCEPT = ".csv,.txt,text/csv,text/plain";
@@ -87,7 +88,8 @@ export function FileDrop({
           <label
             htmlFor={inputId}
             className={cn(
-              "font-semibold text-primary underline-offset-4 hover:underline",
+              TEXT_LINK,
+              "font-semibold",
               disabled ? "cursor-default" : "cursor-pointer",
             )}
           >

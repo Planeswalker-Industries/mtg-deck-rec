@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { TEXT_LINK } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "Privacy policy",
@@ -107,7 +108,7 @@ export default function PrivacyPage() {
 
       <Section title="Deleting your account">
         <p>
-          You can delete your account from your <Link href="/account" className="underline underline-offset-2">account page</Link>.
+          You can delete your account from your <Link href="/account" className={TEXT_LINK}>account page</Link>.
           That removes your profile, your saved decks (their links stop working) and your collection. It can&apos;t be
           undone.
         </p>
@@ -129,7 +130,7 @@ export default function PrivacyPage() {
       <Section title="Changes and questions">
         <p>
           If this policy changes, the date at the top will change with it. Questions can go to the project&apos;s{" "}
-          <a href="https://github.com/Planeswalker-Industries/mtg-deck-rec/issues" className="underline underline-offset-2">
+          <a href="https://github.com/Planeswalker-Industries/mtg-deck-rec/issues" className={TEXT_LINK}>
             issue tracker
           </a>
           .

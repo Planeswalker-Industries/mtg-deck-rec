@@ -13,6 +13,7 @@ import { displayName } from "@/lib/cards";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
 import { cardCategoryLabel, commanderDecksPhrase, fewDecksPhrase, formatDeckCount } from "@/lib/labels";
 import { getCommanderPage } from "@/lib/server/recs-cache";
+import { TEXT_LINK } from "@/lib/constants";
 
 const WUBRG = "WUBRG";
 
@@ -135,7 +136,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
       <footer className="flex max-w-prose flex-col gap-1 text-xs text-muted-foreground">
         <p>
           Based on {formatDeckCount(key.deckCount + (key.borrowedDeckCount ?? 0))} shared publicly on{" "}
-          <a href="https://archidekt.com" className="underline underline-offset-2">
+          <a href="https://archidekt.com" className={TEXT_LINK}>
             Archidekt
           </a>
           , counted only since each card came out. Updated {formatAsOf(computedAt)}.

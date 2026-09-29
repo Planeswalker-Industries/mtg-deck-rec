@@ -11,8 +11,10 @@ import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { FeaturedCommanders } from "@/components/home/featured-commanders";
 import { HeroFan } from "@/components/home/hero-fan";
 import { HowItWorks } from "@/components/home/how-it-works";
+import { Situations } from "@/components/home/situations";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
 import { CLOSING_VISTA, HERO_VISTA, type Vista } from "@/lib/landing-art";
+import { TEXT_LINK } from "@/lib/constants";
 
 /** Hero buttons: tall enough for a wrapped label on phones, the usual 48 px single line from sm up. */
 const HERO_BUTTON =
@@ -31,7 +33,7 @@ function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
   return (
     <p className={className ?? "text-xs text-muted-foreground"}>
       Art from{" "}
-      <Link href={`/card/${vista.cardSlug}`} className="underline underline-offset-2 hover:text-foreground">
+      <Link href={`/card/${vista.cardSlug}`} className={TEXT_LINK}>
         {vista.cardName}
       </Link>{" "}
       by {vista.artist}
@@ -122,20 +124,21 @@ export default function Home() {
           <div className="order-first flex flex-col md:order-last">
             <div className="flex flex-1 items-center justify-center">
               <HeroFan />
-            </div>            <ArtCredit vista={HERO_VISTA} className="hidden text-right text-xs leading-5 text-muted-foreground md:block" />
+            </div>
+            <ArtCredit vista={HERO_VISTA} className="hidden text-right text-xs leading-5 text-muted-foreground md:block" />
           </div>
 
           <div className="relative z-20 max-w-2xl">
             <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
-              Supercharge your Commander deck.
+              Make any commander compete.
               {/* The buddy's voice: the page's one italic headline phrase. */}
               <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
-                Using the cards you already own.
+                With the cards you already own.
               </span>
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg text-foreground/80">
-              Import your collection, improve your deck, or swap your cards into the most popular Commander decks and
-              skip the expensive singles.
+              Not another site selling you decks and singles. Paste a list and we cut the junk, add what works and swap in
+              cards from your collection, even for a commander nobody else plays.
             </p>
 
             {/* Phones: two half-width buttons with shorter labels that may wrap; from sm up, the full labels in a row. */}
@@ -172,6 +175,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <Situations />
 
       <HowItWorks />
 

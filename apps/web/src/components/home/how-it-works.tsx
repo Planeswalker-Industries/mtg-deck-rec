@@ -6,8 +6,11 @@ import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { StepsCarousel } from "./steps-carousel";
 
+const HOW_IT_WORKS_HEADING = "Go through your deck like a friend would";
+
+/** Beside the steps: the three passes, told with the cards a real Liesa deck runs into. */
 const HOW_IT_WORKS_BLURB =
-  "It's exhausting scrolling sites like Moxfield and EDHREC, seeing awesome decks and being unsure what to swap in where. Whether you want to tune up your own deck, build a netdeck from the cards you already own, or have us assemble a starting point around the cool legendary you just pulled, we've got you covered.";
+  "We go through your list card by card. A stray Lightning Bolt in an Orzhov deck comes out, the slots fill with what Liesa decks actually play, and the Smuggler's Share in your binder stands in for the Smothering Tithe you'd have to buy.";
 
 /** Wide screens get the higher-quality file; the recordings share one pixel size, so it is the colours that differ. */
 const HI_RES_MEDIA = "(min-width: 1024px)";
@@ -22,23 +25,34 @@ interface StepMedia {
 }
 
 /** Recordings of the app itself, one per step, so each step shows the screen it describes. */
-const STEPS: { step: number; title: string; desc: string; media: StepMedia }[] = [
+/**
+ * The three steps of the deck tool, each titled by its verb in capitals and the job's own colour (as in the tool's
+ * stepper) and shown with the recording of that step. Capitals come from CSS, so a screen reader says "cut", not
+ * "C-U-T".
+ */
+const STEPS: { step: number; verb: string; rest: string; tone: string; desc: string; media: StepMedia }[] = [
   {
     step: 1,
-    title: "Import your collection",
-    desc: "Via text, CSV, or from the most popular web apps.",
-    media: { src: "/add.png", width: 427, height: 333 },
-  },
-  {
-    step: 2,
-    title: "Add your decklist",
-    desc: "Either your own or from your favorite site.",
+    verb: "Cut",
+    rest: "the junk",
+    tone: "text-cut",
+    desc: "Banned cards, strays outside your colors and the clunkers your commander's decks never run. Swipe to cut or keep.",
     media: { src: "/cut_gif.gif", hiSrc: "/cut_gif_hi.gif", width: 566, height: 346 },
   },
   {
+    step: 2,
+    verb: "Add",
+    rest: "what works",
+    tone: "text-add",
+    desc: "Fill the open slots with the ramp, draw and removal that decks with your commander actually play.",
+    media: { src: "/add.png", width: 427, height: 333 },
+  },
+  {
     step: 3,
-    title: "Cut/Add/Swap",
-    desc: "Tailored recommendations to swap out expensive cards or improve your existing deck with the cards you already own.",
+    verb: "Swap",
+    rest: "in your collection",
+    tone: "text-replace",
+    desc: "Trade expensive singles for cards that do the same job and are already in your binder.",
     media: { src: "/swipe_gif.gif", hiSrc: "/swipe_gif_hi.gif", width: 374, height: 378 },
   },
 ];
@@ -90,7 +104,9 @@ function StepCard({
         {step.step}.
       </span>
       <div>
-        <h3 className="text-base leading-snug font-semibold">{step.title}</h3>
+        <h3 className="text-base leading-snug font-semibold">
+          <span className={cn("uppercase", step.tone)}>{step.verb}</span> {step.rest}
+        </h3>
         <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
       </div>
     </div>
@@ -125,13 +141,13 @@ export function HowItWorks() {
     >
       <div>
         <SectionHeading id="how-it-works" eyebrow="How it works">
-          No more sifting through chaff
+          {HOW_IT_WORKS_HEADING}
         </SectionHeading>
         <p className="mt-4 max-w-prose text-base text-muted-foreground">{HOW_IT_WORKS_BLURB}</p>
       </div>
 
       <div className="md:hidden">
-        <StepsCarousel labels={STEPS.map((step) => `Step ${step.step}: ${step.title}`)}>
+        <StepsCarousel labels={STEPS.map((step) => `Step ${step.step}: ${step.verb} ${step.rest}`)}>
           {STEPS.map((step) => (
             <StepCard key={step.step} step={step} textFirst className="h-full" />
           ))}

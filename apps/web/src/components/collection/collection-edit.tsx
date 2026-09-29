@@ -20,7 +20,7 @@ const MIN_NAME_CHARS = 2;
 const RESULT_LIMIT = 12;
 
 const STEP_BUTTON =
-  "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 /** Copies of a card, with − and + either side and a way to take the card out entirely. */
 function CopyStepper({ card, quantity, editor }: { card: CardSummary; quantity: number; editor: CollectionEditor }) {
