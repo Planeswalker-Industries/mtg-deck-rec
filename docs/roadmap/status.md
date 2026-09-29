@@ -9,7 +9,7 @@ Where the project stands, and why things are the way they are.
 | Phase | State | Notes |
 |---|---|---|
 | 0 — Spike | Passed (go) | Blind swap-quality eval still open (T014, needs 2 human raters) |
-| 1 — Data foundation + public pages | Built | Daily Archidekt crawl built but not running daily (T036); precon import not started (T018) |
+| 1 — Data foundation + public pages | Built | Daily Archidekt crawl built but not running daily (T042); precon import not started (T018) |
 | 2 — Deck tool | Built, then reworked as the deck journey | k6 load targets not measured (T013) |
 | 3 — Accounts and collections | Built | Collection view, Archidekt link import and hand editing done. Open: import SQL tests (T015), 10k-row timing (T027), starting a collection by hand (T038) |
 | 4 — Votes, saved decks, export | Partly built | Saved decks and export done. Votes recorded, not scored (T006). Favorites not started (T017) |
@@ -36,6 +36,8 @@ Where the project stands, and why things are the way they are.
 
 On `develop`, not yet on `main`: #110, the deck-flow audit (stale state and wasted requests across the recommendation flow; `excludeCardIds`, contract v17), and #111, the EDHREC statistics (T035 slice 11).
 
+On `feat/kitchen-table-lane`, not yet on `develop`: the "Kitchen Table" design direction (walnut surfaces, one sleeve-blue accent, Bricolage Grotesque, the 12–60 px type scale, 44 px phone touch targets; journey steps shown as Cut, Add, Swap, Done). The spec is the UI section of `apps/web/AGENTS.md`.
+
 ## Search index (Typesense behind a Go API)
 
 A self-hosted Typesense serves the reads that cost Postgres the most: card documents by id (a swap pool is 220 cards, an add pool 400, a commander page 500), the header search and commander picker, card tags, the proxy's slug check on every card and commander page view, and the card-shaped part of `loadCardCorpus`. Nothing talks to Typesense but `services/search-api`, so the Typesense key never leaves the VPS, and what does leave is a read token and a write token.
@@ -51,8 +53,9 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 
 A daily Vercel cron calls the search API, which crawls Archidekt's update-ordered feed and writes decklists into the private `corpus` schema. Full account and runbook: [`deck-crawl.md`](deck-crawl.md).
 
-- **Archidekt** is configured on the VPS and writes decks when a run starts: runs on 2026-09-24 and 2026-09-27 wrote 666 decks. **None of those runs came from the daily cron** (none started in its 10:15 UTC hour), so the Vercel trigger is the open problem (T036).
-- **Moxfield** is built but seeded disabled: from the VPS, with the app's honest User-Agent, it answered Cloudflare's hard WAF block (403). Per the crawler guardrails a block switches the source off rather than being worked around; the right number of requests to a source that has said no is zero.
+- **Archidekt** is configured on the VPS and writes decks when a run starts: runs on 2026-09-24 and 2026-09-27 wrote 666 decks. **None of those runs came from the daily cron** (none started in its 10:15 UTC hour, and 2026-09-28's hour produced no run), so the Vercel trigger is the open problem (T042). T036 closed on 2026-09-28 with its leftovers split out.
+- **Moxfield** (T044) is built but seeded disabled: from the VPS, with the app's honest User-Agent, it answered Cloudflare's hard WAF block (403). Per the crawler guardrails a block switches the source off rather than being worked around; the right number of requests to a source that has said no is zero.
+- The VPS reaches the database with the service-role key, which bypasses RLS; a role limited to the `crawl_*` functions is T043.
 - Either source switches itself off on a 403 or a challenge, audited as `crawl.disabled` in `audit_log`; only a human re-enables it.
 - The crawl reaches `corpus` only through the `public.crawl_*` security-definer functions, because exposing a schema of third-party decklists is what it exists to avoid.
 - Nothing aggregates `corpus.decks` yet; that is T035 slice 2.

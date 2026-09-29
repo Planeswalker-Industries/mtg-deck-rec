@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 mtg-deck-rec: public Commander-only web app. Paste or import a decklist → cards to add, cards to cut, and functional substitutes (click a card) with an estimated cost delta. Two modes share one pipeline: **collection-less** (anonymous; ranked by corpus play rate + Scryfall Tagger tags) and **collection-aware** (the player's collection filters or reorders the candidate pool).
 
-Live at https://mtg-app-psi.vercel.app (Vercel + Supabase Pro + a VPS for the search index and deck crawls). Current state: `docs/roadmap/status.md`. Open work: `docs/tasks.md`. The next data pipeline (corpus in Postgres, card-pair statistics, deck affinity scoring, full commander crawl) is `docs/roadmap/card-graph-plan.md`, tracked as T035: slice 11 (EDHREC statistics) is built, the rest waits for a backend owner. The daily deck crawl that feeds it is `docs/roadmap/deck-crawl.md` (T036). Phase 0 history: `docs/roadmap/execution-plan.md`, `phase0-report.md`.
+Live at https://mtg-app-psi.vercel.app (Vercel + Supabase Pro + a VPS for the search index and deck crawls). Current state: `docs/roadmap/status.md`. Open work: `docs/tasks.md`. The next data pipeline (corpus in Postgres, card-pair statistics, deck affinity scoring, full commander crawl) is `docs/roadmap/card-graph-plan.md`, tracked as T035: slice 11 (EDHREC statistics) is built, the rest waits for a backend owner. The daily deck crawl that feeds it is `docs/roadmap/deck-crawl.md` (built under T036; open: its daily trigger T042, a crawl database role T043, Moxfield T044). Phase 0 history: `docs/roadmap/execution-plan.md`, `phase0-report.md`.
 
 The GitHub repo is `Planeswalker-Industries/mtg-deck-rec`, a shared organisation repo (moved from `wuddat/mtg-deck-rec`, which redirects). User-Agent strings, in-app links and the search API's Go module path use the organisation address.
 
@@ -163,7 +163,7 @@ A daily Vercel cron hits `/api/cron/{source}-scrape`, which POSTs `/cron/:source
 - **The cron is authorized by `CRON_SECRET`** (compared constant-time), never by `x-vercel-cron-schedule` or the user agent, which any caller can send. Unset `CRON_SECRET` is 503.
 - **A single 403 or challenge disables the source** (`crawl_disable`) and writes an `audit_log` row (`action = 'crawl.disabled'`). A challenge is recognised by `cf-mitigated: challenge` or HTML challenge markers, never by a substring of a JSON body, since deck names are user-written.
 - **Moxfield is seeded disabled**: it answered Cloudflare's hard WAF block (2026-09-22), so the right number of requests is zero. Its parser refuses anything that is not exactly 100 cards.
-- The search API holds `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS across the whole database. A dedicated restricted role is open work (T036).
+- The search API holds `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS across the whole database. A dedicated restricted role is open work (T043).
 
 ### Search index (Typesense behind the search API, on the VPS)
 
