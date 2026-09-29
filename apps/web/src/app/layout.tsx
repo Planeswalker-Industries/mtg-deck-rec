@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible_Next, Fraunces } from "next/font/google";
+import { Atkinson_Hyperlegible_Next, Faustina } from "next/font/google";
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
@@ -17,11 +17,12 @@ const body = Atkinson_Hyperlegible_Next({
   fallback: ["ui-sans-serif", "system-ui", "sans-serif"],
 });
 
-// Headings are set in a serif with some grain to it: the page is a table, not a dashboard.
-const display = Fraunces({
+// Headings are set in Faustina Bold: a sturdy serif, heavy enough to hold its own over the land art (ExtraBold read
+// too heavy). Only the 700 weight is loaded, so every heading renders Bold whatever weight class it carries.
+const display = Faustina({
   variable: "--font-display",
   subsets: ["latin"],
-  axes: ["SOFT", "WONK", "opsz"],
+  weight: "700",
   display: "swap",
 });
 
