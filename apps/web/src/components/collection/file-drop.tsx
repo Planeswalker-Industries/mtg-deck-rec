@@ -146,10 +146,10 @@ export function LoadedFile({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-seam bg-sleeve py-2 pr-2 pl-4">
-      <FileText aria-hidden className="size-5 shrink-0 text-primary" />
+      <FileText aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{name}</p>
-        <p className="text-xs text-muted-foreground tabular-nums">
+        <p className="text-xs text-muted-foreground font-mono">
           {lines.toLocaleString()} line{lines === 1 ? "" : "s"}
         </p>
       </div>

@@ -323,7 +323,7 @@ export function CollectionTool() {
         )}
         {progress && (
           <div className="flex flex-col gap-1.5" aria-live="polite">
-            <p className="text-sm font-semibold tabular-nums">
+            <p className="text-sm tabular-nums">
               {/* Before a download says how large it is, there is nothing to count against. */}
               {progress.total > 0 ? `${progress.label}: ${count(progress.done)} of ${count(progress.total)}` : `${progress.label}…`}
             </p>
@@ -365,11 +365,11 @@ function CollectionSummary({
       <dl className="grid grid-cols-2 gap-3">
         <div>
           <dt className="text-sm text-muted-foreground">Different cards</dt>
-          <dd className="font-heading text-2xl font-semibold tabular-nums">{count(totals.uniqueCards)}</dd>
+          <dd className="font-heading text-2xl font-mono">{count(totals.uniqueCards)}</dd>
         </div>
         <div>
           <dt className="text-sm text-muted-foreground">Copies</dt>
-          <dd className="font-heading text-2xl font-semibold tabular-nums">{count(totals.totalQuantity)}</dd>
+          <dd className="font-heading text-2xl font-mono">{count(totals.totalQuantity)}</dd>
         </div>
       </dl>
       <p className="text-sm text-muted-foreground">{note}</p>

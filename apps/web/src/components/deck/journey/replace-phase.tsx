@@ -21,7 +21,7 @@ const MAX_REASONS = 2;
  * stepper, the hint and the sitting's own text. The cards share what's left, so ✓ and ✕ stay on screen without
  * scrolling. Read by the card sizes in `SwipeRater` through --swipe-chrome.
  */
-const SWIPE_CHROME = { "--swipe-chrome": "38rem" } as CSSProperties;
+const SWIPE_CHROME = { "--swipe-chrome": "38.5rem" } as CSSProperties;
 
 /**
  * Replace: the deck is looked at again as it now stands, and its weaker fits are dealt with a replacement each, like
@@ -83,7 +83,7 @@ export function ReplacePhase({
     swaps.length > 0 ? (
       <section aria-labelledby="journey-swaps" className="flex flex-col gap-2">
         <h3 id="journey-swaps" className="font-heading text-xl leading-none font-semibold">
-          Swaps <span className="font-sans text-sm font-normal text-muted-foreground tabular-nums">{swaps.length}</span>
+          Swaps <span className="text-sm font-normal text-muted-foreground font-mono">{swaps.length}</span>
         </h3>
         <ul aria-label="Swaps picked" className="flex flex-col divide-y divide-seam rounded-lg border border-seam bg-sleeve">
           {swaps.map((s) => (

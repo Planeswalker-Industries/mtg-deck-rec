@@ -51,7 +51,7 @@ export function DeckOriginal({
         card,
         mark,
         href: `/card/${card.slug}`,
-        ...(quantity > 1 ? { caption: <span className="tabular-nums">×{quantity}</span> } : {}),
+        ...(quantity > 1 ? { caption: <span className="font-mono">×{quantity}</span> } : {}),
       }))}
     />
   );

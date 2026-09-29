@@ -35,12 +35,17 @@ export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSel
                 aria-current={current ? "step" : undefined}
                 onClick={() => onSelect(step)}
                 className={cn(
-                  "flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-semibold transition-colors",
+                  "flex w-full items-center justify-center gap-1 rounded-md px-1.5 py-1 text-sm font-semibold transition-colors sm:gap-1.5 sm:px-2",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default",
                   current ? cn("bg-sleeve text-foreground", glow) : done ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/50",
                 )}
               >
-                {done ? <Check aria-hidden className="size-4 shrink-0" strokeWidth={2.5} /> : <Icon aria-hidden className={cn("size-4 shrink-0", current && tone)} strokeWidth={2.5} />}
+                {/* Phones drop the icons, so every step's name fits in a quarter of the row; the current step keeps its edge. */}
+                {done ? (
+                  <Check aria-hidden className="size-4 shrink-0 max-sm:hidden" strokeWidth={2.5} />
+                ) : (
+                  <Icon aria-hidden className={cn("size-4 shrink-0 max-sm:hidden", current && tone)} strokeWidth={2.5} />
+                )}
                 <span className="truncate">{name}</span>
               </button>
             </li>
@@ -88,7 +93,7 @@ export function NextBar({
 }) {
   return (
     <div className="sticky bottom-0 z-20 -mx-4 flex items-center justify-between gap-3 border-t border-seam bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border">
-      <span className="text-sm text-muted-foreground tabular-nums">{children}</span>
+      <span className="text-sm text-muted-foreground font-mono">{children}</span>
       <Button type="button" onClick={onNext} disabled={disabled}>
         {label}
       </Button>

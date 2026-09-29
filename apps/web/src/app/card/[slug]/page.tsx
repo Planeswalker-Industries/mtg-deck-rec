@@ -61,7 +61,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
         caption: (
           <span className="flex flex-col items-start gap-0.5">
             {partner && <span>with {displayName(partner)}</span>}
-            <span className="text-muted-foreground tabular-nums">
+            <span className="text-muted-foreground font-mono">
               In {formatPercent(entry.inclusionRate)} of {entry.deckCount.toLocaleString("en-US")} decks
             </span>
           </span>
@@ -102,7 +102,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
                 <GameChangerBadge />
               </li>
             )}
-            <li className="tabular-nums">{card.price ? `About ${formatUsd(card.price.usd)}` : "No price"}</li>
+            <li className="font-mono">{card.price ? `About ${formatUsd(card.price.usd)}` : "No price"}</li>
           </ul>
 
           {card.tags.length > 0 && (
@@ -126,7 +126,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
                 {name} as a commander
               </Link>
             )}
-            <a href={card.scryfallUri} className="font-normal text-primary underline underline-offset-2">
+            <a href={card.scryfallUri} className="inline-flex min-h-11 items-center font-normal text-primary underline underline-offset-2 sm:min-h-0">
               View on Scryfall
             </a>
           </div>
@@ -154,7 +154,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
               caption: (
                 <span className="flex flex-col items-start gap-0.5">
                   {s.card.gameChanger && <GameChangerBadge />}
-                  <span className="text-muted-foreground tabular-nums">{describeCostDelta(s.costDelta)}</span>
+                  <span className="text-muted-foreground font-mono">{describeCostDelta(s.costDelta)}</span>
                 </span>
               ),
             }))}

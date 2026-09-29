@@ -108,7 +108,7 @@ export const adminTheme: RaThemeOptions = createTheme({
     h6: { fontFamily: FONT_HEADING, fontWeight: 600, fontSize: "1.125rem" },
     // 16px body, so nothing in the admin is smaller than the site's own reading size.
     body1: { fontSize: "1rem", lineHeight: 1.55 },
-    body2: { fontSize: "0.9375rem", lineHeight: 1.55 },
+    body2: { fontSize: "0.875rem", lineHeight: 1.55 },
     button: { textTransform: "none", fontWeight: 600 },
   },
 
@@ -203,7 +203,7 @@ export const adminTheme: RaThemeOptions = createTheme({
     // Data tables: the seam between rows, a quiet header, and tabular figures so number columns don't jitter.
     MuiTableCell: {
       styleOverrides: {
-        root: { borderBottom: `1px solid ${TOKENS.seam}`, fontSize: "0.9375rem" },
+        root: { borderBottom: `1px solid ${TOKENS.seam}`, fontSize: "0.875rem" },
         head: {
           backgroundColor: TOKENS.background,
           color: TOKENS.mutedForeground,
@@ -245,7 +245,7 @@ export const adminTheme: RaThemeOptions = createTheme({
       },
     },
 
-    MuiFormHelperText: { styleOverrides: { root: { color: TOKENS.mutedForeground, fontSize: "0.8125rem" } } },
+    MuiFormHelperText: { styleOverrides: { root: { color: TOKENS.mutedForeground, fontSize: "0.75rem" } } },
     MuiInputLabel: { styleOverrides: { root: { "&.Mui-focused": { color: TOKENS.primary } } } },
 
     MuiSwitch: {
@@ -272,7 +272,7 @@ export const adminTheme: RaThemeOptions = createTheme({
           backgroundColor: TOKENS.popover,
           border: `1px solid ${TOKENS.seam}`,
           color: TOKENS.foreground,
-          fontSize: "0.8125rem",
+          fontSize: "0.75rem",
           boxShadow: LIT,
         },
         arrow: { color: TOKENS.popover },

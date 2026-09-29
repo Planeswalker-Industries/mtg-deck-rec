@@ -88,7 +88,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           maxLength={6}
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-          className="bg-sleeve text-xl tracking-[0.3em] tabular-nums sm:text-xl"
+          className="bg-sleeve text-xl tracking-[0.3em] font-mono sm:text-xl"
           autoFocus
         />
         {errorAlert}

@@ -78,7 +78,7 @@ export function DeckBar({
       ) : (
         <span className="row-span-2" />
       )}
-      <h2 className="truncate font-heading text-xl leading-tight font-semibold tracking-tight">
+      <h2 className="truncate font-heading text-lg leading-tight sm:text-xl font-semibold tracking-tight">
         {analysis.commanderKey.slug && analysis.commanderKey.deckCount > 0 ? (
           <Link
             href={`/commander/${analysis.commanderKey.slug}`}
@@ -106,7 +106,7 @@ export function DeckBar({
       </Select>
       <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <ColorIdentity identity={analysis.colorIdentity} />
-        <span className="tabular-nums">{cardCount} cards</span>
+        <span className="font-mono">{cardCount} cards</span>
         {onEditDecklist && (
           <Button type="button" size="icon-sm" variant="ghost" aria-label="Edit decklist" title="Edit decklist" onClick={onEditDecklist}>
             <Pencil aria-hidden className="size-3.5" />

@@ -30,7 +30,7 @@ function CopyStepper({ card, quantity, editor }: { card: CardSummary; quantity: 
       <button type="button" aria-label={`One fewer ${name}`} className={STEP_BUTTON} onClick={() => editor.setQuantity(card, quantity - 1)}>
         <Minus aria-hidden className="size-4" />
       </button>
-      <span className="min-w-7 text-center text-sm font-semibold tabular-nums" aria-label={`${quantity} copies of ${name}`}>
+      <span className="min-w-7 text-center text-sm font-mono" aria-label={`${quantity} copies of ${name}`}>
         {quantity}
       </span>
       <button type="button" aria-label={`One more ${name}`} className={STEP_BUTTON} onClick={() => editor.setQuantity(card, quantity + 1)}>

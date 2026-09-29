@@ -103,7 +103,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
             {roleProfile.map(({ tag, avgPerDeck }) => (
               <div key={tag.id} className="rounded-lg border border-seam bg-sleeve px-3 py-2">
                 <dt className="text-sm text-muted-foreground">{tag.label}</dt>
-                <dd className="font-heading text-2xl font-semibold tabular-nums">{avgPerDeck}</dd>
+                <dd className="font-heading text-2xl font-mono">{avgPerDeck}</dd>
               </div>
             ))}
           </dl>
@@ -123,8 +123,8 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
               caption: (
                 <span className="flex flex-col items-start gap-0.5">
                   {s.card.gameChanger && <GameChangerBadge />}
-                  {s.corpus && <span className="text-muted-foreground tabular-nums">In {formatPercent(s.corpus.inclusionRate)} of decks</span>}
-                  <span className="text-muted-foreground tabular-nums">{s.card.price ? `About ${formatUsd(s.card.price.usd)}` : "No price"}</span>
+                  {s.corpus && <span className="text-muted-foreground font-mono">In {formatPercent(s.corpus.inclusionRate)} of decks</span>}
+                  <span className="text-muted-foreground font-mono">{s.card.price ? `About ${formatUsd(s.card.price.usd)}` : "No price"}</span>
                 </span>
               ),
             }))}

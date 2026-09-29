@@ -9,14 +9,14 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { FeaturedCommanders } from "@/components/home/featured-commanders";
-import { HERO_PASS_ASIDE, HeroFan } from "@/components/home/hero-fan";
+import { HeroFan } from "@/components/home/hero-fan";
 import { HowItWorks } from "@/components/home/how-it-works";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
 import { CLOSING_VISTA, HERO_VISTA, type Vista } from "@/lib/landing-art";
 
 /** Hero buttons: tall enough for a wrapped label on phones, the usual 48 px single line from sm up. */
 const HERO_BUTTON =
-  "h-auto min-h-12 gap-2 px-3 py-2 text-center text-sm leading-tight font-semibold whitespace-normal sm:h-12 sm:px-6 sm:text-base sm:whitespace-nowrap";
+  "h-auto min-h-12 gap-2 px-3 py-2 max-sm:min-h-12 text-center text-sm leading-tight font-semibold whitespace-normal sm:h-12 sm:px-6 sm:text-base sm:whitespace-nowrap";
 
 /** The closing art runs from its column to the window edge on desktop, and full width below it. */
 const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
@@ -122,10 +122,7 @@ export default function Home() {
           <div className="order-first flex flex-col md:order-last">
             <div className="flex flex-1 items-center justify-center">
               <HeroFan />
-            </div>
-            {/* The buddy's aside for the card just passed onto the fan. */}
-            <p className="mt-10 text-center font-drama text-lg text-balance text-foreground/85 italic md:mt-16">“{HERO_PASS_ASIDE}”</p>
-            <ArtCredit vista={HERO_VISTA} className="hidden text-right text-xs leading-5 text-muted-foreground md:block" />
+            </div>            <ArtCredit vista={HERO_VISTA} className="hidden text-right text-xs leading-5 text-muted-foreground md:block" />
           </div>
 
           <div className="relative z-20 max-w-2xl">

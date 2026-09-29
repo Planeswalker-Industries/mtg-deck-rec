@@ -166,6 +166,8 @@ export function ZoomableCard({
             }}
             className={cn(
               "absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-full bg-black/65 text-white",
+              // A 44 px touch target around the 32 px dot, so the dot stays small over the card name.
+              "after:absolute after:-inset-1.5 after:content-['']",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/zoom:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100",
             )}

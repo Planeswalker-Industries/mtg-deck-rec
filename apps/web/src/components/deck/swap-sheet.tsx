@@ -138,12 +138,12 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
 
       <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="font-heading text-xl leading-tight font-semibold tracking-tight">{displayName(selected.card)}</h3>
-        <p className={cn("text-lg font-semibold tabular-nums", saves && "text-save")}>{describeCostDelta(selected.costDelta)}</p>
+        <p className={cn("text-lg font-mono", saves && "text-save")}>{describeCostDelta(selected.costDelta)}</p>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {selected.card.gameChanger && <GameChangerBadge />}
         {selected.owned && <OwnedBadge />}
-        <span className="tabular-nums">
+        <span className="font-mono">
           {!selected.corpus
             ? "No deck data yet"
             : selected.corpus.limited
@@ -154,7 +154,8 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
         </span>
       </div>
       {selected.functionalTwin ? (
-        <p className="mt-2 text-sm font-semibold text-primary">
+        // The buddy's voice: an aside, not a label.
+        <p className="mt-2 font-drama text-base text-foreground/85 italic">
           Same rules as {displayName(target)}, under a different name. You can run both in one deck.
         </p>
       ) : (
@@ -177,7 +178,7 @@ function Alternatives({
   return (
     <section aria-labelledby="swap-alternatives" className="mt-5">
       <h4 id="swap-alternatives" className="text-sm font-semibold">
-        Other options <span className="font-normal text-muted-foreground tabular-nums">{suggestions.length}</span>
+        Other options <span className="font-normal text-muted-foreground font-mono">{suggestions.length}</span>
       </h4>
       <ul className="-mx-4 mt-2 flex snap-x gap-2 overflow-x-auto px-4 pb-2">
         {suggestions.map((s, i) => (

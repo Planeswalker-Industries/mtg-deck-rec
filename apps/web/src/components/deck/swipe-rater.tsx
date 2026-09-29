@@ -346,7 +346,7 @@ export function SwipeRater({
       className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground tabular-nums">
+        <p className="text-sm text-muted-foreground font-mono">
           Card {rater.targetIndex + 1} of {rater.targetCount}
           {inRater ? "" : " to replace"}
         </p>
@@ -420,12 +420,12 @@ export function SwipeRater({
             animate={{ opacity: 1 }}
             transition={{ delay: DRAW.replacementDetailsDelaySeconds, duration: DRAW.fadeSeconds }}
           >
-            <p className="font-heading text-xl leading-tight font-semibold">{displayName(candidate.card)}</p>
-            <p className="text-sm text-muted-foreground tabular-nums">
+            <p className="font-heading text-lg leading-tight font-semibold">{displayName(candidate.card)}</p>
+            <p className="text-sm text-muted-foreground font-mono">
               {describeCostDelta(candidate.costDelta)} · {rater.candidateIndex + 1} of {rater.candidateCount}
             </p>
             {candidate.functionalTwin ? (
-              <p className="mt-1 text-sm font-semibold text-primary">Same rules as {targetName}, under a different name.</p>
+              <p className="mt-1 font-drama text-sm text-foreground/85 italic">Same rules as {targetName}, under a different name.</p>
             ) : (
               <TagPills labels={jobs} label={`What ${displayName(candidate.card)} does too`} className="mt-1.5" />
             )}

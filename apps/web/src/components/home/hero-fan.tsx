@@ -64,7 +64,7 @@ const FAN_TOP_Z = 10;
 
 /**
  * The pass: one card slid across the table onto the hand, the lane's signature moment. It lands after the deal, on
- * top of the fan's lower right, and the aside under the fan (`HERO_PASS_ASIDE`) says why a friend passed it.
+ * top of the fan's lower right.
  */
 const PASSED_CARD = sampleCard("Three Visits");
 /** Lands once the last pair of fan cards is down. */
@@ -74,12 +74,9 @@ const PASS_X = "58%";
 const PASS_Y = "18%";
 const PASS_SCALE = 0.78;
 
-/** What the friend says as they pass it. Cultivate is in the fan; Three Visits fetches the same Forest a mana cheaper. */
-export const HERO_PASS_ASIDE = "You already own Three Visits. It does Cultivate's job a mana cheaper.";
-
 /**
  * The hero's card fan, dealt once on load (`.fan-card` in globals.css), then one card passed onto it (`.pass-card`).
- * Decorative: the headline and the aside say what it is.
+ * Decorative: the headline says what it is.
  */
 export function HeroFan() {
   return (

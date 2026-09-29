@@ -55,7 +55,7 @@ function ago(iso: string | null): string {
   return `${Math.floor(value)}${unit} ago`;
 }
 
-/** The lamp is the only thing that is lit, so a healthy source is gold and a stopped one wears its job colour. */
+/** A source's state in the job colours: add for a healthy run, cut for a failed or stopped one. */
 function stateTone(state: string | undefined, disabled: boolean): string {
   if (disabled) return "text-cut";
   if (state === "failed") return "text-cut";
@@ -92,7 +92,7 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
       </div>
 
       <div className="flex items-baseline gap-2">
-        <span className="font-heading text-2xl leading-none font-semibold tabular-nums text-primary">
+        <span className="font-heading text-2xl leading-none font-mono text-foreground">
           {source.decks.toLocaleString()}
         </span>
         <span className="text-sm text-muted-foreground">decks</span>
@@ -100,13 +100,13 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <dt className="text-muted-foreground">Last deck</dt>
-        <dd className="text-right tabular-nums">{ago(source.lastFetchedAt)}</dd>
+        <dd className="text-right font-mono">{ago(source.lastFetchedAt)}</dd>
         <dt className="text-muted-foreground">Last run</dt>
-        <dd className="text-right tabular-nums">{source.lastRun ? ago(source.lastRun.startedAt) : "never"}</dd>
+        <dd className="text-right font-mono">{source.lastRun ? ago(source.lastRun.startedAt) : "never"}</dd>
         {source.lastRun && (
           <>
             <dt className="text-muted-foreground">Written</dt>
-            <dd className="text-right tabular-nums">{source.lastRun.decksWritten}</dd>
+            <dd className="text-right font-mono">{source.lastRun.decksWritten}</dd>
           </>
         )}
       </dl>
@@ -179,10 +179,10 @@ function DeckRow({ deck, index }: { deck: AdminCrawledDeck; index: number }) {
               {deck.commanderNames.length > 0 ? deck.commanderNames.join(" and ") : "No commander resolved"}
             </span>
             <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-              <span className="tabular-nums">{deck.sourceDeckId}</span>
-              <span className={cn("tabular-nums", deck.deckSize !== 100 && "font-semibold text-cut")}>{deck.deckSize} cards</span>
-              <span className="tabular-nums">{deck.distinctCards} distinct</span>
-              <span className="tabular-nums">fetched {ago(deck.fetchedAt)}</span>
+              <span className="font-mono">{deck.sourceDeckId}</span>
+              <span className={cn("font-mono", deck.deckSize !== 100 && "text-cut")}>{deck.deckSize} cards</span>
+              <span className="font-mono">{deck.distinctCards} distinct</span>
+              <span className="font-mono">fetched {ago(deck.fetchedAt)}</span>
             </span>
           </span>
         </button>
@@ -227,7 +227,7 @@ function DeckRow({ deck, index }: { deck: AdminCrawledDeck; index: number }) {
                 <ul className="grid grid-cols-1 gap-x-6 gap-y-0.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
                   {cards.map((card) => (
                     <li key={card.oracleId} className="flex min-w-0 items-baseline gap-2 py-0.5">
-                      <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">{card.quantity}</span>
+                      <span className="w-6 shrink-0 text-right font-mono text-muted-foreground">{card.quantity}</span>
                       {/* An oracle id the catalog has never heard of is exactly what this page exists to show. */}
                       <span className={cn("min-w-0 truncate", card.name === null && "font-mono text-cut")}>
                         {card.name ?? card.oracleId}

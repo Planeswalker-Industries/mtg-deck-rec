@@ -7,5 +7,6 @@ export function GameChangerBadge({ className }: { className?: string }) {
 }
 
 export function OwnedBadge({ className }: { className?: string }) {
-  return <span className={cn(PILL, "bg-primary/10 text-primary", className)}>Owned</span>;
+  // A status, not an action: neutral, so the accent stays on what you can press.
+  return <span className={cn(PILL, "bg-foreground/10 text-foreground", className)}>Owned</span>;
 }

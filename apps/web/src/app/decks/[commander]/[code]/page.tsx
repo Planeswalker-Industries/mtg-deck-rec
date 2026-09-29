@@ -77,7 +77,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
               <span>{deck.commanders.map(displayName).join(" and ") || "No commander"}</span>
               <ColorIdentity identity={identity} />
-              <span className="tabular-nums">{deck.cardCount} cards</span>
+              <span className="font-mono">{deck.cardCount} cards</span>
               {deck.bracket !== null && <span>Bracket {deck.bracket}</span>}
             </p>
           </div>
@@ -114,7 +114,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
           <section key={group.category} aria-labelledby={`group-${group.category}`} className="flex flex-col gap-3">
             <h2 id={`group-${group.category}`} className="font-heading text-xl font-semibold tracking-tight">
               {cardCategoryLabel[group.category]}{" "}
-              <span className="font-sans text-base font-normal text-muted-foreground tabular-nums">
+              <span className="text-base font-normal text-muted-foreground font-mono">
                 {group.cards.reduce((n, c) => n + c.quantity, 0)}
               </span>
             </h2>
@@ -124,7 +124,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
               items={group.cards.map((entry) => ({
                 card: entry.card,
                 href: `/card/${entry.card.slug}`,
-                caption: entry.quantity > 1 ? <span className="tabular-nums">×{entry.quantity}</span> : undefined,
+                caption: entry.quantity > 1 ? <span className="font-mono">×{entry.quantity}</span> : undefined,
               }))}
             />
           </section>

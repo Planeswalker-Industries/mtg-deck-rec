@@ -57,7 +57,7 @@ export function CollectionView() {
         <>
           <Heading />
           <div className="flex max-w-md flex-col gap-1.5" aria-live="polite">
-            <p className="text-sm font-semibold tabular-nums">
+            <p className="text-sm tabular-nums">
               {view.total === 0 ? "Loading your collection…" : `Loading your collection: ${count(view.loaded)} of ${count(view.total)} cards`}
             </p>
             <ProgressBar value={view.total === 0 ? 0 : Math.round((view.loaded / view.total) * 100)} label="Loading your collection" />
@@ -271,11 +271,11 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
                       return next;
                     })
                   }
-                  className="flex items-baseline gap-2 rounded-md font-heading text-xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  className="flex min-h-11 items-center gap-2 rounded-md font-heading text-xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <ChevronDown aria-hidden className={cn("size-5 self-center transition-transform", !open && "-rotate-90")} />
                   {COLLECTION_GROUP_LABELS[group]}
-                  <span className="font-sans text-base font-normal text-muted-foreground tabular-nums">{count(groupItems.length)}</span>
+                  <span className="text-base font-normal text-muted-foreground font-mono">{count(groupItems.length)}</span>
                 </button>
               </h2>
               {open && (
@@ -289,7 +289,7 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
                       items={groupItems.map((item) => ({
                         card: item.card,
                         href: `/card/${item.card.slug}`,
-                        caption: item.quantity > 1 ? <span className="tabular-nums text-muted-foreground">×{item.quantity}</span> : undefined,
+                        caption: item.quantity > 1 ? <span className="font-mono text-muted-foreground">×{item.quantity}</span> : undefined,
                       }))}
                     />
                   )}
