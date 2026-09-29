@@ -70,9 +70,9 @@ export function DeckOverview({
   return (
     <div className="flex flex-col gap-3">
       <h4 className="text-xs font-bold tracking-[0.2em] text-muted-foreground uppercase">Deck overview</h4>
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
-        <div className="flex flex-col items-center gap-3">
-          <svg role="img" aria-label={ariaLabel} viewBox="0 0 100 100" className="size-32 shrink-0 sm:size-36">
+      <div className="flex flex-row items-center gap-4">
+        <div className="flex shrink-0 flex-col items-center gap-2.5">
+          <svg role="img" aria-label={ariaLabel} viewBox="0 0 100 100" className="size-28 shrink-0">
             <g transform="rotate(-90 50 50)">
               {segments.map(({ cat, dashLength, gapLength, offset }) => (
                 <circle
@@ -110,7 +110,7 @@ export function DeckOverview({
           </svg>
 
           {/* Mana-symbol row: colors the deck runs, plus colorless. */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
             {colors.map((key) => (
               <div key={key} className="flex flex-col items-center gap-0.5">
                 <Image
@@ -129,12 +129,12 @@ export function DeckOverview({
           </div>
         </div>
 
-        <ul className="grid flex-1 grid-cols-2 gap-x-8 gap-y-1.5">
+        <ul className="grid min-w-0 flex-1 grid-cols-1 gap-y-1">
           {rows.map((cat) => (
-            <li key={cat} className="flex items-center gap-2 text-sm">
+            <li key={cat} className="flex items-center gap-2 text-xs">
               <span
                 aria-hidden
-                className="inline-block size-3 shrink-0 rounded-sm"
+                className="inline-block size-2.5 shrink-0 rounded-sm"
                 style={{ backgroundColor: CAT_COLORS[cat] }}
               />
               <span className="text-muted-foreground">{cardCategoryLabel[cat]}</span>

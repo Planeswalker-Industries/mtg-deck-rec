@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "cn";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "motion/react";
 import type { FeaturedCommander } from "@/lib/server/featured";
-import { CardImage } from "@/components/cards/card-image";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { buttonVariants } from "@/components/ui/button";
 import { formatDeckCount } from "@/lib/labels";
@@ -24,8 +23,8 @@ const COLOR_NAME: Record<string, string> = { W: "White", U: "Blue", B: "Black", 
 
 const IDENTITY_ORDER: readonly ColorKey[] = ["W", "U", "B", "R", "G"];
 
-/** Tiles show art at roughly a third of the panel; Scryfall's art crops are about 626 px wide. */
-const TILE_ART_SIZES = "(min-width: 1024px) 220px, 33vw";
+/** Tiles are about 140 px wide on desktop and a third of a phone; Scryfall's art crops are about 626 px wide. */
+const TILE_ART_SIZES = "(min-width: 1024px) 140px, 33vw";
 
 /** The fixture's identity when the catalog didn't answer: the colours its cards count under, in WUBRG order. */
 function fixtureIdentity(counts: Record<ColorKey, number>): string {
@@ -39,11 +38,12 @@ function colorNames(identity: string): string {
 }
 
 /**
- * The featured commanders: a row of tiles (art, colours, deck count) above the selected commander's detail.
+ * The featured commanders: the selected deck's overview wheel beside a row of tiles (art, colours, deck count), and
+ * the selected commander's name and Build this Deck under both.
  * Takes all three commanders' server-rendered data as props. Auto-advances on a timer, takes manual input from
  * the tiles and the arrow keys, pauses on hover and focus, and respects reduced motion.
  *
- * Only the selected commander's detail is in the DOM. Tile names are not headings: the detail's `h3` is the
+ * Only the selected commander's wheel and name are in the DOM. Tile names are not headings: the detail's `h3` is the
  * commander on show.
  */
 export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommander[] }) {
@@ -109,10 +109,30 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
         exit: (d: Direction) => ({ x: -d * DETAIL_SLIDE_PX, opacity: 0 }),
       };
 
+  // One selection change animates two places (the wheel and the name row); both use the same keyed swap.
+  const swap = (key: string, content: ReactNode) => (
+    <AnimatePresence mode="wait" custom={direction} initial={false}>
+      <motion.div
+        key={key}
+        // Custom goes on the element too, not just AnimatePresence: non-exit variants resolve it
+        // from the component's own prop (presence custom is only read for "exit"), so without it
+        // enter always slid in from the same side whichever way the selection moved.
+        custom={direction}
+        variants={variants}
+        initial="enter"
+        animate="center"
+        exit="exit"
+        transition={{ duration: reduceMotion ? 0.2 : 0.3, ease: "easeInOut" }}
+      >
+        {content}
+      </motion.div>
+    </AnimatePresence>
+  );
+
   return (
     <div
       aria-live="polite"
-      className="relative"
+      className="relative flex flex-col gap-5"
       onMouseEnter={() => {
         pausedRef.current = true;
       }}
@@ -126,116 +146,107 @@ export function FeaturedCommanders({ commanders }: { commanders: FeaturedCommand
         pausedRef.current = false;
       }}
     >
-      {/* Tiles: click to select, arrow keys when focused. */}
-      <div
-        className="grid grid-cols-3 gap-2 sm:gap-3"
-        role="group"
-        aria-label="Featured commanders"
-        onKeyDown={onKeyDown}
-      >
-        {commanders.map((cmd, i) => {
-          const art = cmd.card?.images?.front.artCrop;
-          const selected = i === index;
-          return (
-            <button
-              key={cmd.deck.slug}
-              ref={(el) => {
-                tileRefs.current[i] = el;
-              }}
-              type="button"
-              aria-label={`Show ${cmd.deck.commanderName}`}
-              aria-current={selected}
-              onClick={() => select(i)}
-              className={cn(
-                "group flex min-w-0 flex-col overflow-hidden rounded-sm border bg-background text-left transition-colors",
-                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                selected ? "border-primary" : "border-seam hover:border-muted-foreground/60",
-              )}
-            >
-              <div className="relative aspect-[4/3] w-full bg-muted">
-                {art && (
-                  <Image
-                    src={art}
-                    alt=""
-                    fill
-                    unoptimized
-                    sizes={TILE_ART_SIZES}
-                    className={cn("object-cover transition-opacity", selected ? "opacity-100" : "opacity-70 group-hover:opacity-90")}
-                  />
+      {/* The wheel is fixed-width so a deck with more legend rows doesn't shove the tiles sideways. */}
+      <div className="grid gap-5 md:grid-cols-[16.5rem_minmax(0,1fr)] md:items-start md:gap-6">
+        {swap(
+          `overview-${current.deck.slug}`,
+          <DeckOverview
+            composition={current.deck.composition}
+            colorCounts={current.deck.colorCounts}
+            cardCount={current.deck.cardCount}
+          />,
+        )}
+
+        {/* Tiles: click to select, arrow keys when focused. The gold border moves with the selection. */}
+        <div
+          className="grid grid-cols-3 gap-2 sm:gap-3"
+          role="group"
+          aria-label="Featured commanders"
+          onKeyDown={onKeyDown}
+        >
+          {commanders.map((cmd, i) => {
+            const art = cmd.card?.images?.front.artCrop;
+            const selected = i === index;
+            return (
+              <button
+                key={cmd.deck.slug}
+                ref={(el) => {
+                  tileRefs.current[i] = el;
+                }}
+                type="button"
+                aria-label={`Show ${cmd.deck.commanderName}`}
+                aria-current={selected}
+                onClick={() => select(i)}
+                className={cn(
+                  "group flex min-w-0 flex-col overflow-hidden rounded-sm border bg-background text-left transition-colors",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  selected ? "border-primary" : "border-seam hover:border-muted-foreground/60",
                 )}
-              </div>
-              <div className="flex flex-1 flex-col gap-1.5 p-2 sm:p-3">
-                <span className="line-clamp-2 text-sm leading-snug font-bold">{cmd.deck.commanderName}</span>
-                <span className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <ColorIdentity
-                    identity={cmd.card?.colorIdentity ?? fixtureIdentity(cmd.deck.colorCounts)}
-                    className="[&_img]:size-3.5"
-                  />
-                  {cmd.deckCount !== null && (
-                    <span className="text-xs text-muted-foreground tabular-nums">{formatDeckCount(cmd.deckCount)}</span>
+              >
+                <div className="relative aspect-[16/10] w-full bg-muted">
+                  {art && (
+                    <Image
+                      src={art}
+                      alt=""
+                      fill
+                      unoptimized
+                      sizes={TILE_ART_SIZES}
+                      className={cn(
+                        "object-cover transition-opacity",
+                        selected ? "opacity-100" : "opacity-70 group-hover:opacity-90",
+                      )}
+                    />
                   )}
-                </span>
-              </div>
-            </button>
-          );
-        })}
+                </div>
+                <div className="flex flex-1 flex-col gap-1.5 p-2 sm:p-3">
+                  <span className="line-clamp-2 text-sm leading-snug font-bold">{cmd.deck.commanderName}</span>
+                  <span className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <ColorIdentity
+                      identity={cmd.card?.colorIdentity ?? fixtureIdentity(cmd.deck.colorCounts)}
+                      className="[&_img]:size-3.5"
+                    />
+                    {cmd.deckCount !== null && (
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {formatDeckCount(cmd.deckCount)}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <AnimatePresence mode="wait" custom={direction} initial={false}>
-        <motion.article
-          key={current.deck.slug}
-          // Custom goes on the article too, not just AnimatePresence: non-exit variants resolve it
-          // from the component's own prop (presence custom is only read for "exit"), so without it
-          // enter always slid in from the same side whichever way the selection moved.
-          custom={direction}
-          variants={variants}
-          initial="enter"
-          animate="center"
-          exit="exit"
-          transition={{ duration: reduceMotion ? 0.2 : 0.3, ease: "easeInOut" }}
-        >
-          <div className="mt-5 flex flex-col gap-6 border-t border-seam pt-5">
-            {/* The commander and its details down to the one action. */}
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
-              {card && <CardImage card={card} alt="" className="w-28 shrink-0 sm:w-32" />}
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h3 className="font-heading text-xl font-semibold">{current.deck.commanderName}</h3>
-                  {card && <ColorIdentity identity={card.colorIdentity} />}
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Commander
-                  {card ? ` · ${colorNames(card.colorIdentity)}` : ""}
-                  {current.deckCount !== null ? ` · ${formatDeckCount(current.deckCount)}` : ""}
-                </p>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{current.deck.summary}</p>
-                <Link
-                  href={`/deck?commander=${current.deck.slug}`}
-                  className={cn(
-                    buttonVariants({ variant: "outline" }),
-                    "mt-4 gap-2 border-primary bg-background text-primary",
-                    "hover:border-primary hover:bg-background hover:text-primary",
-                    "dark:border-primary dark:bg-background dark:hover:bg-background dark:hover:text-primary",
-                  )}
-                >
-                  Build this Deck
-                  <ArrowRight aria-hidden className="size-4" />
-                </Link>
-              </div>
+      {/* The commander on show and the one action. */}
+      {swap(
+        `detail-${current.deck.slug}`,
+        <div className="flex flex-col gap-4 border-t border-seam pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h3 className="font-heading text-xl font-semibold">{current.deck.commanderName}</h3>
+              {card && <ColorIdentity identity={card.colorIdentity} />}
             </div>
-
-            {/* The deck's card-type breakdown, under the seam. */}
-            <div className="border-t border-seam pt-5">
-              <DeckOverview
-                composition={current.deck.composition}
-                colorCounts={current.deck.colorCounts}
-                cardCount={current.deck.cardCount}
-              />
-            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Commander
+              {card ? ` · ${colorNames(card.colorIdentity)}` : ""}
+              {current.deckCount !== null ? ` · ${formatDeckCount(current.deckCount)}` : ""}
+            </p>
           </div>
-        </motion.article>
-      </AnimatePresence>
-
+          <Link
+            href={`/deck?commander=${current.deck.slug}`}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "shrink-0 gap-2 self-start border-primary bg-background text-primary sm:self-auto",
+              "hover:border-primary hover:bg-background hover:text-primary",
+              "dark:border-primary dark:bg-background dark:hover:bg-background dark:hover:text-primary",
+            )}
+          >
+            Build this Deck
+            <ArrowRight aria-hidden className="size-4" />
+          </Link>
+        </div>,
+      )}
     </div>
   );
 }

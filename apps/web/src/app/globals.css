@@ -65,7 +65,7 @@
   --radius: 0.375rem;
 
   /* The light falls from the top of the page, so surfaces get warmer as they rise. */
-  --background: #0a1015; /* the table at night: slate, lifted enough that sections read as bands */
+  --background: #080e15; /* the table at night: slate, lifted enough that sections read as bands */
   --foreground: #e9e5dd; /* warm off-white: paper under a lamp, never pure white */
   --sleeve: #0f171d; /* a card sleeve lying on the table */
   --seam: #1f2c34; /* where two surfaces meet, and the divider inside a card */

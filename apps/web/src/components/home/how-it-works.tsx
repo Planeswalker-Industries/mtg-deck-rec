@@ -3,9 +3,14 @@ import { ArrowRight, ChevronRight } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
+import { Band } from "@/components/ui/band";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { sampleCard } from "@/lib/sample-cards";
+
+/** Placeholder copy for the column beside the steps; the owner will replace it. */
+const HOW_IT_WORKS_BLURB =
+  "Bring the cards you own and the deck you play. We read both, then show what to cut, what to add, and which of your own cards can stand in for the expensive singles.";
 
 /** Thumbnails in the vignettes render at about 64 px, well inside Scryfall's `small`. */
 const THUMB_SIZES = "64px";
@@ -23,7 +28,6 @@ const DECKLIST_LINES = [
   "1 Sol Ring",
   "1 Rhystic Study",
   "1 Cultivate",
-  "1 Beast Whisperer",
 ];
 
 /** Step 3: one card of each job, marked along the top edge in the job's colour (the artist line stays clear). */
@@ -32,9 +36,10 @@ const ADD_CARD = sampleCard("Guardian Project");
 const REPLACE_FROM = sampleCard("Three Visits");
 const REPLACE_TO = sampleCard("Farseek");
 
-function Thumb({ card, className }: { card: CardSummary; className?: string }) {
+/** `width` is a Tailwind width class; thumbnails default to 64 px. */
+function Thumb({ card, width = "w-16", className }: { card: CardSummary; width?: string; className?: string }) {
   return (
-    <div className={cn("w-16 shrink-0", className)}>
+    <div className={cn("shrink-0", width, className)}>
       <CardImage card={card} variant="small" sizes={THUMB_SIZES} alt="" />
     </div>
   );
@@ -57,7 +62,7 @@ function CollectionVignette() {
 
 function DecklistVignette() {
   return (
-    <div className="w-full max-w-[13rem] rotate-[-1.5deg] rounded-sm border border-seam bg-background px-3 py-2 text-left text-xs leading-relaxed text-foreground/80 shadow-[0_8px_18px_-10px_rgb(0_0_0/0.8)]">
+    <div className="w-full max-w-[13rem] rotate-[-1.5deg] rounded-sm border border-seam bg-sleeve px-3 py-2 text-left text-xs leading-relaxed text-foreground/80 shadow-[0_8px_18px_-10px_rgb(0_0_0/0.8)]">
       {DECKLIST_LINES.map((line) => (
         <p key={line} className="truncate">
           {line}
@@ -73,7 +78,7 @@ function Marked({ card, tone }: { card: CardSummary; tone: "cut" | "add" | "repl
   return (
     <div className="flex flex-col gap-1">
       <span className={cn("h-1 rounded-full", bar)} />
-      <Thumb card={card} className="w-14" />
+      <Thumb card={card} width="w-11" />
     </div>
   );
 }
@@ -119,17 +124,23 @@ const STEPS: { step: number; title: string; desc: string; vignette: ReactNode }[
  */
 export function HowItWorks() {
   return (
-    <section aria-labelledby="how-it-works" className="flex flex-col gap-5">
-      <SectionHeading id="how-it-works">How it works</SectionHeading>
-      <div role="list" className="flex flex-col gap-3 md:flex-row md:items-stretch md:gap-2">
+    <Band
+      aria-labelledby="how-it-works"
+      inner="grid gap-6 py-10 md:py-14 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-10"
+    >
+      <div>
+        <SectionHeading id="how-it-works">How it works</SectionHeading>
+        <p className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">{HOW_IT_WORKS_BLURB}</p>
+      </div>
+      <div role="list" className="flex flex-col gap-3 md:flex-row md:items-stretch md:gap-1.5">
         {STEPS.map(({ step, title, desc, vignette }, i) => (
           <Fragment key={step}>
-            <Panel role="listitem" padding="none" className="flex flex-1 flex-col overflow-hidden">
+            <Panel role="listitem" padding="none" surface="table" className="flex flex-1 flex-col overflow-hidden">
               {/* The vignette is illustration; the heading and sentence below carry the meaning. */}
-              <div aria-hidden className="flex h-36 items-center justify-center border-b border-seam bg-background/60 px-4">
+              <div aria-hidden className="flex h-28 items-center justify-center border-b border-seam px-3">
                 {vignette}
               </div>
-              <div className="flex gap-3 p-5">
+              <div className="flex gap-3 p-4">
                 <span aria-hidden className="font-heading text-2xl leading-none font-semibold text-primary">
                   {step}
                 </span>
@@ -141,12 +152,12 @@ export function HowItWorks() {
             </Panel>
             {i < STEPS.length - 1 && (
               <div aria-hidden className="hidden shrink-0 items-center justify-center text-muted-foreground md:flex">
-                <ChevronRight className="size-5" />
+                <ChevronRight className="size-4" />
               </div>
             )}
           </Fragment>
         ))}
       </div>
-    </section>
+    </Band>
   );
 }

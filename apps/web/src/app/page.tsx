@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { ClipboardPaste, Library } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { ArtBackdrop } from "@/components/ui/art-backdrop";
-import { Panel } from "@/components/ui/panel";
+import { Band } from "@/components/ui/band";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { FeaturedCommanders } from "@/components/home/featured-commanders";
 import { HeroFan } from "@/components/home/hero-fan";
@@ -11,8 +11,14 @@ import { HowItWorks } from "@/components/home/how-it-works";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
 import { CLOSING_VISTA, HERO_VISTA, type Vista } from "@/lib/landing-art";
 
-/** The closing panel is a third of the 72rem column on desktop and full width below it. */
-const CLOSING_ART_SIZES = "(min-width: 1024px) 384px, 100vw";
+/** The closing art runs from its column to the window edge on desktop, and full width below it. */
+const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
+
+/**
+ * How far the closing art reaches past its cell on the right: the column's 1rem gutter, plus the margin beside the
+ * 72rem column once the window is wider than it. So the art always meets the window edge.
+ */
+const CLOSING_ART_RIGHT = "calc(min(0px, (72rem - 100vw) / 2) - 1rem)";
 
 function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
   return (
@@ -29,20 +35,25 @@ function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
 async function FeaturedCommandersSection() {
   const commanders = await getFeaturedCommanders();
   return (
-    <Panel as="section" role="region" aria-label="Popular Commanders" className="overflow-hidden lg:col-span-2">
+    <section role="region" aria-label="Popular Commanders" className="py-10 md:py-12 lg:col-span-2 lg:pr-8">
       <SectionHeading>Popular Commanders</SectionHeading>
-      <div className="mt-5">
+      <div className="mt-6">
         <FeaturedCommanders commanders={commanders} />
       </div>
-    </Panel>
+    </section>
   );
 }
 
-/** The closing line, one short sentence to a line, over the art. Credits its art only when it isn't the hero's. */
-function StrongestDecksPanel() {
+/**
+ * The closing line, one short sentence to a line, over art that runs to the window edge. The seam on its left divides
+ * it from Popular Commanders. Credits its art only when it isn't the hero's.
+ */
+function StrongestDecks() {
   return (
-    <section className="relative isolate flex min-h-[22rem] flex-col justify-end overflow-hidden rounded-md border border-seam p-5 sm:p-6">
-      <ArtBackdrop src={CLOSING_VISTA.src} wash="bottom" sizes={CLOSING_ART_SIZES} position="object-[70%_center]" />
+    <section className="relative isolate border-t border-seam py-10 md:py-12 lg:border-t-0 lg:border-l lg:pl-8">
+      <div aria-hidden className="absolute inset-y-0 -left-4 lg:left-0" style={{ right: CLOSING_ART_RIGHT }}>
+        <ArtBackdrop src={CLOSING_VISTA.src} wash="left" sizes={CLOSING_ART_SIZES} position="object-[70%_center]" />
+      </div>
       <h2 className="font-heading text-[1.75rem] leading-[1.15] font-semibold">
         <span className="block">The strongest decks.</span> <span className="block">Your own cards.</span>{" "}
         <span className="block text-primary">No singles necessary.</span>
@@ -51,19 +62,22 @@ function StrongestDecksPanel() {
         href="/deck"
         className={buttonVariants({
           size: "lg",
-          className: "lit mt-5 h-12 w-fit gap-2 px-6 text-base font-bold",
+          className: "lit mt-6 h-12 w-fit gap-2 px-6 text-base font-bold",
         })}
       >
         Get started
       </Link>
-      {CLOSING_VISTA.src !== HERO_VISTA.src && <ArtCredit vista={CLOSING_VISTA} className="mt-4 text-xs text-muted-foreground" />}
+      {CLOSING_VISTA.src !== HERO_VISTA.src && (
+        <ArtCredit vista={CLOSING_VISTA} className="mt-4 text-xs text-muted-foreground" />
+      )}
     </section>
   );
 }
 
 export default function Home() {
   return (
-    <div className="flex flex-col gap-10 pb-3 md:gap-14">
+    // Bands meet rule to rule, and the last one meets the footer's rule: -mb-10 cancels the layout's bottom padding.
+    <div className="-mb-10 flex flex-col">
       {/*
        * Full-bleed: the art has to reach the window edges, not the content column. The negative margin
        * needs `overflow-x: clip` on html and body (globals.css) so 100vw can't add a horizontal scrollbar.
@@ -120,12 +134,13 @@ export default function Home() {
 
       <HowItWorks />
 
-      <div className="grid gap-5 lg:grid-cols-3 lg:items-stretch">
+      {/* The last band has no rule of its own: the footer's top rule closes it. */}
+      <Band className="border-b-0" inner="grid lg:grid-cols-3">
         <Suspense fallback={<div className="lg:col-span-2" />}>
           <FeaturedCommandersSection />
         </Suspense>
-        <StrongestDecksPanel />
-      </div>
+        <StrongestDecks />
+      </Band>
     </div>
   );
 }
