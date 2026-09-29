@@ -20,8 +20,8 @@ type PanelProps<T extends ElementType> = {
 } & Omit<ComponentPropsWithoutRef<T>, "as">;
 
 /**
- * A sleeve lying on the table: the one surface that sits above the page. Square-ish corners on purpose, so a panel
- * reads as a laid-down object rather than a floating card, and no shadow, since the light comes from above.
+ * A binder page on the table: the one surface that sits above the page, one tint step off it, edged by a hairline.
+ * No shadow: only cards in hand cast one.
  */
 export function Panel<T extends ElementType = "div">({
   as,
@@ -32,6 +32,6 @@ export function Panel<T extends ElementType = "div">({
 }: PanelProps<T>) {
   const Component: ElementType = as ?? "div";
   return (
-    <Component className={cn("rounded-md border border-seam", SURFACE[surface], PADDING[padding], className)} {...rest} />
+    <Component className={cn("rounded-panel border border-seam", SURFACE[surface], PADDING[padding], className)} {...rest} />
   );
 }

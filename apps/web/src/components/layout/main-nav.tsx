@@ -6,6 +6,7 @@ import { Suspense, type ReactNode } from "react";
 import { Menu, X } from "lucide-react";
 import { cn } from "cn";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { TEXT_LINK } from "@/lib/constants";
 
 interface NavItem {
   href: "/deck" | "/rate" | "/decks" | "/collection";
@@ -22,13 +23,13 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/collection", label: "Your collection", hint: "The cards you own", accountOnly: true },
 ];
 
-// Quiet until you reach for them: gold is the lamp, and it belongs on the one action that matters. The page you are on
-// gets a gold edge along the header's foot, where the header meets the page.
+// Quiet until you reach for them: the accent belongs on the one action that matters. The page you are on
+// gets an accent edge along the header's foot, where the header meets the page.
 const NAV_LINK =
-  "relative flex h-16 items-center whitespace-nowrap px-3 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:text-foreground after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-primary after:opacity-0 aria-[current=page]:after:opacity-100";
+  "relative flex h-16 items-center whitespace-nowrap px-3 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:text-foreground after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-primary after:opacity-0 aria-[current=page]:after:opacity-100";
 
 const ICON_BUTTON =
-  "flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  "flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-primary focus-visible:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 function isCurrent(pathname: string | null, href: string) {
   return pathname !== null && (pathname === href || pathname.startsWith(`${href}/`));
@@ -87,7 +88,7 @@ export function MainNav({ signedIn, children }: { signedIn: boolean; children: R
               {!signedIn && (
                 <p className="mt-1 border-t border-seam px-3 pt-3 pb-2 text-sm text-muted-foreground">
                   <SheetClose asChild>
-                    <Link href="/sign-in" className="font-bold text-primary underline-offset-4 hover:underline">
+                    <Link href="/sign-in" className={cn(TEXT_LINK, "font-semibold")}>
                       Sign in
                     </Link>
                   </SheetClose>{" "}
@@ -117,13 +118,13 @@ function MenuLinks({ items }: { items: readonly NavItem[] }) {
                 aria-current={current ? "page" : undefined}
                 className="group flex items-center gap-3 rounded-md px-3 py-3 transition-colors hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
               >
-                {/* The lamp from the logo marks the page you are on. */}
+                {/* The dot from the logo marks the page you are on. */}
                 <span
                   aria-hidden
                   className={cn(
                     "size-2 shrink-0 rounded-full",
                     current
-                      ? "bg-primary shadow-[0_0_10px_color-mix(in_oklch,var(--primary)_60%,transparent)]"
+                      ? "bg-primary"
                       : "bg-seam",
                   )}
                 />

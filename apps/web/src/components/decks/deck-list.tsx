@@ -11,6 +11,7 @@ import { ColorIdentity } from "@/components/deck/color-identity";
 import { Input } from "@/components/ui/input";
 import { getApis } from "@/lib/api/client";
 import { displayName } from "@/lib/cards";
+import { TEXT_LINK } from "@/lib/constants";
 
 /** Below this many decks a filter box is clutter; the cap is 100, so it earns its place well before then. */
 const FILTER_FROM = 8;
@@ -71,27 +72,28 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
                   }}
                 />
               ) : (
-                <div className="flex items-center gap-3">
+                // Phones put the actions on a line of their own, so the name and the counts get the row's width.
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 sm:flex">
                   <DeckArt deck={deck} />
                   <div className="min-w-0 flex-1">
                     <Link
                       href={deckHref(deck)}
-                      className="block truncate font-heading text-lg leading-tight font-semibold hover:text-primary"
+                      className="-my-3 block truncate py-3 font-heading text-lg leading-tight font-semibold hover:text-primary sm:my-0 sm:py-0"
                     >
                       {deck.name}
                     </Link>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
                       <span className="truncate">{commanderLabel(deck)}</span>
                       <ColorIdentity identity={identityOf(deck)} />
-                      <span className="tabular-nums">{deck.cardCount} cards</span>
+                      <span className="font-mono whitespace-nowrap">{deck.cardCount} cards</span>
                       {!deck.isPublic && <span className="rounded bg-muted px-1.5 py-0.5 text-xs">Private</span>}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="col-span-2 flex shrink-0 items-center justify-end gap-1 border-t border-seam pt-2 sm:border-0 sm:pt-0">
                     <Link
                       href={`/deck?deck=${deck.code}` as Route}
                       aria-label={`Open ${deck.name} in the deck tool`}
-                      className="rounded-md px-2 py-1.5 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      className={cn(TEXT_LINK, "flex min-h-11 items-center rounded-md px-3 text-sm font-semibold sm:min-h-0 sm:px-2 sm:py-1.5")}
                     >
                       Open
                     </Link>
@@ -144,8 +146,8 @@ function RowButton({
       aria-label={label}
       title={label}
       className={cn(
-        "flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        destructive ? "hover:text-destructive" : "hover:text-foreground",
+        "flex size-11 items-center justify-center rounded-md text-muted-foreground sm:size-9 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        destructive ? "hover:text-destructive focus-visible:text-destructive" : "hover:text-primary focus-visible:text-primary",
       )}
     >
       {children}
@@ -182,10 +184,10 @@ function RenameRow({
         maxLength={80}
         className="h-10 bg-background"
       />
-      <button type="submit" className="h-10 shrink-0 rounded-md bg-primary px-3 text-sm font-bold text-primary-foreground">
+      <button type="submit" className="h-10 shrink-0 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground">
         Save
       </button>
-      <button type="button" onClick={onCancel} className="h-10 shrink-0 rounded-md px-3 text-sm font-bold text-muted-foreground hover:text-foreground">
+      <button type="button" onClick={onCancel} className="h-10 shrink-0 rounded-md px-3 text-sm font-semibold text-muted-foreground hover:text-foreground">
         Cancel
       </button>
     </form>

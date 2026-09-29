@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import type { Route } from "next";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import type { OpenDeck } from "@/components/deck/use-deck-tool";
+import { TEXT_LINK } from "@/lib/constants";
 
 const STATUS: Record<OpenDeck["status"], string> = {
   saved: "Saved",
@@ -39,7 +41,7 @@ export function OpenDeckBar({
       <div className="ml-auto flex flex-wrap items-center gap-2">
         <Link
           href={`/decks/deck/${deck.code}` as Route}
-          className="rounded-md px-1 py-2 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className={cn(TEXT_LINK, "rounded-md px-1 py-2 text-sm font-semibold")}
         >
           Deck page
         </Link>

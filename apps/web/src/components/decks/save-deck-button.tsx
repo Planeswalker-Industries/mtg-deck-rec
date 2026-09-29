@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getApis } from "@/lib/api/client";
 import { displayName } from "@/lib/cards";
+import { TEXT_LINK } from "@/lib/constants";
 
 /**
  * Saves the analysed deck to the signed-in user's account. Saving is deliberately explicit: a new deck is public,
@@ -50,7 +51,7 @@ export function SaveDeckButton({
   if (needsAccount) {
     return (
       <p className="text-sm text-muted-foreground">
-        <Link href="/sign-in?next=/deck" className="font-medium text-primary underline underline-offset-2">
+        <Link href="/sign-in?next=/deck" className={TEXT_LINK}>
           Sign in
         </Link>{" "}
         to save decks to your account.

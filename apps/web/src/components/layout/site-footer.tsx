@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TEXT_LINK } from "@/lib/constants";
 
 export function SiteFooter() {
   return (
@@ -6,7 +7,7 @@ export function SiteFooter() {
       <div className="page-column flex flex-col gap-2 py-6">
         <p className="max-w-prose">
           Card data and images from{" "}
-          <a href="https://scryfall.com" className="underline underline-offset-2 hover:text-foreground">
+          <a href="https://scryfall.com" className={TEXT_LINK}>
             Scryfall
           </a>
           . Card roles from the Scryfall Tagger project. Prices are estimates and may be out of date.
@@ -15,7 +16,7 @@ export function SiteFooter() {
           MTG Deck Rec is unofficial Fan Content permitted under the{" "}
           <a
             href="https://company.wizards.com/en/legal/fancontentpolicy"
-            className="underline underline-offset-2 hover:text-foreground"
+            className={TEXT_LINK}
           >
             Fan Content Policy
           </a>
@@ -23,7 +24,7 @@ export function SiteFooter() {
           ©Wizards of the Coast LLC.
         </p>
         <p>
-          <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground">
+          <Link href="/privacy" className={TEXT_LINK}>
             Privacy policy
           </Link>
         </p>

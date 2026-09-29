@@ -7,7 +7,7 @@ Two sources share one engine. **Archidekt is active**; **Moxfield is built and s
 Cloudflare's hard WAF block to the app's honest User-Agent on a path its own robots.txt allows (probed 2026-09-22),
 and the guardrails say a wall is obeyed, not worked around.
 
-Tracked as T036. The aggregation that turns these decks into `commander_card_stats` is the follow-up milestone, and
+Built under T036 (closed 2026-09-28). Open: the daily cron trigger (T042), a crawl database role (T043) and Moxfield access (T044). The aggregation that turns these decks into `commander_card_stats` is the follow-up milestone, and
 the wider design they feed is [`card-graph-plan.md`](card-graph-plan.md).
 
 ## Why it exists
@@ -311,13 +311,14 @@ update corpus.crawl_state set running_run_id = null, client_id = null, claimed_a
 
 ## Not done yet
 
-- **Aggregation.** Nothing reads `corpus.decks`. Turning it into `commander_card_stats` / `card_global_stats` is the
+- **The daily trigger (T042).** Runs so far were started by hand; the Vercel cron has not produced one.
+- **Aggregation (T035 slice 2).** Nothing reads `corpus.decks`. Turning it into `commander_card_stats` / `card_global_stats` is the
   next milestone, and is where legality, colour identity and `resolveDeck`'s filters apply — this stage is the raw
   scrape.
-- **A database role that is not `service_role`.** The VPS holds a key that bypasses RLS across the whole database,
+- **A database role that is not `service_role` (T043).** The VPS holds a key that bypasses RLS across the whole database,
   `auth` included, in the same process that serves public read endpoints. The `crawl_*` functions narrow what the
   crawl *does*, not what the key *could* do. A proper fix is a Postgres role granted execute on those functions and
   nothing else, plus a JWT minted for it — Supabase's secret keys map to `service_role`.
-- **Moxfield.** Blocked. Its deck parser reads an embed whose shape is still unpinned, which is why it refuses
+- **Moxfield (T044).** Blocked. Its deck parser reads an embed whose shape is still unpinned, which is why it refuses
   anything that is not exactly 100 cards: a heuristic that reads half a deck produces a plausible, wrong list. If
   Moxfield ever grants an accessible path, pin the parsers against live fixtures before clearing `disabled`.

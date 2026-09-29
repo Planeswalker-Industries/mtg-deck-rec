@@ -118,7 +118,7 @@ function SheetBody({ lookup, commander }: { lookup: CommanderLookup; commander: 
     return (
       <>
         <SheetHeader className="p-0 pr-8">
-          <SheetTitle className="font-heading text-2xl leading-tight font-extrabold tracking-tight">
+          <SheetTitle className="font-heading text-xl leading-tight font-semibold tracking-tight">
             {name} isn&apos;t in our database yet
           </SheetTitle>
           <SheetDescription className="text-base text-foreground">
@@ -156,7 +156,7 @@ function SheetBody({ lookup, commander }: { lookup: CommanderLookup; commander: 
     return (
       <>
         <SheetHeader className="p-0 pr-8">
-          <SheetTitle className="font-heading text-2xl leading-tight font-extrabold tracking-tight">
+          <SheetTitle className="font-heading text-xl leading-tight font-semibold tracking-tight">
             {state.phase === "complete"
               ? `${name} is in`
               : joined
@@ -172,7 +172,7 @@ function SheetBody({ lookup, commander }: { lookup: CommanderLookup; commander: 
           </SheetDescription>
         </SheetHeader>
         <div className="col-span-2 mt-5 flex flex-col gap-2 sm:col-span-1">
-          <p aria-live="polite" className="flex items-center gap-2 font-bold">
+          <p aria-live="polite" className="flex items-center gap-2 font-semibold">
             {state.phase === "complete" ? (
               <CircleCheck aria-hidden className="size-5 text-primary" />
             ) : (
@@ -202,7 +202,7 @@ function SheetBody({ lookup, commander }: { lookup: CommanderLookup; commander: 
     return (
       <>
         <SheetHeader className="p-0 pr-8">
-          <SheetTitle className="font-heading text-2xl leading-tight font-extrabold tracking-tight">
+          <SheetTitle className="font-heading text-xl leading-tight font-semibold tracking-tight">
             {state.phase === "not_enough" ? `Not enough decks for ${name} yet` : `Couldn't pull decks for ${name}`}
           </SheetTitle>
           <SheetDescription className="text-base text-foreground">
@@ -231,7 +231,7 @@ export function CommanderLookupBar({ lookup }: { lookup: CommanderLookup }) {
       <div className="flex items-center gap-3 rounded-lg border border-seam bg-sleeve px-3 py-2">
         <LoaderCircle aria-hidden className="size-4 shrink-0 text-primary motion-safe:animate-spin" />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <p aria-live="polite" className="truncate text-sm font-bold">
+          <p aria-live="polite" className="truncate text-sm font-semibold">
             {statusText(state)}
           </p>
           <ProgressBar value={progressValue(state)} label={`Deck lookup for ${displayName(state.request.commander)}`} className="h-1.5" />

@@ -27,13 +27,13 @@ function Curve({ curve, max, label, tone }: { curve: number[]; max: number; labe
         {curve.map((count, i) => (
           <div key={i} className="group relative flex h-full flex-1 items-end justify-center" title={`Mana value ${barLabel(i)}: ${count}`}>
             <div
-              className={cn("w-full rounded-t-[4px]", tone === "after" ? "bg-primary" : "bg-muted-foreground/60")}
+              className={cn("w-full rounded-t-[4px]", tone === "after" ? "bg-foreground/80" : "bg-muted-foreground/45")}
               style={{ height: max > 0 ? `${(count / max) * 100}%` : 0 }}
             />
           </div>
         ))}
       </div>
-      <div aria-hidden className="flex gap-0.5 text-center text-[0.6875rem] text-muted-foreground tabular-nums">
+      <div aria-hidden className="flex gap-0.5 text-center text-xs text-muted-foreground font-mono">
         {curve.map((_, i) => (
           <span key={i} className="flex-1">
             {barLabel(i)}
@@ -70,7 +70,7 @@ function StatsColumn({ title, stats, size, curveMax, tone }: { title: string; st
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-muted-foreground">{k}</dt>
-            <dd className={cn("text-right font-bold tabular-nums", k === "Cards" && size !== COMMANDER_DECK_SIZE && "text-cut")}>{v}</dd>
+            <dd className={cn("text-right font-mono", k === "Cards" && size !== COMMANDER_DECK_SIZE && "text-cut")}>{v}</dd>
           </div>
         ))}
       </dl>
@@ -79,7 +79,7 @@ function StatsColumn({ title, stats, size, curveMax, tone }: { title: string; st
         {stats.types.map((t) => (
           <div key={t.label} className="contents">
             <dt className="text-muted-foreground">{t.label}</dt>
-            <dd className="text-right tabular-nums">{t.count}</dd>
+            <dd className="text-right font-mono">{t.count}</dd>
           </div>
         ))}
       </dl>
@@ -138,14 +138,14 @@ export function ReviewPhase({
       items={entries.map(({ card, quantity }: { card: CardSummary; quantity: number }) => ({
         card,
         mark,
-        ...(quantity > 1 ? { caption: <span className="text-muted-foreground tabular-nums">{quantity} copies</span> } : {}),
+        ...(quantity > 1 ? { caption: <span className="text-muted-foreground font-mono">{quantity} copies</span> } : {}),
       }))}
     />
   );
 
   return (
     <div className="flex flex-col gap-5">
-      <PhaseIntro title="Review">
+      <PhaseIntro title="Done">
         {changed
           ? `${removed.reduce((n, e) => n + e.quantity, 0)} out, ${added.reduce((n, e) => n + e.quantity, 0)} in.`
           : "No changes this round."}{" "}

@@ -181,6 +181,133 @@ Server Actions run one at a time per page. Every swipe in the Replace phase fire
 
 ---
 
+### T045: Design the deck analysis display
+
+**Priority:** MEDIUM | **Area:** Product / UX | **Status:** Not started
+
+First part of the deck analysis work (T046–T048), and it comes first: decide where and how the new numbers are shown before building any of them. Came out of a look at EDHcheck (edhcheck.com, 2026-09-28) with the sample Liesa deck. Its functions are solid (mana simulation, per-card cast rates, combo detection, bracket explorer), but the page is a wall of panels, invented composite scores and upsells. We want the useful numbers, shown only where they change what the player does next.
+
+**Files:**
+- `apps/web/src/components/deck/journey/review-phase.tsx`: Review (shown as "Done") already shows before/after curve, card types, Game Changers and price (`deckStats`, `@mtg/core/journey`)
+- `apps/web/src/components/deckbuilder/deck-builder.tsx`: the deckbuilder's own `deckStats` summary
+- `apps/web/src/components/deck/deck-bar.tsx` (the `DeckBar`): the two-line phone budget in AGENTS.md ("`/deck` on a phone is budgeted for the swipe view")
+- `docs/ui_concepts/`: where earlier concepts live
+
+**Questions to answer:**
+- Where each figure lives: DeckBar, Cut, Add, Review, the Deckbuilder, or a separate analysis view. It must not break the 390×844 swipe budget.
+- How each figure drives an action, for example "4 black sources short" leading into Add with lands filtered, "combo pushes this to bracket 4" leading into Cut, or "2 ramp below Liesa decks" leading into Add for that role.
+- Before and after: Review already compares both decks, so the new figures should do the same.
+- What we deliberately leave out: salt (never stored, see CLAUDE.md), 1–10 power levels and radar charts (invented composites), AI-written text, upsells, legality in other formats.
+- Wording for estimates: simulated and estimated numbers are labelled as such, like the bracket estimate is today.
+- Fit the "Kitchen Table" design direction (the UI section of `apps/web/AGENTS.md`): numbers in DM Mono, a card-first view rather than stat tables, and a plain-words "why" in the italic aside where a figure explains a suggestion.
+
+**Acceptance criteria:**
+- [ ] A concept (screens or a POC per `docs/ui_concepts/`) for phone and desktop covering T046–T048
+- [ ] Owner sign-off on placement and on what is left out
+- [ ] T046–T048 updated with the agreed placement
+
+---
+
+### T046: Mana base analysis
+
+**Priority:** MEDIUM | **Area:** Core / Frontend | **Status:** Not started
+
+**Blocked by:** T045 (display)
+
+Tell the player whether their lands can cast their spells: coloured sources against Frank Karsten's thresholds for each card's pips and turn, a list of the cards least likely to be castable on curve (worst first), and a plain "N sources short on black". This is deterministic arithmetic with no AI. It also fills a gap in Add, which ranks lands by play rate rather than by what the mana base lacks.
+
+**Files:**
+- `packages/core/src/journey/deck-stats.ts`: the existing curve and type counts; the analysis belongs beside it in `@mtg/core`, tested
+- `packages/core/src/contract/cards.ts`: `CardSummary.manaCost` gives pips
+- `apps/worker/src/jobs/` (catalog sync): lands' colour output is not stored today
+
+**Context:**
+- **Catalog gap:** nothing stores what mana a land (or rock) produces. Scryfall's `produced_mana` covers it. A new catalog column must go into `content_hash`, or existing rows never fill (CLAUDE.md, "Writing data"). It also needs a contract field or a separate lookup, which means a contract version bump.
+- **Tiers:** start with source counts against Karsten's tables (cheap, exact). A Monte Carlo goldfish (London mulligan, tapped lands, ramp output) is optional on top and would run in a Web Worker like the collection parser. Only build it if T045 finds a use for the extra numbers.
+- EDHcheck's reference output for the sample Liesa deck: reaches 3 mana by T3 50%, T4 80%, T6 95%; "8 more black sources" for Damn; Avacyn 34.7% on curve. It is a useful sanity check, not ground truth. Its "92% of hands have 2+ lands, so go to 38 lands" advice contradicts itself; don't copy the advice text.
+- Threshold tables are published rules of thumb, not tunable weights, so a constants module in `@mtg/core` is fine (coding policy); name the source in a comment.
+
+**Acceptance criteria:**
+- [ ] Mana production stored per card (column, hash, sync, contract field) and loaded on hosted
+- [ ] Source-count analysis in `@mtg/core` with tests (hybrid and Phyrexian pips, MDFC lands, commander pips)
+- [ ] Display per T045, labelled as an estimate
+- [ ] Decide with the owner whether Add should use the shortfall (a land role gap); if so, a separate ticket
+
+---
+
+### T047: Combo detection in the bracket estimate
+
+**Priority:** MEDIUM | **Area:** Data / Core | **Status:** Not started
+
+**Blocked by:** T045 (display)
+
+`estimateBracket` (`packages/core/src/formats/commander/bracket.ts`) reads only Game Changer count and mass land denial. WotC's brackets also limit two-card infinite combos (none in 1–2, none early in 3), chained extra turns and tutors, so a deck with a combo and no Game Changers is estimated too low today. Commander Spellbook publishes combo data. Load it and flag the combos a deck contains.
+
+**Files:**
+- `packages/core/src/formats/commander/bracket.ts`, `commander.test.ts`: `BracketSignals`, `estimateBracket`
+- `packages/core/src/journey/`: `bracketMustCuts` would learn to cut a combo piece
+- `apps/worker/src/jobs/`: a new sync job following the stage, sanity-gate, diff-only merge pattern
+
+**Context:**
+- **Source rules first.** Commander Spellbook is public data, so it falls under the legal consent (CLAUDE.md, "Data sources"). Before any request: read its robots.txt, prefer a published bulk export over per-deck API calls, one limiter per host, honest User-Agent, and a 403 or challenge switches it off. Record the findings in CLAUDE.md's source list.
+- Store combos keyed by our `CardId`s (resolved from Scryfall oracle ids), with their result (infinite mana, infinite damage, win) and the card count. Only two-card combos matter for the bracket rules; longer ones may still be worth showing.
+- "Early game" in bracket 3 is a judgment call. Decide with the owner (combined mana value, or never estimate above 3 for a combo alone).
+- Extra-turn and tutor counts can come from Tagger tags we already store. Decide which tag UUIDs count and keep them in `app_config`, not code.
+
+**Acceptance criteria:**
+- [ ] Source check recorded (robots.txt, bulk export, licence/terms)
+- [ ] Sync job and tables, with SQL checks under `supabase/tests/`
+- [ ] `BracketSignals` gains combos (and tutors or extra turns if decided); tests
+- [ ] `DeckAnalysis` names the combos found (contract version bump) and the display follows T045
+- [ ] `bracketMustCuts` handles combos when the chosen bracket forbids them
+
+---
+
+### T048: Role counts against the commander's decks
+
+**Priority:** MEDIUM | **Area:** Frontend / Core | **Status:** Not started
+
+**Blocked by:** T045 (display)
+
+Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles next to what decks for this commander usually run ("12 ramp; Liesa decks average 10"). EDHcheck shows only generic percentages (ramp 8.8%, draw 19.1%); comparing against the commander's own decks is something only our corpus can do.
+
+**Files:**
+- `apps/web/src/lib/server/recs.ts`: `roleTargetsFor` already blends generic targets toward `commander_stats.role_profile` by `commanderShare`
+- `apps/web/src/lib/server/corpus.ts`, `commander-page.ts`: where `role_profile` is read today
+- `packages/core/src/contract/transport.ts`: the commander page's `roleProfile` shape (`{ tag, avgPerDeck }`)
+- `packages/core/src/contract/decks.ts`: `DeckAnalysis` has no role counts yet
+
+**Context:** The numbers exist. Cut redundancy and Add's role gap already use them, but the player never sees them. Use the same blended targets `roleTargetsFor` produces so the display and the recommendations agree. A commander with few decks falls back to generic targets. Say so in the display rather than presenting a generic number as "Liesa decks". Partner pooling applies as it does for play rates.
+
+**Acceptance criteria:**
+- [ ] The deck's count per role and the blended target reach the client (contract version bump if on `DeckAnalysis`)
+- [ ] Display per T045, before and after in Review
+- [ ] Wording distinguishes commander data from generic targets
+- [ ] Tests for the counting, which mirrors `rec_card_roles`
+
+---
+
+### T050: Start a deck from one commander
+
+**Priority:** MEDIUM | **Area:** Frontend / Product | **Status:** Not started
+
+The home page's "Sound familiar?" ribbon offers "+ Commander" for a player who just pulled a legend. It links to `/deck` for now, where they have to paste the commander as a one-line list; Add then fills the open slots. There is no way to pick a commander by name.
+
+**Files:**
+- `apps/web/src/components/home/situations.tsx` — the "+ Commander" link (`href: "/deck"`)
+- `apps/web/src/components/deck/deck-tool.tsx` — the decklist box and Analyze
+- `apps/web/src/components/search/site-search.tsx` — the existing card and commander search
+
+**Context:** A one-card deck already works: Add fills `openSlots` (room below 100 cards), so the gap is only the way in. Pick a commander, and the tool opens with that commander analyzed and Add ready. The commander's own page (`/commander/[slug]`) could offer the same.
+
+**Acceptance criteria:**
+- [ ] A commander picker (search by name, commander-legal only) that opens `/deck` with that commander analyzed
+- [ ] "+ Commander" in the ribbon points to it
+- [ ] Works on a phone at 390×844 without leaving the swipe budget
+- [ ] e2e: pick a commander, land in Add with open slots
+
+---
+
 ## Accounts and Collections
 
 ### T027: 10k-row collection import timing check
@@ -206,7 +333,7 @@ Collections match 2,000 rows per call, so a 10k-row import is five round trips p
 
 **Priority:** MEDIUM | **Area:** DevOps / Auth | **Status:** Not started
 
-Supabase's built-in SMTP sends only a couple of emails an hour and is not for production, so the email-code sign-in path cannot be relied on. Google sign-in covers the owner meanwhile. Moxfield's bot whitelist also wants a production domain (T036).
+Supabase's built-in SMTP sends only a couple of emails an hour and is not for production, so the email-code sign-in path cannot be relied on. Google sign-in covers the owner meanwhile. Moxfield's bot whitelist also wants a production domain (T044).
 
 **Steps:**
 1. Point a domain at the app and set it as the custom URL.
@@ -304,7 +431,7 @@ The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md). T
 - **Evaluation.** `spike:edhrec:prior` is a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured, so the slice's gate is passed. `supabase/tests/external-stats.sql` holds the SQL checks.
 - **Not done:** no code reads the tables. Wiring the prior into `corpusComponent` and `rec_add_candidates` is the next step, and so is the per-commander benchmark in the offline evaluation, which needs slice 6.
 
-**Slice 10 (full-suite crawl) builds on T036.** T036's daily crawl walks Archidekt's update-ordered feed. Slice 10 adds the per-commander backfill that reaches every commander with enough decks (~2,800), and moves `serve:commander-requests` (T009) off this PC. It absorbs closed ticket T010.
+**Slice 10 (full-suite crawl) builds on the daily crawl** (closed T036; its trigger is T042). That crawl walks Archidekt's update-ordered feed. Slice 10 adds the per-commander backfill that reaches every commander with enough decks (~2,800), and moves `serve:commander-requests` (T009) off this PC. It absorbs closed ticket T010.
 
 **Owner decisions it rests on (2026-09-21):**
 - User decks count only when complete: 100 cards and legal. `save_deck` today flags on per-card legality alone.
@@ -321,25 +448,56 @@ The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md). T
 
 ---
 
-### T036: Deck crawls — Archidekt active, Moxfield blocked
+### T042: Make the daily crawl cron produce runs
 
-**Priority:** MEDIUM | **Area:** Backend / Data | **Status:** Deployed; manual runs write decks, the daily cron does not produce runs
+**Priority:** MEDIUM | **Area:** DevOps / Data | **Status:** Not started
 
-A shared crawl engine and two sources behind a daily Vercel cron: `vercel.json` → `/api/cron/{moxfield,archidekt}-scrape` (authorized by `CRON_SECRET`) → `POST /cron/:source/scrape` on the search API, which crawls in the background and writes decklists into the private `corpus` schema through the `public.crawl_*` functions. On `main` since the 2026-09-22 release (#97), with fixes in #104–#107. Full account and runbook: [`roadmap/deck-crawl.md`](roadmap/deck-crawl.md); the rules are in `CLAUDE.md` ("Deck crawls").
-- `services/search-api/internal/crawl/` — the engine: policy, fetcher, run loop, store.
-- `services/search-api/internal/archidekt/` — **active**; parsers pinned against live fixtures; 3 s pace because 1 s drew 429s.
-- `services/search-api/internal/moxfield/` — built, **blocked** by Cloudflare's WAF (403, 2026-09-22) and seeded disabled.
+The deck crawl (closed T036) works when started by hand, but the daily Vercel cron has never produced a run. `vercel.json` schedules `/api/cron/archidekt-scrape` for 10:15 UTC, and a Hobby-plan cron fires somewhere within that hour. That route POSTs `/cron/archidekt/scrape` on the search API, which starts the crawl. Full runbook: [`roadmap/deck-crawl.md`](roadmap/deck-crawl.md).
 
-**Hosted, read 2026-09-28:** three Archidekt runs (UTC): 2026-09-24 03:32 (failed on a deleted deck, the bug #105 fixed), 2026-09-24 14:16 and 2026-09-27 21:30 (both succeeded). `corpus.decks` holds 666 decks. The cron is scheduled for 10:15 UTC, and a Hobby-plan cron fires somewhere within that hour. None of the three runs started in that hour, so they were most likely started by hand. The daily trigger is either not reaching the search API or being refused before a run starts.
+**Files:**
+- `apps/web/vercel.json` — the cron schedule
+- `apps/web/src/app/api/cron/` — the scrape routes (`CRON_SECRET`, pass-through of the search API's 502)
+- `services/search-api/internal/crawl/` — `Runner.Preflight`, the claim
+
+**Context:** Hosted `corpus.crawl_runs`, read 2026-09-28 after that day's cron hour, holds three Archidekt runs: 2026-09-24 03:32 (failed on a deleted deck, fixed in #105), 2026-09-24 14:16 and 2026-09-27 21:30. None started in the cron's hour. Either the trigger never reaches the search API, or something refuses it before a run starts.
 
 **Acceptance criteria:**
-- [x] Archidekt probe from the VPS returns 2xx (2026-09-22)
-- [x] The crawl's database path works against a real PostgREST (`TestLiveStoreRoundTrip`)
-- [x] VPS configuration (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SEARCH_API_CRON_TOKEN`) works: manual runs write decks
-- [ ] **The daily cron produces a run.** Check the Vercel cron log for `/api/cron/archidekt-scrape` (401, 502, 503 or not firing), and `CRON_SECRET`, `SEARCH_API_URL`, `SEARCH_API_CRON_TOKEN` on Vercel Production
-- [ ] Aggregation of `corpus.decks` into `commander_card_stats` / `card_global_stats` — T035 slice 2
-- [ ] Moxfield: grants an accessible path (their bot whitelist wants a production domain, T033), the VPS probe returns 2xx, parsers pinned against live fixtures, then enable its crawl
-- [ ] **A database role for the crawl that is not `service_role`.** The VPS container holds a key that bypasses RLS across the whole database, `auth` included, in the same process that serves public read endpoints. Doing this properly means a Postgres role granted execute on the `crawl_*` functions and nothing else, plus a JWT minted for it
+- [ ] Read the Vercel cron log for `/api/cron/archidekt-scrape`: 401, 502, 503, or not firing
+- [ ] Check `CRON_SECRET`, `SEARCH_API_URL` and `SEARCH_API_CRON_TOKEN` on Vercel Production, and `SEARCH_API_CRON_TOKEN` on the VPS
+- [ ] A run in `corpus.crawl_runs` starts in the cron's hour on two consecutive days
+
+---
+
+### T043: A database role for the crawl that is not `service_role`
+
+**Priority:** MEDIUM | **Area:** Security / Infrastructure | **Status:** Not started
+
+The VPS container holds `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS across the whole database, `auth` included, in the same process that serves public read endpoints. The `public.crawl_*` functions narrow what the crawl *does*, not what the key *could* do. Split out of closed T036.
+
+**Files:**
+- `services/search-api/internal/config/config.go` — `SupabaseServiceKey`
+- `supabase/migrations/20260922000300_deck_crawl_corpus.sql` — the `crawl_*` functions and their grants
+- `deploy/README.md`, `roadmap/deck-crawl.md` — the secrets tables
+
+**Acceptance criteria:**
+- [ ] A Postgres role granted execute on the `crawl_*` functions and nothing else
+- [ ] A JWT minted for that role (Supabase's secret keys all map to `service_role`), placed on the VPS in place of the service-role key
+- [ ] `TestLiveStoreRoundTrip` passes with the new role, and a direct table read with it is refused
+- [ ] The secrets tables in `deploy/README.md` and `deck-crawl.md` updated
+
+---
+
+### T044: Moxfield crawl access
+
+**Priority:** LOW | **Area:** Data | **Status:** Blocked on Moxfield
+
+The Moxfield adapter (`services/search-api/internal/moxfield/`) is built and seeded disabled: on 2026-09-22 it answered Cloudflare's hard WAF block (403) from the VPS on a robots.txt-allowed path. The guardrails say a block is obeyed, not worked around. Moxfield's bot whitelist wants a production domain (T033). Split out of closed T036.
+
+**Acceptance criteria:**
+- [ ] Moxfield grants an accessible path
+- [ ] A probe from the VPS returns 2xx
+- [ ] Parsers pinned against live fixtures (the deck parser refuses anything that is not exactly 100 cards until then)
+- [ ] `disabled` cleared for the source
 
 ---
 
@@ -455,7 +613,39 @@ Needs 2 human raters, 50 cases × 5 commanders, precision@5 + MRR. The `/rate` r
 
 ---
 
+### T051: Local e2e failures with real data
+
+**Priority:** LOW | **Area:** Testing | **Status:** Not started
+
+Three e2e tests fail locally against the real catalog and corpus, on `develop` as well as `feat/kitchen-table-lane` (checked 2026-09-29):
+- `home.spec.ts` "pointing at a ring slice names it in the centre": hovering the top of the deck wheel never names the lands slice.
+- `deck-journey.spec.ts` "the Cut list crosses out recommended cuts…" (and on `develop` also the full walk and the Replace tap test): Chulane has no local corpus, so the commander-lookup sheet opens after `analyzeDeck` has already tried to dismiss it, and blocks the page.
+
+**Files:**
+- `apps/web/e2e/home.spec.ts`, `apps/web/e2e/deck-journey.spec.ts`
+- `apps/web/src/components/home/deck-overview.tsx` — the ring's pointer handling
+
+**Acceptance criteria:**
+- [ ] `analyzeDeck` waits for either the recommendations or the lookup sheet before dismissing, as the page walk scripts do
+- [ ] The ring test hovers a point that is on a slice at the size the ring renders (or asserts through the slice element)
+- [ ] Both specs pass locally with `E2E_LOCAL_DATA=1` and in CI (mocks)
+
+---
+
 ## Future / Lower Priority
+
+### T049: Re-record the How it works clips
+
+**Priority:** LOW | **Area:** Frontend / Content | **Status:** Not started (owner)
+
+The three How it works recordings (`apps/web/public/add.png`, `cut_gif*.gif`, `swipe_gif*.gif`) show the old slate UI and the old step names (Replace, Review). They sit in a walnut page since the Kitchen Table retheme.
+
+**Acceptance criteria:**
+- [ ] Record Cut, Add and Swap in the current look, one clip per step, same pixel size across the three (`StepMedia` in `components/home/how-it-works.tsx`)
+- [ ] Keep a `_hi` version for 1024 px and up
+- [ ] Check file sizes: the clips load lazily but are still megabytes
+
+---
 
 ### T017: Favorites
 
@@ -563,3 +753,4 @@ One line each, kept so the gaps in the numbering have a reason. Do not reuse the
 - **T024** Invalidate swap pool cache after corpus rebuilds — closed 2026-09-18: already wired through `TAGS_BY_JOB`.
 - **T025** Google sign-in credentials — closed by 2026-09-23: live locally and on hosted.
 - **T026** Collection import from a share link — closed 2026-09-21 for Archidekt; ManaBox and TCGplayer publish no link format, and Moxfield needs an account.
+- **T036** Deck crawls — closed 2026-09-28: engine and Archidekt source deployed, manual runs wrote 666 decks. Leftovers: daily trigger T042, crawl database role T043, Moxfield T044; aggregating `corpus.decks` is T035 slice 2.

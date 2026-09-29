@@ -122,7 +122,7 @@ export function CardRater({ initialCommanderSlug }: { initialCommanderSlug: stri
         <div className="flex min-w-0 items-center gap-3">
           {art && <Image src={art} alt="" width={64} height={46} unoptimized className="h-11 w-16 shrink-0 rounded-md object-cover ring-1 ring-seam" />}
           <div className="min-w-0">
-            <p className="truncate font-heading text-lg leading-tight font-extrabold">{names}</p>
+            <p className="truncate font-heading text-lg leading-tight font-semibold">{names}</p>
             <ColorIdentity identity={identity} />
           </div>
         </div>
@@ -169,7 +169,7 @@ function RaterSummary({
 }) {
   return (
     <section ref={viewRef} aria-labelledby="rater-summary-heading" className="flex scroll-mt-4 flex-col gap-3">
-      <h2 id="rater-summary-heading" className="font-heading text-3xl leading-none font-extrabold tracking-tight">
+      <h2 id="rater-summary-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
         {rated === 0 ? "Nothing rated this round" : `${rated} replacement${rated === 1 ? "" : "s"} rated`}
       </h2>
       <p className="max-w-prose text-sm text-muted-foreground">

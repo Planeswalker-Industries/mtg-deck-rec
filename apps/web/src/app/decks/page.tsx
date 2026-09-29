@@ -17,7 +17,7 @@ export default function DecksPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="font-heading text-4xl leading-none font-semibold tracking-tight">Your decks</h1>
+        <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Your decks</h1>
         <Link href="/deck" className={buttonVariants({ className: "h-10 px-4" })}>
           Build a deck
         </Link>
@@ -43,7 +43,7 @@ async function SavedDecks() {
   if (decks.length === 0) {
     return (
       <div className="rounded-xl border border-seam bg-sleeve/60 p-6">
-        <h2 className="font-heading text-2xl leading-tight font-semibold">No decks saved yet.</h2>
+        <h2 className="font-heading text-xl leading-tight font-semibold">No decks saved yet.</h2>
         <p className="mt-2 max-w-prose text-muted-foreground">
           Paste a decklist, see what to cut, add and replace, then save it here to come back to.
         </p>

@@ -1,28 +1,33 @@
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible_Next, Faustina } from "next/font/google";
+import { Bricolage_Grotesque, DM_Mono, Newsreader } from "next/font/google";
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
-// Legible at small sizes: card names and badges on phones.
-const body = Atkinson_Hyperlegible_Next({
+// Headings, body, buttons: warm and slightly hand-made. Only 400 and 600 are loaded, the lane's two weights.
+const body = Bricolage_Grotesque({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["400", "700"],
+  weight: ["400", "600"],
   display: "swap",
-  // next/font has no metric overrides for this family, so use a plain system fallback.
-  adjustFontFallback: false,
-  fallback: ["ui-sans-serif", "system-ui", "sans-serif"],
 });
 
-// Headings are set in Faustina Bold: a sturdy serif, heavy enough to hold its own over the land art (ExtraBold read
-// too heavy). Only the 700 weight is loaded, so every heading renders Bold whatever weight class it carries.
-const display = Faustina({
-  variable: "--font-display",
+// The buddy's voice: the friend's asides. Italic only, one weight.
+const drama = Newsreader({
+  variable: "--font-drama-face",
   subsets: ["latin"],
-  weight: "700",
+  weight: "400",
+  style: "italic",
+  display: "swap",
+});
+
+// Every number: deck counts, prices, mana value.
+const mono = DM_Mono({
+  variable: "--font-mono-face",
+  subsets: ["latin"],
+  weight: "400",
   display: "swap",
 });
 
@@ -34,12 +39,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#080e15",
+  themeColor: "#1b1510",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`dark ${body.variable} ${display.variable} h-full`}>
+    <html lang="en" className={`dark ${body.variable} ${drama.variable} ${mono.variable} h-full`}>
       <body className="flex min-h-full flex-col">
         <SiteHeader />
         <AdSlot slot="leaderboard" />

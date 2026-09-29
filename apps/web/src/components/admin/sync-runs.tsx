@@ -126,7 +126,7 @@ function LatestRun({ job }: { job: AdminSyncJob }) {
   if (isPending || !run) return null;
   return (
     <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 0.5, minWidth: 0 }}>
-      <Link to={`/sync-runs/${run.id}/show`} sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+      <Link to={`/sync-runs/${run.id}/show`} sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
         {JOB_LABEL[job]}
       </Link>
       <Pill tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Pill>

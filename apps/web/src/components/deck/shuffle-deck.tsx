@@ -53,7 +53,7 @@ export function ShuffleDeck({ label, id, className }: { label: string; id?: stri
           );
         })}
       </div>
-      <p className="text-sm font-bold text-muted-foreground">{label}</p>
+      <p className="text-sm font-semibold text-muted-foreground">{label}</p>
     </div>
   );
 }

@@ -64,7 +64,7 @@ export function ScoreExplainer({ score }: { score: ScoreBreakdown }) {
 
   return (
     <details className="mt-4 rounded-lg border border-seam bg-sleeve/40">
-      <summary className="cursor-pointer list-none p-3 text-sm font-bold marker:content-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+      <summary className="cursor-pointer list-none p-3 text-sm font-semibold marker:content-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
         <span className="text-primary">Why this card</span>
         {lead && (
           <span className="ml-2 font-normal text-muted-foreground">
@@ -82,15 +82,15 @@ export function ScoreExplainer({ score }: { score: ScoreBreakdown }) {
             return (
               <li key={component}>
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm font-bold">{LABELS[component].name}</span>
-                  <span className="shrink-0 text-sm text-muted-foreground tabular-nums">{percent(share)} of the score</span>
+                  <span className="text-sm font-semibold">{LABELS[component].name}</span>
+                  <span className="shrink-0 text-sm text-muted-foreground font-mono">{percent(share)} of the score</span>
                 </div>
                 <div
                   role="presentation"
                   className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"
                   title={`Scored ${percent(value ?? 0)} on this, weighted to ${percent(share)} of the total`}
                 >
-                  <div className="h-full rounded-full bg-primary" style={{ width: percent(share) }} />
+                  <div className="h-full rounded-full bg-foreground/70" style={{ width: percent(share) }} />
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{LABELS[component].blurb}</p>
               </li>

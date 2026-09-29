@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default function AccountPage() {
   return (
     <div className="flex max-w-prose flex-col gap-4">
-      <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">Your account</h1>
+      <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Your account</h1>
       <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Loading your account…</p>}>
         <AccountDetails />
       </Suspense>
@@ -30,7 +30,7 @@ async function AccountDetails() {
   return (
     <>
       <p>
-        Signed in as <span className="font-bold">{user.email ?? "your Google account"}</span>.
+        Signed in as <span className="font-semibold">{user.email ?? "your Google account"}</span>.
       </p>
       {/* The only link to /admin anywhere. It isn't in the header because that would cost every signed-in visitor a
           membership check on every page, to show a link almost nobody can use. */}

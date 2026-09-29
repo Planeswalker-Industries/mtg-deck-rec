@@ -28,7 +28,7 @@ function fixtureIdentity(counts: Record<ColorKey, number>): string {
  * Takes all three commanders' server-rendered data as props. Auto-advances on a timer, takes manual input from
  * the tiles and the arrow keys, pauses on hover and focus, and respects reduced motion.
  *
- * The selected tile's gold border and `aria-current` say which commander the wheel belongs to.
+ * The selected tile's accent border and `aria-current` say which commander the wheel belongs to.
  */
 export function FeaturedCommanders({
   commanders,
@@ -112,7 +112,7 @@ export function FeaturedCommanders({
           </div>
         </div>
 
-        {/* Tiles: click to select, arrow keys when focused. The gold border moves with the selection. */}
+        {/* Tiles: click to select, arrow keys when focused. The accent border moves with the selection. */}
         <div
           className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-3"
           role="group"
@@ -133,9 +133,9 @@ export function FeaturedCommanders({
                 aria-current={selected}
                 onClick={() => select(i)}
                 className={cn(
-                  "group flex min-w-0 flex-row overflow-hidden rounded-sm border bg-background text-left transition-colors md:flex-col",
+                  "group flex min-w-0 flex-row overflow-hidden rounded-lg border bg-sleeve text-left transition-colors md:flex-col",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  selected ? "border-primary" : "border-seam hover:border-muted-foreground/60",
+                  selected ? "border-primary" : "border-seam hover:border-primary/60 focus-visible:border-primary/60",
                 )}
               >
                 <div className="relative aspect-[4/3] w-16 shrink-0 bg-muted md:aspect-[16/10] md:w-full">
@@ -154,7 +154,7 @@ export function FeaturedCommanders({
                   )}
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-2.5 py-1.5 md:justify-start md:gap-1.5 md:p-3">
-                  <span className="line-clamp-1 text-[0.8125rem] leading-snug font-bold md:line-clamp-2 md:text-sm">
+                  <span className="line-clamp-1 text-sm leading-snug font-semibold md:line-clamp-2">
                     {cmd.deck.commanderName}
                   </span>
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1 md:mt-auto">
@@ -163,7 +163,7 @@ export function FeaturedCommanders({
                       className="[&_img]:size-3.5"
                     />
                     {cmd.deckCount !== null && (
-                      <span className="text-xs text-muted-foreground tabular-nums">
+                      <span className="font-mono text-xs text-muted-foreground">
                         {formatDeckCount(cmd.deckCount)}
                       </span>
                     )}

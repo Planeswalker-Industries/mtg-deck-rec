@@ -128,7 +128,7 @@ export function DeckOverview({
 
   return (
     <div className={cn("flex flex-col gap-3", compact && "h-full")}>
-      <h4 className={compact ? "sr-only" : "text-xs font-bold tracking-[0.2em] text-muted-foreground uppercase"}>
+      <h4 className={compact ? "sr-only" : "font-mono text-xs tracking-[0.12em] text-muted-foreground uppercase"}>
         Deck overview
       </h4>
       <div className={cn("flex flex-row items-center gap-4", compact && "h-full min-h-0 justify-center")}>
@@ -185,7 +185,7 @@ export function DeckOverview({
                   y="47"
                   textAnchor="middle"
                   dominantBaseline="central"
-                  className="fill-foreground text-[13px] font-bold"
+                  className="fill-foreground font-mono text-[11px]"
                 >
                   {centre.value}
                 </text>
@@ -214,7 +214,7 @@ export function DeckOverview({
                   unoptimized
                   className="size-[1.125rem]"
                 />
-                <span className="text-[0.625rem] font-semibold tabular-nums text-muted-foreground">
+                <span className="font-mono text-xs text-muted-foreground">
                   {shown.colorCounts[key]}
                 </span>
               </div>
@@ -238,7 +238,7 @@ export function DeckOverview({
                   style={{ backgroundColor: CAT_COLORS[cat] }}
                 />
                 <span className="text-muted-foreground">{cardCategoryLabel[cat]}</span>
-                <span className="ml-auto font-semibold tabular-nums text-foreground">{shown.composition[cat]}</span>
+                <span className="ml-auto font-mono text-foreground">{shown.composition[cat]}</span>
               </li>
             ))}
           </ul>

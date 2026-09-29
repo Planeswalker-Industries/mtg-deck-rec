@@ -79,14 +79,14 @@ export function SingleSwipe({
 
   return (
     <section aria-label={label} className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col">
-      <p className="text-sm text-muted-foreground tabular-nums">
+      <p className="text-sm text-muted-foreground font-mono">
         Card {position} of {total}
       </p>
       <div className="mt-2 grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] items-center gap-2">
         <SideButton kind="pass" label={passLabel} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
         {/* Keyed by card: reusing the card that just flew off would leave it off-screen and still marked as leaving. */}
         <SwipeCard key={card.id} ref={handle} onDrag={setDrag} canSwipe={canSwipe} onSwipe={swiped}>
-          <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100dvh_-_33rem)*0.72),17rem)] max-w-full">
+          <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100lvh_-_31.25rem)*0.72),17rem)] max-w-full">
             <ZoomableCard card={card}>
               <CardImage card={card} variant="large" alt={card.name} sizes="272px" eager />
             </ZoomableCard>
@@ -95,7 +95,7 @@ export function SingleSwipe({
         <SideButton kind="swap" tone={tone} label={acceptLabel} pull={Math.max(0, drag)} disabled={false} onClick={() => act(1)} />
       </div>
       <div aria-live="polite" className="mt-3 text-center">
-        <p className="font-heading text-xl leading-tight font-extrabold">{displayName(card)}</p>
+        <p className="font-heading text-lg leading-tight font-semibold">{displayName(card)}</p>
         {caption && <div className="mt-1 text-sm text-muted-foreground">{caption}</div>}
       </div>
       {footer && <div className="mt-3 flex flex-wrap justify-center gap-2">{footer}</div>}

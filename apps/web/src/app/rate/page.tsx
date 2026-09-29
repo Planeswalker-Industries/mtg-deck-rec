@@ -13,7 +13,7 @@ export default function RatePage({ searchParams }: PageProps<"/rate">) {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">Rate replacements</h1>
+        <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Rate replacements</h1>
         <p className="mt-2 max-w-prose text-muted-foreground">
           {"Pick a commander to see cards its decks play and replacements that do the same job. Swipe right when a replacement is a good fit, left when it isn't."}
         </p>

@@ -190,7 +190,7 @@ export function DrawnCard({
   );
 }
 
-/** The ✅ button's colour: gold for a swap, or the job's own colour when the swipe is a cut or an add. */
+/** The ✅ button's colour: the accent for a swap, or the job's own colour when the swipe is a cut or an add. */
 const ACCEPT_TONE = {
   primary: "bg-primary text-primary-foreground shadow-[0_2px_0_color-mix(in_oklch,var(--primary),black_35%)] hover:bg-primary/90",
   cut: "bg-cut text-background shadow-[0_2px_0_color-mix(in_oklch,var(--cut),black_35%)] hover:bg-cut/90",
@@ -346,7 +346,7 @@ export function SwipeRater({
       className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground tabular-nums">
+        <p className="text-sm text-muted-foreground font-mono">
           Card {rater.targetIndex + 1} of {rater.targetCount}
           {inRater ? "" : " to replace"}
         </p>
@@ -357,10 +357,11 @@ export function SwipeRater({
 
       <figure className="mt-1 flex flex-col items-center text-center">
         {/* Both cards scale with the screen's height so the whole sitting fits on a phone below the deck bar.
-            --swipe-chrome is everything on screen that isn't a card, and each host sets its own. */}
+            --swipe-chrome is everything on screen that isn't a card, and each host sets its own. Sized from 100lvh,
+            not dvh: dvh grows as a phone's address bar hides on scroll, and the cards grew with it. */}
         <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
           <TagPills labels={targetJobs.filter((_, i) => i % 2 === 0)} label={`What ${targetName} does`} align="end" />
-          <DrawnCard play={drawing} delay={0} fromY={DRAW.targetFromY} className="w-[clamp(4.5rem,calc((100dvh_-_var(--swipe-chrome,35rem))*0.32),11rem)]">
+          <DrawnCard play={drawing} delay={0} fromY={DRAW.targetFromY} className="w-[clamp(4.5rem,calc((100lvh_-_var(--swipe-chrome,35rem))*0.32),11rem)]">
             <ZoomableCard card={target.card}>
               <CardImage card={target.card} alt={`${inRater ? "Card being replaced" : "In your deck"}: ${target.card.name}`} sizes="176px" eager className={inRater ? undefined : "opacity-80 saturate-50"} />
             </ZoomableCard>
@@ -369,7 +370,7 @@ export function SwipeRater({
         </div>
         {/* While the first pair is being drawn, the names wait until the cards have turned over. */}
         <motion.figcaption className="mt-1.5" initial={drawing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ delay: DRAW.targetNameDelaySeconds, duration: DRAW.fadeSeconds }}>
-          <span className="block font-heading text-lg leading-tight font-extrabold">{targetName}</span>
+          <span className="block font-heading text-lg leading-tight font-semibold">{targetName}</span>
           {reasons.length > 0 && <span className="block text-xs text-muted-foreground">{reasons.join(", ")}</span>}
         </motion.figcaption>
       </figure>
@@ -379,7 +380,7 @@ export function SwipeRater({
       {!loaded ? (
         <div role="status" aria-label="Finding replacements" className="grid grid-cols-[3.5rem_1fr_3.5rem] items-center gap-2">
           <span />
-          <Skeleton className="mx-auto aspect-[488/680] w-[clamp(7rem,calc((100dvh_-_var(--swipe-chrome,35rem))*0.72),16rem)] max-w-full rounded-[4.75%/3.4%] bg-seam" />
+          <Skeleton className="mx-auto aspect-[488/680] w-[clamp(7rem,calc((100lvh_-_var(--swipe-chrome,35rem))*0.72),16rem)] max-w-full rounded-[4.75%/3.4%] bg-seam" />
           <span />
         </div>
       ) : loaded.status === "error" ? (
@@ -405,7 +406,7 @@ export function SwipeRater({
             {/* Keyed by the pair: the rater's next card can open on the same replacement, and reusing the card that
                 just flew off would leave it off-screen and still marked as leaving. */}
             <SwipeCard key={`${target.card.id}:${candidate.card.id}`} ref={card} onDrag={setDrag} canSwipe={canSwipe} onSwipe={swiped}>
-              <DrawnCard play={drawing} delay={DRAW.replacementDelaySeconds} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(7rem,calc((100dvh_-_var(--swipe-chrome,35rem))*0.72),16rem)] max-w-full">
+              <DrawnCard play={drawing} delay={DRAW.replacementDelaySeconds} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(7rem,calc((100lvh_-_var(--swipe-chrome,35rem))*0.72),16rem)] max-w-full">
                 <ZoomableCard card={candidate.card}>
                   <CardImage card={candidate.card} variant="large" alt={`Replacement: ${candidate.card.name}`} sizes="256px" eager className="shadow-[0_0_0_2px_var(--color-primary)]" />
                 </ZoomableCard>
@@ -420,12 +421,12 @@ export function SwipeRater({
             animate={{ opacity: 1 }}
             transition={{ delay: DRAW.replacementDetailsDelaySeconds, duration: DRAW.fadeSeconds }}
           >
-            <p className="font-heading text-xl leading-tight font-extrabold">{displayName(candidate.card)}</p>
-            <p className="text-sm text-muted-foreground tabular-nums">
+            <p className="font-heading text-lg leading-tight font-semibold">{displayName(candidate.card)}</p>
+            <p className="text-sm text-muted-foreground font-mono">
               {describeCostDelta(candidate.costDelta)} · {rater.candidateIndex + 1} of {rater.candidateCount}
             </p>
             {candidate.functionalTwin ? (
-              <p className="mt-1 text-sm font-bold text-primary">Same rules as {targetName}, under a different name.</p>
+              <p className="mt-1 font-drama text-sm text-foreground/85 italic">Same rules as {targetName}, under a different name.</p>
             ) : (
               <TagPills labels={jobs} label={`What ${displayName(candidate.card)} does too`} className="mt-1.5" />
             )}
@@ -462,7 +463,7 @@ export function SwipeSummary({
   return (
     <section ref={viewRef} aria-labelledby="swipe-summary-heading" className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col gap-4">
       <div>
-        <h2 id="swipe-summary-heading" className="font-heading text-3xl leading-none font-extrabold tracking-tight">
+        <h2 id="swipe-summary-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
           {heading}
         </h2>
         <p className="mt-1.5 text-sm text-muted-foreground">
@@ -476,7 +477,7 @@ export function SwipeSummary({
               <CardImage card={s.target} variant="small" alt="" sizes="72px" className="opacity-80 saturate-50" />
               <p className="text-sm leading-snug">
                 <span className="block text-muted-foreground">Cut {displayName(s.target)}</span>
-                <span className="block font-bold">Add {displayName(s.replacement)}</span>
+                <span className="block font-semibold">Add {displayName(s.replacement)}</span>
               </p>
               <CardImage card={s.replacement} variant="small" alt="" sizes="72px" />
             </li>

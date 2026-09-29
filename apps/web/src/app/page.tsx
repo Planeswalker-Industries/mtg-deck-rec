@@ -6,15 +6,19 @@ import { buttonVariants } from "@/components/ui/button";
 import { ArtBackdrop } from "@/components/ui/art-backdrop";
 import { Band } from "@/components/ui/band";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { FeaturedCommanders } from "@/components/home/featured-commanders";
 import { HeroFan } from "@/components/home/hero-fan";
 import { HowItWorks } from "@/components/home/how-it-works";
+import { Situations } from "@/components/home/situations";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
 import { CLOSING_VISTA, HERO_VISTA, type Vista } from "@/lib/landing-art";
+import { TEXT_LINK } from "@/lib/constants";
 
 /** Hero buttons: tall enough for a wrapped label on phones, the usual 48 px single line from sm up. */
 const HERO_BUTTON =
-  "h-auto min-h-12 gap-2 px-3 py-2 text-center text-sm leading-tight font-bold whitespace-normal sm:h-12 sm:px-6 sm:text-base sm:whitespace-nowrap";
+  "h-auto min-h-12 gap-2 px-3 py-2 max-sm:min-h-12 text-center text-sm leading-tight font-semibold whitespace-normal sm:h-12 sm:px-6 sm:text-base sm:whitespace-nowrap";
 
 /** The closing art runs from its column to the window edge on desktop, and full width below it. */
 const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
@@ -29,7 +33,7 @@ function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
   return (
     <p className={className ?? "text-xs text-muted-foreground"}>
       Art from{" "}
-      <Link href={`/card/${vista.cardSlug}`} className="underline underline-offset-2 hover:text-foreground">
+      <Link href={`/card/${vista.cardSlug}`} className={TEXT_LINK}>
         {vista.cardName}
       </Link>{" "}
       by {vista.artist}
@@ -40,7 +44,7 @@ function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
 async function FeaturedCommandersSection() {
   const commanders = await getFeaturedCommanders();
   return (
-    <section aria-labelledby="popular-decks" className="py-10 md:py-12 lg:col-span-2 lg:pr-8">
+    <section aria-labelledby="popular-decks" className="py-12 md:py-16 lg:col-span-2 lg:pr-8">
       <FeaturedCommanders
         commanders={commanders}
         intro={
@@ -53,25 +57,44 @@ async function FeaturedCommandersSection() {
   );
 }
 
+/** Popular Decks while it loads: the heading, the ring and one tile per featured deck, in the same grid. */
+function FeaturedCommandersSkeleton() {
+  return (
+    <section aria-busy="true" aria-label="Popular Decks" className="py-12 md:py-16 lg:col-span-2 lg:pr-8">
+      <SectionHeading eyebrow="Featured" nowrap>
+        Popular Decks
+      </SectionHeading>
+      <div className="mt-6 grid grid-cols-[9rem_minmax(0,1fr)] items-center gap-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-8">
+        <Skeleton className="aspect-square rounded-full" />
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-3">
+          {FEATURED_DECKS.map((deck) => (
+            <Skeleton key={deck.slug} className="h-16 rounded-lg md:aspect-[4/5] md:h-auto" />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /**
  * The closing line, one short sentence to a line, over art that runs to the window edge. The seam on its left divides
  * it from Popular Decks. Credits its art only when it isn't the hero's.
  */
 function StrongestDecks() {
   return (
-    <section className="relative isolate border-t border-seam py-10 md:py-12 lg:border-t-0 lg:border-l lg:pl-8">
+    <section className="relative isolate border-t border-seam py-12 md:py-16 lg:border-t-0 lg:border-l lg:pl-8">
       <div aria-hidden className="absolute inset-y-0 -left-4 lg:left-0" style={{ right: CLOSING_ART_RIGHT }}>
         <ArtBackdrop src={CLOSING_VISTA.src} wash="left" sizes={CLOSING_ART_SIZES} position={CLOSING_VISTA.position} />
       </div>
-      <h2 className="font-heading text-[1.75rem] leading-[1.15] font-semibold">
+      <h2 className="font-heading text-2xl font-semibold tracking-tight">
         <span className="block">The strongest decks.</span> <span className="block">Your own cards.</span>{" "}
-        <span className="block text-primary">No singles necessary.</span>
+        <span className="block font-drama font-normal tracking-normal italic text-foreground/85">No singles necessary.</span>
       </h2>
       <Link
         href="/deck"
         className={buttonVariants({
           size: "lg",
-          className: "lit mt-6 h-12 w-fit gap-2 px-6 text-base font-bold",
+          className: "lit mt-6 h-12 w-fit gap-2 px-6 text-base font-semibold",
         })}
       >
         Get started
@@ -96,7 +119,7 @@ export default function Home() {
         <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority />
 
         {/* The columns stretch, so the credit at the foot of the fan's column ends level with "No account necessary". */}
-        <div className="page-column grid gap-6 pt-4 pb-5 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-4 md:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
+        <div className="page-column grid gap-6 pt-4 pb-12 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-4 md:py-24 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
           {/* Cards come first on a phone: they say what this is faster than any sentence. */}
           <div className="order-first flex flex-col md:order-last">
             <div className="flex flex-1 items-center justify-center">
@@ -106,17 +129,20 @@ export default function Home() {
           </div>
 
           <div className="relative z-20 max-w-2xl">
-            <h1 className="font-heading text-[2.25rem] leading-[1.04] font-semibold tracking-[-0.02em] sm:text-[2.75rem] lg:text-[3.5rem]">
-              Supercharge your Commander deck.
-              <span className="mt-1 block text-primary/85">Using the cards you already own</span>
+            <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
+              Make any commander compete.
+              {/* The buddy's voice: the page's one italic headline phrase. */}
+              <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
+                With the cards you already own.
+              </span>
             </h1>
-            <p className="mt-5 max-w-[34rem] text-lg leading-relaxed text-foreground/75">
-              Import your collection, improve your deck, or swap your cards into the most popular Commander decks and
-              skip the expensive singles.
+            <p className="mt-6 max-w-[34rem] text-lg text-foreground/80">
+              Not another site selling you decks and singles. Paste a list and we cut the junk, add what works and swap in
+              cards from your collection, even for a commander nobody else plays.
             </p>
 
             {/* Phones: two half-width buttons with shorter labels that may wrap; from sm up, the full labels in a row. */}
-            <div className="mt-7 grid grid-cols-2 gap-3 sm:flex">
+            <div className="mt-8 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
               <Link
                 href="/deck"
                 className={buttonVariants({
@@ -150,11 +176,13 @@ export default function Home() {
         </div>
       </section>
 
+      <Situations />
+
       <HowItWorks />
 
       {/* The last band has no rule of its own: the footer's top rule closes it. */}
       <Band className="border-b-0" inner="grid lg:grid-cols-3">
-        <Suspense fallback={<div className="lg:col-span-2" />}>
+        <Suspense fallback={<FeaturedCommandersSkeleton />}>
           <FeaturedCommandersSection />
         </Suspense>
         <StrongestDecks />

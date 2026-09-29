@@ -57,7 +57,7 @@ all or nothing — with any of them empty the crawl endpoints answer 503 and sea
 
 | Secret | Held by | Can |
 |---|---|---|
-| `SUPABASE_SERVICE_ROLE_KEY` | the VPS, never Vercel | everything in the database — it bypasses RLS. Narrowing this to a dedicated role is open work (T036) |
+| `SUPABASE_SERVICE_ROLE_KEY` | the VPS, never Vercel | everything in the database — it bypasses RLS. Narrowing this to a dedicated role is open work (T043) |
 | `SEARCH_API_CRON_TOKEN` | the VPS and Vercel | trigger a scrape, read a crawl's status |
 | `CRON_SECRET` | **Vercel only** | nothing here — it is what the web app's cron route checks on the way in |
 

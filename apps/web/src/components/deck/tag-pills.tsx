@@ -26,7 +26,7 @@ export function TagPills({
       {labels.map((text) => (
         <li
           key={text}
-          className="rounded-full border border-seam bg-sleeve px-2 py-0.5 text-[11px] leading-tight text-muted-foreground"
+          className="rounded-full border border-seam bg-sleeve px-2 py-0.5 text-xs leading-tight text-muted-foreground"
         >
           {text}
         </li>
