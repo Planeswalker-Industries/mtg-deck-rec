@@ -99,7 +99,7 @@ export const adminTheme: RaThemeOptions = createTheme({
     // Atkinson Hyperlegible Next ships 400 and 700 only; asking for 500 or 600 gets a synthesised weight.
     fontWeightMedium: 700,
     fontWeightBold: 700,
-    // Fraunces for anything that titles a screen, like every heading on the public pages.
+    // Faustina for anything that titles a screen, like every heading on the public pages.
     h1: { fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: "-0.02em" },
     h2: { fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: "-0.02em" },
     h3: { fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: "-0.01em" },

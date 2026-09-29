@@ -1,108 +1,38 @@
-import Image from "next/image";
 import Link from "next/link";
-import { Fragment, Suspense } from "react";
-import { ArrowRight, ClipboardPaste, Library } from "lucide-react";
-import { mockCards } from "@mtg/core/mocks";
-import type { CardSummary } from "@mtg/core/contract";
-import { CardImage } from "@/components/cards/card-image";
+import { cn } from "cn";
+import { Suspense } from "react";
+import { ClipboardPaste, Library } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import { ArtBackdrop } from "@/components/ui/art-backdrop";
+import { Band } from "@/components/ui/band";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { FeaturedCommanders } from "@/components/home/featured-commanders";
+import { HeroFan } from "@/components/home/hero-fan";
+import { HowItWorks } from "@/components/home/how-it-works";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
+import { CLOSING_VISTA, HERO_VISTA, type Vista } from "@/lib/landing-art";
 
-function sampleCard(name: string): CardSummary {
-  const card = mockCards.find((c) => c.name === name);
-  if (!card) throw new Error(`Sample card missing from fixtures: ${name}`);
-  return card;
-}
+/** Hero buttons: tall enough for a wrapped label on phones, the usual 48 px single line from sm up. */
+const HERO_BUTTON =
+  "h-auto min-h-12 gap-2 px-3 py-2 text-center text-sm leading-tight font-bold whitespace-normal sm:h-12 sm:px-6 sm:text-base sm:whitespace-nowrap";
 
-/** A hand fanned out on the table, commander in the middle and lit from above. */
-type FanCard = {
-  card: CardSummary;
-  rotate: number;
-  x: string;
-  y: string;
-  scale: number;
-  /** Hidden on phones, where only the middle three fit. */
-  wide?: boolean;
-};
-
-const FAN: FanCard[] = [
-  {
-    card: sampleCard("Cultivate"),
-    rotate: -22,
-    x: "-64%",
-    y: "10%",
-    scale: 0.86,
-    wide: true,
-  },
-  {
-    card: sampleCard("Rhystic Study"),
-    rotate: -11,
-    x: "-33%",
-    y: "3%",
-    scale: 0.93,
-  },
-  {
-    card: sampleCard("Chulane, Teller of Tales"),
-    rotate: 0,
-    x: "0%",
-    y: "-4%",
-    scale: 1,
-  },
-  {
-    card: sampleCard("Counterspell"),
-    rotate: 11,
-    x: "33%",
-    y: "3%",
-    scale: 0.93,
-  },
-  {
-    card: sampleCard("Birds of Paradise"),
-    rotate: 22,
-    x: "64%",
-    y: "10%",
-    scale: 0.86,
-    wide: true,
-  },
-];
-const FAN_SIZES = "(min-width: 768px) 176px, 42vw";
+/** The closing art runs from its column to the window edge on desktop, and full width below it. */
+const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
 
 /**
- * The landing art: a local high-res crop, so the page needs no catalog read to render. It is the
- * backdrop of both the hero and the closing CTA, which is why it lives in one constant.
+ * How far the closing art reaches past its cell on the right: the column's 1rem gutter, plus the margin beside the
+ * page column (`--page-column`, globals.css) once the window is wider than it. So the art always meets the window edge.
  */
-const HERO_ART = "/cavern_of_souls_high_res.jpg";
+const CLOSING_ART_RIGHT = "calc(min(0px, (var(--page-column) - 100vw) / 2) - 1rem)";
 
-function HeroArtLayer() {
+function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-      <Image
-        src={HERO_ART}
-        alt=""
-        fill
-        priority
-        sizes="100vw"
-        className="object-cover object-center"
-      />
-      {/* The headline sits on the left, so the wash is heaviest there and thins out under the cards. */}
-      <div className="absolute inset-0 bg-background/25" />
-      <div className="absolute inset-0 bg-gradient-to-r from-background via-background/65 to-background/25" />
-      <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-background/40" />
-    </div>
-  );
-}
-
-function HeroCredit() {
-  return (
-    <p className="text-xs text-muted-foreground">
+    <p className={className ?? "text-xs text-muted-foreground"}>
       Art from{" "}
-      <Link
-        href="/card/cavern-of-souls"
-        className="underline underline-offset-2 hover:text-foreground"
-      >
-        Cavern of Souls
+      <Link href={`/card/${vista.cardSlug}`} className="underline underline-offset-2 hover:text-foreground">
+        {vista.cardName}
       </Link>{" "}
-      by Alayna Danner
+      by {vista.artist}
     </p>
   );
 }
@@ -110,205 +40,125 @@ function HeroCredit() {
 async function FeaturedCommandersSection() {
   const commanders = await getFeaturedCommanders();
   return (
-    <section
-      role="region"
-      aria-label="Popular Commanders"
-      className="overflow-hidden rounded-xl border border-seam bg-background p-5 sm:p-7"
-    >
-      <h2 className="flex items-center gap-3 text-xs font-bold tracking-[0.25em] text-primary uppercase">
-        <span aria-hidden className="h-px w-6 bg-primary/60" />
-        Popular Commanders
-      </h2>
-      <div className="mt-5">
-        <FeaturedCommanders commanders={commanders} />
+    <section aria-labelledby="popular-decks" className="py-10 md:py-12 lg:col-span-2 lg:pr-8">
+      <FeaturedCommanders
+        commanders={commanders}
+        intro={
+          <SectionHeading id="popular-decks" eyebrow="Featured" nowrap>
+            Popular Decks
+          </SectionHeading>
+        }
+      />
+    </section>
+  );
+}
+
+/**
+ * The closing line, one short sentence to a line, over art that runs to the window edge. The seam on its left divides
+ * it from Popular Decks. Credits its art only when it isn't the hero's.
+ */
+function StrongestDecks() {
+  return (
+    <section className="relative isolate border-t border-seam py-10 md:py-12 lg:border-t-0 lg:border-l lg:pl-8">
+      <div aria-hidden className="absolute inset-y-0 -left-4 lg:left-0" style={{ right: CLOSING_ART_RIGHT }}>
+        <ArtBackdrop src={CLOSING_VISTA.src} wash="left" sizes={CLOSING_ART_SIZES} position={CLOSING_VISTA.position} />
       </div>
+      <h2 className="font-heading text-[1.75rem] leading-[1.15] font-semibold">
+        <span className="block">The strongest decks.</span> <span className="block">Your own cards.</span>{" "}
+        <span className="block text-primary">No singles necessary.</span>
+      </h2>
+      <Link
+        href="/deck"
+        className={buttonVariants({
+          size: "lg",
+          className: "lit mt-6 h-12 w-fit gap-2 px-6 text-base font-bold",
+        })}
+      >
+        Get started
+      </Link>
+      {CLOSING_VISTA.src !== HERO_VISTA.src && (
+        <ArtCredit vista={CLOSING_VISTA} className="mt-4 text-xs text-muted-foreground" />
+      )}
     </section>
   );
 }
 
 export default function Home() {
   return (
-    <div className="flex flex-col gap-5 pb-3 md:gap-7">
+    // Bands meet rule to rule, and the last one meets the footer's rule: -mb-10 cancels the layout's bottom padding.
+    <div className="-mb-10 flex flex-col">
       {/*
        * Full-bleed: the art has to reach the window edges, not the content column. The negative margin
        * needs `overflow-x: clip` on html and body (globals.css) so 100vw can't add a horizontal scrollbar.
        * The section is `relative` and the inner container is not, so the art layer sizes against the bleed.
        */}
-      <section className="relative isolate mx-[calc(50%-50vw)] -mt-2 w-[100vw] overflow-hidden md:min-h-[21rem] lg:min-h-[23rem]">
-        <HeroArtLayer />
+      <section className="relative isolate mx-[calc(50%-50vw)] -mt-4 w-[100vw] overflow-hidden border-b border-seam">
+        <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority />
 
-        <div className="mx-auto w-full max-w-6xl px-4 pt-2 pb-1.5 md:pt-3 md:pb-2">
-          <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-center md:gap-4">
-            {/* Cards come first on a phone: they say what this is faster than any sentence. */}
-            <div
-              aria-hidden
-              className="order-first md:order-last md:origin-top md:scale-[1.28]"
-            >
-              <div className="relative mx-auto h-[14rem] w-[9.5rem] sm:h-[16rem] sm:w-[9rem] md:h-[14rem] md:w-[10rem] lg:h-[15rem] lg:w-[10.75rem]">
-                {FAN.map((pocket, i) => (
-                  <div
-                    key={pocket.card.name}
-                    className={`fan-card absolute inset-0 ${pocket.wide ? "hidden sm:block" : ""}`}
-                    style={
-                      {
-                        "--r": `${pocket.rotate}deg`,
-                        "--x": pocket.x,
-                        "--y": pocket.y,
-                        "--s": pocket.scale,
-                        "--delay": `${60 + Math.abs(i - 2) * 90}ms`,
-                        zIndex: 10 - Math.abs(i - 2),
-                      } as React.CSSProperties
-                    }
-                  >
-                    <CardImage
-                      card={pocket.card}
-                      alt=""
-                      sizes={FAN_SIZES}
-                      eager
-                      className="shadow-[0_18px_40px_-16px_rgb(0_0_0/0.9)]"
-                    />
-                  </div>
-                ))}
-              </div>
+        {/* The columns stretch, so the credit at the foot of the fan's column ends level with "No account necessary". */}
+        <div className="page-column grid gap-6 pt-4 pb-5 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-4 md:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
+          {/* Cards come first on a phone: they say what this is faster than any sentence. */}
+          <div className="order-first flex flex-col md:order-last">
+            <div className="flex flex-1 items-center justify-center">
+              <HeroFan />
             </div>
+            <ArtCredit vista={HERO_VISTA} className="hidden text-right text-xs leading-5 text-muted-foreground md:block" />
+          </div>
 
-            <div className="relative z-20 max-w-3xl">
-              <h1 className="font-heading text-[2rem] leading-[1.08] font-semibold tracking-[-0.015em] sm:text-[2.25rem] lg:text-[2.5rem]">
-                Supercharge your Commander deck.
-                <span className="block text-primary/85">
-                  Using the cards you already own
-                </span>
-              </h1>
-              <p className="mt-3 text-lg leading-relaxed text-muted-foreground">
-                Import your collection, improve your deck, or swap your cards
-                into the most popular Commander decks and skip the expensive
-                singles.
-              </p>
+          <div className="relative z-20 max-w-2xl">
+            <h1 className="font-heading text-[2.25rem] leading-[1.04] font-semibold tracking-[-0.02em] sm:text-[2.75rem] lg:text-[3.5rem]">
+              Supercharge your Commander deck.
+              <span className="mt-1 block text-primary/85">Using the cards you already own</span>
+            </h1>
+            <p className="mt-5 max-w-[34rem] text-lg leading-relaxed text-foreground/75">
+              Import your collection, improve your deck, or swap your cards into the most popular Commander decks and
+              skip the expensive singles.
+            </p>
 
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                <Link
-                  href="/deck"
-                  className={buttonVariants({
-                    size: "lg",
-                    className: "lit h-12 gap-2 px-6 text-base font-bold",
-                  })}
-                >
-                  <ClipboardPaste aria-hidden className="size-5" />
-                  Paste a decklist
-                </Link>
-                <Link
-                  href="/collection/import"
-                  className={buttonVariants({
-                    variant: "outline",
-                    size: "lg",
-                    className: "h-12 gap-2 px-6 text-base font-bold",
-                  })}
-                >
-                  <Library aria-hidden className="size-5" />
-                  Import your collection
-                </Link>
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                No account necessary
-              </p>
+            {/* Phones: two half-width buttons with shorter labels that may wrap; from sm up, the full labels in a row. */}
+            <div className="mt-7 grid grid-cols-2 gap-3 sm:flex">
+              <Link
+                href="/deck"
+                className={buttonVariants({
+                  size: "lg",
+                  className: cn(HERO_BUTTON, "lit"),
+                })}
+              >
+                <ClipboardPaste aria-hidden className="size-5 shrink-0" />
+                <span className="sm:hidden">Paste Decklist</span>
+                <span className="hidden sm:inline">Paste a decklist</span>
+              </Link>
+              <Link
+                href="/collection/import"
+                className={buttonVariants({
+                  variant: "outline",
+                  size: "lg",
+                  className: cn(HERO_BUTTON, "bg-background/40"),
+                })}
+              >
+                <Library aria-hidden className="size-5 shrink-0" />
+                <span className="sm:hidden">Import Collection</span>
+                <span className="hidden sm:inline">Import your collection</span>
+              </Link>
+            </div>
+            {/* Phones: the credit shares this line; from md up it sits under the fan, level with it. */}
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <p className="shrink-0 text-sm leading-5 text-muted-foreground">No account necessary</p>
+              <ArtCredit vista={HERO_VISTA} className="text-right text-xs leading-5 text-muted-foreground md:hidden" />
             </div>
           </div>
         </div>
       </section>
 
-      <div className="-mt-3 px-4 md:-mt-5">
-        <HeroCredit />
-      </div>
+      <HowItWorks />
 
-      <Suspense fallback={null}>
-        <div className="px-4">
+      {/* The last band has no rule of its own: the footer's top rule closes it. */}
+      <Band className="border-b-0" inner="grid lg:grid-cols-3">
+        <Suspense fallback={<div className="lg:col-span-2" />}>
           <FeaturedCommandersSection />
-        </div>
-      </Suspense>
-
-      {/* Three steps */}
-      <section className="px-4">
-        <div
-          role="list"
-          className="flex flex-col gap-3 sm:flex-row sm:items-stretch"
-        >
-          {[
-            {
-              step: 1,
-              title: "Import your collection",
-              desc: "Via text, CSV, or from the most popular web apps.",
-            },
-            {
-              step: 2,
-              title: "Add your decklist",
-              desc: "Either your own or from your favorite site.",
-            },
-            {
-              step: 3,
-              title: "Cut/Add/Replace",
-              desc: "Tailored recommendations to swap out expensive cards or improve your existing deck with the cards you already own.",
-            },
-          ].map(({ step, title, desc }, i) => (
-            <Fragment key={step}>
-              <div
-                role="listitem"
-                className="flex flex-1 gap-4 rounded-xl border border-seam bg-sleeve/60 p-5"
-              >
-                <span
-                  aria-hidden
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary"
-                >
-                  {step}
-                </span>
-                <div>
-                  <h3 className="font-heading text-base font-semibold">
-                    {title}
-                  </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{desc}</p>
-                </div>
-              </div>
-              {i < 2 && (
-                <div
-                  aria-hidden
-                  className="hidden shrink-0 items-center justify-center self-center text-muted-foreground sm:flex"
-                >
-                  <ArrowRight className="size-5" />
-                </div>
-              )}
-            </Fragment>
-          ))}
-        </div>
-      </section>
-
-      {/* Closing CTA. The same art as the hero, washed down so the copy and button stay readable. */}
-      <section className="relative isolate overflow-hidden rounded-xl border border-seam">
-        <Image
-          src={HERO_ART}
-          alt=""
-          fill
-          sizes="(min-width: 1152px) 1152px, 100vw"
-          className="-z-10 object-cover object-center"
-        />
-        <div aria-hidden className="absolute inset-0 -z-10 bg-background/70" />
-        <div
-          aria-hidden
-          className="absolute inset-0 -z-10 bg-gradient-to-r from-background via-background/70 to-background/25"
-        />
-        <div className="relative z-10 flex flex-col items-start gap-2 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7">
-          <h2 className="font-heading text-xl font-semibold">
-            The strongest decks. Your own cards. No singles necessary.
-          </h2>
-          <Link
-            href="/deck"
-            className={buttonVariants({
-              size: "lg",
-              className: "lit h-12 gap-2 px-6 text-base font-bold",
-            })}
-          >
-            Get started
-          </Link>
-        </div>
-      </section>
+        </Suspense>
+        <StrongestDecks />
+      </Band>
     </div>
   );
 }
