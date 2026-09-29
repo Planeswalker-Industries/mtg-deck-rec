@@ -33,7 +33,7 @@ function Curve({ curve, max, label, tone }: { curve: number[]; max: number; labe
           </div>
         ))}
       </div>
-      <div aria-hidden className="flex gap-0.5 text-center text-[0.6875rem] text-muted-foreground tabular-nums">
+      <div aria-hidden className="flex gap-0.5 text-center text-xs text-muted-foreground tabular-nums">
         {curve.map((_, i) => (
           <span key={i} className="flex-1">
             {barLabel(i)}
@@ -70,7 +70,7 @@ function StatsColumn({ title, stats, size, curveMax, tone }: { title: string; st
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-muted-foreground">{k}</dt>
-            <dd className={cn("text-right font-bold tabular-nums", k === "Cards" && size !== COMMANDER_DECK_SIZE && "text-cut")}>{v}</dd>
+            <dd className={cn("text-right font-semibold tabular-nums", k === "Cards" && size !== COMMANDER_DECK_SIZE && "text-cut")}>{v}</dd>
           </div>
         ))}
       </dl>

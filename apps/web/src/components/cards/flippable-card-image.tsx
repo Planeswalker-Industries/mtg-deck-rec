@@ -32,7 +32,7 @@ export function FlippableCardImage({
           type="button"
           onClick={() => setFace((f) => (f === "front" ? "back" : "front"))}
           aria-pressed={face === "back"}
-          className="mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-bold text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary"
+          className="mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary"
         >
           <RotateCcw aria-hidden className="size-3.5" />
           {face === "front" ? "Show back" : "Show front"}

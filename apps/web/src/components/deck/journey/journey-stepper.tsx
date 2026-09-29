@@ -35,7 +35,7 @@ export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSel
                 aria-current={current ? "step" : undefined}
                 onClick={() => onSelect(step)}
                 className={cn(
-                  "flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-bold transition-colors",
+                  "flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-semibold transition-colors",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default",
                   current ? cn("bg-sleeve text-foreground", glow) : done ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/50",
                 )}
@@ -67,7 +67,7 @@ export function PhaseIntro({ title, children, brief }: { title: string; children
   }
   return (
     <div>
-      <h2 className="font-heading text-3xl leading-none font-extrabold tracking-tight">{title}</h2>
+      <h2 className="font-heading text-2xl leading-none font-semibold tracking-tight">{title}</h2>
       <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">{children}</p>
     </div>
   );

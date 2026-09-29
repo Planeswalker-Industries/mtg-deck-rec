@@ -4,7 +4,7 @@ import { buttonVariants } from "@/components/ui/button";
 export default function NotFound() {
   return (
     <section aria-labelledby="not-found-heading" className="flex max-w-prose flex-col gap-4 py-8">
-      <h1 id="not-found-heading" className="font-heading text-4xl leading-none font-extrabold tracking-tight">
+      <h1 id="not-found-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
         Page not found
       </h1>
       <p className="text-muted-foreground">

@@ -190,7 +190,7 @@ export function DrawnCard({
   );
 }
 
-/** The ✅ button's colour: gold for a swap, or the job's own colour when the swipe is a cut or an add. */
+/** The ✅ button's colour: the accent for a swap, or the job's own colour when the swipe is a cut or an add. */
 const ACCEPT_TONE = {
   primary: "bg-primary text-primary-foreground shadow-[0_2px_0_color-mix(in_oklch,var(--primary),black_35%)] hover:bg-primary/90",
   cut: "bg-cut text-background shadow-[0_2px_0_color-mix(in_oklch,var(--cut),black_35%)] hover:bg-cut/90",
@@ -369,7 +369,7 @@ export function SwipeRater({
         </div>
         {/* While the first pair is being drawn, the names wait until the cards have turned over. */}
         <motion.figcaption className="mt-1.5" initial={drawing ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={{ delay: DRAW.targetNameDelaySeconds, duration: DRAW.fadeSeconds }}>
-          <span className="block font-heading text-lg leading-tight font-extrabold">{targetName}</span>
+          <span className="block font-heading text-lg leading-tight font-semibold">{targetName}</span>
           {reasons.length > 0 && <span className="block text-xs text-muted-foreground">{reasons.join(", ")}</span>}
         </motion.figcaption>
       </figure>
@@ -420,12 +420,12 @@ export function SwipeRater({
             animate={{ opacity: 1 }}
             transition={{ delay: DRAW.replacementDetailsDelaySeconds, duration: DRAW.fadeSeconds }}
           >
-            <p className="font-heading text-xl leading-tight font-extrabold">{displayName(candidate.card)}</p>
+            <p className="font-heading text-xl leading-tight font-semibold">{displayName(candidate.card)}</p>
             <p className="text-sm text-muted-foreground tabular-nums">
               {describeCostDelta(candidate.costDelta)} · {rater.candidateIndex + 1} of {rater.candidateCount}
             </p>
             {candidate.functionalTwin ? (
-              <p className="mt-1 text-sm font-bold text-primary">Same rules as {targetName}, under a different name.</p>
+              <p className="mt-1 text-sm font-semibold text-primary">Same rules as {targetName}, under a different name.</p>
             ) : (
               <TagPills labels={jobs} label={`What ${displayName(candidate.card)} does too`} className="mt-1.5" />
             )}
@@ -462,7 +462,7 @@ export function SwipeSummary({
   return (
     <section ref={viewRef} aria-labelledby="swipe-summary-heading" className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col gap-4">
       <div>
-        <h2 id="swipe-summary-heading" className="font-heading text-3xl leading-none font-extrabold tracking-tight">
+        <h2 id="swipe-summary-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
           {heading}
         </h2>
         <p className="mt-1.5 text-sm text-muted-foreground">
@@ -476,7 +476,7 @@ export function SwipeSummary({
               <CardImage card={s.target} variant="small" alt="" sizes="72px" className="opacity-80 saturate-50" />
               <p className="text-sm leading-snug">
                 <span className="block text-muted-foreground">Cut {displayName(s.target)}</span>
-                <span className="block font-bold">Add {displayName(s.replacement)}</span>
+                <span className="block font-semibold">Add {displayName(s.replacement)}</span>
               </p>
               <CardImage card={s.replacement} variant="small" alt="" sizes="72px" />
             </li>

@@ -66,7 +66,7 @@ export function CommanderPicker({ onPick }: { onPick: (card: CardSummary) => voi
 
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={`${id}-input`} className="text-base font-bold">
+      <Label htmlFor={`${id}-input`} className="text-base font-semibold">
         Commander
       </Label>
       <Input
@@ -122,7 +122,7 @@ export function CommanderPicker({ onPick }: { onPick: (card: CardSummary) => voi
                   <span aria-hidden className="h-11 w-16 shrink-0 rounded-md bg-seam" />
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-bold">{displayName(card)}</span>
+                  <span className="block truncate font-semibold">{displayName(card)}</span>
                   <span className="block truncate text-xs text-muted-foreground">{card.typeLine}</span>
                 </span>
                 <ColorIdentity identity={card.colorIdentity} />

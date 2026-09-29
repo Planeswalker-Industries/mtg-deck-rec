@@ -37,7 +37,7 @@ export function DeckVisibility({ deckId, isPublic }: { deckId: DeckId; isPublic:
           }}
         />
         <div className="min-w-0">
-          <label htmlFor="deck-public" className="block font-bold">
+          <label htmlFor="deck-public" className="block font-semibold">
             {on ? "Anyone with the link can see this deck" : "Only you can see this deck"}
           </label>
           <p className="mt-1 text-sm text-muted-foreground">

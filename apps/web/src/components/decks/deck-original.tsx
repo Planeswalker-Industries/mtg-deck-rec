@@ -59,7 +59,7 @@ export function DeckOriginal({
   return (
     <section aria-labelledby="deck-original" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4">
       <div>
-        <h2 id="deck-original" className="font-heading text-2xl font-semibold tracking-tight">
+        <h2 id="deck-original" className="font-heading text-xl font-semibold tracking-tight">
           Changes from the original
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">

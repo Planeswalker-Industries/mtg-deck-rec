@@ -49,7 +49,7 @@ interface Problem {
   message: string;
 }
 
-const LINK = "font-bold text-primary underline-offset-4 hover:underline";
+const LINK = "font-semibold text-primary underline-offset-4 hover:underline";
 
 export function CollectionTool() {
   const { source, setSource } = useCollectionSource();
@@ -221,7 +221,7 @@ export function CollectionTool() {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">Import your collection</h1>
+        <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Import your collection</h1>
         <p className="mt-2 max-w-prose text-muted-foreground">
           Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, or paste a link to a public Archidekt collection, and the deck tool can suggest only cards you own.
           {source.kind !== "loading" &&
@@ -268,7 +268,7 @@ export function CollectionTool() {
           void importText();
         }}
       >
-        <Label htmlFor={textHidden ? undefined : "collection-text"} className="font-bold">
+        <Label htmlFor={textHidden ? undefined : "collection-text"} className="font-semibold">
           {hasCollection ? "Replace with a new export" : "Collection export"}
         </Label>
         {fileName !== null ? (
@@ -323,7 +323,7 @@ export function CollectionTool() {
         )}
         {progress && (
           <div className="flex flex-col gap-1.5" aria-live="polite">
-            <p className="text-sm font-bold tabular-nums">
+            <p className="text-sm font-semibold tabular-nums">
               {/* Before a download says how large it is, there is nothing to count against. */}
               {progress.total > 0 ? `${progress.label}: ${count(progress.done)} of ${count(progress.total)}` : `${progress.label}…`}
             </p>
@@ -365,17 +365,17 @@ function CollectionSummary({
       <dl className="grid grid-cols-2 gap-3">
         <div>
           <dt className="text-sm text-muted-foreground">Different cards</dt>
-          <dd className="font-heading text-3xl font-extrabold tabular-nums">{count(totals.uniqueCards)}</dd>
+          <dd className="font-heading text-2xl font-semibold tabular-nums">{count(totals.uniqueCards)}</dd>
         </div>
         <div>
           <dt className="text-sm text-muted-foreground">Copies</dt>
-          <dd className="font-heading text-3xl font-extrabold tabular-nums">{count(totals.totalQuantity)}</dd>
+          <dd className="font-heading text-2xl font-semibold tabular-nums">{count(totals.totalQuantity)}</dd>
         </div>
       </dl>
       <p className="text-sm text-muted-foreground">{note}</p>
       {unmatched && unmatched.count > 0 && (
         <details className="text-sm">
-          <summary className="cursor-pointer font-bold">
+          <summary className="cursor-pointer font-semibold">
             {count(unmatched.count)} line{unmatched.count === 1 ? "" : "s"} didn&apos;t match a card
           </summary>
           <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">

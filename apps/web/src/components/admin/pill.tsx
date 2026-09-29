@@ -22,7 +22,7 @@ const PILL_SHAPE = {
   px: 1,
   py: 0.25,
   fontSize: "0.6875rem",
-  fontWeight: 700,
+  fontWeight: 600,
   lineHeight: 1.4,
   whiteSpace: "nowrap",
 } as const;

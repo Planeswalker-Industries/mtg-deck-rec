@@ -14,8 +14,8 @@ import { PlatformAdminList, UserEdit, UserList, UserShow } from "./users";
  * The admin single-page app.
  *
  * It is Material UI in a site that is otherwise shadcn and Tailwind, but it is not a different-looking product:
- * `theme.ts` restates the site's own tokens — the table, the sleeve, the seam, the gold lamp, Faustina and Atkinson
- * Hyperlegible — as a Material UI theme, so the components React Admin brings are dressed in them. No light theme is
+ * `theme.ts` restates the site's own tokens — the table, the sleeve, the seam, the sleeve-blue accent, Bricolage
+ * Grotesque — as a Material UI theme, so the components React Admin brings are dressed in them. No light theme is
  * offered, like the rest of the site.
  *
  * The <BrowserRouter> is load-bearing, not decoration. Left to itself React Admin builds a *hash* router, where

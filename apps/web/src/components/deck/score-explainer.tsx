@@ -64,7 +64,7 @@ export function ScoreExplainer({ score }: { score: ScoreBreakdown }) {
 
   return (
     <details className="mt-4 rounded-lg border border-seam bg-sleeve/40">
-      <summary className="cursor-pointer list-none p-3 text-sm font-bold marker:content-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+      <summary className="cursor-pointer list-none p-3 text-sm font-semibold marker:content-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
         <span className="text-primary">Why this card</span>
         {lead && (
           <span className="ml-2 font-normal text-muted-foreground">
@@ -82,7 +82,7 @@ export function ScoreExplainer({ score }: { score: ScoreBreakdown }) {
             return (
               <li key={component}>
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm font-bold">{LABELS[component].name}</span>
+                  <span className="text-sm font-semibold">{LABELS[component].name}</span>
                   <span className="shrink-0 text-sm text-muted-foreground tabular-nums">{percent(share)} of the score</span>
                 </div>
                 <div

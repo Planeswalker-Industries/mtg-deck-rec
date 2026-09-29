@@ -39,7 +39,7 @@ export function OpenDeckBar({
       <div className="ml-auto flex flex-wrap items-center gap-2">
         <Link
           href={`/decks/deck/${deck.code}` as Route}
-          className="rounded-md px-1 py-2 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="rounded-md px-1 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           Deck page
         </Link>

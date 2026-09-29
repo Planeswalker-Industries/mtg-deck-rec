@@ -27,7 +27,7 @@ export default function AdminCrawlsPage() {
     <div className="flex flex-col gap-6 py-6">
       <Link
         href="/admin"
-        className="inline-flex w-fit items-center gap-1.5 text-sm font-bold text-primary underline-offset-4 hover:underline"
+        className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-primary underline-offset-4 hover:underline"
       >
         <ArrowLeft aria-hidden className="size-4" />
         Admin

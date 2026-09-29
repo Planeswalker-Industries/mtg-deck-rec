@@ -27,7 +27,7 @@ export function ResolutionIssues({ unresolved, issues }: { unresolved: ResolvedL
       {/* Deck issues are informational; collapsed so cards stay near the top on phones. */}
       {issues.length > 0 && (
         <details className="rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm">
-          <summary className="cursor-pointer font-bold marker:text-muted-foreground">
+          <summary className="cursor-pointer font-semibold marker:text-muted-foreground">
             {issues.length} deck issue{issues.length === 1 ? "" : "s"}
           </summary>
           <ul className="mt-2 list-disc pl-5 text-muted-foreground">

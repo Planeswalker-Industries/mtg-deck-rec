@@ -57,10 +57,30 @@ const FAN_SIZES = "(min-width: 768px) 240px, 42vw";
 const FAN_MIDDLE = Math.floor(FAN.length / 2);
 /** The middle card lands first, then each pair outward this much later. */
 const DEAL_BASE_MS = 60;
-const DEAL_STEP_MS = 90;
+const DEAL_STEP_MS = 80;
+/** One card's deal; matches `.fan-card` in globals.css. */
+const DEAL_DURATION_MS = 350;
 const FAN_TOP_Z = 10;
 
-/** The hero's card fan, dealt once on load (`.fan-card` in globals.css). Decorative: the headline says what it is. */
+/**
+ * The pass: one card slid across the table onto the hand, the lane's signature moment. It lands after the deal, on
+ * top of the fan's lower right, and the aside under the fan (`HERO_PASS_ASIDE`) says why a friend passed it.
+ */
+const PASSED_CARD = sampleCard("Three Visits");
+/** Lands once the last pair of fan cards is down. */
+const PASS_DELAY_MS = DEAL_BASE_MS + FAN_MIDDLE * DEAL_STEP_MS + DEAL_DURATION_MS;
+const PASS_ROTATE_DEG = -7;
+const PASS_X = "58%";
+const PASS_Y = "18%";
+const PASS_SCALE = 0.78;
+
+/** What the friend says as they pass it. Cultivate is in the fan; Three Visits fetches the same Forest a mana cheaper. */
+export const HERO_PASS_ASIDE = "You already own Three Visits. It does Cultivate's job a mana cheaper.";
+
+/**
+ * The hero's card fan, dealt once on load (`.fan-card` in globals.css), then one card passed onto it (`.pass-card`).
+ * Decorative: the headline and the aside say what it is.
+ */
 export function HeroFan() {
   return (
     <div aria-hidden className="w-full">
@@ -85,10 +105,25 @@ export function HeroFan() {
               alt=""
               sizes={FAN_SIZES}
               eager
-              className="shadow-[0_18px_40px_-16px_rgb(0_0_0/0.9)]"
+              className="shadow-lift"
             />
           </div>
         ))}
+        <div
+          className="pass-card absolute inset-0"
+          style={
+            {
+              "--r": `${PASS_ROTATE_DEG}deg`,
+              "--x": PASS_X,
+              "--y": PASS_Y,
+              "--s": PASS_SCALE,
+              "--delay": `${PASS_DELAY_MS}ms`,
+              zIndex: FAN_TOP_Z + 1,
+            } as React.CSSProperties
+          }
+        >
+          <CardImage card={PASSED_CARD} alt="" sizes={FAN_SIZES} eager className="shadow-lift" />
+        </div>
       </div>
     </div>
   );

@@ -95,7 +95,7 @@ export function SingleSwipe({
         <SideButton kind="swap" tone={tone} label={acceptLabel} pull={Math.max(0, drag)} disabled={false} onClick={() => act(1)} />
       </div>
       <div aria-live="polite" className="mt-3 text-center">
-        <p className="font-heading text-xl leading-tight font-extrabold">{displayName(card)}</p>
+        <p className="font-heading text-xl leading-tight font-semibold">{displayName(card)}</p>
         {caption && <div className="mt-1 text-sm text-muted-foreground">{caption}</div>}
       </div>
       {footer && <div className="mt-3 flex flex-wrap justify-center gap-2">{footer}</div>}

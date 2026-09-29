@@ -65,7 +65,7 @@ function Segmented<T extends string>({
           aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "rounded-md px-4 py-1 text-sm font-medium transition-colors",
+            "rounded-md px-4 py-1 text-sm font-normal transition-colors",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             value === o.value ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
           )}
@@ -278,7 +278,7 @@ export function DeckTool() {
       {showInput ? (
         <section aria-labelledby="deck-input-heading" className="flex flex-col gap-4">
           <div>
-            <h1 id="deck-input-heading" className="font-heading text-4xl leading-none font-extrabold tracking-tight">
+            <h1 id="deck-input-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
               Upgrade a deck
             </h1>
             <p className="mt-2 max-w-prose text-muted-foreground">
@@ -295,7 +295,7 @@ export function DeckTool() {
             {source.kind === "none" && (
               <p className="mt-2 max-w-prose text-sm text-muted-foreground">
                 Building from cards you own?{" "}
-                <Link href="/collection/import" className="font-bold text-primary underline-offset-4 hover:underline">
+                <Link href="/collection/import" className="font-semibold text-primary underline-offset-4 hover:underline">
                   Import your collection first
                 </Link>
                 , and suggestions will put your cards ahead of the rest.
@@ -398,7 +398,7 @@ export function DeckTool() {
       {tool.importedFrom && tool.parse.status === "ready" && (
         <p className="text-sm text-muted-foreground">
           Imported from{" "}
-          <a href={tool.importedFrom.url} target="_blank" rel="noreferrer" className="font-medium text-primary underline underline-offset-2">
+          <a href={tool.importedFrom.url} target="_blank" rel="noreferrer" className="font-normal text-primary underline underline-offset-2">
             Archidekt
           </a>
           . Edit the decklist to change it here.

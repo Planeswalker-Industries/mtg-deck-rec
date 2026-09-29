@@ -80,14 +80,14 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
 
         <div className="flex min-w-0 flex-col gap-4">
           <div>
-            <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight text-balance sm:text-5xl">{name}</h1>
+            <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight text-balance sm:text-3xl">{name}</h1>
             <p className="mt-2 text-sm text-muted-foreground">{card.typeLine}</p>
           </div>
 
           {faces.map((face) => (
             <div key={face.name} className="rounded-lg border border-seam bg-sleeve p-3">
               {faces.length > 1 && (
-                <p className="mb-1 text-sm font-bold">
+                <p className="mb-1 text-sm font-semibold">
                   {face.name} <span className="font-normal text-muted-foreground">{face.typeLine}</span>
                 </p>
               )}
@@ -96,7 +96,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
           ))}
 
           <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            <li className={card.legalCommander === "legal" ? undefined : "font-bold text-destructive"}>{LEGALITY[card.legalCommander]}</li>
+            <li className={card.legalCommander === "legal" ? undefined : "font-semibold text-destructive"}>{LEGALITY[card.legalCommander]}</li>
             {card.gameChanger && (
               <li>
                 <GameChangerBadge />
@@ -107,7 +107,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
 
           {card.tags.length > 0 && (
             <section aria-labelledby="jobs-heading">
-              <h2 id="jobs-heading" className="text-sm font-bold">
+              <h2 id="jobs-heading" className="text-sm font-semibold">
                 What it does
               </h2>
               <ul className="mt-1.5 flex flex-wrap gap-1.5">
@@ -126,7 +126,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
                 {name} as a commander
               </Link>
             )}
-            <a href={card.scryfallUri} className="font-medium text-primary underline underline-offset-2">
+            <a href={card.scryfallUri} className="font-normal text-primary underline underline-offset-2">
               View on Scryfall
             </a>
           </div>
@@ -135,7 +135,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
       </ArtBackdrop>
 
       <section aria-labelledby="alternatives-heading" className="flex flex-col gap-2">
-        <h2 id="alternatives-heading" className="font-heading text-2xl font-extrabold tracking-tight">
+        <h2 id="alternatives-heading" className="font-heading text-xl font-semibold tracking-tight">
           Cards that do the same job
         </h2>
         <p className="max-w-prose text-sm text-muted-foreground">
@@ -164,7 +164,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
 
       {commanderItems.length > 0 && (
         <section aria-labelledby="commanders-heading" className="flex flex-col gap-2">
-          <h2 id="commanders-heading" className="font-heading text-2xl font-extrabold tracking-tight">
+          <h2 id="commanders-heading" className="font-heading text-xl font-semibold tracking-tight">
             Commanders whose decks run it most
           </h2>
           <PocketGrid zoomable label={`Commanders whose decks run ${name}`} items={commanderItems} />

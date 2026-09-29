@@ -82,7 +82,7 @@ export function PocketGrid({
           const content = (
             <>
               <MarkedImage card={item.card} mark={item.mark} />
-              <span className="mt-1.5 line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(item.card)}</span>
+              <span className="mt-1.5 line-clamp-2 text-sm leading-tight font-semibold">{displayName(item.card)}</span>
               {item.caption && <span className="mt-0.5 block text-xs leading-snug">{item.caption}</span>}
             </>
           );

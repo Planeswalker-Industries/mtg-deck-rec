@@ -84,7 +84,7 @@ export function StepsCarousel({ labels, children }: { labels: string[]; children
             aria-current={i === index}
             onClick={() => go(i)}
             className={cn(
-              "flex size-8 items-center justify-center rounded-sm border text-sm font-bold tabular-nums transition-colors",
+              "flex size-11 items-center justify-center rounded-lg border font-mono text-sm transition-colors",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               i === index ? "border-primary text-primary" : "border-seam text-muted-foreground",
             )}

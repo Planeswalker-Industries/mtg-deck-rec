@@ -91,7 +91,7 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
                     <Link
                       href={`/deck?deck=${deck.code}` as Route}
                       aria-label={`Open ${deck.name} in the deck tool`}
-                      className="rounded-md px-2 py-1.5 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      className="rounded-md px-2 py-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                       Open
                     </Link>
@@ -182,10 +182,10 @@ function RenameRow({
         maxLength={80}
         className="h-10 bg-background"
       />
-      <button type="submit" className="h-10 shrink-0 rounded-md bg-primary px-3 text-sm font-bold text-primary-foreground">
+      <button type="submit" className="h-10 shrink-0 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground">
         Save
       </button>
-      <button type="button" onClick={onCancel} className="h-10 shrink-0 rounded-md px-3 text-sm font-bold text-muted-foreground hover:text-foreground">
+      <button type="button" onClick={onCancel} className="h-10 shrink-0 rounded-md px-3 text-sm font-semibold text-muted-foreground hover:text-foreground">
         Cancel
       </button>
     </form>

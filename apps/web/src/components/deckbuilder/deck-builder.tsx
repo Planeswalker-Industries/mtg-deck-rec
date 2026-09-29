@@ -59,7 +59,7 @@ function DeckCard({
       <ZoomableCard card={card}>
         <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 140px, 30vw" />
       </ZoomableCard>
-      <span className="line-clamp-2 min-h-[2lh] text-[0.8125rem] leading-tight font-bold">{name}</span>
+      <span className="line-clamp-2 min-h-[2lh] text-sm leading-tight font-semibold">{name}</span>
       {card.gameChanger && <GameChangerBadge />}
       {/* Pinned to the bottom of the grid cell: a Game Changer badge or wrapped quantity buttons elsewhere in the row
           then change nothing about where Remove sits. Grid items stretch to the row's height, which is what makes
@@ -70,7 +70,7 @@ function DeckCard({
             <IconButton label={`One fewer ${name}`} onClick={() => onQuantity(quantity - 1)}>
               <Minus aria-hidden className="size-4" />
             </IconButton>
-            <span className="min-w-6 text-center text-sm font-bold tabular-nums" aria-label={`${quantity} copies`}>
+            <span className="min-w-6 text-center text-sm font-semibold tabular-nums" aria-label={`${quantity} copies`}>
               {quantity}
             </span>
             <IconButton label={`One more ${name}`} onClick={() => onQuantity(quantity + 1)}>
@@ -125,21 +125,21 @@ export function DeckBuilder({
       <dl className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border border-seam bg-sleeve px-4 py-3 text-sm">
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Cards</dt>
-          <dd className={cn("font-bold tabular-nums", builder.size !== COMMANDER_DECK_SIZE && "text-cut")}>
+          <dd className={cn("font-semibold tabular-nums", builder.size !== COMMANDER_DECK_SIZE && "text-cut")}>
             {builder.size} / {COMMANDER_DECK_SIZE}
           </dd>
         </div>
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Lands</dt>
-          <dd className="font-bold tabular-nums">{stats.lands}</dd>
+          <dd className="font-semibold tabular-nums">{stats.lands}</dd>
         </div>
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Average mana value</dt>
-          <dd className="font-bold tabular-nums">{stats.averageManaValue.toFixed(MANA_VALUE_DECIMALS)}</dd>
+          <dd className="font-semibold tabular-nums">{stats.averageManaValue.toFixed(MANA_VALUE_DECIMALS)}</dd>
         </div>
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Price</dt>
-          <dd className="font-bold tabular-nums">
+          <dd className="font-semibold tabular-nums">
             {formatUsd(stats.priceUsd)}
             {stats.priceAsOf && <span className="font-normal text-muted-foreground"> as of {formatAsOf(stats.priceAsOf)}</span>}
           </dd>
@@ -147,7 +147,7 @@ export function DeckBuilder({
       </dl>
       {showIssues && issues.length > 0 && (
         <details className="rounded-lg border border-cut/40 bg-cut/5 px-4 py-2 text-sm">
-          <summary className="cursor-pointer font-bold text-cut">
+          <summary className="cursor-pointer font-semibold text-cut">
             {issues.length} deck issue{issues.length === 1 ? "" : "s"}
           </summary>
           <ul className="mt-2 list-disc pl-5">
@@ -166,7 +166,7 @@ export function DeckBuilder({
             aria-pressed={tab === t}
             onClick={() => setTab(t)}
             className={cn(
-              "rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "rounded-md px-4 py-1.5 text-sm font-normal transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               tab === t ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
             )}
           >

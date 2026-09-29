@@ -30,7 +30,7 @@ function CopyStepper({ card, quantity, editor }: { card: CardSummary; quantity: 
       <button type="button" aria-label={`One fewer ${name}`} className={STEP_BUTTON} onClick={() => editor.setQuantity(card, quantity - 1)}>
         <Minus aria-hidden className="size-4" />
       </button>
-      <span className="min-w-7 text-center text-sm font-bold tabular-nums" aria-label={`${quantity} copies of ${name}`}>
+      <span className="min-w-7 text-center text-sm font-semibold tabular-nums" aria-label={`${quantity} copies of ${name}`}>
         {quantity}
       </span>
       <button type="button" aria-label={`One more ${name}`} className={STEP_BUTTON} onClick={() => editor.setQuantity(card, quantity + 1)}>
@@ -52,7 +52,7 @@ export function EditableCards({ label, items, editor }: { label: string; items: 
           <ZoomableCard card={item.card}>
             <CardImage card={item.card} variant="small" alt="" sizes="(min-width: 1024px) 160px, 30vw" />
           </ZoomableCard>
-          <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(item.card)}</span>
+          <span className="line-clamp-2 text-sm leading-tight font-semibold">{displayName(item.card)}</span>
           <CopyStepper card={item.card} quantity={item.quantity} editor={editor} />
         </li>
       ))}
@@ -119,7 +119,7 @@ export function AddToCollection({ editor }: { editor: CollectionEditor }) {
                 <ZoomableCard card={card}>
                   <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 160px, 30vw" />
                 </ZoomableCard>
-                <span className="line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(card)}</span>
+                <span className="line-clamp-2 text-sm leading-tight font-semibold">{displayName(card)}</span>
                 {owned === 0 ? (
                   <Button type="button" size="sm" className="h-8" aria-label={`Add ${card.name}`} onClick={() => editor.add(card)}>
                     <Plus aria-hidden className="size-4" /> Add

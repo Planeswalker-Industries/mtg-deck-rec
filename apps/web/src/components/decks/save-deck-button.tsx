@@ -50,7 +50,7 @@ export function SaveDeckButton({
   if (needsAccount) {
     return (
       <p className="text-sm text-muted-foreground">
-        <Link href="/sign-in?next=/deck" className="font-medium text-primary underline underline-offset-2">
+        <Link href="/sign-in?next=/deck" className="font-normal text-primary underline underline-offset-2">
           Sign in
         </Link>{" "}
         to save decks to your account.

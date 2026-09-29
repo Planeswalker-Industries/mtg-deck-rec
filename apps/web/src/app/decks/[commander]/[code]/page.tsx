@@ -71,7 +71,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             />
           )}
           <div className="min-w-0">
-            <h1 className="font-heading text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">
+            <h1 className="font-heading text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
               {deck.name}
             </h1>
             <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
@@ -112,7 +112,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
       ) : (
         deck.groups.map((group) => (
           <section key={group.category} aria-labelledby={`group-${group.category}`} className="flex flex-col gap-3">
-            <h2 id={`group-${group.category}`} className="font-heading text-2xl font-semibold tracking-tight">
+            <h2 id={`group-${group.category}`} className="font-heading text-xl font-semibold tracking-tight">
               {cardCategoryLabel[group.category]}{" "}
               <span className="font-sans text-base font-normal text-muted-foreground tabular-nums">
                 {group.cards.reduce((n, c) => n + c.quantity, 0)}

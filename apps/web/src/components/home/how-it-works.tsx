@@ -86,12 +86,12 @@ function StepCard({
 }) {
   const text = (
     <div className="flex gap-2 px-4 py-3.5">
-      <span aria-hidden className="text-[0.9375rem] leading-snug font-bold text-primary tabular-nums">
+      <span aria-hidden className="font-mono text-base leading-snug text-muted-foreground">
         {step.step}.
       </span>
       <div>
-        <h3 className="text-[0.9375rem] leading-snug font-bold">{step.title}</h3>
-        <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">{step.desc}</p>
+        <h3 className="text-base leading-snug font-semibold">{step.title}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
       </div>
     </div>
   );
@@ -105,7 +105,7 @@ function StepCard({
     </div>
   );
   return (
-    <Panel role={role} padding="none" surface="table" className={cn("flex flex-col overflow-hidden", className)}>
+    <Panel role={role} padding="none" surface="sleeve" className={cn("flex flex-col overflow-hidden", className)}>
       {textFirst ? text : recording}
       {textFirst ? recording : text}
     </Panel>
@@ -121,13 +121,13 @@ export function HowItWorks() {
   return (
     <Band
       aria-labelledby="how-it-works"
-      inner="grid gap-6 py-10 md:py-12 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-10"
+      inner="grid grid-cols-[minmax(0,1fr)] gap-6 py-12 md:py-16 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-12"
     >
       <div>
         <SectionHeading id="how-it-works" eyebrow="How it works">
           No more sifting through chaff
         </SectionHeading>
-        <p className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">{HOW_IT_WORKS_BLURB}</p>
+        <p className="mt-4 max-w-prose text-base text-muted-foreground">{HOW_IT_WORKS_BLURB}</p>
       </div>
 
       <div className="md:hidden">

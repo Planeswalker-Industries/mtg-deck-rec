@@ -20,7 +20,7 @@ function Why({ suggestion }: { suggestion: AddSuggestion }) {
   return (
     <span className="flex flex-col items-center gap-0.5 [li_&]:items-start">
       {owned && <OwnedBadge />}
-      {fillsRoles.length > 0 && <span className="font-bold text-add">Adds {fillsRoles.map((r) => r.label.toLowerCase()).join(", ")}</span>}
+      {fillsRoles.length > 0 && <span className="font-semibold text-add">Adds {fillsRoles.map((r) => r.label.toLowerCase()).join(", ")}</span>}
       {corpus && (
         <span className="tabular-nums">{corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}</span>
       )}

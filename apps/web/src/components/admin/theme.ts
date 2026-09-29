@@ -6,8 +6,8 @@ import type { RaThemeOptions } from "react-admin";
 /**
  * The site's design tokens, as a Material UI theme.
  *
- * React Admin brings Material UI, and the site is shadcn and Tailwind — but "table at night" is a set of colours,
- * two typefaces and one lighting rule, none of which belong to either framework. Restating them here is what makes
+ * React Admin brings Material UI, and the site is shadcn and Tailwind — but "Kitchen Table" is a set of colours,
+ * a typeface and a few surface rules, none of which belong to either framework. Restating them here is what makes
  * the admin area read as the same site rather than a bolted-on tool.
  *
  * The values below **mirror `:root` in `app/globals.css`. Change both together.** They are literals rather than
@@ -16,28 +16,28 @@ import type { RaThemeOptions } from "react-admin";
  * `<html>`, nothing computes on them, and that keeps the fonts in one place.
  */
 const TOKENS = {
-  background: "#00090e", // the table, in shadow
-  sleeve: "#050e13", // a card sleeve lying on the table
-  seam: "#1b2a30", // where two surfaces meet
-  popover: "#08151b",
-  foreground: "#e9e5dd", // warm off-white: paper under a lamp, never pure white
-  mutedForeground: "#80909f",
-  muted: "#0c1a21",
-  secondary: "#10202a",
-  input: "#1e3038",
-  primary: "#e3ab6e", // the lamp: the only thing that is lit
-  primaryForeground: "#08161a",
-  cut: "#e8687c",
-  add: "#3cbd94",
-  replace: "#9d8ef5",
-  destructive: "#ef6172",
+  background: "#1b1510", // walnut: the table
+  sleeve: "#2a2119", // oiled oak: panels, one step off the table
+  seam: "#302a24", // the hairline: warm paper at 10% over walnut
+  popover: "#33291f",
+  foreground: "#f2e9dc", // warm paper, never pure white
+  mutedForeground: "#b3a594",
+  muted: "#241c15",
+  secondary: "#33291f",
+  input: "#3a2e24",
+  primary: "#8db2e4", // sleeve blue: the one accent
+  primaryForeground: "#1b1510",
+  cut: "#e08a7a",
+  add: "#8cc49a",
+  replace: "#c7a2da",
+  destructive: "#e5796b",
   gc: "#e0b354",
 } as const;
 
 export const ADMIN_TOKENS = TOKENS;
 
 const FONT_BODY = "var(--font-body), ui-sans-serif, system-ui, sans-serif";
-const FONT_HEADING = "var(--font-display), Georgia, serif";
+const FONT_HEADING = FONT_BODY;
 
 /**
  * Light falls from the top: a warm edge where a surface catches it, shadow where it doesn't. The same recipe as the
@@ -55,7 +55,7 @@ const LIT = [
  */
 const SHADOWS = ["none", ...Array<string>(24).fill(LIT)] as unknown as Theme["shadows"];
 
-/** The site's focus ring: 2px of the lamp, held off the element so it reads against a dark surface. */
+/** The site's focus ring: 2px of the accent, held off the element so it reads against a dark surface. */
 const FOCUS_RING = {
   outline: `2px solid ${TOKENS.primary}`,
   outlineOffset: "2px",
@@ -109,7 +109,7 @@ export const adminTheme: RaThemeOptions = createTheme({
     // 16px body, so nothing in the admin is smaller than the site's own reading size.
     body1: { fontSize: "1rem", lineHeight: 1.55 },
     body2: { fontSize: "0.9375rem", lineHeight: 1.55 },
-    button: { textTransform: "none", fontWeight: 700 },
+    button: { textTransform: "none", fontWeight: 600 },
   },
 
   components: {
@@ -141,7 +141,7 @@ export const adminTheme: RaThemeOptions = createTheme({
       },
     },
 
-    // Gold is the lamp: it marks the one action that matters, so only a contained button is allowed to wear it.
+    // The accent marks the one action that matters, so only a contained button is allowed to wear it.
     MuiButton: {
       defaultProps: { disableElevation: true },
       styleOverrides: {
@@ -151,7 +151,7 @@ export const adminTheme: RaThemeOptions = createTheme({
           borderRadius: 6,
           transition: TRANSITION,
           "&:focus-visible": FOCUS_RING,
-          // Gold is the lamp: only the one action that matters on a screen wears it.
+          // The accent: only the one action that matters on a screen wears it.
           ...(ownerState.variant === "contained" &&
             ownerState.color === "primary" && {
               backgroundColor: TOKENS.primary,
@@ -207,7 +207,7 @@ export const adminTheme: RaThemeOptions = createTheme({
         head: {
           backgroundColor: TOKENS.background,
           color: TOKENS.mutedForeground,
-          fontWeight: 700,
+          fontWeight: 600,
           whiteSpace: "nowrap",
         },
         sizeSmall: { padding: "10px 16px" },
@@ -261,7 +261,7 @@ export const adminTheme: RaThemeOptions = createTheme({
 
     MuiChip: {
       styleOverrides: {
-        root: { fontWeight: 700, borderRadius: 999 },
+        root: { fontWeight: 600, borderRadius: 999 },
         outlined: { borderColor: TOKENS.seam },
       },
     },
@@ -297,7 +297,7 @@ export const adminTheme: RaThemeOptions = createTheme({
     },
 
     // Nav is quiet until you reach for it, and the page you are on is the one lit thing — the same rule as the
-    // site header. No pill, no filled background: a gold rule down the left edge and gold text.
+    // site header. No pill, no filled background: an accent rule down the left edge and accent text.
     RaMenuItemLink: {
       styleOverrides: {
         root: {
@@ -312,7 +312,7 @@ export const adminTheme: RaThemeOptions = createTheme({
           "&:focus-visible": FOCUS_RING,
           "&.RaMenuItemLink-active": {
             color: TOKENS.primary,
-            fontWeight: 700,
+            fontWeight: 600,
             borderLeftColor: TOKENS.primary,
             backgroundColor: alpha(TOKENS.primary, 0.08),
           },

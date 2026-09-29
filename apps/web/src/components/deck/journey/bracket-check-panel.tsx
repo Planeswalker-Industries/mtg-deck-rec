@@ -39,7 +39,7 @@ export function BracketCheckPanel({
       <div role="alert" className="flex gap-3 rounded-lg border border-cut/40 bg-cut/5 px-4 py-3">
         <TriangleAlert aria-hidden className="mt-0.5 size-5 shrink-0 text-cut" strokeWidth={2.5} />
         <div className="flex flex-col gap-1">
-          <h2 className="font-heading text-xl leading-tight font-extrabold">
+          <h2 className="font-heading text-xl leading-tight font-semibold">
             The bracket change makes {count} card{count === 1 ? "" : "s"} must-cut{count === 1 ? "" : "s"} from your deck
           </h2>
           <p className="text-sm">{why(check)}</p>
@@ -54,7 +54,7 @@ export function BracketCheckPanel({
         items={check.mustCuts.map(({ card, reason }: { card: CardSummary; reason: keyof typeof cutReasonShortLabel }) => ({
           card,
           mark: "cut" as const,
-          caption: <span className="font-bold text-cut">{cutReasonShortLabel[reason]}</span>,
+          caption: <span className="font-semibold text-cut">{cutReasonShortLabel[reason]}</span>,
         }))}
       />
       <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-end gap-2 border-t border-seam bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border">

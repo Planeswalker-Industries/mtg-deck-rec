@@ -75,10 +75,10 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
         }}
       >
         <p>
-          We sent a 6-digit code to <span className="font-bold">{email}</span>. Enter it below, or open the link in that email on any
+          We sent a 6-digit code to <span className="font-semibold">{email}</span>. Enter it below, or open the link in that email on any
           device.
         </p>
-        <Label htmlFor="sign-in-code" className="font-bold">
+        <Label htmlFor="sign-in-code" className="font-semibold">
           Code
         </Label>
         <Input
@@ -88,7 +88,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           maxLength={6}
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-          className="bg-sleeve text-2xl tracking-[0.3em] tabular-nums sm:text-2xl"
+          className="bg-sleeve text-xl tracking-[0.3em] tabular-nums sm:text-xl"
           autoFocus
         />
         {errorAlert}
@@ -102,7 +102,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
         </div>
         <button
           type="button"
-          className="self-start text-sm font-bold text-primary underline-offset-4 hover:underline"
+          className="self-start text-sm font-semibold text-primary underline-offset-4 hover:underline"
           onClick={() => {
             setStep("email");
             setError(null);
@@ -123,7 +123,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           void sendCode();
         }}
       >
-        <Label htmlFor="sign-in-email" className="font-bold">
+        <Label htmlFor="sign-in-email" className="font-semibold">
           Email
         </Label>
         <Input

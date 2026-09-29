@@ -68,7 +68,7 @@ export function CutPhase({
           captionFor={(card: CardSummary) => {
             const reasons = reasonsFor.get(card.id);
             return reasons ? (
-              <span className="font-bold text-cut">
+              <span className="font-semibold text-cut">
                 {reasons
                   .filter((r) => r !== "NOT_OWNED")
                   .slice(0, MAX_REASONS)

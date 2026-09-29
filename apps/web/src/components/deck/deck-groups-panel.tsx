@@ -45,7 +45,7 @@ export function DeckGroupsPanel({
               aria-pressed={grouping === pill.value}
               onClick={() => setGrouping(pill.value)}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                "rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 grouping === pill.value
                   ? "border-primary/50 bg-primary/15 text-primary"
                   : "border-seam text-muted-foreground hover:text-foreground",

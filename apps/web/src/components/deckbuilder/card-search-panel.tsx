@@ -74,7 +74,7 @@ function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         pressed ? "border-primary/50 bg-primary/15 text-primary" : "border-seam text-muted-foreground hover:text-foreground",
       )}
     >
@@ -266,7 +266,7 @@ export function CardSearchPanel({ builder, colorIdentity }: { builder: DeckBuild
                     <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 120px, 30vw" className={cn(!addable && "opacity-50")} />
                   </ZoomableCard>
                   {/* Two lines whatever the name, so the Add buttons line up across the row. */}
-                  <span className="line-clamp-2 min-h-[2lh] text-[0.8125rem] leading-tight font-bold">{displayName(card)}</span>
+                  <span className="line-clamp-2 min-h-[2lh] text-sm leading-tight font-semibold">{displayName(card)}</span>
                   <Button
                     type="button"
                     size="sm"

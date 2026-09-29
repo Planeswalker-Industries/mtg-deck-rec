@@ -34,7 +34,7 @@ export function DeleteAccount() {
 
   return (
     <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3 rounded-lg border border-destructive/50 p-4">
-      <h2 id={`${inputId}-heading`} className="font-heading text-xl font-bold">
+      <h2 id={`${inputId}-heading`} className="font-heading text-xl font-semibold">
         Delete your account
       </h2>
       <p className="text-sm">
@@ -68,7 +68,7 @@ export function DeleteAccount() {
       >
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={inputId}>
-            Type <span className="font-bold">{DELETE_CONFIRMATION}</span> to confirm
+            Type <span className="font-semibold">{DELETE_CONFIRMATION}</span> to confirm
           </Label>
           <Input
             id={inputId}

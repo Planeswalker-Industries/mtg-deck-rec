@@ -75,7 +75,7 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-heading text-lg leading-none font-semibold capitalize">{source.source}</h2>
-        <span className="flex items-center gap-1.5 text-xs font-bold">
+        <span className="flex items-center gap-1.5 text-xs font-semibold">
           {running && (
             // A claim is held right now. The pulse is the one thing on this page that says "still happening".
             <motion.span
@@ -92,7 +92,7 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
       </div>
 
       <div className="flex items-baseline gap-2">
-        <span className="font-heading text-3xl leading-none font-extrabold tabular-nums text-primary">
+        <span className="font-heading text-2xl leading-none font-semibold tabular-nums text-primary">
           {source.decks.toLocaleString()}
         </span>
         <span className="text-sm text-muted-foreground">decks</span>
@@ -175,12 +175,12 @@ function DeckRow({ deck, index }: { deck: AdminCrawledDeck; index: number }) {
             <ChevronDown className="size-4" />
           </motion.span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold">
+            <span className="block truncate text-sm font-semibold">
               {deck.commanderNames.length > 0 ? deck.commanderNames.join(" and ") : "No commander resolved"}
             </span>
             <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
               <span className="tabular-nums">{deck.sourceDeckId}</span>
-              <span className={cn("tabular-nums", deck.deckSize !== 100 && "font-bold text-cut")}>{deck.deckSize} cards</span>
+              <span className={cn("tabular-nums", deck.deckSize !== 100 && "font-semibold text-cut")}>{deck.deckSize} cards</span>
               <span className="tabular-nums">{deck.distinctCards} distinct</span>
               <span className="tabular-nums">fetched {ago(deck.fetchedAt)}</span>
             </span>
@@ -338,7 +338,7 @@ export function CrawlsView() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="font-heading text-3xl leading-none font-extrabold tracking-tight sm:text-4xl">Deck crawls</h1>
+        <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight sm:text-3xl">Deck crawls</h1>
         <p className="mt-2 max-w-prose text-sm text-muted-foreground">
           What the crawlers have written into the corpus. These are other people&apos;s decklists: they feed play rates
           and nothing else, and this page is the only place in the app that shows them.
@@ -377,7 +377,7 @@ export function CrawlsView() {
                 aria-pressed={source === s}
                 onClick={() => changeSource(s)}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  "rounded-md px-3 py-1.5 text-sm font-normal capitalize transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   source === s ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
                 )}
               >

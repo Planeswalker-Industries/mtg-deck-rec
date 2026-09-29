@@ -16,7 +16,7 @@ export default function PrivacyPage() {
   return (
     <article className="flex max-w-prose flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">Privacy policy</h1>
+        <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Privacy policy</h1>
         <p className="text-sm text-muted-foreground">Last updated {UPDATED}</p>
       </header>
 
@@ -142,7 +142,7 @@ export default function PrivacyPage() {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="font-heading text-2xl font-bold">{title}</h2>
+      <h2 className="font-heading text-xl font-semibold">{title}</h2>
       {children}
     </section>
   );
@@ -151,7 +151,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Item({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div>
-      <dt className="font-bold">{term}</dt>
+      <dt className="font-semibold">{term}</dt>
       <dd className="text-muted-foreground">{children}</dd>
     </div>
   );

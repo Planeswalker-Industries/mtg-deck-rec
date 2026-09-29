@@ -78,7 +78,7 @@ export function DeckBar({
       ) : (
         <span className="row-span-2" />
       )}
-      <h2 className="truncate font-heading text-xl leading-tight font-extrabold tracking-tight">
+      <h2 className="truncate font-heading text-xl leading-tight font-semibold tracking-tight">
         {analysis.commanderKey.slug && analysis.commanderKey.deckCount > 0 ? (
           <Link
             href={`/commander/${analysis.commanderKey.slug}`}
@@ -114,7 +114,7 @@ export function DeckBar({
         )}
       </p>
       {collectionMode === null ? (
-        <Link href="/collection/import" className="justify-self-end text-xs font-bold text-primary underline-offset-4 hover:underline">
+        <Link href="/collection/import" className="justify-self-end text-xs font-semibold text-primary underline-offset-4 hover:underline">
           Add collection
         </Link>
       ) : (
