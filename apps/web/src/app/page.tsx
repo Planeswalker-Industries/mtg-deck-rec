@@ -61,7 +61,7 @@ function StrongestDecks() {
   return (
     <section className="relative isolate border-t border-seam py-10 md:py-12 lg:border-t-0 lg:border-l lg:pl-8">
       <div aria-hidden className="absolute inset-y-0 -left-4 lg:left-0" style={{ right: CLOSING_ART_RIGHT }}>
-        <ArtBackdrop src={CLOSING_VISTA.src} wash="left" sizes={CLOSING_ART_SIZES} position="object-[70%_center]" />
+        <ArtBackdrop src={CLOSING_VISTA.src} wash="left" sizes={CLOSING_ART_SIZES} position={CLOSING_VISTA.position} />
       </div>
       <h2 className="font-heading text-[1.75rem] leading-[1.15] font-semibold">
         <span className="block">The strongest decks.</span> <span className="block">Your own cards.</span>{" "}
@@ -93,7 +93,7 @@ export default function Home() {
        * The section is `relative` and the inner container is not, so the art layer sizes against the bleed.
        */}
       <section className="relative isolate mx-[calc(50%-50vw)] -mt-4 w-[100vw] overflow-hidden border-b border-seam">
-        <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" priority />
+        <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority />
 
         {/* The columns stretch, so the credit at the foot of the fan's column ends level with "No account necessary". */}
         <div className="page-column grid gap-6 pt-4 pb-5 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-4 md:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
