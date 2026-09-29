@@ -14,8 +14,8 @@ const AUTO_ADVANCE_MS = 7_000;
 
 const IDENTITY_ORDER: readonly ColorKey[] = ["W", "U", "B", "R", "G"];
 
-/** Tiles are about 220 px wide on desktop and a third of a phone; Scryfall's art crops are about 626 px wide. */
-const TILE_ART_SIZES = "(min-width: 1024px) 220px, 33vw";
+/** Tile art is about 220 px wide on desktop and a 64 px thumbnail on phones; Scryfall's art crops are ~626 px wide. */
+const TILE_ART_SIZES = "(min-width: 768px) 220px, 64px";
 
 /** The fixture's identity when the catalog didn't answer: the colours its cards count under, in WUBRG order. */
 function fixtureIdentity(counts: Record<ColorKey, number>): string {
@@ -96,24 +96,25 @@ export function FeaturedCommanders({
       }}
     >
       {intro}
-      {/* The wheel and the tiles share a row, and the tiles set its height: from md up the wheel's cell is absolute
-          inside, so it adds no height of its own and the ring grows or shrinks to match the tiles. */}
-      <div className="mt-6 grid gap-6 md:grid-cols-[10rem_minmax(0,1fr)] md:items-stretch md:gap-8">
-        <div className="relative flex justify-center">
-          <div className="md:absolute md:inset-0">
-          <DeckOverview
-            deckKey={current.deck.slug}
-            composition={current.deck.composition}
-            colorCounts={current.deck.colorCounts}
-            cardCount={current.deck.cardCount}
-            compact
-          />
+      {/* The wheel and the tiles share a row, and the tiles set its height: the wheel's content is absolute inside its
+          cell, so it adds no height of its own and the ring grows or shrinks to match. Phones stack the decks as rows
+          beside the wheel; wider screens lay them out as three tiles. */}
+      <div className="mt-6 grid grid-cols-[9rem_minmax(0,1fr)] items-stretch gap-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-8">
+        <div className="relative">
+          <div className="absolute inset-0">
+            <DeckOverview
+              deckKey={current.deck.slug}
+              composition={current.deck.composition}
+              colorCounts={current.deck.colorCounts}
+              cardCount={current.deck.cardCount}
+              compact
+            />
           </div>
         </div>
 
         {/* Tiles: click to select, arrow keys when focused. The gold border moves with the selection. */}
         <div
-          className="grid grid-cols-3 gap-2 sm:gap-3"
+          className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-3"
           role="group"
           aria-label="Featured commanders"
           onKeyDown={onKeyDown}
@@ -132,12 +133,12 @@ export function FeaturedCommanders({
                 aria-current={selected}
                 onClick={() => select(i)}
                 className={cn(
-                  "group flex min-w-0 flex-col overflow-hidden rounded-sm border bg-background text-left transition-colors",
+                  "group flex min-w-0 flex-row overflow-hidden rounded-sm border bg-background text-left transition-colors md:flex-col",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   selected ? "border-primary" : "border-seam hover:border-muted-foreground/60",
                 )}
               >
-                <div className="relative aspect-[16/10] w-full bg-muted">
+                <div className="relative aspect-[4/3] w-16 shrink-0 bg-muted md:aspect-[16/10] md:w-full">
                   {art && (
                     <Image
                       src={art}
@@ -152,9 +153,11 @@ export function FeaturedCommanders({
                     />
                   )}
                 </div>
-                <div className="flex flex-1 flex-col gap-1.5 p-2 sm:p-3">
-                  <span className="line-clamp-2 text-sm leading-snug font-bold">{cmd.deck.commanderName}</span>
-                  <span className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1">
+                <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-2.5 py-1.5 md:justify-start md:gap-1.5 md:p-3">
+                  <span className="line-clamp-1 text-[0.8125rem] leading-snug font-bold md:line-clamp-2 md:text-sm">
+                    {cmd.deck.commanderName}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1 md:mt-auto">
                     <ColorIdentity
                       identity={cmd.card?.colorIdentity ?? fixtureIdentity(cmd.deck.colorCounts)}
                       className="[&_img]:size-3.5"

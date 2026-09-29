@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cn } from "cn";
 import { Suspense } from "react";
 import { ClipboardPaste, Library } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
@@ -10,6 +11,10 @@ import { HeroFan } from "@/components/home/hero-fan";
 import { HowItWorks } from "@/components/home/how-it-works";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
 import { CLOSING_VISTA, HERO_VISTA, type Vista } from "@/lib/landing-art";
+
+/** Hero buttons: tall enough for a wrapped label on phones, the usual 48 px single line from sm up. */
+const HERO_BUTTON =
+  "h-auto min-h-12 gap-2 px-3 py-2 text-center text-sm leading-tight font-bold whitespace-normal sm:h-12 sm:px-6 sm:text-base sm:whitespace-nowrap";
 
 /** The closing art runs from its column to the window edge on desktop, and full width below it. */
 const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
@@ -110,31 +115,37 @@ export default function Home() {
               skip the expensive singles.
             </p>
 
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            {/* Phones: two half-width buttons with shorter labels that may wrap; from sm up, the full labels in a row. */}
+            <div className="mt-7 grid grid-cols-2 gap-3 sm:flex">
               <Link
                 href="/deck"
                 className={buttonVariants({
                   size: "lg",
-                  className: "lit h-12 gap-2 px-6 text-base font-bold",
+                  className: cn(HERO_BUTTON, "lit"),
                 })}
               >
-                <ClipboardPaste aria-hidden className="size-5" />
-                Paste a decklist
+                <ClipboardPaste aria-hidden className="size-5 shrink-0" />
+                <span className="sm:hidden">Paste Decklist</span>
+                <span className="hidden sm:inline">Paste a decklist</span>
               </Link>
               <Link
                 href="/collection/import"
                 className={buttonVariants({
                   variant: "outline",
                   size: "lg",
-                  className: "h-12 gap-2 bg-background/40 px-6 text-base font-bold",
+                  className: cn(HERO_BUTTON, "bg-background/40"),
                 })}
               >
-                <Library aria-hidden className="size-5" />
-                Import your collection
+                <Library aria-hidden className="size-5 shrink-0" />
+                <span className="sm:hidden">Import Collection</span>
+                <span className="hidden sm:inline">Import your collection</span>
               </Link>
             </div>
-            <p className="mt-3 text-sm leading-5 text-muted-foreground">No account necessary</p>
-            <ArtCredit vista={HERO_VISTA} className="mt-5 text-xs text-muted-foreground md:hidden" />
+            {/* Phones: the credit shares this line; from md up it sits under the fan, level with it. */}
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <p className="shrink-0 text-sm leading-5 text-muted-foreground">No account necessary</p>
+              <ArtCredit vista={HERO_VISTA} className="text-right text-xs leading-5 text-muted-foreground md:hidden" />
+            </div>
           </div>
         </div>
       </section>

@@ -84,7 +84,7 @@ export function DeckOverview({
 }: DeckShape & {
   /** Identifies the deck; a change plays the empty-and-refill swap. */
   deckKey: string;
-  /** Ring and mana symbols only, without the title or the legend list. */
+  /** Ring and mana symbols only, without the title or the legend list; the ring fills its parent's height. */
   compact?: boolean;
 }) {
   const [active, setActive] = useState<CardCategory | null>(null);
@@ -132,7 +132,7 @@ export function DeckOverview({
         Deck overview
       </h4>
       <div className={cn("flex flex-row items-center gap-4", compact && "h-full min-h-0 justify-center")}>
-        <div className={cn("flex shrink-0 flex-col items-center gap-2.5", compact && "h-full min-h-0 md:w-full")}>
+        <div className={cn("flex shrink-0 flex-col items-center gap-2.5", compact && "h-full min-h-0 w-full")}>
           <svg
             role="img"
             aria-label={ariaLabel}
@@ -140,7 +140,7 @@ export function DeckOverview({
             className={cn(
               "shrink-0",
               // Compact fills the height its parent gives it (the tile row on the home page), square, above the pips.
-              compact ? "size-32 md:size-auto md:aspect-square md:max-w-full md:min-h-0 md:flex-1" : "size-28",
+              compact ? "aspect-square max-w-full min-h-0 flex-1" : "size-28",
             )}
             onPointerLeave={() => setActive(null)}
           >

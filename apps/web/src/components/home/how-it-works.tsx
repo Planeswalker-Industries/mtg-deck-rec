@@ -1,8 +1,10 @@
 import { Fragment } from "react";
 import { ChevronRight } from "lucide-react";
+import { cn } from "cn";
 import { Band } from "@/components/ui/band";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { StepsCarousel } from "./steps-carousel";
 
 const HOW_IT_WORKS_BLURB =
   "It's exhausting scrolling sites like Moxfield and EDHREC, seeing awesome decks and being unsure what to swap in where. Whether you want to tune up your own deck, build a netdeck from the cards you already own, or have us assemble a starting point around the cool legendary you just pulled, we've got you covered.";
@@ -43,8 +45,8 @@ const STEPS: { step: number; title: string; desc: string; media: StepMedia }[] =
 
 /**
  * One step's recording, contained (never cropped) in a frame shared by all three so the cards line up; absolute, so
- * the recording's own size can't stretch the frame. Lazy: the
- * recordings are megabytes and sit below the hero. A plain <picture>, since next/image can't pick a file by media
+ * the recording's own size can't stretch the frame. Lazy: the recordings are megabytes and sit below the hero, and a
+ * copy inside a `display: none` layout never loads at all. A plain <picture>, since next/image can't pick a file by media
  * query and does not optimise GIFs anyway.
  */
 function StepRecording({ media }: { media: StepMedia }) {
@@ -58,15 +60,62 @@ function StepRecording({ media }: { media: StepMedia }) {
         height={media.height}
         loading="lazy"
         decoding="async"
+        draggable={false}
         className="size-full object-contain"
       />
     </picture>
   );
 }
 
+type Step = (typeof STEPS)[number];
+
 /**
- * The three steps, each showing the app at that step above the words. The steps are a real sequence, hence the
- * numbers and chevrons.
+ * One step: its number, title and sentence, and the recording. `textFirst` puts the words above the recording (the
+ * phone carousel, where the title says which step you have swiped to); otherwise the recording leads.
+ */
+function StepCard({
+  step,
+  textFirst = false,
+  className,
+  role,
+}: {
+  step: Step;
+  textFirst?: boolean;
+  className?: string;
+  role?: string;
+}) {
+  const text = (
+    <div className="flex gap-2 px-4 py-3.5">
+      <span aria-hidden className="text-[0.9375rem] leading-snug font-bold text-primary tabular-nums">
+        {step.step}.
+      </span>
+      <div>
+        <h3 className="text-[0.9375rem] leading-snug font-bold">{step.title}</h3>
+        <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">{step.desc}</p>
+      </div>
+    </div>
+  );
+  // The recording is illustration; the heading and sentence carry the meaning.
+  const recording = (
+    <div
+      aria-hidden
+      className={cn("relative aspect-[4/3] border-seam bg-black/30", textFirst ? "mt-auto border-t" : "border-b")}
+    >
+      <StepRecording media={step.media} />
+    </div>
+  );
+  return (
+    <Panel role={role} padding="none" surface="table" className={cn("flex flex-col overflow-hidden", className)}>
+      {textFirst ? text : recording}
+      {textFirst ? recording : text}
+    </Panel>
+  );
+}
+
+/**
+ * The three steps, each showing the app at that step. The steps are a real sequence, hence the numbers and chevrons.
+ * Wide screens lay them in a row; phones get a swipeable carousel with the words on top. Only one of the two is
+ * displayed, so assistive tech and the page's images see one set.
  */
 export function HowItWorks() {
   return (
@@ -80,26 +129,21 @@ export function HowItWorks() {
         </SectionHeading>
         <p className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">{HOW_IT_WORKS_BLURB}</p>
       </div>
-      <div role="list" className="flex flex-col gap-3 md:flex-row md:items-stretch md:gap-1.5">
-        {STEPS.map(({ step, title, desc, media }, i) => (
-          <Fragment key={step}>
-            <Panel role="listitem" padding="none" surface="table" className="flex flex-1 flex-col overflow-hidden">
-              {/* The recording is illustration; the heading and sentence below carry the meaning. */}
-              <div aria-hidden className="relative aspect-[4/3] border-b border-seam bg-black/30">
-                <StepRecording media={media} />
-              </div>
-              <div className="flex gap-2 px-4 py-3.5">
-                <span aria-hidden className="text-[0.9375rem] leading-snug font-bold text-primary tabular-nums">
-                  {step}.
-                </span>
-                <div>
-                  <h3 className="text-[0.9375rem] leading-snug font-bold">{title}</h3>
-                  <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">{desc}</p>
-                </div>
-              </div>
-            </Panel>
+
+      <div className="md:hidden">
+        <StepsCarousel labels={STEPS.map((step) => `Step ${step.step}: ${step.title}`)}>
+          {STEPS.map((step) => (
+            <StepCard key={step.step} step={step} textFirst className="h-full" />
+          ))}
+        </StepsCarousel>
+      </div>
+
+      <div role="list" className="hidden md:flex md:flex-row md:items-stretch md:gap-1.5">
+        {STEPS.map((step, i) => (
+          <Fragment key={step.step}>
+            <StepCard step={step} className="flex-1" role="listitem" />
             {i < STEPS.length - 1 && (
-              <div aria-hidden className="hidden shrink-0 items-center justify-center text-muted-foreground md:flex">
+              <div aria-hidden className="flex shrink-0 items-center justify-center text-muted-foreground">
                 <ChevronRight className="size-3.5" />
               </div>
             )}
