@@ -287,6 +287,27 @@ Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles n
 
 ---
 
+### T050: Start a deck from one commander
+
+**Priority:** MEDIUM | **Area:** Frontend / Product | **Status:** Not started
+
+The home page's "Sound familiar?" ribbon offers "+ Commander" for a player who just pulled a legend. It links to `/deck` for now, where they have to paste the commander as a one-line list; Add then fills the open slots. There is no way to pick a commander by name.
+
+**Files:**
+- `apps/web/src/components/home/situations.tsx` — the "+ Commander" link (`href: "/deck"`)
+- `apps/web/src/components/deck/deck-tool.tsx` — the decklist box and Analyze
+- `apps/web/src/components/search/site-search.tsx` — the existing card and commander search
+
+**Context:** A one-card deck already works: Add fills `openSlots` (room below 100 cards), so the gap is only the way in. Pick a commander, and the tool opens with that commander analyzed and Add ready. The commander's own page (`/commander/[slug]`) could offer the same.
+
+**Acceptance criteria:**
+- [ ] A commander picker (search by name, commander-legal only) that opens `/deck` with that commander analyzed
+- [ ] "+ Commander" in the ribbon points to it
+- [ ] Works on a phone at 390×844 without leaving the swipe budget
+- [ ] e2e: pick a commander, land in Add with open slots
+
+---
+
 ## Accounts and Collections
 
 ### T027: 10k-row collection import timing check
@@ -592,7 +613,39 @@ Needs 2 human raters, 50 cases × 5 commanders, precision@5 + MRR. The `/rate` r
 
 ---
 
+### T051: Local e2e failures with real data
+
+**Priority:** LOW | **Area:** Testing | **Status:** Not started
+
+Three e2e tests fail locally against the real catalog and corpus, on `develop` as well as `feat/kitchen-table-lane` (checked 2026-09-29):
+- `home.spec.ts` "pointing at a ring slice names it in the centre": hovering the top of the deck wheel never names the lands slice.
+- `deck-journey.spec.ts` "the Cut list crosses out recommended cuts…" (and on `develop` also the full walk and the Replace tap test): Chulane has no local corpus, so the commander-lookup sheet opens after `analyzeDeck` has already tried to dismiss it, and blocks the page.
+
+**Files:**
+- `apps/web/e2e/home.spec.ts`, `apps/web/e2e/deck-journey.spec.ts`
+- `apps/web/src/components/home/deck-overview.tsx` — the ring's pointer handling
+
+**Acceptance criteria:**
+- [ ] `analyzeDeck` waits for either the recommendations or the lookup sheet before dismissing, as the page walk scripts do
+- [ ] The ring test hovers a point that is on a slice at the size the ring renders (or asserts through the slice element)
+- [ ] Both specs pass locally with `E2E_LOCAL_DATA=1` and in CI (mocks)
+
+---
+
 ## Future / Lower Priority
+
+### T049: Re-record the How it works clips
+
+**Priority:** LOW | **Area:** Frontend / Content | **Status:** Not started (owner)
+
+The three How it works recordings (`apps/web/public/add.png`, `cut_gif*.gif`, `swipe_gif*.gif`) show the old slate UI and the old step names (Replace, Review). They sit in a walnut page since the Kitchen Table retheme.
+
+**Acceptance criteria:**
+- [ ] Record Cut, Add and Swap in the current look, one clip per step, same pixel size across the three (`StepMedia` in `components/home/how-it-works.tsx`)
+- [ ] Keep a `_hi` version for 1024 px and up
+- [ ] Check file sizes: the clips load lazily but are still megabytes
+
+---
 
 ### T017: Favorites
 

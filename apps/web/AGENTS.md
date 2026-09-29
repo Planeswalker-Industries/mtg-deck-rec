@@ -129,7 +129,7 @@ The one part of the app not built on the contract or on shadcn. Three locks: `pr
 - React Admin talks to `/api/admin/{users,tags,sync-runs}`, never to Supabase directly (`components/admin/data-provider.ts`, one `ResourceApi` per resource)
 - Tags: the API route revalidates `recs` and `catalog` only when the switch actually flips. Recommendations change at once; the search index's tags collection picks it up at its next drain
 - Sync runs: each job's latest run above the history, filterable by job and status; the filter lists in `lib/admin/types.ts` are checked against the database enums at compile time in `lib/server/admin.ts`
-- Status pills come from `components/admin/pill.tsx` (`Pill`, `Pills`); tones are the site's job colours plus the lamp
+- Status pills come from `components/admin/pill.tsx` (`Pill`, `Pills`); tones are the site's job colours plus the accent
 - A new admin endpoint goes in `ADMIN_API` in `e2e/admin.spec.ts`, which checks every one refuses signed-out visitors (401) and non-admins (404)
 
 ### Gotchas

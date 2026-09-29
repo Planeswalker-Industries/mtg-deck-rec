@@ -36,7 +36,7 @@ Where the project stands, and why things are the way they are.
 
 On `develop`, not yet on `main`: #110, the deck-flow audit (stale state and wasted requests across the recommendation flow; `excludeCardIds`, contract v17), and #111, the EDHREC statistics (T035 slice 11).
 
-On `feat/kitchen-table-lane`, not yet on `develop`: the "Kitchen Table" design direction (walnut surfaces, one sleeve-blue accent, Bricolage Grotesque, the 12–60 px type scale, 44 px phone touch targets; journey steps shown as Cut, Add, Swap, Done). The spec is the UI section of `apps/web/AGENTS.md`.
+On `feat/kitchen-table-lane` (PR #115), not yet on `develop`: the "Kitchen Table" design direction (walnut surfaces, one sleeve-blue accent, Bricolage Grotesque, the 12–60 px type scale, 44 px phone touch targets, one look per kind of control; journey steps shown as Cut, Add, Swap, Done) and a new home page pitch ("Make any commander compete", the "Sound familiar?" ribbon, Cut/Add/Swap steps). The spec is the UI section of `apps/web/AGENTS.md`. Left over: the How it works recordings (T049), starting from one commander (T050), local e2e failures (T051).
 
 ## Search index (Typesense behind a Go API)
 
