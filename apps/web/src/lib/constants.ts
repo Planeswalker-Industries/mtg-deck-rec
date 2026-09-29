@@ -15,3 +15,13 @@ export const COLLECTION_MAX_IMPORT_ROWS = 50_000;
  * `top-[var(--deck-bar-height,0px)]`, because class names cannot be built at runtime; keep the two in step.
  */
 export const DECK_BAR_HEIGHT_VAR = "--deck-bar-height";
+
+/**
+ * A touch target of at least 44 px on phones, drawn by an invisible pseudo-element centred on the control, so compact
+ * controls keep their look and layout. `relative` anchors it; a caller's own position class still wins. Use the
+ * `::before` form where the control's `::after` is taken (the line tabs draw their underline with it).
+ */
+export const PHONE_HIT_AREA =
+  "relative max-sm:after:absolute max-sm:after:top-1/2 max-sm:after:left-1/2 max-sm:after:size-full max-sm:after:min-h-11 max-sm:after:min-w-11 max-sm:after:-translate-x-1/2 max-sm:after:-translate-y-1/2 max-sm:after:content-['']";
+export const PHONE_HIT_AREA_BEFORE =
+  "relative max-sm:before:absolute max-sm:before:top-1/2 max-sm:before:left-1/2 max-sm:before:size-full max-sm:before:min-h-11 max-sm:before:min-w-11 max-sm:before:-translate-x-1/2 max-sm:before:-translate-y-1/2 max-sm:before:content-['']";

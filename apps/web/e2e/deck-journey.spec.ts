@@ -36,8 +36,8 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
   const recs = await analyzeDeck(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
   await expect(steps.getByRole("button", { name: "Cut" })).toHaveAttribute("aria-current", "step");
-  // Swiping is the default on a first visit.
-  await expect(recs.getByRole("button", { name: "Swipe" })).toHaveAttribute("aria-pressed", "true");
+  // Swiping is the default on a first visit: on a phone the view toggle offers the list.
+  await expect(recs.getByRole("button", { name: "Show as a list" })).toBeVisible();
 
   // Cut: cards that work against the deck, one at a time. The deck runs an off-colour card.
   const cuts = recs.getByRole("region", { name: "Cards to cut" });
@@ -80,7 +80,7 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
 
 test("the Cut list crosses out recommended cuts and lets any card be cut", async ({ page }) => {
   const recs = await analyzeDeck(page);
-  await recs.getByRole("button", { name: "List", exact: true }).click();
+  await recs.getByRole("button", { name: "Show as a list" }).click();
   const deck = recs.getByRole("region", { name: "Your deck" });
   await expect(deck).toBeVisible({ timeout: 60_000 });
 

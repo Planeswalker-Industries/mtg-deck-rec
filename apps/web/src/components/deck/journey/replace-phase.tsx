@@ -18,10 +18,10 @@ import type { DeckJourney } from "./use-deck-journey";
 const MAX_REASONS = 2;
 /**
  * Everything on a phone's screen above and around the swipe sitting's two cards: the deck bar, the mode row, the
- * stepper, the hint and the sitting's own text. The cards share what's left, so ✓ and ✕ stay on screen without
+ * stepper and the sitting's own text. The cards share what's left, so ✓ and ✕ stay on screen without
  * scrolling. Read by the card sizes in `SwipeRater` through --swipe-chrome.
  */
-const SWIPE_CHROME = { "--swipe-chrome": "38.5rem" } as CSSProperties;
+const SWIPE_CHROME = { "--swipe-chrome": "36.75rem" } as CSSProperties;
 
 /**
  * Replace: the deck is looked at again as it now stands, and its weaker fits are dealt with a replacement each, like

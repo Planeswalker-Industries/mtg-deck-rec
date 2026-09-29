@@ -11,6 +11,7 @@ import { displayName } from "@/lib/cards";
 import { DECK_BAR_HEIGHT_VAR } from "@/lib/constants";
 import { bracketLabel, collectionModeLabel } from "@/lib/labels";
 import { ColorIdentity } from "./color-identity";
+import { DeckIssuesChip } from "./resolution-issues";
 import type { CollectionMode } from "./use-deck-tool";
 
 const BRACKETS: Bracket[] = [1, 2, 3, 4, 5];
@@ -78,18 +79,22 @@ export function DeckBar({
       ) : (
         <span className="row-span-2" />
       )}
-      <h2 className="truncate font-heading text-lg leading-tight sm:text-xl font-semibold tracking-tight">
-        {analysis.commanderKey.slug && analysis.commanderKey.deckCount > 0 ? (
-          <Link
-            href={`/commander/${analysis.commanderKey.slug}`}
-            className="underline decoration-seam decoration-2 underline-offset-4 hover:decoration-primary"
-          >
-            {name}
-          </Link>
-        ) : (
-          name
-        )}
-      </h2>
+      {/* The deck's issues sit beside the name on phones, as a chip; wider screens list them above the bar. */}
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="truncate font-heading text-lg leading-tight font-semibold tracking-tight sm:text-xl">
+          {analysis.commanderKey.slug && analysis.commanderKey.deckCount > 0 ? (
+            <Link
+              href={`/commander/${analysis.commanderKey.slug}`}
+              className="underline decoration-seam decoration-2 underline-offset-4 hover:decoration-primary"
+            >
+              {name}
+            </Link>
+          ) : (
+            name
+          )}
+        </h2>
+        <DeckIssuesChip issues={analysis.issues} />
+      </div>
       <Select value={String(context.bracket)} onValueChange={(value) => onBracketChange(Number(value) as Bracket)}>
         <SelectTrigger aria-label="Bracket" size="sm" className="justify-self-end bg-sleeve">
           {/* The trigger says which bracket in a few characters; the list spells each one out. */}

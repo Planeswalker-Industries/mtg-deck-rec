@@ -2,13 +2,7 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 import { Slot } from "radix-ui"
-
-/**
- * Phones get a touch target of at least 44 px around every button, drawn by an invisible ::after centred on it, so
- * compact toolbars keep their look. A caller's own position class still wins over `relative`.
- */
-const PHONE_HIT_AREA =
-  "relative max-sm:after:absolute max-sm:after:top-1/2 max-sm:after:left-1/2 max-sm:after:size-full max-sm:after:min-h-11 max-sm:after:min-w-11 max-sm:after:-translate-x-1/2 max-sm:after:-translate-y-1/2 max-sm:after:content-['']";
+import { PHONE_HIT_AREA } from "@/lib/constants"
 
 const buttonVariants = cva(
   PHONE_HIT_AREA +

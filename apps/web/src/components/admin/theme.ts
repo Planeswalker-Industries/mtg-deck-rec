@@ -39,15 +39,12 @@ export const ADMIN_TOKENS = TOKENS;
 const FONT_BODY = "var(--font-body), ui-sans-serif, system-ui, sans-serif";
 const FONT_HEADING = FONT_BODY;
 
-/**
- * Light falls from the top: a warm edge where a surface catches it, shadow where it doesn't. The same recipe as the
- * `lit` utility in globals.css.
- */
-const LIT = [
-  `inset 0 1px 0 ${alpha(TOKENS.primary, 0.18)}`,
-  "0 1px 2px rgb(0 0 0 / 0.5)",
-  "0 8px 24px -12px rgb(0 0 0 / 0.7)",
-].join(", ");
+/** A worn edge along the top of a surface, no drop shadow. The same recipe as the `lit` utility in globals.css. */
+const LIT = `inset 0 1px 0 ${alpha(TOKENS.foreground, 0.22)}`;
+
+/** Below Tailwind's `sm` (640px), where every control gets a 44px touch target, as on the rest of the site. */
+const PHONE = "@media (max-width: 639.98px)";
+const TOUCH_TARGET_PX = 44;
 
 /**
  * Material's elevation scale is a stack of generic grey drop shadows. There is one light source here, so every level
@@ -184,6 +181,7 @@ export const adminTheme: RaThemeOptions = createTheme({
           transition: TRANSITION,
           "&:hover": { color: TOKENS.foreground, backgroundColor: TOKENS.secondary },
           "&:focus-visible": FOCUS_RING,
+          [PHONE]: { minWidth: TOUCH_TARGET_PX, minHeight: TOUCH_TARGET_PX },
         },
       },
     },
@@ -228,6 +226,7 @@ export const adminTheme: RaThemeOptions = createTheme({
           "&:hover": { color: TOKENS.foreground },
           // The sorted column is the one thing lit in the header row.
           "&.Mui-active": { color: TOKENS.primary, "& .MuiTableSortLabel-icon": { color: TOKENS.primary } },
+          [PHONE]: { minHeight: TOUCH_TARGET_PX, minWidth: TOUCH_TARGET_PX },
         },
       },
     },

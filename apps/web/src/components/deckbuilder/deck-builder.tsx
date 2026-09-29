@@ -168,7 +168,7 @@ export function DeckBuilder({
             aria-pressed={tab === t}
             onClick={() => setTab(t)}
             className={cn(
-              "rounded-md px-4 py-1.5 text-sm font-normal transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "inline-flex min-h-11 items-center rounded-md px-4 py-1.5 text-sm font-normal transition-colors sm:min-h-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               tab === t ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
             )}
           >

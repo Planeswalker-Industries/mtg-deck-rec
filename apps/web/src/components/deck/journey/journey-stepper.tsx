@@ -58,15 +58,15 @@ export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSel
 
 /**
  * The heading and one line of explanation each phase opens with. In the swipe view the stepper above already names
- * the phase and each card carries its own reasons, so `brief` replaces both with a single line of what to do, and the
- * heading stays for screen readers: on a phone that line is the difference between the card fitting and not.
+ * the phase, each card carries its own reasons and ✓ and ✕ say what the gestures do, so the heading and `brief` (a
+ * line of what to do) are for screen readers only: on a phone every line above the cards costs card height.
  */
 export function PhaseIntro({ title, children, brief }: { title: string; children: ReactNode; brief?: ReactNode }) {
   if (brief !== undefined) {
     return (
-      <div>
-        <h2 className="sr-only">{title}</h2>
-        <p className="text-sm text-muted-foreground">{brief}</p>
+      <div className="sr-only">
+        <h2>{title}</h2>
+        <p>{brief}</p>
       </div>
     );
   }

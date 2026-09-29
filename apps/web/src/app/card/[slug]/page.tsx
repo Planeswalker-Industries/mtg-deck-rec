@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { ArtBackdrop } from "@/components/cards/art-backdrop";
 import { FlippableCardImage } from "@/components/cards/flippable-card-image";
 import { PocketGrid, type PocketItem } from "@/components/cards/pocket-grid";
+import { RulesText } from "@/components/cards/rules-text";
 import { GameChangerBadge } from "@/components/deck/card-label";
 import { buttonVariants } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
@@ -91,7 +92,9 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
                   {face.name} <span className="font-normal text-muted-foreground">{face.typeLine}</span>
                 </p>
               )}
-              <p className="text-sm leading-relaxed whitespace-pre-line">{face.oracleText || "No rules text."}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-line">
+                {face.oracleText ? <RulesText text={face.oracleText} /> : "No rules text."}
+              </p>
             </div>
           ))}
 

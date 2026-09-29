@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
+import { GalleryHorizontalEnd, List } from "lucide-react";
 import type { DeckAnalysis } from "@mtg/core/contract";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
@@ -74,6 +75,28 @@ function Segmented<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * Swipe or list as one icon on phones, beside the steps: it shows the view it switches to. Wider screens have the
+ * labelled segmented control in the row above.
+ */
+function ViewToggle({ view, onChange }: { view: ReviewView; onChange: (view: ReviewView) => void }) {
+  const toList = view === "swipe";
+  const label = toList ? "Show as a list" : "Swipe one card at a time";
+  return (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(toList ? "list" : "swipe")}
+      className="bg-muted text-muted-foreground hover:text-foreground sm:hidden"
+    >
+      {toList ? <List aria-hidden className="size-4" /> : <GalleryHorizontalEnd aria-hidden className="size-4" />}
+    </Button>
   );
 }
 
@@ -405,7 +428,11 @@ export function DeckTool() {
         </p>
       )}
       {tool.parse.status === "error" && <PanelError message={tool.parse.message} />}
-      <ResolutionIssues unresolved={tool.unresolvedLines} issues={analysis?.issues ?? []} />
+      <ResolutionIssues
+        unresolved={tool.unresolvedLines}
+        issues={analysis?.issues ?? []}
+        issuesInDeckBar={Boolean(analysis && context)}
+      />
 
       {analysis && context && (
         <section aria-label="Recommendations" className="flex flex-col gap-2">
@@ -429,16 +456,19 @@ export function DeckTool() {
               value={mode}
               onChange={(next) => void changeMode(next)}
             />
+            {/* Phones get the same choice as one icon beside the steps (`ViewToggle`), to save this row's height. */}
             {mode === "upgrade" && journey.state?.phase !== "review" && (
-              <Segmented
-                label="How to review cards"
-                options={[
-                  { value: "swipe", label: "Swipe" },
-                  { value: "list", label: "List" },
-                ]}
-                value={view}
-                onChange={changeView}
-              />
+              <div className="max-sm:hidden">
+                <Segmented
+                  label="How to review cards"
+                  options={[
+                    { value: "swipe", label: "Swipe" },
+                    { value: "list", label: "List" },
+                  ]}
+                  value={view}
+                  onChange={changeView}
+                />
+              </div>
             )}
             {/* Saving is asked for, never automatic: a new deck is public. Upgrade saves from its Review step, which
                 brings the player here with the name form open; the deckbuilder saves from this slot. An open deck
@@ -463,7 +493,12 @@ export function DeckTool() {
           {mode === "upgrade" ? (
             journey.state && (
               <div className="flex flex-col gap-3">
-                <JourneyStepper phase={journey.state.phase} onSelect={(phase) => journey.goTo(phase)} />
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <JourneyStepper phase={journey.state.phase} onSelect={(phase) => journey.goTo(phase)} />
+                  </div>
+                  {journey.state.phase !== "review" && <ViewToggle view={view} onChange={changeView} />}
+                </div>
                 {journey.state.phase === "cut" &&
                   (journey.bracketCheck ? (
                     // A bracket change part way through made cards must-cuts: the step's Next becomes a choice.

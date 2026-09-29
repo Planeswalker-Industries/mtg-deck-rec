@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { displayName } from "@/lib/cards";
+import { PHONE_HIT_AREA } from "@/lib/constants";
 import { AddToCollection, EditableCards } from "./collection-edit";
 import { useCollectionEditor } from "./use-collection-editor";
 import { useCollectionView, type CollectionViewItem } from "./use-collection-view";
@@ -313,6 +314,7 @@ function ColorToggle({ label, on, onToggle, children }: { label: string; on: boo
       title={label}
       onClick={onToggle}
       className={cn(
+        PHONE_HIT_AREA,
         "flex size-10 items-center justify-center rounded-full transition-opacity",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         on ? "opacity-100" : "opacity-35 hover:opacity-60",
