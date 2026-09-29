@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
+import { TEXT_LINK } from "@/lib/constants";
 
 /** What the four collection apps export. Anything else is almost certainly a mistake worth naming. */
 const ACCEPT = ".csv,.txt,text/csv,text/plain";
@@ -87,7 +88,8 @@ export function FileDrop({
           <label
             htmlFor={inputId}
             className={cn(
-              "font-bold text-primary underline-offset-4 hover:underline",
+              TEXT_LINK,
+              "font-semibold",
               disabled ? "cursor-default" : "cursor-pointer",
             )}
           >
@@ -146,10 +148,10 @@ export function LoadedFile({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-seam bg-sleeve py-2 pr-2 pl-4">
-      <FileText aria-hidden className="size-5 shrink-0 text-primary" />
+      <FileText aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold">{name}</p>
-        <p className="text-xs text-muted-foreground tabular-nums">
+        <p className="truncate text-sm font-semibold">{name}</p>
+        <p className="text-xs text-muted-foreground font-mono">
           {lines.toLocaleString()} line{lines === 1 ? "" : "s"}
         </p>
       </div>

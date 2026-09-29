@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/server/auth";
 import { MainNav } from "@/components/layout/main-nav";
 
 const LINK =
-  "flex size-9 items-center justify-center rounded-full text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary";
+  "flex size-11 items-center justify-center rounded-full text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary";
 
 /**
  * Header navigation that depends on the session: account-only links and the account control. Reads the session, so

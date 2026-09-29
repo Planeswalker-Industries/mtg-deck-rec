@@ -6,7 +6,11 @@
 
 @theme inline {
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-display), Georgia, serif;
+  --font-heading: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  /* The buddy's voice: the friend's asides and nothing else. The only italic on the site. */
+  --font-drama: var(--font-drama-face), Georgia, serif;
+  /* Every number: counts, prices, mana value. */
+  --font-mono: var(--font-mono-face), ui-monospace, monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -27,7 +31,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Table at night: the surface, the sleeve that catches the light, the seam between them. */
+  /* Kitchen Table: the table, the panel one step off it, the hairline between them. */
   --color-sleeve: var(--sleeve);
   --color-seam: var(--seam);
   --color-save: var(--save);
@@ -40,7 +44,7 @@
   --color-replace: var(--replace);
 
   /* Card-type ring: mid-chroma, near-equal lightness, deliberately duller than --cut/--add/--replace
-     so the eight slices separate without competing with the gold primary or the job colors.
+     so the eight slices separate without competing with the primary or the job colors.
      Order matches the DeckOverview legend: land, creature, instant, sorcery, artifact, enchantment,
      planeswalker, battle. */
   --color-cat-land: var(--cat-land);
@@ -59,55 +63,108 @@
   --radius-2xl: calc(var(--radius) * 2.6);
   --radius-3xl: calc(var(--radius) * 3.2);
   --radius-4xl: calc(var(--radius) * 4);
+  /* Panels and sections; controls use rounded-lg. */
+  --radius-panel: 0.875rem;
+
+  /* The type scale: 12 / 14 / 16 / 18 / 24 / 32 / 44 / 60. Every size on the site is one of these steps. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.6;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.6;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.3;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 1.15;
+  --text-3xl: 2.75rem;
+  --text-3xl--line-height: 1.1;
+  --text-4xl: 3.75rem;
+  --text-4xl--line-height: 1.1;
+
+  --shadow-lift: var(--lift);
+  --ease-table: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 :root {
-  --radius: 0.375rem;
+  --radius: 0.5rem; /* controls: rounded-lg is 8px */
 
-  /* The light falls from the top of the page, so surfaces get warmer as they rise. */
-  --background: #00090e; /* the table, in shadow */
-  --foreground: #e9e5dd; /* warm off-white: paper under a lamp, never pure white */
-  --sleeve: #050e13; /* a card sleeve lying on the table */
-  --seam: #1b2a30; /* where two surfaces meet, and the divider inside a card */
+  /* Kitchen Table (2026-09-29): a friend's kitchen table on game night meets a well-thumbed trade binder.
+     Walnut and oak are the table, warm paper is the ink, sleeve blue is the one thing you can act on. */
+  --background: #1b1510; /* walnut: the table */
+  --foreground: #f2e9dc; /* warm paper, never pure white */
+  --sleeve: #2a2119; /* oiled oak: panels and card rows, one step off the table */
+  --seam: color-mix(in oklch, var(--foreground) 10%, transparent); /* the hairline where two surfaces meet */
 
   --card: var(--sleeve);
   --card-foreground: var(--foreground);
-  --popover: #08151b;
+  --popover: #33291f;
   --popover-foreground: var(--foreground);
 
-  --primary: #e3ab6e; /* the lamp: the only thing that is lit */
-  --primary-foreground: #08161a;
-  --secondary: #10202a;
+  --primary: #8db2e4; /* sleeve blue: the only accent, for actions, links, focus and the selected state */
+  --primary-foreground: #1b1510;
+  --secondary: #33291f;
   --secondary-foreground: var(--foreground);
-  --muted: #0c1a21;
-  --muted-foreground: #80909f; /* far enough from the surface to stay readable */
-  --accent: #10202a;
+  --muted: #241c15;
+  --muted-foreground: #b3a594; /* 7.5:1 on walnut */
+  --accent: #33291f;
   --accent-foreground: var(--foreground);
 
-  /* Cut, add and replace. Rose, jade and violet sit clear of W/U/B/R/G. */
-  --cut: #e8687c;
-  --add: #3cbd94;
-  --replace: #9d8ef5;
+  /* Cut, add and replace: status colours, always with an icon and a label. Clear of the sleeve blue. */
+  --cut: #e08a7a;
+  --add: #8cc49a;
+  --replace: #c7a2da;
 
   /* Card-type ring colors, in the DeckOverview legend order: land, creature, instant, sorcery,
      artifact, enchantment, planeswalker, battle. */
-  --cat-land: #80909f;
+  --cat-land: #9c8f80;
   --cat-creature: #87b0cb;
   --cat-instant: #e1b880;
   --cat-sorcery: #df6256;
-  --cat-artifact: #9faab7;
+  --cat-artifact: #b0a79b;
   --cat-enchantment: #d3b3c8;
   --cat-planeswalker: #a37dcf;
   --cat-battle: #74c284;
 
-  --destructive: #ef6172;
-  --save: #3cbd94;
+  --destructive: #e5796b;
+  --save: var(--add);
   --gc: #e0b354;
   --gc-bg: #3a2d13;
 
   --border: var(--seam);
-  --input: #1e3038;
+  --input: #3a2e24;
   --ring: var(--primary);
+
+  /* A card in hand: dragged, dealt or passed. Resting surfaces have no shadow. */
+  --lift: 0 14px 30px -14px rgb(20 12 6 / 0.55);
+
+  /* v3 "Table at night" (the 2026-09 facelift). Kept so the earlier values can be restored. */
+  --backgroundv3: #080e15;
+  --foregroundv3: #e9e5dd;
+  --sleevev3: #0f171d;
+  --seamv3: #1f2c34;
+  --popoverv3: #121c23;
+  --primaryv3: #e3ab6e;
+  --primary-foregroundv3: #08161a;
+  --secondaryv3: #152229;
+  --mutedv3: #111c23;
+  --muted-foregroundv3: #80909f;
+  --inputv3: #243640;
+  --cutv3: #e8687c;
+  --addv3: #3cbd94;
+  --replacev3: #9d8ef5;
+
+  /* v2 surfaces (before the 2026-09 facelift). Kept so the earlier values can be restored. */
+  --backgroundv2: #00090e;
+  --sleevev2: #050e13;
+  --seamv2: #1b2a30;
+  --popoverv2: #08151b;
+  --secondaryv2: #10202a;
+  --mutedv2: #0c1a21;
+  --accentv2: #10202a;
+  --inputv2: #1e3038;
 
   /* v1 palette (pre-homepage redesign). Kept so the earlier values can be restored. */
   --backgroundv1: #10131a;
@@ -145,6 +202,8 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    /* Paper and wood grain on the bare table. A background, not an overlay, so panels and card art stay clean. */
+    background-image: var(--grain);
     /* Lets a full-bleed section use 50vw margins without adding a horizontal scrollbar. Must be
        clip, not hidden: hidden would make body a scroll container and break sticky children
        like the deck tool's bar. overflow-y stays visible. */
@@ -152,12 +211,25 @@
   }
 }
 
+/* The site column. The margins beside it are half what a fixed 72rem column would leave, at every width past 72rem:
+   width = 72rem + (100vw - 72rem) / 2. --page-column is also read by layouts that must reach from the column to the
+   window edge. */
+:root {
+  --page-column: calc(50vw + 36rem);
+  /* feTurbulence noise at 4% opacity, tiled. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 0.9  0 0 0 0 0.8  0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@utility page-column {
+  width: 100%;
+  max-width: var(--page-column);
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
 @utility lit {
-  /* One light source, above. A warm edge where a surface catches it, shadow where it doesn't. */
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklch, var(--primary) 18%, transparent),
-    0 1px 2px rgb(0 0 0 / 0.5),
-    0 8px 24px -12px rgb(0 0 0 / 0.7);
+  /* A worn edge along the top of a control, like the lip of a card box. No drop shadow: only cards in hand cast one. */
+  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--foreground) 22%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -176,12 +248,33 @@
 .fan-card {
   transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg))
     scale(var(--s, 1));
-  animation: deal 0.75s cubic-bezier(0.22, 1, 0.36, 1) var(--delay, 0s) both;
+  animation: deal 0.35s var(--ease-table) var(--delay, 0s) both;
 }
 
 @keyframes deal {
   from {
     transform: translate3d(0, 6%, 0) rotate(0deg) scale(0.92);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg))
+      scale(var(--s, 1));
+    opacity: 1;
+  }
+}
+
+/* The pass: a card slid across the table from the upper right, settling onto the hand. Same custom properties as
+   .fan-card, so the resting place is right even if the animation never runs. */
+.pass-card {
+  transform: translate3d(var(--x, 0), var(--y, 0), 0) rotate(var(--r, 0deg))
+    scale(var(--s, 1));
+  animation: pass 0.45s var(--ease-table) var(--delay, 0s) both;
+}
+
+@keyframes pass {
+  from {
+    transform: translate3d(calc(var(--x, 0) + 45%), calc(var(--y, 0) - 35%), 0) rotate(12deg)
+      scale(var(--s, 1));
     opacity: 0;
   }
   to {

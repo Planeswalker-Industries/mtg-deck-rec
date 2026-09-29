@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DELETE_CONFIRMATION } from "@/lib/account";
+import { TEXT_LINK } from "@/lib/constants";
 
 /**
  * Account deletion, behind a typed confirmation: it can't be undone, so one click is never enough. Collapsed until
@@ -34,7 +35,7 @@ export function DeleteAccount() {
 
   return (
     <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3 rounded-lg border border-destructive/50 p-4">
-      <h2 id={`${inputId}-heading`} className="font-heading text-xl font-bold">
+      <h2 id={`${inputId}-heading`} className="font-heading text-xl font-semibold">
         Delete your account
       </h2>
       <p className="text-sm">
@@ -44,7 +45,7 @@ export function DeleteAccount() {
       <p className="text-sm text-muted-foreground">
         We keep your email address on file to prevent abuse, such as banned accounts signing up again. Votes you cast
         are kept with nothing linking them to you, and play-rate statistics never held your name. See the{" "}
-        <Link href="/privacy" className="underline underline-offset-2">
+        <Link href="/privacy" className={TEXT_LINK}>
           privacy policy
         </Link>
         .
@@ -68,7 +69,7 @@ export function DeleteAccount() {
       >
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={inputId}>
-            Type <span className="font-bold">{DELETE_CONFIRMATION}</span> to confirm
+            Type <span className="font-semibold">{DELETE_CONFIRMATION}</span> to confirm
           </Label>
           <Input
             id={inputId}

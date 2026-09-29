@@ -9,7 +9,7 @@ import { ADMIN_TOKENS } from "./theme";
  * Status as pills, in the site's own shape: a rounded outline that is quiet until it has something to say.
  *
  * A pill is only drawn when its fact is true, and it says what it means in words — colour alone would not. Tones are
- * the site's three jobs plus the lamp: `cut` for trouble, `add` for healthy, `replace` for "changed, look closer",
+ * the site's three jobs plus the accent: `cut` for trouble, `add` for healthy, `replace` for "changed, look closer",
  * `primary` for the one thing worth noticing.
  */
 export type PillTone = "primary" | "cut" | "add" | "replace" | "muted";
@@ -21,8 +21,8 @@ const PILL_SHAPE = {
   border: "1px solid",
   px: 1,
   py: 0.25,
-  fontSize: "0.6875rem",
-  fontWeight: 700,
+  fontSize: "0.75rem",
+  fontWeight: 600,
   lineHeight: 1.4,
   whiteSpace: "nowrap",
 } as const;

@@ -82,7 +82,7 @@ export function PocketGrid({
           const content = (
             <>
               <MarkedImage card={item.card} mark={item.mark} />
-              <span className="mt-1.5 line-clamp-2 text-[0.8125rem] leading-tight font-bold">{displayName(item.card)}</span>
+              <span className="mt-1.5 line-clamp-2 text-sm leading-tight font-semibold">{displayName(item.card)}</span>
               {item.caption && <span className="mt-0.5 block text-xs leading-snug">{item.caption}</span>}
             </>
           );
@@ -102,7 +102,7 @@ export function PocketGrid({
           ) : item.href ? (
             <Link
               href={item.href as Route}
-              className="block rounded-lg p-1 transition-colors hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="block rounded-lg p-1 transition-[background-color,transform] duration-180 ease-table hover:-translate-y-0.5 hover:bg-sleeve/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               {content}
             </Link>

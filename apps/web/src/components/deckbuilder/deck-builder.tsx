@@ -29,7 +29,9 @@ function IconButton({ label, onClick, children, tone }: { label: string; onClick
       title={label}
       onClick={onClick}
       className={cn(
-        "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary",
+        // 44 px tall to a thumb; not wider, since the buttons sit side by side in a narrow cell.
+        "relative after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         tone === "cut" && "hover:text-cut",
       )}
@@ -59,7 +61,7 @@ function DeckCard({
       <ZoomableCard card={card}>
         <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 140px, 30vw" />
       </ZoomableCard>
-      <span className="line-clamp-2 min-h-[2lh] text-[0.8125rem] leading-tight font-bold">{name}</span>
+      <span className="line-clamp-2 min-h-[2lh] text-sm leading-tight font-semibold">{name}</span>
       {card.gameChanger && <GameChangerBadge />}
       {/* Pinned to the bottom of the grid cell: a Game Changer badge or wrapped quantity buttons elsewhere in the row
           then change nothing about where Remove sits. Grid items stretch to the row's height, which is what makes
@@ -70,7 +72,7 @@ function DeckCard({
             <IconButton label={`One fewer ${name}`} onClick={() => onQuantity(quantity - 1)}>
               <Minus aria-hidden className="size-4" />
             </IconButton>
-            <span className="min-w-6 text-center text-sm font-bold tabular-nums" aria-label={`${quantity} copies`}>
+            <span className="min-w-6 text-center text-sm font-mono" aria-label={`${quantity} copies`}>
               {quantity}
             </span>
             <IconButton label={`One more ${name}`} onClick={() => onQuantity(quantity + 1)}>
@@ -125,21 +127,21 @@ export function DeckBuilder({
       <dl className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border border-seam bg-sleeve px-4 py-3 text-sm">
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Cards</dt>
-          <dd className={cn("font-bold tabular-nums", builder.size !== COMMANDER_DECK_SIZE && "text-cut")}>
+          <dd className={cn("font-mono", builder.size !== COMMANDER_DECK_SIZE && "text-cut")}>
             {builder.size} / {COMMANDER_DECK_SIZE}
           </dd>
         </div>
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Lands</dt>
-          <dd className="font-bold tabular-nums">{stats.lands}</dd>
+          <dd className="font-mono">{stats.lands}</dd>
         </div>
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Average mana value</dt>
-          <dd className="font-bold tabular-nums">{stats.averageManaValue.toFixed(MANA_VALUE_DECIMALS)}</dd>
+          <dd className="font-mono">{stats.averageManaValue.toFixed(MANA_VALUE_DECIMALS)}</dd>
         </div>
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Price</dt>
-          <dd className="font-bold tabular-nums">
+          <dd className="font-mono">
             {formatUsd(stats.priceUsd)}
             {stats.priceAsOf && <span className="font-normal text-muted-foreground"> as of {formatAsOf(stats.priceAsOf)}</span>}
           </dd>
@@ -147,7 +149,7 @@ export function DeckBuilder({
       </dl>
       {showIssues && issues.length > 0 && (
         <details className="rounded-lg border border-cut/40 bg-cut/5 px-4 py-2 text-sm">
-          <summary className="cursor-pointer font-bold text-cut">
+          <summary className="cursor-pointer font-semibold text-cut">
             {issues.length} deck issue{issues.length === 1 ? "" : "s"}
           </summary>
           <ul className="mt-2 list-disc pl-5">
@@ -166,7 +168,7 @@ export function DeckBuilder({
             aria-pressed={tab === t}
             onClick={() => setTab(t)}
             className={cn(
-              "rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "inline-flex min-h-11 items-center rounded-md px-4 py-1.5 text-sm font-normal transition-colors sm:min-h-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               tab === t ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -194,7 +196,7 @@ export function DeckBuilder({
           {builder.groups.map((group) => (
             <section key={group.key} aria-label={groupHeading(group.label)} className="flex flex-col gap-2">
               <h2 className="font-heading text-xl leading-none font-semibold">
-                {groupHeading(group.label)} <span className="font-sans text-sm font-normal text-muted-foreground tabular-nums">{group.count}</span>
+                {groupHeading(group.label)} <span className="text-sm font-normal text-muted-foreground font-mono">{group.count}</span>
               </h2>
               <ul aria-label={groupHeading(group.label)} className={GRID}>
                 {group.entries.map(({ card, quantity }) => (

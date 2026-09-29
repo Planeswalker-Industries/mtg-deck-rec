@@ -45,7 +45,7 @@ export function DeckGroupsPanel({
               aria-pressed={grouping === pill.value}
               onClick={() => setGrouping(pill.value)}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                "rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 grouping === pill.value
                   ? "border-primary/50 bg-primary/15 text-primary"
                   : "border-seam text-muted-foreground hover:text-foreground",
@@ -78,7 +78,7 @@ export function DeckGroupsPanel({
           {/* scroll-mt clears the sticky deck bar when the sidebar's section nav jumps here. */}
           <h3 id={groupId(group)} className="scroll-mt-24 font-heading text-xl leading-none font-semibold">
             {groupHeading(group.label)}{" "}
-            <span className="font-sans text-sm font-normal text-muted-foreground tabular-nums">{group.count}</span>
+            <span className="text-sm font-normal text-muted-foreground font-mono">{group.count}</span>
           </h3>
           <PocketGrid zoomable
             label={groupHeading(group.label)}
@@ -94,7 +94,7 @@ export function DeckGroupsPanel({
                   card.gameChanger || quantity > 1 || extra ? (
                     <span className="flex flex-col items-start gap-0.5">
                       {card.gameChanger && <GameChangerBadge />}
-                      {quantity > 1 && <span className="text-muted-foreground tabular-nums">{quantity} copies</span>}
+                      {quantity > 1 && <span className="text-muted-foreground font-mono">{quantity} copies</span>}
                       {extra}
                     </span>
                   ) : undefined,

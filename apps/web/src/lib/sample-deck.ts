@@ -1,7 +1,11 @@
 /**
  * The "Use sample deck" list with real data: Liesa, Forgotten Archangel, built from aggregate play rates rather than any
- * one player's deck. The 62 most-played nonland cards in Liesa decks, the 12 most-played nonbasic lands and basics,
- * plus five rarely played cards so there's something to cut. Mock mode keeps the mock card pool's own sample.
+ * one player's deck: the most-played nonland cards in Liesa decks, the 12 most-played nonbasic lands and basics. Two
+ * groups of extra cards give each phase something to show. Five rarely played cards are suggested cuts, which Replace
+ * deals with a replacement. Four rule problems are mandatory cuts, which Cut deals: two banned cards (Jeweled Lotus,
+ * Mana Crypt) and two outside Liesa's colours (Lightning Bolt, Mayhem Devil). Liesa's play rates can't supply a
+ * mandatory cut: even a card her decks never run scores above severeSynergyScore. Mock mode keeps the mock card pool's
+ * own sample.
  */
 export const SAMPLE_DECKLIST = `Commander
 1 Liesa, Forgotten Archangel
@@ -57,12 +61,8 @@ Deck
 1 Demon's Disciple
 1 Sanguine Bond
 1 Rite of Oblivion
-1 Rampage of the Valkyries
 1 Syr Konrad, the Grim
-1 Valkyrie Harbinger
 1 Austere Command
-1 Sign in Blood
-1 Angel of Vitality
 1 Deadly Dispute
 1 Pitiless Plunderer
 1 Benevolent Bodyguard
@@ -74,6 +74,10 @@ Deck
 1 Dauthi Voidwalker
 1 Debt to the Deathless
 1 Mind Stone
+1 Mana Crypt
+1 Mayhem Devil
+1 Lightning Bolt
+1 Jeweled Lotus
 1 Command Tower
 1 Isolated Chapel
 1 Caves of Koilos

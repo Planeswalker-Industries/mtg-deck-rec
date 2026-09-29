@@ -18,10 +18,10 @@ import type { DeckJourney } from "./use-deck-journey";
 const MAX_REASONS = 2;
 /**
  * Everything on a phone's screen above and around the swipe sitting's two cards: the deck bar, the mode row, the
- * stepper, the hint and the sitting's own text. The cards share what's left, so ✓ and ✕ stay on screen without
+ * stepper and the sitting's own text. The cards share what's left, so ✓ and ✕ stay on screen without
  * scrolling. Read by the card sizes in `SwipeRater` through --swipe-chrome.
  */
-const SWIPE_CHROME = { "--swipe-chrome": "38rem" } as CSSProperties;
+const SWIPE_CHROME = { "--swipe-chrome": "36.75rem" } as CSSProperties;
 
 /**
  * Replace: the deck is looked at again as it now stands, and its weaker fits are dealt with a replacement each, like
@@ -43,7 +43,7 @@ export function ReplacePhase({
   const context = journey.workingContext;
 
   const intro = (
-    <PhaseIntro title="Replace" brief={view === "swipe" ? "Swipe right to swap in, left for the next one." : undefined}>
+    <PhaseIntro title="Swap" brief={view === "swipe" ? "Swipe right to swap in, left for the next one." : undefined}>
       Cards that do their job less well than something else could. Swipe right on a replacement to swap it in, left to see
       the next one, or keep the card.
     </PhaseIntro>
@@ -83,7 +83,7 @@ export function ReplacePhase({
     swaps.length > 0 ? (
       <section aria-labelledby="journey-swaps" className="flex flex-col gap-2">
         <h3 id="journey-swaps" className="font-heading text-xl leading-none font-semibold">
-          Swaps <span className="font-sans text-sm font-normal text-muted-foreground tabular-nums">{swaps.length}</span>
+          Swaps <span className="text-sm font-normal text-muted-foreground font-mono">{swaps.length}</span>
         </h3>
         <ul aria-label="Swaps picked" className="flex flex-col divide-y divide-seam rounded-lg border border-seam bg-sleeve">
           {swaps.map((s) => (
@@ -91,7 +91,7 @@ export function ReplacePhase({
               <CardImage card={s.target} variant="small" alt="" sizes="56px" className="opacity-80 saturate-50" />
               <p className="text-sm leading-snug">
                 <span className="block text-muted-foreground">Out: {displayName(s.target)}</span>
-                <span className="block font-bold">In: {displayName(s.replacement)}</span>
+                <span className="block font-semibold">In: {displayName(s.replacement)}</span>
               </p>
               <CardImage card={s.replacement} variant="small" alt="" sizes="56px" />
               <Button type="button" size="sm" variant="ghost" onClick={() => journey.dispatch({ type: "unswap", targetId: s.target.id })}>

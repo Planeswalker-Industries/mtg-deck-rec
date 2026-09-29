@@ -165,7 +165,7 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  await recs.getByRole("button", { name: "List", exact: true }).click();
+  await recs.getByRole("button", { name: "Show as a list" }).click();
 
   // A reload brings the deck back into the box and waits: opening the tool never analyzes an old deck by itself.
   await page.reload();
@@ -188,7 +188,8 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  await expect(recs.getByRole("button", { name: "List", exact: true })).toHaveAttribute("aria-pressed", "true");
+  // On a phone the view toggle now offers the swipe view back.
+  await expect(recs.getByRole("button", { name: "Swipe one card at a time" })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Your deck" })).toBeVisible({ timeout: 60_000 });
 
   // Clearing the box forgets it, and the note goes with it.

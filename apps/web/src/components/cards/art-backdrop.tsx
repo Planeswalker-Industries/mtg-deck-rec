@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
+import { TEXT_LINK } from "@/lib/constants";
 
 /**
  * A card's art behind a page header, with the credit Scryfall's guidelines ask for.
@@ -50,7 +51,7 @@ export function ArtBackdrop({
         {children}
         <p className="mt-4 text-xs text-muted-foreground">
           Art from{" "}
-          <Link href={`/card/${cardSlug}` as Route} className="underline underline-offset-2 hover:text-foreground">
+          <Link href={`/card/${cardSlug}` as Route} className={TEXT_LINK}>
             {cardName}
           </Link>{" "}
           by {artist}

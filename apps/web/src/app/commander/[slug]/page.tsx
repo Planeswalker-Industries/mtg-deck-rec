@@ -13,6 +13,7 @@ import { displayName } from "@/lib/cards";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
 import { cardCategoryLabel, commanderDecksPhrase, fewDecksPhrase, formatDeckCount } from "@/lib/labels";
 import { getCommanderPage } from "@/lib/server/recs-cache";
+import { TEXT_LINK } from "@/lib/constants";
 
 const WUBRG = "WUBRG";
 
@@ -69,7 +70,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
             />
           )}
           <div className="min-w-0">
-            <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight text-balance sm:text-5xl">{names}</h1>
+            <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight text-balance sm:text-3xl">{names}</h1>
             <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <ColorIdentity identity={identity} />
               <span>What {commanderDecksPhrase(key)} run</span>
@@ -96,14 +97,14 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
 
       {roleProfile.length > 0 && (
         <section aria-labelledby="roles-heading" className="flex flex-col gap-3">
-          <h2 id="roles-heading" className="font-heading text-2xl font-extrabold tracking-tight">
+          <h2 id="roles-heading" className="font-heading text-xl font-semibold tracking-tight">
             In a typical deck
           </h2>
           <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {roleProfile.map(({ tag, avgPerDeck }) => (
               <div key={tag.id} className="rounded-lg border border-seam bg-sleeve px-3 py-2">
                 <dt className="text-sm text-muted-foreground">{tag.label}</dt>
-                <dd className="font-heading text-3xl font-extrabold tabular-nums">{avgPerDeck}</dd>
+                <dd className="font-heading text-2xl font-mono">{avgPerDeck}</dd>
               </div>
             ))}
           </dl>
@@ -112,7 +113,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
 
       {top.groups.map((group) => (
         <section key={group.category} aria-labelledby={`top-${group.category}`} className="flex flex-col gap-2">
-          <h2 id={`top-${group.category}`} className="font-heading text-2xl font-extrabold tracking-tight">
+          <h2 id={`top-${group.category}`} className="font-heading text-xl font-semibold tracking-tight">
             {cardCategoryLabel[group.category]}
           </h2>
           <PocketGrid
@@ -123,8 +124,8 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
               caption: (
                 <span className="flex flex-col items-start gap-0.5">
                   {s.card.gameChanger && <GameChangerBadge />}
-                  {s.corpus && <span className="text-muted-foreground tabular-nums">In {formatPercent(s.corpus.inclusionRate)} of decks</span>}
-                  <span className="text-muted-foreground tabular-nums">{s.card.price ? `About ${formatUsd(s.card.price.usd)}` : "No price"}</span>
+                  {s.corpus && <span className="text-muted-foreground font-mono">In {formatPercent(s.corpus.inclusionRate)} of decks</span>}
+                  <span className="text-muted-foreground font-mono">{s.card.price ? `About ${formatUsd(s.card.price.usd)}` : "No price"}</span>
                 </span>
               ),
             }))}
@@ -135,7 +136,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
       <footer className="flex max-w-prose flex-col gap-1 text-xs text-muted-foreground">
         <p>
           Based on {formatDeckCount(key.deckCount + (key.borrowedDeckCount ?? 0))} shared publicly on{" "}
-          <a href="https://archidekt.com" className="underline underline-offset-2">
+          <a href="https://archidekt.com" className={TEXT_LINK}>
             Archidekt
           </a>
           , counted only since each card came out. Updated {formatAsOf(computedAt)}.

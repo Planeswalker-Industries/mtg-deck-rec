@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors; tone: string; glow: string }> = {
   cut: { name: "Cut", Icon: Scissors, tone: "text-cut", glow: "shadow-[inset_0_-2px_0_var(--cut)]" },
   add: { name: "Add", Icon: Plus, tone: "text-add", glow: "shadow-[inset_0_-2px_0_var(--add)]" },
-  replace: { name: "Replace", Icon: Repeat2, tone: "text-replace", glow: "shadow-[inset_0_-2px_0_var(--replace)]" },
-  review: { name: "Review", Icon: ClipboardList, tone: "text-primary", glow: "shadow-[inset_0_-2px_0_var(--primary)]" },
+  replace: { name: "Swap", Icon: Repeat2, tone: "text-replace", glow: "shadow-[inset_0_-2px_0_var(--replace)]" },
+  review: { name: "Done", Icon: ClipboardList, tone: "text-primary", glow: "shadow-[inset_0_-2px_0_var(--primary)]" },
 };
 
 /**
@@ -35,12 +35,17 @@ export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSel
                 aria-current={current ? "step" : undefined}
                 onClick={() => onSelect(step)}
                 className={cn(
-                  "flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-bold transition-colors",
+                  "flex w-full items-center justify-center gap-1 rounded-md px-1.5 py-1 text-sm font-semibold transition-colors sm:gap-1.5 sm:px-2",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default",
                   current ? cn("bg-sleeve text-foreground", glow) : done ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/50",
                 )}
               >
-                {done ? <Check aria-hidden className="size-4 shrink-0" strokeWidth={2.5} /> : <Icon aria-hidden className={cn("size-4 shrink-0", current && tone)} strokeWidth={2.5} />}
+                {/* Phones drop the icons, so every step's name fits in a quarter of the row; the current step keeps its edge. */}
+                {done ? (
+                  <Check aria-hidden className="size-4 shrink-0 max-sm:hidden" strokeWidth={2.5} />
+                ) : (
+                  <Icon aria-hidden className={cn("size-4 shrink-0 max-sm:hidden", current && tone)} strokeWidth={2.5} />
+                )}
                 <span className="truncate">{name}</span>
               </button>
             </li>
@@ -53,21 +58,21 @@ export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSel
 
 /**
  * The heading and one line of explanation each phase opens with. In the swipe view the stepper above already names
- * the phase and each card carries its own reasons, so `brief` replaces both with a single line of what to do, and the
- * heading stays for screen readers: on a phone that line is the difference between the card fitting and not.
+ * the phase, each card carries its own reasons and ✓ and ✕ say what the gestures do, so the heading and `brief` (a
+ * line of what to do) are for screen readers only: on a phone every line above the cards costs card height.
  */
 export function PhaseIntro({ title, children, brief }: { title: string; children: ReactNode; brief?: ReactNode }) {
   if (brief !== undefined) {
     return (
-      <div>
-        <h2 className="sr-only">{title}</h2>
-        <p className="text-sm text-muted-foreground">{brief}</p>
+      <div className="sr-only">
+        <h2>{title}</h2>
+        <p>{brief}</p>
       </div>
     );
   }
   return (
     <div>
-      <h2 className="font-heading text-3xl leading-none font-extrabold tracking-tight">{title}</h2>
+      <h2 className="font-heading text-2xl leading-none font-semibold tracking-tight">{title}</h2>
       <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">{children}</p>
     </div>
   );
@@ -88,7 +93,7 @@ export function NextBar({
 }) {
   return (
     <div className="sticky bottom-0 z-20 -mx-4 flex items-center justify-between gap-3 border-t border-seam bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border">
-      <span className="text-sm text-muted-foreground tabular-nums">{children}</span>
+      <span className="text-sm text-muted-foreground font-mono">{children}</span>
       <Button type="button" onClick={onNext} disabled={disabled}>
         {label}
       </Button>

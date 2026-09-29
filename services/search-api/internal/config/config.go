@@ -30,7 +30,7 @@ type Config struct {
 	SupabaseURL string // the project URL, e.g. https://<ref>.supabase.co
 	// service_role, today. It bypasses RLS across the whole database, which is more than the crawl needs: the
 	// public.crawl_* functions are what narrow the crawl to its own schema, and a dedicated role is open work
-	// (T036). Supabase's secret keys map to service_role, so a lesser one means minting a JWT for a custom role.
+	// (T043). Supabase's secret keys map to service_role, so a lesser one means minting a JWT for a custom role.
 	SupabaseServiceKey string
 	CronToken          string // the web app's. It can trigger a scrape, nothing else (the split the tokens exist for)
 	SupabaseTimeout    time.Duration

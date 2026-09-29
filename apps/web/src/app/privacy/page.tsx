@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { TEXT_LINK } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "Privacy policy",
@@ -16,7 +17,7 @@ export default function PrivacyPage() {
   return (
     <article className="flex max-w-prose flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">Privacy policy</h1>
+        <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Privacy policy</h1>
         <p className="text-sm text-muted-foreground">Last updated {UPDATED}</p>
       </header>
 
@@ -107,7 +108,7 @@ export default function PrivacyPage() {
 
       <Section title="Deleting your account">
         <p>
-          You can delete your account from your <Link href="/account" className="underline underline-offset-2">account page</Link>.
+          You can delete your account from your <Link href="/account" className={TEXT_LINK}>account page</Link>.
           That removes your profile, your saved decks (their links stop working) and your collection. It can&apos;t be
           undone.
         </p>
@@ -129,7 +130,7 @@ export default function PrivacyPage() {
       <Section title="Changes and questions">
         <p>
           If this policy changes, the date at the top will change with it. Questions can go to the project&apos;s{" "}
-          <a href="https://github.com/Planeswalker-Industries/mtg-deck-rec/issues" className="underline underline-offset-2">
+          <a href="https://github.com/Planeswalker-Industries/mtg-deck-rec/issues" className={TEXT_LINK}>
             issue tracker
           </a>
           .
@@ -142,7 +143,7 @@ export default function PrivacyPage() {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="font-heading text-2xl font-bold">{title}</h2>
+      <h2 className="font-heading text-xl font-semibold">{title}</h2>
       {children}
     </section>
   );
@@ -151,7 +152,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Item({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div>
-      <dt className="font-bold">{term}</dt>
+      <dt className="font-semibold">{term}</dt>
       <dd className="text-muted-foreground">{children}</dd>
     </div>
   );

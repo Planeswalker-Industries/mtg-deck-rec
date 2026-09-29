@@ -1,4 +1,5 @@
 import type { CommanderLegality } from "@mtg/core/contract";
+import { cn } from "cn";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,12 +7,14 @@ import { Suspense } from "react";
 import { ArtBackdrop } from "@/components/cards/art-backdrop";
 import { FlippableCardImage } from "@/components/cards/flippable-card-image";
 import { PocketGrid, type PocketItem } from "@/components/cards/pocket-grid";
+import { RulesText } from "@/components/cards/rules-text";
 import { GameChangerBadge } from "@/components/deck/card-label";
 import { buttonVariants } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { describeCostDelta, formatAsOf, formatPercent, formatUsd } from "@/lib/format";
 import { emptySwapMessage } from "@/lib/labels";
 import { getCardPage } from "@/lib/server/recs-cache";
+import { TEXT_LINK } from "@/lib/constants";
 
 const LEGALITY: Record<CommanderLegality, string> = {
   legal: "Legal in Commander",
@@ -61,7 +64,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
         caption: (
           <span className="flex flex-col items-start gap-0.5">
             {partner && <span>with {displayName(partner)}</span>}
-            <span className="text-muted-foreground tabular-nums">
+            <span className="text-muted-foreground font-mono">
               In {formatPercent(entry.inclusionRate)} of {entry.deckCount.toLocaleString("en-US")} decks
             </span>
           </span>
@@ -80,34 +83,36 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
 
         <div className="flex min-w-0 flex-col gap-4">
           <div>
-            <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight text-balance sm:text-5xl">{name}</h1>
+            <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight text-balance sm:text-3xl">{name}</h1>
             <p className="mt-2 text-sm text-muted-foreground">{card.typeLine}</p>
           </div>
 
           {faces.map((face) => (
             <div key={face.name} className="rounded-lg border border-seam bg-sleeve p-3">
               {faces.length > 1 && (
-                <p className="mb-1 text-sm font-bold">
+                <p className="mb-1 text-sm font-semibold">
                   {face.name} <span className="font-normal text-muted-foreground">{face.typeLine}</span>
                 </p>
               )}
-              <p className="text-sm leading-relaxed whitespace-pre-line">{face.oracleText || "No rules text."}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-line">
+                {face.oracleText ? <RulesText text={face.oracleText} /> : "No rules text."}
+              </p>
             </div>
           ))}
 
           <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            <li className={card.legalCommander === "legal" ? undefined : "font-bold text-destructive"}>{LEGALITY[card.legalCommander]}</li>
+            <li className={card.legalCommander === "legal" ? undefined : "font-semibold text-destructive"}>{LEGALITY[card.legalCommander]}</li>
             {card.gameChanger && (
               <li>
                 <GameChangerBadge />
               </li>
             )}
-            <li className="tabular-nums">{card.price ? `About ${formatUsd(card.price.usd)}` : "No price"}</li>
+            <li className="font-mono">{card.price ? `About ${formatUsd(card.price.usd)}` : "No price"}</li>
           </ul>
 
           {card.tags.length > 0 && (
             <section aria-labelledby="jobs-heading">
-              <h2 id="jobs-heading" className="text-sm font-bold">
+              <h2 id="jobs-heading" className="text-sm font-semibold">
                 What it does
               </h2>
               <ul className="mt-1.5 flex flex-wrap gap-1.5">
@@ -126,7 +131,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
                 {name} as a commander
               </Link>
             )}
-            <a href={card.scryfallUri} className="font-medium text-primary underline underline-offset-2">
+            <a href={card.scryfallUri} className={cn(TEXT_LINK, "inline-flex min-h-11 items-center sm:min-h-0")}>
               View on Scryfall
             </a>
           </div>
@@ -135,11 +140,11 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
       </ArtBackdrop>
 
       <section aria-labelledby="alternatives-heading" className="flex flex-col gap-2">
-        <h2 id="alternatives-heading" className="font-heading text-2xl font-extrabold tracking-tight">
+        <h2 id="alternatives-heading" className="font-heading text-xl font-semibold tracking-tight">
           Cards that do the same job
         </h2>
         <p className="max-w-prose text-sm text-muted-foreground">
-          In {name}&apos;s colors, best fit first. <Link href="/deck" className="text-primary underline underline-offset-2">Paste your deck</Link> to see
+          In {name}&apos;s colors, best fit first. <Link href="/deck" className={TEXT_LINK}>Paste your deck</Link> to see
           replacements picked for your commander.
         </p>
         {alternatives.suggestions.length === 0 ? (
@@ -154,7 +159,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
               caption: (
                 <span className="flex flex-col items-start gap-0.5">
                   {s.card.gameChanger && <GameChangerBadge />}
-                  <span className="text-muted-foreground tabular-nums">{describeCostDelta(s.costDelta)}</span>
+                  <span className="text-muted-foreground font-mono">{describeCostDelta(s.costDelta)}</span>
                 </span>
               ),
             }))}
@@ -164,7 +169,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
 
       {commanderItems.length > 0 && (
         <section aria-labelledby="commanders-heading" className="flex flex-col gap-2">
-          <h2 id="commanders-heading" className="font-heading text-2xl font-extrabold tracking-tight">
+          <h2 id="commanders-heading" className="font-heading text-xl font-semibold tracking-tight">
             Commanders whose decks run it most
           </h2>
           <PocketGrid zoomable label={`Commanders whose decks run ${name}`} items={commanderItems} />
@@ -175,7 +180,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
         {priceAsOf && <p>Prices are Scryfall estimates from {formatAsOf(priceAsOf)}.</p>}
         <p>
           Deck counts come from decks shared publicly on{" "}
-          <a href="https://archidekt.com" className="underline underline-offset-2">
+          <a href="https://archidekt.com" className={TEXT_LINK}>
             Archidekt
           </a>
           , counted only since the card came out.

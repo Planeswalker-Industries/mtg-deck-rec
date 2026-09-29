@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { displayName } from "@/lib/cards";
+import { PHONE_HIT_AREA } from "@/lib/constants";
 import { AddToCollection, EditableCards } from "./collection-edit";
 import { useCollectionEditor } from "./use-collection-editor";
 import { useCollectionView, type CollectionViewItem } from "./use-collection-view";
@@ -57,7 +58,7 @@ export function CollectionView() {
         <>
           <Heading />
           <div className="flex max-w-md flex-col gap-1.5" aria-live="polite">
-            <p className="text-sm font-bold tabular-nums">
+            <p className="text-sm tabular-nums">
               {view.total === 0 ? "Loading your collection…" : `Loading your collection: ${count(view.loaded)} of ${count(view.total)} cards`}
             </p>
             <ProgressBar value={view.total === 0 ? 0 : Math.round((view.loaded / view.total) * 100)} label="Loading your collection" />
@@ -76,7 +77,7 @@ export function CollectionView() {
         <>
           <Heading />
           <div className="flex max-w-prose flex-col items-start gap-3 rounded-lg border border-seam bg-sleeve p-5">
-            <h2 className="font-heading text-2xl font-extrabold tracking-tight">No collection yet</h2>
+            <h2 className="font-heading text-xl font-semibold tracking-tight">No collection yet</h2>
             <p className="text-muted-foreground">
               Import an export from ManaBox, Moxfield, Archidekt or TCGplayer to browse your cards here, and let the deck tool suggest only
               cards you own.
@@ -93,7 +94,7 @@ export function CollectionView() {
 }
 
 function Heading() {
-  return <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">My collection</h1>;
+  return <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">My collection</h1>;
 }
 
 function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]; sets: CardSet[]; where: "browser" | "account" }) {
@@ -151,7 +152,7 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-heading text-4xl leading-none font-extrabold tracking-tight">My collection</h1>
+          <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">My collection</h1>
           <p className="mt-2 text-muted-foreground tabular-nums">
             {count(items.length)} different cards, {count(copies)} copies.{" "}
             {where === "account" ? "Saved to your account." : "Saved in this browser."}
@@ -271,11 +272,11 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
                       return next;
                     })
                   }
-                  className="flex items-baseline gap-2 rounded-md font-heading text-2xl font-extrabold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  className="flex min-h-11 items-center gap-2 rounded-md font-heading text-xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <ChevronDown aria-hidden className={cn("size-5 self-center transition-transform", !open && "-rotate-90")} />
                   {COLLECTION_GROUP_LABELS[group]}
-                  <span className="font-sans text-base font-normal text-muted-foreground tabular-nums">{count(groupItems.length)}</span>
+                  <span className="text-base font-normal text-muted-foreground font-mono">{count(groupItems.length)}</span>
                 </button>
               </h2>
               {open && (
@@ -289,7 +290,7 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
                       items={groupItems.map((item) => ({
                         card: item.card,
                         href: `/card/${item.card.slug}`,
-                        caption: item.quantity > 1 ? <span className="tabular-nums text-muted-foreground">×{item.quantity}</span> : undefined,
+                        caption: item.quantity > 1 ? <span className="font-mono text-muted-foreground">×{item.quantity}</span> : undefined,
                       }))}
                     />
                   )}
@@ -313,6 +314,7 @@ function ColorToggle({ label, on, onToggle, children }: { label: string; on: boo
       title={label}
       onClick={onToggle}
       className={cn(
+        PHONE_HIT_AREA,
         "flex size-10 items-center justify-center rounded-full transition-opacity",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         on ? "opacity-100" : "opacity-35 hover:opacity-60",

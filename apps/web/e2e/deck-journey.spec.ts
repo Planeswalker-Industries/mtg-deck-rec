@@ -36,8 +36,8 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
   const recs = await analyzeDeck(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
   await expect(steps.getByRole("button", { name: "Cut" })).toHaveAttribute("aria-current", "step");
-  // Swiping is the default on a first visit.
-  await expect(recs.getByRole("button", { name: "Swipe" })).toHaveAttribute("aria-pressed", "true");
+  // Swiping is the default on a first visit: on a phone the view toggle offers the list.
+  await expect(recs.getByRole("button", { name: "Show as a list" })).toBeVisible();
 
   // Cut: cards that work against the deck, one at a time. The deck runs an off-colour card.
   const cuts = recs.getByRole("region", { name: "Cards to cut" });
@@ -60,7 +60,7 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
   await recs.getByRole("button", { name: "Done adding for now" }).click();
 
   // Replace: weaker fits, each with a replacement. The deck may have none, which goes on to Review.
-  await expect(steps.getByRole("button", { name: "Replace" })).toHaveAttribute("aria-current", "step");
+  await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const toReview = recs.getByRole("button", { name: "Next: review the deck" });
   await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });
@@ -68,7 +68,7 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
   else await toReview.click();
 
   // Review: before and after, and what changed.
-  await expect(recs.getByRole("heading", { name: "Review" })).toBeVisible();
+  await expect(recs.getByRole("heading", { name: "Done" })).toBeVisible();
   await expect(recs.getByRole("region", { name: "After" })).toBeVisible();
   await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
 
@@ -80,7 +80,7 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
 
 test("the Cut list crosses out recommended cuts and lets any card be cut", async ({ page }) => {
   const recs = await analyzeDeck(page);
-  await recs.getByRole("button", { name: "List", exact: true }).click();
+  await recs.getByRole("button", { name: "Show as a list" }).click();
   const deck = recs.getByRole("region", { name: "Your deck" });
   await expect(deck).toBeVisible({ timeout: 60_000 });
 
