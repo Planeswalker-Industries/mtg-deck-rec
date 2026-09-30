@@ -72,7 +72,51 @@ test("the deckbuilder adds a card from search, within the commander's colours", 
   const name = ((await add.getAttribute("aria-label")) ?? "").replace(/^Add /, "");
   await add.click();
   // Once in, the card can't be added twice.
-  await expect(results.getByRole("button", { name: `${name} is in the deck` })).toBeVisible();
+  await expect(results.getByRole("button", { name: `Remove ${name} from the deck` })).toBeVisible();
+});
+
+test("the deckbuilder adds the only search result on Enter, then empties the box for the next card", async ({ page }) => {
+  const { recs, search } = await openCardSearch(page);
+  const results = search.getByRole("list", { name: "Search results" });
+  // A creature the deck doesn't run yet, found by browsing, then typed in full so it is the only result.
+  await search.getByRole("button", { name: "Creatures" }).click();
+  const add = results.getByRole("button", { name: /^Add / }).first();
+  await expect(add).toBeVisible({ timeout: 60_000 });
+  const name = ((await add.getAttribute("aria-label")) ?? "").replace(/^Add /, "");
+  await search.getByRole("group", { name: "Card type" }).getByRole("button", { name: "All" }).click();
+
+  const box = search.getByRole("searchbox", { name: "Card name" });
+  await box.fill(name);
+  await expect(results.getByRole("listitem")).toHaveCount(1, { timeout: 60_000 });
+  await box.press("Enter");
+  await expect(box).toHaveValue("");
+  await expect(box).toBeFocused();
+  // On a phone the deck list is the other tab, so it is looked for hidden too.
+  const deckList = recs.getByRole("region", { name: "Deck list", includeHidden: true });
+  await expect(deckList.getByRole("button", { name: `Remove ${name}`, includeHidden: true })).toBeAttached();
+});
+
+test("Clear empties the deckbuilder search and hands the box focus back", async ({ page }) => {
+  const { search } = await openCardSearch(page);
+  const box = search.getByRole("searchbox", { name: "Card name" });
+  await box.fill("sol");
+  await search.getByRole("button", { name: "Clear" }).click();
+  await expect(box).toHaveValue("");
+  await expect(box).toBeFocused();
+});
+
+test("the deckbuilder's land buttons add a basic land in the commander's colours", async ({ page }) => {
+  test.skip(!process.env.E2E_LOCAL_DATA, "the mock catalog has no basic lands (E2E_LOCAL_DATA)");
+  const { recs, search } = await openCardSearch(page);
+  const button = search.getByRole("group", { name: "Add a basic land" }).getByRole("button").first();
+  await expect(button).toBeVisible({ timeout: 60_000 });
+  const land = ((await button.getAttribute("aria-label")) ?? "").replace(/^Add a /, "");
+  // On a phone the deck list is the other tab, so it is looked for hidden too.
+  const deckList = recs.getByRole("region", { name: "Deck list", includeHidden: true });
+  const copies = deckList.getByRole("button", { name: `One more ${land}`, includeHidden: true }).locator("xpath=..").getByLabel(/ copies$/);
+  const before = (await copies.count()) > 0 ? Number(await copies.textContent()) : 0;
+  await button.click();
+  await expect(copies).toHaveText(String(before + 1));
 });
 
 test("the deckbuilder search shows nothing once the name box is emptied", async ({ page }) => {
@@ -291,7 +335,7 @@ test("the deckbuilder's search results line up their Add buttons", async ({ page
   await search.getByRole("button", { name: "Instants" }).click();
   const results = search.getByRole("list", { name: "Search results" });
   await expect(results.getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
-  await expectButtonsAligned(results, /^Add |is in the deck$/);
+  await expectButtonsAligned(results, /^Add |from the deck$/);
 });
 
 test("the deckbuilder's deck cards line up their buttons", async ({ page }) => {

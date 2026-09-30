@@ -287,6 +287,26 @@ Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles n
 
 ---
 
+### T052: Release the deckbuilder redesign (contract v18–v19)
+
+**Priority:** HIGH | **Area:** Deploy | **Status:** Built on `feat/deckbuilder`, not released
+
+The deckbuilder's multi-select filters, legendary, A–Z sort, owned-only search and decklist rows with cost symbols span every layer, so the release has an order. Until each step lands the app still answers (the index read fails and Postgres takes over), just slower.
+
+**Files:**
+- `supabase/migrations/20260929000100_search_cards_filtered_multi.sql`, `20260929000200_cards_mana_cost.sql`, `20260929000300_search_cards_filtered_v19.sql`, `20260929000400_search_loose_names.sql`
+- `services/search-api/internal/api/read.go` — `type` and `mv` lists, `sort`, legendary
+- `packages/core/src/search/documents.ts` — new `card_types` and `mana_cost` fields, `token_separators` on the cards collection
+
+**Acceptance criteria:**
+- [ ] Contract v18 and v19 approved by frontend and backend (PR)
+- [ ] Migrations applied on hosted (merge to `main`)
+- [ ] `sync:catalog` run on hosted after the migration, so `cards.mana_cost` is filled (it rewrites every card once)
+- [ ] Search API redeployed on the VPS, then `sync:typesense --rebuild` (`search-index.yml`, rebuild on)
+- [ ] `x-search-source: index-filtered` on a deckbuilder search with two types and two costs
+
+---
+
 ### T050: Start a deck from one commander
 
 **Priority:** MEDIUM | **Area:** Frontend / Product | **Status:** Not started
@@ -298,7 +318,7 @@ The home page's "Sound familiar?" ribbon offers "+ Commander" for a player who j
 - `apps/web/src/components/deck/deck-tool.tsx` — the decklist box and Analyze
 - `apps/web/src/components/search/site-search.tsx` — the existing card and commander search
 
-**Context:** A one-card deck already works: Add fills `openSlots` (room below 100 cards), so the gap is only the way in. Pick a commander, and the tool opens with that commander analyzed and Add ready. The commander's own page (`/commander/[slug]`) could offer the same.
+**Context:** A one-card deck already works: Add fills `openSlots` (room below 100 cards), so the gap is only the way in. Pick a commander, and the tool opens with that commander analyzed and Add ready. `/deck?start=build` already does this for the Deckbuilder (`buildFrom` in `deck-tool.tsx`); this task is the same start landing in Upgrade's Add. The commander's own page (`/commander/[slug]`) could offer the same.
 
 **Acceptance criteria:**
 - [ ] A commander picker (search by name, commander-legal only) that opens `/deck` with that commander analyzed

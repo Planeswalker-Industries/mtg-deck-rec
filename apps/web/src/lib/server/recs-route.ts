@@ -28,7 +28,7 @@ export function errorResponse(error: ApiError): Response {
 export const capLimit = (value: number | undefined, max: number) => (value === undefined ? undefined : Math.min(value, max));
 
 /** Card ids in the signed-in visitor's saved collection, or null when nobody is signed in. */
-async function accountOwnedIds(): Promise<CardId[] | null> {
+export async function accountOwnedIds(): Promise<CardId[] | null> {
   const db = await createAuthClient();
   const { data } = await db.auth.getClaims();
   if (!data?.claims?.sub) return null;

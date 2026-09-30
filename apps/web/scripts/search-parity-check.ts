@@ -9,7 +9,7 @@
  *   yarn workspace @mtg/web tsx --env-file=.env.local scripts/search-parity-check.ts
  */
 import { CURVE_TOP_MANA_VALUE } from "@mtg/core/journey";
-import { cardCategory } from "@mtg/core/scoring";
+import { cardTypes } from "@mtg/core/scoring";
 import { searchCards } from "../src/lib/server/card-search";
 import { fetchCardTags } from "../src/lib/server/card-tags";
 import { fetchCardsById } from "../src/lib/server/cards";
@@ -84,7 +84,7 @@ async function main() {
     check("commander-only search returns the same cards", sameSet, `${commanders.length} commander(s): ${commanders.map((c) => c.name).join(", ")}`);
   }
 
-  // 1b. The deckbuilder's search, which moved off Postgres once the documents gained `card_category`.
+  // 1b. The deckbuilder's search, which moved off Postgres once the documents gained a card-type field (now `card_types`).
   //
   //     What is asserted is the *filtering*, not the order. Both sides rank by play rate and break ties on the name,
   //     but they collate names differently, so with an empty corpus — every rate 0, the tiebreak deciding everything —
@@ -93,21 +93,23 @@ async function main() {
   {
     const FILTERED: { label: string; input: Parameters<typeof searchCards>[1] }[] = [
       { label: "browse WB", input: { q: "", colorIdentity: "WB", limit: 50 } },
-      { label: "browse WB creatures", input: { q: "", colorIdentity: "WB", cardType: "creature", limit: 50 } },
-      { label: "browse WB lands", input: { q: "", colorIdentity: "WB", cardType: "land", limit: 50 } },
+      { label: "browse WB creatures", input: { q: "", colorIdentity: "WB", cardTypes: ["creature"], limit: 50 } },
+      { label: "browse WB lands", input: { q: "", colorIdentity: "WB", cardTypes: ["land"], limit: 50 } },
+      { label: "browse WB artifact creatures", input: { q: "", colorIdentity: "WB", cardTypes: ["artifact", "creature"], limit: 50 } },
       { label: "browse colourless", input: { q: "", colorIdentity: "", limit: 50 } },
-      { label: "browse WB mana value 3", input: { q: "", colorIdentity: "WB", manaValue: 3, limit: 50 } },
-      { label: "browse WB mana value 7+", input: { q: "", colorIdentity: "WB", manaValue: 7, limit: 50 } },
+      { label: "browse WB mana value 3", input: { q: "", colorIdentity: "WB", manaValues: [3], limit: 50 } },
+      { label: "browse WB mana value 7+", input: { q: "", colorIdentity: "WB", manaValues: [7], limit: 50 } },
+      { label: "browse WB mana value 1 or 4", input: { q: "", colorIdentity: "WB", manaValues: [1, 4], limit: 50 } },
       { label: "name within WB", input: { q: "angel", colorIdentity: "WB", limit: 50 } },
     ];
     for (const { label, input } of FILTERED) {
       const { cards, source } = await searchCards(db, input);
       const wrongColor = cards.filter((c) => [..."WUBRG"].some((l) => !(input.colorIdentity ?? "WUBRG").includes(l) && c.colorIdentity.includes(l)));
-      const wrongType = input.cardType === undefined ? [] : cards.filter((c) => cardCategory(c.typeLine) !== input.cardType);
+      const types = input.cardTypes ?? [];
+      const bars = input.manaValues ?? [];
+      const wrongType = cards.filter((c) => !types.every((t) => cardTypes(c.typeLine).includes(t)));
       const wrongMana =
-        input.manaValue === undefined
-          ? []
-          : cards.filter((c) => (input.manaValue! >= CURVE_TOP_MANA_VALUE ? c.manaValue < CURVE_TOP_MANA_VALUE : Math.floor(c.manaValue) !== input.manaValue));
+        bars.length === 0 ? [] : cards.filter((c) => !bars.includes(Math.min(CURVE_TOP_MANA_VALUE, Math.floor(c.manaValue))));
       const bad = wrongColor.length + wrongType.length + wrongMana.length;
       check(
         `filtered search "${label}"`,
@@ -117,7 +119,7 @@ async function main() {
     }
 
     // "More cards" walks forward by a page. Pages that repeat or skip a card mean the sort is not total.
-    const pages = await Promise.all([0, 50, 100].map((offset) => searchCards(db, { q: "", colorIdentity: "WB", cardType: "creature", limit: 50, offset })));
+    const pages = await Promise.all([0, 50, 100].map((offset) => searchCards(db, { q: "", colorIdentity: "WB", cardTypes: ["creature"], limit: 50, offset })));
     const names = pages.flatMap((p) => p.cards.map((c) => c.name));
     check("paging is disjoint", new Set(names).size === names.length, `${names.length} cards over 3 pages, ${new Set(names).size} distinct`);
 

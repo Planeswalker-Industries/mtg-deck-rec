@@ -1,19 +1,16 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { Minus, Plus, Repeat2, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import type { CardSummary, DeckAnalysis, RecContext } from "@mtg/core/contract";
+import type { DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { deckStats, isBasicLand } from "@mtg/core/journey";
+import type { DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
-import { CardImage } from "@/components/cards/card-image";
-import { ZoomableCard } from "@/components/cards/card-zoom";
-import { GameChangerBadge } from "@/components/deck/card-label";
 import { groupHeading } from "@/components/deck/deck-group-id";
 import { SwapSheet } from "@/components/deck/swap-sheet";
-import { displayName } from "@/lib/cards";
 import { formatAsOf, formatUsd } from "@/lib/format";
-import { CardSearchPanel } from "./card-search-panel";
+import { CardSearchPanel, type BuilderCollection } from "./card-search-panel";
+import { DeckRow } from "./deck-row";
 import type { DeckBuilderState } from "./use-deck-builder";
 
 /** Average mana value to one decimal: finer than that is noise at deck scale. */
@@ -21,84 +18,20 @@ const MANA_VALUE_DECIMALS = 1;
 
 const WUBRG = "WUBRG";
 
-function IconButton({ label, onClick, children, tone }: { label: string; onClick: () => void; children: ReactNode; tone?: "cut" }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className={cn(
-        "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-primary focus-visible:text-primary",
-        // 44 px tall to a thumb; not wider, since the buttons sit side by side in a narrow cell.
-        "relative after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']",
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        tone === "cut" && "hover:text-cut",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+/**
+ * From `lg`, each half scrolls on its own inside the window, below the deck tool's sticky deck bar when there is one
+ * (--deck-bar-height, set by DeckBar), so the search stays in reach however long the decklist is.
+ */
+const HALF_SCROLL =
+  "lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] lg:overflow-y-auto lg:overscroll-contain";
 
-/** One card in the deck: its image, its name, and what can be done to it, with the actions at the foot of the cell so a row's buttons line up. */
-function DeckCard({
-  card,
-  quantity,
-  onRemove,
-  onQuantity,
-  onReplace,
-}: {
-  card: CardSummary;
-  quantity: number;
-  onRemove: () => void;
-  onQuantity?: ((quantity: number) => void) | undefined;
-  onReplace?: (() => void) | undefined;
-}) {
-  const name = displayName(card);
-  return (
-    <li className="flex min-w-0 flex-col gap-1">
-      <ZoomableCard card={card}>
-        <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 140px, 30vw" />
-      </ZoomableCard>
-      <span className="line-clamp-2 min-h-[2lh] text-sm leading-tight font-semibold">{name}</span>
-      {card.gameChanger && <GameChangerBadge />}
-      {/* Pinned to the bottom of the grid cell: a Game Changer badge or wrapped quantity buttons elsewhere in the row
-          then change nothing about where Remove sits. Grid items stretch to the row's height, which is what makes
-          mt-auto work here. */}
-      <div className="mt-auto flex flex-wrap items-center gap-0.5">
-        {onQuantity && (
-          <>
-            <IconButton label={`One fewer ${name}`} onClick={() => onQuantity(quantity - 1)}>
-              <Minus aria-hidden className="size-4" />
-            </IconButton>
-            <span className="min-w-6 text-center text-sm font-mono" aria-label={`${quantity} copies`}>
-              {quantity}
-            </span>
-            <IconButton label={`One more ${name}`} onClick={() => onQuantity(quantity + 1)}>
-              <Plus aria-hidden className="size-4" />
-            </IconButton>
-          </>
-        )}
-        {onReplace && (
-          <IconButton label={`Replace ${name}`} onClick={onReplace}>
-            <Repeat2 aria-hidden className="size-4" />
-          </IconButton>
-        )}
-        <IconButton label={`Remove ${name}`} onClick={onRemove} tone="cut">
-          <Trash2 aria-hidden className="size-4" />
-        </IconButton>
-      </div>
-    </li>
-  );
-}
-
-const GRID = "grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-4 xl:grid-cols-5";
+/** Within a type, cheapest first, then by name, the order a hand of the deck would be sorted in. */
+const byCost = (entries: readonly DeckEntry[]) =>
+  [...entries].sort((a, b) => a.card.manaValue - b.card.manaValue || a.card.name.localeCompare(b.card.name));
 
 /**
- * The deckbuilder: the deck by card type with every card editable, and a search to add more. On a phone the two are
- * tabs; from `lg` up they sit side by side, the search stays in view while the deck scrolls, and its filters stay in
- * view while its results scroll.
+ * The deckbuilder: a search to add cards on the left and the deck as a list of strips on the right, by type and then
+ * by cost, every card editable. On a phone the two are tabs; from `lg` up they sit side by side and scroll apart.
  *
  * `analysis` is the host's latest reading of the deck (legality, bracket, commander), used for the problems list and
  * for asking for replacements; it lags an edit by the host's debounce, which is why card counts come from the builder.
@@ -108,6 +41,7 @@ export function DeckBuilder({
   analysis,
   swapContext,
   showIssues = true,
+  collection,
 }: {
   builder: DeckBuilderState;
   analysis: DeckAnalysis | null;
@@ -115,6 +49,8 @@ export function DeckBuilder({
   swapContext: RecContext | null;
   /** The deck tool lists the deck's issues above the builder already, so it turns this copy off. */
   showIssues?: boolean;
+  /** The player's collection, for the search panel's Owned only choice. The deck tool has one; a saved deck's page doesn't. */
+  collection?: BuilderCollection | undefined;
 }) {
   const [tab, setTab] = useState<"deck" | "add">("deck");
   const stats = deckStats([...builder.commanders.map((card) => ({ card, quantity: 1 })), ...builder.main]);
@@ -169,7 +105,7 @@ export function DeckBuilder({
             onClick={() => setTab(t)}
             className={cn(
               "inline-flex min-h-11 items-center rounded-md px-4 py-1.5 text-sm font-normal transition-colors sm:min-h-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              tab === t ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
+              tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary",
             )}
           >
             {t === "deck" ? "Deck" : "Add cards"}
@@ -177,18 +113,25 @@ export function DeckBuilder({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <section aria-label="Deck list" className={cn("flex min-w-0 flex-col gap-6", tab === "add" && "hidden lg:flex")}>
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+        {/* Unlabelled: the panel inside is the "Add cards" region, and one landmark per job is enough. */}
+        <aside className={cn(HALF_SCROLL, "min-w-0", tab === "deck" && "hidden lg:block")}>
+          <CardSearchPanel builder={builder} colorIdentity={identity} collection={collection} />
+        </aside>
+
+        <section aria-label="Deck list" className={cn(HALF_SCROLL, "flex min-w-0 flex-col gap-5 lg:pr-1", tab === "add" && "hidden lg:flex")}>
           <section aria-labelledby="builder-commanders" className="flex flex-col gap-2">
             <h2 id="builder-commanders" className="font-heading text-xl leading-none font-semibold">
               Commander{builder.commanders.length > 1 ? "s" : ""}
             </h2>
             {builder.commanders.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No commander yet. Search for a legendary creature and make it the commander.</p>
+              <p className="text-sm text-muted-foreground">
+                No commander yet. The search shows only cards that can lead a deck until you pick one.
+              </p>
             ) : (
-              <ul aria-label="Commanders" className={GRID}>
+              <ul aria-label="Commanders" className="flex flex-col gap-1.5">
                 {builder.commanders.map((card) => (
-                  <DeckCard key={card.id} card={card} quantity={1} onRemove={() => builder.remove(card)} />
+                  <DeckRow key={card.id} card={card} quantity={1} commander onRemove={() => builder.remove(card)} />
                 ))}
               </ul>
             )}
@@ -196,11 +139,11 @@ export function DeckBuilder({
           {builder.groups.map((group) => (
             <section key={group.key} aria-label={groupHeading(group.label)} className="flex flex-col gap-2">
               <h2 className="font-heading text-xl leading-none font-semibold">
-                {groupHeading(group.label)} <span className="text-sm font-normal text-muted-foreground font-mono">{group.count}</span>
+                {groupHeading(group.label)} <span className="font-mono text-sm font-normal text-muted-foreground">{group.count}</span>
               </h2>
-              <ul aria-label={groupHeading(group.label)} className={GRID}>
-                {group.entries.map(({ card, quantity }) => (
-                  <DeckCard
+              <ul aria-label={groupHeading(group.label)} className="flex flex-col gap-1.5">
+                {byCost(group.entries).map(({ card, quantity }) => (
+                  <DeckRow
                     key={card.id}
                     card={card}
                     quantity={quantity}
@@ -213,15 +156,6 @@ export function DeckBuilder({
             </section>
           ))}
         </section>
-        {/* Below the deck tool's sticky deck bar when there is one (--deck-bar-height, set by DeckBar), else at the top. */}
-        <aside
-          className={cn(
-            "lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] lg:overflow-y-auto",
-            tab === "deck" && "hidden lg:block",
-          )}
-        >
-          <CardSearchPanel builder={builder} colorIdentity={identity} />
-        </aside>
       </div>
 
       <SwapSheet

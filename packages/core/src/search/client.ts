@@ -100,28 +100,32 @@ export class SearchClient {
   /**
    * Cards by name, and the deckbuilder's narrowed search.
    *
-   * With `colorIdentity`, `cardType` or `manaValue` set this is the deckbuilder asking, and an empty `q` means browse
+   * With `colorIdentity`, `cardTypes` or `manaValues` set this is the deckbuilder asking, and an empty `q` means browse
    * the filtered cards by play rate rather than search for nothing. `colorIdentity` is the deck's identity as WUBRG
    * letters, and `""` is a colourless deck — which is why it travels beside a `colorless` flag: an empty string and
-   * an absent one are different questions and a query string cannot tell them apart.
+   * an absent one are different questions and a query string cannot tell them apart. `cardTypes` must all be on the
+   * card; `manaValues` are alternatives. Both travel comma-separated, as `type` and `mv`.
    */
   async searchCards({
     q,
     commanderOnly = false,
     limit = 8,
     colorIdentity,
-    cardType,
-    manaValue,
+    cardTypes,
+    manaValues,
     offset,
+    sort,
     builder = false,
   }: {
     q: string;
     commanderOnly?: boolean;
     limit?: number;
     colorIdentity?: string | undefined;
-    cardType?: string | undefined;
-    manaValue?: number | undefined;
+    cardTypes?: readonly string[] | undefined;
+    manaValues?: readonly number[] | undefined;
     offset?: number | undefined;
+    /** Alphabetical either way, in place of the ranking. */
+    sort?: "name_asc" | "name_desc" | undefined;
     builder?: boolean;
   }): Promise<CardDocument[]> {
     const query = new URLSearchParams({ q, limit: String(limit) });
@@ -130,9 +134,12 @@ export class SearchClient {
       query.set("colors", colorIdentity);
       if (colorIdentity === "") query.set("colorless", "1");
     }
-    if (cardType !== undefined) query.set("type", cardType);
-    if (manaValue !== undefined) query.set("mv", String(manaValue));
+    // The single-value names of old, so a search API from before lists refuses a list (400, and the app falls back)
+    // rather than ignoring an unknown parameter and answering unfiltered.
+    if (cardTypes !== undefined && cardTypes.length > 0) query.set("type", cardTypes.join(","));
+    if (manaValues !== undefined && manaValues.length > 0) query.set("mv", manaValues.join(","));
     if (offset !== undefined && offset > 0) query.set("offset", String(offset));
+    if (sort !== undefined) query.set("sort", sort);
     if (builder) query.set("builder", "1");
     const result = await this.request<{ cards: CardDocument[] }>(`/v1/cards/search?${query}`);
     return result.cards ?? [];

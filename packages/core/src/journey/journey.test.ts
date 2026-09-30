@@ -23,6 +23,7 @@ const card = (id: number, overrides: Partial<CardSummary> = {}): CardSummary => 
   oracleId: `oracle-${id}` as CardSummary['oracleId'],
   name: `Card ${id}`,
   slug: `card-${id}`,
+  manaCost: '',
   manaValue: 2,
   typeLine: 'Creature — Bear',
   colorIdentity: 'G',

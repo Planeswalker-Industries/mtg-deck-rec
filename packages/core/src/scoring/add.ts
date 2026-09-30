@@ -1,4 +1,4 @@
-import type { CardCategory } from '../contract';
+import type { CardCategory, CardTypeFilter } from '../contract';
 import type { RoleTarget } from './cut';
 import type { ComponentWeights } from './swap';
 
@@ -27,6 +27,20 @@ export function cardCategory(typeLine: string): CardCategory {
   const front = typeLine.split(' // ')[0] ?? typeLine;
   const types = (front.split('—')[0] ?? front).toLowerCase();
   return CATEGORY_PRECEDENCE.find((category) => types.includes(category)) ?? 'artifact';
+}
+
+/** What the deckbuilder's type filter can require, in the order `cardTypes` lists them. */
+const TYPE_FILTERS: readonly CardTypeFilter[] = ['legendary', ...CATEGORY_PRECEDENCE];
+
+/**
+ * Every card type on the front face, plus the legendary supertype (subtypes ignored): an artifact creature is both,
+ * a legendary creature carries legendary too. What the deckbuilder's type filter matches, where a card must carry
+ * every type picked. Mirrors `public.card_types` in Postgres.
+ */
+export function cardTypes(typeLine: string): CardTypeFilter[] {
+  const front = typeLine.split(' // ')[0] ?? typeLine;
+  const types = (front.split('—')[0] ?? front).toLowerCase();
+  return TYPE_FILTERS.filter((type) => types.includes(type));
 }
 
 /** How short the deck is in each role: 0 at or above its target, 1 with none at all. */
