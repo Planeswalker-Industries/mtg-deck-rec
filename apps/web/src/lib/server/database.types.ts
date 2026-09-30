@@ -239,6 +239,7 @@ export type Database = {
           layout: string
           legal_commander: string
           legalities: Json
+          mana_cost: string | null
           mana_value: number
           name: string
           name_normalized: string
@@ -274,6 +275,7 @@ export type Database = {
           layout: string
           legal_commander: string
           legalities: Json
+          mana_cost?: string | null
           mana_value: number
           name: string
           name_normalized: string
@@ -309,6 +311,7 @@ export type Database = {
           layout?: string
           legal_commander?: string
           legalities?: Json
+          mana_cost?: string | null
           mana_value?: number
           name?: string
           name_normalized?: string
@@ -1603,6 +1606,7 @@ export type Database = {
           slug: string
         }[]
       }
+      card_types: { Args: { p_type_line: string }; Returns: string[] }
       cards_functional_tags: {
         Args: { p_card_ids: number[] }
         Returns: {
@@ -1855,13 +1859,16 @@ export type Database = {
       }
       search_cards_filtered: {
         Args: {
-          p_category?: string
+          p_card_types?: string[]
+          p_commander_only?: boolean
           p_identity_mask?: number
           p_limit?: number
-          p_mana_value?: number
           p_mana_value_top?: number
+          p_mana_values?: number[]
           p_offset?: number
+          p_owned_ids?: number[]
           p_query?: string
+          p_sort?: string
         }
         Returns: {
           card_id: number

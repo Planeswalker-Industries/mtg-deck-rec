@@ -1,4 +1,4 @@
-import type { CardCategory } from './recs';
+import type { CardCategory, OwnershipInput } from './recs';
 import type { CardId, ColorIdentity, Finish, IsoDateTime, OracleId, TagId } from './ids';
 
 /** Estimate only: Scryfall prices go stale after 24h. Always render with `asOf`. */
@@ -33,6 +33,11 @@ export interface CardSummary {
   name: string;
   slug: string;
   manaValue: number;
+  /**
+   * The printed cost in Scryfall's notation ({2}{W}{W}): a split card's whole cost ("{1}{R} // {1}{U}"), a
+   * double-faced card's front. Empty for a card with no cost, and until the catalog has it.
+   */
+  manaCost: string;
   typeLine: string;
   colorIdentity: ColorIdentity;
   /** null when Scryfall has no image for the card */
@@ -55,13 +60,28 @@ export interface CardSearchInput {
   limit?: number;
   /** Cards must fit within these colours: a commander's identity as WUBRG letters; "" means colourless only. */
   colorIdentity?: string;
-  /** The deck-grouping type (an artifact creature is a creature). */
-  cardType?: CardCategory;
-  /** Whole mana value; the top of the curve (7) means 7 or more. */
-  manaValue?: number;
+  /**
+   * Card types the card must carry, every one of them, on its front face: creature and artifact finds artifact
+   * creatures, legendary and creature legendary creatures. Empty or absent means any type.
+   */
+  cardTypes?: CardTypeFilter[];
+  /** Whole mana values, any one of them; the top of the curve (7) means 7 or more. Empty or absent means any cost. */
+  manaValues?: number[];
   /** Skip this many results, for a "more" button. Filtered searches only. */
   offset?: number;
+  /** Alphabetical, either way, in place of the best-match or most-played order. Filtered searches only. */
+  sort?: CardSearchSort;
+  /**
+   * Only cards in this collection. A session collection travels in the request, so a search that carries one is sent
+   * in a POST body rather than a URL; an account one is read on the server. Filtered searches only.
+   */
+  ownedOnly?: OwnershipInput;
 }
+
+/** A card type a search can require: the eight card types, plus the legendary supertype. */
+export type CardTypeFilter = CardCategory | 'legendary';
+
+export type CardSearchSort = 'name_asc' | 'name_desc';
 
 export interface TagRef {
   id: TagId;

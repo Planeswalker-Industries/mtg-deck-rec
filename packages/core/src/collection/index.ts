@@ -107,3 +107,4 @@ export function majorSetsNewestFirst(sets: readonly CardSet[]): CardSet[] {
     .toSorted((a, b) => (b.releasedAt ?? '').localeCompare(a.releasedAt ?? '') || a.name.localeCompare(b.name));
 }
 export * from './edit';
+export * from './shortfall';

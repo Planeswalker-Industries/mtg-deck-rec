@@ -18,6 +18,7 @@ const row: CardIndexRow = {
   slug: "swords-to-plowshares",
   type_line: "Instant",
   mana_value: 1,
+  mana_cost: "{W}",
   color_identity: 1, // W
   keywords: [],
   game_changer: false,
@@ -69,6 +70,7 @@ describe("card documents", () => {
       name: "Swords to Plowshares",
       slug: "swords-to-plowshares",
       mana_value: 1,
+      mana_cost: "{W}",
       type_line: "Instant",
       color_identity: 1,
       images: { front: { normal: "https://cards.scryfall.io/normal/front/a.jpg" }, back: null },

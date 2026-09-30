@@ -73,7 +73,7 @@ async function stageFunctionalTags(sql: ReservedSql): Promise<void> {
 async function readCardRows(sql: ReservedSql, ids: readonly number[] | null): Promise<CardIndexRow[]> {
   return sql<CardIndexRow[]>`
     select
-      c.id, c.oracle_id, c.name, c.name_normalized, c.slug, c.type_line, c.mana_value, c.color_identity, c.keywords,
+      c.id, c.oracle_id, c.name, c.name_normalized, c.slug, c.type_line, c.mana_value, c.mana_cost, c.color_identity, c.keywords,
       c.game_changer, c.is_basic_land, c.legal_commander, c.can_be_commander, c.partner_kind, c.partner_qualifier,
       c.copy_limit, c.artist, c.images, c.released_at, c.reference_price_usd, c.reference_price_finish, c.prices_as_of,
       st.first_printed_at, st.staple_score,

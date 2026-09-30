@@ -35,6 +35,7 @@ import type {
 import type { CommanderRequest, CommanderRequestStatus } from '../commander-requests';
 import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
 import { ownedFirst, ownedOnly, rankKey } from '../../scoring/owned';
+import { cardTypes } from '../../scoring/add';
 import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
 import { cardQuantity, setCardQuantity } from '../../collection/edit';
 import {
@@ -662,17 +663,23 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
   };
 
   const catalog: CatalogApi = {
-    async searchCards({ q, commanderEligible, limit = 8, colorIdentity, cardType, manaValue, offset = 0 }) {
+    async searchCards({ q, commanderEligible, limit = 8, colorIdentity, cardTypes: types = [], manaValues = [], offset = 0, sort, ownedOnly }) {
       const needle = q.trim().toLowerCase();
-      const filtered = colorIdentity !== undefined || cardType !== undefined || manaValue !== undefined;
+      const filtered = colorIdentity !== undefined || types.length > 0 || manaValues.length > 0;
+      const inBar = (mv: number, bar: number) => (bar >= CURVE_TOP_MANA_VALUE ? mv >= bar : Math.floor(mv) === bar);
       if (needle.length < 2 && !filtered) return delay(fail('VALIDATION', 'Type at least 2 letters.'));
       const hits = mockCards
         .filter((c) => needle.length < 2 || c.name.toLowerCase().includes(needle))
         .filter((c) => !commanderEligible || isCommanderEligible(c))
         .filter((c) => colorIdentity === undefined || withinIdentity(c, colorIdentity))
-        .filter((c) => cardType === undefined || categoryOf(c.typeLine) === cardType)
-        .filter((c) => manaValue === undefined || (manaValue >= CURVE_TOP_MANA_VALUE ? c.manaValue >= manaValue : Math.floor(c.manaValue) === manaValue))
-        .sort((a, b) => Number(b.name.toLowerCase().startsWith(needle)) - Number(a.name.toLowerCase().startsWith(needle)))
+        .filter((c) => types.every((t) => cardTypes(c.typeLine).includes(t)))
+        .filter((c) => manaValues.length === 0 || manaValues.some((bar) => inBar(c.manaValue, bar)))
+        .filter((c) => ownedOnly === undefined || (ownedIds(ownedOnly)?.has(c.id) ?? true))
+        .sort((a, b) =>
+          sort === undefined
+            ? Number(b.name.toLowerCase().startsWith(needle)) - Number(a.name.toLowerCase().startsWith(needle))
+            : (sort === 'name_asc' ? 1 : -1) * a.name.localeCompare(b.name),
+        )
         .slice(offset, offset + limit);
       return delay(ok(hits), 50);
     },

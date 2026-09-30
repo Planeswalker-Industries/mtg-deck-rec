@@ -4,8 +4,13 @@ import { mailpit, signIn } from "./mailpit";
 /** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */
 const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved deck" }).getByRole("status");
 
-/** Saving a deck opens it in its deckbuilder, at the address it keeps from then on, with nothing left to write. */
+/**
+ * Saving a deck opens it in its deckbuilder, at the address it keeps from then on, with nothing left to write. A new
+ * account owns none of the deck's cards, so the save first asks about adding them to the collection; these checks
+ * save without.
+ */
 async function expectEditor(page: Page) {
+  await page.getByRole("button", { name: "Save without adding" }).click({ timeout: 30_000 });
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
   await expect(page.getByText("All changes saved")).toBeVisible({ timeout: 30_000 });
 }
@@ -244,6 +249,28 @@ test("signed out, the deckbuilder asks you to sign in", async ({ page }) => {
   await page.goto("/decks/some-commander/abcdefgh1234/edit");
   await page.waitForURL(/\/sign-in/);
   expect(new URL(page.url()).searchParams.get("next")).toBe("/decks/some-commander/abcdefgh1234/edit");
+});
+
+test("saving asks to add the cards the collection lacks, and Add & Save adds them", async ({ page, request }) => {
+  const email = `owned-${Date.now()}@test.invalid`;
+  await signIn(page, request, email, "/decks");
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page.getByRole("region", { name: "Recommendations" }).getByRole("button", { name: "Deckbuilder" }).click({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Save deck" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+
+  const prompt = page.getByRole("dialog", { name: "Add these to your collection?" });
+  await expect(prompt.getByText("Sol Ring")).toBeVisible({ timeout: 30_000 });
+  await prompt.getByRole("button", { name: "Add & Save" }).click();
+  await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
+
+  // The new account now owns the deck's cards.
+  await page.goto("/collection");
+  await expect(page.getByText("Sol Ring").first()).toBeVisible({ timeout: 30_000 });
 });
 
 test("saving straight after a deckbuilder edit saves the edit", async ({ page, request }) => {

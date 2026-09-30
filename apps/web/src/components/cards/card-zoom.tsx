@@ -49,6 +49,7 @@ export function ZoomableCard({
   className,
   trigger = "tap",
   face = "front",
+  hover = true,
 }: {
   card: CardSummary;
   children: ReactNode;
@@ -56,6 +57,12 @@ export function ZoomableCard({
   trigger?: "tap" | "icon";
   /** Which face to enlarge, for a double-faced card shown on its back. */
   face?: "front" | "back";
+  /**
+   * Whether a resting mouse opens it. Off inside a scrolling panel (the deckbuilder's search results): the layer
+   * locks page scroll, the scrollbar under the pointer vanishes, and the pointer never "leaves", so the card stayed up
+   * until Escape. A click or tap still opens it.
+   */
+  hover?: boolean;
 }) {
   /**
    * How it was opened decides how it closes. A hovered card follows the mouse away, so its enlarged copy lets the
@@ -112,7 +119,7 @@ export function ZoomableCard({
       if (openBy === "hover") setOpen(null);
     },
     onPointerEnter: (e: PointerEvent) => {
-      if (e.pointerType !== "mouse" || open || e.buttons !== 0) return;
+      if (!hover || e.pointerType !== "mouse" || open || e.buttons !== 0) return;
       clearTimer();
       timer.current = window.setTimeout(() => setOpen("hover"), HOVER_DELAY_MS);
     },
@@ -135,7 +142,12 @@ export function ZoomableCard({
             e.preventDefault();
             setOpen("press");
           }}
-          className={cn("cursor-zoom-in focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", className)}
+          className={cn(
+            // A pressable card: blue focus ring and a slight lift under a mouse, never blue on the card itself.
+            "cursor-zoom-in transition-transform duration-180 ease-table [@media(hover:hover)]:hover:-translate-y-0.5",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            className,
+          )}
           {...hoverHandlers}
           onClick={() => {
             clearTimer();

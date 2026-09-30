@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "cn";
 import Image from "next/image";
 import Link from "next/link";
@@ -31,6 +31,7 @@ export function DeckBar({
   collectionMode,
   onCollectionModeChange,
   onEditDecklist,
+  saveSlot,
 }: {
   analysis: DeckAnalysis;
   context: RecContext;
@@ -41,7 +42,13 @@ export function DeckBar({
   onCollectionModeChange: (mode: CollectionMode) => void;
   /** Opens the decklist box. Left out while the box is already open. */
   onEditDecklist?: (() => void) | undefined;
+  /**
+   * The Deckbuilder's bar: the colours move up beside the name, the card count goes (the builder's stats line has it),
+   * and this (Save deck) takes the collection select's place, which moves into the builder's search panel.
+   */
+  saveSlot?: ReactNode;
 }) {
+  const building = saveSlot !== undefined;
   const commanders = analysis.commanderKey.commanders;
   const art = commanders[0]?.images?.front.artCrop;
   const bar = useRef<HTMLDivElement>(null);
@@ -80,7 +87,7 @@ export function DeckBar({
       ) : (
         <span className="row-span-2" />
       )}
-      {/* The deck's issues sit beside the name on phones, as a chip; wider screens list them above the bar. */}
+      {/* The deck's issues sit beside the name as a chip, on every screen; in the Deckbuilder the colours come first. */}
       <div className="flex min-w-0 items-center gap-2">
         <h2 className="truncate font-heading text-lg leading-tight font-semibold tracking-tight sm:text-xl">
           {analysis.commanderKey.slug && analysis.commanderKey.deckCount > 0 ? (
@@ -94,6 +101,7 @@ export function DeckBar({
             name
           )}
         </h2>
+        {building && <ColorIdentity identity={analysis.colorIdentity} className="shrink-0" />}
         <DeckIssuesChip issues={analysis.issues} />
       </div>
       <Select value={String(context.bracket)} onValueChange={(value) => onBracketChange(Number(value) as Bracket)}>
@@ -111,15 +119,21 @@ export function DeckBar({
         </SelectContent>
       </Select>
       <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-        <ColorIdentity identity={analysis.colorIdentity} />
-        <span className="font-mono">{cardCount} cards</span>
+        {!building && (
+          <>
+            <ColorIdentity identity={analysis.colorIdentity} />
+            <span className="font-mono">{cardCount} cards</span>
+          </>
+        )}
         {onEditDecklist && (
           <Button type="button" size="icon-sm" variant="ghost" aria-label="Edit decklist" title="Edit decklist" onClick={onEditDecklist}>
             <Pencil aria-hidden className="size-3.5" />
           </Button>
         )}
       </p>
-      {collectionMode === null ? (
+      {building ? (
+        <div className="justify-self-end">{saveSlot}</div>
+      ) : collectionMode === null ? (
         <Link href="/collection/import" className={cn(TEXT_LINK, "justify-self-end text-xs font-semibold")}>
           Add collection
         </Link>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADD_WEIGHTS, cardCategory, roleGap, roleShortfalls } from './add';
+import { ADD_WEIGHTS, cardCategory, cardTypes, roleGap, roleShortfalls } from './add';
 import { blendScore } from './swap';
 
 describe('cardCategory', () => {
@@ -12,6 +12,18 @@ describe('cardCategory', () => {
     expect(cardCategory('Sorcery // Land')).toBe('sorcery');
     expect(cardCategory('Enchantment — Aura')).toBe('enchantment');
     expect(cardCategory('Legendary Land')).toBe('land');
+  });
+});
+
+describe('cardTypes', () => {
+  it('lists every card type on the front face, subtypes and back face ignored', () => {
+    expect(cardTypes('Artifact Creature — Golem')).toEqual(['creature', 'artifact']);
+    expect(cardTypes('Land Creature — Forest Dryad')).toEqual(['creature', 'land']);
+    expect(cardTypes('Creature — Human Sorcerer')).toEqual(['creature']);
+    expect(cardTypes('Sorcery // Land')).toEqual(['sorcery']);
+    expect(cardTypes('Legendary Enchantment Artifact')).toEqual(['legendary', 'artifact', 'enchantment']);
+    expect(cardTypes('Legendary Creature — Angel // Legendary Sorcery')).toEqual(['legendary', 'creature']);
+    expect(cardTypes('Instant — Legendary')).toEqual(['instant']);
   });
 });
 

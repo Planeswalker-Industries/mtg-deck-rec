@@ -479,12 +479,48 @@ func TestCardsSearchCategoryAndManaValue(t *testing.T) {
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&type=creature&mv=3", readToken, "")
 	got := fake.searches[0].FilterBy
-	if !strings.Contains(got, "card_category:=creature") {
+	if !strings.Contains(got, "card_types:=creature") {
 		t.Fatalf("type filter missing: %q", got)
 	}
 	// mana_value is a float, so a whole-number bar is a half-open range rather than an equality.
-	if !strings.Contains(got, "mana_value:>=3 && mana_value:<4") {
+	if !strings.Contains(got, "(mana_value:>=3 && mana_value:<4)") {
 		t.Fatalf("mana bar wrong: %q", got)
+	}
+}
+
+func TestCardsSearchNameSortReplacesRanking(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&type=legendary,creature&sort=name_desc", readToken, "")
+	got := fake.searches[0]
+	if got.SortBy != "name:desc" {
+		t.Fatalf("Z-A must replace the browse order: %q", got.SortBy)
+	}
+	if !strings.Contains(got.FilterBy, "card_types:=legendary && card_types:=creature") {
+		t.Fatalf("legendary is a type filter like the others: %q", got.FilterBy)
+	}
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=angel&colors=WB&builder=1&sort=name_asc", readToken, "")
+	if fake.searches[1].SortBy != "name:asc" {
+		t.Fatalf("A-Z must replace the best-match order: %q", fake.searches[1].SortBy)
+	}
+}
+
+func TestCardsSearchTypesNarrowManaValuesWiden(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&type=creature,artifact&mv=2,4,7", readToken, "")
+	got := fake.searches[0].FilterBy
+	// Every type named must be on the card: two clauses joined by the outer &&.
+	if !strings.Contains(got, "card_types:=creature && card_types:=artifact") {
+		t.Fatalf("types must all apply: %q", got)
+	}
+	// Any bar will do: one clause of alternatives.
+	want := "((mana_value:>=2 && mana_value:<3) || (mana_value:>=4 && mana_value:<5) || mana_value:>=7)"
+	if !strings.Contains(got, want) {
+		t.Fatalf("mana bars must be alternatives: %q", got)
 	}
 }
 
@@ -533,7 +569,7 @@ func TestCardsSearchRejectsBadFilters(t *testing.T) {
 	fake := newFakeTypesense(t)
 	app := newApp(t, fake)
 
-	for _, query := range []string{"q=sol&type=wizard", "q=sol&mv=99", "q=sol&mv=abc", "q=&colors=WB&offset=100000"} {
+	for _, query := range []string{"q=sol&type=wizard", "q=sol&type=creature,wizard", "q=sol&mv=99", "q=sol&mv=abc", "q=sol&mv=2,", "q=sol&sort=price", "q=&colors=WB&offset=100000"} {
 		res, _ := do(t, app, http.MethodGet, "/v1/cards/search?"+query, readToken, "")
 		if res.StatusCode != http.StatusBadRequest {
 			t.Fatalf("%s: got %d, want 400", query, res.StatusCode)

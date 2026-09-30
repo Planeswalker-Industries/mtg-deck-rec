@@ -10,8 +10,8 @@ import { PHONE_HIT_AREA } from "@/lib/constants";
 const issueCount = (n: number) => `${n} deck issue${n === 1 ? "" : "s"}`;
 
 /**
- * `issuesInDeckBar`: the deck bar shows the issues as a chip on phones (`DeckIssuesChip`), so the collapsed list here
- * is for wider screens only.
+ * `issuesInDeckBar`: the deck bar shows the issues as a chip (`DeckIssuesChip`), so the collapsed list here is only
+ * for pages without the bar.
  */
 export function ResolutionIssues({
   unresolved,
@@ -22,10 +22,11 @@ export function ResolutionIssues({
   issues: DeckIssue[];
   issuesInDeckBar?: boolean;
 }) {
-  if (unresolved.length === 0 && issues.length === 0) return null;
+  const listIssues = issues.length > 0 && !issuesInDeckBar;
+  if (unresolved.length === 0 && !listIssues) return null;
 
   return (
-    <div className={cn("flex flex-col gap-3", issuesInDeckBar && unresolved.length === 0 && "max-sm:hidden")}>
+    <div className="flex flex-col gap-3">
       {/* Unmatched lines block recommendations, so they stay expanded. */}
       {unresolved.length > 0 && (
         <Alert variant="destructive">
@@ -45,8 +46,8 @@ export function ResolutionIssues({
         </Alert>
       )}
       {/* Deck issues are informational; collapsed so cards stay near the top. */}
-      {issues.length > 0 && (
-        <details className={cn("rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm", issuesInDeckBar && "max-sm:hidden")}>
+      {listIssues && (
+        <details className="rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm">
           <summary className="cursor-pointer font-semibold marker:text-muted-foreground">{issueCount(issues.length)}</summary>
           <IssueList issues={issues} className="mt-2" />
         </details>
@@ -66,8 +67,9 @@ function IssueList({ issues, className }: { issues: DeckIssue[]; className?: str
 }
 
 /**
- * Deck issues as a chip in the deck bar on phones: the count behind a warning sign, opening the list in a bottom
- * sheet. A full-width row above the bar cost the swipe cards their height.
+ * Deck issues as a chip in the deck bar: the count behind a warning sign, opening the list in a bottom sheet. A
+ * full-width row above the bar cost the swipe cards their height on phones, and the same chip on every screen is one
+ * look for one thing.
  */
 export function DeckIssuesChip({ issues }: { issues: DeckIssue[] }) {
   if (issues.length === 0) return null;
@@ -79,7 +81,8 @@ export function DeckIssuesChip({ issues }: { issues: DeckIssue[] }) {
         title={label}
         className={cn(
           PHONE_HIT_AREA,
-          "inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-seam bg-sleeve px-2 font-mono text-xs text-foreground sm:hidden",
+          "inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-seam bg-sleeve px-2 font-mono text-xs text-foreground transition-colors",
+          "hover:border-primary/60 hover:text-primary focus-visible:text-primary",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         )}
       >

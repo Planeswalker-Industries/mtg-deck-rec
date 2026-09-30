@@ -1,4 +1,4 @@
-import type { CardCategory, CardSummary } from "@mtg/core/contract";
+import type { CardSearchSort, CardSummary, CardTypeFilter } from "@mtg/core/contract";
 import { CURVE_TOP_MANA_VALUE } from "@mtg/core/journey";
 import { normalizeName } from "@mtg/core/parse";
 import { cardRowFromDocument, colorsToMask } from "@mtg/core/search";
@@ -21,6 +21,7 @@ export type SearchSource =
   | "index" // Typesense, through the search API
   | "index-filtered" // the same, answering the deckbuilder's colour/type/mana search or its browse
   | "postgres-filtered" // the deckbuilder's search, fallen back to search_cards_filtered
+  | "postgres-owned" // the deckbuilder's search limited to a collection, which only Postgres answers
   | "postgres-unconfigured" // no SEARCH_API_URL or SEARCH_API_TOKEN in this environment
   | "postgres-index-failed" // the index is configured but did not answer; the warning is in the server log
   | "empty"; // the query was too short to run
@@ -36,25 +37,37 @@ const FILTERED_DEFAULT_LIMIT = 20;
 /** A name shorter than this is not a name search: the filters alone decide, and the deckbuilder browses. */
 const MIN_QUERY_CHARS = 2;
 
-export async function searchCards(
-  db: PublicClient,
-  input: {
-    q: string;
-    commanderEligible?: boolean | undefined;
-    limit?: number | undefined;
-    colorIdentity?: string | undefined;
-    cardType?: CardCategory | undefined;
-    manaValue?: number | undefined;
-    offset?: number | undefined;
-  },
-): Promise<SearchResult> {
+/** A card search as the route hands it over: a collection already turned into its card ids. */
+export interface CardSearchQuery {
+  q: string;
+  commanderEligible?: boolean | undefined;
+  limit?: number | undefined;
+  colorIdentity?: string | undefined;
+  cardTypes?: CardTypeFilter[] | undefined;
+  manaValues?: number[] | undefined;
+  offset?: number | undefined;
+  sort?: CardSearchSort | undefined;
+  /** Only these cards: the collection the search is limited to. */
+  ownedCardIds?: readonly number[] | undefined;
+}
+
+export async function searchCards(db: PublicClient, input: CardSearchQuery): Promise<SearchResult> {
   const { q, commanderEligible = false, limit = 8 } = input;
   const query = normalizeName(q);
   // The deckbuilder's search: narrowed by colours, type or mana value, or paged past the first screen. It browses by
   // play rate when there is no name, so unlike a plain search an empty query is a real question here.
   const filtered =
-    input.colorIdentity !== undefined || input.cardType !== undefined || input.manaValue !== undefined || (input.offset ?? 0) > 0;
+    input.colorIdentity !== undefined ||
+    (input.cardTypes?.length ?? 0) > 0 ||
+    (input.manaValues?.length ?? 0) > 0 ||
+    (input.offset ?? 0) > 0 ||
+    input.sort !== undefined ||
+    input.ownedCardIds !== undefined;
   if (!filtered && query.length < 2) return { cards: [], source: "empty" };
+
+  // A collection can run to tens of thousands of ids, which no index filter should carry; Postgres matches them as a
+  // hashed set. Owned searches are private and uncached, so they are few.
+  if (input.ownedCardIds !== undefined) return { cards: await searchFiltered(db, { ...input, query }), source: "postgres-owned" };
 
   // The index answers with whole documents, so a hit needs no second round trip for the card rows. How results are
   // ranked lives in the search API, next to the engine it has to be tuned against; see its cardsSearch handler.
@@ -65,9 +78,10 @@ export async function searchCards(
       limit: filtered ? (input.limit ?? FILTERED_DEFAULT_LIMIT) : limit,
       builder: filtered,
       ...(input.colorIdentity !== undefined ? { colorIdentity: input.colorIdentity } : {}),
-      ...(input.cardType !== undefined ? { cardType: input.cardType } : {}),
-      ...(input.manaValue !== undefined ? { manaValue: input.manaValue } : {}),
+      ...(input.cardTypes?.length ? { cardTypes: input.cardTypes } : {}),
+      ...(input.manaValues?.length ? { manaValues: input.manaValues } : {}),
       ...(input.offset !== undefined ? { offset: input.offset } : {}),
+      ...(input.sort !== undefined ? { sort: input.sort } : {}),
     }),
   );
   if (indexed) {
@@ -100,31 +114,24 @@ export async function searchCards(
 }
 
 /**
- * The deckbuilder's search in Postgres: a name (optional) narrowed by colours, type and mana value, or with no name a
+ * The deckbuilder's search in Postgres: a name (optional) narrowed by colours, card types (all) and mana values (any), or with no name a
  * browse of the filtered cards by play rate.
  *
- * This is now the **fallback**. The index gained `card_category` and serves this search first; `search_cards_filtered`
- * is what answers when there is no index configured, or the one there is did not answer.
+ * This is now the **fallback**, except for a search limited to a collection, which only runs here. The index serves the
+ * rest first; `search_cards_filtered` answers when there is no index configured, or the one there is did not answer.
  */
-async function searchFiltered(
-  db: PublicClient,
-  input: {
-    query: string;
-    limit?: number | undefined;
-    colorIdentity?: string | undefined;
-    cardType?: CardCategory | undefined;
-    manaValue?: number | undefined;
-    offset?: number | undefined;
-  },
-): Promise<CardSummary[]> {
+async function searchFiltered(db: PublicClient, input: Omit<CardSearchQuery, "q"> & { query: string }): Promise<CardSummary[]> {
   const { data, error } = await db.rpc("search_cards_filtered", {
     p_query: input.query,
     p_identity_mask: input.colorIdentity === undefined ? ALL_COLORS_MASK : colorsToMask([...input.colorIdentity]),
-    p_category: input.cardType ?? undefined,
-    p_mana_value: input.manaValue ?? undefined,
+    p_card_types: input.cardTypes ?? [],
+    p_mana_values: input.manaValues ?? [],
     p_mana_value_top: CURVE_TOP_MANA_VALUE,
     p_limit: input.limit ?? FILTERED_DEFAULT_LIMIT,
     p_offset: input.offset ?? 0,
+    p_commander_only: input.commanderEligible ?? false,
+    ...(input.ownedCardIds !== undefined ? { p_owned_ids: [...input.ownedCardIds] } : {}),
+    ...(input.sort !== undefined ? { p_sort: input.sort } : {}),
   });
   if (error) throw new Error(`Card search failed: ${error.message}`);
   const ids = (data ?? []).map((r) => r.card_id);

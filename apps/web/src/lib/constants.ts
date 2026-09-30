@@ -17,6 +17,14 @@ export const COLLECTION_MAX_IMPORT_ROWS = 50_000;
 export const DECK_BAR_HEIGHT_VAR = "--deck-bar-height";
 
 /**
+ * `/deck?start=build` opens the deck tool on a commander picker instead of the decklist box; the picked commander
+ * lands in the Deckbuilder. The links that start a deck from nothing ("Build a deck") use it.
+ */
+export const DECK_START_PARAM = "start";
+export const DECK_START_BUILD = "build";
+export const BUILD_DECK_HREF = `/deck?${DECK_START_PARAM}=${DECK_START_BUILD}`;
+
+/**
  * A touch target of at least 44 px on phones, drawn by an invisible pseudo-element centred on the control, so compact
  * controls keep their look and layout. `relative` anchors it; a caller's own position class still wins. Use the
  * `::before` form where the control's `::after` is taken (the line tabs draw their underline with it).

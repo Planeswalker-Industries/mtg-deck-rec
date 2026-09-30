@@ -23,7 +23,7 @@ const SPOKEN: Record<string, string> = {
 };
 
 /** `W/U` → "white or blue", `B/P` → "Phyrexian black", `T` → "tap". */
-function spoken(symbol: string): string {
+export function spoken(symbol: string): string {
   const parts = symbol.split("/");
   if (parts[1] === "P") return `${SPOKEN.P} ${SPOKEN[parts[0] ?? ""] ?? parts[0]}`;
   return parts.map((part) => SPOKEN[part] ?? part).join(" or ");
