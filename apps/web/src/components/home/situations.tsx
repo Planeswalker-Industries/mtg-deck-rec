@@ -56,7 +56,8 @@ function SituationCell({ said, action, href, className }: (typeof SITUATIONS)[nu
           <span aria-hidden className={cn(FACE, "font-drama text-lg text-balance text-foreground italic")}>
             &ldquo;{said}&rdquo;
           </span>
-          <span aria-hidden className={cn(FACE, "rotate-y-180 gap-1.5 bg-muted text-base font-semibold text-primary")}>
+          {/* The back is the action: the whole cell fills blue with dark text, like the site's primary button. */}
+          <span aria-hidden className={cn(FACE, "rotate-y-180 gap-1.5 bg-primary text-base font-semibold text-primary-foreground")}>
             <Plus className="size-5 shrink-0" strokeWidth={2.5} />
             {action}
           </span>
