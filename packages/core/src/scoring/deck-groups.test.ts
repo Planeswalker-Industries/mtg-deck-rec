@@ -7,6 +7,7 @@ const card = (id: number, name: string, typeLine: string, keywords: string[] = [
   oracleId: `oracle-${id}` as CardSummary['oracleId'],
   name,
   slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+  manaCost: '',
   manaValue: 1,
   typeLine,
   colorIdentity: 'W',

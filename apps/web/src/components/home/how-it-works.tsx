@@ -6,11 +6,11 @@ import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { StepsCarousel } from "./steps-carousel";
 
-const HOW_IT_WORKS_HEADING = "Go through your deck like a friend would";
+const HOW_IT_WORKS_HEADING = "No more singles!";
 
-/** Beside the steps: the three passes, told with the cards a real Liesa deck runs into. */
+/** Beside the steps: who it is for and the three ways in, the same three the "Sound familiar?" ribbon offers. */
 const HOW_IT_WORKS_BLURB =
-  "We go through your list card by card. A stray Lightning Bolt in an Orzhov deck comes out, the slots fill with what Liesa decks actually play, and the Smuggler's Share in your binder stands in for the Smothering Tithe you'd have to buy.";
+  "If you're sick of overpriced decklists and just want to build your best deck with the cards you've got, it's as easy as pasting a decklist, choosing a commander, or uploading your collection.";
 
 /** Wide screens get the higher-quality file; the recordings share one pixel size, so it is the colours that differ. */
 const HI_RES_MEDIA = "(min-width: 1024px)";
@@ -24,19 +24,16 @@ interface StepMedia {
   height: number;
 }
 
-/** Recordings of the app itself, one per step, so each step shows the screen it describes. */
 /**
- * The three steps of the deck tool, each titled by its verb in capitals and the job's own colour (as in the tool's
- * stepper) and shown with the recording of that step. Capitals come from CSS, so a screen reader says "cut", not
- * "C-U-T".
+ * The three steps of the deck tool, each a recording of the app at that step with its verb as a caption: capitals and
+ * the job's own colour, as in the tool's stepper. Capitals come from CSS, so a screen reader says "cut", not "C-U-T".
  */
-const STEPS: { step: number; verb: string; rest: string; tone: string; desc: string; media: StepMedia }[] = [
+const STEPS: { step: number; verb: string; rest: string; tone: string; media: StepMedia }[] = [
   {
     step: 1,
     verb: "Cut",
     rest: "the junk",
     tone: "text-cut",
-    desc: "Banned cards, strays outside your colors and the clunkers your commander's decks never run. Swipe to cut or keep.",
     media: { src: "/cut_gif.gif", hiSrc: "/cut_gif_hi.gif", width: 566, height: 346 },
   },
   {
@@ -44,7 +41,6 @@ const STEPS: { step: number; verb: string; rest: string; tone: string; desc: str
     verb: "Add",
     rest: "what works",
     tone: "text-add",
-    desc: "Fill the open slots with the ramp, draw and removal that decks with your commander actually play.",
     media: { src: "/add.png", width: 427, height: 333 },
   },
   {
@@ -52,7 +48,6 @@ const STEPS: { step: number; verb: string; rest: string; tone: string; desc: str
     verb: "Swap",
     rest: "in your collection",
     tone: "text-replace",
-    desc: "Trade expensive singles for cards that do the same job and are already in your binder.",
     media: { src: "/swipe_gif.gif", hiSrc: "/swipe_gif_hi.gif", width: 374, height: 378 },
   },
 ];
@@ -84,54 +79,32 @@ function StepRecording({ media }: { media: StepMedia }) {
 type Step = (typeof STEPS)[number];
 
 /**
- * One step: its number, title and sentence, and the recording. `textFirst` puts the words above the recording (the
- * phone carousel, where the title says which step you have swiped to); otherwise the recording leads.
+ * One step: the recording, with the step's title as a slim caption along its foot (about a tenth of the card). No
+ * edge of its own; the rounded corners come from the panel clipping the recording and caption.
  */
-function StepCard({
-  step,
-  textFirst = false,
-  className,
-  role,
-}: {
-  step: Step;
-  textFirst?: boolean;
-  className?: string;
-  role?: string;
-}) {
-  const text = (
-    <div className="flex gap-2 px-4 py-3.5">
-      <span aria-hidden className="font-mono text-base leading-snug text-muted-foreground">
-        {step.step}.
-      </span>
-      <div>
-        <h3 className="text-base leading-snug font-semibold">
-          <span className={cn("uppercase", step.tone)}>{step.verb}</span> {step.rest}
-        </h3>
-        <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
-      </div>
-    </div>
-  );
-  // The recording is illustration; the heading and sentence carry the meaning.
-  const recording = (
-    <div
-      aria-hidden
-      className={cn("relative aspect-[4/3] border-seam bg-black/30", textFirst ? "mt-auto border-t" : "border-b")}
-    >
-      <StepRecording media={step.media} />
-    </div>
-  );
+function StepCard({ step, className, role }: { step: Step; className?: string; role?: string }) {
   return (
-    <Panel role={role} padding="none" surface="sleeve" className={cn("flex flex-col overflow-hidden", className)}>
-      {textFirst ? text : recording}
-      {textFirst ? recording : text}
+    <Panel role={role} padding="none" surface="sleeve" className={cn("@container flex flex-col overflow-hidden border-transparent", className)}>
+      {/* The recording is illustration; the caption carries the meaning. */}
+      <div aria-hidden className="relative aspect-[5/4] bg-black/30">
+        <StepRecording media={step.media} />
+      </div>
+      {/* Always one line, centred in whatever height the card is given, so no card grows a gap under its caption. The
+          size of the "Sound familiar?" heading where the card has room for "SWAP in your collection", a step or two
+          down the scale where it doesn't (the three cards are always the same width, so they always match). */}
+      <h3 className="flex min-w-0 flex-1 items-center justify-center px-2 py-2 font-heading text-base leading-tight font-semibold tracking-tight @[14rem]:text-lg @[18rem]:px-3 @[18rem]:text-xl">
+        <span className="truncate">
+          <span className={cn("uppercase", step.tone)}>{step.verb}</span> {step.rest}
+        </span>
+      </h3>
     </Panel>
   );
 }
 
 /**
- * The three steps, each showing the app at that step. The steps are a real sequence, hence the numbers and chevrons.
- * Wide screens lay them in a row; phones get a swipeable carousel with the words on top. Only one of the two is
- * displayed, so assistive tech and the page's images see one set.
+ * The three steps, each showing the app at that step. The steps are a real sequence, hence the chevrons. Wide
+ * screens lay them in a row; phones get a swipeable carousel. Only one of the two is displayed, so assistive tech and
+ * the page's images see one set.
  */
 export function HowItWorks() {
   return (
@@ -149,12 +122,12 @@ export function HowItWorks() {
       <div className="md:hidden">
         <StepsCarousel labels={STEPS.map((step) => `Step ${step.step}: ${step.verb} ${step.rest}`)}>
           {STEPS.map((step) => (
-            <StepCard key={step.step} step={step} textFirst className="h-full" />
+            <StepCard key={step.step} step={step} className="h-full" />
           ))}
         </StepsCarousel>
       </div>
 
-      <div role="list" className="hidden md:flex md:flex-row md:items-stretch md:gap-1.5">
+      <div role="list" className="hidden md:flex md:flex-row md:items-stretch md:gap-1.5 md:self-start">
         {STEPS.map((step, i) => (
           <Fragment key={step.step}>
             <StepCard step={step} className="flex-1" role="listitem" />

@@ -5,7 +5,8 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, List } from "lucide-react";
-import type { DeckAnalysis } from "@mtg/core/contract";
+import type { CardSummary, DeckAnalysis } from "@mtg/core/contract";
+import { decklistFor } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,10 @@ import { useCollectionSource } from "@/components/collection/use-collection-sour
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
-import { TEXT_LINK } from "@/lib/constants";
+import { CommanderPicker } from "@/components/rater/commander-picker";
+import { DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
+import { getApis } from "@/lib/api/client";
+import { RESUME_PARAM, RESUME_SAVE, takePendingSave } from "@/lib/pending-save";
 
 const PLACEHOLDER = `Commander
 1 Liesa, Forgotten Archangel
@@ -69,7 +73,8 @@ function Segmented<T extends string>({
           className={cn(
             "rounded-md px-4 py-1 text-sm font-normal transition-colors",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            value === o.value ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
+            // The chosen option reads as pressed: the primary fill with dark text, like the main action.
+            value === o.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary",
           )}
         >
           {o.label}
@@ -110,9 +115,13 @@ const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join("
 export function DeckTool() {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
   // ?commander=<slug> opens a featured deck from the landing page carousel.
+  // ?start=build starts a deck from a commander picked by name, in the Deckbuilder.
   const searchParams = useSearchParams();
   const openCode = searchParams.get("deck");
   const commanderSlug = searchParams.get("commander");
+  const buildStart = searchParams.get(DECK_START_PARAM) === DECK_START_BUILD;
+  // ?resume=save finishes a save a signed-out player started, now that they have signed in.
+  const resumeSave = searchParams.get(RESUME_PARAM) === RESUME_SAVE;
   const { source } = useCollectionSource();
   const collectionLoaded = source.kind !== "loading";
   /**
@@ -144,6 +153,10 @@ export function DeckTool() {
   const [deckFile, setDeckFile] = useState<{ name: string; text: string } | null>(null);
   const [fileTextShown, setFileTextShown] = useState(false);
   const restoreStarted = useRef(false);
+  const resumeStarted = useRef(false);
+  /** Until the resumed save settles; shown only once the visitor is known to be signed in. */
+  const [resuming, setResuming] = useState(resumeSave);
+  const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
   const { analysis, context } = tool;
   const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut });
   useEffect(() => {
@@ -206,7 +219,38 @@ export function DeckTool() {
     // checkLookup is rebuilt with every render, like tool and lookup; restoreStarted is what keeps this to one run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, lookup, collectionLoaded, openCode, commanderSlug]);
+  /*
+   * Back from signing in to save: the deck they asked to save was kept in this browser, so it is saved to the account
+   * now and opened in its editor. Their collection needs nothing here: a browser collection moves to the account on
+   * its own at sign-in. Waits until the collection source knows they are signed in; a player who came back signed out
+   * keeps the stash for their next try.
+   */
+  useEffect(() => {
+    if (!resumeSave || resumeStarted.current || source.kind === "loading") return;
+    if (source.kind !== "account" && !source.signedIn) return;
+    resumeStarted.current = true;
+    const pending = takePendingSave();
+    void (
+      pending
+        ? getApis().actions.saveDeck({
+            name: pending.name,
+            deck: pending.deck,
+            isPublic: true,
+            ...(pending.bracket === null ? {} : { bracket: pending.bracket }),
+            ...(pending.original ? { original: pending.original } : {}),
+          })
+        : Promise.resolve(null)
+    ).then((r) => {
+      setResuming(false);
+      if (!r) return;
+      if (r.ok) router.replace(`/decks/deck/${r.data.code}/edit` as Route);
+      else setOpenError(`Couldn't save your deck: ${r.error.message}`);
+    });
+  }, [resumeSave, source, router]);
+
   const showInput = editing || !analysis;
+  // Building from nothing asks for a commander in place of the decklist box, until there is a deck to build on.
+  const showPicker = buildStart && !analysis;
   // The chip stands for the file only while the box still holds what the file put there: an edit, the sample deck or
   // Clear all make it a plain decklist again.
   const fileInBox = deckFile !== null && deckFile.text === tool.text ? deckFile : null;
@@ -269,6 +313,21 @@ export function DeckTool() {
   }
 
   /**
+   * Starts a deck from one commander and opens it in the Deckbuilder. It is a new deck, so an open account deck is let
+   * go first rather than overwritten, and the cuts wait for Upgrade: a one-card deck has nothing to cut.
+   */
+  async function buildFrom(commander: CardSummary) {
+    editorHandle.current?.discard();
+    if (tool.openDeck) tool.closeSavedDeck();
+    const text = decklistFor({ commanders: [commander.id], cards: [] }, () => commander.name);
+    const outcome = await tool.submit({ text, bracketOverride: null, importedFrom: null }, { recs: false });
+    if (!outcome.parsed) return;
+    setEditing(false);
+    setMode("edit");
+    checkLookup(outcome.analysis);
+  }
+
+  /**
    * Ends a journey round from Review. Save and Re-analyze put the result in the decklist and analyze it; Start over goes
    * back to the deck the player brought. A new analysis starts a new round at Cut. Save then opens the editor: an open
    * account deck has just been written back by the analysis, and a deck that isn't saved yet gets the name form.
@@ -299,7 +358,29 @@ export function DeckTool() {
       {tool.openDeck && (
         <OpenDeckBar deck={tool.openDeck} onClose={tool.closeSavedDeck} />
       )}
-      {showInput ? (
+      {showPicker ? (
+        <section aria-labelledby="deck-build-heading" className="flex flex-col gap-4">
+          <div>
+            <h1 id="deck-build-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
+              Build a deck
+            </h1>
+            <p className="mt-2 max-w-prose text-muted-foreground">
+              Pick your commander, then add cards in the deckbuilder. Have a list already?{" "}
+              <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
+                Paste a decklist
+              </Link>
+              .
+            </p>
+          </div>
+          {tool.parse.status === "loading" ? (
+            <ShuffleDeck label="Setting up your deck" />
+          ) : (
+            <div className="max-w-xl">
+              <CommanderPicker autoFocus onPick={(card) => void buildFrom(card)} />
+            </div>
+          )}
+        </section>
+      ) : showInput ? (
         <section aria-labelledby="deck-input-heading" className="flex flex-col gap-4">
           <div>
             <h1 id="deck-input-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
@@ -413,6 +494,11 @@ export function DeckTool() {
           {!analysis && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
         </section>
       ) : null}
+      {resuming && signedIn && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Saving your deck to your new account…
+        </p>
+      )}
       {openError && (
         <p role="alert" className="text-sm text-destructive">
           {openError}
@@ -445,6 +531,28 @@ export function DeckTool() {
             collectionMode={tool.collectionMode}
             onCollectionModeChange={tool.changeCollectionMode}
             onEditDecklist={showInput ? undefined : () => void editDecklist()}
+            // Saving is asked for, never automatic: a new deck is public. The Deckbuilder saves from the bar; Upgrade
+            // saves from its Review step, which brings the player here with the name form open. An open deck already
+            // writes back on its own (and edits in its own editor).
+            saveSlot={
+              mode === "edit" && !tool.openDeck ? (
+                <SaveDeckButton
+                  key={saveAsked ? "asked" : "idle"}
+                  analysis={analysis}
+                  bracket={tool.bracketOverride}
+                  onSaved={(deck) => {
+                    setSaveAsked(false);
+                    tool.trackSavedDeck(deck);
+                    // Saving opens the deck in its deckbuilder, at the address it keeps from now on.
+                    router.push(editorUrl(deck.code));
+                  }}
+                  defaultOpen={saveAsked}
+                  original={tool.original}
+                  beforeSave={async () => (editorHandle.current ? editorHandle.current.flush() : null)}
+                  collection={source}
+                />
+              ) : undefined
+            }
           />
           <CommanderLookupBar lookup={lookup} />
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -470,25 +578,6 @@ export function DeckTool() {
                   onChange={changeView}
                 />
               </div>
-            )}
-            {/* Saving is asked for, never automatic: a new deck is public. Upgrade saves from its Review step, which
-                brings the player here with the name form open; the deckbuilder saves from this slot. An open deck
-                already writes back on its own. */}
-            {mode === "edit" && !tool.openDeck && (
-              <SaveDeckButton
-                key={saveAsked ? "asked" : "idle"}
-                analysis={analysis}
-                bracket={tool.bracketOverride}
-                onSaved={(deck) => {
-                  setSaveAsked(false);
-                  tool.trackSavedDeck(deck);
-                  // Saving opens the deck in its deckbuilder, at the address it keeps from now on.
-                  router.push(editorUrl(deck.code));
-                }}
-                defaultOpen={saveAsked}
-                original={tool.original}
-                beforeSave={async () => (editorHandle.current ? editorHandle.current.flush() : null)}
-              />
             )}
           </div>
           {mode === "upgrade" ? (
@@ -536,6 +625,12 @@ export function DeckTool() {
               key={tool.originText ?? "deck"}
               tool={tool}
               handleRef={editorHandle}
+              collection={{
+                mode: tool.collectionMode,
+                onChange: tool.changeCollectionMode,
+                // Owned only limits the search as well as the replacements; the ownership is what the tool already sends.
+                ownedOnly: tool.collectionMode === "only" ? (context.ownership ?? undefined) : undefined,
+              }}
               onCommitted={(committed) => {
                 // A new commander from the deckbuilder gets the same deck lookup offer as a pasted one.
                 if (committed && commandersOf(committed) !== lookupCheckedFor.current) checkLookup(committed);

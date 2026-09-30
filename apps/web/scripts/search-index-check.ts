@@ -125,7 +125,7 @@ async function main() {
     // The deckbuilder's search is the newest path onto the index, and the one that used to be Postgres-only. It has
     // to fall back like every other read: same results, and a source that says which side answered.
     const db = fakeDb();
-    const { cards: results, source } = await searchCards(db.client, { q: "swords", colorIdentity: "W", cardType: "instant" });
+    const { cards: results, source } = await searchCards(db.client, { q: "swords", colorIdentity: "W", cardTypes: ["instant"] });
     check(
       "a broken index falls back to the database for the deckbuilder's filtered search",
       results[0]?.name === "Swords to Plowshares" && source === "postgres-filtered",

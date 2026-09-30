@@ -155,11 +155,12 @@ func (s *Server) cardsByID(c fiber.Ctx) error {
 // cardsSearch serves both card searches the app makes.
 //
 //   - A plain name search (the header picker): two letters or more, ranked by how well the name matches.
-//   - The deckbuilder's search: the same name match narrowed to the commander's colours, a card type and a mana
-//     value, and — with no name at all — a browse of those filtered cards by how widely Commander decks play them.
+//   - The deckbuilder's search: the same name match narrowed to the commander's colours, card types (all of them) and
+//     mana values (any of them), and — with no name at all — a browse of those filtered cards by how widely Commander
+//     decks play them.
 //
 // The second used to be a Postgres function because the index had no card-type field. It has one now
-// (`card_category`), so both run here, and `search_cards_filtered` stays as the fallback every read path keeps.
+// (`card_types`), so both run here, and `search_cards_filtered` stays as the fallback every read path keeps.
 func (s *Server) cardsSearch(c fiber.Ctx) error {
 	q := strings.TrimSpace(c.Query("q"))
 	limit, err := strconv.Atoi(c.Query("limit", "8"))
@@ -192,6 +193,10 @@ func (s *Server) cardsSearch(c fiber.Ctx) error {
 		Limit:      limit,
 		Offset:     offset,
 	}
+	sortBy, err := nameSort(c.Query("sort"))
+	if err != nil {
+		return err
+	}
 	switch {
 	case len(q) < 2:
 		// `*` is Typesense's "every document"; there is no text to score, so play rate is the whole ranking.
@@ -207,6 +212,10 @@ func (s *Server) cardsSearch(c fiber.Ctx) error {
 		if c.Query("builder") == "1" {
 			params.SortBy = builderSortBy
 		}
+	}
+	// The deckbuilder's A-Z / Z-A button replaces either ranking. Names are unique per card, so paging stays stable.
+	if sortBy != "" {
+		params.SortBy = sortBy
 	}
 
 	result, err := s.ts.Search(c.Context(), params)
@@ -227,27 +236,57 @@ func builderFilters(c fiber.Ctx) ([]string, error) {
 			filters = append(filters, f)
 		}
 	}
-	if category := c.Query("type"); category != "" {
-		if !categoryShape.MatchString(category) {
-			return nil, badRequest("type must be a card category")
+	// type=creature,artifact: the card must carry every type named (an artifact creature), so each is its own clause.
+	if raw := c.Query("type"); raw != "" {
+		for _, cardType := range strings.Split(raw, ",") {
+			if !categoryShape.MatchString(cardType) {
+				return nil, badRequest("type must be card types separated by commas")
+			}
+			filters = append(filters, "card_types:="+cardType)
 		}
-		filters = append(filters, "card_category:="+category, builderLegalFilter)
+		filters = append(filters, builderLegalFilter)
 	}
+	// mv=2,4,7: any of the bars, so they are one clause of alternatives.
 	if raw := c.Query("mv"); raw != "" {
-		mv, err := strconv.Atoi(raw)
-		if err != nil || mv < 0 || mv > manaValueTop {
-			return nil, badRequest(fmt.Sprintf("mv must be a number between 0 and %d", manaValueTop))
+		var bars []string
+		for _, part := range strings.Split(raw, ",") {
+			mv, err := strconv.Atoi(part)
+			if err != nil || mv < 0 || mv > manaValueTop {
+				return nil, badRequest(fmt.Sprintf("mv must be numbers between 0 and %d separated by commas", manaValueTop))
+			}
+			bars = append(bars, manaBarFilter(mv))
 		}
-		if mv >= manaValueTop {
-			filters = append(filters, fmt.Sprintf("mana_value:>=%d", manaValueTop))
+		bars = dedupe(bars)
+		if len(bars) == 1 {
+			filters = append(filters, bars[0])
 		} else {
-			// mana_value is a float because a few cards have one; the deckbuilder's pills are whole numbers, so a
-			// card sits in the bar its value floors into.
-			filters = append(filters, fmt.Sprintf("mana_value:>=%d && mana_value:<%d", mv, mv+1))
+			filters = append(filters, "("+strings.Join(bars, " || ")+")")
 		}
 		filters = append(filters, builderLegalFilter)
 	}
 	return dedupe(filters), nil
+}
+
+// nameSort reads the deckbuilder's alphabetical order: empty keeps the usual ranking.
+func nameSort(raw string) (string, error) {
+	switch raw {
+	case "":
+		return "", nil
+	case "name_asc":
+		return "name:asc", nil
+	case "name_desc":
+		return "name:desc", nil
+	}
+	return "", badRequest("sort must be name_asc or name_desc")
+}
+
+// manaBarFilter is one bar of the mana curve. mana_value is a float because a few cards have one; the deckbuilder's
+// pills are whole numbers, so a card sits in the bar its value floors into, and the top bar holds everything above.
+func manaBarFilter(mv int) string {
+	if mv >= manaValueTop {
+		return fmt.Sprintf("mana_value:>=%d", manaValueTop)
+	}
+	return fmt.Sprintf("(mana_value:>=%d && mana_value:<%d)", mv, mv+1)
 }
 
 // dedupe keeps the filter string short when several parameters each demand Commander legality.

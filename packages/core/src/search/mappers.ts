@@ -1,4 +1,4 @@
-import { cardCategory } from "../scoring/add";
+import { cardCategory, cardTypes } from "../scoring/add";
 import {
   colorsToMask,
   maskToColors,
@@ -25,6 +25,7 @@ export interface CardIndexRow {
   slug: string;
   type_line: string;
   mana_value: number;
+  mana_cost: string | null;
   color_identity: number;
   keywords: string[] | null;
   game_changer: boolean;
@@ -61,6 +62,7 @@ export interface CardRowShape {
   name: string;
   slug: string;
   mana_value: number;
+  mana_cost: string | null;
   type_line: string;
   color_identity: number;
   images: unknown;
@@ -134,6 +136,7 @@ export function toCardDocument(row: CardIndexRow, updatedAt = Date.now()): CardD
     type_line: row.type_line,
     // Derived once here rather than at read time: the whole point of the field is that a filter can match on it.
     card_category: cardCategory(row.type_line),
+    card_types: cardTypes(row.type_line),
     mana_value: row.mana_value,
     color_identity: row.color_identity,
     colors: maskToColors(row.color_identity),
@@ -157,6 +160,7 @@ export function toCardDocument(row: CardIndexRow, updatedAt = Date.now()): CardD
       partner_qualifier: row.partner_qualifier ?? undefined,
       copy_limit: row.copy_limit ?? undefined,
       artist: row.artist ?? undefined,
+      mana_cost: row.mana_cost ?? undefined,
       images_json: row.images === null || row.images === undefined ? undefined : JSON.stringify(row.images),
       released_at: isoDate(row.released_at)?.slice(0, 10),
       first_printed_at: isoDate(row.first_printed_at)?.slice(0, 10),
@@ -175,6 +179,7 @@ export function cardRowFromDocument(doc: CardDocument): CardRowShape {
     name: doc.name,
     slug: doc.slug,
     mana_value: doc.mana_value,
+    mana_cost: doc.mana_cost ?? null,
     type_line: doc.type_line,
     color_identity: doc.color_identity ?? colorsToMask(doc.colors),
     images: doc.images_json ? (JSON.parse(doc.images_json) as unknown) : null,

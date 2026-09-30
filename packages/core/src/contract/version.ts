@@ -61,5 +61,15 @@
  * v17 (2026-09-27): RecsApi.add takes optional excludeCardIds, the cards the player has passed on this round, so a
  * reloaded list offers cards they have not seen instead of filling its per-category window with ones they declined.
  * Additive: an omitted list means nothing extra is left out, which is what earlier clients got. Signed off 2026-09-27.
+ *
+ * v18 (2026-09-29): the deckbuilder's filters take several values. CardSearchInput.cardType and manaValue become
+ * cardTypes (every type picked must be on the card's front face, so creature and artifact finds artifact creatures)
+ * and manaValues (any one of them). Types now match the type line rather than the deck-grouping category, so artifact
+ * alone includes artifact creatures. Not additive: the web app is the only caller and moves in the same change.
+ *
+ * v19 (2026-09-29): the deckbuilder's decklist rows and search panel. CardSummary.manaCost carries the printed cost
+ * ({2}{W}{W}) so rows can show its symbols. CardSearchInput gains the legendary type filter (CardTypeFilter), `sort`
+ * (name_asc / name_desc) and `ownedOnly` (only cards in a collection; a session collection makes the search a POST).
+ * manaCost is a new required field, so every CardSummary producer fills it ('' for no cost); the rest is additive.
  */
-export const CONTRACT_VERSION = 17;
+export const CONTRACT_VERSION = 19;

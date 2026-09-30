@@ -4,6 +4,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import type { CardSummary, DeckAnalysis } from "@mtg/core/contract";
 import { decklistFor } from "@mtg/core/journey";
 import type { DeckTool } from "@/components/deck/use-deck-tool";
+import type { BuilderCollection } from "./card-search-panel";
 import { DeckBuilder } from "./deck-builder";
 import { useDeckBuilder } from "./use-deck-builder";
 
@@ -38,8 +39,11 @@ export function ToolDeckEditor({
   tool,
   handleRef,
   onCommitted,
+  collection,
 }: {
   tool: DeckTool;
+  /** The deck tool's collection setting, which the search panel shows as Owned only / All cards. */
+  collection?: BuilderCollection | undefined;
   handleRef?: RefObject<EditorHandle | null>;
   /** Each edit once it has been analyzed, e.g. so a new commander gets the deck lookup offer. */
   onCommitted?: (analysis: DeckAnalysis | null) => void;
@@ -101,5 +105,5 @@ export function ToolDeckEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <DeckBuilder builder={builder} analysis={analysis} swapContext={tool.context} showIssues={false} />;
+  return <DeckBuilder builder={builder} analysis={analysis} swapContext={tool.context} showIssues={false} collection={collection} />;
 }

@@ -7,7 +7,7 @@ import type { PublicClient } from "./supabase";
 
 /** Columns needed to build a CardSummary and run Commander rules. */
 export const CARD_COLUMNS =
-  "id, oracle_id, name, slug, mana_value, type_line, color_identity, images, game_changer, released_at, reference_price_usd, reference_price_finish, prices_as_of, legal_commander, can_be_commander, partner_kind, partner_qualifier, copy_limit, is_basic_land, artist, keywords" as const;
+  "id, oracle_id, name, slug, mana_value, mana_cost, type_line, color_identity, images, game_changer, released_at, reference_price_usd, reference_price_finish, prices_as_of, legal_commander, can_be_commander, partner_kind, partner_qualifier, copy_limit, is_basic_land, artist, keywords" as const;
 
 export interface CardRow {
   id: number;
@@ -15,6 +15,8 @@ export interface CardRow {
   name: string;
   slug: string;
   mana_value: number;
+  /** Null until the catalog sync has filled the column. */
+  mana_cost: string | null;
   type_line: string;
   color_identity: number;
   images: unknown;
@@ -48,6 +50,7 @@ export function toCardSummary(row: CardRow, today = todayIso()): CardSummary {
     name: row.name,
     slug: row.slug,
     manaValue: row.mana_value,
+    manaCost: row.mana_cost ?? "",
     typeLine: row.type_line,
     colorIdentity: maskToIdentity(row.color_identity),
     images: row.images as CardImages | null,

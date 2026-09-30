@@ -70,6 +70,8 @@ export interface CardRow {
   slug: string;
   layout: string;
   mana_value: number;
+  /** Printed cost: the whole card's for a split card, the front face's for a double-faced one; '' for none. */
+  mana_cost: string;
   type_line: string;
   oracle_text: string | null;
   card_faces: { name: string; mana_cost: string; type_line: string; oracle_text: string }[] | null;
@@ -110,6 +112,7 @@ export const CARD_COLUMNS = [
   'slug',
   'layout',
   'mana_value',
+  'mana_cost',
   'type_line',
   'oracle_text',
   'card_faces',
@@ -290,6 +293,8 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
   const colorIdentity = card.color_identity.reduce((bits, c) => bits | (COLOR_BITS[c] ?? 0), 0);
   const gameChanger = card.game_changer === true;
   const legalities = card.legalities;
+  // Split and flip cards carry the whole cost at the top level; transforming and modal cards only per face.
+  const manaCost = card.mana_cost ?? faces[0]?.mana_cost ?? '';
 
   // Prices are excluded so a price-only change doesn't count as a card change.
   const contentHash = createHash('sha1')
@@ -308,6 +313,7 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
         card.released_at,
         card.artist ?? null,
         card.keywords ?? null,
+        manaCost,
       ]),
     )
     .digest();
@@ -319,6 +325,7 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
     slug: slugify(card.name),
     layout: card.layout,
     mana_value: card.cmc ?? 0,
+    mana_cost: manaCost,
     type_line: typeLine,
     oracle_text: text || null,
     card_faces: slimFaces,

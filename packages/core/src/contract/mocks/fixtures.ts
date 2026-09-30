@@ -81,6 +81,7 @@ export const mockCards: CardSummary[] = scryfall.cards.map((c, i) => ({
   name: c.name,
   slug: slugify(c.name),
   manaValue: c.manaValue,
+  manaCost: c.manaCost,
   typeLine: c.typeLine,
   colorIdentity: c.colorIdentity,
   images: c.images,

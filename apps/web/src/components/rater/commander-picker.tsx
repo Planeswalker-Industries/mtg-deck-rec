@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import type { CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
@@ -13,9 +13,16 @@ import { displayName } from "@/lib/cards";
 /** Wait this long after the last keystroke before searching. */
 const SEARCH_DELAY_MS = 180;
 
-/** Finds a commander by name as the player types: a combobox with arrow keys and Enter, each result shown with its art. */
-export function CommanderPicker({ onPick }: { onPick: (card: CardSummary) => void }) {
+/**
+ * Finds a commander by name as the player types: a combobox with arrow keys and Enter, each result shown with its art.
+ * `autoFocus` puts the cursor in the box on mount, for a page where picking a commander is the only thing to do.
+ */
+export function CommanderPicker({ onPick, autoFocus = false }: { onPick: (card: CardSummary) => void; autoFocus?: boolean }) {
   const id = useId();
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (autoFocus) input.current?.focus();
+  }, [autoFocus]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CardSummary[]>([]);
   const [status, setStatus] = useState<"idle" | "searching" | "error">("idle");
@@ -57,7 +64,7 @@ export function CommanderPicker({ onPick }: { onPick: (card: CardSummary) => voi
   const open = results.length > 0;
   const hint =
     status === "searching"
-      ? "Searching…"
+      ? "Searchingâ€¦"
       : status === "error"
         ? error
         : query.trim().length >= 2 && results.length === 0
@@ -70,6 +77,7 @@ export function CommanderPicker({ onPick }: { onPick: (card: CardSummary) => voi
         Commander
       </Label>
       <Input
+        ref={input}
         id={`${id}-input`}
         role="combobox"
         aria-expanded={open}

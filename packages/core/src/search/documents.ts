@@ -11,7 +11,7 @@
  * was measured on the Free tier the project has since left. See docs/roadmap/typesense-plan.md.
  */
 
-import type { CardCategory } from '../contract';
+import type { CardCategory, CardTypeFilter } from '../contract';
 
 export const CARDS_COLLECTION = "cards";
 export const TAGS_COLLECTION = "tags";
@@ -67,6 +67,11 @@ export interface CardDocument {
    * filtered search run here instead of in Postgres.
    */
   card_category: CardCategory;
+  /**
+   * Every card type on the front face, plus legendary (`cardTypes`): an artifact creature carries both. The
+   * deckbuilder's type filter matches it, requiring each type picked.
+   */
+  card_types: CardTypeFilter[];
   mana_value: number;
   /** The smallint bitmask, kept so a document round-trips to a CardRow exactly. */
   color_identity: number;
@@ -91,6 +96,8 @@ export interface CardDocument {
   partner_qualifier?: string;
   copy_limit?: number;
   artist?: string;
+  /** The printed cost ({2}{W}{W}); absent until the catalog sync has filled cards.mana_cost. */
+  mana_cost?: string;
   /** CardImages as JSON text: storing it as an object would mean turning nested fields on for one unindexed payload. */
   images_json?: string;
   released_at?: string;
@@ -180,6 +187,11 @@ export interface CollectionSchema {
   name: string;
   fields: CollectionField[];
   default_sorting_field?: string;
+  /**
+   * Characters that split words as a space does. Typesense otherwise drops them and glues the halves together, so
+   * "High-Society Hunter" indexed as "highsociety" and a search for "high society" missed it.
+   */
+  token_separators?: string[];
 }
 
 /**
@@ -189,6 +201,7 @@ export interface CollectionSchema {
 export const CARD_SCHEMA: CollectionSchema = {
   name: CARDS_COLLECTION,
   default_sorting_field: "commander_deck_count",
+  token_separators: ["-", "/"],
   fields: [
     { name: "card_id", type: "int32" },
     { name: "oracle_id", type: "string", index: false, optional: true },
@@ -203,6 +216,7 @@ export const CARD_SCHEMA: CollectionSchema = {
     { name: "slug", type: "string" },
     { name: "type_line", type: "string" },
     { name: "card_category", type: "string", facet: true },
+    { name: "card_types", type: "string[]", facet: true },
     { name: "mana_value", type: "float" },
     { name: "color_identity", type: "int32", index: false, optional: true },
     { name: "colors", type: "string[]", facet: true },
@@ -217,6 +231,7 @@ export const CARD_SCHEMA: CollectionSchema = {
     { name: "partner_qualifier", type: "string", index: false, optional: true },
     { name: "copy_limit", type: "int32", index: false, optional: true },
     { name: "artist", type: "string", index: false, optional: true },
+    { name: "mana_cost", type: "string", index: false, optional: true },
     { name: "images_json", type: "string", index: false, optional: true },
     { name: "released_at", type: "string", index: false, optional: true },
     { name: "first_printed_at", type: "string", index: false, optional: true },

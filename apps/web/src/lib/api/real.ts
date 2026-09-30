@@ -82,16 +82,29 @@ export const realActions: ActionsApi = {
 
 /** Card lookups run as GET Route Handlers, so the CDN can keep results and searches don't queue behind actions. */
 export const realCatalog: CatalogApi = {
-  async searchCards({ q, commanderEligible, limit, colorIdentity, cardType, manaValue, offset }, options) {
+  async searchCards(input, options) {
+    const { q, commanderEligible, limit, colorIdentity, cardTypes, manaValues, offset, sort, ownedOnly } = input;
     const params = new URLSearchParams({ q });
     if (commanderEligible) params.set("commander", "1");
     if (limit !== undefined) params.set("limit", String(limit));
     if (colorIdentity !== undefined) params.set("colors", colorIdentity);
-    if (cardType !== undefined) params.set("type", cardType);
-    if (manaValue !== undefined) params.set("mv", String(manaValue));
+    // Sorted, so the same filters in a different click order are the same URL and share the CDN's cached answer.
+    if (cardTypes?.length) params.set("type", [...cardTypes].sort().join(","));
+    if (manaValues?.length) params.set("mv", [...manaValues].sort((a, b) => a - b).join(","));
     if (offset !== undefined) params.set("offset", String(offset));
+    if (sort !== undefined) params.set("sort", sort);
+    const signal = options?.signal ? { signal: options.signal } : {};
     try {
-      const res = await fetch(`/api/cards/search?${params.toString()}`, options?.signal ? { signal: options.signal } : {});
+      // A search limited to a collection is private and can carry thousands of card ids, so it goes as a POST body.
+      const res =
+        ownedOnly === undefined
+          ? await fetch(`/api/cards/search?${params.toString()}`, signal)
+          : await fetch("/api/cards/search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(input),
+              ...signal,
+            });
       // Which backend answered, in the console, because the alternative is reading server logs. `x-vercel-cache: HIT`
       // means the edge answered and no function ran, so the source is whatever was true when that entry was cached —
       // add `&fresh=1` to bypass it.

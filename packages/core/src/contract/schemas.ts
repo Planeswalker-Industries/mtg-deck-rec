@@ -3,6 +3,7 @@ import type { DeckInput } from './decks';
 import type { ApiError, Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
 import type { RecContext, VoteContext } from './recs';
+import type { CardTypeFilter } from './cards';
 import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
 
 /**
@@ -145,6 +146,19 @@ export const castVoteInputSchema = z
     path: ['replacementCardId'],
   });
 
+/** Every CardTypeFilter, as the literal tuple z.enum needs. */
+const CARD_TYPE_FILTERS = [
+  'legendary',
+  'creature',
+  'planeswalker',
+  'battle',
+  'instant',
+  'sorcery',
+  'artifact',
+  'enchantment',
+  'land',
+] as const satisfies readonly CardTypeFilter[];
+
 export const MAX_SEARCH_QUERY_CHARS = 100;
 export const MAX_SEARCH_LIMIT = 20;
 /** How deep the deckbuilder's "more" button can page a filtered search: thirty pages of the maximum. */
@@ -189,16 +203,23 @@ export const searchCardsInputSchema = z
       commanderEligible: z.boolean().optional(),
       limit: z.int().min(1).max(MAX_SEARCH_LIMIT).optional(),
       colorIdentity: z.string().regex(/^[WUBRG]{0,5}$/, 'Invalid colours.').optional(),
-      cardType: z
-        .enum(['creature', 'planeswalker', 'battle', 'instant', 'sorcery', 'artifact', 'enchantment', 'land'], { error: 'Invalid card type.' })
+      // One entry per type or cost at most, so the lists are bounded by the closed sets they draw from.
+      cardTypes: z
+        .array(z.enum(CARD_TYPE_FILTERS, { error: 'Invalid card type.' }))
+        .max(CARD_TYPE_FILTERS.length, 'Too many card types.')
         .optional(),
-      manaValue: z.int().min(0).max(CURVE_TOP_MANA_VALUE, 'Invalid mana value.').optional(),
+      manaValues: z
+        .array(z.int().min(0).max(CURVE_TOP_MANA_VALUE, 'Invalid mana value.'))
+        .max(CURVE_TOP_MANA_VALUE + 1, 'Too many mana values.')
+        .optional(),
       offset: z.int().min(0).max(MAX_SEARCH_OFFSET).optional(),
+      sort: z.enum(['name_asc', 'name_desc'], { error: 'Invalid sort.' }).optional(),
+      ownedOnly: ownershipSchema.optional(),
     },
     request,
   )
   // A name of 2+ letters, or a filter to browse by: an empty search with nothing to narrow it would be the whole catalog.
-  .refine((v) => v.q.length >= 2 || v.cardType !== undefined || v.manaValue !== undefined || (v.q.length === 0 && v.colorIdentity !== undefined), {
+  .refine((v) => v.q.length >= 2 || (v.cardTypes?.length ?? 0) > 0 || (v.manaValues?.length ?? 0) > 0 || (v.q.length === 0 && v.colorIdentity !== undefined), {
     message: 'Type at least 2 letters.',
     path: ['q'],
   });
