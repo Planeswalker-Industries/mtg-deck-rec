@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, type LucideIcon } from "lucide-react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { cn } from "cn";
@@ -16,7 +16,7 @@ import { CardBack } from "./card-back";
 import { PanelError } from "./panel-state";
 import { ShuffleDeck } from "./shuffle-deck";
 import { TagPills } from "./tag-pills";
-import { useSwipeRater, type PickedSwap, type RaterTarget, type SwipeMode, type SwipeVote } from "./use-swipe-rater";
+import { useSwipeRater, type Candidates, type PickedSwap, type RaterTarget, type SwipeMode, type SwipeVote } from "./use-swipe-rater";
 
 /** How far, as a share of the card's width, a drag has to travel to count as a swipe. */
 const SWIPE_SHARE = 0.3;
@@ -209,6 +209,7 @@ export function SideButton({
   disabled,
   onClick,
   tone = "primary",
+  icon,
 }: {
   kind: "pass" | "swap";
   tone?: AcceptTone;
@@ -217,8 +218,10 @@ export function SideButton({
   pull: number;
   disabled: boolean;
   onClick: () => void;
+  /** The button's symbol, when the default (✓ to accept, ✕ to pass) would misread the job, e.g. ✂ and ✓ for a cut. */
+  icon?: LucideIcon | undefined;
 }) {
-  const Icon = kind === "swap" ? Check : X;
+  const Icon = icon ?? (kind === "swap" ? Check : X);
   return (
     <button
       type="button"
@@ -250,6 +253,9 @@ export function SwipeRater({
   onDecline,
   declined,
   skipTarget,
+  startAt,
+  preferred,
+  cache,
   onFinish,
   viewRef,
 }: {
@@ -269,6 +275,12 @@ export function SwipeRater({
   declined?: readonly { targetId: CardId; replacementId: CardId }[];
   /** Deck tool: a card to step over when its turn comes (no longer in the deck). */
   skipTarget?: (card: CardSummary) => boolean;
+  /** Deck tool: the card to open on, rather than the first. */
+  startAt?: CardId;
+  /** Deck tool: a replacement to deal first for `startAt`. */
+  preferred?: CardId;
+  /** Deck tool: replacements already fetched for this list, by card (see useSwipeRater). */
+  cache?: Map<CardId, Candidates>;
   onFinish: () => void;
   /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
   viewRef?: (element: HTMLElement | null) => void;
@@ -285,6 +297,9 @@ export function SwipeRater({
     onDecline,
     declined,
     skipTarget,
+    startAt,
+    preferred,
+    cache,
     onFinish,
   });
   const reduceMotion = useReducedMotion();

@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, Scissors } from "lucide-react";
 import type { CardSummary, CutReason, CutResult } from "@mtg/core/contract";
 import { Button } from "@/components/ui/button";
 import { cutReasonLabel, cutReasonShortLabel } from "@/lib/labels";
@@ -99,6 +100,9 @@ export function CutPhase({
           total={recommended.length}
           label="Cards to cut"
           tone="cut"
+          // ✂ cuts the card; ✓ keeps it. A ✓ on the cut side read as "keep" and the ✕ as "remove".
+          acceptIcon={Scissors}
+          passIcon={Check}
           acceptLabel={`Cut ${next.card.name}`}
           passLabel={`Keep ${next.card.name}`}
           caption={reasonText(next.reasons)}

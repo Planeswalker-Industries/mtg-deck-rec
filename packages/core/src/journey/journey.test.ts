@@ -4,6 +4,8 @@ import { deckStats } from './deck-stats';
 import { bracketMustCuts } from './bracket-check';
 import {
   copiesInDeck,
+  deckBeforeSwaps,
+  deckKey,
   decklistFor,
   deckDiff,
   deckSize,
@@ -155,6 +157,13 @@ describe('journey reducer', () => {
     const next = journeyReducer(state, { type: 'reset', base: workingDeck(state) });
     expect(next).toEqual(startJourney(workingDeck(state)));
   });
+
+  it('remembers the furthest phase opened when going back', () => {
+    const state = run({ type: 'goto', phase: 'replace' }, { type: 'goto', phase: 'cut' }, { type: 'goto', phase: 'add' });
+    expect(state.phase).toBe('add');
+    expect(state.reached).toBe('replace');
+    expect(startJourney(base).reached).toBe('cut');
+  });
 });
 
 describe('deck helpers', () => {
@@ -170,6 +179,20 @@ describe('deck helpers', () => {
     expect(diff.added).toEqual(expect.arrayContaining([{ cardId: 10, quantity: 1 }, { cardId: 20, quantity: 1 }]));
     expect(deckSize(base)).toBe(100);
     expect(deckSize(workingDeck(state))).toBe(99);
+  });
+
+  it('keeps swapped cards in the deck before swaps, which does not move as swaps are picked', () => {
+    const cut = run({ type: 'cut', card: card(2) }, { type: 'add', card: card(10) });
+    const swapped = journeyReducer(cut, { type: 'swap', target: card(3), replacement: card(20) });
+    expect(mainOf(deckBeforeSwaps(swapped))).toEqual({ 3: 1, 4: 1, 10: 1, [PLAINS]: FULL_PLAINS });
+    expect(deckKey(deckBeforeSwaps(swapped))).toBe(deckKey(deckBeforeSwaps(cut)));
+    expect(deckKey(workingDeck(swapped))).not.toBe(deckKey(workingDeck(cut)));
+  });
+
+  it('keys a deck by its contents, not their order', () => {
+    const reordered: DeckInput = { commanders: base.commanders, cards: [...base.cards].reverse() };
+    expect(deckKey(reordered)).toBe(deckKey(base));
+    expect(deckKey(workingDeck(run({ type: 'cut', card: card(2) })))).not.toBe(deckKey(base));
   });
 
   it('writes a decklist the parser reads back, leaving out unknown cards', () => {

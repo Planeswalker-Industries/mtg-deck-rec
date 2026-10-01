@@ -30,7 +30,8 @@ export interface SwipeVote {
   value: 1 | -1;
 }
 
-type Candidates = { status: "ready"; suggestions: SwapSuggestion[] } | { status: "error"; message: string };
+/** A card's replacements as fetched: ready, or why they couldn't be. */
+export type Candidates = { status: "ready"; suggestions: SwapSuggestion[] } | { status: "error"; message: string };
 
 /** Replacement lists load for the current card and the next one, so the next card is ready when it comes up. */
 const PRELOAD = 2;
@@ -53,6 +54,9 @@ export function useSwipeRater({
   onDecline,
   declined = [],
   skipTarget,
+  startAt,
+  preferred,
+  cache,
   onFinish,
 }: {
   targets: readonly RaterTarget[];
@@ -73,14 +77,25 @@ export function useSwipeRater({
   declined?: readonly { targetId: CardId; replacementId: CardId }[] | undefined;
   /** Deck tool: a card to step over when its turn comes, e.g. one no longer in the deck. */
   skipTarget?: ((card: CardSummary) => boolean) | undefined;
+  /** Deck tool: the card the sitting opens on, rather than the first; read once, when it opens. */
+  startAt?: CardId | undefined;
+  /** Deck tool: a replacement dealt first for `startAt`, e.g. the one the player had picked for it before. */
+  preferred?: CardId | undefined;
+  /**
+   * Deck tool: replacements fetched in earlier sittings over the same list, by card, which this sitting adds to. A
+   * sitting reopened on the same list (the player went back a step and returned) asks for nothing it already has.
+   */
+  cache?: Map<CardId, Candidates> | undefined;
   onFinish: () => void;
 }) {
-  const [targetIndex, setTargetIndex] = useState(0);
+  const [targetIndex, setTargetIndex] = useState(() =>
+    startAt === undefined ? 0 : Math.max(0, targets.findIndex((t) => t.card.id === startAt)),
+  );
   const [candidateIndex, setCandidateIndex] = useState(0);
-  const [results, setResults] = useState<ReadonlyMap<number, Candidates>>(new Map());
+  const [results, setResults] = useState<ReadonlyMap<number, Candidates>>(() => new Map(cache ?? []));
   const [voteError, setVoteError] = useState<string | null>(null);
   const [declinedAtStart] = useState(() => new Set(declined.map((d) => `${d.targetId}:${d.replacementId}`)));
-  const requested = useRef(new Set<number>());
+  const requested = useRef(new Set<number>(cache?.keys() ?? []));
   const sessionId = useRef<string | null>(null);
 
   // Cards to step over come off the list as their turn comes, rather than out of it: the list is dealt by position.
@@ -113,16 +128,18 @@ export function useSwipeRater({
           const next: Candidates = r.ok
             ? { status: "ready", suggestions: mode === "rater" ? shuffled(r.data.suggestions.slice(0, RATER_CANDIDATES)) : r.data.suggestions }
             : { status: "error", message: r.error.message };
+          // A failure isn't kept: the next sitting asks again.
+          if (next.status === "ready") cache?.set(card.id, next);
           setResults((prev) => new Map(prev).set(card.id, next));
         });
     }
-  }, [targets, index, context, mode]);
+  }, [targets, index, context, mode, cache]);
 
   const target = targets[index] ?? null;
   const loaded = target ? results.get(target.card.id) : undefined;
   // In the deck tool, a card already swapped in is in the deck now, and one swapped out was just taken out, so neither
   // is offered again; nor is one the player passed on for this card in an earlier sitting.
-  const candidates =
+  const offered =
     loaded?.status === "ready" && target
       ? loaded.suggestions.filter(
           (s) =>
@@ -130,6 +147,8 @@ export function useSwipeRater({
             !declinedAtStart.has(`${target.card.id}:${s.card.id}`),
         )
       : [];
+  const first = target?.card.id === startAt ? offered.find((s) => s.card.id === preferred) : undefined;
+  const candidates = first ? [first, ...offered.filter((s) => s !== first)] : offered;
   const candidate = candidates[candidateIndex] ?? null;
 
   function nextTarget() {

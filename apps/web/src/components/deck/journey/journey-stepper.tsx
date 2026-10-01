@@ -15,10 +15,19 @@ const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors; tone: s
 };
 
 /**
- * Where the player is in the journey. Earlier steps can be revisited; later ones open through each step's own Next,
- * because each asks for its suggestions against the choices made before it.
+ * Where the player is in the journey. Earlier steps can be revisited, and the next step does what the current one's
+ * Next does. A step further on opens only when the round has been there and nothing since changed what it shows
+ * (`canOpen`), because each step asks for its suggestions against the choices made before it.
  */
-export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSelect: (phase: JourneyPhase) => void }) {
+export function JourneyStepper({
+  phase,
+  canOpen,
+  onSelect,
+}: {
+  phase: JourneyPhase;
+  canOpen: (phase: JourneyPhase) => boolean;
+  onSelect: (phase: JourneyPhase) => void;
+}) {
   const at = JOURNEY_PHASES.indexOf(phase);
   return (
     <nav aria-label="Deck upgrade steps">
@@ -31,13 +40,17 @@ export function JourneyStepper({ phase, onSelect }: { phase: JourneyPhase; onSel
             <li key={step} className="min-w-0">
               <button
                 type="button"
-                disabled={i > at}
+                disabled={i > at && !canOpen(step)}
                 aria-current={current ? "step" : undefined}
                 onClick={() => onSelect(step)}
                 className={cn(
                   "flex w-full items-center justify-center gap-1 rounded-md px-1.5 py-1 text-sm font-semibold transition-colors sm:gap-1.5 sm:px-2",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default",
-                  current ? cn("bg-sleeve text-foreground", glow) : done ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/50",
+                  current
+                    ? cn("bg-sleeve text-foreground", glow)
+                    : done || canOpen(step)
+                      ? "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground/50",
                 )}
               >
                 {/* Phones drop the icons, so every step's name fits in a quarter of the row; the current step keeps its edge. */}
