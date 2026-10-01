@@ -23,6 +23,11 @@ export interface DeclinedSwap {
 
 export interface JourneyState {
   phase: JourneyPhase;
+  /**
+   * The furthest phase this round has opened. Going back to an earlier phase keeps it, so the player can return to
+   * where they were without stepping through each phase again, as long as nothing upstream changed the deck.
+   */
+  reached: JourneyPhase;
   /** The deck this round started from. Re-analyzing starts a new round from the result. */
   base: DeckInput;
   /** One copy each; a card with several copies (basic lands) can be cut more than once. */
@@ -54,8 +59,11 @@ export type JourneyAction =
   | { type: 'reset'; base: DeckInput };
 
 export function startJourney(base: DeckInput): JourneyState {
-  return { phase: 'cut', base, cuts: [], kept: [], adds: [], declinedAdds: [], swaps: [], keptInReplace: [], declinedSwaps: [] };
+  return { phase: 'cut', reached: 'cut', base, cuts: [], kept: [], adds: [], declinedAdds: [], swaps: [], keptInReplace: [], declinedSwaps: [] };
 }
+
+/** A phase's place in the journey: 0 for Cut through 3 for Review. */
+export const phaseIndex = (phase: JourneyPhase): number => JOURNEY_PHASES.indexOf(phase);
 
 const without = <T>(list: readonly T[], value: T) => list.filter((v) => v !== value);
 const withValue = <T>(list: readonly T[], value: T) => (list.includes(value) ? [...list] : [...list, value]);
@@ -131,8 +139,11 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
       if (state.declinedSwaps.some((d) => d.targetId === targetId && d.replacementId === replacementId)) return state;
       return { ...state, declinedSwaps: [...state.declinedSwaps, { targetId, replacementId }] };
     }
-    case 'goto':
-      return state.phase === action.phase ? state : { ...state, phase: action.phase };
+    case 'goto': {
+      if (state.phase === action.phase) return state;
+      const reached = phaseIndex(action.phase) > phaseIndex(state.reached) ? action.phase : state.reached;
+      return { ...state, phase: action.phase, reached };
+    }
     case 'reset':
       return startJourney(action.base);
   }
@@ -149,6 +160,15 @@ function countsBeforeSwaps(state: JourneyState): Map<CardId, number> {
   for (const cut of state.cuts) addCopies(main, cut.id, -1);
   for (const card of state.adds) addCopies(main, card.id, 1);
   return main;
+}
+
+/**
+ * The deck before any swap: the base deck without its cuts, with the additions. The Swap phase deals its weaker fits
+ * from this deck, so a card the player already swapped out stays on the list, marked with its replacement, and the
+ * list stays the same however many swaps are picked from it.
+ */
+export function deckBeforeSwaps(state: JourneyState): DeckInput {
+  return deckFromCounts(state, countsBeforeSwaps(state));
 }
 
 /** Main-deck copies as the deck stands. A swap whose card is already gone is skipped. */
@@ -206,11 +226,24 @@ export function withoutCards(state: JourneyState, cards: readonly CardSummary[])
  * Sections other than main pass through untouched.
  */
 export function workingDeck(state: JourneyState): DeckInput {
-  const main = mainCounts(state);
+  return deckFromCounts(state, mainCounts(state));
+}
 
+function deckFromCounts(state: JourneyState, main: Map<CardId, number>): DeckInput {
   const cards: DeckCardEntry[] = state.base.cards.filter((c) => c.section !== 'main');
   for (const [cardId, quantity] of main) if (quantity > 0) cards.push({ cardId, quantity, section: 'main' });
   return { commanders: [...state.base.commanders], cards };
+}
+
+/**
+ * One comparable value for a deck's contents: the same cards in any order give the same key. Lists made for a deck
+ * remember its key, so they can be shown again rather than asked for again while the deck is unchanged.
+ */
+export function deckKey(deck: DeckInput): string {
+  const main = new Map<CardId, number>();
+  for (const entry of deck.cards) if (entry.section === 'main') addCopies(main, entry.cardId, entry.quantity);
+  const cards = [...main].filter(([, quantity]) => quantity > 0).sort(([a], [b]) => a - b);
+  return `${[...deck.commanders].sort((a, b) => a - b).join(',')}|${cards.map(([id, quantity]) => `${id}x${quantity}`).join(',')}`;
 }
 
 export interface DeckChange {

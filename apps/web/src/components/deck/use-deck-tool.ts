@@ -23,6 +23,7 @@ import { mockDecklistText } from "@mtg/core/mocks";
 import type { CollectionSource } from "@/components/collection/use-collection-source";
 import { getApis } from "@/lib/api/client";
 import { ownedCardIds } from "@/lib/collection-store";
+import { displayName } from "@/lib/cards";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 import { clearSavedDeck, loadSavedDeck, saveDeck, updateSavedDeck, type SavedDeck } from "@/lib/saved-deck";
 import { SAMPLE_DECKLIST } from "@/lib/sample-deck";
@@ -202,6 +203,11 @@ export function useDeckTool(
    */
   const [restored, setRestored] = useState<SavedDeck | null>(null);
   /**
+   * A name the player gave a deck that isn't saved to an account yet, kept with the remembered deck and offered when
+   * it is saved; null keeps the commanders' names. An open account deck goes by its own name instead.
+   */
+  const [deckName, setDeckName] = useState<string | null>(null);
+  /**
    * The same deck as analyzed, for saving beside the result. A ref, like the open deck: submit() persists in the same
    * handler that may have just set it.
    */
@@ -365,7 +371,12 @@ export function useDeckTool(
     setLines(r.data.lines);
     setAnalysis(r.data.analysis);
     setBracketOverride(bracket);
-    saveDeck({ text: finalText, bracketOverride: bracket, importedFrom: source });
+    // The same deck carries its name through a journey's result and a replay of the remembered deck; a new paste is a new deck.
+    const name = keepOrigin ? deckName : (replay?.deckName ?? null);
+    setDeckName(name);
+    const commanders = r.data.analysis?.commanderKey.commanders ?? [];
+    const commanderName = commanders.length > 0 ? commanders.map(displayName).join(" and ") : null;
+    saveDeck({ text: finalText, bracketOverride: bracket, importedFrom: source, commanderName, deckName: name });
     if (r.data.analysis) {
       if (recs) void loadCuts(buildContext(r.data.analysis, bracket, ownership), ownership);
       else {
@@ -393,12 +404,12 @@ export function useDeckTool(
    * Puts the deck from the last visit back in the decklist box without analyzing it: opening the tool must not run an
    * old deck on its own. Returns false when there was none to restore.
    */
-  function restoreLastDeck(): boolean {
+  function restoreLastDeck(): SavedDeck | null {
     const saved = loadSavedDeck();
-    if (!saved) return false;
+    if (!saved) return null;
     setText(saved.text);
     setRestored(saved);
-    return true;
+    return saved;
   }
 
   /**
@@ -443,6 +454,7 @@ export function useDeckTool(
   function clearDeck() {
     clearSavedDeck();
     setRestored(null);
+    setDeckName(null);
     setOriginText(null);
     originDeckRef.current = null;
     setOriginDeck(null);
@@ -499,6 +511,24 @@ export function useDeckTool(
     trackOpenDeck(null);
   }
 
+  /**
+   * Names the deck: an open account deck is renamed there, and later auto-saves carry the new name; a deck not saved
+   * yet keeps the name in this browser until it is. Resolves to an error message, or null when it worked.
+   */
+  async function renameDeck(name: string): Promise<string | null> {
+    const open = openDeckRef.current;
+    if (!open) {
+      setDeckName(name);
+      updateSavedDeck({ deckName: name });
+      return null;
+    }
+    const r = await getApis().actions.renameDeck({ deckId: open.deckId, name });
+    if (!r.ok) return r.error.message;
+    const current = openDeckRef.current;
+    if (current?.deckId === open.deckId) trackOpenDeck({ ...current, name });
+    return null;
+  }
+
   /** Remembers the deck a fresh save created, so later edits update it instead of making another one. */
   function trackSavedDeck(saved: Pick<SavedDeckContents, "deckId" | "code" | "name">) {
     trackOpenDeck({ ...saved, status: "saved" });
@@ -513,7 +543,12 @@ export function useDeckTool(
     openDeck,
     closeSavedDeck,
     trackSavedDeck,
+    /** The name the player gave a deck not saved yet; null while it goes by its commanders. */
+    deckName,
+    renameDeck,
     restoreLastDeck,
+    /** The remembered deck put back in the box on this visit, until it is analyzed or cleared. */
+    restoredDeck: restored,
     /** True while the box holds the remembered deck, untouched, and it has not been analyzed yet. */
     showsRestoredDeck: restored !== null && restored.text === text,
     refreshRecommendations,

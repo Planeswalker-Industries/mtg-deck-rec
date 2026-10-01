@@ -4,7 +4,7 @@ Open work items, grouped by priority. Each ticket is self-contained — enough c
 
 > **Keep the four project docs in step.** This file is the queue. [`roadmap/status.md`](roadmap/status.md) is the narrative (current state and why), [`../CLAUDE.md`](../CLAUDE.md) holds repo-wide rules, and [`../apps/web/AGENTS.md`](../apps/web/AGENTS.md) holds web-app detail. Any change to this file is checked against those three in the same edit. When they disagree, the code wins and every doc gets corrected.
 
-Checked against the code on **2026-09-28**: `develop` at PR #111 (contract v17), `main` at PR #109 (contract v16). Hosted facts were read with the read-only role on the same day.
+Checked against the code on **2026-09-28**. Release and hosted facts updated **2026-09-30**: `main` at PR #118 and `develop` at PR #117, both contract v19, with hosted migrations and the search index caught up.
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -156,7 +156,7 @@ The index and the search API run on the VPS (two Dokploy stacks, Traefik in fron
 - [x] Three secrets generated and placed (VPS, worker, Vercel Production and Preview, GitHub Actions)
 - [x] `cli:hosted sync:typesense --rebuild` (again after #96)
 - [x] `curl https://<host>/v1/health` returns `{"ok":true}` without `-k`
-- [ ] Confirm the daily sync drains the queue
+- [ ] Confirm the daily sync drains the queue. Until 2026-09-30 every drain failed with the proxy's `404 page not found`: the service's generated domain had changed, and only Vercel had the new one. The GitHub secret and `.env.hosted` are fixed, and a hand drain and a rebuild worked that day; the next daily run is the proof.
 - [ ] `scripts/search-parity-check.ts` passes against hosted data (`commanders` and `commander_cards` have never been exercised with real rows)
 - [ ] Measure RAM after the first build (`/metrics.json`) and record it in the runbook
 - [ ] Around 2026-09-30, re-read `rec_timeouts` and update T008
@@ -289,7 +289,7 @@ Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles n
 
 ### T052: Release the deckbuilder redesign (contract v18–v19)
 
-**Priority:** HIGH | **Area:** Deploy | **Status:** Built on `feat/deckbuilder`, not released
+**Priority:** HIGH | **Area:** Deploy | **Status:** Released to `main` 2026-09-30 (#117 via #118); `mana_cost` fill and the header check open
 
 The deckbuilder's multi-select filters, legendary, A–Z sort, owned-only search and decklist rows with cost symbols span every layer, so the release has an order. Until each step lands the app still answers (the index read fails and Postgres takes over), just slower.
 
@@ -300,9 +300,9 @@ The deckbuilder's multi-select filters, legendary, A–Z sort, owned-only search
 
 **Acceptance criteria:**
 - [ ] Contract v18 and v19 approved by frontend and backend (PR)
-- [ ] Migrations applied on hosted (merge to `main`)
-- [ ] `sync:catalog` run on hosted after the migration, so `cards.mana_cost` is filled (it rewrites every card once)
-- [ ] Search API redeployed on the VPS, then `sync:typesense --rebuild` (`search-index.yml`, rebuild on)
+- [x] Migrations applied on hosted (2026-09-30, by `supabase db push`: the Supabase GitHub integration had come unlinked, so nothing after `20260922000400` had been applied through it)
+- [ ] `sync:catalog` run on hosted after the migration, so `cards.mana_cost` is filled (it rewrites every card once). Left to the daily sync, which runs it once Scryfall's file changes
+- [x] Search API redeployed on the VPS, then `sync:typesense --rebuild` (`search-index.yml`, 2026-09-30; card documents carry `card_types`)
 - [ ] `x-search-source: index-filtered` on a deckbuilder search with two types and two costs
 
 ---
@@ -445,9 +445,9 @@ Editing by hand (contract v15) works only on a collection that already exists. W
 
 The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md). The corpus moves from JSONL on X: into Postgres. Complete user decks become a source. Aggregation recomputes only the commanders whose decks changed. Sparse card-pair tables feed a new "deck affinity" score, EDHREC commander pages serve as a prior and a benchmark, and every commander is crawled rather than the top 50. It is split into 11 slices, each one PR.
 
-**Slice 11 (EDHREC statistics) is on `develop`** (PR #111), not yet on `main`. It was started ahead of the rest because the plan lets slices 10 and 11 run on their own tables.
+**Slice 11 (EDHREC statistics) is on `main`** (PR #111, released in PR #118). It was started ahead of the rest because the plan lets slices 10 and 11 run on their own tables.
 - **Fetching.** `X:\mtg_proj\tools\edhrec-crawl.mjs` saves every commander page from `json.edhrec.com`. It is a local script, not the `sources/edhrec/` worker adapter the plan names.
-- **Loading.** `import:edhrec` writes the saved pages into `external_commanders` and `external_commander_card_stats` (migration `20260928000200_external_commander_stats.sql`). Loaded locally on 2026-09-28; the tables do not exist on hosted yet.
+- **Loading.** `import:edhrec` writes the saved pages into `external_commanders` and `external_commander_card_stats` (migration `20260928000200_external_commander_stats.sql`). Loaded locally on 2026-09-28 and on hosted on 2026-09-30 (6,787 commanders, 1,791,474 card rows).
 - **Evaluation.** `spike:edhrec:prior` is a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured, so the slice's gate is passed. `supabase/tests/external-stats.sql` holds the SQL checks.
 - **Not done:** no code reads the tables. Wiring the prior into `corpusComponent` and `rec_add_candidates` is the next step, and so is the per-commander benchmark in the offline evaluation, which needs slice 6.
 
@@ -464,7 +464,8 @@ The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md). T
 - [ ] A backend owner reviews the plan and confirms or changes the slice order
 - [ ] Slices 1–10 as listed in the plan
 - [x] Slice 11: EDHREC statistics loaded, and the holdout test shows the prior helps commanders with few decks
-- [ ] Slice 11 follow-up: release to `main`, load hosted (`cli:hosted import:edhrec`), and wire the prior into scoring
+- [x] Slice 11 follow-up: release to `main` and load hosted (2026-09-30)
+- [ ] Slice 11 follow-up: wire the prior into scoring
 
 ---
 
@@ -479,7 +480,7 @@ The deck crawl (closed T036) works when started by hand, but the daily Vercel cr
 - `apps/web/src/app/api/cron/` — the scrape routes (`CRON_SECRET`, pass-through of the search API's 502)
 - `services/search-api/internal/crawl/` — `Runner.Preflight`, the claim
 
-**Context:** Hosted `corpus.crawl_runs`, read 2026-09-28 after that day's cron hour, holds three Archidekt runs: 2026-09-24 03:32 (failed on a deleted deck, fixed in #105), 2026-09-24 14:16 and 2026-09-27 21:30. None started in the cron's hour. Either the trigger never reaches the search API, or something refuses it before a run starts.
+**Context:** Hosted `corpus.crawl_runs`, read 2026-09-28 after that day's cron hour, holds three Archidekt runs: 2026-09-24 03:32 (failed on a deleted deck, fixed in #105), 2026-09-24 14:16 and 2026-09-27 21:30. None started in the cron's hour. Either the trigger never reaches the search API, or something refuses it before a run starts. A fourth run, 2026-09-30 13:12 UTC, succeeded, and it too started outside the cron's hour.
 
 **Acceptance criteria:**
 - [ ] Read the Vercel cron log for `/api/cron/archidekt-scrape`: 401, 502, 503, or not firing

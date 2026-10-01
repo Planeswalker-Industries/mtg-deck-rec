@@ -16,9 +16,12 @@ import type {
 import {
   bracketMustCuts,
   copiesInDeck,
+  deckBeforeSwaps,
+  deckKey,
   decklistFor,
   journeyReducer,
   openSlots,
+  phaseIndex,
   startJourney,
   withoutCards,
   workingDeck,
@@ -30,6 +33,7 @@ import {
 import type { DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import type { Async, ContextChange } from "../use-deck-tool";
+import type { Candidates } from "../use-swipe-rater";
 
 /**
  * Cut suggestions asked for when checking a deck against a new bracket: the cut route's cap (MAX_CUT_LIMIT), so every
@@ -58,6 +62,25 @@ interface Round {
 }
 
 const isLand = (card: CardSummary) => /\bLand\b/.test(card.typeLine.split(" // ")[0] ?? card.typeLine);
+
+/**
+ * A list asked for this round, with the key of the deck it was made for: shown again rather than asked for again while
+ * that deck is unchanged. A null key means the settings changed since, so the list is asked for again on the way in.
+ */
+interface ListFor<T> {
+  round: number;
+  key: string | null;
+  value: Async<T>;
+}
+
+/**
+ * The Swap list, with the replacements fetched for its cards, kept for as long as the list is: a sitting closes when
+ * the player leaves the phase, and coming back must not ask the database again for cards it already has. A new list
+ * (new deck, new settings, new round) starts empty, since its replacements were asked for under other settings.
+ */
+interface ReplaceList extends ListFor<CutResult> {
+  candidates: Map<CardId, Candidates>;
+}
 
 const toAsync = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): Async<T> =>
   r.ok ? { status: "ready", data: r.data } : { status: "error", message: r.error.message };
@@ -90,8 +113,8 @@ export function useDeckJourney({
 }) {
   const [round, setRound] = useState<Round | null>(null);
   // Each list remembers the round it was asked for, so a round's lists never show in the next one.
-  const [addFor, setAdd] = useState<{ round: number; value: Async<AddResult> } | null>(null);
-  const [replaceFor, setReplace] = useState<{ round: number; value: Async<CutResult> } | null>(null);
+  const [addFor, setAdd] = useState<ListFor<AddResult> | null>(null);
+  const [replaceFor, setReplace] = useState<ReplaceList | null>(null);
   /** Bumped when the Replace targets are asked for again, so the swipe view starts over on the new list. */
   const [replaceVersion, setReplaceVersion] = useState(0);
   const addRequest = useRef(0);
@@ -147,33 +170,58 @@ export function useDeckJourney({
     if (!ctx || !current) return;
     const round = current.id;
     const id = ++addRequest.current;
-    setAdd({ round, value: { status: "loading" } });
-    const r = await getApis().recs.add({ context: { ...ctx, deck: workingDeck(next) }, excludeCardIds: next.declinedAdds });
-    if (id === addRequest.current) setAdd({ round, value: toAsync(r) });
+    const deck = workingDeck(next);
+    const key = deckKey(deck);
+    setAdd({ round, key, value: { status: "loading" } });
+    const r = await getApis().recs.add({ context: { ...ctx, deck }, excludeCardIds: next.declinedAdds });
+    if (id === addRequest.current) setAdd({ round, key, value: toAsync(r) });
   }
 
   /**
-   * Weaker fits in the deck as `next` leaves it. Cards the player kept in an earlier sitting are left out here, when the
-   * list arrives, rather than as they are kept: the sitting deals the list by position, and a card vanishing from it
-   * mid-sitting would skip the one after it.
+   * Weaker fits in the deck as `next` leaves it before any swap (`deckBeforeSwaps`), so the list is the same however
+   * many swaps are picked from it. Cards swapped earlier in the round that the list no longer names lead it, so every
+   * swap stays on the list with its replacement marked. Kept cards stay too: the sitting steps over decided cards as
+   * their turn comes, since it deals the list by position and a card vanishing from it would skip the one after it.
    */
   async function loadReplaceTargets(next: JourneyState, ctx: RecContext | null = context): Promise<void> {
     if (!ctx || !current) return;
     const round = current.id;
     const id = ++replaceRequest.current;
-    setReplace({ round, value: { status: "loading" } });
+    const deck = deckBeforeSwaps(next);
+    const key = deckKey(deck);
+    const candidates = new Map<CardId, Candidates>();
+    setReplace({ round, key, candidates, value: { status: "loading" } });
     setReplaceVersion((v) => v + 1);
-    const r = await getApis().recs.cut({ context: { ...ctx, deck: workingDeck(next) } });
+    const r = await getApis().recs.cut({ context: { ...ctx, deck } });
     if (id !== replaceRequest.current) return;
-    // Cards this round put in the deck (additions, swapped-in replacements) were chosen just now, so they aren't dealt
-    // as weaker fits; kept cards were already decided on.
-    const skip = new Set<number>([...next.keptInReplace, ...next.adds.map((c) => c.id), ...next.swaps.map((s) => s.replacement.id)]);
-    setReplace({
-      round,
-      value: r.ok
-        ? { status: "ready", data: { ...r.data, suggestions: r.data.suggestions.filter((s) => !skip.has(s.card.id)) } }
-        : toAsync(r),
-    });
+    if (!r.ok) {
+      setReplace({ round, key, candidates, value: toAsync(r) });
+      return;
+    }
+    // Additions were chosen just now, so they aren't dealt as weaker fits.
+    const added = new Set<number>(next.adds.map((c) => c.id));
+    const listed = r.data.suggestions.filter((s) => !added.has(s.card.id));
+    const named = new Set<number>(listed.map((s) => s.card.id));
+    const swapped = next.swaps
+      .filter((s) => !named.has(s.target.id))
+      .map((s): CutSuggestion => ({ card: s.target, cutScore: 0, reasons: [], severity: "suggested", corpus: null, owned: null }));
+    setReplace({ round, key, candidates, value: { status: "ready", data: { ...r.data, suggestions: [...swapped, ...listed] } } });
+  }
+
+  /** Whether the Add list on hand was made for the deck as `s` leaves it (or is on its way). */
+  const addFresh = (s: JourneyState) =>
+    current !== null && addFor?.round === current.id && addFor.key === deckKey(workingDeck(s)) && addFor.value.status !== "error";
+  /** Whether the Swap list on hand was made for the deck as `s` leaves it before swaps (or is on its way). */
+  const replaceFresh = (s: JourneyState) =>
+    current !== null &&
+    replaceFor?.round === current.id &&
+    replaceFor.key === deckKey(deckBeforeSwaps(s)) &&
+    replaceFor.value.status !== "error";
+
+  /** The settings changed: every list on hand was made with the old ones, so each is asked for again on the way in. */
+  function invalidateLists() {
+    setAdd((prev) => prev && { ...prev, key: null });
+    setReplace((prev) => prev && { ...prev, key: null });
   }
 
   /**
@@ -210,6 +258,7 @@ export function useDeckJourney({
         );
       }
     }
+    invalidateLists();
     const choices = latest.current?.state ?? now.state;
     if (phase === "add" && openSlots(choices) > 0) return loadAdds(choices, ctx);
     if (phase === "replace") return loadReplaceTargets(choices, ctx);
@@ -242,11 +291,18 @@ export function useDeckJourney({
     return previousBracket;
   }
 
-  /** Applies choices and returns the state they lead to, so a request can go out for it in the same handler. */
+  /**
+   * Applies choices and returns the state they lead to, so a request can go out for it in the same handler. Builds on
+   * the latest round rather than this render's: one handler can apply twice (the sitting's last swap, then going on to
+   * Review), and the second must not undo the first.
+   */
   function apply(...actions: JourneyAction[]): JourneyState | null {
-    if (!current) return null;
-    const next = actions.reduce(journeyReducer, current.state);
-    setRound({ ...current, state: next });
+    const from = latest.current ?? current;
+    if (!from) return null;
+    const next = actions.reduce(journeyReducer, from.state);
+    const round = { ...from, state: next };
+    latest.current = round;
+    setRound(round);
     return next;
   }
 
@@ -255,10 +311,11 @@ export function useDeckJourney({
     if (before.length === 0 && state?.phase === phase) return;
     const next = apply(...before, { type: "goto", phase });
     if (!next) return;
-    // The Add and Replace lists depend on everything chosen before them, so they are asked for on the way in. A full
-    // deck has nothing to add, so Add asks for nothing.
-    if (phase === "add" && openSlots(next) > 0) void loadAdds(next);
-    if (phase === "replace") void loadReplaceTargets(next);
+    // The Add and Replace lists depend on everything chosen before them, so they are asked for on the way in, unless
+    // the one on hand was made for the same deck: then the player picks up where they left off. A full deck has
+    // nothing to add, so Add asks for nothing.
+    if (phase === "add" && openSlots(next) > 0 && !addFresh(next)) void loadAdds(next);
+    if (phase === "replace" && !replaceFresh(next)) void loadReplaceTargets(next);
   }
 
   // ── Cut ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -329,6 +386,40 @@ export function useDeckJourney({
     if (next) void loadAdds(next);
   }
 
+  // ── Stepper ────────────────────────────────────────────────────────────────────────────────────────────────────
+  /** The current step's Next: what its own button does. */
+  function nextStep() {
+    if (!state) return;
+    if (state.phase === "cut") finishCuts();
+    else if (state.phase === "add") goTo("replace");
+    else if (state.phase === "replace") goTo("review");
+  }
+
+  /**
+   * Whether the stepper may open a step. Earlier steps always; the next one, as its Next; one further on only when
+   * the round has been there and the deck is unchanged since its Swap list was made, so going back to look changes
+   * nothing. A bracket check waiting in Cut keeps the way on to its own buttons.
+   */
+  function canOpen(phase: JourneyPhase): boolean {
+    if (!state) return false;
+    const at = phaseIndex(state.phase);
+    const to = phaseIndex(phase);
+    if (to <= at) return true;
+    if (current?.check) return false;
+    if (to === at + 1) return true;
+    if (to > phaseIndex(state.reached)) return false;
+    return replaceFresh(state.phase === "cut" ? pendingCuts.reduce(journeyReducer, state) : state);
+  }
+
+  /** A step chosen in the stepper: the next step is the current one's Next; another goes there directly. */
+  function select(phase: JourneyPhase) {
+    if (!state || !canOpen(phase)) return;
+    const at = phaseIndex(state.phase);
+    const to = phaseIndex(phase);
+    if (to === at + 1) nextStep();
+    else goTo(phase, ...(state.phase === "cut" && to > at ? pendingCuts : []));
+  }
+
   // ── Replace ────────────────────────────────────────────────────────────────────────────────────────────────────
   /** Weaker fits in the deck as it now stands, each dealt with a replacement (kept ones left out when they load). */
   const replaceTargets: CutSuggestion[] =
@@ -344,6 +435,7 @@ export function useDeckJourney({
     state,
     dispatch: (action: JourneyAction) => void apply(action),
     goTo,
+    stepper: { canOpen, select },
     deck,
     workingContext,
     cards,
@@ -360,8 +452,14 @@ export function useDeckJourney({
       keep: (cardId: CardId) => void apply({ type: "keepInReplace", cardId }),
       /** Changes each time the targets are asked for again. */
       version: replaceVersion,
-      /** Whether a card is still in the deck: a target an undone swap took out is stepped over. */
+      /** Replacements already fetched for this list, by card, for every sitting over it. */
+      candidates: current && replaceFor?.round === current.id ? replaceFor.candidates : undefined,
+      /** Whether a card is still in the deck: a target swapped out, or one an undone addition took out, is decided. */
       inDeck: (cardId: CardId) => (state ? copiesInDeck(state, cardId) > 0 : false),
+      /** Whether the player kept a card the Replace phase dealt. */
+      isKept: (cardId: CardId) => state?.keptInReplace.includes(cardId) ?? false,
+      /** The swap picked for a card, if any. */
+      swapFor: (cardId: CardId) => state?.swaps.find((s) => s.target.id === cardId) ?? null,
       /** Replacements passed on this round, which aren't offered for that card again. */
       declined: state?.declinedSwaps ?? [],
       decline: (targetId: CardId, replacementId: CardId) => void apply({ type: "declineSwap", targetId, replacementId }),

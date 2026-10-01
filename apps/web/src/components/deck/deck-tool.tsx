@@ -18,9 +18,10 @@ import { DeckBar } from "./deck-bar";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
+import { ResumeDeckDialog } from "./resume-deck-dialog";
 import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
-import { SaveDeckButton } from "@/components/decks/save-deck-button";
+import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { AddPhase } from "./journey/add-phase";
@@ -156,6 +157,11 @@ export function DeckTool() {
   const resumeStarted = useRef(false);
   /** Until the resumed save settles; shown only once the visitor is known to be signed in. */
   const [resuming, setResuming] = useState(resumeSave);
+  /**
+   * The deck from the last visit goes back in the box on arrival, and the player is asked whether to carry on with it.
+   * Once they answer or wave the question away it stays answered, and the box keeps whatever they chose.
+   */
+  const [resumeAnswered, setResumeAnswered] = useState(false);
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
   const { analysis, context } = tool;
   const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut });
@@ -310,6 +316,15 @@ export function DeckTool() {
     setEditing(false);
     setMode("upgrade");
     checkLookup(outcome.analysis);
+  }
+
+  /** Empties the tool: the decklist box, the deck and everything built on it. */
+  function clearAll() {
+    editorHandle.current?.discard();
+    tool.clearDeck();
+    lookup.reset();
+    lookupCheckedFor.current = null;
+    setEditing(true);
   }
 
   /**
@@ -473,13 +488,7 @@ export function DeckTool() {
                   type="button"
                   size="lg"
                   variant="ghost"
-                  onClick={() => {
-                    editorHandle.current?.discard();
-                    tool.clearDeck();
-                    lookup.reset();
-                    lookupCheckedFor.current = null;
-                    setEditing(true);
-                  }}
+                  onClick={clearAll}
                 >
                   Clear
                 </Button>
@@ -526,6 +535,8 @@ export function DeckTool() {
           <DeckBar
             analysis={analysis}
             context={context}
+            deckName={tool.openDeck?.name ?? tool.deckName ?? suggestedDeckName(analysis)}
+            onRename={tool.renameDeck}
             cardCount={cardCount}
             onBracketChange={tool.changeBracket}
             collectionMode={tool.collectionMode}
@@ -550,6 +561,7 @@ export function DeckTool() {
                   original={tool.original}
                   beforeSave={async () => (editorHandle.current ? editorHandle.current.flush() : null)}
                   collection={source}
+                  defaultName={tool.deckName}
                 />
               ) : undefined
             }
@@ -585,7 +597,7 @@ export function DeckTool() {
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
-                    <JourneyStepper phase={journey.state.phase} onSelect={(phase) => journey.goTo(phase)} />
+                    <JourneyStepper phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
                   </div>
                   {journey.state.phase !== "review" && <ViewToggle view={view} onChange={changeView} />}
                 </div>
@@ -641,6 +653,20 @@ export function DeckTool() {
       )}
 
       <CommanderLookupSheet lookup={lookup} />
+      {tool.restoredDeck && tool.showsRestoredDeck && !resumeAnswered && !analysis && (
+        <ResumeDeckDialog
+          name={tool.restoredDeck.deckName ?? tool.restoredDeck.commanderName ?? null}
+          onYes={() => {
+            setResumeAnswered(true);
+            void analyze();
+          }}
+          onNo={() => {
+            setResumeAnswered(true);
+            clearAll();
+          }}
+          onDismiss={() => setResumeAnswered(true)}
+        />
+      )}
     </div>
   );
 }
