@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, type LucideIcon } from "lucide-react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { cn } from "cn";
@@ -209,6 +209,7 @@ export function SideButton({
   disabled,
   onClick,
   tone = "primary",
+  icon,
 }: {
   kind: "pass" | "swap";
   tone?: AcceptTone;
@@ -217,8 +218,10 @@ export function SideButton({
   pull: number;
   disabled: boolean;
   onClick: () => void;
+  /** The button's symbol, when the default (✓ to accept, ✕ to pass) would misread the job, e.g. ✂ and ✓ for a cut. */
+  icon?: LucideIcon | undefined;
 }) {
-  const Icon = kind === "swap" ? Check : X;
+  const Icon = icon ?? (kind === "swap" ? Check : X);
   return (
     <button
       type="button"

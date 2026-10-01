@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
+import type { LucideIcon } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { ZoomableCard } from "@/components/cards/card-zoom";
@@ -25,6 +26,8 @@ export function SingleSwipe({
   onAccept,
   onPass,
   tone,
+  acceptIcon,
+  passIcon,
 }: {
   card: CardSummary;
   /** The job the swipe does, which colours the ✅ button. */
@@ -42,6 +45,9 @@ export function SingleSwipe({
   footer?: ReactNode;
   onAccept: () => void;
   onPass: () => void;
+  /** Symbols for the two buttons, in place of ✓ and ✕ (see SideButton). */
+  acceptIcon?: LucideIcon;
+  passIcon?: LucideIcon;
 }) {
   const reduceMotion = useReducedMotion();
   const handle = useRef<SwipeHandle>(null);
@@ -83,7 +89,7 @@ export function SingleSwipe({
         Card {position} of {total}
       </p>
       <div className="mt-2 grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] items-center gap-2">
-        <SideButton kind="pass" label={passLabel} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
+        <SideButton kind="pass" icon={passIcon} label={passLabel} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
         {/* Keyed by card: reusing the card that just flew off would leave it off-screen and still marked as leaving. */}
         <SwipeCard key={card.id} ref={handle} onDrag={setDrag} canSwipe={canSwipe} onSwipe={swiped}>
           <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100lvh_-_31.25rem)*0.72),17rem)] max-w-full">
@@ -92,7 +98,7 @@ export function SingleSwipe({
             </ZoomableCard>
           </DrawnCard>
         </SwipeCard>
-        <SideButton kind="swap" tone={tone} label={acceptLabel} pull={Math.max(0, drag)} disabled={false} onClick={() => act(1)} />
+        <SideButton kind="swap" tone={tone} icon={acceptIcon} label={acceptLabel} pull={Math.max(0, drag)} disabled={false} onClick={() => act(1)} />
       </div>
       <div aria-live="polite" className="mt-3 text-center">
         <p className="font-heading text-lg leading-tight font-semibold">{displayName(card)}</p>
