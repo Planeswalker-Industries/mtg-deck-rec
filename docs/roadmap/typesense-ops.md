@@ -181,6 +181,10 @@ SEARCH_API_URL=https://<host> SEARCH_API_ADMIN_TOKEN=... \
 
 Unset anywhere is a working configuration — that side just reads Postgres.
 
+**A generated `*.sslip.io` domain can change when Dokploy recreates the service.** When it does, update all three rows.
+Otherwise the stale ones answer with the proxy's plain `404 page not found`, and the call never reaches the container.
+That happened between 2026-09-27 and 2026-09-30: Vercel had the new domain, while the GitHub secret and `.env.hosted` kept the old one, so every drain failed.
+
 ## Keeping it in step
 
 Every table a document is built from has a trigger that writes the document's key into `public.search_index_queue`.
