@@ -33,6 +33,7 @@ import {
 import type { DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import type { Async, ContextChange } from "../use-deck-tool";
+import type { Candidates } from "../use-swipe-rater";
 
 /**
  * Cut suggestions asked for when checking a deck against a new bracket: the cut route's cap (MAX_CUT_LIMIT), so every
@@ -72,6 +73,15 @@ interface ListFor<T> {
   value: Async<T>;
 }
 
+/**
+ * The Swap list, with the replacements fetched for its cards, kept for as long as the list is: a sitting closes when
+ * the player leaves the phase, and coming back must not ask the database again for cards it already has. A new list
+ * (new deck, new settings, new round) starts empty, since its replacements were asked for under other settings.
+ */
+interface ReplaceList extends ListFor<CutResult> {
+  candidates: Map<CardId, Candidates>;
+}
+
 const toAsync = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): Async<T> =>
   r.ok ? { status: "ready", data: r.data } : { status: "error", message: r.error.message };
 
@@ -104,7 +114,7 @@ export function useDeckJourney({
   const [round, setRound] = useState<Round | null>(null);
   // Each list remembers the round it was asked for, so a round's lists never show in the next one.
   const [addFor, setAdd] = useState<ListFor<AddResult> | null>(null);
-  const [replaceFor, setReplace] = useState<ListFor<CutResult> | null>(null);
+  const [replaceFor, setReplace] = useState<ReplaceList | null>(null);
   /** Bumped when the Replace targets are asked for again, so the swipe view starts over on the new list. */
   const [replaceVersion, setReplaceVersion] = useState(0);
   const addRequest = useRef(0);
@@ -179,12 +189,13 @@ export function useDeckJourney({
     const id = ++replaceRequest.current;
     const deck = deckBeforeSwaps(next);
     const key = deckKey(deck);
-    setReplace({ round, key, value: { status: "loading" } });
+    const candidates = new Map<CardId, Candidates>();
+    setReplace({ round, key, candidates, value: { status: "loading" } });
     setReplaceVersion((v) => v + 1);
     const r = await getApis().recs.cut({ context: { ...ctx, deck } });
     if (id !== replaceRequest.current) return;
     if (!r.ok) {
-      setReplace({ round, key, value: toAsync(r) });
+      setReplace({ round, key, candidates, value: toAsync(r) });
       return;
     }
     // Additions were chosen just now, so they aren't dealt as weaker fits.
@@ -194,7 +205,7 @@ export function useDeckJourney({
     const swapped = next.swaps
       .filter((s) => !named.has(s.target.id))
       .map((s): CutSuggestion => ({ card: s.target, cutScore: 0, reasons: [], severity: "suggested", corpus: null, owned: null }));
-    setReplace({ round, key, value: { status: "ready", data: { ...r.data, suggestions: [...swapped, ...listed] } } });
+    setReplace({ round, key, candidates, value: { status: "ready", data: { ...r.data, suggestions: [...swapped, ...listed] } } });
   }
 
   /** Whether the Add list on hand was made for the deck as `s` leaves it (or is on its way). */
@@ -441,6 +452,8 @@ export function useDeckJourney({
       keep: (cardId: CardId) => void apply({ type: "keepInReplace", cardId }),
       /** Changes each time the targets are asked for again. */
       version: replaceVersion,
+      /** Replacements already fetched for this list, by card, for every sitting over it. */
+      candidates: current && replaceFor?.round === current.id ? replaceFor.candidates : undefined,
       /** Whether a card is still in the deck: a target swapped out, or one an undone addition took out, is decided. */
       inDeck: (cardId: CardId) => (state ? copiesInDeck(state, cardId) > 0 : false),
       /** Whether the player kept a card the Replace phase dealt. */

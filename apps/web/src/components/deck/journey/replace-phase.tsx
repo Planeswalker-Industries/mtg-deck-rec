@@ -155,6 +155,7 @@ export function ReplacePhase({
             targets={[focused]}
             startAt={reopen?.targetId}
             preferred={reopen?.replacementId}
+            cache={journey.replace.candidates}
             context={context}
             commanderKeyId={commanderKeyId}
             picked={picked}
@@ -217,6 +218,7 @@ export function ReplacePhase({
             targets={toSwipe}
             startAt={reopen?.targetId}
             preferred={reopen?.replacementId}
+            cache={journey.replace.candidates}
             context={context}
             commanderKeyId={commanderKeyId}
             picked={picked}

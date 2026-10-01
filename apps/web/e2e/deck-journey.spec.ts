@@ -153,3 +153,42 @@ test("going back from Swap and returning keeps the swaps, and a picked swap reop
   await expect(swaps).toHaveCount(0);
   await expect(rater.getByRole("button", { name: `Swap in ${picked}` })).toBeVisible({ timeout: 60_000 });
 });
+
+test("returning to Swap with the deck unchanged asks for nothing again", async ({ page }) => {
+  const recs = await analyzeDeck(page);
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
+  await steps.getByRole("button", { name: "Add" }).click();
+  await steps.getByRole("button", { name: "Swap" }).click();
+  const swapIn = recs.getByRole("region", { name: "Swipe through cards to replace" }).getByRole("button", { name: /^Swap in / });
+  const nothingLeft = recs.getByRole("button", { name: "Next: review the deck" });
+  await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 60_000 });
+  test.skip(await nothingLeft.isVisible(), "no replacements in this data");
+
+  // Records every loading state that shows from here on: the Swap list and a card's replacements each have one.
+  const watchLoading = () =>
+    page.evaluate(() => {
+      const w = window as unknown as { loadingSeen: string[] };
+      w.loadingSeen = [];
+      new MutationObserver(() => {
+        for (const label of ["Looking at the deck again", "Finding replacements"]) {
+          if (document.body.innerText.includes(label)) w.loadingSeen.push(label);
+        }
+      }).observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
+  const loadingSeen = () => page.evaluate(() => (window as unknown as { loadingSeen: string[] }).loadingSeen);
+
+  await watchLoading();
+  await steps.getByRole("button", { name: "Cut" }).click();
+  await steps.getByRole("button", { name: "Swap" }).click();
+  await expect(swapIn).toBeVisible({ timeout: 60_000 });
+  expect(await loadingSeen()).toEqual([]);
+
+  // A changed deck does ask again, which shows the watch sees a load when there is one.
+  await watchLoading();
+  await steps.getByRole("button", { name: "Add" }).click();
+  await recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).click({ timeout: 60_000 });
+  await steps.getByRole("button", { name: "Swap" }).click();
+  await expect(swapIn).toBeVisible({ timeout: 60_000 });
+  expect(await loadingSeen()).toContain("Looking at the deck again");
+});

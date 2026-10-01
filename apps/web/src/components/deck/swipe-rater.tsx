@@ -16,7 +16,7 @@ import { CardBack } from "./card-back";
 import { PanelError } from "./panel-state";
 import { ShuffleDeck } from "./shuffle-deck";
 import { TagPills } from "./tag-pills";
-import { useSwipeRater, type PickedSwap, type RaterTarget, type SwipeMode, type SwipeVote } from "./use-swipe-rater";
+import { useSwipeRater, type Candidates, type PickedSwap, type RaterTarget, type SwipeMode, type SwipeVote } from "./use-swipe-rater";
 
 /** How far, as a share of the card's width, a drag has to travel to count as a swipe. */
 const SWIPE_SHARE = 0.3;
@@ -255,6 +255,7 @@ export function SwipeRater({
   skipTarget,
   startAt,
   preferred,
+  cache,
   onFinish,
   viewRef,
 }: {
@@ -278,6 +279,8 @@ export function SwipeRater({
   startAt?: CardId;
   /** Deck tool: a replacement to deal first for `startAt`. */
   preferred?: CardId;
+  /** Deck tool: replacements already fetched for this list, by card (see useSwipeRater). */
+  cache?: Map<CardId, Candidates>;
   onFinish: () => void;
   /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
   viewRef?: (element: HTMLElement | null) => void;
@@ -296,6 +299,7 @@ export function SwipeRater({
     skipTarget,
     startAt,
     preferred,
+    cache,
     onFinish,
   });
   const reduceMotion = useReducedMotion();
