@@ -119,3 +119,37 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   await expect(progress).toHaveText(before);
   await expect(swapIn).toHaveAttribute("aria-label", candidateBefore ?? "");
 });
+
+test("going back from Swap and returning keeps the swaps, and a picked swap reopens its card", async ({ page }) => {
+  const recs = await analyzeDeck(page);
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
+  // The next step in the stepper does what Next does.
+  await steps.getByRole("button", { name: "Add" }).click();
+  await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step");
+  await steps.getByRole("button", { name: "Swap" }).click();
+  await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
+
+  const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
+  const swapIn = rater.getByRole("button", { name: /^Swap in / });
+  const nothingLeft = recs.getByRole("button", { name: "Next: review the deck" });
+  await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 60_000 });
+  test.skip(await nothingLeft.isVisible(), "no replacements in this data");
+
+  const picked = ((await swapIn.getAttribute("aria-label")) ?? "").replace(/^Swap in /, "");
+  await swapIn.click();
+  const swaps = recs.getByRole("list", { name: "Swaps picked" }).getByRole("button");
+  await expect(swaps).toHaveCount(1);
+
+  // Back to Cut without changing anything, then straight back to Swap: the swap is still there.
+  await steps.getByRole("button", { name: "Cut" }).click();
+  await expect(steps.getByRole("button", { name: "Swap" })).toBeEnabled();
+  await steps.getByRole("button", { name: "Swap" }).click();
+  await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
+  await expect(swaps).toHaveCount(1);
+
+  // Tapping the swap takes it back and deals its card again, the replacement picked before first.
+  await swaps.first().click();
+  await expect(swaps).toHaveCount(0);
+  await expect(rater.getByRole("button", { name: `Swap in ${picked}` })).toBeVisible({ timeout: 60_000 });
+});

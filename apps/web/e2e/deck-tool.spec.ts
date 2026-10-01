@@ -211,8 +211,13 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
   await recs.getByRole("button", { name: "Show as a list" }).click();
 
-  // A reload brings the deck back into the box and waits: opening the tool never analyzes an old deck by itself.
+  // A reload brings the deck back into the box and asks whether to carry on: opening the tool never analyzes an old
+  // deck by itself. Waving the question away leaves the deck in the box.
   await page.reload();
+  const resume = page.getByRole("dialog", { name: /^Continue with .+\?$/ });
+  await expect(resume).toBeVisible({ timeout: 30_000 });
+  await page.keyboard.press("Escape");
+  await expect(resume).toBeHidden();
   const box = page.getByRole("textbox", { name: "Decklist" });
   await expect(box).not.toHaveValue("", { timeout: 30_000 });
   const note = page.getByText("Your last decklist is back in the box.");
@@ -241,6 +246,55 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(box).toHaveValue("");
   await expect(page.getByText("Your last decklist is back in the box.")).toBeHidden();
+});
+
+test("asks whether to carry on with the last deck: yes analyzes it, no starts a new one", async ({ page }) => {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+
+  // The question names the deck by its commander.
+  await page.goto("/deck");
+  const resume = page.getByRole("dialog", { name: /^Continue with .+\?$/ });
+  await expect(resume).toBeVisible({ timeout: 30_000 });
+  await resume.getByRole("button", { name: "Yes" }).click();
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+
+  await page.goto("/deck");
+  await expect(resume).toBeVisible({ timeout: 30_000 });
+  await resume.getByRole("button", { name: "No" }).click();
+  await expect(page.getByRole("textbox", { name: "Decklist" })).toHaveValue("");
+  // No forgets the deck, so the next visit asks nothing.
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Decklist" })).toHaveValue("");
+  await expect(resume).toBeHidden();
+});
+
+test("renames a deck from its name in the deck bar, and remembers the name for the next visit", async ({ page }) => {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+
+  await recs.getByRole("button", { name: /^Rename deck: / }).click();
+  const field = recs.getByRole("textbox", { name: "Deck name" });
+  await field.fill("Kitchen Table Brew");
+  await field.press("Enter");
+  await expect(recs.getByRole("button", { name: "Rename deck: Kitchen Table Brew" })).toBeVisible();
+
+  // Escape puts the name back.
+  await recs.getByRole("button", { name: "Rename deck: Kitchen Table Brew" }).click();
+  await field.fill("Not this");
+  await field.press("Escape");
+  await expect(recs.getByRole("button", { name: "Rename deck: Kitchen Table Brew" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("dialog", { name: "Continue with Kitchen Table Brew?" })).toBeVisible({ timeout: 30_000 });
 });
 
 test("takes a decklist as a file, and reduces a CSV export to quantities and names", async ({ page }) => {

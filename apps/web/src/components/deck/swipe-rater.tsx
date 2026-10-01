@@ -250,6 +250,8 @@ export function SwipeRater({
   onDecline,
   declined,
   skipTarget,
+  startAt,
+  preferred,
   onFinish,
   viewRef,
 }: {
@@ -269,6 +271,10 @@ export function SwipeRater({
   declined?: readonly { targetId: CardId; replacementId: CardId }[];
   /** Deck tool: a card to step over when its turn comes (no longer in the deck). */
   skipTarget?: (card: CardSummary) => boolean;
+  /** Deck tool: the card to open on, rather than the first. */
+  startAt?: CardId;
+  /** Deck tool: a replacement to deal first for `startAt`. */
+  preferred?: CardId;
   onFinish: () => void;
   /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
   viewRef?: (element: HTMLElement | null) => void;
@@ -285,6 +291,8 @@ export function SwipeRater({
     onDecline,
     declined,
     skipTarget,
+    startAt,
+    preferred,
     onFinish,
   });
   const reduceMotion = useReducedMotion();

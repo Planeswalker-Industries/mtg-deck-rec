@@ -46,6 +46,7 @@ export function SaveDeckButton({
   original,
   beforeSave,
   collection,
+  defaultName,
 }: {
   analysis: DeckAnalysis;
   /**
@@ -65,10 +66,12 @@ export function SaveDeckButton({
   beforeSave?: (() => Promise<DeckAnalysis | null>) | undefined;
   /** The player's collection, which the deck is checked against. */
   collection: CollectionSource;
+  /** A name the player already gave the deck, offered in place of its commanders' names. */
+  defaultName?: string | null | undefined;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(defaultOpen);
-  const [name, setName] = useState(() => suggestedName(analysis));
+  const [name, setName] = useState(() => defaultName ?? suggestedDeckName(analysis));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
@@ -222,8 +225,11 @@ export function SaveDeckButton({
   );
 }
 
-/** Prefilled from the commander, so saving is one click for anyone who doesn't care about the name. */
-function suggestedName(analysis: DeckAnalysis): string {
+/**
+ * What a deck is called until the player names it: its commanders. Prefilled in the save form, so saving is one click
+ * for anyone who doesn't care about the name.
+ */
+export function suggestedDeckName(analysis: DeckAnalysis): string {
   const names = analysis.commanderKey.commanders.map(displayName);
   return names.length === 0 ? "My Commander deck" : names.join(" and ").slice(0, MAX_DECK_NAME_CHARS);
 }
