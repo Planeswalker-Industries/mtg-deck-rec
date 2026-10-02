@@ -1,7 +1,6 @@
 package archidekt
 
 import (
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -26,25 +25,24 @@ type source struct{}
 
 func (source) Name() string { return Name }
 
-// ListURL is the browse feed, newest-update-first: Commander format, exactly 100 cards, ordered by update. What the
-// page numbers mean is Archidekt's "page=N" pagination, which continues past the count cap.
-func (source) ListURL(page int) string {
-	return baseURL + listPath + "?" + listURLQuery + fmt.Sprintf("%d", page)
-}
+// ListURL is one page of a commander's decks, most viewed first: Commander format, 100-card decks. Archidekt's
+// "page=N" pagination continues past its count cap of 1,000.
+func (source) ListURL(commanderName string, page int) string { return listURL(commanderName, page) }
 
 func (source) DeckURL(id string) string { return baseURL + deckPath + id + "/" }
 
-func (source) ParseList(body []byte) ([]crawl.Entry, error) { return ParseList(body) }
+func (source) ParseList(body []byte) (crawl.ListPage, error) { return ParseList(body) }
 
 func (source) ParseDeck(body []byte, id string) (crawl.Deck, error) { return ParseDeck(body, id) }
 
-// Defaults is the crawl policy before app_config.archidekt overrides it. The 3 s pace is the worker's default: one
-// request a second drew 429s on 2026-09-14.
+// Defaults is the crawl policy before app_config.archidekt overrides it. One request a second plus up to half a
+// second of jitter: the project's one-a-second rule (owner decision 2026-10-01). One a second drew 429s on
+// 2026-09-14, so the fetcher's 429 backoff is what keeps this polite; if 429s return, raise requestIntervalMs in
+// app_config rather than here. Everything else (run length, pages per commander) is the engine's.
 func Defaults() crawl.Defaults {
 	return crawl.Defaults{
-		RequestInterval: 3 * time.Second,
-		MaxDecksPerRun:  1000,
-		BackfillDecks:   10_000,
+		RequestInterval: time.Second,
+		RequestJitter:   500 * time.Millisecond,
 		BackoffStart:    5 * time.Second,
 		BackoffMax:      5 * time.Minute,
 	}

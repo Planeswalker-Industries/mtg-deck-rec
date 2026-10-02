@@ -1,6 +1,7 @@
 // Package crawl is the shared engine behind the deck crawlers (Moxfield, Archidekt): politeness, budget, fetching,
 // the run loop and the Supabase REST store. A Source plugs in the two things that differ between sites - the URL to
-// list decks by update and the parsing of a list and a deck - so nothing downstream sees which site a deck came from.
+// list one commander's decks and the parsing of a list and a deck - so nothing downstream sees which site a deck came
+// from.
 package crawl
 
 import (
@@ -13,112 +14,116 @@ import (
 // touched.
 type Policy struct {
 	RequestInterval time.Duration
-	MaxDecksPerRun  int
-	BackfillDecks   int
-	BackoffStart    time.Duration
-	BackoffMax      time.Duration
+	// RequestJitter adds a random extra wait of up to this much to each interval, so requests do not land on a fixed
+	// beat. It only ever lengthens the gap: the interval stays the floor.
+	RequestJitter time.Duration
+	BackoffStart  time.Duration
+	BackoffMax    time.Duration
 	// StaleClaim is how long a crawl's claim may sit untouched before another run may take it over. It has to be
-	// comfortably longer than a real crawl (a backfill runs for hours at the polite pace) and short enough that a
-	// container killed mid-run does not wedge the source until someone notices.
+	// longer than RunDuration, or a second cron could seize a live claim, and short enough that a container killed
+	// mid-run does not wedge the source until someone notices.
 	StaleClaim time.Duration
+	// RunDuration is how long one run may crawl: the daily allowance. The commander being visited when it runs out is
+	// left partial and comes back first next time.
+	RunDuration time.Duration
+	// FirstVisitPages is how many list pages a commander's first visit reads.
+	FirstVisitPages int
+	// NewDecksPerRevisit is how many new or changed decks led by the commander a revisit looks for before moving on.
+	NewDecksPerRevisit int
+	// MaxPagesPerCommander caps a revisit's walk, so one huge commander cannot take a whole run.
+	MaxPagesPerCommander int
 }
 
 // Defaults is a source's baseline policy. Zero fields fall back to the shared absolutes below, so a source only has
-// to name what differs (Archidekt, for instance, needs a 3 s pace because 1 s drew 429s on 2026-09-14).
+// to name what differs (Archidekt, for instance, adds jitter to its one-a-second pace).
 type Defaults struct {
-	RequestInterval time.Duration
-	MaxDecksPerRun  int
-	BackfillDecks   int
-	BackoffStart    time.Duration
-	BackoffMax      time.Duration
-	StaleClaim      time.Duration
+	RequestInterval      time.Duration
+	RequestJitter        time.Duration
+	BackoffStart         time.Duration
+	BackoffMax           time.Duration
+	StaleClaim           time.Duration
+	RunDuration          time.Duration
+	FirstVisitPages      int
+	NewDecksPerRevisit   int
+	MaxPagesPerCommander int
 }
 
 const (
 	fallbackRequestInterval = time.Second
-	fallbackMaxDecksPerRun  = 500
-	fallbackBackfillDecks   = 10_000
 	fallbackBackoffStart    = 5 * time.Second
 	fallbackBackoffMax      = 5 * time.Minute
-	// Six hours: longer than a 10,000-deck backfill at a 3 s pace (about eight and a half hours is the worst case,
-	// but a crawl that long is already over its budget), and far shorter than "until someone reads the logs".
-	fallbackStaleClaim = 6 * time.Hour
+	// Six hours a day: the owner's allowance for the crawl (2026-10-01).
+	fallbackRunDuration = 6 * time.Hour
+	// Two hours past a full run: long enough that a live claim is never taken for stale, and far shorter than
+	// "until someone reads the logs".
+	fallbackStaleClaim = 8 * time.Hour
+	// One page (up to 60 decks on Archidekt) gives every commander a small base before any gets more (owner decision
+	// 2026-10-01); later visits grow it.
+	fallbackFirstVisitPages = 1
+	// The owner's figure for how many new or updated decks a revisit should find (2026-10-01).
+	fallbackNewDecksPerRevisit = 350
+	// The worker's own per-commander page cap (serve:commander-requests): 2,400 listings at 60 a page.
+	fallbackMaxPagesPerCommander = 40
 )
 
 // Policy applies the defaults then fills any zero field from the shared fallbacks.
 func (d Defaults) Policy() Policy {
-	p := Policy{
-		RequestInterval: d.RequestInterval,
-		MaxDecksPerRun:  d.MaxDecksPerRun,
-		BackfillDecks:   d.BackfillDecks,
-		BackoffStart:    d.BackoffStart,
-		BackoffMax:      d.BackoffMax,
-		StaleClaim:      d.StaleClaim,
+	return Policy{
+		RequestInterval:      orDuration(d.RequestInterval, fallbackRequestInterval),
+		RequestJitter:        d.RequestJitter,
+		BackoffStart:         orDuration(d.BackoffStart, fallbackBackoffStart),
+		BackoffMax:           orDuration(d.BackoffMax, fallbackBackoffMax),
+		StaleClaim:           orDuration(d.StaleClaim, fallbackStaleClaim),
+		RunDuration:          orDuration(d.RunDuration, fallbackRunDuration),
+		FirstVisitPages:      orInt(d.FirstVisitPages, fallbackFirstVisitPages),
+		NewDecksPerRevisit:   orInt(d.NewDecksPerRevisit, fallbackNewDecksPerRevisit),
+		MaxPagesPerCommander: orInt(d.MaxPagesPerCommander, fallbackMaxPagesPerCommander),
 	}
-	if p.RequestInterval <= 0 {
-		p.RequestInterval = fallbackRequestInterval
-	}
-	if p.MaxDecksPerRun <= 0 {
-		p.MaxDecksPerRun = fallbackMaxDecksPerRun
-	}
-	if p.BackfillDecks <= 0 {
-		p.BackfillDecks = fallbackBackfillDecks
-	}
-	if p.BackoffStart <= 0 {
-		p.BackoffStart = fallbackBackoffStart
-	}
-	if p.BackoffMax <= 0 {
-		p.BackoffMax = fallbackBackoffMax
-	}
-	if p.StaleClaim <= 0 {
-		p.StaleClaim = fallbackStaleClaim
-	}
-	return p
 }
 
-// ParsePolicy decodes the source's app_config row (key = source name) on top of its defaults.
+func orDuration(v, fallback time.Duration) time.Duration {
+	if v > 0 {
+		return v
+	}
+	return fallback
+}
+
+func orInt(v, fallback int) int {
+	if v > 0 {
+		return v
+	}
+	return fallback
+}
+
+// ParsePolicy decodes the source's app_config row (key = source name) on top of its defaults. A field the row leaves
+// out or sets to zero keeps the default.
 func ParsePolicy(raw json.RawMessage, d Defaults) (Policy, error) {
 	p := d.Policy()
 	if len(raw) == 0 {
 		return p, nil
 	}
 	var fields struct {
-		RequestIntervalMs int `json:"requestIntervalMs"`
-		MaxDecksPerRun    int `json:"maxDecksPerRun"`
-		BackfillDecks     int `json:"backfillDecks"`
-		BackoffStartMs    int `json:"backoffStartMs"`
-		BackoffMaxMs      int `json:"backoffMaxMs"`
-		StaleClaimSeconds int `json:"staleClaimSeconds"`
+		RequestIntervalMs    int `json:"requestIntervalMs"`
+		RequestJitterMs      int `json:"requestJitterMs"`
+		BackoffStartMs       int `json:"backoffStartMs"`
+		BackoffMaxMs         int `json:"backoffMaxMs"`
+		StaleClaimSeconds    int `json:"staleClaimSeconds"`
+		RunMinutes           int `json:"runMinutes"`
+		FirstVisitPages      int `json:"firstVisitPages"`
+		NewDecksPerRevisit   int `json:"newDecksPerRevisit"`
+		MaxPagesPerCommander int `json:"maxPagesPerCommander"`
 	}
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return Policy{}, err
 	}
-	if fields.RequestIntervalMs > 0 {
-		p.RequestInterval = time.Duration(fields.RequestIntervalMs) * time.Millisecond
-	}
-	if fields.MaxDecksPerRun > 0 {
-		p.MaxDecksPerRun = fields.MaxDecksPerRun
-	}
-	if fields.BackfillDecks > 0 {
-		p.BackfillDecks = fields.BackfillDecks
-	}
-	if fields.BackoffStartMs > 0 {
-		p.BackoffStart = time.Duration(fields.BackoffStartMs) * time.Millisecond
-	}
-	if fields.BackoffMaxMs > 0 {
-		p.BackoffMax = time.Duration(fields.BackoffMaxMs) * time.Millisecond
-	}
-	if fields.StaleClaimSeconds > 0 {
-		p.StaleClaim = time.Duration(fields.StaleClaimSeconds) * time.Second
-	}
+	p.RequestInterval = orDuration(time.Duration(fields.RequestIntervalMs)*time.Millisecond, p.RequestInterval)
+	p.RequestJitter = orDuration(time.Duration(fields.RequestJitterMs)*time.Millisecond, p.RequestJitter)
+	p.BackoffStart = orDuration(time.Duration(fields.BackoffStartMs)*time.Millisecond, p.BackoffStart)
+	p.BackoffMax = orDuration(time.Duration(fields.BackoffMaxMs)*time.Millisecond, p.BackoffMax)
+	p.StaleClaim = orDuration(time.Duration(fields.StaleClaimSeconds)*time.Second, p.StaleClaim)
+	p.RunDuration = orDuration(time.Duration(fields.RunMinutes)*time.Minute, p.RunDuration)
+	p.FirstVisitPages = orInt(fields.FirstVisitPages, p.FirstVisitPages)
+	p.NewDecksPerRevisit = orInt(fields.NewDecksPerRevisit, p.NewDecksPerRevisit)
+	p.MaxPagesPerCommander = orInt(fields.MaxPagesPerCommander, p.MaxPagesPerCommander)
 	return p, nil
-}
-
-// Budget returns how many decks this run may fetch: the backfill allowance on the first crawl, otherwise the daily
-// increment.
-func (p Policy) Budget(existingDecks int) int {
-	if existingDecks == 0 {
-		return p.BackfillDecks
-	}
-	return p.MaxDecksPerRun
 }

@@ -7,7 +7,7 @@ Two sources share one engine. **Archidekt is active**; **Moxfield is built and s
 Cloudflare's hard WAF block to the app's honest User-Agent on a path its own robots.txt allows (probed 2026-09-22),
 and the guardrails say a wall is obeyed, not worked around.
 
-Built under T036 (closed 2026-09-28). Open: the daily cron trigger (T042), a crawl database role (T043) and Moxfield access (T044). The aggregation that turns these decks into `commander_card_stats` is the follow-up milestone, and
+Built under T036 (closed 2026-09-28); rebuilt per commander on 2026-10-01. Open: the daily cron trigger (T042), a crawl database role (T043) and Moxfield access (T044). The aggregation that turns these decks into `commander_card_stats` is the follow-up milestone, and
 the wider design they feed is [`card-graph-plan.md`](card-graph-plan.md).
 
 ## Why it exists
@@ -16,8 +16,19 @@ Play rates are the strongest signal the recommender has, and until now the corpu
 a commander nobody had looked up yet (`serve:commander-requests`, T009). That is demand-driven: the commanders
 nobody browses stay empty, and the ones that are popular today stay frozen at whatever week they were collected.
 
-A daily crawl of the update-ordered feed fixes both. It sees decks in the order they changed, so a run costs roughly
-what changed since the last one rather than what exists, and the corpus tracks the format instead of a snapshot.
+A daily crawl that works through every commander fixes both. It takes commanders from a queue seeded from EDHREC's
+commander list, most played first, and lists each one's decks on Archidekt most viewed first:
+
+- **A first visit reads one list page** (up to 60 decks). Every commander gets a small base before any gets more
+  (owner decision 2026-10-01).
+- **A revisit walks on until it has found `newDecksPerRevisit` (350) decks** led by that commander that are new to
+  the corpus or whose cards changed. Revisits begin only once every commander has had its first visit.
+
+It replaced a walk of Archidekt's site-wide feed, newest update first, that stopped at the first stretch of
+unchanged decks. Hosted runs 1–5 (2026-09-24 to 2026-10-01) showed that never worked: Archidekt bumps `updatedAt`
+faster than a polite crawl can page, so the feed slid away under every walk, and each run collected only decks edited
+while it ran (the oldest any run reached was edited under a minute before it started). View order holds still
+between visits, so a commander's page 1 is the same decks tomorrow.
 
 ## The shape of it
 
@@ -26,7 +37,7 @@ Vercel cron (daily)
   └─ GET  /api/cron/{archidekt,moxfield}-scrape        apps/web — CRON_SECRET bearer
       └─ POST /cron/:source/scrape                     services/search-api — cron token, answers 202
           └─ crawl.Runner.Run (background goroutine)
-              ├─ GET  archidekt.com/api/decks/v3/…     the feed, newest update first
+              ├─ GET  archidekt.com/api/decks/v3/…     one commander's decks, most viewed first
               ├─ GET  archidekt.com/api/decks/<id>/    one deck
               └─ POST /rest/v1/rpc/crawl_*             the private corpus, through functions
 ```
@@ -59,17 +70,45 @@ site a deck came from. Adding a third source is those four methods, a `Defaults(
 2. **Read the state.** A disabled source stops here, having made no request.
 3. **Open a run row**, then **claim the source**. The claim is the only thing that decides whether this run crawls;
    losing it means another crawl is live, which is a normal outcome, not a failure.
-4. **Walk the feed**, page by page, newest update first.
-5. For each page: **look up the content hashes** we already hold for exactly the ids that page listed, then fetch
-   each deck and compare.
-6. **Write only what changed.** Ten unchanged decks in a row ends the walk — the feed is update-ordered, so past
-   that frontier everything is old.
-7. **Close the run** and release the claim.
+4. **Seed the queue** (`crawl_seed_commanders`): add the commanders `public.external_commanders` (EDHREC) knows and
+   refresh their deck counts, writing only what changed. A later EDHREC import reaches the queue on its own.
+5. **Visit commanders in queue order** until `runMinutes` is up or the queue is empty: never visited first, most
+   played (EDHREC deck count) first, then the least recently visited. Per commander:
+   1. List `?commanderName=<name>&deckFormat=3&size=100&orderBy=-viewCount&page=N` (`size` is the deck size, so
+      only complete 100-card decks; Archidekt pages by 60). A two-faced card that finds nothing is tried again under
+      its front face, and the name that worked is kept.
+   2. Per page, **look up what we hold** for exactly the ids it listed (`crawl_deck_versions`). A held deck whose
+      listed update time has not moved is stepped over without a request.
+   3. Fetch the rest and write them. A deck whose cards are unchanged has only its new listed time recorded, and
+      does not count. A deck led by another commander (the search also finds decks that merely run the card) is
+      kept, since it is a real deck already paid for, but does not count either.
+   4. Stop after page 1 on a first visit; on a revisit, at `newDecksPerRevisit` counted decks, the end of the list,
+      or `maxPagesPerCommander`. Record the visit (`crawl_finish_commander`).
+6. **Close the run** and release the claim.
+
+### Outcomes and the verification log
+
+Each commander's last visit is a row in `corpus.crawl_commanders`:
+
+| Outcome | |
+|---|---|
+| `done` | a first visit read its page, or a revisit met its target |
+| `exhausted` | a revisit ran out of list before its target |
+| `page_cap` | a revisit stopped at `maxPagesPerCommander` |
+| `partial` | the run's time ran out mid-visit; not stamped as visited, so it comes back first |
+| `not_found` | **no decks under its name or front face.** Left out of the queue until someone clears it |
+| `no_led_decks` | **a first visit listed decks, but none were led by this commander** (likely a name mismatch) |
+| `failed` | the visit hit an error that ended the run; not stamped, so it comes back first |
+
+The last two above `failed` are the verification log the owner asked for: commanders EDHREC knows that Archidekt
+does not, under that name. They are also logged at Warn in the container log.
 
 ### Budget
 
-`Budget(deckCount)` is `backfillDecks` (10,000) on an empty corpus and `maxDecksPerRun` (1,000 for Archidekt) after
-that. It bounds decks *and* pages: a page costs one request, and the loop cannot run past the budget.
+A run is bounded by time, `runMinutes` (360: the owner's six hours a day, 2026-10-01), and each visit by its
+commander's target. At about 1.25 s a request a first visit is one list page and up to 60 deck fetches, about
+75 seconds, so a day covers about 280 commanders and the first pass over the ~3,600 EDHREC commanders takes about
+two weeks.
 
 ### What counts as a deck
 
@@ -85,11 +124,10 @@ worker's `qualifyDeck`:
 A deck failing any of them is a `NotQualified`: counted in `crawl_runs.skipped_unqualified` and stepped over. Only a
 page that stopped looking like itself is a `ShapeError`, which quarantines the whole run rather than guessing.
 
-A deck that answers **404 or 410** is stepped over too, counted in `crawl_runs.skipped_missing`. The feed is
-update-ordered and the loop runs at one request a second, so minutes pass between a deck being listed and being
-fetched; in that window it can be deleted, made private or have its id retired. That is ordinary at this rate. It used
+A deck that answers **404 or 410** is stepped over too, counted in `crawl_runs.skipped_missing`. The loop runs at
+one request every few seconds, so minutes pass between a deck being listed and being fetched; in that window it can be deleted, made private or have its id retired. That is ordinary at this rate. It used
 to fail the whole run — observed 2026-09-24, a crawl died on deck 26724957 after about a hundred decks, and because
-the next run walks the same feed it would have died on the same id every night.
+the next run walked the same feed it would have died on the same id every night.
 
 The two counters are separate on purpose: a rising `skipped_unqualified` says the browse filters admit decks the
 corpus does not want, while a rising `skipped_missing` says the feed is stale or the crawl is falling behind
@@ -117,7 +155,9 @@ Every outbound request goes through `crawl.Fetcher`:
 - the honest User-Agent, `MTGDeckRec/0.1 (+https://github.com/Planeswalker-Industries/mtg-deck-rec)`, matching the
   worker's. Never rotated, never spoofed.
 - **robots.txt obeyed** — colly's default, and the `IgnoreRobotsTxt` option is absent on purpose.
-- one request in flight at a time, spaced `requestIntervalMs` apart. Archidekt is 3 s: one a second drew 429s on
+- one request in flight at a time, spaced `requestIntervalMs` apart plus a random extra of up to `requestJitterMs`,
+  so requests do not land on a fixed beat. Archidekt is 1 s + up to 0.5 s (owner decision 2026-10-01, the
+  project's one-a-second rule; it was 3 s before that). One a second drew 429s on
   2026-09-14.
 - 429 and 5xx retry up to three times with exponential backoff, widened to `Retry-After` when the server sets one.
 - **403 or a challenge is never retried.** It is a decision by the source, and the crawl honours it.
@@ -143,7 +183,7 @@ user-written, and one false positive switches off the pipeline until someone not
 its own run row as failed and reports busy. There is no read-then-write fast path, because that is a check with a gap
 in front of it.
 
-**A claim untouched for `staleClaimSeconds` (6 h) can be taken over.** A container killed mid-crawl — a deploy, an
+**A claim untouched for `staleClaimSeconds` (8 h, longer than a six-hour run) can be taken over.** A container killed mid-crawl — a deploy, an
 OOM — can never release its own claim, and without a takeover the source would be wedged until someone ran SQL. The
 superseded run is closed as failed so the log says what became of it.
 
@@ -155,24 +195,26 @@ waits for in-flight *requests*, and the scrape's request ended at its 202 — he
 
 ## The data
 
-Three tables in `corpus`, and nothing in the app reads them yet.
+Four tables in `corpus`, and nothing in the app reads them yet.
 
 | Table | |
 |---|---|
 | `corpus.decks` | one row per scraped deck: `commanders text[]`, `cards jsonb` (`{oracle id: quantity}`), `deck_size`, `content_hash`, the update times |
-| `corpus.crawl_runs` | one row per run, shaped like `sync_runs`: pages, decks listed/fetched/written, skipped unchanged, skipped unqualified, skipped missing, blocks, error |
+| `corpus.crawl_runs` | one row per run, shaped like `sync_runs`: pages, decks listed/fetched/written, skipped unchanged, skipped unqualified, skipped missing, commanders visited, blocks, error |
 | `corpus.crawl_state` | one row per source: cursor, claim, kill switch, probe |
+| `corpus.crawl_commanders` | one row per source and commander: EDHREC deck count (queue order), the name that worked, last visit, outcome, counts |
 
 `content_hash` is sha256 over **sorted** commanders and **sorted** card/quantity pairs. Sorted because the hash has
 to describe the deck and not the order a site happened to list it in — an order-sensitive hash would rewrite every
 row the first time a source reshuffled its output.
 
-`crawl_upsert_decks` writes only rows whose hash differs (`where d.content_hash is distinct from excluded.…`), so
-the project's diff-only rule is enforced by the database rather than trusted to the caller.
+`crawl_upsert_decks` writes only rows whose hash or listed update time differs, so the project's diff-only rule is
+enforced by the database rather than trusted to the caller. The listed time is written on an unchanged deck so the
+next visit can step over it without a request.
 
 ### Why functions, not tables
 
-**The Go service never addresses a `corpus` table.** It calls ten security-definer functions in `public`, with
+**The Go service never addresses a `corpus` table.** It calls security-definer functions in `public`, with
 execute revoked from `public`, `anon` and `authenticated` and granted to `service_role` alone.
 
 PostgREST can only address a table in a schema on its exposed list, so `/rest/v1/corpus.decks` is read as a table
@@ -190,22 +232,26 @@ conditions at once belongs in a function, not in a filter string.
 | `crawl_claim(source, run, client, stale_seconds)` | the mutex, with stale takeover |
 | `crawl_release(source, run)` | releases only a claim that run still holds |
 | `crawl_finish_run(run, summary)` | closes it; the only place `finished_at` is set |
-| `crawl_deck_hashes(source, ids)` | hashes for one feed page's ids |
+| `crawl_seed_commanders(source)` | adds EDHREC's commanders to the queue, refreshes their counts, diff-only |
+| `crawl_next_commanders(source, run, limit)` | the next commanders in queue order, leaving out those this run finished and `not_found` |
+| `crawl_finish_commander(source, card, run, result)` | records a visit; stamps it visited unless partial or failed |
+| `crawl_deck_versions(source, ids)` | hash and listed update time for one list page's ids |
+| `crawl_deck_hashes(source, ids)` | hashes only; no longer called, kept until a cleanup |
 | `crawl_upsert_decks(source, rows)` | diff-only write, returns rows changed |
-| `crawl_set_cursor(source, id)` | how far the feed got |
+| `crawl_set_cursor(source, id)` | the first deck a run listed |
 | `crawl_probe_ok(source)` | an honest fetch of an allowed path worked |
 | `crawl_disable(source, reason)` | the kill switch, audited |
 
-Hashes are read **per feed page**, not per run. The corpus is the one thing that grows without bound, and a daily
-run only needs to know about the few hundred decks in front of it.
+Held decks are read **per list page**, not per run or per commander. The corpus is the one thing that grows without
+bound, and a visit only needs to know about the decks in front of it.
 
 ## Configuration
 
 Pace and budget live in `app_config.<source>` — the repo is public, so anti-abuse thresholds belong in the database:
 
 ```json
-{ "requestIntervalMs": 3000, "maxDecksPerRun": 1000, "backfillDecks": 10000,
-  "backoffStartMs": 5000, "backoffMaxMs": 300000, "staleClaimSeconds": 21600 }
+{ "requestIntervalMs": 1000, "requestJitterMs": 500, "backoffStartMs": 5000, "backoffMaxMs": 300000, "staleClaimSeconds": 28800,
+  "runMinutes": 360, "firstVisitPages": 1, "newDecksPerRevisit": 350, "maxPagesPerCommander": 40 }
 ```
 
 Each source's Go `Defaults()` is the baseline under that row, so a crawl has a sane pace before the database is
@@ -234,7 +280,8 @@ Check a source without triggering anything:
 
 ```sh
 curl -H "Authorization: Bearer $SEARCH_API_CRON_TOKEN" https://<host>/cron/archidekt/status
-# {"disabled":false,"running":false,"lastDeckId":"26657848","deckCount":9134}
+# {"disabled":false,"running":false,"lastDeckId":"26657848","deckCount":9134,
+#  "commandersQueued":3412,"commandersVisited":170,"commandersNotFound":12}
 ```
 
 That answer is a real round trip to the database, so it also proves the credentials work. `503` means one of the
@@ -272,6 +319,22 @@ select id, state, started_at, finished_at, decks_listed, decks_written,
   from corpus.crawl_runs where source = 'archidekt' order by id desc limit 20;
 ```
 
+Read the verification log (commanders Archidekt has no decks for under that name):
+
+```sql
+select k.name, c.outcome, c.query_name, c.listed, c.fetched, c.wrong_commander, c.updated_at
+  from corpus.crawl_commanders c join public.cards k on k.id = c.commander_card_id
+ where c.source = 'archidekt' and c.outcome in ('not_found', 'no_led_decks')
+ order by c.seed_decks desc;
+```
+
+Put a commander back in the queue after fixing its name (it is tried with `query_name` first):
+
+```sql
+update corpus.crawl_commanders set outcome = null, query_name = '<name Archidekt uses>'
+ where source = 'archidekt' and commander_card_id = <card id>;
+```
+
 Re-enable a source after a block, once you believe it is reachable:
 
 ```sql
@@ -295,7 +358,11 @@ update corpus.crawl_state set running_run_id = null, client_id = null, claimed_a
   card entries, so they pin the wire shape and cannot satisfy the 100-card rule — which is why the parse and the
   qualification are separate functions, each tested on its own.
 - The run loop is tested against a fake store and a scripted fetcher: stale takeover, unqualified skips, per-page
-  hash lookups, the caught-up rule, an exhausted feed, a block, and that a cancelled run still finishes and releases.
+  lookups, the first visit reading page 1 only, the revisit target, the page cap, an exhausted list, not found and
+  the front-face retry, decks led by another commander kept but not counted, held decks stepped over and a moved
+  listed time recorded, running out of time, a block, and that a cancelled run still finishes and releases.
+- `supabase/tests/crawl-commanders.sql` checks the queue functions in the database: diff-only seeding, queue order,
+  what a finish stamps, listed times on unchanged decks, and that no API role but `service_role` reaches them.
 - **`TestLiveStoreRoundTrip` runs the real store against a real PostgREST.** A fake HTTP server answers any path
   with anything, so it cannot tell a working call from one PostgREST would reject — function names, argument names,
   grants and JSON shapes are only checked here. Local only:
@@ -319,6 +386,9 @@ update corpus.crawl_state set running_run_id = null, client_id = null, claimed_a
   `auth` included, in the same process that serves public read endpoints. The `crawl_*` functions narrow what the
   crawl *does*, not what the key *could* do. A proper fix is a Postgres role granted execute on those functions and
   nothing else, plus a JWT minted for it — Supabase's secret keys map to `service_role`.
-- **Moxfield (T044).** Blocked. Its deck parser reads an embed whose shape is still unpinned, which is why it refuses
+- **Commander requests.** `serve:commander-requests` still runs on this PC and writes the JSONL corpus. It should
+  become "move this commander to the front of `crawl_commanders`".
+- **Moxfield (T044).** Blocked. Its list is still the site-wide update-ordered feed, so it needs a per-commander
+  search before it is re-enabled. Its deck parser reads an embed whose shape is still unpinned, which is why it refuses
   anything that is not exactly 100 cards: a heuristic that reads half a deck produces a plausible, wrong list. If
   Moxfield ever grants an accessible path, pin the parsers against live fixtures before clearing `disabled`.

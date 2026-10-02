@@ -451,7 +451,7 @@ The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md). T
 - **Evaluation.** `spike:edhrec:prior` is a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured, so the slice's gate is passed. `supabase/tests/external-stats.sql` holds the SQL checks.
 - **Not done:** no code reads the tables. Wiring the prior into `corpusComponent` and `rec_add_candidates` is the next step, and so is the per-commander benchmark in the offline evaluation, which needs slice 6.
 
-**Slice 10 (full-suite crawl) builds on the daily crawl** (closed T036; its trigger is T042). That crawl walks Archidekt's update-ordered feed. Slice 10 adds the per-commander backfill that reaches every commander with enough decks (~2,800), and moves `serve:commander-requests` (T009) off this PC. It absorbs closed ticket T010.
+**Slice 10 (full-suite crawl) is partly built** (2026-10-01). The daily crawl (closed T036; its trigger is T042) now goes commander by commander in the Go search API, not the TS worker the plan names: a `corpus.crawl_commanders` queue seeded from EDHREC, decks most viewed first, one page per commander on the first pass, then `newDecksPerRevisit` new or changed decks per revisit. Still open in the slice: moving `serve:commander-requests` (T009) off this PC by turning it into "move this commander to the front of the queue", raw payload files, and aggregation from `corpus.decks` (slice 2). It absorbs closed ticket T010.
 
 **Owner decisions it rests on (2026-09-21):**
 - User decks count only when complete: 100 cards and legal. `save_deck` today flags on per-card legality alone.

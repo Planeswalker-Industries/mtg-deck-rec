@@ -56,7 +56,7 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 
 ## Deck crawls — Archidekt deployed, Moxfield blocked
 
-A daily Vercel cron calls the search API, which crawls Archidekt's update-ordered feed and writes decklists into the private `corpus` schema. Full account and runbook: [`deck-crawl.md`](deck-crawl.md).
+A daily Vercel cron calls the search API, which crawls Archidekt commander by commander (queue seeded from EDHREC's ~3,600 commanders, most played first; decks most viewed first; one page per commander on the first pass, about one request a second) for up to six hours and writes decklists into the private `corpus` schema. Rebuilt that way on 2026-10-01 because the earlier site-wide update-ordered walk only ever collected decks edited during the run. Full account and runbook: [`deck-crawl.md`](deck-crawl.md).
 
 - **Archidekt** is configured on the VPS and writes decks when a run starts: runs on 2026-09-24 and 2026-09-27 wrote 666 decks. **None of those runs came from the daily cron** (none started in its 10:15 UTC hour, and 2026-09-28's hour produced no run), so the Vercel trigger is the open problem (T042). A further run on 2026-09-30 at 13:12 UTC succeeded, also outside the cron's hour. T036 closed on 2026-09-28 with its leftovers split out.
 - **Moxfield** (T044) is built but seeded disabled: from the VPS, with the app's honest User-Agent, it answered Cloudflare's hard WAF block (403). Per the crawler guardrails a block switches the source off rather than being worked around; the right number of requests to a source that has said no is zero.

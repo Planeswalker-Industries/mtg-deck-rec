@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/crawl"
 )
@@ -34,10 +35,11 @@ func deckBody(t *testing.T, header string, entries []string, filler int) []byte 
 const publicCommanderDeck = `"updatedAt":"2026-09-22T00:00:00Z","deckFormat":3,"private":false,"unlisted":false`
 
 func TestParseListFromLiveFixture(t *testing.T) {
-	entries, err := ParseList(fixture(t, "list-page.json"))
+	page, err := ParseList(fixture(t, "list-page.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	entries := page.Entries
 	if len(entries) != 6 {
 		t.Fatalf("got %d entries, want 6", len(entries))
 	}
@@ -47,6 +49,34 @@ func TestParseListFromLiveFixture(t *testing.T) {
 	}
 	if entries[1].ID == "" {
 		t.Fatal("ids should not be empty")
+	}
+	// The listed update time is what lets a revisit step over a held deck without fetching it.
+	if want := time.Date(2026, 9, 22, 2, 18, 27, 69947000, time.UTC); !entries[0].UpdatedAt.Equal(want) {
+		t.Fatalf("listed update time: %v, want %v", entries[0].UpdatedAt, want)
+	}
+	if !page.HasNext {
+		t.Fatal("the fixture names a next page")
+	}
+}
+
+// A commander with no decks is an empty page, not a broken list: the run records it as not found and moves on.
+func TestParseListEmptyResultsIsAnEmptyPage(t *testing.T) {
+	page, err := ParseList([]byte(`{"count":0,"next":null,"results":[]}`))
+	if err != nil {
+		t.Fatalf("an empty list should parse: %v", err)
+	}
+	if len(page.Entries) != 0 || page.HasNext {
+		t.Fatalf("want an empty last page: %+v", page)
+	}
+}
+
+// The commander's name is escaped into the query: names carry commas, apostrophes and spaces.
+func TestListURLSearchesOneCommanderByViews(t *testing.T) {
+	got := source{}.ListURL("Liesa, Forgotten Archangel", 2)
+	want := "https://archidekt.com/api/decks/v3/?deckFormat=3&size=100&orderBy=-viewCount" +
+		"&commanderName=Liesa%2C+Forgotten+Archangel&page=2"
+	if got != want {
+		t.Fatalf("list URL:\n got %s\nwant %s", got, want)
 	}
 }
 

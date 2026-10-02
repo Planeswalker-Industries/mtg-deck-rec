@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"strings"
@@ -232,7 +233,8 @@ func (f *Fetcher) visit(ctx context.Context, rawurl string) ([]byte, error) {
 	return f.gotBody, f.gotErr
 }
 
-// pace keeps request starts at least RequestInterval apart, the worker's RateLimiter shape.
+// pace keeps request starts at least RequestInterval apart, the worker's RateLimiter shape, plus a random extra of
+// up to RequestJitter each time.
 func (f *Fetcher) pace(ctx context.Context) error {
 	var wait time.Duration
 	f.mu.Lock()
@@ -242,7 +244,7 @@ func (f *Fetcher) pace(ctx context.Context) error {
 	} else {
 		f.nextSlot = now
 	}
-	f.nextSlot = f.nextSlot.Add(f.policy.RequestInterval)
+	f.nextSlot = f.nextSlot.Add(f.policy.RequestInterval + jitter(f.policy.RequestJitter))
 	f.mu.Unlock()
 	return sleepCtx(ctx, wait)
 }
@@ -251,6 +253,14 @@ func (f *Fetcher) fetchError() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.gotErr
+}
+
+// jitter is a random wait in [0, max), or none when max is not positive.
+func jitter(max time.Duration) time.Duration {
+	if max <= 0 {
+		return 0
+	}
+	return rand.N(max)
 }
 
 // sleepCtx is time.Sleep that honours cancellation, so a shutdown ends a backoff wait promptly.

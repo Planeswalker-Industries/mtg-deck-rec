@@ -169,3 +169,22 @@ func TestChallengeDetection(t *testing.T) {
 		})
 	}
 }
+
+// The jitter only ever lengthens the gap: each slot is at least the interval after the last, and less than the
+// interval plus the jitter.
+func TestPaceJitterStaysWithinItsBounds(t *testing.T) {
+	const interval, spread = 10 * time.Millisecond, 20 * time.Millisecond
+	f := &Fetcher{policy: Policy{RequestInterval: interval, RequestJitter: spread}}
+	if err := f.pace(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for range 5 {
+		before := f.nextSlot
+		if err := f.pace(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if gap := f.nextSlot.Sub(before); gap < interval || gap >= interval+spread {
+			t.Fatalf("gap %v outside [%v, %v)", gap, interval, interval+spread)
+		}
+	}
+}
