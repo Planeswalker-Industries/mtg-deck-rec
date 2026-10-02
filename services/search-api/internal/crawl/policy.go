@@ -35,7 +35,7 @@ type Policy struct {
 }
 
 // Defaults is a source's baseline policy. Zero fields fall back to the shared absolutes below, so a source only has
-// to name what differs (Archidekt, for instance, adds jitter to its one-a-second pace).
+// to name what differs (Archidekt, for instance, needs a slower pace because one request a second drew 429s on 2026-09-14).
 type Defaults struct {
 	RequestInterval      time.Duration
 	RequestJitter        time.Duration

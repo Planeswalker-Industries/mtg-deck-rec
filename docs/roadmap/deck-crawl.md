@@ -106,9 +106,9 @@ does not, under that name. They are also logged at Warn in the container log.
 ### Budget
 
 A run is bounded by time, `runMinutes` (360: the owner's six hours a day, 2026-10-01), and each visit by its
-commander's target. At about 1.25 s a request a first visit is one list page and up to 60 deck fetches, about
-75 seconds, so a day covers about 280 commanders and the first pass over the ~3,600 EDHREC commanders takes about
-two weeks.
+commander's target. At about 2.75 s a request a first visit is one list page and up to 60 deck fetches, under
+three minutes, so a day covers about 130 commanders and the first pass over the ~3,600 EDHREC commanders takes
+about four weeks.
 
 ### What counts as a deck
 
@@ -156,8 +156,8 @@ Every outbound request goes through `crawl.Fetcher`:
   worker's. Never rotated, never spoofed.
 - **robots.txt obeyed** — colly's default, and the `IgnoreRobotsTxt` option is absent on purpose.
 - one request in flight at a time, spaced `requestIntervalMs` apart plus a random extra of up to `requestJitterMs`,
-  so requests do not land on a fixed beat. Archidekt is 1 s + up to 0.5 s (owner decision 2026-10-01, the
-  project's one-a-second rule; it was 3 s before that). One a second drew 429s on
+  so requests do not land on a fixed beat. Archidekt is 2.5 s + up to 0.5 s (owner decision 2026-10-01; it
+  was a flat 3 s before that), kept clear of one a second because one a second drew 429s on
   2026-09-14.
 - 429 and 5xx retry up to three times with exponential backoff, widened to `Retry-After` when the server sets one.
 - **403 or a challenge is never retried.** It is a decision by the source, and the crawl honours it.
@@ -250,7 +250,7 @@ bound, and a visit only needs to know about the decks in front of it.
 Pace and budget live in `app_config.<source>` — the repo is public, so anti-abuse thresholds belong in the database:
 
 ```json
-{ "requestIntervalMs": 1000, "requestJitterMs": 500, "backoffStartMs": 5000, "backoffMaxMs": 300000, "staleClaimSeconds": 28800,
+{ "requestIntervalMs": 2500, "requestJitterMs": 500, "backoffStartMs": 5000, "backoffMaxMs": 300000, "staleClaimSeconds": 28800,
   "runMinutes": 360, "firstVisitPages": 1, "newDecksPerRevisit": 350, "maxPagesPerCommander": 40 }
 ```
 

@@ -70,11 +70,10 @@ update public.app_config
        updated_at = now()
  where key in ('archidekt', 'moxfield');
 
--- Archidekt's pace goes from 3 s to one request a second plus up to half a second of random extra, the project's
--- one-a-second rule (owner decision 2026-10-01). One a second drew 429s on 2026-09-14; the fetcher backs off on a
--- 429, and if they come back this row is where the pace goes up again.
+-- Archidekt's pace goes from 3 s to 2.5 s plus up to half a second of random extra, so requests do not land on a
+-- fixed beat (owner decision 2026-10-01). Not one a second: that drew 429s on 2026-09-14.
 update public.app_config
-   set value = value || '{"requestIntervalMs": 1000, "requestJitterMs": 500}'::jsonb, updated_at = now()
+   set value = value || '{"requestIntervalMs": 2500, "requestJitterMs": 500}'::jsonb, updated_at = now()
  where key = 'archidekt';
 
 -- Adds the commanders EDHREC lists and refreshes their deck counts. Diff-only: a count that has not changed is not

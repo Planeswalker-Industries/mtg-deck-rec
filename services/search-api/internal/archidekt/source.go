@@ -35,13 +35,12 @@ func (source) ParseList(body []byte) (crawl.ListPage, error) { return ParseList(
 
 func (source) ParseDeck(body []byte, id string) (crawl.Deck, error) { return ParseDeck(body, id) }
 
-// Defaults is the crawl policy before app_config.archidekt overrides it. One request a second plus up to half a
-// second of jitter: the project's one-a-second rule (owner decision 2026-10-01). One a second drew 429s on
-// 2026-09-14, so the fetcher's 429 backoff is what keeps this polite; if 429s return, raise requestIntervalMs in
-// app_config rather than here. Everything else (run length, pages per commander) is the engine's.
+// Defaults is the crawl policy before app_config.archidekt overrides it. 2.5 s plus up to half a second of jitter
+// (owner decision 2026-10-01): one request a second drew 429s on 2026-09-14, so the pace stays well clear of it.
+// Everything else (run length, pages per commander) is the engine's.
 func Defaults() crawl.Defaults {
 	return crawl.Defaults{
-		RequestInterval: time.Second,
+		RequestInterval: 2500 * time.Millisecond,
 		RequestJitter:   500 * time.Millisecond,
 		BackoffStart:    5 * time.Second,
 		BackoffMax:      5 * time.Minute,
