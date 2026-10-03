@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -28,6 +29,25 @@ func liveStore(t *testing.T) *SupabaseStore {
 	}
 	client := supabase.New(url, key, 10*time.Second)
 	return NewSupabaseStore(client, "archidekt", Defaults{})
+}
+
+// liveOracleID reads a card's oracle id from the local catalog by slug, skipping when the catalog is not loaded.
+func liveOracleID(t *testing.T, store *SupabaseStore, slug string) string {
+	t.Helper()
+	rows, err := store.client.SelectAll(context.Background(), "cards", "oracle_id", "slug=eq."+slug)
+	if err != nil {
+		t.Fatalf("reading %s from the catalog: %v", slug, err)
+	}
+	if len(rows) == 0 {
+		t.Skipf("%s is not in this catalog; run sync:catalog first", slug)
+	}
+	var card struct {
+		OracleID string `json:"oracle_id"`
+	}
+	if err := json.Unmarshal(rows[0], &card); err != nil {
+		t.Fatalf("reading %s: %v", slug, err)
+	}
+	return card.OracleID
 }
 
 func TestLiveStoreRoundTrip(t *testing.T) {
@@ -90,18 +110,40 @@ func TestLiveStoreRoundTrip(t *testing.T) {
 		}
 	})
 
-	deckID := "live-test-deck"
-	row := DeckRow{
-		SourceDeckID:    deckID,
-		Commanders:      []string{"com-a", "com-b"},
-		Cards:           map[string]int{"card-x": 1, "forest": 30},
-		DeckSize:        100,
-		ContentHash:     contentHash([]string{"com-a", "com-b"}, map[string]int{"card-x": 1, "forest": 30}),
+	// Decks are stored by catalog card id, so the oracle ids have to be ones the local catalog has.
+	commander, card := liveOracleID(t, store, "atraxa-praetors-voice"), liveOracleID(t, store, "sol-ring")
+
+	// A deck naming a card the catalog does not have is not stored, and says which id failed.
+	stranger := DeckRow{
+		SourceDeckID:    "live-test-unresolved",
+		Commanders:      []string{commander},
+		Cards:           map[string]int{"00000000-0000-4000-8000-00000000dead": 1},
+		DeckSize:        2,
+		ContentHash:     "live-test-unresolved",
 		ListedUpdatedAt: time.Now().UTC().Truncate(time.Second),
 		LastUpdatedAt:   time.Now().UTC().Truncate(time.Second),
 	}
-	if err := store.UpsertDecks(ctx, []DeckRow{row}); err != nil {
-		t.Fatalf("writing a deck: %v", err)
+	unresolved, err := store.UpsertDecks(ctx, []DeckRow{stranger})
+	if err != nil {
+		t.Fatalf("writing an unresolvable deck: %v", err)
+	}
+	if len(unresolved) != 1 || unresolved[0].DeckID != stranger.SourceDeckID ||
+		len(unresolved[0].Missing) != 1 || unresolved[0].Missing[0] != "00000000-0000-4000-8000-00000000dead" {
+		t.Fatalf("the deck should come back unresolved, naming the card: %+v", unresolved)
+	}
+
+	deckID := "live-test-deck"
+	row := DeckRow{
+		SourceDeckID:    deckID,
+		Commanders:      []string{commander},
+		Cards:           map[string]int{card: 1},
+		DeckSize:        2,
+		ContentHash:     contentHash([]string{commander}, map[string]int{card: 1}),
+		ListedUpdatedAt: time.Now().UTC().Truncate(time.Second),
+		LastUpdatedAt:   time.Now().UTC().Truncate(time.Second),
+	}
+	if unresolved, err := store.UpsertDecks(ctx, []DeckRow{row}); err != nil || len(unresolved) != 0 {
+		t.Fatalf("writing a deck: %+v, %v", unresolved, err)
 	}
 
 	held, err := store.DeckVersions(ctx, []string{deckID, "not-a-deck"})
@@ -118,7 +160,7 @@ func TestLiveStoreRoundTrip(t *testing.T) {
 	// Same cards, a later listed time: the time is recorded, so the next visit steps over the deck.
 	later := row
 	later.ListedUpdatedAt = row.ListedUpdatedAt.Add(time.Hour)
-	if err := store.UpsertDecks(ctx, []DeckRow{later}); err != nil {
+	if _, err := store.UpsertDecks(ctx, []DeckRow{later}); err != nil {
 		t.Fatalf("rewriting the listed time: %v", err)
 	}
 	if held, err = store.DeckVersions(ctx, []string{deckID}); err != nil || !held[deckID].ListedUpdatedAt.Equal(later.ListedUpdatedAt) {
