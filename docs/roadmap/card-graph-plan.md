@@ -168,12 +168,13 @@ public.decks ── trigger ────────┘
                                                        → drain search_index_queue → revalidate corpus, recs
 ```
 
-- **Crawl** (replaces `spike:archidekt:*` for production):
-  - The queue is seeded from `spike:archidekt:rank` plus a verification pass.
-  - The worker claims a commander with `skip locked` and heartbeats `worker_status`. It pages `-updatedAt` so a
-    recrawl stops at the first deck it already has unchanged, then writes qualified decks straight to
-    `corpus.decks`.
-  - `serve:commander-requests` becomes "bump this commander to the front of the queue".
+- **Crawl** (replaces `spike:archidekt:*` for production). Built 2026-10-01 in the Go search API rather than the
+  worker, with `corpus.crawl_commanders` in place of `crawl_queue`; [`deck-crawl.md`](deck-crawl.md) is the account.
+  - The queue is seeded from EDHREC's commander list (`external_commanders`), most played first.
+  - Each commander's decks are listed most viewed first, never `-updatedAt`: Archidekt bumps `updatedAt` faster than
+    a polite crawl can page, so an update-ordered walk never gets past decks edited during the run.
+  - A first visit reads one page; a revisit walks until it finds `newDecksPerRevisit` new or changed decks.
+  - `serve:commander-requests` becomes "bump this commander to the front of the queue" (still open).
 - **Discovery and fetching are separate jobs.** Discovery reads list pages and upserts `(source, source_deck_id,
   listed_updated_at)`. Fetching pulls only decks that are new or whose `listed_updated_at` moved. A cache that
   never refetches would keep serving decks their owners have since edited.

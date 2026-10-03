@@ -4,6 +4,17 @@ import type { CorpusConfidence } from '../contract';
 export interface CorpusThresholds {
   minDecks: number;
   fullDecks: number;
+  /**
+   * How much commander-specific weight a card earns from an external prior (EDHREC's published inclusion for this
+   * commander) when we hold no decks of our own, 0..1. 0 turns the prior off entirely, which is the default: merging
+   * this changes nothing until `app_config.corpus.externalPriorShare` is set.
+   *
+   * It exists because the alternative at zero decks is the colour baseline, and the holdout test
+   * (`spike:edhrec:prior`) measured that baseline's top 50 matching the hidden answer 6% of the time against EDHREC's
+   * 80%. The right value is read off that report's curve - the share should be about where our own decks start to beat
+   * EDHREC - not guessed at here.
+   */
+  externalPriorShare?: number;
 }
 
 /** How a commander's decks play a card: inclusion shrunk toward the baseline, and how far above the baseline it is. */
@@ -20,9 +31,15 @@ export const BASELINE_CORPUS_WEIGHT = 0.5;
 const clamp = (n: number, low: number, high: number) => Math.min(high, Math.max(low, n));
 const clamp01 = (n: number) => clamp(n, 0, 1);
 
-/** Inclusion shrunk toward the card's baseline rate, (x + α·p0) / (n + α), so a few decks can't swing it. */
-export function shrunkInclusion(decksWith: number, deckCount: number, baseline: number, alpha: number): number {
-  return (decksWith + alpha * baseline) / (deckCount + alpha);
+/**
+ * Inclusion shrunk toward a prior, (x + α·p) / (n + α), so a few decks can't swing it.
+ *
+ * `prior` is the colour baseline p0 by default. When an external prior is available for this commander it is passed
+ * instead, which is what the `edhrec` arm of `spike:edhrec:prior` measures: shrinking toward a commander-specific rate
+ * beats shrinking toward "how often decks of these colours run it".
+ */
+export function shrunkInclusion(decksWith: number, deckCount: number, prior: number, alpha: number): number {
+  return (decksWith + alpha * prior) / (deckCount + alpha);
 }
 
 /**
@@ -55,6 +72,19 @@ export function commanderShare(deckCount: number, { minDecks, fullDecks }: Corpu
   if (deckCount < minDecks) return 0;
   if (fullDecks <= minDecks) return 1;
   return clamp01((deckCount - minDecks) / (fullDecks - minDecks));
+}
+
+/**
+ * Share of the corpus signal that is commander-specific rather than colour-wide, counting an external prior.
+ *
+ * Our own decks always win once there are enough of them - this is a floor, not an override - so a commander that
+ * reaches fullDecks is scored on its own decks exactly as before. Below minDecks our own share is 0 and the floor is
+ * what the card gets, which is the whole point: today that card falls back to the colour baseline.
+ */
+export function commanderShareWithPrior(deckCount: number, thresholds: CorpusThresholds, hasExternalPrior: boolean): number {
+  const own = commanderShare(deckCount, thresholds);
+  if (!hasExternalPrior) return own;
+  return Math.max(own, clamp01(thresholds.externalPriorShare ?? 0));
 }
 
 export function corpusConfidence(deckCount: number, { minDecks, fullDecks }: CorpusThresholds): CorpusConfidence {
@@ -161,11 +191,25 @@ export function corpusComponent(
     commanderDeckCount,
     baseline,
     baselineDeckCount,
-  }: { commanderRate: CommanderCardRate | null; commanderDeckCount: number; baseline: number; baselineDeckCount: number },
+    hasExternalPrior = false,
+  }: {
+    commanderRate: CommanderCardRate | null;
+    commanderDeckCount: number;
+    baseline: number;
+    baselineDeckCount: number;
+    /**
+     * An external source publishes a rate for this card under this commander, and `commanderRate` was built from it.
+     * It earns `thresholds.externalPriorShare` of the commander-specific weight even with no decks of our own.
+     */
+    hasExternalPrior?: boolean;
+  },
   thresholds: CorpusThresholds,
 ): { value: number; weightScale: number } | null {
-  const share = commanderRate ? commanderShare(commanderDeckCount, thresholds) : 0;
-  if (share === 0 && baselineDeckCount < thresholds.minDecks) return null;
+  const share = commanderRate ? commanderShareWithPrior(commanderDeckCount, thresholds, hasExternalPrior) : 0;
+  // A card an external source lists for this commander is one somebody plays, so it is not "too new to judge" even
+  // when our own corpus has nothing that could have run it. Without this the prior would be discarded for exactly the
+  // recent cards it is most useful for.
+  if (share === 0 && baselineDeckCount < thresholds.minDecks && !hasExternalPrior) return null;
   const fromCommander = commanderRate ? commanderCorpusScore(commanderRate) : 0;
   return {
     value: share * fromCommander + (1 - share) * baselineCorpusScore(baseline),

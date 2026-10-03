@@ -15,12 +15,20 @@ import (
 type Store interface {
 	// Policy is the crawl's politeness and budget from app_config.<source>.
 	Policy(ctx context.Context) (Policy, error)
-	// CrawlState is the source's cursor, claim, kill switch and deck count.
+	// CrawlState is the source's cursor, claim, kill switch, deck count and queue progress.
 	CrawlState(ctx context.Context) (CrawlState, error)
-	// DeckHashes returns the content hashes we already hold for the given deck ids, so a page can be diffed without
-	// reading the whole corpus. Ids we hold nothing for are absent.
-	DeckHashes(ctx context.Context, ids []string) (map[string]string, error)
-	// UpsertDecks writes rows; the database skips any whose content hash is unchanged.
+	// SeedCommanders adds the commanders the seed list (EDHREC) knows to the queue and refreshes their order; it
+	// writes only what changed and returns how many rows that was.
+	SeedCommanders(ctx context.Context) (int, error)
+	// NextCommanders returns up to limit commanders to visit, in queue order, leaving out those this run already
+	// tried and those the source has no decks for.
+	NextCommanders(ctx context.Context, runID int64, limit int) ([]Commander, error)
+	// FinishCommander records one commander's visit.
+	FinishCommander(ctx context.Context, runID int64, cardID int, result CommanderResult) error
+	// DeckVersions returns what we already hold for the given deck ids, so a page can be diffed without reading the
+	// whole corpus. Ids we hold nothing for are absent.
+	DeckVersions(ctx context.Context, ids []string) (map[string]HeldDeck, error)
+	// UpsertDecks writes rows; the database skips any whose content hash and listed update time are both unchanged.
 	UpsertDecks(ctx context.Context, rows []DeckRow) error
 	// CreateRun makes a crawl_runs row for the source and returns its id, so the claim can point at it.
 	CreateRun(ctx context.Context) (int64, error)
@@ -32,7 +40,7 @@ type Store interface {
 	Claim(ctx context.Context, runID int64, clientID string, staleAfter time.Duration) (Claim, error)
 	// ReleaseClaim lets the next run go. It releases only a claim runID still holds.
 	ReleaseClaim(ctx context.Context, runID int64) error
-	// SetCursor records the newest deck the feed offered, so the state row says how far the crawl got.
+	// SetCursor records the first deck a run listed, so the state row says where the crawl was last seen working.
 	SetCursor(ctx context.Context, lastDeckID string) error
 	// SetProbeOK records that the connectivity probe passed for the source.
 	SetProbeOK(ctx context.Context) error
@@ -50,6 +58,57 @@ type CrawlState struct {
 	DisabledReason string
 	ProbeOK        bool
 	DeckCount      int
+	// Queue progress: never visited yet, visited at least once, and the verification log (no decks under that name,
+	// or none led by that commander).
+	CommandersQueued   int
+	CommandersVisited  int
+	CommandersNotFound int
+}
+
+// Commander is one entry of the crawl queue.
+type Commander struct {
+	CardID   int    `json:"cardId"`
+	OracleID string `json:"oracleId"`
+	Name     string `json:"name"`
+	// HeldDecks is how many decks the corpus already holds that this commander leads. The queue orders by it, so a
+	// commander with three decks is served before one with five hundred; it is read here only for the log.
+	HeldDecks int `json:"heldDecks"`
+	// QueryName is the name that found decks on an earlier visit (the front face of a two-faced card, say); empty
+	// until a visit found listings.
+	QueryName string `json:"queryName"`
+	// Visited is false until the commander's first complete visit, which reads only Policy.FirstVisitPages.
+	Visited bool `json:"visited"`
+}
+
+// Commander visit outcomes, as corpus.crawl_commanders.outcome stores them.
+const (
+	OutcomeDone       = "done"         // the visit did what it set out to: its first page, or its revisit target
+	OutcomeExhausted  = "exhausted"    // the commander's list ran out before the revisit target
+	OutcomePageCap    = "page_cap"     // a revisit hit Policy.MaxPagesPerCommander
+	OutcomePartial    = "partial"      // the run's time ran out mid-visit; the commander comes back first
+	OutcomeNotFound   = "not_found"    // no listings under its name or front face: the verification log
+	OutcomeNoLedDecks = "no_led_decks" // a first visit found listings, but none were decks it leads
+	OutcomeFailed     = "failed"       // the visit hit an error that ended the run
+	OutcomeFetchCap   = "fetch_cap"    // the visit stopped at Policy.MaxFetchesPerCommander
+)
+
+// CommanderResult is what one visit did, written back to corpus.crawl_commanders.
+type CommanderResult struct {
+	Outcome        string `json:"outcome"`
+	Error          string `json:"error,omitempty"`
+	QueryName      string `json:"queryName,omitempty"`
+	Listed         int    `json:"listed"`
+	Fetched        int    `json:"fetched"`
+	Written        int    `json:"written"`
+	Counted        int    `json:"counted"`
+	WrongCommander int    `json:"wrongCommander"`
+}
+
+// HeldDeck is what the corpus already holds for a deck: its content hash, and the update time the list showed when
+// it was last written.
+type HeldDeck struct {
+	Hash            string    `json:"hash"`
+	ListedUpdatedAt time.Time `json:"listedUpdatedAt"`
 }
 
 // Claim is the outcome of trying to take a source's single-flight lock.
@@ -85,9 +144,15 @@ type RunSummary struct {
 	// Decks the feed listed that were gone by the time the crawl asked for them. Apart from SkippedUnqualified
 	// because the two say different things: unqualified means the browse filters admit decks the corpus does not
 	// want, missing means the feed is stale or the crawl is falling behind deletions.
-	SkippedMissing int    `json:"skipped_missing"`
-	Blocks         int    `json:"blocks"`
-	Error          string `json:"error,omitempty"`
+	SkippedMissing    int `json:"skipped_missing"`
+	CommandersVisited int `json:"commanders_visited"`
+	// How many times the source answered 429, and where the crawl was the last time it did. The pace widens itself in
+	// response (see Fetcher), so these are the record of a run that was slowed down - without them, a crawl that spent
+	// half its time at the ceiling looks the same as one that never met resistance.
+	Throttles         int    `json:"throttles"`
+	ThrottledPosition string `json:"throttled_position,omitempty"`
+	Blocks            int    `json:"blocks"`
+	Error             string `json:"error,omitempty"`
 }
 
 // upsertBatch keeps one write to a hundred decks: deck rows are wide, so an unbounded body would defeat PostgREST's
@@ -117,14 +182,17 @@ func (s *SupabaseStore) Policy(ctx context.Context) (Policy, error) {
 
 func (s *SupabaseStore) CrawlState(ctx context.Context) (CrawlState, error) {
 	var row struct {
-		LastDeckID     string     `json:"lastDeckId"`
-		RunningRunID   int64      `json:"runningRunId"`
-		ClientID       string     `json:"clientId"`
-		ClaimedAt      *time.Time `json:"claimedAt"`
-		Disabled       bool       `json:"disabled"`
-		DisabledReason string     `json:"disabledReason"`
-		ProbeOK        bool       `json:"probeOk"`
-		DeckCount      int        `json:"deckCount"`
+		LastDeckID         string     `json:"lastDeckId"`
+		RunningRunID       int64      `json:"runningRunId"`
+		ClientID           string     `json:"clientId"`
+		ClaimedAt          *time.Time `json:"claimedAt"`
+		Disabled           bool       `json:"disabled"`
+		DisabledReason     string     `json:"disabledReason"`
+		ProbeOK            bool       `json:"probeOk"`
+		DeckCount          int        `json:"deckCount"`
+		CommandersQueued   int        `json:"commandersQueued"`
+		CommandersVisited  int        `json:"commandersVisited"`
+		CommandersNotFound int        `json:"commandersNotFound"`
 	}
 	if err := s.client.RPCInto(ctx, "crawl_state", map[string]any{"p_source": s.source}, &row); err != nil {
 		return CrawlState{}, err
@@ -132,12 +200,39 @@ func (s *SupabaseStore) CrawlState(ctx context.Context) (CrawlState, error) {
 	return CrawlState(row), nil
 }
 
-func (s *SupabaseStore) DeckHashes(ctx context.Context, ids []string) (map[string]string, error) {
-	if len(ids) == 0 {
-		return map[string]string{}, nil
+func (s *SupabaseStore) SeedCommanders(ctx context.Context) (int, error) {
+	var n int
+	err := s.client.RPCInto(ctx, "crawl_seed_commanders", map[string]any{"p_source": s.source}, &n)
+	return n, err
+}
+
+func (s *SupabaseStore) NextCommanders(ctx context.Context, runID int64, limit int) ([]Commander, error) {
+	var out []Commander
+	err := s.client.RPCInto(ctx, "crawl_next_commanders",
+		map[string]any{"p_source": s.source, "p_run_id": runID, "p_limit": limit}, &out)
+	return out, err
+}
+
+func (s *SupabaseStore) FinishCommander(ctx context.Context, runID int64, cardID int, result CommanderResult) error {
+	payload, err := json.Marshal(result)
+	if err != nil {
+		return err
 	}
-	out := map[string]string{}
-	err := s.client.RPCInto(ctx, "crawl_deck_hashes",
+	_, err = s.client.RPC(ctx, "crawl_finish_commander", map[string]any{
+		"p_source":  s.source,
+		"p_card_id": cardID,
+		"p_run_id":  runID,
+		"p_result":  json.RawMessage(payload),
+	})
+	return err
+}
+
+func (s *SupabaseStore) DeckVersions(ctx context.Context, ids []string) (map[string]HeldDeck, error) {
+	if len(ids) == 0 {
+		return map[string]HeldDeck{}, nil
+	}
+	out := map[string]HeldDeck{}
+	err := s.client.RPCInto(ctx, "crawl_deck_versions",
 		map[string]any{"p_source": s.source, "p_ids": ids}, &out)
 	if err != nil {
 		return nil, err

@@ -25,22 +25,26 @@ type source struct{}
 
 func (source) Name() string { return Name }
 
-func (source) ListURL(page int) string {
+// ListURL ignores the commander: Moxfield's browse feed is update-ordered and site-wide, and was never pinned as a
+// per-commander search. It has to gain one before the source is re-enabled; it is seeded disabled and makes no
+// requests until then.
+func (source) ListURL(_ string, page int) string {
 	return baseURL + deckListPath + fmt.Sprintf("?orderBy=updated&page=%d", page)
 }
 
 func (source) DeckURL(id string) string { return baseURL + deckPath + id }
 
-func (source) ParseList(body []byte) ([]crawl.Entry, error) {
+func (source) ParseList(body []byte) (crawl.ListPage, error) {
 	parsed, err := ParseListPage(body)
 	if err != nil {
-		return nil, err
+		return crawl.ListPage{}, err
 	}
 	entries := make([]crawl.Entry, len(parsed))
 	for i, e := range parsed {
 		entries[i] = crawl.Entry{ID: e.Slug}
 	}
-	return entries, nil
+	// The page carries no "next" marker the parser pins; a full page is taken to mean another may follow.
+	return crawl.ListPage{Entries: entries, HasNext: true}, nil
 }
 
 func (source) ParseDeck(body []byte, id string) (crawl.Deck, error) {
@@ -62,8 +66,6 @@ func (source) ParseDeck(body []byte, id string) (crawl.Deck, error) {
 func Defaults() crawl.Defaults {
 	return crawl.Defaults{
 		RequestInterval: time.Second,
-		MaxDecksPerRun:  500,
-		BackfillDecks:   10_000,
 		BackoffStart:    5 * time.Second,
 		BackoffMax:      5 * time.Minute,
 	}

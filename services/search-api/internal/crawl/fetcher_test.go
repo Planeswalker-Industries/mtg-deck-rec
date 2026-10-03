@@ -169,3 +169,77 @@ func TestChallengeDetection(t *testing.T) {
 		})
 	}
 }
+
+// The jitter only ever lengthens the gap: each slot is at least the interval after the last, and less than the
+// interval plus the jitter.
+func TestPaceJitterStaysWithinItsBounds(t *testing.T) {
+	const interval, spread = 10 * time.Millisecond, 20 * time.Millisecond
+	f := &Fetcher{policy: Policy{RequestInterval: interval, RequestJitter: spread}}
+	if err := f.pace(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for range 5 {
+		before := f.nextSlot
+		if err := f.pace(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if gap := f.nextSlot.Sub(before); gap < interval || gap >= interval+spread {
+			t.Fatalf("gap %v outside [%v, %v)", gap, interval, interval+spread)
+		}
+	}
+}
+
+// The pace adapts: a 429 widens it, and enough clean responses bring it back. A fixed pace has to be slow enough for
+// the worst day; this one is fast on the good days and backs off on the evidence.
+func TestThePaceWidensOnPushbackAndRecovers(t *testing.T) {
+	const base, ceiling = time.Second, 4 * time.Second
+	f := &Fetcher{policy: Policy{RequestInterval: base, RequestIntervalMax: ceiling, PaceRecoverRequests: 3}, interval: base}
+
+	if _, next, capped := f.throttled(); next != 2*time.Second || capped {
+		t.Fatalf("first 429: %v capped=%v", next, capped)
+	}
+	if _, next, _ := f.throttled(); next != ceiling {
+		t.Fatalf("second 429 should reach the ceiling: %v", next)
+	}
+	if _, next, capped := f.throttled(); next != ceiling || !capped {
+		t.Fatalf("the pace must stop doubling at the ceiling: %v capped=%v", next, capped)
+	}
+	if f.Throttles() != 3 {
+		t.Fatalf("throttles: %d", f.Throttles())
+	}
+
+	// Short of the recovery threshold nothing changes, so the crawl is not re-testing the limit every other request.
+	if restored := f.succeeded(); restored != 0 {
+		t.Fatalf("recovered too early: %v", restored)
+	}
+	f.succeeded()
+	if restored := f.succeeded(); restored != base {
+		t.Fatalf("expected a return to the base pace, got %v", restored)
+	}
+	if f.currentInterval() != base {
+		t.Fatalf("interval: %v", f.currentInterval())
+	}
+	// Already at the base: further successes are not counted toward anything.
+	if restored := f.succeeded(); restored != 0 {
+		t.Fatalf("recovered from the base pace: %v", restored)
+	}
+}
+
+// A run starts at the base pace: carrying a throttled interval across runs would let one bad minute slow every crawl
+// until the process restarted.
+func TestANewRunStartsAtTheBasePace(t *testing.T) {
+	f := &Fetcher{policy: Policy{RequestInterval: time.Second, RequestIntervalMax: 8 * time.Second}, interval: time.Second}
+	f.throttled()
+	f.SetPolicy(Policy{RequestInterval: time.Second, RequestIntervalMax: 8 * time.Second})
+	if f.currentInterval() != time.Second {
+		t.Fatalf("interval: %v", f.currentInterval())
+	}
+}
+
+// An unset interval must never mean "as fast as possible" against somebody else's site.
+func TestAnUnsetIntervalFallsBackToThePolicy(t *testing.T) {
+	f := &Fetcher{policy: Policy{RequestInterval: 2 * time.Second}}
+	if f.currentInterval() != 2*time.Second {
+		t.Fatalf("interval: %v", f.currentInterval())
+	}
+}
