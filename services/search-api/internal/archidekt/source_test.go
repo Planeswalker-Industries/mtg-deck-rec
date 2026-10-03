@@ -163,11 +163,29 @@ func TestParseDeckQualification(t *testing.T) {
 	}
 }
 
+// An empty deck is a real deck - just created, or emptied - and an ordinary skip. Run 7 (2026-10-03) quarantined on
+// one when an empty card list read as a changed shape.
+func TestParseDeckSkipsAnEmptyDeck(t *testing.T) {
+	for _, body := range []string{
+		`{` + publicCommanderDeck + `,"cards":[]}`,
+		`{` + publicCommanderDeck + `,"cards":null}`,
+		// Every entry removed or on a board outside the deck leaves nothing in it either.
+		`{` + publicCommanderDeck + `,"cards":[{"quantity":1,"categories":["Maybeboard"],"card":{"oracleCard":{"uid":"a"}}}]}`,
+	} {
+		_, err := ParseDeck([]byte(body), "x")
+		var unqualified *crawl.NotQualified
+		if !errors.As(err, &unqualified) || unqualified.Reason != "empty deck" {
+			t.Fatalf("want an empty-deck skip for %s, got %v", body, err)
+		}
+	}
+}
+
 func TestParseDeckQuarantinesOnAChangedShape(t *testing.T) {
 	var shape *crawl.ShapeError
 	for _, body := range []string{
 		`not json`,
-		`{"deckFormat":3,"cards":[]}`,
+		`{"deckFormat":3,"cards":[]}`,   // no updatedAt
+		`{` + publicCommanderDeck + `}`, // no card list at all
 		`{"deckFormat":3,"cards":[{"quantity":1,"categories":["Ramp"],"card":{"oracleCard":{"uid":"a"}}}]}`, // no updatedAt
 		`{"updatedAt":"2026-09-22T00:00:00Z","deckFormat":3,"cards":[{"quantity":1,"categories":["Ramp"],"card":{}}]}`,
 	} {

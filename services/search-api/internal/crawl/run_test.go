@@ -141,6 +141,7 @@ type fakeStore struct {
 	seeded         int
 	held           map[string]HeldDeck
 	upserts        []DeckRow
+	unknownCards   map[string]bool // oracle ids the catalog does not have: decks naming one are not stored
 	runID          int64
 	created        int
 	finished       []RunSummary
@@ -191,15 +192,31 @@ func (s *fakeStore) DeckVersions(_ context.Context, ids []string) (map[string]He
 	}
 	return out, nil
 }
-func (s *fakeStore) UpsertDecks(_ context.Context, rows []DeckRow) error {
+func (s *fakeStore) UpsertDecks(_ context.Context, rows []DeckRow) ([]UnresolvedDeck, error) {
 	if s.held == nil {
 		s.held = map[string]HeldDeck{}
 	}
+	var unresolved []UnresolvedDeck
 	for _, row := range rows {
+		var missing []string
+		for _, id := range row.Commanders {
+			if s.unknownCards[id] {
+				missing = append(missing, id)
+			}
+		}
+		for id := range row.Cards {
+			if s.unknownCards[id] {
+				missing = append(missing, id)
+			}
+		}
+		if len(missing) > 0 {
+			unresolved = append(unresolved, UnresolvedDeck{DeckID: row.SourceDeckID, Missing: missing})
+			continue
+		}
 		s.held[row.SourceDeckID] = HeldDeck{Hash: row.ContentHash, ListedUpdatedAt: row.ListedUpdatedAt}
+		s.upserts = append(s.upserts, row)
 	}
-	s.upserts = append(s.upserts, rows...)
-	return nil
+	return unresolved, nil
 }
 func (s *fakeStore) CreateRun(context.Context) (int64, error) {
 	s.created++
@@ -580,6 +597,31 @@ func TestRunSkipsDecksThatDoNotQualify(t *testing.T) {
 	}
 	if res.Summary.SkippedUnqualified != 1 || res.Summary.DecksWritten != 1 {
 		t.Fatalf("summary: %+v", res.Summary)
+	}
+}
+
+// A deck naming a card the catalog does not have yet is counted and stepped over: not written, not held (so the next
+// visit fetches it again), and not counted toward the commander's target.
+func TestRunSkipsDecksTheCatalogCannotResolve(t *testing.T) {
+	store := newStore(liesa)
+	store.unknownCards = map[string]bool{"new-card": true}
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n222\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "new-card"),
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+	}}
+	res := run(t, store, getter)
+	if res.Summary.State != "succeeded" {
+		t.Fatalf("an unresolved deck is not a failed run: %+v", res.Summary)
+	}
+	if res.Summary.SkippedUnresolved != 1 || res.Summary.DecksWritten != 1 || res.Summary.DecksFetched != 2 {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if _, held := store.held["111"]; held {
+		t.Fatal("an unresolved deck must not be held, or the next visit would step over it")
+	}
+	if visit := store.visits[liesa.CardID]; visit.Counted != 1 {
+		t.Fatalf("only the stored deck counts toward the commander: %+v", visit)
 	}
 }
 

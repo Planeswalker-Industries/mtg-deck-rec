@@ -78,6 +78,8 @@ type deckMeta struct {
 // rules are pinned against decks written to break them.
 func disqualify(deck crawl.Deck, meta deckMeta) string {
 	switch {
+	case deck.Size == 0:
+		return "empty deck"
 	case meta.Format != commanderFormat:
 		return "not Commander format"
 	case meta.Private || meta.Unlisted:
@@ -97,8 +99,14 @@ func parseDeckBody(body []byte, id string) (crawl.Deck, deckMeta, error) {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return crawl.Deck{}, deckMeta{}, &crawl.ShapeError{What: "deck", Detail: "not JSON: " + err.Error()}
 	}
-	if len(resp.Cards) == 0 {
-		return crawl.Deck{}, deckMeta{}, &crawl.ShapeError{What: "deck", Detail: "no card entries"}
+	// An empty card list is a real deck - one just created, or emptied - that the corpus does not want, so it is
+	// disqualified like any other (hosted run 7, 2026-10-03, quarantined on one). A body with no card list at all is
+	// the endpoint changing, which still quarantines. A null list counts as empty: it says "no cards", not "no field".
+	var cardList struct {
+		Cards json.RawMessage `json:"cards"`
+	}
+	if err := json.Unmarshal(body, &cardList); err != nil || cardList.Cards == nil {
+		return crawl.Deck{}, deckMeta{}, &crawl.ShapeError{What: "deck", Detail: "no card list"}
 	}
 	if resp.UpdatedAt == "" {
 		return crawl.Deck{}, deckMeta{}, &crawl.ShapeError{What: "deck", Detail: "no update timestamp"}

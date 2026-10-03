@@ -1686,19 +1686,37 @@ export type Database = {
         Args: { p_ids: string[]; p_source: string }
         Returns: Json
       }
+      crawl_deck_versions: {
+        Args: { p_ids: string[]; p_source: string }
+        Returns: Json
+      }
       crawl_disable: {
         Args: { p_reason: string; p_source: string }
+        Returns: undefined
+      }
+      crawl_finish_commander: {
+        Args: {
+          p_card_id: number
+          p_result: Json
+          p_run_id: number
+          p_source: string
+        }
         Returns: undefined
       }
       crawl_finish_run: {
         Args: { p_run_id: number; p_summary: Json }
         Returns: undefined
       }
+      crawl_next_commanders: {
+        Args: { p_limit: number; p_run_id: number; p_source: string }
+        Returns: Json
+      }
       crawl_probe_ok: { Args: { p_source: string }; Returns: undefined }
       crawl_release: {
         Args: { p_run_id: number; p_source: string }
         Returns: boolean
       }
+      crawl_seed_commanders: { Args: { p_source: string }; Returns: number }
       crawl_set_cursor: {
         Args: { p_last_deck_id: string; p_source: string }
         Returns: undefined
@@ -1706,7 +1724,7 @@ export type Database = {
       crawl_state: { Args: { p_source: string }; Returns: Json }
       crawl_upsert_decks: {
         Args: { p_rows: Json; p_source: string }
-        Returns: number
+        Returns: Json
       }
       delete_my_account: { Args: never; Returns: undefined }
       duplicate_deck: {

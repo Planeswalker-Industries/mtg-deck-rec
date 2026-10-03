@@ -444,8 +444,21 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 
 			// Written even when the cards are unchanged: the database then records only the new listed time, so the
 			// next visit steps over the deck instead of fetching it again.
-			if err := r.store.UpsertDecks(ctx, []DeckRow{row}); err != nil {
+			unresolved, err := r.store.UpsertDecks(ctx, []DeckRow{row})
+			if err != nil {
 				return result, fmt.Errorf("writing deck: %w", err)
+			}
+			// Not stored: it names a card the catalog does not have yet. Nothing is held for it, so the next visit
+			// fetches it again, by which time the daily catalog sync has normally caught up.
+			if len(unresolved) > 0 {
+				summary.SkippedUnresolved++
+				r.log.Warn("deck names a card the catalog does not have; not stored",
+					"source", r.src.Name(), "deck", entry.ID, "missing", unresolved[0].Missing)
+				if result.Fetched >= policy.MaxFetchesPerCommander {
+					result.Outcome = OutcomeFetchCap
+					return result, nil
+				}
+				continue
 			}
 			if isHeld && known.Hash == row.ContentHash {
 				summary.SkippedUnchanged++

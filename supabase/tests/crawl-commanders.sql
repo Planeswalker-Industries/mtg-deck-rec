@@ -89,10 +89,8 @@ select (value->>'targetDecks')::int as target from public.app_config where key =
 -- Decks the corpus already holds, keyed by the commander that leads them. They go on c2, which an earlier check made
 -- the *most played* of the two (900 against 550): need has to beat popularity, and loading the less played commander
 -- instead would let this pass for the wrong reason.
-insert into corpus.decks (source, source_deck_id, commanders, cards, deck_size, content_hash, listed_updated_at, last_updated_at)
-select 'moxfield', 'zz-held-' || g,
-       array[(select oracle_id::text from public.cards where id = :c2)],
-       '{"x": 1}'::jsonb, 100, 'h-' || g, now(), now()
+insert into corpus.decks (source, source_deck_id, commander_card_ids, cards, deck_size, content_hash, listed_updated_at, last_updated_at)
+select 'moxfield', 'zz-held-' || g, array[:c2], jsonb_build_object(:c1::text, 1), 100, 'h-' || g, now(), now()
   from generate_series(1, :target + 5) g;
 
 -- Its own statement, deliberately: a mutating call and a read of what it wrote cannot share a SELECT, because every
@@ -135,25 +133,75 @@ select chk('a run keeps how often the source pushed back, and where it was',
 select chk('a quiet run records no position',
   (select throttled_position is null from corpus.crawl_runs where id = :run_id));
 
--- === listed times on unchanged decks ===
+-- === writing decks ===
+-- The crawler sends oracle ids, as the source reports them; the database stores card ids. A real commander and a real
+-- card, so resolution is exercised.
+select
+  (select oracle_id::text from public.cards where id = :c1) as oc1,
+  (select oracle_id::text from public.cards where deleted_at is null and name = 'Sol Ring' limit 1) as osol,
+  (select id from public.cards where deleted_at is null and name = 'Sol Ring' limit 1) as sol
+\gset
+
 select public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
-  'source_deck_id', 'test-deck', 'commanders', jsonb_build_array('oc'), 'cards', '{"x": 1}'::jsonb,
+  'source_deck_id', 'test-deck', 'commanders', jsonb_build_array(:'oc1'), 'cards', jsonb_build_object(:'osol', 1),
   'deck_size', 2, 'content_hash', 'h1',
-  'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z')));
+  'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) as first_write \gset
+select chk('a new deck is written', (:'first_write'::jsonb ->> 'written')::int = 1, :'first_write');
+select chk('it is stored by card id',
+  (select commander_card_ids = array[:c1] and cards = jsonb_build_object(:sol::text, 1)
+     from corpus.decks where source = 'moxfield' and source_deck_id = 'test-deck'),
+  (select commander_card_ids::text || ' ' || cards::text
+     from corpus.decks where source = 'moxfield' and source_deck_id = 'test-deck'));
 select chk('the same deck written again changes nothing',
-  public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
-    'source_deck_id', 'test-deck', 'commanders', jsonb_build_array('oc'), 'cards', '{"x": 1}'::jsonb,
+  (public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
+    'source_deck_id', 'test-deck', 'commanders', jsonb_build_array(:'oc1'), 'cards', jsonb_build_object(:'osol', 1),
     'deck_size', 2, 'content_hash', 'h1',
-    'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) = 0);
+    'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) ->> 'written')::int = 0);
 select chk('the same cards with a later listed time records the time',
-  public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
-    'source_deck_id', 'test-deck', 'commanders', jsonb_build_array('oc'), 'cards', '{"x": 1}'::jsonb,
+  (public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
+    'source_deck_id', 'test-deck', 'commanders', jsonb_build_array(:'oc1'), 'cards', jsonb_build_object(:'osol', 1),
     'deck_size', 2, 'content_hash', 'h1',
-    'listed_updated_at', '2026-09-10T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) = 1);
+    'listed_updated_at', '2026-09-10T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) ->> 'written')::int = 1);
 select chk('crawl_deck_versions reads back the hash and the listed time',
   (select v -> 'test-deck' ->> 'hash' = 'h1'
       and (v -> 'test-deck' ->> 'listedUpdatedAt')::timestamptz = '2026-09-10T00:00:00Z'
      from (select public.crawl_deck_versions('moxfield', array['test-deck', 'nope']) as v) x));
+
+-- A deck naming a card the catalog does not have is not stored at all, and comes back with the ids that failed, so the
+-- run can count it and the next visit fetches it again. A malformed id is one more id that matches nothing: one bad
+-- value must not fail the batch it arrived in.
+select public.crawl_upsert_decks('moxfield', jsonb_build_array(
+  jsonb_build_object(
+    'source_deck_id', 'test-unknown', 'commanders', jsonb_build_array(:'oc1'),
+    'cards', jsonb_build_object(:'osol', 1, '00000000-0000-4000-8000-00000000dead', 1),
+    'deck_size', 3, 'content_hash', 'h-unknown',
+    'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'),
+  jsonb_build_object(
+    'source_deck_id', 'test-malformed', 'commanders', jsonb_build_array('not-an-oracle-id'),
+    'cards', jsonb_build_object(:'osol', 1),
+    'deck_size', 2, 'content_hash', 'h-malformed',
+    'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'),
+  jsonb_build_object(
+    'source_deck_id', 'test-fine', 'commanders', jsonb_build_array(:'oc1'), 'cards', jsonb_build_object(:'osol', 1),
+    'deck_size', 2, 'content_hash', 'h-fine',
+    'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) as mixed \gset
+select chk('a deck with an unknown card is not stored',
+  not exists (select 1 from corpus.decks
+               where source = 'moxfield' and source_deck_id in ('test-unknown', 'test-malformed')));
+select chk('the rest of the batch is',
+  (:'mixed'::jsonb ->> 'written')::int = 1
+    and exists (select 1 from corpus.decks where source = 'moxfield' and source_deck_id = 'test-fine'),
+  :'mixed');
+select chk('the unresolved decks come back with the ids that failed',
+  (:'mixed'::jsonb -> 'unresolved')
+    @> '[{"deckId": "test-unknown", "missing": ["00000000-0000-4000-8000-00000000dead"]},
+         {"deckId": "test-malformed", "missing": ["not-an-oracle-id"]}]'::jsonb
+    and jsonb_array_length(:'mixed'::jsonb -> 'unresolved') = 2,
+  :'mixed');
+
+select public.crawl_finish_run(:run4, '{"state": "succeeded", "skipped_unresolved": 2}'::jsonb);
+select chk('a run records how many decks it could not resolve',
+  (select skipped_unresolved = 2 from corpus.crawl_runs where id = :run4));
 
 -- === API roles ===
 set local role anon;
@@ -162,6 +210,7 @@ select must_fail('anon cannot read the queue', $q$select public.crawl_next_comma
 select must_fail('anon cannot finish a commander',
   $q$select public.crawl_finish_commander('moxfield', 1, 1, '{}'::jsonb)$q$, 'permission denied');
 select must_fail('anon cannot read held decks', $q$select public.crawl_deck_versions('moxfield', array['x'])$q$, 'permission denied');
+select must_fail('anon cannot write decks', $q$select public.crawl_upsert_decks('moxfield', '[]'::jsonb)$q$, 'permission denied');
 reset role;
 
 set local role authenticated;
