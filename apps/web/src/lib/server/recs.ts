@@ -229,7 +229,7 @@ export async function loadSwapPool(
       db,
       raw.flatMap((c) => c.matches.flatMap((m) => [m.targetTagId, m.candidateTagId, ...(m.viaTagId ? [m.viaTagId] : [])])),
     ),
-    loadCardCorpus(db, corpus, ids),
+    loadCardCorpus(db, corpus, ids, commanderIds),
   ]);
 
   return {
@@ -287,6 +287,7 @@ export function rankSwaps(
               commanderDeckCount: c.rates.commanderDeckCount,
               baseline: c.rates.baseline,
               baselineDeckCount: c.rates.baselineDeckCount,
+              hasExternalPrior: c.rates.hasExternalPrior,
             },
             pool.corpus.settings,
           )
@@ -367,7 +368,10 @@ export async function getCutSuggestions(
     loadRoleTargets(db),
     loadCommanderCorpus(db, context.deck.commanders),
   ]);
-  const [rolesByCard, cardCorpus] = await Promise.all([loadCardRoles(db, mainIds, roleTargets), loadCardCorpus(db, corpus, mainIds)]);
+  const [rolesByCard, cardCorpus] = await Promise.all([
+    loadCardRoles(db, mainIds, roleTargets),
+    loadCardCorpus(db, corpus, mainIds, context.deck.commanders),
+  ]);
 
   // Play rates judge a cut only once enough of the commander's decks could have run the card (updated since its
   // release); broad popularity says little about fit, and new cards aren't judged by older decks.
@@ -491,7 +495,7 @@ export async function getAddSuggestions(
   const candidateIds = (pool ?? []).map((p) => p.card_id);
   const [candidateRows, cardCorpus, rolesByCard, roleTags] = await Promise.all([
     fetchCardsById(db, candidateIds),
-    loadCardCorpus(db, corpus, candidateIds),
+    loadCardCorpus(db, corpus, candidateIds, context.deck.commanders),
     loadCardRoles(db, [...mainIds, ...candidateIds], roleTargets),
     fetchTags(
       db,
@@ -512,6 +516,7 @@ export async function getAddSuggestions(
         commanderDeckCount: rates?.commanderDeckCount ?? 0,
         baseline: rates?.baseline ?? candidate.baseline,
         baselineDeckCount: rates?.baselineDeckCount ?? 0,
+        hasExternalPrior: rates?.hasExternalPrior ?? false,
       },
       corpus.settings,
     );

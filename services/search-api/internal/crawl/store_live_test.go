@@ -104,15 +104,52 @@ func TestLiveStoreRoundTrip(t *testing.T) {
 		t.Fatalf("writing a deck: %v", err)
 	}
 
-	hashes, err := store.DeckHashes(ctx, []string{deckID, "not-a-deck"})
+	held, err := store.DeckVersions(ctx, []string{deckID, "not-a-deck"})
 	if err != nil {
-		t.Fatalf("reading hashes: %v", err)
+		t.Fatalf("reading held decks: %v", err)
 	}
-	if hashes[deckID] != row.ContentHash {
-		t.Fatalf("the deck should read back by its hash: %v", hashes)
+	if held[deckID].Hash != row.ContentHash || !held[deckID].ListedUpdatedAt.Equal(row.ListedUpdatedAt) {
+		t.Fatalf("the deck should read back with its hash and listed time: %+v", held)
 	}
-	if _, ok := hashes["not-a-deck"]; ok {
-		t.Fatal("a deck we do not hold has no hash")
+	if _, ok := held["not-a-deck"]; ok {
+		t.Fatal("a deck we do not hold has nothing to read back")
+	}
+
+	// Same cards, a later listed time: the time is recorded, so the next visit steps over the deck.
+	later := row
+	later.ListedUpdatedAt = row.ListedUpdatedAt.Add(time.Hour)
+	if err := store.UpsertDecks(ctx, []DeckRow{later}); err != nil {
+		t.Fatalf("rewriting the listed time: %v", err)
+	}
+	if held, err = store.DeckVersions(ctx, []string{deckID}); err != nil || !held[deckID].ListedUpdatedAt.Equal(later.ListedUpdatedAt) {
+		t.Fatalf("a moved listed time should be stored even when the cards are the same: %+v, %v", held, err)
+	}
+
+	// The queue: seeding is repeatable, and a commander handed to a run is not handed to it again once finished.
+	if _, err := store.SeedCommanders(ctx); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+	next, err := store.NextCommanders(ctx, runID, 1)
+	if err != nil {
+		t.Fatalf("reading the queue: %v", err)
+	}
+	if len(next) == 1 {
+		if next[0].OracleID == "" || next[0].Name == "" {
+			t.Fatalf("a queued commander carries its oracle id and name: %+v", next[0])
+		}
+		// Partial leaves last_visited_at alone, so the local queue's order is not disturbed by the test.
+		if err := store.FinishCommander(ctx, runID, next[0].CardID, CommanderResult{Outcome: OutcomePartial, Listed: 1}); err != nil {
+			t.Fatalf("finishing a commander: %v", err)
+		}
+		again, err := store.NextCommanders(ctx, runID, 1)
+		if err != nil {
+			t.Fatalf("re-reading the queue: %v", err)
+		}
+		if len(again) == 1 && again[0].CardID == next[0].CardID {
+			t.Fatal("a commander this run finished must not be handed back to it")
+		}
+	} else {
+		t.Log("no external_commanders locally; the queue half was not exercised")
 	}
 
 	if err := store.SetCursor(ctx, deckID); err != nil {

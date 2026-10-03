@@ -100,7 +100,7 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
 
   const [cardRows, cardCorpus, roleTags] = await Promise.all([
     fetchCardsById(db, cardIds),
-    loadCardCorpus(db, corpus, cardIds),
+    loadCardCorpus(db, corpus, cardIds, commanderIds),
     fetchTags(
       db,
       roleTargets.map((t) => t.roleId),
