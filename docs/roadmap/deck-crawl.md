@@ -21,8 +21,13 @@ commander list, most played first, and lists each one's decks on Archidekt most 
 
 - **A first visit reads one list page** (up to 60 decks). Every commander gets a small base before any gets more
   (owner decision 2026-10-01).
-- **A revisit walks on until it has found `newDecksPerRevisit` (350) decks** led by that commander that are new to
-  the corpus or whose cards changed. Revisits begin only once every commander has had its first visit.
+- **A revisit re-reads `revisitPages` (1) pages** and fetches only the decks whose listed update time has moved, which
+  is the whole of the "skip what has not changed" optimisation. It replaced a target of 350 new decks per revisit: that
+  made a visit walk up to 40 pages — 2,400 deck fetches, hours at the polite pace — hunting decks that, for a commander
+  leading few of the decks its card merely appears in, were never there to find. `maxFetchesPerCommander` (120) now
+  bounds one visit's work directly, which a page cap never did.
+- **Revisits begin only once every commander has had its first visit**: the queue hands out never-visited commanders
+  before any second look.
 
 It replaced a walk of Archidekt's site-wide feed, newest update first, that stopped at the first stretch of
 unchanged decks. Hosted runs 1–5 (2026-09-24 to 2026-10-01) showed that never worked: Archidekt bumps `updatedAt`
@@ -82,8 +87,9 @@ site a deck came from. Adding a third source is those four methods, a `Defaults(
    3. Fetch the rest and write them. A deck whose cards are unchanged has only its new listed time recorded, and
       does not count. A deck led by another commander (the search also finds decks that merely run the card) is
       kept, since it is a real deck already paid for, but does not count either.
-   4. Stop after page 1 on a first visit; on a revisit, at `newDecksPerRevisit` counted decks, the end of the list,
-      or `maxPagesPerCommander`. Record the visit (`crawl_finish_commander`).
+   4. Stop after `firstVisitPages` (1) on a first visit and `revisitPages` (1) on a revisit, or sooner at
+      `maxFetchesPerCommander`, the end of the list, or `maxPagesPerCommander`. Record the visit
+      (`crawl_finish_commander`).
 6. **Close the run** and release the claim.
 
 ### Outcomes and the verification log
@@ -92,9 +98,10 @@ Each commander's last visit is a row in `corpus.crawl_commanders`:
 
 | Outcome | |
 |---|---|
-| `done` | a first visit read its page, or a revisit met its target |
-| `exhausted` | a revisit ran out of list before its target |
-| `page_cap` | a revisit stopped at `maxPagesPerCommander` |
+| `done` | the visit read the pages it was asked for |
+| `exhausted` | the commander's list ran out: the source has fewer decks for it than the visit was allowed to read |
+| `page_cap` | the **ceiling** cut the visit short — it asked for more pages than `maxPagesPerCommander` allows. A visit that read exactly the pages it wanted is `done`, because with `revisitPages` at 1 that is what every healthy revisit does |
+| `fetch_cap` | a visit stopped at `maxFetchesPerCommander` (120): one commander must not be able to take a whole run |
 | `partial` | the run's time ran out mid-visit; not stamped as visited, so it comes back first |
 | `not_found` | **no decks under its name or front face.** Left out of the queue until someone clears it |
 | `no_led_decks` | **a first visit listed decks, but none were led by this commander** (likely a name mismatch) |
@@ -156,9 +163,14 @@ Every outbound request goes through `crawl.Fetcher`:
   worker's. Never rotated, never spoofed.
 - **robots.txt obeyed** — colly's default, and the `IgnoreRobotsTxt` option is absent on purpose.
 - one request in flight at a time, spaced `requestIntervalMs` apart plus a random extra of up to `requestJitterMs`,
-  so requests do not land on a fixed beat. Archidekt is 2.5 s + up to 0.5 s (owner decision 2026-10-01; it
-  was a flat 3 s before that), kept clear of one a second because one a second drew 429s on
-  2026-09-14.
+  so requests do not land on a fixed beat. **Archidekt is 1 s + up to 0.2 s** (owner decision 2026-10-03: it has been
+  taking that rate).
+- **The pace adapts rather than being a fixed guess.** A `429` doubles the interval, up to `requestIntervalMaxMs`
+  (8 s), and `paceRecoverRequests` (60) responses with no 429 in them return it to the base. The reason it is not just
+  a flat safe number is on the record: one request a second drew 429s on 2026-09-14, so a fixed pace would have to be
+  slow enough for the worst day and needlessly slow on every other one. A run that was slowed down says so in its own
+  row — `corpus.crawl_runs.throttles` counts it and `throttled_position` names the commander and page it happened at,
+  because a count says there was resistance and only a position says where to look.
 - 429 and 5xx retry up to three times with exponential backoff, widened to `Retry-After` when the server sets one.
 - **403 or a challenge is never retried.** It is a decision by the source, and the crawl honours it.
 
@@ -250,8 +262,10 @@ bound, and a visit only needs to know about the decks in front of it.
 Pace and budget live in `app_config.<source>` — the repo is public, so anti-abuse thresholds belong in the database:
 
 ```json
-{ "requestIntervalMs": 2500, "requestJitterMs": 500, "backoffStartMs": 5000, "backoffMaxMs": 300000, "staleClaimSeconds": 28800,
-  "runMinutes": 360, "firstVisitPages": 1, "newDecksPerRevisit": 350, "maxPagesPerCommander": 40 }
+{ "requestIntervalMs": 1000, "requestJitterMs": 200, "requestIntervalMaxMs": 8000, "paceRecoverRequests": 60,
+  "backoffStartMs": 5000, "backoffMaxMs": 300000, "staleClaimSeconds": 28800, "runMinutes": 360,
+  "firstVisitPages": 1, "revisitPages": 1, "maxPagesPerCommander": 40, "maxFetchesPerCommander": 120,
+  "targetDecks": 60 }
 ```
 
 Each source's Go `Defaults()` is the baseline under that row, so a crawl has a sane pace before the database is

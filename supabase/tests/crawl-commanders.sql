@@ -78,6 +78,63 @@ select chk('the status counts the verification log',
 select must_fail('outcomes are a closed list',
   format('update corpus.crawl_commanders set outcome = %L where source = %L', 'maybe', 'moxfield'), 'check');
 
+-- === the queue is ordered by need ===
+
+-- An earlier check marked c1 not_found, which keeps it out of the queue entirely; clear that so this section is about
+-- the ordering and nothing else.
+update corpus.crawl_commanders set outcome = null, last_run_id = null where source = 'moxfield';
+
+select (value->>'targetDecks')::int as target from public.app_config where key = 'moxfield' \gset
+
+-- Decks the corpus already holds, keyed by the commander that leads them. They go on c2, which an earlier check made
+-- the *most played* of the two (900 against 550): need has to beat popularity, and loading the less played commander
+-- instead would let this pass for the wrong reason.
+insert into corpus.decks (source, source_deck_id, commanders, cards, deck_size, content_hash, listed_updated_at, last_updated_at)
+select 'moxfield', 'zz-held-' || g,
+       array[(select oracle_id::text from public.cards where id = :c2)],
+       '{"x": 1}'::jsonb, 100, 'h-' || g, now(), now()
+  from generate_series(1, :target + 5) g;
+
+-- Its own statement, deliberately: a mutating call and a read of what it wrote cannot share a SELECT, because every
+-- subquery in one statement sees the snapshot taken before it ran. Asserting in the same select read 0 and looked like
+-- a broken count.
+select public.crawl_seed_commanders('moxfield') as seeded \gset
+select chk('the seed counts what the corpus already holds',
+  (select held_decks = :target + 5 from corpus.crawl_commanders
+    where source = 'moxfield' and commander_card_id = :c2),
+  (select held_decks::text from corpus.crawl_commanders where source = 'moxfield' and commander_card_id = :c2));
+
+insert into corpus.crawl_runs (source, state) values ('moxfield', 'running') returning id as run4 \gset
+select chk('a commander over the target yields to one under it, however played it is',
+  (select public.crawl_next_commanders('moxfield', :run4, 5) -> 0 ->> 'cardId')::int = :c1,
+  public.crawl_next_commanders('moxfield', :run4, 5)::text);
+
+select chk('the queue reports what it holds, so a log line can say why it chose',
+  (select (public.crawl_next_commanders('moxfield', :run4, 5) -> 1 ->> 'heldDecks')::int = :target + 5),
+  public.crawl_next_commanders('moxfield', :run4, 5)::text);
+
+-- With nothing held they are equally needy and most-played wins again, which is why the first pass is unchanged by any
+-- of this: it starts with an empty corpus.
+delete from corpus.decks where source = 'moxfield' and source_deck_id like 'zz-held-%';
+select public.crawl_seed_commanders('moxfield') as reseeded \gset
+select chk('with nothing held, most played leads again',
+  (select public.crawl_next_commanders('moxfield', :run4, 5) -> 0 ->> 'cardId')::int = :c2,
+  public.crawl_next_commanders('moxfield', :run4, 5)::text);
+
+select public.crawl_finish_commander('moxfield', :c1, :run4, '{"outcome": "fetch_cap", "fetched": 120}'::jsonb);
+select chk('fetch_cap is an outcome a visit may record',
+  (select outcome = 'fetch_cap' and fetched = 120 from corpus.crawl_commanders
+    where source = 'moxfield' and commander_card_id = :c1));
+
+-- === the run records pushback ===
+select public.crawl_finish_run(:run4,
+  '{"state": "succeeded", "throttles": 4, "throttled_position": "Liesa, Forgotten Archangel page 3"}'::jsonb);
+select chk('a run keeps how often the source pushed back, and where it was',
+  (select throttles = 4 and throttled_position = 'Liesa, Forgotten Archangel page 3'
+     from corpus.crawl_runs where id = :run4));
+select chk('a quiet run records no position',
+  (select throttled_position is null from corpus.crawl_runs where id = :run_id));
+
 -- === listed times on unchanged decks ===
 select public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
   'source_deck_id', 'test-deck', 'commanders', jsonb_build_array('oc'), 'cards', '{"x": 1}'::jsonb,

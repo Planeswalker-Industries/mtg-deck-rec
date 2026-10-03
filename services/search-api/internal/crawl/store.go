@@ -70,6 +70,9 @@ type Commander struct {
 	CardID   int    `json:"cardId"`
 	OracleID string `json:"oracleId"`
 	Name     string `json:"name"`
+	// HeldDecks is how many decks the corpus already holds that this commander leads. The queue orders by it, so a
+	// commander with three decks is served before one with five hundred; it is read here only for the log.
+	HeldDecks int `json:"heldDecks"`
 	// QueryName is the name that found decks on an earlier visit (the front face of a two-faced card, say); empty
 	// until a visit found listings.
 	QueryName string `json:"queryName"`
@@ -86,6 +89,7 @@ const (
 	OutcomeNotFound   = "not_found"    // no listings under its name or front face: the verification log
 	OutcomeNoLedDecks = "no_led_decks" // a first visit found listings, but none were decks it leads
 	OutcomeFailed     = "failed"       // the visit hit an error that ended the run
+	OutcomeFetchCap   = "fetch_cap"    // the visit stopped at Policy.MaxFetchesPerCommander
 )
 
 // CommanderResult is what one visit did, written back to corpus.crawl_commanders.
@@ -140,8 +144,13 @@ type RunSummary struct {
 	// Decks the feed listed that were gone by the time the crawl asked for them. Apart from SkippedUnqualified
 	// because the two say different things: unqualified means the browse filters admit decks the corpus does not
 	// want, missing means the feed is stale or the crawl is falling behind deletions.
-	SkippedMissing    int    `json:"skipped_missing"`
-	CommandersVisited int    `json:"commanders_visited"`
+	SkippedMissing    int `json:"skipped_missing"`
+	CommandersVisited int `json:"commanders_visited"`
+	// How many times the source answered 429, and where the crawl was the last time it did. The pace widens itself in
+	// response (see Fetcher), so these are the record of a run that was slowed down - without them, a crawl that spent
+	// half its time at the ceiling looks the same as one that never met resistance.
+	Throttles         int    `json:"throttles"`
+	ThrottledPosition string `json:"throttled_position,omitempty"`
 	Blocks            int    `json:"blocks"`
 	Error             string `json:"error,omitempty"`
 }

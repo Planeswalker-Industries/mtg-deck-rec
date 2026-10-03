@@ -28,24 +28,38 @@ type Policy struct {
 	RunDuration time.Duration
 	// FirstVisitPages is how many list pages a commander's first visit reads.
 	FirstVisitPages int
-	// NewDecksPerRevisit is how many new or changed decks led by the commander a revisit looks for before moving on.
-	NewDecksPerRevisit int
-	// MaxPagesPerCommander caps a revisit's walk, so one huge commander cannot take a whole run.
+	// RevisitPages is how many list pages a commander's later visits read. One, by default: a revisit's job is to
+	// re-read the page it already has and fetch only the decks whose listed time moved, which is the whole of the
+	// "skip decks that have not been updated" optimisation. Raise it to grow each commander's sample instead.
+	RevisitPages int
+	// MaxPagesPerCommander is the absolute ceiling on one visit's pages, whatever the two settings above ask for.
 	MaxPagesPerCommander int
+	// MaxFetchesPerCommander caps the deck fetches one visit may make. The page cap alone does not bound the work: at
+	// 60 decks a page, forty pages is 2,400 fetches, which at the polite pace is hours - one commander could take a
+	// whole run.
+	MaxFetchesPerCommander int
+	// RequestIntervalMax is the slowest the pace may become while the source is pushing back. The interval doubles on
+	// a 429 up to this, and returns to RequestInterval after PaceRecoverRequests clean responses.
+	RequestIntervalMax time.Duration
+	// PaceRecoverRequests is how many requests must come back without a 429 before the pace returns to its base.
+	PaceRecoverRequests int
 }
 
 // Defaults is a source's baseline policy. Zero fields fall back to the shared absolutes below, so a source only has
 // to name what differs (Archidekt, for instance, needs a slower pace because one request a second drew 429s on 2026-09-14).
 type Defaults struct {
-	RequestInterval      time.Duration
-	RequestJitter        time.Duration
-	BackoffStart         time.Duration
-	BackoffMax           time.Duration
-	StaleClaim           time.Duration
-	RunDuration          time.Duration
-	FirstVisitPages      int
-	NewDecksPerRevisit   int
-	MaxPagesPerCommander int
+	RequestInterval        time.Duration
+	RequestJitter          time.Duration
+	BackoffStart           time.Duration
+	BackoffMax             time.Duration
+	StaleClaim             time.Duration
+	RunDuration            time.Duration
+	FirstVisitPages        int
+	RevisitPages           int
+	MaxPagesPerCommander   int
+	MaxFetchesPerCommander int
+	RequestIntervalMax     time.Duration
+	PaceRecoverRequests    int
 }
 
 const (
@@ -60,8 +74,19 @@ const (
 	// One page (up to 60 decks on Archidekt) gives every commander a small base before any gets more (owner decision
 	// 2026-10-01); later visits grow it.
 	fallbackFirstVisitPages = 1
-	// The owner's figure for how many new or updated decks a revisit should find (2026-10-01).
-	fallbackNewDecksPerRevisit = 350
+	// One page, the same page: a revisit re-reads what it already has and fetches only what moved (owner decision
+	// 2026-10-03). The 350-new-decks target this replaced made a revisit walk pages looking for decks that, for a
+	// commander leading few of the decks its card appears in, were not there to find.
+	fallbackRevisitPages = 1
+	// 120 fetches is two pages' worth: enough for a visit that wants to grow a commander's sample, far short of the
+	// hours a 40-page walk costs.
+	fallbackMaxFetchesPerCommander = 120
+	// Eight seconds is where the pace stops doubling. Past it the crawl is barely moving, and a source still saying no
+	// at eight seconds a request is saying something a slower pace will not fix.
+	fallbackRequestIntervalMax = 8 * time.Second
+	// Sixty clean responses before trying the base pace again - about a minute of quiet at one request a second. Short
+	// enough to recover within a run, long enough that it is not re-testing the limit every few requests.
+	fallbackPaceRecoverRequests = 60
 	// The worker's own per-commander page cap (serve:commander-requests): 2,400 listings at 60 a page.
 	fallbackMaxPagesPerCommander = 40
 )
@@ -69,15 +94,18 @@ const (
 // Policy applies the defaults then fills any zero field from the shared fallbacks.
 func (d Defaults) Policy() Policy {
 	return Policy{
-		RequestInterval:      orDuration(d.RequestInterval, fallbackRequestInterval),
-		RequestJitter:        d.RequestJitter,
-		BackoffStart:         orDuration(d.BackoffStart, fallbackBackoffStart),
-		BackoffMax:           orDuration(d.BackoffMax, fallbackBackoffMax),
-		StaleClaim:           orDuration(d.StaleClaim, fallbackStaleClaim),
-		RunDuration:          orDuration(d.RunDuration, fallbackRunDuration),
-		FirstVisitPages:      orInt(d.FirstVisitPages, fallbackFirstVisitPages),
-		NewDecksPerRevisit:   orInt(d.NewDecksPerRevisit, fallbackNewDecksPerRevisit),
-		MaxPagesPerCommander: orInt(d.MaxPagesPerCommander, fallbackMaxPagesPerCommander),
+		RequestInterval:        orDuration(d.RequestInterval, fallbackRequestInterval),
+		RequestJitter:          d.RequestJitter,
+		BackoffStart:           orDuration(d.BackoffStart, fallbackBackoffStart),
+		BackoffMax:             orDuration(d.BackoffMax, fallbackBackoffMax),
+		StaleClaim:             orDuration(d.StaleClaim, fallbackStaleClaim),
+		RunDuration:            orDuration(d.RunDuration, fallbackRunDuration),
+		FirstVisitPages:        orInt(d.FirstVisitPages, fallbackFirstVisitPages),
+		RevisitPages:           orInt(d.RevisitPages, fallbackRevisitPages),
+		MaxPagesPerCommander:   orInt(d.MaxPagesPerCommander, fallbackMaxPagesPerCommander),
+		MaxFetchesPerCommander: orInt(d.MaxFetchesPerCommander, fallbackMaxFetchesPerCommander),
+		RequestIntervalMax:     orDuration(d.RequestIntervalMax, fallbackRequestIntervalMax),
+		PaceRecoverRequests:    orInt(d.PaceRecoverRequests, fallbackPaceRecoverRequests),
 	}
 }
 
@@ -103,15 +131,18 @@ func ParsePolicy(raw json.RawMessage, d Defaults) (Policy, error) {
 		return p, nil
 	}
 	var fields struct {
-		RequestIntervalMs    int `json:"requestIntervalMs"`
-		RequestJitterMs      int `json:"requestJitterMs"`
-		BackoffStartMs       int `json:"backoffStartMs"`
-		BackoffMaxMs         int `json:"backoffMaxMs"`
-		StaleClaimSeconds    int `json:"staleClaimSeconds"`
-		RunMinutes           int `json:"runMinutes"`
-		FirstVisitPages      int `json:"firstVisitPages"`
-		NewDecksPerRevisit   int `json:"newDecksPerRevisit"`
-		MaxPagesPerCommander int `json:"maxPagesPerCommander"`
+		RequestIntervalMs      int `json:"requestIntervalMs"`
+		RequestJitterMs        int `json:"requestJitterMs"`
+		BackoffStartMs         int `json:"backoffStartMs"`
+		BackoffMaxMs           int `json:"backoffMaxMs"`
+		StaleClaimSeconds      int `json:"staleClaimSeconds"`
+		RunMinutes             int `json:"runMinutes"`
+		FirstVisitPages        int `json:"firstVisitPages"`
+		RevisitPages           int `json:"revisitPages"`
+		MaxFetchesPerCommander int `json:"maxFetchesPerCommander"`
+		RequestIntervalMaxMs   int `json:"requestIntervalMaxMs"`
+		PaceRecoverRequests    int `json:"paceRecoverRequests"`
+		MaxPagesPerCommander   int `json:"maxPagesPerCommander"`
 	}
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return Policy{}, err
@@ -123,7 +154,10 @@ func ParsePolicy(raw json.RawMessage, d Defaults) (Policy, error) {
 	p.StaleClaim = orDuration(time.Duration(fields.StaleClaimSeconds)*time.Second, p.StaleClaim)
 	p.RunDuration = orDuration(time.Duration(fields.RunMinutes)*time.Minute, p.RunDuration)
 	p.FirstVisitPages = orInt(fields.FirstVisitPages, p.FirstVisitPages)
-	p.NewDecksPerRevisit = orInt(fields.NewDecksPerRevisit, p.NewDecksPerRevisit)
+	p.RevisitPages = orInt(fields.RevisitPages, p.RevisitPages)
+	p.MaxFetchesPerCommander = orInt(fields.MaxFetchesPerCommander, p.MaxFetchesPerCommander)
+	p.RequestIntervalMax = orDuration(time.Duration(fields.RequestIntervalMaxMs)*time.Millisecond, p.RequestIntervalMax)
+	p.PaceRecoverRequests = orInt(fields.PaceRecoverRequests, p.PaceRecoverRequests)
 	p.MaxPagesPerCommander = orInt(fields.MaxPagesPerCommander, p.MaxPagesPerCommander)
 	return p, nil
 }

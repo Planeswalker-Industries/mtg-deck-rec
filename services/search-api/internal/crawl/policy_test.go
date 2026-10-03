@@ -20,12 +20,12 @@ func TestPolicyFallsBackWhenRowAndDefaultsAbsent(t *testing.T) {
 }
 
 func TestPolicyDefaultsComeFromTheSource(t *testing.T) {
-	src := Defaults{RequestInterval: 3 * time.Second, NewDecksPerRevisit: 100}
+	src := Defaults{RequestInterval: 3 * time.Second, MaxFetchesPerCommander: 100}
 	p, err := ParsePolicy(json.RawMessage("null"), src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.RequestInterval != 3*time.Second || p.NewDecksPerRevisit != 100 {
+	if p.RequestInterval != 3*time.Second || p.MaxFetchesPerCommander != 100 {
 		t.Fatalf("source defaults lost: %+v", p)
 	}
 }

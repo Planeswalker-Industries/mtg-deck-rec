@@ -364,10 +364,14 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 		}
 	}
 
-	maxPages := policy.MaxPagesPerCommander
+	wanted := policy.RevisitPages
 	if !commander.Visited {
-		maxPages = policy.FirstVisitPages
+		wanted = policy.FirstVisitPages
 	}
+	maxPages := min(wanted, policy.MaxPagesPerCommander)
+	// Whether the absolute ceiling is what stopped the visit, rather than the pages it was asked to read. The two are
+	// different outcomes: reading your allotted page is `done`, being cut off by the ceiling is `page_cap`.
+	ceilingBound := policy.MaxPagesPerCommander < wanted
 
 	for pageNo := 1; ; pageNo++ {
 		if pageNo > 1 {
@@ -380,6 +384,7 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 			}
 		}
 		summary.PagesSeen++
+		r.notePushback(summary, commander, pageNo)
 
 		// One lookup per page rather than one per commander: a revisit of a big commander can list thousands.
 		ids := make([]string, len(page.Entries))
@@ -405,6 +410,7 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 			}
 
 			row, err := r.fetchDeck(ctx, entry.ID, summary)
+			r.notePushback(summary, commander, pageNo)
 			if err != nil {
 				if isBlockErr(err) {
 					return result, err
@@ -455,31 +461,38 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 			} else {
 				result.WrongCommander++
 			}
-			if commander.Visited && result.Counted >= policy.NewDecksPerRevisit {
-				result.Outcome = OutcomeDone
+			// The page cap does not bound the work on its own: at sixty decks a page, a page cap of forty is 2,400
+			// fetches, which at the polite pace is hours. One commander must not be able to take a whole run.
+			if result.Fetched >= policy.MaxFetchesPerCommander {
+				result.Outcome = OutcomeFetchCap
 				return result, nil
 			}
 		}
 
 		if !page.HasNext || pageNo >= maxPages {
-			result.Outcome = visitEnd(commander, result, page.HasNext)
+			result.Outcome = visitEnd(commander, result, page.HasNext, ceilingBound)
 			return result, nil
 		}
 	}
 }
 
 // visitEnd names how a visit that read all the pages it was allowed finished.
-func visitEnd(commander Commander, result CommanderResult, hasNext bool) string {
+//
+// `page_cap` means the absolute ceiling cut the visit short, not merely that the visit read the pages it was asked to.
+// With revisitPages at 1 the latter is what every healthy revisit does, so reporting that as `page_cap` would make the
+// normal case look like a limit was hit and bury the visits where the ceiling really did bite.
+func visitEnd(commander Commander, result CommanderResult, hasNext, ceilingBound bool) string {
 	switch {
 	case !commander.Visited && result.Counted == 0 && result.Fetched > 0:
 		// Every deck it fetched was led by another commander or did not qualify: worth a look, like not_found.
 		return OutcomeNoLedDecks
-	case !commander.Visited:
-		return OutcomeDone
 	case !hasNext:
+		// The commander's list ran out. Nothing more to read, however many pages were allowed.
 		return OutcomeExhausted
-	default:
+	case ceilingBound:
 		return OutcomePageCap
+	default:
+		return OutcomeDone
 	}
 }
 
@@ -491,6 +504,22 @@ func visitEnd(commander Commander, result CommanderResult, hasNext bool) string 
 // can disappear in the minutes a crawl takes.
 func feedMostlyMissing(s *RunSummary) bool {
 	return s.SkippedMissing >= missingDeckFloor && float64(s.SkippedMissing) > missingDeckShare*float64(s.DecksListed)
+}
+
+// notePushback records that the source answered 429, and where the crawl was when it did.
+//
+// The count alone cannot say that: "17 throttles" is a number, while "throttled at Liesa, Forgotten Archangel page 3"
+// is where to look. The fetcher owns the counter and widens the pace itself; this only reads it, so a run that was
+// slowed down says so in its own row instead of only in the container log.
+func (r *Runner) notePushback(summary *RunSummary, commander Commander, page int) {
+	seen := r.getter.Throttles()
+	if seen <= summary.Throttles {
+		return
+	}
+	summary.Throttles = seen
+	summary.ThrottledPosition = fmt.Sprintf("%s page %d", commander.Name, page)
+	r.log.Warn("the source pushed back during this run",
+		"source", r.src.Name(), "commander", commander.Name, "page", page, "throttles", seen)
 }
 
 func (r *Runner) listPage(ctx context.Context, commanderName string, page int) (ListPage, error) {

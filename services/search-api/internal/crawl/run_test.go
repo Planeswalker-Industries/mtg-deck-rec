@@ -103,6 +103,9 @@ type fakeGetter struct {
 	// URLs that answer an HTTP status instead of a body, so a test can stage a deck that has gone since it was
 	// listed - the ordinary consequence of crawling at the polite pace.
 	statuses map[string]int
+	// How many 429s the source has answered. A real Fetcher widens its own pace; this only has to report the count,
+	// which is what the run loop reads to record where the pushback happened.
+	throttles int
 }
 
 func (g *fakeGetter) Get(_ context.Context, rawurl string) ([]byte, error) {
@@ -123,6 +126,8 @@ func (g *fakeGetter) Get(_ context.Context, rawurl string) ([]byte, error) {
 }
 
 func (g *fakeGetter) SetPolicy(p Policy) { g.policy = p }
+
+func (g *fakeGetter) Throttles() int { return g.throttles }
 
 // fakeStore stands in for the database, including the two behaviours the run depends on: the queue leaves out
 // commanders this run already finished, and an upsert records the listed update time.
@@ -364,7 +369,9 @@ func TestNotFoundTriesTheFrontFace(t *testing.T) {
 	}}
 	run(t, store, getter)
 	visit := store.visits[esika.CardID]
-	if visit.Outcome != OutcomeDone || visit.QueryName != "Esika, Queen of the Hold" || visit.Counted != 1 {
+	// `exhausted`, not `done`: the fixture's list has no second page, so there is nothing more to fetch for this
+	// commander. That distinction is worth keeping - it says the source has fewer decks for it than a page holds.
+	if visit.Outcome != OutcomeExhausted || visit.QueryName != "Esika, Queen of the Hold" || visit.Counted != 1 {
 		t.Fatalf("visit: %+v", visit)
 	}
 }
@@ -387,23 +394,75 @@ func TestNotFoundIsLoggedAndTheRunMovesOn(t *testing.T) {
 	}
 }
 
-// A revisit walks on until it has found its target of new decks led by the commander, and stops there.
-func TestRevisitStopsAtItsTarget(t *testing.T) {
+// A revisit reads the page it already has and stops, which is the whole of the "skip decks that have not been updated"
+// optimisation. It replaced a target of 350 new decks per revisit, which made one commander walk up to forty pages -
+// 2,400 fetches, hours at the polite pace - hunting decks that often were not there.
+func TestRevisitReadsOnlyItsPages(t *testing.T) {
 	store := newStore(revisit(liesa))
-	store.policy.NewDecksPerRevisit = 2
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(liesa.Name, 1): []byte("111\n" + moreMarker + "\n"),
 		src.ListURL(liesa.Name, 2): []byte("222\n333\n" + moreMarker + "\n"),
 		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	run(t, store, getter)
+	if getter.requests[src.ListURL(liesa.Name, 2)] != 0 {
+		t.Fatalf("a revisit read page 2 with revisitPages=%d", store.policy.RevisitPages)
+	}
+	if visit := store.visits[liesa.CardID]; visit.Counted != 1 {
+		t.Fatalf("visit: %+v", visit)
+	}
+}
+
+// A visit stops at the fetch cap. The page cap never bounded the work: sixty decks a page across forty pages is 2,400
+// fetches, so without this one commander could take a whole run.
+func TestAVisitStopsAtTheFetchCap(t *testing.T) {
+	store := newStore(revisit(liesa))
+	store.policy.RevisitPages = 5
+	store.policy.MaxFetchesPerCommander = 2
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n222\n333\n" + moreMarker + "\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
 		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+		src.DeckURL("333"):         ledBy(liesa.OracleID, "ccc"),
 	}}
 	run(t, store, getter)
 	visit := store.visits[liesa.CardID]
-	if visit.Outcome != OutcomeDone || visit.Counted != 2 {
+	if visit.Outcome != OutcomeFetchCap || visit.Fetched != 2 {
 		t.Fatalf("visit: %+v", visit)
 	}
 	if getter.requests[src.DeckURL("333")] != 0 {
-		t.Fatal("nothing should be fetched once the target is met")
+		t.Fatal("the third deck was fetched past the cap")
+	}
+}
+
+// Where the source pushed back, not just that it did. A count is a number; "Liesa, Forgotten Archangel page 1" is
+// where to look.
+func TestARunRecordsWhereItWasThrottled(t *testing.T) {
+	store := newStore(liesa)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	// The fetcher widens its own pace and counts; the run loop only reads the counter around each request.
+	getter.throttles = 1
+	res := run(t, store, getter)
+	if res.Summary.Throttles != 1 {
+		t.Fatalf("throttles not carried: %+v", res.Summary)
+	}
+	if res.Summary.ThrottledPosition != liesa.Name+" page 1" {
+		t.Fatalf("position: %q", res.Summary.ThrottledPosition)
+	}
+}
+
+func TestAQuietRunRecordsNoThrottling(t *testing.T) {
+	store := newStore(liesa)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	res := run(t, store, getter)
+	if res.Summary.Throttles != 0 || res.Summary.ThrottledPosition != "" {
+		t.Fatalf("summary claims pushback that never happened: %+v", res.Summary)
 	}
 }
 
@@ -437,8 +496,12 @@ func TestRevisitStepsOverHeldDecks(t *testing.T) {
 }
 
 // A revisit of a huge commander stops at the page cap rather than taking the run.
-func TestRevisitStopsAtThePageCap(t *testing.T) {
+// `page_cap` means the absolute ceiling cut a visit short - it asked for more pages than MaxPagesPerCommander allows.
+// A visit that read exactly the pages it wanted is `done`, which matters because with revisitPages at 1 that is what
+// every healthy revisit does: reporting those as `page_cap` would bury the visits where the ceiling really did bite.
+func TestThePageCeilingCutsAVisitShort(t *testing.T) {
 	store := newStore(revisit(liesa))
+	store.policy.RevisitPages = 5
 	store.policy.MaxPagesPerCommander = 1
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(liesa.Name, 1): []byte("111\n" + moreMarker + "\n"),
@@ -447,6 +510,19 @@ func TestRevisitStopsAtThePageCap(t *testing.T) {
 	run(t, store, getter)
 	if got := store.visits[liesa.CardID].Outcome; got != OutcomePageCap || getter.requests[src.ListURL(liesa.Name, 2)] != 0 {
 		t.Fatalf("outcome %s", got)
+	}
+}
+
+// The ordinary revisit: it read the one page it was asked for, the list has more, and that is not a limit being hit.
+func TestARevisitThatReadItsPagesIsDone(t *testing.T) {
+	store := newStore(revisit(liesa))
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n" + moreMarker + "\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	run(t, store, getter)
+	if got := store.visits[liesa.CardID].Outcome; got != OutcomeDone {
+		t.Fatalf("outcome %s, want done", got)
 	}
 }
 
@@ -562,12 +638,12 @@ func TestRunWritesThePolicyToTheGetter(t *testing.T) {
 	store := newStore(liesa)
 	getter := &fakeGetter{}
 	store.policy.RequestInterval = 1500 * time.Millisecond
-	store.policy.NewDecksPerRevisit = 90
+	store.policy.MaxFetchesPerCommander = 90
 	res := run(t, store, getter)
 	if res.Summary.State != "failed" { // no fixtures, so the run fails at the first list; the policy still had to land first
 		t.Fatalf("summary %+v", res.Summary)
 	}
-	if getter.policy.RequestInterval != 1500*time.Millisecond || getter.policy.NewDecksPerRevisit != 90 {
+	if getter.policy.RequestInterval != 1500*time.Millisecond || getter.policy.MaxFetchesPerCommander != 90 {
 		t.Fatalf("policy not handed over: %+v", getter.policy)
 	}
 }

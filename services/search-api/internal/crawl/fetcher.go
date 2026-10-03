@@ -34,6 +34,10 @@ type Getter interface {
 	Get(ctx context.Context, rawurl string) ([]byte, error)
 	// SetPolicy hands the run's effective policy (from app_config) to the fetcher before it starts.
 	SetPolicy(p Policy)
+	// Throttles is how many times the source has answered 429 since this fetcher was built. The run loop reads it
+	// around each request so it can record *where* in the crawl the pushback happened, which a counter alone cannot
+	// say.
+	Throttles() int
 }
 
 // Blocked matches a 403 or a Cloudflare challenge wall: the one response that must never be retried or worked
@@ -75,11 +79,22 @@ type Fetcher struct {
 	log       *slog.Logger
 
 	// Spacing: the same shape as the worker's RateLimiter (apps/worker/src/lib/http.ts) - requests to one host keep
-	// at least RequestInterval between their starts, across the crawl's sequential calls.
+	// at least `interval` between their starts, across the crawl's sequential calls.
 	mu       sync.Mutex
 	nextSlot time.Time
 	gotBody  []byte
 	gotErr   error
+
+	// The pace actually in use, which is not always the policy's. It starts at Policy.RequestInterval, doubles each
+	// time the source answers 429 (up to Policy.RequestIntervalMax), and returns to the base after
+	// Policy.PaceRecoverRequests responses with no 429 in them.
+	//
+	// Why adapt rather than pick one safe number: Archidekt took one request a second for weeks, but drew 429s on
+	// 2026-09-14. A fixed pace has to be slow enough for the bad day, which means being needlessly slow on every other
+	// day. Backing off on the evidence and creeping back is faster in the normal case and gentler in the bad one.
+	interval  time.Duration
+	okStreak  int
+	throttles int
 }
 
 // NewFetcher stands one up for the given host. domains are the hostnames (plus any alias like www.) the crawl may
@@ -98,7 +113,7 @@ func NewFetcher(domains []string, policy Policy, log *slog.Logger) *Fetcher {
 	)
 	c.SetRequestTimeout(fetchTimeout)
 
-	f := &Fetcher{collector: c, policy: policy, log: log}
+	f := &Fetcher{collector: c, policy: policy, log: log, interval: policy.RequestInterval}
 	f.wireHandlers()
 	return f
 }
@@ -168,7 +183,50 @@ func isChallenge(headers *http.Header, body []byte) bool {
 func (f *Fetcher) SetPolicy(p Policy) {
 	f.mu.Lock()
 	f.policy = p
+	// A fresh run starts at the base pace. Carrying a throttled interval across runs would let one bad minute slow
+	// every crawl until the process restarted.
+	f.interval = p.RequestInterval
+	f.okStreak = 0
 	f.mu.Unlock()
+}
+
+// Throttles is how many 429s this fetcher has seen.
+func (f *Fetcher) Throttles() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.throttles
+}
+
+// throttled widens the pace after a 429, up to the ceiling.
+func (f *Fetcher) throttled() (now, next time.Duration, capped bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.throttles++
+	f.okStreak = 0
+	was := f.interval
+	ceiling := f.policy.RequestIntervalMax
+	if ceiling < f.policy.RequestInterval {
+		ceiling = f.policy.RequestInterval
+	}
+	f.interval = min(was*2, ceiling)
+	return was, f.interval, f.interval == was
+}
+
+// succeeded counts a response the source did not refuse, and returns the pace to its base once there have been enough
+// of them in a row. Reports the interval it restored, or 0 when nothing changed.
+func (f *Fetcher) succeeded() time.Duration {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.interval <= f.policy.RequestInterval {
+		return 0
+	}
+	f.okStreak++
+	if f.policy.PaceRecoverRequests <= 0 || f.okStreak < f.policy.PaceRecoverRequests {
+		return 0
+	}
+	f.interval = f.policy.RequestInterval
+	f.okStreak = 0
+	return f.interval
 }
 
 // Get pulls one page with backoff. A 403/challenge returns a Blocked error without retrying; 429 and 5xx retry up
@@ -187,6 +245,10 @@ func (f *Fetcher) Get(ctx context.Context, rawurl string) ([]byte, error) {
 		}
 		body, err := f.visit(ctx, rawurl)
 		if err == nil {
+			// A response the source did not refuse. Enough of these in a row and the pace goes back to its base.
+			if restored := f.succeeded(); restored > 0 {
+				f.log.Info("pace recovered", "interval", restored, "after", f.policy.PaceRecoverRequests)
+			}
 			return body, nil
 		}
 		var blocked *Blocked
@@ -195,8 +257,20 @@ func (f *Fetcher) Get(ctx context.Context, rawurl string) ([]byte, error) {
 		}
 		var httpErr *HTTPError
 		if errors.As(err, &httpErr) {
-			if httpErr.Status != 429 && httpErr.Status < 500 {
+			if httpErr.Status != http.StatusTooManyRequests && httpErr.Status < 500 {
 				return nil, err
+			}
+			if httpErr.Status == http.StatusTooManyRequests {
+				// The source said we are going too fast, so slow down for the rest of the run rather than only for this
+				// retry. The retry's own backoff below handles *this* request; the interval handles the next thousand.
+				was, now, capped := f.throttled()
+				if capped {
+					f.log.Warn("source pushback at the slowest pace allowed",
+						"status", httpErr.Status, "url", httpErr.URL, "interval", now)
+				} else {
+					f.log.Warn("source pushback: widening the pace",
+						"status", httpErr.Status, "url", httpErr.URL, "from", was, "to", now)
+				}
 			}
 			if httpErr.RetryAfter > 0 {
 				delay = httpErr.RetryAfter
@@ -233,8 +307,8 @@ func (f *Fetcher) visit(ctx context.Context, rawurl string) ([]byte, error) {
 	return f.gotBody, f.gotErr
 }
 
-// pace keeps request starts at least RequestInterval apart, the worker's RateLimiter shape, plus a random extra of
-// up to RequestJitter each time.
+// pace keeps request starts at least the current interval apart, the worker's RateLimiter shape, plus a random extra
+// of up to RequestJitter each time.
 func (f *Fetcher) pace(ctx context.Context) error {
 	var wait time.Duration
 	f.mu.Lock()
@@ -244,9 +318,21 @@ func (f *Fetcher) pace(ctx context.Context) error {
 	} else {
 		f.nextSlot = now
 	}
-	f.nextSlot = f.nextSlot.Add(f.policy.RequestInterval + jitter(f.policy.RequestJitter))
+	f.nextSlot = f.nextSlot.Add(f.currentInterval() + jitter(f.policy.RequestJitter))
 	f.mu.Unlock()
 	return sleepCtx(ctx, wait)
+}
+
+// currentInterval is the pace to use, and never zero. Caller holds the lock.
+//
+// The fallback is not defensive clutter: an unset `interval` - a Fetcher built by struct literal rather than
+// NewFetcher, which the tests do - would otherwise mean "no delay at all" against somebody else's site. A politeness
+// floor that depends on remembering to initialise a field is not a floor.
+func (f *Fetcher) currentInterval() time.Duration {
+	if f.interval > 0 {
+		return f.interval
+	}
+	return f.policy.RequestInterval
 }
 
 func (f *Fetcher) fetchError() error {
