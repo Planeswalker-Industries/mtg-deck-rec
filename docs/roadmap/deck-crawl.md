@@ -131,6 +131,10 @@ worker's `qualifyDeck`:
 A deck failing any of them is a `NotQualified`: counted in `crawl_runs.skipped_unqualified` and stepped over. Only a
 page that stopped looking like itself is a `ShapeError`, which quarantines the whole run rather than guessing.
 
+**An empty deck is unqualified, not a changed shape.** A deck someone just created, or emptied, answers with an empty
+(or null) `cards` list; it is skipped as `empty deck`. Only a body with no `cards` field at all quarantines. Until
+2026-10-03 an empty list read as a changed shape, and hosted run 7 stopped on one after 57 decks.
+
 A deck that answers **404 or 410** is stepped over too, counted in `crawl_runs.skipped_missing`. The loop runs at
 one request every few seconds, so minutes pass between a deck being listed and being fetched; in that window it can be deleted, made private or have its id retired. That is ordinary at this rate. It used
 to fail the whole run — observed 2026-09-24, a crawl died on deck 26724957 after about a hundred decks, and because
