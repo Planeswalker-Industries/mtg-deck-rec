@@ -22,12 +22,13 @@ delete from public.platform_admins;
 insert into public.platform_admins (user_id, note) values ('dddddddd-0000-4000-8000-000000000001', 'crawl test admin');
 
 -- A deck of the test's own, with a commander the catalog knows so name resolution is actually exercised.
-insert into corpus.decks (source, source_deck_id, commanders, cards, deck_size, content_hash, listed_updated_at, last_updated_at)
+-- The second card id names no catalog row, standing in for a card the catalog has since dropped outright.
+insert into corpus.decks (source, source_deck_id, commander_card_ids, cards, deck_size, content_hash, listed_updated_at, last_updated_at)
 select 'archidekt', 'zz-admin-test-deck',
-       array[(select oracle_id::text from public.cards where deleted_at is null and name = 'Sol Ring' limit 1)],
+       array[(select id from public.cards where deleted_at is null and name = 'Sol Ring' limit 1)],
        jsonb_build_object(
-         (select oracle_id::text from public.cards where deleted_at is null and name = 'Sol Ring' limit 1), 1,
-         '00000000-0000-4000-8000-00000000dead', 29
+         (select id::text from public.cards where deleted_at is null and name = 'Sol Ring' limit 1), 1,
+         '2147483000', 29
        ),
        100, 'zz-admin-test-hash', now(), now();
 
@@ -92,7 +93,7 @@ select chk('an admin sees the crawl overview',
 select chk('an admin sees the test deck',
            exists (select 1 from public.admin_list_crawled_decks() where source_deck_id = 'zz-admin-test-deck'));
 
--- Commander oracle ids are resolved to names, because an id on screen tells nobody anything.
+-- Commander card ids are resolved to names, because an id on screen tells nobody anything.
 select chk('commanders come back as names',
            (select 'Sol Ring' = any(commander_names) from public.admin_list_crawled_decks(p_search => 'zz-admin-test-deck')),
            (select array_to_string(commander_names, ', ') from public.admin_list_crawled_decks(p_search => 'zz-admin-test-deck')));
@@ -106,15 +107,23 @@ select chk('search finds a deck by its id',
 select chk('search that matches nothing returns nothing',
            (select count(*) = 0 from public.admin_list_crawled_decks(p_search => 'zzzz-no-such-deck')));
 
--- The cards, with quantities, and the unknown oracle id kept rather than quietly dropped: a crawl storing an id the
--- catalog has never heard of is the sort of thing this page exists to show.
+-- The cards, with quantities, and a card the catalog no longer has kept rather than quietly dropped: a stored deck
+-- shrinking on screen would hide exactly the sort of thing this page exists to show.
 select chk('a deck''s cards come back with quantities',
            (select count(*) = 2 from public.admin_crawled_deck_cards(
               (select id from public.admin_list_crawled_decks(p_search => 'zz-admin-test-deck')))));
 
-select chk('a card the catalog does not know is kept, with a null name',
+select chk('a card the catalog does not have is kept, with a null name and its stored id',
            (select count(*) = 1 from public.admin_crawled_deck_cards(
-              (select id from public.admin_list_crawled_decks(p_search => 'zz-admin-test-deck'))) where name is null));
+              (select id from public.admin_list_crawled_decks(p_search => 'zz-admin-test-deck')))
+             where name is null and oracle_id = '2147483000'));
+
+select chk('a known card comes back with its oracle id',
+           (select count(*) = 1 from public.admin_crawled_deck_cards(
+              (select id from public.admin_list_crawled_decks(p_search => 'zz-admin-test-deck')))
+             where name = 'Sol Ring'
+               and oracle_id = (select oracle_id::text from public.cards
+                                 where deleted_at is null and name = 'Sol Ring' limit 1)));
 
 select chk('the quantity is the deck''s, not a count of rows',
            (select quantity = 29 from public.admin_crawled_deck_cards(

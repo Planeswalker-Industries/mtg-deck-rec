@@ -29,7 +29,9 @@ type Store interface {
 	// whole corpus. Ids we hold nothing for are absent.
 	DeckVersions(ctx context.Context, ids []string) (map[string]HeldDeck, error)
 	// UpsertDecks writes rows; the database skips any whose content hash and listed update time are both unchanged.
-	UpsertDecks(ctx context.Context, rows []DeckRow) error
+	// It stores decks by catalog card id, so a deck naming a card the catalog does not have yet is not stored at all
+	// and comes back as unresolved.
+	UpsertDecks(ctx context.Context, rows []DeckRow) ([]UnresolvedDeck, error)
 	// CreateRun makes a crawl_runs row for the source and returns its id, so the claim can point at it.
 	CreateRun(ctx context.Context) (int64, error)
 	// FinishRun closes a run with what it saw and did.
@@ -132,6 +134,14 @@ type DeckRow struct {
 	LastUpdatedAt   time.Time      `json:"last_updated_at"`
 }
 
+// UnresolvedDeck is a deck the database would not store because it names a card the catalog does not have, normally
+// one printed since the last catalog sync. Nothing is held for it, so the next visit fetches it again.
+type UnresolvedDeck struct {
+	DeckID string `json:"deckId"`
+	// The oracle ids that matched no card, for the log.
+	Missing []string `json:"missing"`
+}
+
 // RunSummary is written back to crawl_runs (json tags are the column names).
 type RunSummary struct {
 	State              string `json:"state"`
@@ -144,7 +154,10 @@ type RunSummary struct {
 	// Decks the feed listed that were gone by the time the crawl asked for them. Apart from SkippedUnqualified
 	// because the two say different things: unqualified means the browse filters admit decks the corpus does not
 	// want, missing means the feed is stale or the crawl is falling behind deletions.
-	SkippedMissing    int `json:"skipped_missing"`
+	SkippedMissing int `json:"skipped_missing"`
+	// Decks fetched but not stored because they name a card the catalog does not have yet. Apart from the others
+	// because the cause is on our side, not the source's: a count that stays high means the catalog sync is behind.
+	SkippedUnresolved int `json:"skipped_unresolved"`
 	CommandersVisited int `json:"commanders_visited"`
 	// How many times the source answered 429, and where the crawl was the last time it did. The pace widens itself in
 	// response (see Fetcher), so these are the record of a run that was slowed down - without them, a crawl that spent
@@ -240,16 +253,21 @@ func (s *SupabaseStore) DeckVersions(ctx context.Context, ids []string) (map[str
 	return out, nil
 }
 
-func (s *SupabaseStore) UpsertDecks(ctx context.Context, rows []DeckRow) error {
+func (s *SupabaseStore) UpsertDecks(ctx context.Context, rows []DeckRow) ([]UnresolvedDeck, error) {
+	var unresolved []UnresolvedDeck
 	for start := 0; start < len(rows); start += upsertBatch {
 		end := min(start+upsertBatch, len(rows))
-		_, err := s.client.RPC(ctx, "crawl_upsert_decks",
-			map[string]any{"p_source": s.source, "p_rows": rows[start:end]})
-		if err != nil {
-			return err
+		var out struct {
+			Unresolved []UnresolvedDeck `json:"unresolved"`
 		}
+		err := s.client.RPCInto(ctx, "crawl_upsert_decks",
+			map[string]any{"p_source": s.source, "p_rows": rows[start:end]}, &out)
+		if err != nil {
+			return nil, err
+		}
+		unresolved = append(unresolved, out.Unresolved...)
 	}
-	return nil
+	return unresolved, nil
 }
 
 func (s *SupabaseStore) CreateRun(ctx context.Context) (int64, error) {

@@ -136,9 +136,15 @@ one request every few seconds, so minutes pass between a deck being listed and b
 to fail the whole run — observed 2026-09-24, a crawl died on deck 26724957 after about a hundred decks, and because
 the next run walked the same feed it would have died on the same id every night.
 
-The two counters are separate on purpose: a rising `skipped_unqualified` says the browse filters admit decks the
-corpus does not want, while a rising `skipped_missing` says the feed is stale or the crawl is falling behind
-deletions.
+A deck naming a card **our catalog does not have yet** is not stored either, counted in
+`crawl_runs.skipped_unresolved` and logged at Warn with the oracle ids that failed. Decks are stored by catalog card
+id (below), and the alternative, storing it without the card, would leave a 99-card deck in the corpus for good
+(owner decision 2026-10-03). Nothing is held for it, so the commander's next visit fetches it again, by which time the
+daily catalog sync has normally caught up.
+
+The counters are separate on purpose: a rising `skipped_unqualified` says the browse filters admit decks the
+corpus does not want, a rising `skipped_missing` says the feed is stale or the crawl is falling behind
+deletions, and a rising `skipped_unresolved` says our catalog sync is behind.
 
 Skipping has a ceiling. Once a run has seen at least `missingDeckFloor` (20) missing decks **and** they are more than
 `missingDeckShare` (half) of what it attempted, it fails with `N of M listed decks were missing`. Without it, a deck
@@ -211,10 +217,16 @@ Four tables in `corpus`, and nothing in the app reads them yet.
 
 | Table | |
 |---|---|
-| `corpus.decks` | one row per scraped deck: `commanders text[]`, `cards jsonb` (`{oracle id: quantity}`), `deck_size`, `content_hash`, the update times |
-| `corpus.crawl_runs` | one row per run, shaped like `sync_runs`: pages, decks listed/fetched/written, skipped unchanged, skipped unqualified, skipped missing, commanders visited, blocks, error |
+| `corpus.decks` | one row per scraped deck: `commander_card_ids int[]` (sorted), `cards jsonb` (`{card id: quantity}`), `deck_size`, `content_hash`, the update times |
+| `corpus.crawl_runs` | one row per run, shaped like `sync_runs`: pages, decks listed/fetched/written, skipped unchanged, skipped unqualified, skipped missing, skipped unresolved, commanders visited, blocks, error |
 | `corpus.crawl_state` | one row per source: cursor, claim, kill switch, probe |
 | `corpus.crawl_commanders` | one row per source and commander: EDHREC deck count (queue order), the name that worked, last visit, outcome, counts |
+
+**Decks are stored by `public.cards` id, not by oracle id.** The crawler sends the oracle ids the source reports;
+`crawl_upsert_decks` resolves them once, on write, through `cards_oracle_id_key`, and every read after that joins
+`cards` by primary key or not at all. Until 2026-10-03 the table held oracle ids as text, and joining text to the
+uuid column cast the indexed side: `crawl_seed_commanders` read the whole `cards` heap on every run, ran past
+PostgREST's 8 s `statement_timeout` cold, and hosted run 8 failed before its first request.
 
 `content_hash` is sha256 over **sorted** commanders and **sorted** card/quantity pairs. Sorted because the hash has
 to describe the deck and not the order a site happened to list it in — an order-sensitive hash would rewrite every
@@ -329,7 +341,7 @@ Read what runs have done:
 
 ```sql
 select id, state, started_at, finished_at, decks_listed, decks_written,
-       skipped_unchanged, skipped_unqualified, skipped_missing, blocks, error
+       skipped_unchanged, skipped_unqualified, skipped_missing, skipped_unresolved, blocks, error
   from corpus.crawl_runs where source = 'archidekt' order by id desc limit 20;
 ```
 
