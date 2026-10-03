@@ -1,6 +1,6 @@
 import type { CommanderKeyRef, CorpusConfidence, CorpusEvidence } from "@mtg/core/contract";
 import {
-  commanderShare,
+  commanderShareWithPrior,
   decksSinceRelease,
   pickCorpusSources,
   shrunkInclusion,
@@ -14,11 +14,23 @@ import { colorsToMask } from "@mtg/core/search";
 import { fromIndex } from "./search-index";
 import type { PublicClient } from "./supabase";
 
-const DEFAULT_SETTINGS = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100, partnerPoolWeight: 0.25, severeSynergyScore: 0.2 };
+// externalPriorShare 0 means the EDHREC prior is off: the code path exists but changes no score until
+// app_config.corpus sets it. See corpusComponent's CorpusThresholds for what it does and how to pick a value.
+const DEFAULT_SETTINGS = {
+  shrinkAlpha: 20,
+  minDecks: 50,
+  fullDecks: 100,
+  partnerPoolWeight: 0.25,
+  severeSynergyScore: 0.2,
+  externalPriorShare: 0,
+};
 type CorpusSettings = typeof DEFAULT_SETTINGS;
 type DeckMonths = Record<string, number>;
 
 const IDENTITIES = 32;
+
+/** A Commander deck has one commander or a partner pair, so more ids than this is not a deck we can key a page by. */
+const MAX_COMMANDERS = 2;
 
 export interface CommanderCorpus {
   /** False until the corpus has been aggregated; then no card gets a corpus signal. */
@@ -47,8 +59,10 @@ export interface CardCorpus {
   baselineDeckCount: number;
   /** The commander's decks that could have run the card (colors allow it, updated since its release), at their weights. */
   commanderDeckCount: number;
-  /** The commander's decks, shrunk toward the baseline; null when none could have run the card. */
+  /** The commander's decks, shrunk toward the prior; null when none could have run the card and there is no prior. */
   commanderRate: CommanderCardRate | null;
+  /** An external source (EDHREC) publishes a rate for this card under this commander, and it shaped `commanderRate`. */
+  hasExternalPrior: boolean;
   /** Marked limited when too few decks, anywhere, could have run the card. */
   evidence: CorpusEvidence;
 }
@@ -67,6 +81,7 @@ function parseSettings(value: unknown): CorpusSettings {
     fullDecks: read("fullDecks"),
     partnerPoolWeight: read("partnerPoolWeight"),
     severeSynergyScore: read("severeSynergyScore"),
+    externalPriorShare: read("externalPriorShare"),
   };
 }
 
@@ -244,6 +259,47 @@ async function factsFromIndex(
 }
 
 /**
+ * EDHREC's published inclusion for these cards under *exactly* these commanders, as a shrink target for commanders we
+ * hold few or no decks for.
+ *
+ * Exactly these commanders, never a borrowed pairing: EDHREC publishes a page per commander or pair, and a partner's
+ * solo page describes different decks. Borrowing is what `pickCorpusSources` does with our own decks, and mixing the
+ * two ideas would silently credit one pairing's numbers to another.
+ *
+ * Returns an empty map when the prior is switched off, when no page exists for these commanders, or on a read error:
+ * the prior is an improvement on the colour baseline, never a dependency, so a failure here falls back to what the app
+ * did before rather than failing the request. Same stance as `fromIndex` returning null.
+ */
+async function loadExternalPrior(
+  db: PublicClient,
+  settings: CorpusSettings,
+  commanderIds: readonly number[],
+  cardIds: readonly number[],
+): Promise<Map<number, number>> {
+  const empty = new Map<number, number>();
+  if (settings.externalPriorShare <= 0 || commanderIds.length === 0 || cardIds.length === 0) return empty;
+  const ids = [...new Set(commanderIds)].sort((a, b) => a - b);
+  if (ids.length > MAX_COMMANDERS) return empty;
+
+  // Through the function, not the tables: `external_commanders` and `external_commander_card_stats` are revoked from
+  // anon and authenticated, so a table read here would be denied on every request - and, caught below, would make the
+  // prior a permanent silent no-op that looked like it was working.
+  const { data, error } = await db.rpc("external_card_priors", {
+    p_commander_ids: ids,
+    p_card_ids: [...new Set(cardIds)],
+  });
+  if (error) {
+    // The prior is an improvement on the colour baseline, never a dependency, so a failure falls back to what the app
+    // did before rather than failing the request - the same stance as `fromIndex` returning null. Logged loudly,
+    // because the one way this can be wrong is silently.
+    console.warn("[corpus] the EDHREC prior could not be read; falling back to the colour baseline", error.message);
+    return empty;
+  }
+  const rates = (data ?? {}) as unknown as Record<string, number>;
+  return new Map(Object.entries(rates).map(([cardId, inclusion]) => [Number(cardId), inclusion]));
+}
+
+/**
  * Play rates for candidate cards: the baseline everywhere, plus the commander's own decks when it has any. Both count
  * only decks updated since the card's release, so new cards aren't judged by decks built before they existed. Borrowed
  * decks count at their weight, and only where their colors allow the card.
@@ -252,6 +308,8 @@ export async function loadCardCorpus(
   db: PublicClient,
   corpus: CommanderCorpus,
   cardIds: readonly number[],
+  /** The deck's commanders, for the external prior. Omitted means no prior: the colour baseline as before. */
+  commanderIds: readonly number[] = [],
 ): Promise<Map<number, CardCorpus>> {
   const ids = [...new Set(cardIds)];
   if (!corpus.available || ids.length === 0) return new Map();
@@ -259,8 +317,12 @@ export async function loadCardCorpus(
   // 32 rows, read whole, and it is the one part of this that is not card-shaped: it stays a query either way.
   const identityPromise = db.from("corpus_identity_stats").select("color_identity, deck_months");
 
+  // Started alongside the index read rather than after it: it is one small indexed lookup and the request is already
+  // paying for a round trip.
+  const priorPromise = loadExternalPrior(db, corpus.settings, commanderIds, ids);
   const indexed = await factsFromIndex(corpus, ids);
   const identityResult = await identityPromise;
+  const prior = await priorPromise;
   if (identityResult.error) throw new Error(`Loading corpus deck counts failed: ${identityResult.error.message}`);
 
   let global: Map<number, GlobalRate>;
@@ -311,9 +373,10 @@ export async function loadCardCorpus(
     return total;
   };
 
-  // Same test as corpusComponent's null result: no usable play rate from the commander's decks or from decks overall.
-  const isLimited = (commanderDecks: number, baselineDecks: number) =>
-    commanderShare(commanderDecks, corpus.settings) === 0 && baselineDecks < corpus.settings.minDecks;
+  // Same test as corpusComponent's null result: no usable play rate from the commander's decks or from decks overall,
+  // and no external rate for this commander either.
+  const isLimited = (commanderDecks: number, baselineDecks: number, hasPrior: boolean) =>
+    commanderShareWithPrior(commanderDecks, corpus.settings, hasPrior) === 0 && baselineDecks < corpus.settings.minDecks && !hasPrior;
 
   return new Map(
     ids.map((id): [number, CardCorpus] => {
@@ -325,27 +388,65 @@ export async function loadCardCorpus(
       const decksWith = commanderDecks.get(id) ?? 0;
       const commanderDeckCount = Math.max(sourceDecksSinceRelease(corpus.sources, facts?.identity ?? 0, releaseMonth), decksWith);
 
+      const external = prior.get(id);
+      const hasExternalPrior = external !== undefined;
+      // What our own decks are shrunk toward. EDHREC's rate for this commander when it has one, the colour baseline
+      // otherwise: this is the substitution `spike:edhrec:prior` measured.
+      const shrinkTarget = external ?? baseline;
+
       if (commanderDeckCount > 0) {
-        const inclusion = shrunkInclusion(decksWith, commanderDeckCount, baseline, corpus.settings.shrinkAlpha);
+        const inclusion = shrunkInclusion(decksWith, commanderDeckCount, shrinkTarget, corpus.settings.shrinkAlpha);
         return [
           id,
           {
             baseline,
             baselineDeckCount,
             commanderDeckCount,
+            // Synergy stays measured against the colour baseline p0, never against the prior, in both arms of the
+            // holdout test. Against the prior it would be ~0 for every card a commander with no decks of its own, and
+            // commanderCorpusScore is 60% synergy - the ranking would collapse.
             commanderRate: { inclusion, synergy: inclusion - baseline },
+            hasExternalPrior,
             evidence: {
               scope: "commander",
               decksWith: Math.round(decksWith),
               commanderDeckCount: Math.round(commanderDeckCount),
               inclusionRate: round3(decksWith / commanderDeckCount),
               synergy: round3(inclusion - baseline),
-              limited: isLimited(commanderDeckCount, baselineDeckCount),
+              limited: isLimited(commanderDeckCount, baselineDeckCount, hasExternalPrior),
               ...(pooled ? { pooled: true } : {}),
             },
           },
         ];
       }
+      // No decks of ours could have run the card. With an external rate for this commander that is still a
+      // commander-specific answer, which is the case the prior exists for; `externalPriorShare` decides how much of the
+      // commander-specific weight it earns.
+      if (hasExternalPrior) {
+        return [
+          id,
+          {
+            baseline,
+            baselineDeckCount,
+            commanderDeckCount: 0,
+            commanderRate: { inclusion: external, synergy: external - baseline },
+            hasExternalPrior,
+            evidence: {
+              // Still 'colors': the contract's two scopes mean "counted over the commander's decks" and "over every
+              // deck the colours allow", and this is neither - we counted nothing. Saying 'commander' would claim
+              // decksWith and commanderDeckCount are ours. A third scope is a contract change, so it waits for the
+              // slice that displays any of this and credits EDHREC.
+              scope: "colors",
+              decksWith: g?.decks_with ?? 0,
+              commanderDeckCount: baselineDeckCount,
+              inclusionRate: round3(baseline),
+              synergy: 0,
+              limited: false,
+            },
+          },
+        ];
+      }
+
       return [
         id,
         {
@@ -353,13 +454,14 @@ export async function loadCardCorpus(
           baselineDeckCount,
           commanderDeckCount: 0,
           commanderRate: null,
+          hasExternalPrior: false,
           evidence: {
             scope: "colors",
             decksWith: g?.decks_with ?? 0,
             commanderDeckCount: baselineDeckCount,
             inclusionRate: round3(baseline),
             synergy: 0,
-            limited: isLimited(0, baselineDeckCount),
+            limited: isLimited(0, baselineDeckCount, false),
           },
         },
       ];

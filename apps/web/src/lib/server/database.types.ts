@@ -1713,6 +1713,10 @@ export type Database = {
         Args: { p_deck_id: string; p_name?: string }
         Returns: string
       }
+      external_card_priors: {
+        Args: { p_card_ids: number[]; p_commander_ids: number[] }
+        Returns: Json
+      }
       get_commander_request: {
         Args: { p_card_id: number; p_client_key: string }
         Returns: Json
