@@ -237,26 +237,29 @@ Tell the player whether their lands can cast their spells: coloured sources agai
 
 ### T047: Combo detection in the bracket estimate
 
-**Priority:** MEDIUM | **Area:** Data / Core | **Status:** Not started
+**Priority:** MEDIUM | **Area:** Data / Core | **Status:** Data loaded locally (2026-10-04); detection and display not started
 
 **Blocked by:** T045 (display)
 
-`estimateBracket` (`packages/core/src/formats/commander/bracket.ts`) reads only Game Changer count and mass land denial. WotC's brackets also limit two-card infinite combos (none in 1–2, none early in 3), chained extra turns and tutors, so a deck with a combo and no Game Changers is estimated too low today. Commander Spellbook publishes combo data. Load it and flag the combos a deck contains.
+`estimateBracket` (`packages/core/src/formats/commander/bracket.ts`) reads only Game Changer count and mass land denial. WotC's brackets also limit two-card infinite combos (none in 1–2, none early in 3), chained extra turns and tutors, so a deck with a combo and no Game Changers is estimated too low today. Commander Spellbook's combos are now loaded by `sync:combos` (CLAUDE.md, "Combos"); what is left is flagging the combos a deck contains.
 
 **Files:**
 - `packages/core/src/formats/commander/bracket.ts`, `commander.test.ts`: `BracketSignals`, `estimateBracket`
 - `packages/core/src/journey/`: `bracketMustCuts` would learn to cut a combo piece
-- `apps/worker/src/jobs/`: a new sync job following the stage, sanity-gate, diff-only merge pattern
+- `apps/worker/src/jobs/sync-combos.ts`, `supabase/migrations/20261004000200_combos.sql`: the loaded data, `combos_for_cards`
 
 **Context:**
-- **Source rules first.** Commander Spellbook is public data, so it falls under the legal consent (CLAUDE.md, "Data sources"). Before any request: read its robots.txt, prefer a published bulk export over per-deck API calls, one limiter per host, honest User-Agent, and a 403 or challenge switches it off. Record the findings in CLAUDE.md's source list.
-- Store combos keyed by our `CardId`s (resolved from Scryfall oracle ids), with their result (infinite mana, infinite damage, win) and the card count. Only two-card combos matter for the bracket rules; longer ones may still be worth showing.
+- **Source check done (2026-10-04):** robots.txt allows the site and disallows the API host; the daily export is the only thing fetched. Recorded in CLAUDE.md's source list.
+- Combos are keyed by our `CardId`s with their results (`combo_features`) and Spellbook's own bracket tag, which already encodes WotC's combo rules (R Ruthless = two-card and fast, bracket 4). Decide with the owner whether the estimate trusts the tag or applies its own rule to `cardinality(card_ids)` and the results. Only two-card combos matter for the bracket rules; longer ones may still be worth showing.
+- A combo with `template_names` needs a card matching the template too, and one with `commander_card_ids` only counts when that card is the commander. `combos_for_cards` leaves both checks to the caller.
+- Showing combos means granting read access (the tables are `service_role` only), crediting and linking Commander Spellbook, and never showing `popularity` (EDHREC's numbers).
 - "Early game" in bracket 3 is a judgment call. Decide with the owner (combined mana value, or never estimate above 3 for a combo alone).
 - Extra-turn and tutor counts can come from Tagger tags we already store. Decide which tag UUIDs count and keep them in `app_config`, not code.
 
 **Acceptance criteria:**
-- [ ] Source check recorded (robots.txt, bulk export, licence/terms)
-- [ ] Sync job and tables, with SQL checks under `supabase/tests/`
+- [x] Source check recorded (robots.txt, bulk export; no published terms)
+- [x] Sync job and tables, with SQL checks under `supabase/tests/` (`combos.sql`)
+- [ ] `sync:combos` run on hosted, after migration `20261004000200` reaches `main`
 - [ ] `BracketSignals` gains combos (and tutors or extra turns if decided); tests
 - [ ] `DeckAnalysis` names the combos found (contract version bump) and the display follows T045
 - [ ] `bracketMustCuts` handles combos when the chosen bracket forbids them

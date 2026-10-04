@@ -1,4 +1,4 @@
-# Status (2026-09-30)
+# Status (2026-10-04)
 
 Where the project stands, and why things are the way they are.
 
@@ -21,6 +21,7 @@ Where the project stands, and why things are the way they are.
 - **Scryfall data:** 34,642 live cards on hosted (2026-09-28); printings are English only.
 - **Corpus on hosted:** 129 commanders have stats, rebuilt from this PC with `cli:hosted aggregate:corpus`. The crawled corpus (`corpus.decks`) holds 666 decks that nothing aggregates yet.
 - **EDHREC statistics:** loaded locally and on hosted (T035 slice 11; hosted 2026-09-30, 6,787 commanders); no code reads them yet.
+- **Commander Spellbook combos:** loaded locally (2026-10-04, 113,013 combos); not yet on hosted, and no code reads them yet.
 - **Contract version:** v19 on `main` and `develop`.
 - **Migrations on hosted:** all applied (2026-09-30). The Supabase GitHub integration had come unlinked after `20260922000400`. It was relinked, and the backlog went in by `supabase db push`, after two hand-applied migrations were marked applied.
 - **Search index:** live on the VPS behind the search API, read by Vercel.
@@ -71,6 +72,10 @@ A daily Vercel cron calls the search API, which crawls Archidekt commander by co
 On `main` since PR #118 and loaded on hosted (2026-09-30). A local script saved every EDHREC commander page; `import:edhrec` loaded ~6,800 commanders' published card counts into `external_commanders` and `external_commander_card_stats`. They are kept apart from our own deck counts because EDHREC aggregates the same Archidekt and Moxfield decks.
 
 The holdout test (`spike:edhrec:prior`) says EDHREC is the better prior for commanders with few decks of our own: with no decks of ours, its top 50 matched the hidden answer 80% of the time against 6% for the colour baseline. Next: wire the prior into scoring.
+
+## Commander Spellbook combos (T047, data half)
+
+Built 2026-10-04, not yet on `main`. `sync:combos` reads Commander Spellbook's published daily export (one gzipped request of about 29 MB) and keeps every combo as the set of our card ids it needs, with its results and Spellbook's bracket tag. That gives the recommender card-to-card relationships that don't depend on how many decks a commander has. The first local load stored all 113,013 combos, and every card resolved against the catalog. `combos_for_cards` finds the combos a deck completes or is one card short of, in about 6 ms for a typical deck. The daily workflow runs it after the catalog sync. Next: combo detection in the bracket estimate (T047, after the T045 display design), and missing combo pieces as add candidates.
 
 ## Open decisions for the owner
 

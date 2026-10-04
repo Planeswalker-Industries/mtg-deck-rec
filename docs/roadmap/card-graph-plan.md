@@ -351,6 +351,13 @@ Each slice is one PR into `develop`, in order.
 Slices 10 and 11 can start in parallel after slice 2, since they only write their own tables. The plan sizes the
 tables for them from the start.
 
+## Combo relationships (Commander Spellbook)
+
+Loaded by `sync:combos` since 2026-10-04 (CLAUDE.md, "Combos"). Pairs say which cards decks run together; combos say which cards *work* together, whatever the commander and however few decks it has. Two places they fit this plan:
+
+- **Pool.** The missing piece of a combo the deck is one card short of (`combos_for_cards(deck, 1)`) joins the graph neighbours in step 1.
+- **Evidence, gated by bracket.** A candidate that completes a combo can say which, with a link to Spellbook. A combo can raise a deck's bracket, so a completing card must respect the bracket the player chose (`bracketMustCuts`, T047) rather than simply score higher. Whether that is a score component or its own Add category is decided with the slice 9 contract change.
+
 ## Out of scope
 
 - **MTGGoldfish.** It is allowed now, but its decks lean toward constructed formats and its deck downloads are
