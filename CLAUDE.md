@@ -32,6 +32,7 @@ supabase gen types typescript --local            # regenerate apps/web/src/lib/s
 yarn workspace @mtg/worker cli sync:catalog      # Oracle Cards → cards, card_names, functional twins (skips if Scryfall's file is unchanged; --force)
 yarn workspace @mtg/worker cli sync:printings    # All Cards → English paper printings, sets, card_stats (staple score), cheapest prices, flavor names (after sync:catalog)
 yarn workspace @mtg/worker cli sync:tags         # Oracle Tags → tags, tag_edges, tag_closure, card_tags (after sync:catalog)
+yarn workspace @mtg/worker cli sync:combos       # Commander Spellbook's combo export → combos, combo_features (after sync:catalog; skips if the export is unchanged; --force)
 yarn workspace @mtg/worker cli sync:typesense [--rebuild]  # drain public.search_index_queue into the search index (--rebuild: every collection from scratch, alias swapped when done)
 yarn workspace @mtg/worker cli aggregate:corpus  # slim decks JSONL (default X:\mtg_proj\archidekt\spike\decks.jsonl) → commander_keys, commander_stats, card_global_stats, commander_card_stats (--force to rebuild an unchanged file)
 yarn workspace @mtg/worker cli import:edhrec [--force]   # EDHREC commander pages saved by X:\mtg_proj\tools\edhrec-crawl.mjs → external_commanders, external_commander_card_stats (no requests)
@@ -54,6 +55,7 @@ docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supaba
 #   admin-crawled-decks.sql  /admin/crawls functions: admin-only reads of the corpus
 #   external-stats.sql       EDHREC stats tables: no API role reads them, constraints, cascade (needs the local catalog)
 #   crawl-commanders.sql     per-commander crawl queue: diff-only seed, queue order, visit stamps, service_role only (needs the local catalog)
+#   combos.sql               Spellbook combos: combos_for_cards finds complete and one-short combos, constraints, no API role reads them (needs the local catalog)
 docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/demo/admin-demo.sql   # demo accounts, decks and collections for /admin (commits; re-runnable)
 
 docker compose -f docker-compose.search.yml up -d --build  # local Typesense (56325) + the search API (56326); the VPS runs deploy/typesense/ and deploy/search-api/ separately
@@ -96,7 +98,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 - Migrations live in `supabase/migrations`. New `public` tables are not auto-exposed to API roles: every migration must `grant` explicitly (select for `anon`/`authenticated` on public data, all for `service_role`) in addition to RLS policies.
 - Postgres functions accept at most 100 arguments: build long literal lists with `ARRAY[...]`, not `jsonb_build_array(...)`.
 - **Cache refresh after syncs:** `finishRun(..., 'succeeded')` (`apps/worker/src/lib/sync-runs.ts`) drains the search index queue, then `refreshWebCaches(job)` (`lib/web-app.ts`) POSTs the job's tags (catalog, corpus, recs) to `/api/internal/revalidate` with bearer `REVALIDATE_SECRET`. The worker needs `WEB_APP_URL` and the same `REVALIDATE_SECRET`; without them it logs and skips. Jobs call `finishRun` succeeded only after their transaction commits; keep it that way.
-- **Scheduled syncs:** `.github/workflows/sync.yml` runs catalog, printings and tags daily when repo variable `SYNC_ENABLED` is `true`. Secrets: `DATABASE_URL` (Supabase **session** pooler: IPv4, and the jobs need temp tables, so never the transaction pooler), `WEB_APP_URL`, `REVALIDATE_SECRET`, `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN`. Corpus rebuilds, EDHREC imports and deck lookups run from the home PC, because the third-party decklists and EDHREC pages stay on X:.
+- **Scheduled syncs:** `.github/workflows/sync.yml` runs catalog, printings, tags and combos daily when repo variable `SYNC_ENABLED` is `true`. Secrets: `DATABASE_URL` (Supabase **session** pooler: IPv4, and the jobs need temp tables, so never the transaction pooler), `WEB_APP_URL`, `REVALIDATE_SECRET`, `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN`. Corpus rebuilds, EDHREC imports and deck lookups run from the home PC, because the third-party decklists and EDHREC pages stay on X:.
 
 ### Catalog
 
@@ -149,6 +151,18 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - Worker `serve:commander-requests` claims with `skip locked`, heartbeats `worker_status` (the UI shows the collector offline after 30 s), collects most-viewed decks into the corpus JSONL, then runs `aggregateCorpus({ force: true })`. Stale active rows (no heartbeat for 10 min) go back to queued. It runs by hand from this PC (T009).
   - When a status action first sees `done`, it calls `updateTag("corpus")` and `updateTag("recs")`.
 - **Archidekt worker client** (`apps/worker/src/sources/archidekt/`): read access rests on staff's forum permission (thread 40353). Requests go one at a time, ≥ 1 s apart. `/api/decks/v3/?commanderName=<name>&deckFormat=3&size=100&orderBy=-viewCount|-updatedAt&page=N` lists decks (also `edhBracket=1..5`); `count` is capped at 1000 but pages continue past it. The filter also matches decks that merely contain the card, so `qualifyDeck` verifies the Commander category, format 3, public, exactly 100 cards (first category decides inclusion; Sideboard/Maybeboard/Considering never count). Never store `edhrecRank`/`salt`. Credit Archidekt with a link wherever its data is shown.
+
+### Combos (Commander Spellbook)
+
+`sync:combos` loads Commander Spellbook's combo database: card-to-card relationships that hold whatever the commander, where the corpus only says what decks happen to run. Loaded locally (2026-10-04: 113,013 combos, every card resolved, 34 MB with the index); nothing reads them yet. Intended use: combo detection in the bracket estimate (T047) and recommending the missing piece of a combo a deck nearly has.
+
+- **One request a day, to the published export.** `json.commanderspellbook.com/variants.json.gz` (about 29 MB gzipped, rebuilt daily) is an S3 bucket behind CloudFront, served with `content-encoding: gzip`, so `fetch` hands back the JSON unpacked. The run skips when its `Last-Modified` is unchanged since the last success. Never call `backend.commanderspellbook.com`: its robots.txt disallows every path.
+- **The export is one 680 MB line**, past V8's string limit, so neither `JSON.parse` nor `readJsonl` can read it. `JsonRootStream` (`@mtg/core/parse`) splits the `variants` array into elements as bytes arrive; `spellbookVariant` reduces each to what we keep.
+- **One row per Spellbook variant** (`combos.spellbook_id`, one exact set of cards), with the pieces as `card_ids int[]` (ascending, resolved from Scryfall oracle ids) under a GIN index. A combo naming any card the catalog lacks is skipped and counted, so run it after `sync:catalog`. The sanity gate refuses more than 3% unresolved or fewer than 90% of the previous run's combos.
+- **`combos_for_cards(card_ids, max_missing)`** returns the combos a deck completes, or is up to `max_missing` cards short of, with the missing cards. Template pieces ("Legendary Elemental Creature", `template_names`) and pieces that must be the commander (`commander_card_ids`) are the caller's to check. Measured locally: 6 ms for a random 99-card deck, 340 ms for the 99 cards in the most combos (Ashnod's Altar alone is in 6,148).
+- **Results** are `combo_features`: status `S` (standalone, "Win the game") and `C` (contextual) are results; `H` are hidden steps Spellbook chains combos through and never shows. **Bracket tags** are Spellbook's own (`SPELLBOOK_BRACKET_TAGS`): R Ruthless (bracket 4), S Spicy and P Powerful (3), O Oddball and C Core (2), E Exhibition (1), B banned in Commander.
+- Not stored: step descriptions and prerequisites (about 50 MB of prose a day; link to `commanderspellbook.com/combo/<spellbook_id>/` instead), prices, images, other formats, salt. `popularity` is Spellbook's count of EDHREC decks, so like EDHREC's numbers it is never displayed.
+- **Not exposed:** RLS on, no API grants, function executable by `service_role` only. Whatever first shows combos opens them up, and credits and links Commander Spellbook wherever they appear.
 
 ### Deck crawls (T036)
 
@@ -239,7 +253,7 @@ Web behaviour for these features (the tool, pages, auto-save, proxy rules) is in
 - **Vercel Hobby** (noncommercial) for `apps/web`, project `mtg-app`, functions in `cle1` next to the database. Details in `apps/web/AGENTS.md`.
 - **Supabase Pro** (8 GB, `us-east-2`). Its GitHub integration applies `supabase/migrations` when `main` changes; `db-push.yml` is the manual fallback. The integration can come unlinked with no failing check: after a release, confirm that hosted `supabase_migrations.schema_migrations` reached the newest version. A migration applied by hand must be marked with `supabase migration repair --status applied <version>` before `db push`, or the push runs it again. **Release trap:** merging a migration to `develop` publishes a Vercel preview that still runs against `main`'s schema, so a migration adding a column to a shared read path breaks the develop preview until `main` catches up.
 - **VPS** (Dokploy, Traefik): Typesense, the search API and the deck crawl.
-- **GitHub Actions**: Scryfall syncs and search index rebuilds.
+- **GitHub Actions**: Scryfall and Commander Spellbook syncs and search index rebuilds.
 - **This PC**: `aggregate:corpus`, `import:edhrec` and `serve:commander-requests` against the hosted database.
 - Check database size with `pg_database_size`; `VACUUM FULL` a table to see its live size. Storage is no longer a constraint.
 
@@ -273,6 +287,7 @@ C: has little free space. Put large local data — Scryfall bulk downloads, cach
   - **EDHREC:** commander pages fetched and loaded (2026-09-28, T035 slice 11). Individual decklists (`/deckpreview/`) are disallowed by robots.txt and never fetched.
   - **Moxfield:** off. It answered Cloudflare's hard WAF block on a robots.txt-allowed path (2026-09-22) and stays off until it grants an accessible path.
   - **MTGGoldfish:** allowed, not started; its deck downloads are disallowed by robots.txt.
+  - **Commander Spellbook:** active (2026-10-04, `sync:combos`). Only its published export on `json.commanderspellbook.com` is fetched, once a day. robots.txt allows everything on `commanderspellbook.com` and disallows everything on `backend.commanderspellbook.com` (its API), which is never called. The site links no terms of use (checked 2026-10-04).
 - **Share-link imports** are allowed (owner decision, 2026-09-14): a deck or collection link a user pastes may be fetched, since those links exist to move lists between platforms. One request per user action, honest User-Agent, and on a block show the paste-text fallback; never work around it. The one exception is a large Archidekt collection, whose export is paged: up to 20 requests a second apart, four per server call.
 - **Third-party decklists are used for aggregates only and never exposed to visitors.** The one exception is `/admin/crawls` (owner decision, 2026-09-24), which shows a platform admin the crawled corpus, because only the cards prove the adapter read the deck. It is `noindex`, `no-store`, behind the same three locks as the rest of `/admin`, and reads `corpus` through `admin_*` security-definer functions; `corpus` stays off PostgREST's exposed schema list. EDHREC's numbers are likewise never displayed.
 - **The repo is public:** anti-abuse thresholds and scoring weights belong in database config, not code.

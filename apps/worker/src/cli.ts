@@ -6,6 +6,7 @@ import { evaluateEdhrecPrior } from './jobs/edhrec-prior-eval';
 import { importEdhrec } from './jobs/import-edhrec';
 import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
 import { syncCatalog } from './jobs/sync-catalog';
+import { syncCombos } from './jobs/sync-combos';
 import { syncSearchIndex } from './jobs/sync-search-index';
 import { syncPrintings } from './jobs/sync-printings';
 import { syncTags } from './jobs/sync-tags';
@@ -19,6 +20,7 @@ Commands:
   sync:catalog [--force]    Oracle Cards → cards, name aliases, functional twins (skips if the file is unchanged)
   sync:printings [--force]  All Cards → printings, card stats (staple score), cheapest prices, flavor names (after sync:catalog)
   sync:tags [--force]       Oracle Tags → tags, hierarchy, card taggings (after sync:catalog)
+  sync:combos [--force]     Commander Spellbook's combo export → combos, combo results (after sync:catalog; skips if the export is unchanged)
   sync:typesense [--rebuild]
                             Drain public.search_index_queue into the search index (--rebuild: build every
                             collection from scratch and move the aliases when it is done)
@@ -70,6 +72,9 @@ async function main(): Promise<void> {
       return syncPrintings({ force });
     case 'sync:tags':
       return syncTags({ force });
+    case 'sync:combos':
+      await syncCombos({ force });
+      return;
     case 'sync:typesense':
       return syncSearchIndex({ rebuild: args.includes('--rebuild') });
     case 'aggregate:corpus': {

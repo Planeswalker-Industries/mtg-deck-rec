@@ -9,6 +9,7 @@ const TAGS_BY_JOB: Record<SyncJob, CacheTag[]> = {
   oracle_tags: ['catalog', 'recs'],
   corpus_aggregate: ['corpus', 'recs'],
   edhrec_stats: [], // nothing the web app caches reads it yet
+  spellbook_combos: [], // nor this
 };
 
 const TIMEOUT_MS = 10_000;

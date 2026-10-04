@@ -1,6 +1,6 @@
 name: Scryfall sync
 
-# Daily catalog, printings and tag syncs against the hosted database. Disabled until the repository variable
+# Daily catalog, printings, tag and combo syncs against the hosted database. Disabled until the repository variable
 # SYNC_ENABLED is "true". Secrets:
 #   DATABASE_URL       Supabase session pooler connection string (IPv4; the jobs use temp tables, so not the transaction pooler)
 #   WEB_APP_URL        the deployed site, so finished syncs refresh its cached pages
@@ -58,6 +58,11 @@ jobs:
 
       - name: Tags
         run: yarn workspace @mtg/worker cli sync:tags $FORCE
+
+      # Commander Spellbook's combo export: one request, skipped when the file is unchanged. After Catalog, so combos
+      # with newly printed cards resolve.
+      - name: Combos
+        run: yarn workspace @mtg/worker cli sync:combos $FORCE
 
       # Each sync drains the queue itself when it finishes, so this is the sweep that catches anything left: a job
       # that skipped as unchanged, a write from somewhere else, or a drain that failed and left its rows in place.
