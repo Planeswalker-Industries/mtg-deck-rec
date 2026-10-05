@@ -1,16 +1,20 @@
 # Deck aggregation pipeline and card value scoring — implementation plan
 
-Status: **final plan, shelved** (2026-09-21) until a backend owner picks it up. Tracked as T035 in
-[`../tasks.md`](../tasks.md).
+Status: **revised 2026-10-05**: data layers, a collator and a precompute worker, after the owner's review of PRs #127 and
+#128. Tracked as T035 and T053–T065 in [`../tasks.md`](../tasks.md). The scoring built on this pipeline (formulas,
+modes, bracket rules, evaluation) is [`scoring-design.md`](scoring-design.md); the crawl's full account is
+[`deck-crawl.md`](deck-crawl.md).
 
-Replaces the ad-hoc corpus flow (JSONL on X:, rebuilt from the home PC) with one pipeline in Postgres, and adds
-card-pair statistics and a deck affinity score.
+Replaces the ad-hoc corpus flow (a deck file, rebuilt by hand) with one pipeline in Postgres, and adds card-pair
+statistics and a deck affinity score.
 
-Principle: **store only relationships real decks produce, precompute them on ingestion, and rank a few hundred
-candidates per request from indexed lookups.** Never the card × card × commander product.
+Principle: **store only relationships real decks produce, precompute them ahead of requests, and rank a few hundred
+candidates per request from indexed lookups.** Never the card × card × commander product, and never a play rate
+computed while the player waits.
 
-## Owner decisions this rests on (2026-09-21)
+## Owner decisions this rests on
 
+**2026-09-21**
 - All data moves into Postgres. The owner's legal team consented to using **all publicly facing data** (no
   paywall, no login) from every platform, EDHREC and MTGGoldfish included. The retrieval guardrails that still
   apply are under "Crawler guardrails" below.
@@ -20,119 +24,300 @@ candidates per request from indexed lookups.** Never the card × card × command
 - Pairs are sparse, observed-only and conditioned on commander.
 - Collections stay as they are. Win-condition analysis waits.
 
+**2026-10-05**
+- **Every source keeps its data in its own schema, as the source published it.** A collator resolves it into
+  `corpus`, where every row names its source. A precompute worker builds everything the app reads.
+- **The database stays dumb.** Anything that doesn't depend on the player's deck is computed ahead; a request is
+  index reads plus small per-deck sums. This is the key to speed.
+- **Relationships are sparse.** A card gets a relationship only with cards seen in the same commander's decks, or
+  sharing a combo with it.
+- **The deck spike's files are stale and redundant.** Their numbers reached hosted as the 2026-09-15 aggregate; the
+  first rebuild from crawled decks replaces it. Nothing imports them.
+- **A crawl revisit grows a commander's sample** until 25 decks were new or changed ("Crawl" below).
+- **`minDecks` and `fullDecks` are both 50.**
+
 ## Plan against the repo
 
-| Concern | Repo today | Plan |
+| Concern | `develop` on 2026-10-05 | Plan |
 |---|---|---|
-| Deck storage | Archidekt decks in `X:\mtg_proj\archidekt\spike\decks.jsonl` (15,346 decks) | `corpus.decks` in Postgres, with card lists as a sorted `int[]` |
-| Deck sources | Archidekt only; `aggregateCorpus({ source: 'archidekt' })` | `DeckSource` adapters: Archidekt crawl and complete user decks, with Moxfield once its API access is confirmed. Nothing downstream sees the source |
-| External statistics | None (CLAUDE.md allows EDHREC since 2026-09-21; nothing reads it yet) | `StatsSource` adapter: EDHREC commander pages → `external_commander_card_stats`, used as a prior for thin commanders and as a benchmark. Never mixed into deck counts |
-| Which decks count | `resolveDeck` for Archidekt; `save_deck` flags user decks on per-card legality only, so a 70-card deck is flagged | One rule for every source: `resolveDeck` (100 cards, identity, legal pair, ≤ 3 unresolved) |
-| Crawl coverage | Top 50 commanders, run by hand (`spike:archidekt:crawl`) | Every commander with ≥ 50 listed decks (≈ 2,800), from a queue on an always-on worker (T010) |
-| Where jobs run | Home PC | VPS worker container, next to `search-api` |
-| Commander card stats | `commander_card_stats`, `card_global_stats`, `commander_stats` — full rebuild with diff writes | Same tables and formulas, recomputed **per dirty commander key** |
+| Deck storage | `corpus.decks`, written by the Archidekt crawl with card ids resolved on write (68,763 decks, 3,235 commander keys on hosted); `aggregate:corpus` still reads a deck file | Raw `archidekt.decks` as fetched → collated `corpus.decks` for every deck source, with `source` on each row → serving tables |
+| External statistics | `public.external_commanders`, `public.external_commander_card_stats` (EDHREC, resolved on import) | Raw `edhrec.*` → collated `corpus.external_commanders`, `corpus.external_commander_cards` |
+| Combos | PR #127 (open) loads `public.combos` | Raw `spellbook.*` → `corpus.combos` → serving `combo_pieces` |
+| Crawl machinery | `corpus.crawl_runs`, `crawl_state`, `crawl_commanders` | `crawl.runs`, `crawl.state`, `crawl.queue`, unchanged otherwise |
+| Which decks count | `resolveDeck` in the worker; `save_deck` flags user decks on per-card legality only | The collator applies one rule to every deck source |
+| Crawl depth | Revisits re-read page 1 only, so samples grow only from churn (93 decks at most) | A revisit reads on until 25 decks were new or changed |
+| Where jobs run | The crawl on the VPS (search API); aggregates and EDHREC loads by hand; a VPS worker is in PR #128 | The VPS worker runs the collator and the precompute worker on a schedule |
+| Commander card stats | `commander_card_stats` and friends: full rebuild with diff writes | Recomputed **per dirty commander** |
+| Recommendation reads | `rec_add_candidates` and `rec_swap_candidates` score every request in SQL, then TypeScript re-scores. On hosted their calls average 0.8–1.0 s and peak at the 3 s timeout; one ran out of retries on 2026-09-30 (T008) | Indexed reads of precomputed serving tables; both functions retire |
 | Card pairs | None (T020 shelved them as too heavy) | `commander_card_pairs` plus a `card_pairs` global backoff |
-| Candidate pool | `rec_add_candidates` top 400 by corpus score; `rec_swap_candidates` 220 by tags | Add the deck's graph neighbours to both pools |
-| Score components | `tag, manaValue, staple, corpus, votes, role` (contract v10) | Add `deck` (deck affinity), in contract v11 |
-| Weights | `ADD_WEIGHTS` and `SWAP_WEIGHTS` in code, with a SQL mirror in `rec_swap_candidates` | Move all weights to `app_config.scoring`, read by both TS and SQL, which ends the mirror |
-| Measuring quality | `rec-regress.ts` fixtures; blind eval T014 (needs raters) | Add an offline holdout evaluation that gates every weight change |
+| Weights | `ADD_WEIGHTS` and `SWAP_WEIGHTS` in code, with a SQL mirror in `rec_swap_candidates` | `app_config.scoring`, read by TypeScript |
+| Measuring quality | `rec-regress.ts` fixtures; blind eval T014 (needs raters) | Plus an offline holdout evaluation that gates every weight change ([`scoring-design.md`](scoring-design.md), "Evaluation") |
 | Materialized views | None | None. `refresh` rewrites every row, which breaks the diff-only write rule |
+
+## Data layers
+
+```
+fetchers                raw (one schema per source)      collator         corpus (collated)                     precompute       public (serving)
+Go crawl ─────────────► archidekt.decks ──────────────┐                ┌► corpus.decks           archidekt|user ─┐
+sync:edhrec ──────────► edhrec.commanders,           ├──► collate ────┼► corpus.external_*      edhrec          ├──► precompute ──► commander_card_scores, commander_stats,
+                        edhrec.commander_cards        │                └► corpus.combos          spellbook       ┘                   card_global_stats, commander_card_pairs,
+sync:combos ──────────► spellbook.combos,             │                                                                              card_pairs, card_substitutes,
+                        spellbook.features ───────────┘                                                                              card_roles, combo_pieces
+public.decks (complete user decks) ──────────────────►  collate
+```
+
+**Rules:**
+1. **Each table has one writer.** A raw schema is written only by its source's fetcher, `crawl` only by the crawler,
+   `corpus` only by the collator, and the serving tables only by the precompute worker.
+2. **Each layer reads only the one before it.** The web app and the search index read serving tables and the card
+   catalog, nothing else.
+3. **Raw is what the source published, in the source's own identifiers**: Scryfall oracle ids, card names, printing
+   ids. Nothing in raw depends on our catalog, so no fetcher waits for `sync:catalog`.
+4. **Resolution happens once, in the collator**, with the same rules for every source. A row that doesn't fully
+   resolve stays in raw and is retried when the catalog changes. It never reaches `corpus` half-resolved, so the
+   2026-10-03 rule holds: no 99-card deck in the corpus. Unlike today, the deck is not fetched again.
+5. **A corpus row names its source in a column; a raw row's source is its schema.**
+6. **Raw, `crawl` and `corpus` are private.** `service_role` only (plus the read-only role, where it exists), and
+   never in PostgREST's exposed schemas. Serving tables are public reads where the numbers are ours; a table carrying
+   a third party's numbers stays `service_role` only.
+
+### Raw: one schema per source
+
+**`archidekt`**
+
+```sql
+create table archidekt.decks (
+  source_deck_id    text primary key,
+  commanders        uuid[] not null,      -- oracle ids as the source reports them, sorted
+  card_oracle_ids   uuid[] not null,      -- the rest of the deck, sorted
+  quantities        smallint[] not null,  -- copies, aligned with card_oracle_ids
+  deck_size         integer not null,
+  declared_bracket  smallint,             -- the author's bracket (edhBracket): checks our estimator, never scores (2026-10-05)
+  content_hash      text not null,        -- the crawler's hash over oracle ids, unchanged
+  listed_updated_at timestamptz,
+  last_updated_at   timestamptz,
+  fetched_at        timestamptz not null default now()
+);
+```
+
+Today's `corpus.decks` moves here. Its card ids go back to oracle ids once, which is the migration's only full
+rewrite (68,763 rows, about 115 MB). Oracle ids are stored as `uuid` arrays rather than JSON keys: 16 bytes a card
+instead of a 36-character key, about 2.5 times smaller, which matters at the full crawl's half a million decks. The
+crawler still sends `{oracle id: quantity}`; `crawl_upsert_decks` unpacks it.
+
+This replaces the 2026-10-03 mechanism (a deck naming a card the catalog lacks was not stored, and was fetched again
+on the next visit) while keeping its intent: such a deck is stored raw and reaches the corpus only once every card
+resolves.
+
+**`edhrec`**
+
+```sql
+create table edhrec.commanders (
+  slug        text primary key,
+  names       text[] not null,     -- the commander names the page gives
+  printing_id uuid,                -- the page's own card, when it names one
+  deck_count  integer not null,
+  fetched_at  timestamptz not null
+);
+create table edhrec.commander_cards (
+  slug            text not null references edhrec.commanders (slug) on delete cascade,
+  name            text not null,
+  printing_id     uuid,
+  decks_with      integer not null,
+  potential_decks integer not null,
+  synergy         real,            -- theirs, as published
+  primary key (slug, name)
+);
+```
+
+`sync:edhrec` (PR #128) writes these. They start empty and fill on its first run, about 3.5 hours. Not stored: salt,
+rank, prices, images, page panels.
+
+**`spellbook`**
+
+```sql
+create table spellbook.combos (
+  variant_id        text primary key,     -- '2645-5640-7935'; commanderspellbook.com/combo/<id>/
+  uses              jsonb not null,       -- [{oracleId, name, mustBeCommander}]
+  templates         text[] not null,      -- pieces described, not named
+  feature_ids       integer[] not null,
+  bracket_tag       text not null,
+  mana_value_needed smallint not null,
+  edhrec_deck_count integer,              -- Spellbook's count of EDHREC decks: never displayed, never leaves raw
+  combo_ids         integer[] not null
+);
+create table spellbook.features (id integer primary key, name text not null, status text not null);
+```
+
+PR #127 is reworked to create these in place of `public.combos` and `public.combo_features`.
+
+**`moxfield`** gets a schema the day Moxfield grants access (T044).
+
+### `crawl`: the crawler's machinery
+
+`corpus.crawl_runs`, `crawl_state` and `crawl_commanders` move to `crawl.runs`, `crawl.state` and `crawl.queue`, with
+their columns unchanged. They record how the crawler works, not what a source published, and one engine serves every
+deck source (each row carries `source`).
+
+The 13 `public.crawl_*` functions the Go service calls keep their names and arguments, so the service doesn't change.
+Only their bodies point at the new tables:
+- `crawl_upsert_decks` writes `archidekt.decks` and no longer resolves cards, so its `unresolved` list is always empty.
+- `crawl_seed_commanders` counts held decks from `archidekt.decks`. The commanders are stored as `uuid`, so the join
+  to `cards.oracle_id` is uuid to uuid and uses its index. Casting the indexed side to text is what timed out hosted
+  run 8.
+
+### `corpus`: collated, every row tagged with its source
+
+```sql
+create table corpus.decks (
+  id                 bigint generated always as identity primary key,
+  source             text not null check (source in ('archidekt', 'moxfield', 'user')),
+  source_deck_id     text not null,
+  user_deck_id       uuid references public.decks (id) on delete cascade,  -- user decks only
+  commander_card_ids integer[] not null,  -- sorted: one, or a legal pair
+  color_identity     smallint not null,
+  card_ids           integer[] not null,  -- sorted, distinct, the rest of the deck, basics excluded
+  basic_lands        smallint not null,   -- copies of basics, for land counts
+  updated_month      date not null,       -- release-aware counting
+  content_hash       bytea not null,      -- commanders + cards: a deck on two sites counts once
+  collated_at        timestamptz not null default now(),
+  unique (source, source_deck_id)
+);
+
+create table corpus.dirty_commanders (    -- upsert-keyed, like search_index_queue
+  commander_1 integer not null,
+  commander_2 integer not null,           -- 0 when none
+  seq         bigint not null,
+  primary key (commander_1, commander_2)
+);
+```
+
+- **Only decks that pass the one rule are stored**: a legal commander or pair, every card resolved and inside the
+  identity, exactly 100 cards. Exclusions are counted in the collation run's metrics, not stored. The allowance of
+  three unknown cards (`maxUnresolvedCards`) goes: a deck now waits in raw until every card resolves.
+- **User decks** come from `public.decks` and `deck_cards` when complete and legal (T035 slice 3's rule). The
+  `user_deck_id` foreign key means a deleted deck or account leaves the corpus at once, and a trigger marks the
+  commander dirty.
+- **`corpus.external_commanders` and `corpus.external_commander_cards`** are today's `public.external_*` tables,
+  moved and renamed with their rows and `source` column. The collator writes them from `edhrec.*`. They gain
+  `external_commanders.listed_floor`, the lowest inclusion the page lists; scoring uses it for unlisted cards.
+- **`corpus.combos`** holds one row per combo: `source` ('spellbook'), `source_id` (the variant id), `card_ids`,
+  `commander_card_ids`, `template_names`, `results` (standalone and contextual result names; Spellbook's hidden steps
+  are dropped), `min_bracket` (from Spellbook's tag), `color_identity` and `mana_value_needed`. Combos tagged banned
+  are left out. EDHREC's count stays in raw.
+
+### The reorg migration (T053)
+
+1. Create the schemas `archidekt`, `edhrec`, `spellbook` and `crawl`, with usage for `service_role` (and the
+   read-only role where it exists).
+2. Move tables:
+   - `corpus.crawl_runs`, `crawl_state` and `crawl_commanders` → `crawl.runs`, `crawl.state`, `crawl.queue`.
+   - `corpus.decks` → `archidekt.decks`: drop `source`, convert card ids back to oracle ids, add `declared_bracket`.
+   - `public.external_commanders` and `external_commander_card_stats` → `corpus.external_commanders` and
+     `corpus.external_commander_cards`, adding `listed_floor` (computed once from the rows).
+3. Create the empty raw `edhrec.*` tables, the collated `corpus.decks` and `corpus.dirty_commanders`.
+4. Recreate every function that names a moved table, with the same names and arguments: the 13 crawl functions, the
+   `admin_*` crawl readers and `external_card_priors`.
+5. Grant as rule 6 says, and update the SQL checks (`crawl-commanders.sql`, `admin-crawled-decks.sql`,
+   `external-stats.sql`).
+
+Moving a table between schemas or renaming it rewrites no rows. Until the collator ships (T054), `corpus.decks` is
+empty and nothing reads it.
+
+## Collator (T054)
+
+`cli collate` on the VPS worker, recorded in `sync_runs` as `corpus_collate`.
+
+- **When:** after every fetch (a crawl run ending, `sync:edhrec`, `sync:combos`), and after `sync:catalog`, so raw
+  rows that failed to resolve get another try.
+- **Incremental:** per source, only raw rows changed since the last successful collation, plus rows still
+  unresolved.
+- **Decks:** resolve oracle ids to card ids, apply the one rule, and write only rows whose content hash differs.
+  Delete corpus rows whose raw row is gone, and mark changed commanders dirty.
+- **EDHREC:** resolve each page's names by printing id first, then by unique name, as `import:edhrec` does today.
+  Every commander name must resolve. Compute `listed_floor`.
+- **Spellbook:** resolve every piece by oracle id or skip the combo, map the bracket tag to `min_bracket`, and drop
+  banned combos and hidden steps.
+- **Sanity gate per source**, like the syncs: a collation that would remove more than a set share of a source's
+  corpus rows refuses (the share lives in `app_config.corpus`).
+- **Metrics** per source: rows resolved, unresolved, and excluded by reason.
+
+## Precompute worker (T055)
+
+A recommendation request reads indexed rows and does small per-deck sums. Nothing recomputes play rates, pairs or
+tag similarity while the player waits.
+
+| Serving table | Key | Holds | Rows (est.) | Recomputed |
+|---|---|---|---|---|
+| `commander_card_scores` | `(commander_1, commander_2, card_id)`, with `commander_2` 0 for one commander | The card's final `corpus` score for that commander ([`scoring-design.md`](scoring-design.md)), plus our own counts for evidence | ~3M for our commanders, ~1M more for EDHREC-only ones | Per dirty commander |
+| `commander_stats` (exists) | Commander key | Gains `curve_profile`, `land_count` and `basic_land_count` | 3,235 | Per dirty commander |
+| `card_global_stats` (exists) | Card | Baseline p0 | ~21k | Nightly, summed from per-commander partials |
+| `commander_card_pairs`, `card_pairs` | See "Statistics" | Lift and PMI | 4–11M | Per dirty commander; global weekly |
+| `card_substitutes` | `(card_id, substitute_id)` | idf-weighted functional tag similarity (exclusive tag modes applied, as `rec_swap_candidates` does): the top 50 inside the card's own colour identity, which suit every deck that can hold the card, plus the top 50 overall | ~3M | After `sync:tags`, changed cards only |
+| `card_roles` | `(card_id, role_id)` | Which tracked roles a card fills | ~60k | After `sync:tags` |
+| `combo_pieces` | `(card_id, combo_id)` | Which combos a card is in; per combo: pieces, minimum bracket, result weight, commander requirement | ~400k | After Spellbook collation |
+
+- **Keyed by commander cards**, not `commander_keys`. `commander_keys` rows stay what they are, our commander pages,
+  so an EDHREC-only commander gets scores without becoming a page.
+- **A pair no source knows** is scored from each partner's own rows at `partnerPoolWeight`, combined in the request
+  by the same rule as `pickCorpusSources`.
+- **A card with no row** (never seen with the commander, not on its EDHREC page) gets its score from
+  `card_global_stats` and the commander's deck counts. That is a pure function in `@mtg/core`, so the table holds only
+  observed cards.
+- **Evidence shows our own counts only.** A score built mostly on EDHREC's numbers never displays them.
+
+**The request path after the switch:**
+
+```
+1. one Promise.all:
+     top N of commander_card_scores for the deck's commanders      (the add pool)
+     commander_card_scores for the deck's cards and owned cards     (cuts, collection mode)
+     card_roles for pool ∪ deck · card_substitutes for a swap target
+     commander_card_pairs + card_pairs for the deck's cards · combo_pieces for the deck's cards
+2. pure @mtg/core: m(c | deck) for adds, m(c | deck − c) for cuts, the swap blend, combo completions
+3. explain: components and evidence, top 20 per category
+```
+
+- `rec_add_candidates` and `rec_swap_candidates` retire, along with `retry-timeout.ts` and `rec_timeouts`. That
+  closes T008 and makes T040 moot.
+- Every write is a stage, sanity gate and diff-only merge, skipping moves under 0.001 as `aggregate:corpus` does.
+  Then the usual `startRun`/`finishRun`, index drain and cache revalidation.
+- **Schedule** (VPS worker, `app_config.worker`): collation after each fetch; dirty commanders recomputed after each
+  collation; `card_global_stats` nightly; `card_pairs` weekly; `card_roles` and `card_substitutes` after `sync:tags`
+  changes; `combo_pieces` after Spellbook collation.
+- **Parity first.** The switch must reproduce today's add and swap lists (regression fixtures plus a parity script),
+  so speed and scoring changes ship separately.
 
 ## Scale
 
-Measured on today's corpus, the 52 commander keys with ≥ 50 decks (84.8 non-basic cards per deck). A pair is kept
-when it is seen in at least max(5, 5% of the key's decks). Lift is shrunk with α = 10 toward the card's commander
-rate.
+Hosted on 2026-10-05:
 
-| Pruning | Pairs per key | Full suite, ~2,500 keys |
+| | Value |
+|---|---|
+| Database | 705 MB of Supabase Pro's 8 GB |
+| Crawled decks (`corpus.decks`) | 68,763 decks over 3,235 commander keys, 115 MB; 947 keys with ≥ 50 decks |
+| EDHREC | 6,787 commanders, 1.79M card rows, 160 MB |
+| EDHREC's sample against ours, same commander | 29× at the 10th percentile, 91× median, 645× at the 90th |
+| Our commander keys without an EDHREC page | 806 of 3,235 |
+| Today's serving stats (from the 2026-09-15 run) | 129 keys, 117,927 commander-card rows, 18 MB |
+
+At full size the serving layer adds about 1.5–2.5 GB: scores about 0.6 GB, pairs 0.5–1.2 GB, substitutes about
+0.3 GB. That fits in Pro's 8 GB.
+
+Pair estimates, measured on the 52 commander keys with ≥ 50 decks in the old deck file (84.8 non-basic cards per
+deck). A pair is kept when it is seen in at least max(5, 5% of the key's decks). Lift is shrunk with α = 10 toward the
+card's commander rate.
+
+| Pruning | Pairs per key | ~2,500 keys |
 |---|---|---|
 | Support threshold only | 9,457 | ~24M rows |
 | Lift > 1.2, up to 50 partners per card | 4,268 | ~10.7M rows, ~1.2 GB with indexes |
 | Lift > 1.5, up to 50 partners per card | 1,744 | ~4.4M rows, ~0.5 GB with indexes |
 
-From the Archidekt ranking (`commanders.json`, 3,269 commanders; listed counts include decks that merely contain the
-card, so qualified decks will be fewer):
-
-| | Value |
-|---|---|
-| Commanders with ≥ 50 listed decks | 2,810 |
-| Listed decks, capped at 300 per commander | ~740k |
-| Crawl time at 1 request per second | ~9 days continuous, resumable |
-| `corpus.decks` at ~500k qualified decks, stored as `int[]` | ~200 MB |
-| The same stored as one row per card | ~2.5 GB, which is why decks are arrays |
-
 The lift floor and the partner cap live in `app_config` and start at **1.2 and 50**. The offline evaluation decides
 whether the extra 6M rows over the 1.5 floor earn their place. The pair job's sanity gate refuses a run that would
-double the table.
-
-## Data model
-
-```sql
--- Private: no grants to anon or authenticated. Third-party decklists never leave the database.
-create schema corpus;
-
-create table corpus.decks (
-  id               bigint generated always as identity primary key,
-  source           text not null,                 -- 'archidekt' | 'user'
-  source_deck_id   text not null,                 -- Archidekt id, or public.decks.id for user decks
-  commander_key_id integer references public.commander_keys (id),
-  color_identity   smallint not null,
-  updated_month    date not null,                 -- release-aware counting
-  bracket          smallint,
-  cards            integer[] not null,            -- sorted card ids, commanders and basics excluded
-  content_hash     bytea not null,                -- skip unchanged decks
-  included         boolean not null,              -- passed resolveDeck
-  exclusion        text,                          -- why not
-  fetched_at       timestamptz not null default now(),
-  unique (source, source_deck_id)
-);
-
-create table corpus.dirty_keys (                  -- upsert-keyed; same shape as search_index_queue
-  commander_key_id integer primary key,
-  seq              bigint not null
-);
-
-create table corpus.crawl_queue (                 -- T010: one row per commander to crawl
-  commander_card_id integer primary key references public.cards (id),
-  target_decks      integer not null,
-  cursor            jsonb,                        -- page, order, last updatedAt seen
-  state             text not null,                -- queued | running | done | failed
-  heartbeat_at      timestamptz,
-  next_due_at       timestamptz                   -- recrawl schedule
-);
-
--- Public read, service_role write.
-create table public.commander_card_pairs (
-  commander_key_id integer not null references public.commander_keys (id) on delete cascade,
-  card_a_id        integer not null references public.cards (id) on delete cascade,
-  card_b_id        integer not null references public.cards (id) on delete cascade,  -- a < b
-  n_ab             integer not null,              -- evidence for the UI
-  lift_ab          real not null,                 -- shrunk P(B|A,K) / p̂(B|K)
-  lift_ba          real not null,
-  primary key (commander_key_id, card_a_id, card_b_id)
-);
-create index commander_card_pairs_b on public.commander_card_pairs (commander_key_id, card_b_id, card_a_id);
-
-create table public.card_pairs (                  -- global backoff, identity-aware denominators
-  card_a_id integer not null, card_b_id integer not null, n_ab integer not null,
-  lift_ab real not null, lift_ba real not null,
-  primary key (card_a_id, card_b_id)
-);
-create index card_pairs_b on public.card_pairs (card_b_id, card_a_id);
-```
-
-- **Rows are slim on purpose.** The denominators (`n`, `n_a`, `n_b`) exist only in the worker's memory while a key is
-  recomputed, and a new `α` means rerunning that key's job. At ~10M rows, every 4-byte column costs about 40 MB.
-- **User decks.** `public.decks` and `deck_cards` stay the source of truth. Triggers on `save_deck`, `delete` and
-  account deletion copy a deck into `corpus.decks` as `source = 'user'` or remove it, and mark its key dirty.
-  `include_in_corpus` becomes `resolveDeck(...).ok`. That check moves out of SQL into the worker, which already owns
-  it, so the trigger only enqueues and the worker decides. The column comment and the visibility copy in the deck
-  editor change to say "complete decks only".
-- **Account deletion.** A deleted account's decks leave `corpus.decks` through the cascade, and their keys go dirty,
-  so the aggregates forget them on the next run. `/privacy` already says submitted decks improve recommendations.
-- **Grants.** `select` on both pair tables for `anon`/`authenticated`, and `all` for `service_role`. The `corpus`
-  schema is `service_role` only. Row-level security is enabled on the pair tables with a public read policy, like the
-  other stats tables.
+double the table. With 50–100 decks per commander, per-commander pairs are thin; the backoff to global pairs carries
+them.
 
 ## Statistics
 
@@ -153,106 +338,71 @@ pmi_ab     = ln(lift_ab)
   `pairLiftFloor`, and it is in either card's top `pairMaxPartners`. Negative associations are dropped for now.
 - **New settings in `app_config.corpus`:** `pairShrinkAlpha`, `pairBackoffBeta`, `pairMinSupport`, `pairMinShare`,
   `pairLiftFloor`, `pairMaxPartners`.
+- **Counting:** per dirty commander, load its corpus decks and count cards and pairs in memory with pure functions
+  from `@mtg/core/scoring/pairs.ts`. A key with 5,000 decks is about 18M pair increments, which takes seconds.
+- **Global pairs** are recounted weekly with a dense upper-triangle counter over cards above `minDecks`: about 450 MB
+  of memory at 15k eligible cards. Check the VPS has that room beside Typesense before T064. Only changed rows are
+  written.
 
-## Pipeline
+## Crawl
 
-```
-Archidekt API ──► crawl worker ─┐                     (1 req/s, honest UA, crawl_queue, resumable)
-                                ├─► corpus.decks  ── diff by content_hash ──► corpus.dirty_keys
-public.decks ── trigger ────────┘
-                                                       nightly: aggregate job
-                                                        ├─ per dirty key: commander_stats,
-                                                        │    commander_card_stats, commander_card_pairs
-                                                        ├─ card_global_stats, corpus_identity_stats
-                                                        └─ weekly: card_pairs (dense recount)
-                                                       → drain search_index_queue → revalidate corpus, recs
-```
+Built 2026-10-01 in the Go search API (`internal/crawl/`, adapter `internal/archidekt/`);
+[`deck-crawl.md`](deck-crawl.md) is the account and runbook.
 
-- **Crawl** (replaces `spike:archidekt:*` for production). Built 2026-10-01 in the Go search API rather than the
-  worker, with `corpus.crawl_commanders` in place of `crawl_queue`; [`deck-crawl.md`](deck-crawl.md) is the account.
-  - The queue is seeded from EDHREC's commander list (`external_commanders`), most played first.
-  - Each commander's decks are listed most viewed first, never `-updatedAt`: Archidekt bumps `updatedAt` faster than
-    a polite crawl can page, so an update-ordered walk never gets past decks edited during the run.
-  - A first visit reads one page; a revisit walks until it finds `newDecksPerRevisit` new or changed decks.
-  - `serve:commander-requests` becomes "bump this commander to the front of the queue" (still open).
-- **Discovery and fetching are separate jobs.** Discovery reads list pages and upserts `(source, source_deck_id,
-  listed_updated_at)`. Fetching pulls only decks that are new or whose `listed_updated_at` moved. A cache that
-  never refetches would keep serving decks their owners have since edited.
-- **Raw payloads** go to zstd files on the VPS (`raw/<source>/<id>.json.zst`), not Postgres, so a parser fix can
-  reprocess without refetching. Measure one response before setting a retention period.
-- **Cross-source dedupe.** A deck mirrored on two sites counts once. `corpus.decks.content_hash` covers commander
-  key plus card set, and aggregation keeps one included deck per hash (the most recently updated).
-- **Aggregate** runs per dirty key:
-  - Load the key's included decks, count cards and pairs in memory with pure functions from
-    `@mtg/core/scoring/pairs.ts`, and stage the rows.
-  - Run a sanity gate against the previous run's `sync_runs.metrics`, then diff-merge in one transaction.
-  - A key with 5,000 decks is about 18M pair increments, which takes seconds.
-  - The global tables (`card_global_stats`, identity histograms) are sums over keys, so they are refreshed from
-    per-key partials rather than rescanning every deck.
-- **Global pairs** are recounted weekly with a dense upper-triangle counter over cards above `minDecks`. That is
-  about 450 MB of memory at 15k eligible cards. Only changed rows are written.
-- Every job keeps the existing failure model:
-  - `startRun` / `finishRun`.
-  - A stale `running` row is marked abandoned.
-  - Nothing live changes until commit.
-  - The index drain and cache revalidation run after success.
+- The queue is seeded from EDHREC's commander list and ordered by need: commanders under `targetDecks` (60) first.
+- Each commander's decks are listed most viewed first, never `-updatedAt`: Archidekt bumps `updatedAt` faster than a
+  polite crawl can page.
+- A requested commander goes to the front of the queue (PR #128).
+
+**How a commander's sample grows (owner rule, 2026-10-05; T056):**
+- A first visit reads one page: up to 60 decks, most viewed first.
+- A revisit re-reads page 1 and fetches every deck that is new, or whose listed update time moved since the last
+  crawl.
+- If fewer than `revisitNewDecks` (25) decks were new or changed, it reads the next page, and so on, until 25 are
+  reached or the list ends.
+- Every deck fetched because it was new or changed counts toward the 25, whichever commander leads it, so 25 also
+  bounds a revisit's deck requests. A deck led by another commander is still kept for that commander.
+- `maxPagesPerCommander` (40) and `maxFetchesPerCommander` (120) stay as ceilings.
+- This replaces `revisitPages` (page 1 only, 2026-10-03), under which a sample grew only as decks entered the top 60
+  by views: 204 commanders had passed 60 decks by 2026-10-05, and none had passed 93.
+- The adapter also reads each deck's declared bracket into `archidekt.decks.declared_bracket`.
 
 ## Crawler guardrails (every source)
 
 Consent covers the data. These rules cover how it is fetched, and they don't change with consent:
 
-- **One limiter per host**, shared by every worker. The existing `RateLimiter` in `lib/http.ts` already does this
-  within one process. Only one crawler process runs per source.
+- **One limiter per host**, shared by every worker. Only one crawler process runs per source.
 - **Jitter** on normal spacing, not only on backoff.
-- **Exponential backoff honouring `Retry-After`.** This already exists in `politeFetch`.
-- **A request timeout.** `politeFetch` has none today, so one hung request stalls a crawl.
-- **Graceful shutdown.** On SIGINT or SIGTERM the crawler finishes its batch, commits, and exits.
+- **Exponential backoff honouring `Retry-After`.**
+- **A request timeout**, so one hung request can't stall a crawl.
+- **Graceful shutdown.** On SIGINT or SIGTERM the crawler finishes its batch, commits, releases its claim, and exits.
 - **robots.txt is obeyed.** It is read once per run per host, and disallowed paths are never requested. Today that
-  rules out EDHREC's `/deckpreview/` (its individual decklists) and MTGGoldfish's `/deck/download*` and
-  `/embed/decklist`.
+  rules out EDHREC's `/deckpreview/` (its individual decklists), MTGGoldfish's `/deck/download*` and
+  `/embed/decklist`, and `backend.commanderspellbook.com`.
 - **An honest User-Agent**, with no fingerprint spoofing, UA rotation, proxies or challenge solvers.
-- **A block stops the source.** A 403, a Cloudflare challenge or a bot wall switches that source off, the same way
-  the share-import kill switch does, until someone re-enables it by hand. `json.edhrec.com` is a static S3 bucket
-  behind CloudFront: a key that doesn't exist answers 403 `AccessDenied`, which is what the 2026-09-21 fetch saw. It
-  serves every commander page as JSON (all 8,135 fetched on 2026-09-28), so the adapter reads that, and counts
-  S3's `AccessDenied` as a missing page rather than a block.
+- **A block stops the source.** A 403, a Cloudflare challenge or a bot wall switches that source off until someone
+  re-enables it by hand. `json.edhrec.com` is a static S3 bucket behind CloudFront: a key that doesn't exist answers
+  403 with `server: AmazonS3`, which counts as a missing page, not a block.
 
 ## External statistics (EDHREC)
 
 EDHREC publishes aggregates, not decklists, and its data comes from Moxfield and Archidekt decks. So it is a
-**statistics source, never a deck source**. Adding it to deck counts would count Archidekt decks twice and still
-yield no pairs.
+**statistics source, never a deck source**. Adding it to deck counts would count Archidekt decks twice and still yield
+no pairs.
 
-Loaded locally on 2026-09-28 (`import:edhrec`, migration `20260928000200_external_commander_stats.sql`). Commanders
-are keyed by their own cards rather than `commander_keys`, because EDHREC covers ~6,800 commanders and `commander_keys`
-rows are commander pages:
+- **Layers:** `sync:edhrec` writes `edhrec.*` weekly; the collator resolves pages into `corpus.external_commanders`
+  and `corpus.external_commander_cards`. Commanders are keyed by their own cards, since EDHREC covers ~6,800
+  commanders and `commander_keys` rows are our commander pages.
+- **Its lists are trimmed by length, not by rate.** A page lists about 270 cards whatever its size. The lowest listed
+  inclusion is 7.7% (median) for commanders under 100 decks, 4.8% for 100–999, 3.2% for 1,000–4,999 and 2.6% for
+  5,000 and up. A missing row means "below this page's floor", not "never played".
+- **Uses:** the prior for our scores (strength from its deck count, [`scoring-design.md`](scoring-design.md)), part of
+  each commander's candidate pool, and a benchmark in the evaluation.
+- **Never displayed.** If that changes, credit and link EDHREC wherever its numbers appear.
 
-```sql
-create table public.external_commanders (
-  id integer generated always as identity primary key,
-  source text not null,                           -- 'edhrec'
-  slug text not null,                             -- the source's page slug
-  commander_1 integer not null references public.cards (id),
-  commander_2 integer references public.cards (id),
-  deck_count integer not null,                    -- their published sample size
-  fetched_at timestamptz not null,
-  unique (source, slug)
-);
-create table public.external_commander_card_stats (
-  external_commander_id integer not null references public.external_commanders (id),
-  card_id          integer not null references public.cards (id),
-  decks_with       integer not null,              -- inclusion = decks_with / potential_decks
-  potential_decks  integer not null,              -- below deck_count for cards newer than some decks
-  synergy          real,                          -- theirs, as published
-  primary key (external_commander_id, card_id)
-);
-```
-
-EDHREC trims its lists near 5% of decks for big commanders, so a missing row means "not published".
-
-**Prior evaluation (2026-09-28, `spike:edhrec:prior`).** For 49 commanders with at least 200 of our decks: hide all but
-50 as the answer key, estimate each card's inclusion from n of the 50 shrunk toward the colour baseline (today) or
-toward EDHREC's inclusion for that commander, and grade the top 50 against the hidden decks.
+**Prior evaluation (2026-09-28, `spike:edhrec:prior`).** For 49 commanders with at least 200 of our decks (from the old
+deck file): hide all but 50 as the answer key, estimate each card's inclusion from n of the 50 shrunk toward the
+colour baseline or toward EDHREC's inclusion for that commander, and grade the top 50 against the hidden decks.
 
 | Our decks | Top-50 synergy overlap, colour | EDHREC | Commanders where EDHREC wins |
 |---|---|---|---|
@@ -262,39 +412,22 @@ toward EDHREC's inclusion for that commander, and grade the top 50 against the h
 | 20 | 78% | 83% | 43 of 49 |
 | 50 | 86% | 88% | 35 of 49 |
 
-EDHREC's inclusion estimates also had lower mean absolute error for all 49 commanders at every n. The gate for
-slice 11 is passed; wiring the prior into `corpusComponent` and `rec_add_candidates` is the next step. EDHREC's sample
-includes some of the Archidekt decks hidden here, but it is at least 12× ours for these commanders (median 92×).
-
-- **As a prior.** For a commander below `minDecks`, `p̂(B|K)` shrinks toward EDHREC's inclusion instead of the
-  baseline p0: `(x + α·p_ext) / (n + α)`. As our own decks grow, our numbers take over, so a gap in EDHREC's
-  coverage never decides a recommendation. The pair layers stay ours alone.
-- **As a benchmark.** The offline evaluation reports agreement against EDHREC per commander, which automates T031.
-- **Not shown in the UI.** Their numbers inform scoring and are never displayed. If that changes, credit and link
-  EDHREC wherever they appear.
-- Refreshed weekly per commander, diff-only, one request per commander page.
+EDHREC's sample includes some of the decks hidden here, but it is at least 12× ours for these commanders (median 92×).
+The evaluation repeats this with a time split (scoring-design.md).
 
 ## Card value scoring
 
-The recommendation request flow stays the same, with the two new steps marked *(new)*:
+The scoring itself is [`scoring-design.md`](scoring-design.md): components, the one marginal-value function, modes and
+the evaluation. This plan supplies its inputs.
 
-```
-1. pool     = legal ∩ identity ∩ (owned, when owned-only) − deck
-              ∩ ( top by corpus score  ∪  graph neighbours of the deck's cards )   ← neighbours (new)
-2. fetch    = card rows, tags, play rates (existing)  ‖  pair rows deck × pool (new)   — one Promise.all
-3. score    = weighted components, each 0–1, weights from app_config.scoring
-4. explain  = component values + evidence, top 20 per category
-```
-
-| Component | Meaning | Source | State |
+| Component | Meaning | Serving source | State |
 |---|---|---|---|
-| `corpus` | How common in this commander's decks, blended with baseline popularity and synergy | `commander_card_stats`, `card_global_stats` | Exists |
-| `deck` | How strongly it connects to cards already in **this** deck | pair tables | **New** |
-| `role` | Does the deck need another card of this role | `deck_role_targets`, `role_profile` | Exists |
-| `tag` | Does the same job (swaps) | `card_tags`, tag closure | Exists |
-| `manaValue`, `staple`, `votes` | Swap fit, reprint breadth, rater votes (T006) | existing | Exist |
-| Ownership | **A filter**, not a weight. A weight would be constant in owned-only mode, and outside it would rank weaker owned cards over better ones | `ownership` | Exists |
-| Confidence | **A multiplier**, applied through shrinkage and backoff, not an added term | stats counts | Exists; extended to pairs |
+| `corpus` | How this commander's decks (and EDHREC) play the card, against the colour baseline | `commander_card_scores` | Exists, computed per request today |
+| `deck` | How strongly it connects to cards already in **this** deck | Pair tables | New |
+| `role` | Does the deck need another card of this role | `card_roles`, `commander_stats.role_profile` | Exists |
+| `curve` | Does the deck need a card at this mana value | `commander_stats.curve_profile` | New |
+| `tag` | Does the same job (swaps) | `card_substitutes` | Exists, computed per request today |
+| `manaValue`, `staple`, `votes` | Swap fit, reprint breadth, rater votes (T006) | Existing | Exist |
 
 Deck affinity:
 
@@ -308,55 +441,46 @@ evidence        = the three deck cards contributing most
   own affinity is the baseline to beat.
 - **Cuts.** A new cut reason, `LOW_AFFINITY`: the card connects to little else in the deck. It applies only above
   `minDecks`, like `LOW_SYNERGY`.
-- **Weights move to `app_config.scoring`** before anything is tuned. `rec_swap_candidates` reads the same row instead
-  of mirroring constants, so "change both together" stops being a rule someone has to remember. That also closes the
-  gap with the Hard constraint that scoring weights belong in the database.
-- **Web read path**, following the React best-practices rules:
-  - Pair rows come in the same `Promise.all` as the pool and `loadCardCorpus`, never after them.
-  - Global pair rows per card are cached (`use cache`, `cacheLife("days")`, tag `corpus`).
-  - `after()` handles timeout logging.
-  - The client receives the component and its evidence, never pair maps.
-  - Pair fetching stays out of `next/cache` imports in `recs.ts`, so `regress` and the evaluation run outside
-    Next.js.
+- **Web read path:** every serving read goes in the one `Promise.all`; global pair rows per card are cached
+  (`use cache`, `cacheLife("days")`, tag `corpus`); the client receives components and evidence, never pair maps; and
+  serving reads stay out of `next/cache` imports in `recs.ts`, so `regress` and the evaluation run outside Next.js.
 
-## Offline evaluation (gates every weight change)
+## Combo relationships (Commander Spellbook)
 
-- Split `corpus.decks` 90/10 **by deck**, and build the stats from the 90% only.
-- For each held-out deck, hide 10 non-land cards. Ask for adds on the rest and report:
-  - recall@20 of the hidden cards;
-  - the same, bucketed by commander size (≥ 300 decks, 50–299, < 50);
-  - a "Sol Ring rate": how many hits are generic staples, to catch a model that only learned popularity.
-- Compare today's scoring, `corpus` plus `deck`, and the pruning settings (lift 1.2 against 1.5).
-- `yarn workspace @mtg/worker cli eval:holdout`. The report goes to `X:\mtg_proj\reports`. The regression fixtures
-  and the blind eval (T014) stay the human checks.
+Pairs say which cards decks run together; combos say which cards *work* together, whatever the commander and however
+few decks it has.
 
-## Slices
+- **Layers:** `sync:combos` writes `spellbook.*` daily from the published export; the collator writes
+  `corpus.combos`; the precompute worker writes `combo_pieces`.
+- **Pool.** The missing piece of a combo the deck is one card short of joins the candidate pool.
+- **Shown as its own Add group** (decided 2026-10-05): "complete a combo", listing only combos the chosen bracket
+  allows, each credited and linked to Spellbook. A combo already in the deck above the bracket is flagged with a cut
+  offered. Details in [`scoring-design.md`](scoring-design.md).
 
-Each slice is one PR into `develop`, in order.
+## Tasks
 
-| # | Slice | Main files | Done when |
-|---|---|---|---|
-| 1 | **Rules and weights.** Rewrite the CLAUDE.md data-source and storage rules to match the legal consent. Move `ADD_WEIGHTS`/`SWAP_WEIGHTS` into `app_config.scoring`, with the SQL reading the same row | `CLAUDE.md`, `scoring/add.ts`, `scoring/swap.ts`, a new migration, `rec_swap_candidates` | Regression fixtures unchanged |
-| 2 | **Corpus in Postgres.** `corpus` schema, one-time JSONL import, and `aggregate:corpus` reads the database | new migration, `jobs/aggregate-corpus.ts`, `lib/corpus.ts`, `cli.ts` | Aggregates byte-identical to the JSONL run |
-| 3 | **User decks as a source.** Triggers, `include_in_corpus` = complete-and-legal, and the editor copy | `save_deck` migration, deck editor visibility control, `supabase/tests/saved-decks.sql` | 70-card deck excluded; SQL tests pass |
-| 4 | **Per-key incremental aggregation.** `dirty_keys`, partials for global stats | `aggregate-corpus.ts` | A one-deck change rewrites only that key's rows |
-| 5 | **Pair layers.** Tables, `@mtg/core/scoring/pairs.ts` (tested), worker job, sanity gate | new migration, worker job, core | Row counts match this plan's estimates on the current corpus |
-| 6 | **Offline evaluation** | `jobs/eval-holdout.ts` | Baseline recall@20 recorded |
-| 7 | **Deck affinity in adds.** Neighbours in the pool and the `deck` component, weighted from the evaluation | `rec_add_candidates`, `lib/server/recs.ts`, `scoring/add.ts` | Recall@20 beats baseline; p95 add latency not worse on hosted |
-| 8 | **Swaps and cuts** use affinity; `LOW_AFFINITY` | `rec_swap_candidates`, `scoring/swap.ts`, `scoring/cut.ts` | Evaluation and fixtures |
-| 9 | **Contract v11.** `ScoreComponent` gains `deck`; evidence names the connected cards; UI explanation | `contract/recs.ts`, `version.ts`, mocks, deck UI | Frontend and backend approval |
-| 10 | **Full-suite crawl.** Crawler guardrails in `politeFetch` (timeout, jitter, robots, shutdown, block kill switch), discovery/fetch split, raw payload files, `crawl_queue`, VPS worker (T010, T009) | `lib/http.ts`, `sources/archidekt/`, new jobs, `deploy/` | ~2,800 commanders crawled; nightly aggregate runs off the PC |
-| 11 | **EDHREC statistics source.** Adapter over public commander pages, `external_commander_card_stats`, prior and benchmark | `sources/edhrec/`, new migration, `scoring/corpus.ts`, evaluation | Evaluation shows the prior helps commanders below `minDecks`, or it is switched off |
+Each task is one PR into `develop`. The original slices map onto them as shown.
 
-Slices 10 and 11 can start in parallel after slice 2, since they only write their own tables. The plan sizes the
-tables for them from the start.
+| Task | What | Was |
+|---|---|---|
+| T053 | Data layers: schemas and table moves (with PR #127 reworked into `spellbook`) | Slice 2, in part |
+| T054 | Collator, every source including complete user decks (with PR #128 reworked) | Slices 2–3 |
+| T055 | Precompute worker and the serving request path; retire the rec SQL functions | Slice 4, and new |
+| T056 | Crawl growth: revisits read on until 25 decks were new or changed; declared brackets in raw | Slice 10 |
+| T057 | Scoring weights into `app_config.scoring` | Slice 1 |
+| T058 | Offline evaluation | Slice 6 |
+| T061 | EDHREC prior by sample size | Slice 11's prior |
+| T062 | Learned skeleton: curve and land profiles, EDHREC role and curve priors | New |
+| T064 | Deck affinity from card pairs, `LOW_AFFINITY`, contract `deck` component | Slices 5, 7–9 |
+
+T059 (collection mode), T060 (bracket rules and combos), T063 (build mode) and T065 (live accept rate) are scoring
+work in [`scoring-design.md`](scoring-design.md).
 
 ## Out of scope
 
 - **MTGGoldfish.** It is allowed now, but its decks lean toward constructed formats and its deck downloads are
   disallowed by robots.txt. It is low value for Commander, so it waits until the other sources are running.
 - **Moxfield** until its API access or User-Agent whitelist is confirmed. Its whitelisting wants a production
-  domain (T033). A colly scrape built for it (T036, [`deck-crawl.md`](deck-crawl.md)) is shelved: a 2026-09-22 probe
-  from the VPS answered Cloudflare's hard WAF block, so the source stays off until access is granted. The Archidekt
-  half of that same engine is active, and its `corpus.decks` output is what this plan's aggregation reads.
+  domain (T033). Its adapter in the crawl engine is shelved: a 2026-09-22 probe from the VPS answered Cloudflare's
+  hard WAF block, so the source stays off until access is granted.
 - Negative associations, win-condition analysis, multiple collections, and embeddings.
