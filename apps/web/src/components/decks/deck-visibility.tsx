@@ -9,7 +9,8 @@ import { getApis } from "@/lib/api/client";
  * Shows or hides the deck's page.
  *
  * The wording is load-bearing: hiding a deck does **not** take it out of the play-rate aggregates, and the control
- * has to say so rather than let "private" imply more than it delivers.
+ * has to say so rather than let "private" imply more than it delivers. It also says which decks count at all: a
+ * complete one (the collator's corpus rule: 100 cards, a legal commander, every card inside its colours).
  */
 export function DeckVisibility({ deckId, isPublic }: { deckId: DeckId; isPublic: boolean }) {
   const [on, setOn] = useState(isPublic);
@@ -41,8 +42,9 @@ export function DeckVisibility({ deckId, isPublic }: { deckId: DeckId; isPublic:
             {on ? "Anyone with the link can see this deck" : "Only you can see this deck"}
           </label>
           <p className="mt-1 text-sm text-muted-foreground">
-            This controls the deck&rsquo;s page. Either way, the cards you run count toward how often cards are played
-            with your commander, which is what the recommendations are built from.
+            This controls the deck&rsquo;s page. Either way, once the deck is complete (100 cards, a legal commander,
+            every card in its colours), the cards you run count toward how often cards are played with your commander,
+            which is what the recommendations are built from.
           </p>
         </div>
       </div>

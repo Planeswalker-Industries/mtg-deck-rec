@@ -1,7 +1,7 @@
 # Unified scoring design
 
 Status: **design, revised 2026-10-05** after the owner's review. Nothing here is built yet; [`../tasks.md`](../tasks.md)
-tracks it as T053–T065.
+tracks it as T053–T066.
 
 **What it does.** One scoring engine serves every recommendation the app makes, across every data source: Archidekt
 decks, EDHREC statistics, Commander Spellbook combos, and our players' decks. It covers three modes:

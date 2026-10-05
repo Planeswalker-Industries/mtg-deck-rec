@@ -1,11 +1,10 @@
-import { isValidPartnerPair, type CommanderCardFacts } from '@mtg/core/commander';
+import { corpusCommanders, type CorpusCommanderFacts, type CorpusExclusion } from '@mtg/core/commander';
 import type { CardId } from '@mtg/core/contract';
 import type { Sql } from './db';
 
 /** Shared by the corpus jobs, so every job counts the same decks. */
 
 export const IDENTITIES = 32;
-const MAX_COMMANDERS = 2;
 /** Decks read from corpus.decks per round trip. */
 const CORPUS_CURSOR_ROWS = 1000;
 
@@ -46,17 +45,24 @@ export interface CorpusDeck {
   cardIds: number[];
   /** 'YYYY-MM' the deck was last updated. */
   month: string;
+  /** Over commanders and cards (hex): the same deck posted on two sites has the same hash. */
+  contentHash: string;
 }
 
+/**
+ * Why the aggregate skips a collated deck: the corpus rule's commander half, or what changed in the catalog since the
+ * deck was collated (a card dropped, a commander banned).
+ */
 export const EXCLUSIONS = [
-  'too_many_commanders',
-  'commander_not_in_catalog',
+  'commander_count',
+  'unresolved_commander',
   'commander_not_legal',
   'no_eligible_commander',
   'invalid_partner_pair',
   'outside_identity',
   'unresolved_cards',
-] as const;
+  'duplicate_across_sources',
+] as const satisfies readonly (CorpusExclusion | 'duplicate_across_sources')[];
 export type Exclusion = (typeof EXCLUSIONS)[number];
 
 export interface ResolvedDeck {
@@ -147,14 +153,24 @@ export async function loadRoleCards(sql: Sql): Promise<Map<number, string[]>> {
  * written only by the collator (T054); until it runs, the table is empty.
  */
 export async function* loadCorpusDecks(sql: Sql): AsyncGenerator<CorpusDeck> {
-  const cursor = sql<{ source: string; source_deck_id: string; commander_card_ids: number[]; card_ids: number[]; month: string }[]>`
-    select source, source_deck_id, commander_card_ids, card_ids, to_char(updated_month, 'YYYY-MM') as month
+  const cursor = sql<
+    { source: string; source_deck_id: string; commander_card_ids: number[]; card_ids: number[]; month: string; content_hash: string }[]
+  >`
+    select source, source_deck_id, commander_card_ids, card_ids, to_char(updated_month, 'YYYY-MM') as month,
+           encode(content_hash, 'hex') as content_hash
     from corpus.decks
     order by id
   `.cursor(CORPUS_CURSOR_ROWS);
   for await (const rows of cursor) {
     for (const r of rows) {
-      yield { source: r.source, sourceDeckId: r.source_deck_id, commanderIds: r.commander_card_ids, cardIds: r.card_ids, month: r.month };
+      yield {
+        source: r.source,
+        sourceDeckId: r.source_deck_id,
+        commanderIds: r.commander_card_ids,
+        cardIds: r.card_ids,
+        month: r.month,
+        contentHash: r.content_hash,
+      };
     }
   }
 }
@@ -167,7 +183,8 @@ export async function corpusVersion(sql: Sql): Promise<{ updatedAt: string; deck
   return { updatedAt: (row?.updated_at ?? new Date(0)).toISOString(), decks: row?.decks ?? 0 };
 }
 
-const commanderFacts = (c: CatalogCard): CommanderCardFacts => ({
+/** The facts the corpus rule reads, from a catalog card. */
+export const commanderFacts = (c: CatalogCard): CorpusCommanderFacts => ({
   id: c.id as CardId,
   name: c.name,
   colorIdentityMask: c.colorIdentity,
@@ -175,14 +192,12 @@ const commanderFacts = (c: CatalogCard): CommanderCardFacts => ({
   canBeCommander: c.canBeCommander,
   partnerKind: c.partnerKind,
   partnerQualifier: c.partnerQualifier,
-  copyLimit: null,
-  gameChanger: false,
 });
 
 /**
- * A deck counts when its commanders (one, or a legal pair) are in the catalog and legal, every card fits their color
- * identity, and no more than `maxUnresolvedCards` cards are missing from the live catalog. The collator applies the
- * same rule when it writes corpus.decks, so this only catches what changed since: a card the catalog has since dropped,
+ * A collated deck counts when its commanders still pass the corpus rule (`corpusCommanders`), every card still fits
+ * their colour identity, and no more than `maxUnresolvedCards` cards have left the live catalog. The collator applied
+ * the whole rule when it wrote the deck, so this only catches what changed since: a card the catalog has since dropped,
  * a commander since banned.
  */
 export function resolveDeck(
@@ -190,18 +205,13 @@ export function resolveDeck(
   catalog: ReadonlyMap<number, CatalogCard>,
   config: CorpusConfig,
 ): { ok: true; deck: ResolvedDeck } | { ok: false; reason: Exclusion } {
-  if (deck.commanderIds.length > MAX_COMMANDERS) return { ok: false, reason: 'too_many_commanders' };
-  const commanders = deck.commanderIds.map((id) => catalog.get(id));
-  if (!commanders.every((c): c is CatalogCard => c !== undefined)) return { ok: false, reason: 'commander_not_in_catalog' };
-  if (!commanders.every((c) => c.legal)) return { ok: false, reason: 'commander_not_legal' };
-  if (!commanders.some((c) => c.canBeCommander)) return { ok: false, reason: 'no_eligible_commander' };
-  // A source's Commander section can also hold companions and misfiled cards; only real pairs share a command zone.
-  const [first, second] = commanders;
-  if (first && second && !isValidPartnerPair(commanderFacts(first), commanderFacts(second))) {
-    return { ok: false, reason: 'invalid_partner_pair' };
-  }
-
-  const identity = commanders.reduce((mask, c) => mask | c.colorIdentity, 0);
+  const checked = corpusCommanders(deck.commanderIds.map((id) => {
+    const card = catalog.get(id);
+    return card && commanderFacts(card);
+  }));
+  if (!checked.ok) return checked;
+  const commanders = checked.commanders.map((c) => catalog.get(c.id) as CatalogCard);
+  const { identity } = checked;
   const cardIds = new Set<number>();
   let unresolved = 0;
   for (const id of deck.cardIds) {
@@ -212,7 +222,6 @@ export function resolveDeck(
   }
   if (unresolved > config.maxUnresolvedCards) return { ok: false, reason: 'unresolved_cards' };
 
-  commanders.sort((a, b) => a.id - b.id);
   return {
     ok: true,
     deck: {

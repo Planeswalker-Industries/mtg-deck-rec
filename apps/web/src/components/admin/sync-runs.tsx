@@ -41,8 +41,10 @@ const JOB_LABEL: Record<AdminSyncJob, string> = {
   archidekt_crawl: "Archidekt crawl",
   precon_import: "Precon import",
   vote_aggregate: "Vote aggregate",
-  edhrec_stats: "EDHREC stats",
+  edhrec_stats: "EDHREC import (retired)",
   spellbook_combos: "Spellbook combos",
+  corpus_collate: "Corpus collation",
+  edhrec_pages: "EDHREC pages",
 };
 
 const STATUS_LABEL: Record<AdminSyncStatus, string> = {

@@ -116,6 +116,8 @@ select chk('deleting a player''s deck removes it from the corpus',
   not exists (select 1 from corpus.decks where source = 'user' and source_deck_id = :'user_deck'));
 
 -- === dirty commanders ===
+-- The corpus.decks writes above already queued this commander (collator.sql checks how), so start from a clean slate.
+delete from corpus.dirty_commanders where commander_1 = :sol and commander_2 = 0;
 insert into corpus.dirty_commanders (commander_1) values (:sol);
 select must_fail('a commander is queued once',
   format('insert into corpus.dirty_commanders (commander_1) values (%s)', :sol), 'dirty_commanders_pkey');

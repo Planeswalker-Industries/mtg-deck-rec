@@ -1,7 +1,7 @@
 # Deck aggregation pipeline and card value scoring — implementation plan
 
 Status: **revised 2026-10-05**: data layers, a collator and a precompute worker, after the owner's review of PRs #127 and
-#128. Tracked as T035 and T053–T065 in [`../tasks.md`](../tasks.md). The scoring built on this pipeline (formulas,
+#128. Tracked as T035 and T053–T066 in [`../tasks.md`](../tasks.md). The scoring built on this pipeline (formulas,
 modes, bracket rules, evaluation) is [`scoring-design.md`](scoring-design.md); the crawl's full account is
 [`deck-crawl.md`](deck-crawl.md).
 
@@ -242,16 +242,24 @@ create table corpus.dirty_commanders (    -- upsert-keyed, like search_index_que
    `edhrec-prior.sql`) and adds `data-layers.sql`.
 
 Moving a table between schemas or renaming it rewrites no rows; the deck conversion is the one rewrite (about 77,000
-decks on hosted). Until the collator ships (T054), `corpus.decks` is empty and nothing reads it.
+decks on hosted). Until the collator (T054) first runs on hosted, `corpus.decks` is empty and nothing reads it.
 
 ## Collator (T054)
 
-`cli collate` on the VPS worker, recorded in `sync_runs` as `corpus_collate`.
+**Built 2026-10-05** (`apps/worker/src/jobs/collate.ts`, migrations `20261005000500`–`600`). `cli collate`, recorded in
+`sync_runs` as `corpus_collate`; by hand until the VPS worker (T066) runs it.
 
 - **When:** after every fetch (a crawl run ending, `sync:edhrec`, `sync:spellbook`), and after `sync:catalog`, so raw
   rows that failed to resolve get another try.
-- **Incremental:** per source, only raw rows changed since the last successful collation, plus rows still
-  unresolved.
+- **Incremental:** per source, only raw rows changed since the last successful collation (less a 15-minute overlap for
+  writes in flight), plus, on a newer catalog, every deck the corpus lacks. Where each source got to is
+  `corpus.collate_state`, written in the same transaction as its rows. EDHREC and Spellbook are collated after each
+  successful fetch, and never from raw without one, so a trial fetch or a crash is never collated; Spellbook is also
+  redone on a newer catalog (one SQL statement), and EDHREC names the catalog learns later wait for its next fetch.
+- **The rule** (`checkCorpusDeck`, `@mtg/core/commander`) is the one above, for every deck source: a legal commander or
+  pair, every card resolved and inside the identity, exactly 100 cards. Card legality beyond the commanders is not part
+  of it (3.7% of crawled decks held a banned or not-legal card on 2026-10-05; recommendations filter those cards on
+  their own). Players' decks pass the same rule, public or private; `include_in_corpus` is no longer read.
 - **Decks:** resolve oracle ids to card ids, apply the one rule, and write only rows whose content hash differs.
   Delete corpus rows whose raw row is gone, and mark changed commanders dirty.
 - **EDHREC:** resolve each page's names by printing id first, then by unique name, as the retired `import:edhrec` did.
@@ -260,8 +268,17 @@ decks on hosted). Until the collator ships (T054), `corpus.decks` is empty and n
   banned combos and hidden steps. A tag or result status the collator doesn't know holds the combo back and is
   counted, so a change on Spellbook's side shows up in the metrics instead of slipping through.
 - **Sanity gate per source**, like the syncs: a collation that would remove more than a set share of a source's
-  corpus rows refuses (the share lives in `app_config.corpus`).
-- **Metrics** per source: rows resolved, unresolved, and excluded by reason.
+  corpus rows refuses (`app_config.corpus.collateMaxRemovedShare`, 0.1; at 25 removals or more). An empty raw source
+  is never collated.
+- **Dirty commanders:** statement triggers on `corpus.decks` queue every written or removed deck's commanders, a
+  player's own delete included (the trigger function is a security definer, since the player can't reach `corpus`).
+  EDHREC changes queue their commanders too.
+- **A deck posted on two sites counts once**: `aggregate:corpus` skips a second source's deck with the same
+  `content_hash`. Identical decks on one site are different players' decks and each count.
+- **Metrics** per source: rows read, written and removed, and exclusions by reason.
+- **Measured locally** with hosted's 76,774 crawled decks: 18 s for all of them, 74,874 pass; the aggregate over them
+  took 1 min 38 s (2,716 commanders, 1.54M commander-card rows). Spellbook: 111,498 of 113,025 combos kept (1,527
+  banned).
 
 ## Precompute worker (T055)
 
