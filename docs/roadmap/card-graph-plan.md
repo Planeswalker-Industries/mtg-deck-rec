@@ -276,6 +276,8 @@ includes some of the Archidekt decks hidden here, but it is at least 12× ours f
 
 ## Card value scoring
 
+The scoring this section began is carried on in [`scoring-design.md`](scoring-design.md) (T053–T061), which adds the bracket, combo and curve components, the collection and build modes, and the evaluation gate. The pipeline stays here.
+
 The recommendation request flow stays the same, with the two new steps marked *(new)*:
 
 ```

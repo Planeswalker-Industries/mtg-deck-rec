@@ -77,9 +77,24 @@ The holdout test (`spike:edhrec:prior`) says EDHREC is the better prior for comm
 
 Built 2026-10-04, not yet on `main`. `sync:combos` reads Commander Spellbook's published daily export (one gzipped request of about 29 MB) and keeps every combo as the set of our card ids it needs, with its results and Spellbook's bracket tag. That gives the recommender card-to-card relationships that don't depend on how many decks a commander has. The first local load stored all 113,013 combos, and every card resolved against the catalog. `combos_for_cards` finds the combos a deck completes or is one card short of, in about 6 ms for a typical deck. The daily workflow runs it after the catalog sync. Next: combo detection in the bracket estimate (T047, after the T045 display design), and missing combo pieces as add candidates.
 
+## Unified scoring design (T053–T061)
+
+Designed 2026-10-05, not built: [`scoring-design.md`](scoring-design.md). One scorer for three modes. The priority is improving a deck from the player's collection; the others are improving with any card and building a 99 from a commander and a bracket.
+
+The owner's interview settled the long-open ownership conflict: the collection is a filter, and the default becomes owned only with a separate "worth buying" list ranked by value. That resolves T037 and reframes T007.
+
+The same interview decided the rest:
+- Builds use owned cards only, and offer a best-value fill when the collection falls short.
+- The deck skeleton is learned per commander.
+- Combos and every bracket rule are enforced, and corpus decks get an estimated bracket.
+- EDHREC becomes a pool as well as a prior for thin commanders.
+- Success is measured by an offline holdout, EDHREC agreement and a live accept rate.
+
+Open questions are listed at the end of the design.
+
 ## Open decisions for the owner
 
 1. Where deck reports go (T003)
 2. Whether public deck pages get indexed (T028)
-3. Whether "Owned first" supersedes the 2026-09-18 "collection is a hard filter" decision (T037, T007)
-4. A domain and custom SMTP before launch (T033)
+3. A domain and custom SMTP before launch (T033)
+4. The scoring design's open questions: early combos in bracket 3, tutor and extra-turn caps, bracket bands, starting thresholds, accept-event consent ([`scoring-design.md`](scoring-design.md))
