@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spellbookVariant } from './commander-spellbook';
+import { spellbookVariant, type SpellbookCombo } from './commander-spellbook';
 
 const ORACLE_A = '0a66ce8b-af99-411f-8ecb-52a5d2f6af3d';
 const ORACLE_B = '1b2c3d4e-0000-4000-8000-000000000002';
@@ -35,10 +35,21 @@ const variant = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+/** The combo, or a failure naming the reason it was refused. */
+const parse = (body: unknown): SpellbookCombo => {
+  const result = spellbookVariant(body);
+  if (!result.ok) throw new Error(`refused: ${result.reason}`);
+  return result.combo;
+};
+const refusal = (body: unknown) => {
+  const result = spellbookVariant(body);
+  return result.ok ? null : result.reason;
+};
+
 describe('spellbookVariant', () => {
-  it('keeps the cards, results, bracket tag and combo ids', () => {
-    const parsed = spellbookVariant(variant());
-    expect(parsed).toEqual({
+  it('keeps the cards, results, bracket tag, EDHREC deck count and combo ids', () => {
+    const combo = parse(variant());
+    expect(combo).toEqual({
       id: '2645-5640',
       cards: [
         { oracleId: ORACLE_A, name: 'Ertha Jo, Frontier Mentor', mustBeCommander: false },
@@ -51,59 +62,72 @@ describe('spellbookVariant', () => {
       ],
       bracketTag: 'S',
       manaValueNeeded: 3,
-      popularity: 812,
+      edhrecDeckCount: 812,
       comboIds: [34222],
     });
-    expect(JSON.stringify(parsed)).not.toMatch(/salt|prices|description|image/);
+    expect(JSON.stringify(combo)).not.toMatch(/salt|prices|description|image|popularity/);
+  });
+
+  it('orders the cards by oracle id, whatever order Spellbook lists them in', () => {
+    const combo = parse(variant({ uses: [use(ORACLE_B, 'Staff of Domination'), use(ORACLE_A, 'Ertha Jo, Frontier Mentor')] }));
+    expect(combo.cards.map((card) => card.oracleId)).toEqual([ORACLE_A, ORACLE_B]);
   });
 
   it('keeps pieces that must be the commander, and named templates', () => {
-    const parsed = spellbookVariant(
+    const combo = parse(
       variant({
         uses: [use(ORACLE_A, 'Ertha Jo, Frontier Mentor', { mustBeCommander: true })],
         requires: [{ template: { id: 212, name: 'Legendary Elemental Creature', scryfallQuery: 't:legendary' }, quantity: 1 }],
       }),
     );
-    expect(parsed?.cards).toEqual([{ oracleId: ORACLE_A, name: 'Ertha Jo, Frontier Mentor', mustBeCommander: true }]);
-    expect(parsed?.templates).toEqual(['Legendary Elemental Creature']);
+    expect(combo.cards).toEqual([{ oracleId: ORACLE_A, name: 'Ertha Jo, Frontier Mentor', mustBeCommander: true }]);
+    expect(combo.templates).toEqual(['Legendary Elemental Creature']);
   });
 
   it('lists a card once when the combo uses two copies', () => {
-    const parsed = spellbookVariant(variant({ uses: [use(ORACLE_A, 'Relentless Rats', { quantity: 2 }), use(ORACLE_A, 'Relentless Rats')] }));
-    expect(parsed?.cards).toHaveLength(1);
+    expect(parse(variant({ uses: [use(ORACLE_A, 'Relentless Rats', { quantity: 2 }), use(ORACLE_A, 'Relentless Rats')] })).cards).toHaveLength(1);
   });
 
   it('dedupes repeated results and combo ids', () => {
-    const parsed = spellbookVariant(
+    const combo = parse(
       variant({ produces: [feature(24, 'Infinite card draw', 'S'), feature(24, 'Infinite card draw', 'S')], of: [{ id: 9 }, { id: 2 }, { id: 9 }] }),
     );
-    expect(parsed?.features).toHaveLength(1);
-    expect(parsed?.comboIds).toEqual([2, 9]);
+    expect(combo.features).toHaveLength(1);
+    expect(combo.comboIds).toEqual([2, 9]);
   });
 
-  it('reads a missing popularity or mana value as unknown and zero', () => {
-    const parsed = spellbookVariant(variant({ popularity: null, manaValueNeeded: undefined }));
-    expect(parsed?.popularity).toBeNull();
-    expect(parsed?.manaValueNeeded).toBe(0);
+  it('reads a missing EDHREC deck count or mana value as unknown and zero', () => {
+    const combo = parse(variant({ popularity: null, manaValueNeeded: undefined }));
+    expect(combo.edhrecDeckCount).toBeNull();
+    expect(combo.manaValueNeeded).toBe(0);
   });
 
-  it('keeps combos that are banned in Commander, tagged B', () => {
-    expect(spellbookVariant(variant({ bracketTag: 'B', legalities: { commander: false } }))?.bracketTag).toBe('B');
+  it('keeps tags and statuses as published, known or not, for the collator to interpret', () => {
+    expect(parse(variant({ bracketTag: 'B', legalities: { commander: false } })).bracketTag).toBe('B');
+    expect(parse(variant({ bracketTag: 'X' })).bracketTag).toBe('X');
+    expect(parse(variant({ produces: [feature(24, 'Infinite card draw', 'Z')] })).features).toEqual([{ id: 24, name: 'Infinite card draw', status: 'Z' }]);
   });
 
-  it('drops anything that is not a published combo', () => {
-    expect(spellbookVariant(null)).toBeNull();
-    expect(spellbookVariant(variant({ status: 'NR' }))).toBeNull();
-    expect(spellbookVariant(variant({ id: '' }))).toBeNull();
-    expect(spellbookVariant(variant({ uses: [] }))).toBeNull();
-    expect(spellbookVariant(variant({ bracketTag: 'X' }))).toBeNull();
-    expect(spellbookVariant(variant({ bracketTag: 'toString' }))).toBeNull();
+  it('says a combo that is not published is unpublished, not malformed', () => {
+    expect(refusal(variant({ status: 'NR' }))).toBe('not_published');
+    expect(refusal(variant({ status: undefined }))).toBe('not_published');
   });
 
-  it('drops a combo with a malformed piece rather than keep it a card short', () => {
-    expect(spellbookVariant(variant({ uses: [use(ORACLE_A, 'Ertha Jo'), use('not-an-oracle-id', 'Staff')] }))).toBeNull();
-    expect(spellbookVariant(variant({ uses: [use(ORACLE_A, 'Ertha Jo'), { card: null }] }))).toBeNull();
-    expect(spellbookVariant(variant({ requires: [{ template: { id: 1 } }] }))).toBeNull();
-    expect(spellbookVariant(variant({ produces: [feature(24, 'Infinite card draw', 'Z')] }))).toBeNull();
+  it('refuses a published combo missing something structural', () => {
+    expect(refusal(null)).toBe('malformed');
+    expect(refusal([])).toBe('malformed');
+    expect(refusal(variant({ id: '' }))).toBe('malformed');
+    expect(refusal(variant({ uses: [] }))).toBe('malformed');
+    expect(refusal(variant({ bracketTag: '' }))).toBe('malformed');
+    expect(refusal(variant({ bracketTag: null }))).toBe('malformed');
+  });
+
+  it('refuses a combo with a malformed piece rather than keep it a card short', () => {
+    expect(refusal(variant({ uses: [use(ORACLE_A, 'Ertha Jo'), use('not-an-oracle-id', 'Staff')] }))).toBe('malformed');
+    expect(refusal(variant({ uses: [use(ORACLE_A, 'Ertha Jo'), use(ORACLE_B.toUpperCase(), 'Staff')] }))).toBe('malformed');
+    expect(refusal(variant({ uses: [use(ORACLE_A, 'Ertha Jo'), use(ORACLE_B, '')] }))).toBe('malformed');
+    expect(refusal(variant({ uses: [use(ORACLE_A, 'Ertha Jo'), { card: null }] }))).toBe('malformed');
+    expect(refusal(variant({ requires: [{ template: { id: 1 } }] }))).toBe('malformed');
+    expect(refusal(variant({ produces: [{ feature: { id: 24, name: 'Infinite card draw' } }] }))).toBe('malformed');
   });
 });

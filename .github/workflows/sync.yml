@@ -1,7 +1,9 @@
-name: Scryfall sync
+name: Daily syncs
 
-# Daily catalog, printings, tag and combo syncs against the hosted database. Disabled until the repository variable
-# SYNC_ENABLED is "true". Secrets:
+# Daily Scryfall catalog, printings and tag syncs, and the Commander Spellbook combo sync, against the hosted database.
+# Disabled until the repository variable SYNC_ENABLED is "true"; the Spellbook step also needs SPELLBOOK_SYNC_ENABLED
+# set to "true", which waits until the spellbook schema has reached hosted (scheduled runs use develop's code, and a
+# migration only reaches hosted from main). Secrets:
 #   DATABASE_URL       Supabase session pooler connection string (IPv4; the jobs use temp tables, so not the transaction pooler)
 #   WEB_APP_URL        the deployed site, so finished syncs refresh its cached pages
 #   REVALIDATE_SECRET  the web app's REVALIDATE_SECRET
@@ -13,12 +15,12 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: Re-run even when Scryfall's files haven't changed
+        description: Re-run even when the source files haven't changed
         type: boolean
         default: false
 
 concurrency:
-  group: scryfall-sync
+  group: daily-sync
   cancel-in-progress: false
 
 permissions:
@@ -49,7 +51,7 @@ jobs:
           yarn install --immutable
           echo "MTG_DATA_DIR=$RUNNER_TEMP/mtg" >> "$GITHUB_ENV"
 
-      # Each job skips on its own when Scryfall's bulk file is unchanged since its last successful run.
+      # Each job skips on its own when its source file is unchanged since its last successful run.
       - name: Catalog
         run: yarn workspace @mtg/worker cli sync:catalog $FORCE
 
@@ -59,10 +61,11 @@ jobs:
       - name: Tags
         run: yarn workspace @mtg/worker cli sync:tags $FORCE
 
-      # Commander Spellbook's combo export: one request, skipped when the file is unchanged. After Catalog, so combos
-      # with newly printed cards resolve.
-      - name: Combos
-        run: yarn workspace @mtg/worker cli sync:combos $FORCE
+      # Commander Spellbook's combo export: one request, skipped when the file is unchanged. It loads raw and needs
+      # nothing synced first, so it runs even when a Scryfall step failed.
+      - name: Spellbook
+        if: ${{ !cancelled() && vars.SPELLBOOK_SYNC_ENABLED == 'true' }}
+        run: yarn workspace @mtg/worker cli sync:spellbook $FORCE
 
       # Each sync drains the queue itself when it finishes, so this is the sweep that catches anything left: a job
       # that skipped as unchanged, a write from somewhere else, or a drain that failed and left its rows in place.

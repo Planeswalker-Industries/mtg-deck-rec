@@ -471,66 +471,6 @@ export type Database = {
           },
         ]
       }
-      combo_features: {
-        Row: {
-          id: number
-          name: string
-          status: string
-        }
-        Insert: {
-          id: number
-          name: string
-          status: string
-        }
-        Update: {
-          id?: number
-          name?: string
-          status?: string
-        }
-        Relationships: []
-      }
-      combos: {
-        Row: {
-          bracket_tag: string
-          card_ids: number[]
-          color_identity: number
-          commander_card_ids: number[]
-          feature_ids: number[]
-          id: number
-          mana_value_needed: number
-          popularity: number | null
-          spellbook_combo_ids: number[]
-          spellbook_id: string
-          template_names: string[]
-        }
-        Insert: {
-          bracket_tag: string
-          card_ids: number[]
-          color_identity: number
-          commander_card_ids?: number[]
-          feature_ids: number[]
-          id?: never
-          mana_value_needed: number
-          popularity?: number | null
-          spellbook_combo_ids?: number[]
-          spellbook_id: string
-          template_names?: string[]
-        }
-        Update: {
-          bracket_tag?: string
-          card_ids?: number[]
-          color_identity?: number
-          commander_card_ids?: number[]
-          feature_ids?: number[]
-          id?: never
-          mana_value_needed?: number
-          popularity?: number | null
-          spellbook_combo_ids?: number[]
-          spellbook_id?: string
-          template_names?: string[]
-        }
-        Relationships: []
-      }
       commander_card_stats: {
         Row: {
           card_id: number
@@ -1646,13 +1586,6 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
-      }
-      combos_for_cards: {
-        Args: { p_card_ids: number[]; p_max_missing?: number }
-        Returns: {
-          combo_id: number
-          missing_card_ids: number[]
-        }[]
       }
       commit_collection_import: { Args: { p_import_id: number }; Returns: Json }
       crawl_claim: {

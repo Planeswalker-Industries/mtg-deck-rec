@@ -241,26 +241,28 @@ Tell the player whether their lands can cast their spells: coloured sources agai
 
 ### T047: Combo detection in the bracket estimate
 
-**Priority:** MEDIUM | **Area:** Data / Core | **Status:** Data half in PR #127 (reworked into the `spellbook` schema under T053); detection continues as T060
+**Priority:** MEDIUM | **Area:** Data / Core | **Status:** Data half built (PR #127, reworked 2026-10-05 into the raw `spellbook` schema); detection continues as T060
 
 **Blocked by:** T045 (display). **Continues as T060** ([`roadmap/scoring-design.md`](roadmap/scoring-design.md), "Bracket rules"), which takes over the criteria below.
 
-`estimateBracket` (`packages/core/src/formats/commander/bracket.ts`) reads only Game Changer count and mass land denial. WotC's brackets also limit two-card infinite combos (none in 1–2, none early in 3) and chained extra turns, so a deck with a combo and no Game Changers is estimated too low today. WotC removed tutor limits from every bracket in October 2025; the strongest tutors are Game Changers. Commander Spellbook publishes combo data. Load it and flag the combos a deck contains.
+`estimateBracket` (`packages/core/src/formats/commander/bracket.ts`) reads only Game Changer count and mass land denial. WotC's brackets also limit two-card infinite combos (none in 1–2, none early in 3) and chained extra turns, so a deck with a combo and no Game Changers is estimated too low today. WotC removed tutor limits from every bracket in October 2025; the strongest tutors are Game Changers. Commander Spellbook's combos are loaded raw by `sync:spellbook` (CLAUDE.md, "Combos"); what is left is flagging the combos a deck contains.
 
 **Files:**
 - `packages/core/src/formats/commander/bracket.ts`, `commander.test.ts`: `BracketSignals`, `estimateBracket`
 - `packages/core/src/journey/`: `bracketMustCuts` would learn to cut a combo piece
-- `apps/worker/src/jobs/sync-combos.ts`, `supabase/migrations/20261004000200_combos.sql`: the loaded data, `combos_for_cards`
+- `apps/worker/src/jobs/sync-spellbook.ts`, `supabase/migrations/20261005000400_spellbook.sql`: the raw data (`spellbook.combos`, `spellbook.features`)
 
 **Context:**
-- **Source rules first.** Commander Spellbook is public data, so it falls under the legal consent (CLAUDE.md, "Data sources"). Before any request: read its robots.txt, prefer a published bulk export over per-deck API calls, one limiter per host, honest User-Agent, and a 403 or challenge switches it off. Record the findings in CLAUDE.md's source list.
-- Store combos keyed by our `CardId`s (resolved from Scryfall oracle ids), with their result (infinite mana, infinite damage, win) and the card count. Only two-card combos matter for the bracket rules; longer ones may still be worth showing.
+- **Source check done (2026-10-04):** robots.txt allows the site and disallows the API host; the daily export is the only thing fetched. Recorded in CLAUDE.md's source list.
+- Combos are stored raw in Spellbook's terms (oracle ids, its feature ids, its bracket tag); the collator resolves them to our `CardId`s (T054) and the precompute worker indexes them by card (`spellbook_combo_pieces`, T055). Only two-card combos matter for the bracket rules; longer ones may still be worth showing.
+- Showing combos means crediting and linking Commander Spellbook, and never showing `edhrec_deck_count` (EDHREC's numbers).
 - "Early game" in bracket 3: answered 2026-10-05. Spellbook's R tag alone marks a combo as too early for bracket 3; no mana value rule.
 - Extra turns and mass land denial: answered 2026-10-05. Tagger's `extra-turn` and `mass-land-denial` tags count, planeswalkers excluded (their effect is an ultimate), with the tag UUIDs in `app_config.brackets`. Brackets 2–3 allow at most 2 extra-turn cards, never looped.
 
 **Acceptance criteria:**
-- [ ] Source check recorded (robots.txt, bulk export, licence/terms)
-- [ ] Sync job and tables, with SQL checks under `supabase/tests/`
+- [x] Source check recorded (robots.txt, bulk export; no published terms)
+- [x] Sync job and raw tables, with SQL checks under `supabase/tests/` (`spellbook.sql`)
+- [ ] `sync:spellbook` on hosted: once migration `20261005000400` is on hosted, set the repo variable `SPELLBOOK_SYNC_ENABLED` to `true` (or run `cli:hosted sync:spellbook` once)
 - [ ] `BracketSignals` gains combos and extra turns; tests
 - [ ] `DeckAnalysis` names the combos found (contract version bump) and the display follows T045
 - [ ] `bracketMustCuts` handles combos when the chosen bracket forbids them
@@ -449,11 +451,11 @@ One pipeline in layers, then one scoring engine on top. The pipeline (raw source
 
 ### T053: Data layers: schemas and table moves
 
-**Priority:** HIGH | **Area:** Database | **Status:** Built 2026-10-05 (migration `20261005000200_data_layers.sql`); waiting for release, and for PR #127's rework
+**Priority:** HIGH | **Area:** Database | **Status:** Built 2026-10-05: migration `20261005000200_data_layers.sql` (PR #129, on `develop`) and PR #127's `spellbook` tables (`20261005000400_spellbook.sql`); waiting for release
 
-Each source's data moves into its own schema, as the source published it (`archidekt.decks` back to oracle ids, empty `edhrec.*` raw tables). The crawler's machinery moves to `crawl`, and `corpus` becomes the collated layer: today's EDHREC tables move in as `corpus.external_*`, and a new collated `corpus.decks` starts empty. PR #127 is reworked to create `spellbook.combos` and `spellbook.features` (with `edhrec_deck_count` in place of `popularity`) instead of `public.combos`, and its command becomes `sync:spellbook` (from `sync:combos`). The step list is "The reorg migration" in the plan.
+Each source's data moves into its own schema, as the source published it (`archidekt.decks` back to oracle ids, empty `edhrec.*` raw tables). The crawler's machinery moves to `crawl`, and `corpus` becomes the collated layer: today's EDHREC tables move in as `corpus.edhrec_commanders` and `corpus.edhrec_commander_cards`, and a new collated `corpus.decks` starts empty. PR #127 is reworked to create `spellbook.combos` and `spellbook.features` (with `edhrec_deck_count` in place of `popularity`) instead of `public.combos`, and its command becomes `sync:spellbook` (from `sync:combos`). The step list is "The reorg migration" in the plan.
 
-**Files:** `supabase/migrations/20261005000200_data_layers.sql`; `supabase/tests/crawl-commanders.sql`, `admin-crawled-decks.sql`, `edhrec-stats.sql` (was `external-stats.sql`), `edhrec-prior.sql`, `data-layers.sql`; `CLAUDE.md` (data pipeline); `roadmap/deck-crawl.md`
+**Files:** `supabase/migrations/20261005000200_data_layers.sql`, `20261005000400_spellbook.sql`; `supabase/tests/crawl-commanders.sql`, `admin-crawled-decks.sql`, `edhrec-stats.sql` (was `external-stats.sql`), `edhrec-prior.sql`, `data-layers.sql`, `spellbook.sql`; `CLAUDE.md` (data pipeline); `roadmap/deck-crawl.md`
 
 **Acceptance criteria:**
 - [x] Hosted migration history repaired before the migration ships (2026-10-05)
@@ -463,7 +465,7 @@ Each source's data moves into its own schema, as the source published it (`archi
 - [x] The EDHREC prior (renamed `edhrec_card_priors`) and the `/admin/crawls` functions read the moved tables; every SQL check passes
 - [x] The deck spike's code is retired: `spike:archidekt:*`, `spike:corpus:stability`, `spike:edhrec:prior`, `profile:tags`, `serve:commander-requests`, `import:edhrec` and the TypeScript Archidekt client. `aggregate:corpus` reads the collated `corpus.decks` and never writes from an empty one
 - [x] Tables, columns and functions that hold one source's data say which source (`corpus.edhrec_commanders`, `corpus.edhrec_commander_cards`, `crawl.queue.edhrec_deck_count`, `edhrec_card_priors`); `data-layers.sql` checks the rule
-- [ ] PR #127's tables live in `spellbook`
+- [x] PR #127's tables live in `spellbook`, raw: oracle ids and Spellbook's own values, no catalog lookups (2026-10-05)
 
 ---
 
@@ -555,7 +557,7 @@ The priority mode. Owned only plus a separate "worth buying" list becomes the de
 
 ### T060: Bracket rules and combos
 
-**Priority:** HIGH | **Area:** Core / Data / Contract | **Status:** Not started | **Blocked by:** T053 (PR #127), T055; display per T045
+**Priority:** HIGH | **Area:** Core / Data / Contract | **Status:** Not started | **Blocked by:** T054 (combos collated), T055; display per T045
 
 `estimateBracket` gains two-card combos (Spellbook's tag as a minimum bracket), mass land denial and chained extra turns, with tag UUIDs and limits in a new `app_config.brackets`. Game Changers and mass land denial are hard limits; combos and extra turns are flagged with a cut offered (`OVER_BRACKET_COMBO`, `OVER_BRACKET_EXTRA_TURNS`). No tutor limit (WotC, October 2025). Add results gain the "complete a combo" group, credited and linked to Spellbook. Continues T047.
 

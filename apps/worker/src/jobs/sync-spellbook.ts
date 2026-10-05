@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { JsonRootStream, spellbookVariant, type SpellbookFeature } from '@mtg/core/parse';
-import { connect, type Sql } from '../lib/db';
+import { connect } from '../lib/db';
 import { politeFetch } from '../lib/http';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
@@ -16,42 +16,47 @@ const HEARTBEAT_EVERY = 10_000; // combos read between heartbeats (the whole fil
 /** A reload must keep at least this share of the previous run's combos, so a truncated export can't wipe them. */
 const MIN_COMBO_SHARE = 0.9;
 /**
- * More combos than this naming a card our catalog lacks means the two disagree about something big. Some always miss:
- * Spellbook adds previewed cards as soon as they are announced, and the catalog sync runs once a day.
+ * More published combos than this share missing an id, a card's oracle id or name means the export changed shape.
+ * Values Spellbook adds (a new bracket tag or result status) are not malformed: raw keeps them as published.
  */
-const MAX_UNRESOLVED_COMBO_RATE = 0.03;
-/** Unresolved card names logged per run, as a lead for whoever reads the log. */
-const UNRESOLVED_EXAMPLES = 10;
+const MAX_MALFORMED_SHARE = 0.01;
+/** Malformed variant ids logged per run, as a lead for whoever reads the log. */
+const MALFORMED_EXAMPLES = 10;
 
+/** One spellbook.combos row. Oracle ids stay text until the merge casts them, since staging takes them as text. */
 interface ComboRow {
-  spellbook_id: string;
-  card_ids: number[];
-  commander_card_ids: number[];
+  variant_id: string;
+  card_oracle_ids: string[];
+  card_names: string[];
+  commander_oracle_ids: string[];
   template_names: string[];
   feature_ids: number[];
-  color_identity: number;
   bracket_tag: string;
   mana_value_needed: number;
-  popularity: number | null;
-  spellbook_combo_ids: number[];
+  edhrec_deck_count: number | null;
+  combo_ids: number[];
 }
 
-const ascending = (ids: Iterable<number>) => [...ids].sort((a, b) => a - b);
-
-/** Scryfall oracle id → our card id and colour identity, for every live card. */
-async function loadCards(sql: Sql): Promise<Map<string, { id: number; colorIdentity: number }>> {
-  const rows = await sql<{ oracle_id: string; id: number; color_identity: number }[]>`
-    select oracle_id::text, id, color_identity from public.cards where deleted_at is null
-  `;
-  return new Map(rows.map((r) => [r.oracle_id, { id: r.id, colorIdentity: r.color_identity }]));
-}
+const COMBO_COLUMNS = [
+  'variant_id',
+  'card_oracle_ids',
+  'card_names',
+  'commander_oracle_ids',
+  'template_names',
+  'feature_ids',
+  'bracket_tag',
+  'mana_value_needed',
+  'edhrec_deck_count',
+  'combo_ids',
+] as const satisfies readonly (keyof ComboRow)[];
 
 /**
- * Commander Spellbook's combo export → combo_features, combos. One request a run, skipped when the file is unchanged
- * since the last successful run. Same failure model as the other syncs: stage, sanity-check, merge only the rows that
- * differ in one transaction. Run after sync:catalog, so combos with newly printed cards resolve.
+ * Commander Spellbook's combo export → spellbook.features, spellbook.combos, as published: oracle ids, Spellbook's
+ * feature ids and bracket tags. Resolving them to our cards is the collator's job (T054), so this needs nothing else
+ * loaded first. One request a run, skipped when the file is unchanged since the last successful run. Same failure model
+ * as the other syncs: stage, sanity-check, merge only the rows that differ in one transaction.
  */
-export async function syncCombos({ force = false }: { force?: boolean } = {}): Promise<'succeeded' | 'skipped' | 'failed_sanity'> {
+export async function syncSpellbook({ force = false }: { force?: boolean } = {}): Promise<'succeeded' | 'skipped' | 'failed_sanity'> {
   const sql = connect();
   let runId: number | null = null;
   let combosRead = 0;
@@ -70,12 +75,11 @@ export async function syncCombos({ force = false }: { force?: boolean } = {}): P
       return 'skipped';
     }
     runId = start.runId;
-    const cards = await loadCards(sql);
 
     const combos: ComboRow[] = [];
     const features = new Map<number, SpellbookFeature>();
-    const counts = { notPublished: 0, unresolvedCombos: 0 };
-    const unresolvedCards = new Map<string, string>(); // oracle id → name
+    const counts = { notPublished: 0, malformed: 0 };
+    const malformedExamples: string[] = [];
     let exportVersion = '';
 
     const stream = new JsonRootStream(['variants']);
@@ -89,50 +93,44 @@ export async function syncCombos({ force = false }: { force?: boolean } = {}): P
         combosRead++;
         if (combosRead % HEARTBEAT_EVERY === 0) await heartbeat(sql, runId, combosRead);
 
-        const combo = spellbookVariant(event.value);
-        if (!combo) {
-          counts.notPublished++;
+        const parsed = spellbookVariant(event.value);
+        if (!parsed.ok) {
+          if (parsed.reason === 'not_published') counts.notPublished++;
+          else {
+            counts.malformed++;
+            const id = (event.value as { id?: unknown } | null)?.id;
+            if (malformedExamples.length < MALFORMED_EXAMPLES) malformedExamples.push(typeof id === 'string' ? id : '(no id)');
+          }
           continue;
         }
-        const resolved = combo.cards.map((card) => cards.get(card.oracleId));
-        if (resolved.some((card) => card === undefined)) {
-          counts.unresolvedCombos++;
-          combo.cards.forEach((card, i) => resolved[i] === undefined && unresolvedCards.set(card.oracleId, card.name));
-          continue;
-        }
-        const pieces = resolved as { id: number; colorIdentity: number }[];
+        const { combo } = parsed;
         for (const feature of combo.features) features.set(feature.id, feature);
         combos.push({
-          spellbook_id: combo.id,
-          card_ids: ascending(new Set(pieces.map((card) => card.id))),
-          commander_card_ids: ascending(new Set(pieces.filter((_, i) => combo.cards[i]?.mustBeCommander).map((card) => card.id))),
+          variant_id: combo.id,
+          card_oracle_ids: combo.cards.map((card) => card.oracleId),
+          card_names: combo.cards.map((card) => card.name),
+          commander_oracle_ids: combo.cards.filter((card) => card.mustBeCommander).map((card) => card.oracleId),
           template_names: combo.templates,
-          feature_ids: ascending(combo.features.map((feature) => feature.id)),
-          color_identity: pieces.reduce((mask, card) => mask | card.colorIdentity, 0),
+          feature_ids: combo.features.map((feature) => feature.id).sort((a, b) => a - b),
           bracket_tag: combo.bracketTag,
           mana_value_needed: combo.manaValueNeeded,
-          popularity: combo.popularity,
-          spellbook_combo_ids: combo.comboIds,
+          edhrec_deck_count: combo.edhrecDeckCount,
+          combo_ids: combo.comboIds,
         });
       }
     }
     stream.end();
 
-    const unresolvedRate = combosRead > 0 ? counts.unresolvedCombos / combosRead : 1;
+    const published = combos.length + counts.malformed;
+    const malformedShare = published > 0 ? counts.malformed / published : 1;
     const previousCombos = start.previousMetrics?.combos;
-    const metrics: SyncMetrics = {
-      variants: combosRead,
-      combos: combos.length,
-      features: features.size,
-      unresolvedCards: unresolvedCards.size,
-      ...counts,
-    };
+    const metrics: SyncMetrics = { variants: combosRead, combos: combos.length, features: features.size, ...counts };
 
     if (
       !force &&
-      (combos.length === 0 || unresolvedRate > MAX_UNRESOLVED_COMBO_RATE || (previousCombos && combos.length < previousCombos * MIN_COMBO_SHARE))
+      (combos.length === 0 || malformedShare > MAX_MALFORMED_SHARE || (previousCombos && combos.length < previousCombos * MIN_COMBO_SHARE))
     ) {
-      const error = `sanity gate: ${combos.length} combos (previous ${previousCombos ?? 'none'}), unresolved ${(unresolvedRate * 100).toFixed(2)}%`;
+      const error = `sanity gate: ${combos.length} combos (previous ${previousCombos ?? 'none'}), malformed ${(malformedShare * 100).toFixed(2)}%`;
       await finishRun(sql, runId, 'failed_sanity', { rowsRead: combosRead, metrics, error });
       console.error(`spellbook_combos: ${error}. Live tables unchanged; re-run with --force if this is expected.`);
       process.exitCode = 1;
@@ -145,16 +143,16 @@ export async function syncCombos({ force = false }: { force?: boolean } = {}): P
       await db`create temp table stg_features (id integer primary key, name text not null, status text not null)`;
       await db`
         create temp table stg_combos (
-          spellbook_id text primary key,
-          card_ids integer[] not null,
-          commander_card_ids integer[] not null,
+          variant_id text primary key,
+          card_oracle_ids text[] not null,
+          card_names text[] not null,
+          commander_oracle_ids text[] not null,
           template_names text[] not null,
           feature_ids integer[] not null,
-          color_identity smallint not null,
           bracket_tag text not null,
           mana_value_needed smallint not null,
-          popularity integer,
-          spellbook_combo_ids integer[] not null
+          edhrec_deck_count integer,
+          combo_ids integer[] not null
         )
       `;
       const featureRows = [...features.values()];
@@ -162,21 +160,7 @@ export async function syncCombos({ force = false }: { force?: boolean } = {}): P
         await db`insert into stg_features ${db(featureRows.slice(i, i + BATCH_SIZE), 'id', 'name', 'status')}`;
       }
       for (let i = 0; i < combos.length; i += BATCH_SIZE) {
-        await db`
-          insert into stg_combos ${db(
-            combos.slice(i, i + BATCH_SIZE),
-            'spellbook_id',
-            'card_ids',
-            'commander_card_ids',
-            'template_names',
-            'feature_ids',
-            'color_identity',
-            'bracket_tag',
-            'mana_value_needed',
-            'popularity',
-            'spellbook_combo_ids',
-          )}
-        `;
+        await db`insert into stg_combos ${db(combos.slice(i, i + BATCH_SIZE), ...COMBO_COLUMNS)}`;
       }
       await heartbeat(sql, runId, combosRead);
 
@@ -184,7 +168,7 @@ export async function syncCombos({ force = false }: { force?: boolean } = {}): P
       try {
         const [featuresWritten] = await db<{ n: number }[]>`
           with written as (
-            insert into public.combo_features as f (id, name, status)
+            insert into spellbook.features as f (id, name, status)
             select id, name, status from stg_features
             on conflict (id) do update set name = excluded.name, status = excluded.status
             where (f.name, f.status) is distinct from (excluded.name, excluded.status)
@@ -194,40 +178,40 @@ export async function syncCombos({ force = false }: { force?: boolean } = {}): P
         `;
         const [featuresRemoved] = await db<{ n: number }[]>`
           with removed as (
-            delete from public.combo_features f where not exists (select 1 from stg_features s where s.id = f.id) returning 1
+            delete from spellbook.features f where not exists (select 1 from stg_features s where s.id = f.id) returning 1
           )
           select count(*)::int as n from removed
         `;
         const [combosRemoved] = await db<{ n: number }[]>`
           with removed as (
-            delete from public.combos c where not exists (select 1 from stg_combos s where s.spellbook_id = c.spellbook_id) returning 1
+            delete from spellbook.combos c where not exists (select 1 from stg_combos s where s.variant_id = c.variant_id) returning 1
           )
           select count(*)::int as n from removed
         `;
         const [combosWritten] = await db<{ n: number }[]>`
           with written as (
-            insert into public.combos as c (
-              spellbook_id, card_ids, commander_card_ids, template_names, feature_ids, color_identity, bracket_tag,
-              mana_value_needed, popularity, spellbook_combo_ids
+            insert into spellbook.combos as c (
+              variant_id, card_oracle_ids, card_names, commander_oracle_ids, template_names, feature_ids, bracket_tag,
+              mana_value_needed, edhrec_deck_count, combo_ids
             )
-            select spellbook_id, card_ids, commander_card_ids, template_names, feature_ids, color_identity, bracket_tag,
-              mana_value_needed, popularity, spellbook_combo_ids
+            select variant_id, card_oracle_ids::uuid[], card_names, commander_oracle_ids::uuid[], template_names, feature_ids,
+              bracket_tag, mana_value_needed, edhrec_deck_count, combo_ids
             from stg_combos
-            on conflict (spellbook_id) do update set
-              card_ids = excluded.card_ids,
-              commander_card_ids = excluded.commander_card_ids,
+            on conflict (variant_id) do update set
+              card_oracle_ids = excluded.card_oracle_ids,
+              card_names = excluded.card_names,
+              commander_oracle_ids = excluded.commander_oracle_ids,
               template_names = excluded.template_names,
               feature_ids = excluded.feature_ids,
-              color_identity = excluded.color_identity,
               bracket_tag = excluded.bracket_tag,
               mana_value_needed = excluded.mana_value_needed,
-              popularity = excluded.popularity,
-              spellbook_combo_ids = excluded.spellbook_combo_ids
-            where (c.card_ids, c.commander_card_ids, c.template_names, c.feature_ids, c.color_identity, c.bracket_tag,
-                   c.mana_value_needed, c.popularity, c.spellbook_combo_ids)
-              is distinct from (excluded.card_ids, excluded.commander_card_ids, excluded.template_names, excluded.feature_ids,
-                   excluded.color_identity, excluded.bracket_tag, excluded.mana_value_needed, excluded.popularity,
-                   excluded.spellbook_combo_ids)
+              edhrec_deck_count = excluded.edhrec_deck_count,
+              combo_ids = excluded.combo_ids
+            where (c.card_oracle_ids, c.card_names, c.commander_oracle_ids, c.template_names, c.feature_ids, c.bracket_tag,
+                   c.mana_value_needed, c.edhrec_deck_count, c.combo_ids)
+              is distinct from (excluded.card_oracle_ids, excluded.card_names, excluded.commander_oracle_ids,
+                   excluded.template_names, excluded.feature_ids, excluded.bracket_tag, excluded.mana_value_needed,
+                   excluded.edhrec_deck_count, excluded.combo_ids)
             returning 1
           )
           select count(*)::int as n from written
@@ -250,14 +234,11 @@ export async function syncCombos({ force = false }: { force?: boolean } = {}): P
     const rowsChanged = written.features + written.featuresRemoved + written.combos + written.combosRemoved;
     await finishRun(sql, runId, 'succeeded', { rowsRead: combosRead, rowsChanged, metrics });
     console.log(
-      `spellbook_combos: export ${exportVersion || 'of unknown version'}, ${combosRead} combos → ${combos.length} stored ` +
+      `spellbook_combos: export ${exportVersion || 'of unknown version'}, ${combosRead} variants → ${combos.length} combos ` +
         `(${written.combos} written, ${written.combosRemoved} removed; ${written.features} results written, ${written.featuresRemoved} removed)`,
     );
-    if (counts.notPublished > 0) console.log(`  skipped ${counts.notPublished} entries that are not published combos`);
-    if (counts.unresolvedCombos > 0) {
-      const examples = [...unresolvedCards.values()].slice(0, UNRESOLVED_EXAMPLES).join('; ');
-      console.log(`  skipped ${counts.unresolvedCombos} combos naming ${unresolvedCards.size} cards the catalog lacks, e.g.: ${examples}`);
-    }
+    if (counts.notPublished > 0) console.log(`  skipped ${counts.notPublished} variants that are not published combos`);
+    if (counts.malformed > 0) console.log(`  skipped ${counts.malformed} malformed combos, e.g.: ${malformedExamples.join(', ')}`);
     return 'succeeded';
   } catch (err) {
     if (runId !== null) {
