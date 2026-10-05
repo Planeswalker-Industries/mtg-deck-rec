@@ -3,7 +3,7 @@
 Status: **final plan, shelved** (2026-09-21) until a backend owner picks it up. Tracked as T035 in
 [`../tasks.md`](../tasks.md).
 
-Replaces the ad-hoc corpus flow (JSONL on X:, rebuilt from the home PC) with one pipeline in Postgres, and adds
+Replaces the ad-hoc corpus flow (a deck file, rebuilt by hand) with one pipeline in Postgres, and adds
 card-pair statistics and a deck affinity score.
 
 Principle: **store only relationships real decks produce, precompute them on ingestion, and rank a few hundred
@@ -24,12 +24,12 @@ candidates per request from indexed lookups.** Never the card × card × command
 
 | Concern | Repo today | Plan |
 |---|---|---|
-| Deck storage | Archidekt decks in `X:\mtg_proj\archidekt\spike\decks.jsonl` (15,346 decks) | `corpus.decks` in Postgres, with card lists as a sorted `int[]` |
+| Deck storage | Archidekt decks in a slim-deck file (15,346 decks); `corpus.decks` since 2026-10-05 (slice 2) | `corpus.decks` in Postgres, with card lists as a sorted `int[]` |
 | Deck sources | Archidekt only; `aggregateCorpus({ source: 'archidekt' })` | `DeckSource` adapters: Archidekt crawl and complete user decks, with Moxfield once its API access is confirmed. Nothing downstream sees the source |
 | External statistics | None (CLAUDE.md allows EDHREC since 2026-09-21; nothing reads it yet) | `StatsSource` adapter: EDHREC commander pages → `external_commander_card_stats`, used as a prior for thin commanders and as a benchmark. Never mixed into deck counts |
 | Which decks count | `resolveDeck` for Archidekt; `save_deck` flags user decks on per-card legality only, so a 70-card deck is flagged | One rule for every source: `resolveDeck` (100 cards, identity, legal pair, ≤ 3 unresolved) |
-| Crawl coverage | Top 50 commanders, run by hand (`spike:archidekt:crawl`) | Every commander with ≥ 50 listed decks (≈ 2,800), from a queue on an always-on worker (T010) |
-| Where jobs run | Home PC | VPS worker container, next to `search-api` |
+| Crawl coverage | Top 50 commanders, run by hand (a deck spike, retired 2026-10-05) | Every commander with ≥ 50 listed decks (≈ 2,800), from a queue on an always-on worker (T010) |
+| Where jobs run | VPS worker container since 2026-10-05 (`cli serve`) | VPS worker container, next to `search-api` |
 | Commander card stats | `commander_card_stats`, `card_global_stats`, `commander_stats` — full rebuild with diff writes | Same tables and formulas, recomputed **per dirty commander key** |
 | Card pairs | None (T020 shelved them as too heavy) | `commander_card_pairs` plus a `card_pairs` global backoff |
 | Candidate pool | `rec_add_candidates` top 400 by corpus score; `rec_swap_candidates` 220 by tags | Add the deck's graph neighbours to both pools |
@@ -168,13 +168,14 @@ public.decks ── trigger ────────┘
                                                        → drain search_index_queue → revalidate corpus, recs
 ```
 
-- **Crawl** (replaces `spike:archidekt:*` for production). Built 2026-10-01 in the Go search API rather than the
+- **Crawl** (replaced the deck spike, since retired). Built 2026-10-01 in the Go search API rather than the
   worker, with `corpus.crawl_commanders` in place of `crawl_queue`; [`deck-crawl.md`](deck-crawl.md) is the account.
   - The queue is seeded from EDHREC's commander list (`external_commanders`), most played first.
   - Each commander's decks are listed most viewed first, never `-updatedAt`: Archidekt bumps `updatedAt` faster than
     a polite crawl can page, so an update-ordered walk never gets past decks edited during the run.
   - A first visit reads one page; a revisit walks until it finds `newDecksPerRevisit` new or changed decks.
-  - `serve:commander-requests` becomes "bump this commander to the front of the queue" (still open).
+  - A requested commander goes to the front of the queue (2026-10-05), and the VPS worker serves deck lookups under the
+    same claim.
 - **Discovery and fetching are separate jobs.** Discovery reads list pages and upserts `(source, source_deck_id,
   listed_updated_at)`. Fetching pulls only decks that are new or whose `listed_updated_at` moved. A cache that
   never refetches would keep serving decks their owners have since edited.
@@ -223,7 +224,7 @@ EDHREC publishes aggregates, not decklists, and its data comes from Moxfield and
 **statistics source, never a deck source**. Adding it to deck counts would count Archidekt decks twice and still
 yield no pairs.
 
-Loaded locally on 2026-09-28 (`import:edhrec`, migration `20260928000200_external_commander_stats.sql`). Commanders
+Loaded locally on 2026-09-28 (migration `20260928000200_external_commander_stats.sql`; refreshed weekly by `sync:edhrec` since 2026-10-05). Commanders
 are keyed by their own cards rather than `commander_keys`, because EDHREC covers ~6,800 commanders and `commander_keys`
 rows are commander pages:
 
@@ -329,7 +330,7 @@ evidence        = the three deck cards contributing most
   - the same, bucketed by commander size (≥ 300 decks, 50–299, < 50);
   - a "Sol Ring rate": how many hits are generic staples, to catch a model that only learned popularity.
 - Compare today's scoring, `corpus` plus `deck`, and the pruning settings (lift 1.2 against 1.5).
-- `yarn workspace @mtg/worker cli eval:holdout`. The report goes to `X:\mtg_proj\reports`. The regression fixtures
+- `yarn workspace @mtg/worker cli eval:holdout`. The report goes to `$MTG_DATA_DIR/reports` and the run's log. The regression fixtures
   and the blind eval (T014) stay the human checks.
 
 ## Slices

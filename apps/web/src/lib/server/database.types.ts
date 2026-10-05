@@ -1138,6 +1138,24 @@ export type Database = {
           },
         ]
       }
+      regression_fixtures: {
+        Row: {
+          fixture: Json
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          fixture: Json
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          fixture?: Json
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       search_index_queue: {
         Row: {
           collection: string

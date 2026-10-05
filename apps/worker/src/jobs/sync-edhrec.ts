@@ -1,16 +1,25 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
-import path from 'node:path';
 import { edhrecCommanderPage, normalizeName } from '@mtg/core/parse';
-import { DATA_DIR } from '../lib/config';
 import { connect, type Sql } from '../lib/db';
+import { politeFetch, RateLimiter } from '../lib/http';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
-/** Where X:\mtg_proj\tools\edhrec-crawl.mjs saves one JSON file per commander page. */
-export const DEFAULT_EDHREC_DIR = path.join(DATA_DIR, 'edhrec', 'commanders');
+/** EDHREC's list of every commander page (robots.txt names it). */
+const SITEMAP_URL = 'https://edhrec.com/sitemaps/commanders.xml';
+/** A commander page as JSON: a static S3 bucket behind CloudFront. */
+const pageUrl = (slug: string) => `https://json.edhrec.com/pages/commanders/${slug}.json`;
+/** One commander page in the sitemap; colour pages (`/commanders/abzan`) match too and parse as null. */
+const COMMANDER_LOC = /<loc>https:\/\/edhrec\.com\/commanders\/([a-z0-9-]+)<\/loc>/g;
 
 const SOURCE = 'edhrec';
 const BATCH_SIZE = 5000; // rows per staging insert; 5 columns stays well under Postgres's 65,535 parameters
-const HEARTBEAT_EVERY = 500; // pages read between heartbeats
+const HEARTBEAT_EVERY = 100; // pages between heartbeats: 150 s at the default pace, well inside the 15-minute stale window
+/** The pace when app_config.worker does not say: EDHREC's pages are static, but one request a second-and-a-half is polite. */
+const DEFAULT_REQUEST_INTERVAL_MS = 1500;
+const FORBIDDEN = 403;
+/** A missing key on the bucket is S3's own 403; any other 403 is a block. */
+const S3_SERVER = 'AmazonS3';
+/** This many missing pages in a row means the page addresses changed, not that a few commanders were dropped. */
+const MAX_MISSING_IN_A_ROW = 20;
 const HEARTBEAT_EVERY_BATCHES = 20; // staging inserts between heartbeats (100,000 rows)
 /** A reload must keep at least this share of the previous run's commanders, so a half-copied folder can't wipe them. */
 const MIN_COMMANDER_SHARE = 0.8;
@@ -77,42 +86,94 @@ function resolveCommanders(names: string[], printingId: string | null, resolvers
   return fromPrinting === undefined ? null : [fromPrinting];
 }
 
+interface WorkerSettings {
+  edhrecRequestIntervalMs?: number;
+  /** Set when a block switched EDHREC off; only a person clears it. */
+  edhrecDisabledReason?: string;
+}
+
+async function loadSettings(sql: Sql): Promise<WorkerSettings> {
+  const [row] = await sql<{ value: WorkerSettings }[]>`select value from public.app_config where key = 'worker'`;
+  return row?.value ?? {};
+}
+
+/** A block switches EDHREC off and says so in the audit log, the same as a crawl source; a person turns it back on. */
+async function disableSource(sql: Sql, reason: string): Promise<void> {
+  await sql`
+    update public.app_config set value = value || jsonb_build_object('edhrecDisabledReason', ${reason}::text), updated_at = now()
+    where key = 'worker'
+  `;
+  await sql`insert into public.audit_log (action, payload) values ('edhrec.disabled', ${sql.json({ reason })})`;
+}
+
+/** The commander page slugs the sitemap lists, in its order, each once. */
+export function sitemapSlugs(xml: string): string[] {
+  return [...new Set([...xml.matchAll(COMMANDER_LOC)].map((m) => m[1] as string))];
+}
+
 /**
- * EDHREC commander pages on disk → external_commanders, external_commander_card_stats. Reads the files the crawl saved
- * rather than fetching, so a reload makes no requests. Same failure model as the other syncs: stage, sanity-check,
- * merge only the rows that differ in one transaction.
+ * EDHREC's commander pages → external_commanders, external_commander_card_stats. Lists every commander page from the
+ * sitemap, fetches each as JSON one at a time at the configured pace (about three and a half hours for the whole
+ * list), then merges them the way the other syncs do: stage, sanity-check, write only the rows that differ in one
+ * transaction. Runs on the VPS worker's schedule.
+ *
+ * A page that is gone is S3's own 403 and is counted, not raised. Any other 403, or a page that is not JSON, is a block:
+ * the run stops, EDHREC is switched off (`app_config.worker.edhrecDisabledReason`) and the audit log says why.
  */
-export async function importEdhrec({ dir = DEFAULT_EDHREC_DIR, force = false }: { dir?: string | undefined; force?: boolean } = {}): Promise<
+export async function syncEdhrec({ force = false, limit }: { force?: boolean; limit?: number | undefined } = {}): Promise<
   'succeeded' | 'skipped' | 'failed_sanity'
 > {
-  const files = (await readdir(dir)).filter((f) => f.endsWith('.json')).sort();
-  if (files.length === 0) throw new Error(`No .json pages in ${dir}. Run X:\\mtg_proj\\tools\\edhrec-crawl.mjs first.`);
-  const mtimes = await Promise.all(files.map(async (f) => (await stat(path.join(dir, f))).mtime));
-  const newest = new Date(Math.max(...mtimes.map((m) => m.getTime())));
-
   const sql = connect();
   let runId: number | null = null;
   let pagesRead = 0;
 
   try {
-    const start = await startRun(sql, 'edhrec_stats', { uri: `file://${dir}`, updatedAt: newest.toISOString() }, force);
-    if (start.kind === 'skipped') {
-      console.log(`edhrec_stats: no page in ${dir} changed since the last successful run. Use --force to re-run.`);
+    const settings = await loadSettings(sql);
+    if (settings.edhrecDisabledReason && !force) {
+      console.log(`edhrec_stats: EDHREC is switched off (${settings.edhrecDisabledReason}). Clear app_config.worker.edhrecDisabledReason to turn it back on.`);
       return 'skipped';
     }
+    const limiter = new RateLimiter(settings.edhrecRequestIntervalMs ?? DEFAULT_REQUEST_INTERVAL_MS);
+
+    const start = await startRun(sql, 'edhrec_stats', { uri: SITEMAP_URL, updatedAt: new Date().toISOString() }, force);
+    if (start.kind === 'skipped') return 'skipped';
     runId = start.runId;
     const resolvers = await loadResolvers(sql);
 
+    const sitemap = await politeFetch(SITEMAP_URL, { limiter, accept: 'application/xml,text/xml;q=0.9' });
+    const slugs = sitemapSlugs(await sitemap.text()).slice(0, limit);
+    if (slugs.length === 0) throw new Error(`${SITEMAP_URL} listed no commander pages`);
+    let missingInARow = 0;
+
     const commanders = new Map<string, CommanderRow>(); // commander pair key → the page with the most decks
     const cardsBySlug = new Map<string, CardRow[]>();
-    const counts = { notCommanderPage: 0, noDecks: 0, unresolvedCommander: 0, duplicatePair: 0, cardViews: 0, unresolvedCards: 0 };
+    const counts = { missing: 0, notCommanderPage: 0, noDecks: 0, unresolvedCommander: 0, duplicatePair: 0, cardViews: 0, unresolvedCards: 0 };
     const unresolvedExamples: string[] = [];
 
-    for (const [i, file] of files.entries()) {
+    for (const slug of slugs) {
       pagesRead++;
       if (pagesRead % HEARTBEAT_EVERY === 0) await heartbeat(sql, runId, pagesRead);
-      const slug = file.slice(0, -'.json'.length);
-      const page = edhrecCommanderPage(JSON.parse(await readFile(path.join(dir, file), 'utf8')));
+      const res = await politeFetch(pageUrl(slug), { limiter, accept: 'application/json', passStatuses: new Set([FORBIDDEN]) });
+      if (res.status === FORBIDDEN) {
+        const server = res.headers.get('server');
+        await res.body?.cancel();
+        if (server !== S3_SERVER) {
+          const reason = `EDHREC answered ${FORBIDDEN} from ${server ?? 'an unknown server'} for ${slug}`;
+          await disableSource(sql, reason);
+          throw new Error(`${reason}: switched EDHREC off; tell the owner rather than working around it.`);
+        }
+        counts.missing++;
+        if (++missingInARow >= MAX_MISSING_IN_A_ROW) throw new Error(`${MAX_MISSING_IN_A_ROW} commander pages in a row were missing: EDHREC's page addresses changed.`);
+        continue;
+      }
+      missingInARow = 0;
+      if (!(res.headers.get('content-type') ?? '').includes('json')) {
+        const reason = `EDHREC answered ${res.headers.get('content-type') ?? 'no content type'} instead of JSON for ${slug}`;
+        await res.body?.cancel();
+        await disableSource(sql, reason);
+        throw new Error(`${reason}: switched EDHREC off; tell the owner rather than working around it.`);
+      }
+      const page = edhrecCommanderPage(await res.json());
       if (!page) {
         counts.notCommanderPage++;
         continue;
@@ -140,7 +201,7 @@ export async function importEdhrec({ dir = DEFAULT_EDHREC_DIR, force = false }: 
         commander_1: ids[0] as number,
         commander_2: ids[1] ?? null,
         deck_count: page.deckCount,
-        fetched_at: mtimes[i] as Date,
+        fetched_at: new Date(),
       });
 
       const byCard = new Map<number, CardRow>();
@@ -163,7 +224,7 @@ export async function importEdhrec({ dir = DEFAULT_EDHREC_DIR, force = false }: 
     const cardRows = [...cardsBySlug.values()].flat();
     const unresolvedRate = counts.cardViews > 0 ? counts.unresolvedCards / counts.cardViews : 1;
     const previousCommanders = start.previousMetrics?.commanders;
-    const metrics: SyncMetrics = { pages: files.length, commanders: commanderRows.length, cardRows: cardRows.length, ...counts };
+    const metrics: SyncMetrics = { pages: slugs.length, commanders: commanderRows.length, cardRows: cardRows.length, ...counts };
 
     if (
       !force &&
@@ -274,11 +335,11 @@ export async function importEdhrec({ dir = DEFAULT_EDHREC_DIR, force = false }: 
 
     await finishRun(sql, runId, 'succeeded', { rowsRead: pagesRead, rowsChanged: written.cardRows + written.cardRowsRemoved, metrics });
     console.log(
-      `edhrec_stats: ${files.length} pages → ${commanderRows.length} commanders, ${cardRows.length} card rows ` +
+      `edhrec_stats: ${slugs.length} pages → ${commanderRows.length} commanders, ${cardRows.length} card rows ` +
         `(${written.commanders} commanders and ${written.cardRows} card rows written, ${written.cardRowsRemoved} removed)`,
     );
     console.log(
-      `  skipped: ${counts.notCommanderPage} not commander pages, ${counts.noDecks} with no decks, ${counts.unresolvedCommander} unresolved ` +
+      `  skipped: ${counts.missing} missing, ${counts.notCommanderPage} not commander pages, ${counts.noDecks} with no decks, ${counts.unresolvedCommander} unresolved ` +
         `commanders, ${counts.duplicatePair} duplicate pairs; ${counts.unresolvedCards} of ${counts.cardViews} card views unresolved`,
     );
     if (unresolvedExamples.length > 0) console.log(`  unresolved commanders, e.g.: ${unresolvedExamples.join('; ')}`);

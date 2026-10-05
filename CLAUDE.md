@@ -27,24 +27,21 @@ yarn workspace @mtg/core vitest run -t "swap"                          # tests m
 supabase start                                   # local Supabase: API 56321, Postgres 56322, Studio 56323 (own port range; other local stacks use the defaults)
 supabase db reset                                # re-apply supabase/migrations from scratch
 supabase migration up                            # apply new migrations to the running local database
-supabase gen types typescript --local            # regenerate apps/web/src/lib/server/database.types.ts after schema changes (write UTF-8 without BOM, LF line endings; PowerShell's Out-String adds CRLF)
+supabase gen types typescript --local            # regenerate apps/web/src/lib/server/database.types.ts after schema changes (write UTF-8 without BOM, LF line endings)
 
 yarn workspace @mtg/worker cli sync:catalog      # Oracle Cards → cards, card_names, functional twins (skips if Scryfall's file is unchanged; --force)
 yarn workspace @mtg/worker cli sync:printings    # All Cards → English paper printings, sets, card_stats (staple score), cheapest prices, flavor names (after sync:catalog)
 yarn workspace @mtg/worker cli sync:tags         # Oracle Tags → tags, tag_edges, tag_closure, card_tags (after sync:catalog)
 yarn workspace @mtg/worker cli sync:combos       # Commander Spellbook's combo export → combos, combo_features (after sync:catalog; skips if the export is unchanged; --force)
 yarn workspace @mtg/worker cli sync:typesense [--rebuild]  # drain public.search_index_queue into the search index (--rebuild: every collection from scratch, alias swapped when done)
-yarn workspace @mtg/worker cli aggregate:corpus  # slim decks JSONL (default X:\mtg_proj\archidekt\spike\decks.jsonl) → commander_keys, commander_stats, card_global_stats, commander_card_stats (--force to rebuild an unchanged file)
-yarn workspace @mtg/worker cli import:edhrec [--force]   # EDHREC commander pages saved by X:\mtg_proj\tools\edhrec-crawl.mjs → external_commanders, external_commander_card_stats (no requests)
-yarn workspace @mtg/worker cli serve:commander-requests  # serve deck lookups queued from the deck tool until stopped (--once: until the queue is empty); run detached with a log
-yarn workspace @mtg/worker cli profile:tags      # tag data profile → X:\mtg_proj\reports
+yarn workspace @mtg/worker cli aggregate:corpus  # corpus.decks → commander_keys, commander_stats, card_global_stats, commander_card_stats (skips while corpus.decks is unchanged; --force)
+yarn workspace @mtg/worker cli sync:edhrec [--force] [--limit N]   # EDHREC's commander pages (sitemap, then one page per 1.5 s, ~3.5 h) → external_commanders, external_commander_card_stats
+yarn workspace @mtg/worker cli serve [--once]    # the VPS worker: deck lookups, the daily crawl trigger, corpus rebuilds and EDHREC refreshes on the app_config.worker schedule
+yarn workspace @mtg/worker cli import:decks --file <path>   # one-time move of a slim-deck JSONL file into corpus.decks, through crawl_upsert_decks (then aggregate:corpus)
+yarn workspace @mtg/worker cli profile:tags      # tag data profile → $MTG_DATA_DIR/reports
 yarn workspace @mtg/worker cli:hosted <command>  # any worker command against the hosted database: loads apps/worker/.env.hosted (copy .env.example); plain `cli` always means local
-yarn workspace @mtg/worker cli spike:corpus:stability    # split-half resampling report → X:\mtg_proj\reports (evidence for minDecks/fullDecks)
-yarn workspace @mtg/worker cli spike:edhrec:prior        # holdout test: EDHREC vs the colour baseline as the prior for commanders with few decks → X:\mtg_proj\reports
-yarn workspace @mtg/worker cli spike:archidekt:rank      # rank legal commanders by update rate of their 100-card Archidekt decks, plus deck counts (1 req each, ~1 h, resumable) → X:\mtg_proj\archidekt\spike\commanders.json
-yarn workspace @mtg/worker cli spike:archidekt:verify --top 100   # discount top commanders by share of listed decks they actually lead
-yarn workspace @mtg/worker cli spike:archidekt:crawl --commander "Liesa, Forgotten Archangel"   # crawl specific commanders by exact card name; then aggregate:corpus
-yarn workspace @mtg/worker cli spike:archidekt:crawl --commanders 50 --per-commander 300 --order views   # most viewed first (or --order updated); resumable; report → X:\mtg_proj\reports
+yarn workspace @mtg/worker cli spike:corpus:stability    # split-half resampling over corpus.decks → $MTG_DATA_DIR/reports (evidence for minDecks/fullDecks)
+yarn workspace @mtg/worker cli spike:edhrec:prior        # holdout test: EDHREC vs the colour baseline as the prior for commanders with few decks → $MTG_DATA_DIR/reports
 
 docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/tests/<file>.sql   # SQL checks, each rolls back:
 #   saved-decks.sql          saved-deck functions and isolation (needs the local catalog)
@@ -56,6 +53,7 @@ docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supaba
 #   external-stats.sql       EDHREC stats tables: no API role reads them, constraints, cascade (needs the local catalog)
 #   crawl-commanders.sql     per-commander crawl queue: diff-only seed, queue order, visit stamps, service_role only (needs the local catalog)
 #   combos.sql               Spellbook combos: combos_for_cards finds complete and one-short combos, constraints, no API role reads them (needs the local catalog)
+#   vps-worker.sql           requested commanders first in the crawl queue, request vs crawl runs, the worker schedule, private regression fixtures (needs the local catalog)
 docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/demo/admin-demo.sql   # demo accounts, decks and collections for /admin (commits; re-runnable)
 
 docker compose -f docker-compose.search.yml up -d --build  # local Typesense (56325) + the search API (56326); the VPS runs deploy/typesense/ and deploy/search-api/ separately
@@ -63,14 +61,14 @@ cd services/search-api && go test ./...          # the search API (Go, Fiber); i
 cd services/search-api && SUPABASE_TEST_URL=http://127.0.0.1:56321 SUPABASE_TEST_SERVICE_KEY=<service key> go test ./internal/crawl/ -run Live   # the crawl's store against a real PostgREST; skipped without both variables
 
 yarn workspace @mtg/web e2e                      # Playwright (apps/web/e2e) on a production build at :3300 (runs `next start`, so `build` first or it tests a stale bundle); E2E_BASE_URL=http://localhost:3100 to reuse a running server (installed Chrome), E2E_LOCAL_DATA=1 when it has the real catalog and corpus
-yarn workspace @mtg/web regress                  # recommendation regression fixtures (JSON in X:\mtg_proj\regression, local DB) → pass/FAIL per check
+yarn workspace @mtg/web regress [--import <dir>] # recommendation regression fixtures (private table public.regression_fixtures; --import stores a directory of fixture files) → pass/FAIL per check
 ```
 
 Web check scripts (`yarn workspace @mtg/web tsx scripts/<name>.ts`, add `--env-file=.env.local` where a database is needed) are listed in `apps/web/AGENTS.md`.
 
 **Branches:** `develop` is the working branch. Start every branch from `develop` and merge it back into `develop` (PRs with `--base develop`); `main` is merged from `develop` manually, and it's what Vercel production and the Supabase GitHub integration deploy.
 
-CI (`.github/workflows/ci.yml`, pushes to main, develop and `phase*/**`, PRs): install, typecheck, lint, unit tests, then `supabase start` on an empty database (proves migrations apply from scratch), a build with `NEXT_PUBLIC_USE_MOCKS=1`, and the e2e suite. It fails a PR that reuses a migration version. Checks that need the real catalog, corpus or user decklists (regression harness, `E2E_LOCAL_DATA` tests, `X:\mtg_proj\tools` scripts) stay local: third-party decklists can't be public.
+CI (`.github/workflows/ci.yml`, pushes to main, develop and `phase*/**`, PRs): install, typecheck, lint, unit tests, then `supabase start` on an empty database (proves migrations apply from scratch), a build with `NEXT_PUBLIC_USE_MOCKS=1`, and the e2e suite. It fails a PR that reuses a migration version. Checks that need the real catalog, corpus or decklists (regression harness, `E2E_LOCAL_DATA` tests) run against a database that holds them, never in CI: third-party decklists can't be public.
 
 **Local test accounts:** `supabase/seed.sql` creates `anon@test.local` and `admin@test.local` on `supabase db reset`; the admin one is in `public.platform_admins`, the other deliberately is not. Sign in with `yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts anon` (run from `apps/web/`), which mints a link directly and costs none of the local email budget. It also takes a plain email address (the `@demo.local` cast from `admin-demo.sql`) and checks the account exists first, because `generateLink` **creates** an unknown one. The seed raises the local `auth` rate-limit budget, since every e2e sign-in comes from one address. `seed.sql` opens with a guard that raises if `auth.users` holds any other account, so it only runs on a fresh reset and never on hosted.
 
@@ -90,7 +88,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 
 ### Writing data
 
-- All worker outbound HTTP goes through `lib/http.ts` `politeFetch` (User-Agent, Accept, spacing, backoff). Bulk files download to `X:\mtg_proj\bulk`, named by Scryfall's `updated_at`.
+- All worker outbound HTTP goes through `lib/http.ts` `politeFetch` (User-Agent, Accept, spacing, backoff). Bulk files download to `$MTG_DATA_DIR/bulk` (default: a folder in the system temp directory; nothing there is kept), named by Scryfall's `updated_at`.
 - Sync jobs stage rows into temp tables on one reserved connection, check a sanity gate against the previous successful run's `sync_runs.metrics`, then merge in a single transaction. A crash leaves live tables untouched; a stale `running` row is marked `abandoned` by the next run. Prices update every run; card changes are detected by `content_hash`.
 - **Writes touch only the rows that change.** Unless a task explicitly asks for a full rebuild, never delete-and-reinsert or update a whole table for a small change. Diff the new rows against the live ones (`is distinct from`, content hashes, `except`) and write only the differences. This applies to sync jobs, aggregates, migrations and one-off fixes alike. Why: every rewritten row leaves a dead row version, so a full rewrite roughly doubles a table on disk until vacuum, and bloat costs cache and vacuum time. For the same reason there are no materialized views (`refresh` rewrites every row).
   - Tolerances: `aggregate:corpus` skips shrunk inclusion and synergy moves under 0.001, and the tag sync skips idf moves under 0.0001.
@@ -98,7 +96,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 - Migrations live in `supabase/migrations`. New `public` tables are not auto-exposed to API roles: every migration must `grant` explicitly (select for `anon`/`authenticated` on public data, all for `service_role`) in addition to RLS policies.
 - Postgres functions accept at most 100 arguments: build long literal lists with `ARRAY[...]`, not `jsonb_build_array(...)`.
 - **Cache refresh after syncs:** `finishRun(..., 'succeeded')` (`apps/worker/src/lib/sync-runs.ts`) drains the search index queue, then `refreshWebCaches(job)` (`lib/web-app.ts`) POSTs the job's tags (catalog, corpus, recs) to `/api/internal/revalidate` with bearer `REVALIDATE_SECRET`. The worker needs `WEB_APP_URL` and the same `REVALIDATE_SECRET`; without them it logs and skips. Jobs call `finishRun` succeeded only after their transaction commits; keep it that way.
-- **Scheduled syncs:** `.github/workflows/sync.yml` runs catalog, printings, tags and combos daily when repo variable `SYNC_ENABLED` is `true`. Secrets: `DATABASE_URL` (Supabase **session** pooler: IPv4, and the jobs need temp tables, so never the transaction pooler), `WEB_APP_URL`, `REVALIDATE_SECRET`, `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN`. Corpus rebuilds, EDHREC imports and deck lookups run from the home PC, because the third-party decklists and EDHREC pages stay on X:.
+- **Scheduled syncs:** `.github/workflows/sync.yml` runs catalog, printings, tags and combos daily when repo variable `SYNC_ENABLED` is `true`. Secrets: `DATABASE_URL` (Supabase **session** pooler: IPv4, and the jobs need temp tables, so never the transaction pooler), `WEB_APP_URL`, `REVALIDATE_SECRET`, `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN`. Corpus rebuilds, EDHREC refreshes, deck lookups and the daily crawl trigger run in the worker container on the VPS (see "The VPS worker").
 
 ### Catalog
 
@@ -125,7 +123,9 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 
 ### Deck corpus and play rates
 
-- **Where decks live today:** `aggregate:corpus` reads Archidekt decks from JSONL on X:. The daily crawl (T036) also writes decklists into the private `corpus` schema, but nothing aggregates `corpus.decks` yet. Only aggregates are public tables.
+- **Where decks live:** every deck is a row in the private `corpus.decks`, written by the daily crawl and by deck lookups through `crawl_upsert_decks`, and `aggregate:corpus` reads them from there (`loadCorpusDecks`, a cursor). Only aggregates are public tables. Players' saved decks don't feed it yet (T035 slice 3).
+  - The decks collected before the crawl existed were moved in once with `import:decks`, which writes the crawl's own content hash, so the crawl recognises them as held.
+  - `commander_stats.source_counts` counts decks per source. `bracket_counts` stays empty until every deck's bracket is estimated (T058); the bracket an author declares is not used (owner decision 2026-10-05).
 - **Shared filters:** `apps/worker/src/lib/corpus.ts` (`resolveDeck`) decides which decks count, for both `aggregate:corpus` and the stability job. It drops decks whose two "commanders" aren't a legal pair (`isValidPartnerPair`): Archidekt's Commander category also holds companions and misfiled cards.
 - **Stored stats:** `card_global_stats.rate` is the baseline p0, computed over decks whose identity allows the card. `commander_card_stats` holds inclusion shrunk toward p0, (x + α·p0)/(n + α), and synergy = shrunk − p0.
 - **Settings:** `app_config.corpus` holds `shrinkAlpha`, `minDecks` (50) and `fullDecks` (100), measured by `spike:corpus:stability`, `partnerPoolWeight` (0.25) and `severeSynergyScore` (0.2).
@@ -139,18 +139,19 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
   - Why 0.25: borrowed decks predicted a pair's own top cards better than colour-only rates, but every pair measured includes Rograkh; retune when more pair data exists (T021).
 - **Scoring:** `@mtg/core/scoring` `corpusComponent` blends commander and baseline scores. The baseline alone gets half the corpus weight, and commander decks ramp it to full weight at `fullDecks`.
 - **EDHREC statistics (T035 slice 11, loaded locally and on hosted, not yet read by any code):** `external_commanders` and `external_commander_card_stats` hold EDHREC's published per-commander card counts, kept apart from our own deck counts because EDHREC aggregates the same Archidekt and Moxfield decks. Intended use (`card-graph-plan.md`, "External statistics"): a prior for commanders below `minDecks`, and a benchmark.
-  - **Two steps.** `X:\mtg_proj\tools\edhrec-crawl.mjs` fetches `json.edhrec.com/pages/commanders/<slug>.json` for every slug in EDHREC's `commanders.xml` sitemap (about one request per 1.5 s, honest User-Agent, resumable) into `X:\mtg_proj\edhrec\commanders`. Then `import:edhrec` loads the files (`edhrecCommanderPage`, `@mtg/core/parse`) with the usual stage, sanity-gate, diff-only merge.
-  - **A missing page on `json.edhrec.com` is S3's 403 `AccessDenied`, not a block.** It is a static bucket behind CloudFront. The crawler counts those as missing and stops on any other 403 or on 20 in a row.
+  - **One job.** `sync:edhrec` reads EDHREC's `sitemaps/commanders.xml` (named in its robots.txt), fetches `json.edhrec.com/pages/commanders/<slug>.json` for every slug at `app_config.worker.edhrecRequestIntervalMs` (1.5 s, about three and a half hours for ~8,100 pages), parses each with `edhrecCommanderPage` (`@mtg/core/parse`) and merges with the usual stage, sanity gate, diff-only write. The VPS worker runs it every `edhrecEveryDays` (7).
+  - **A missing page on `json.edhrec.com` is S3's 403 (`server: AmazonS3`), not a block.** It is a static bucket behind CloudFront. The job counts those as missing and stops after 20 in a row. Any other 403, or a page that isn't JSON, is a block: the run stops, `app_config.worker.edhrecDisabledReason` is set and `audit_log` gets an `edhrec.disabled` row. Only a person clears it.
   - **Commanders are keyed by their cards, not by `commander_keys`** (EDHREC covers ~6,800 commanders; `commander_keys` rows are our commander pages). Join on `(commander_1, coalesce(commander_2, 0))`.
   - **Resolution:** cards by the Scryfall printing id EDHREC shows (`printings.id`), then by name. A commander needs every name on the page to match one card, so a pair with an unknown partner can't pass for the other partner alone. Flavor-name pages duplicate the real card's page, so each card pair keeps one page.
   - **EDHREC is the better prior** (`spike:edhrec:prior`, 2026-09-28): on 49 commanders with 200+ of our decks, its estimates beat the colour baseline at every deck count tested. Full table in `card-graph-plan.md`.
   - **EDHREC trims its lists** for big commanders (down to about 5% of decks): a missing row means not published, not never played.
-  - Not stored: `salt`, `rank`, prices, images, page panels. Not exposed: RLS on, no API grants, never shown in the UI. Hosted load: `cli:hosted import:edhrec` from this PC.
+  - Not stored: `salt`, `rank`, prices, images, page panels. Not exposed: RLS on, no API grants, never shown in the UI.
 - **Commander deck lookups** (contract v2): a deck whose commander has no corpus can request decks.
   - Queue: `public.commander_requests`, one active row per commander (partial unique index). API roles only reach it through `get_commander_request`, `request_commander_decks` (rate limit per salted visitor hash, queue cap, cooldowns) and `get_commander_request_status`. Limits and the ETA pace live in `app_config.commander_requests`.
-  - Worker `serve:commander-requests` claims with `skip locked`, heartbeats `worker_status` (the UI shows the collector offline after 30 s), collects most-viewed decks into the corpus JSONL, then runs `aggregateCorpus({ force: true })`. Stale active rows (no heartbeat for 10 min) go back to queued. It runs by hand from this PC (T009).
+  - The VPS worker (`cli serve`) claims with `skip locked` and heartbeats `worker_status` (the UI shows the collector offline after 30 s). It takes Archidekt's crawl claim (`crawl_claim`, a `crawl_runs` row of `kind = 'request'`), collects the most-viewed decks into `corpus.decks` through `crawl_upsert_decks`, releases the claim, then runs `aggregateCorpus({ force: true })`. Stale active rows (no heartbeat for 10 min) go back to queued.
+  - **While the daily crawl holds the claim, a request waits**, and `crawl_next_commanders` puts every requested commander first in the crawl's queue (adding it when the seed list doesn't know it), so the crawl collects its decks meanwhile.
   - When a status action first sees `done`, it calls `updateTag("corpus")` and `updateTag("recs")`.
-- **Archidekt worker client** (`apps/worker/src/sources/archidekt/`): read access rests on staff's forum permission (thread 40353). Requests go one at a time, ≥ 1 s apart. `/api/decks/v3/?commanderName=<name>&deckFormat=3&size=100&orderBy=-viewCount|-updatedAt&page=N` lists decks (also `edhBracket=1..5`); `count` is capped at 1000 but pages continue past it. The filter also matches decks that merely contain the card, so `qualifyDeck` verifies the Commander category, format 3, public, exactly 100 cards (first category decides inclusion; Sideboard/Maybeboard/Considering never count). Never store `edhrecRank`/`salt`. Credit Archidekt with a link wherever its data is shown.
+- **Archidekt worker client** (`apps/worker/src/sources/archidekt/`, used by deck lookups): read access rests on staff's forum permission (thread 40353). Requests go one at a time, ≥ 1 s apart. `/api/decks/v3/?commanderName=<name>&deckFormat=3&size=100&orderBy=-viewCount|-updatedAt&page=N` lists decks (also `edhBracket=1..5`); `count` is capped at 1000 but pages continue past it. The filter also matches decks that merely contain the card, so `qualifyDeck` verifies the Commander category, format 3, public, exactly 100 cards (first category decides inclusion; Sideboard/Maybeboard/Considering never count). Never store `edhrecRank`/`salt`. Credit Archidekt with a link wherever its data is shown.
 
 ### Combos (Commander Spellbook)
 
@@ -166,7 +167,7 @@ TypeScript is pinned to 6.0.x on purpose: TS 7 (native) doesn't ship the JS comp
 
 ### Deck crawls (T036)
 
-A daily Vercel cron hits `/api/cron/{source}-scrape`, which POSTs `/cron/:source/scrape` on the search API, which crawls in the background and writes decklists into the private `corpus` schema. It goes **commander by commander** from a queue seeded from EDHREC's list (`corpus.crawl_commanders`), listing each one's 100-card decks most viewed first: `firstVisitPages` (1) on a first visit, then `revisitPages` (1) on a revisit, which re-reads that page and fetches only the decks whose listed update time moved. `maxFetchesPerCommander` (120) bounds one visit, because a page cap does not — 40 pages is 2,400 fetches. The queue is ordered by **need**: `crawl_commanders.held_decks`, recounted by `crawl_seed_commanders` at the start of every run, puts commanders under `targetDecks` (60) first, so the crawl stops spending the same effort on a commander with five hundred decks as on one with three. Engine `services/search-api/internal/crawl/`, adapters `internal/archidekt/` (active) and `internal/moxfield/` (blocked).
+The VPS worker starts it daily by POSTing `/cron/:source/scrape` on the search API (the Vercel cron at `/api/cron/{source}-scrape` POSTs the same endpoint as a fallback), which crawls in the background and writes decklists into the private `corpus` schema. It goes **commander by commander** from a queue seeded from EDHREC's list (`corpus.crawl_commanders`), listing each one's 100-card decks most viewed first: `firstVisitPages` (1) on a first visit, then `revisitPages` (1) on a revisit, which re-reads that page and fetches only the decks whose listed update time moved. `maxFetchesPerCommander` (120) bounds one visit, because a page cap does not — 40 pages is 2,400 fetches. The queue is ordered by **need**: `crawl_commanders.held_decks`, recounted by `crawl_seed_commanders` at the start of every run, puts commanders under `targetDecks` (60) first, so the crawl stops spending the same effort on a commander with five hundred decks as on one with three. Engine `services/search-api/internal/crawl/`, adapters `internal/archidekt/` (active) and `internal/moxfield/` (blocked).
   - **The pace is 1 s + up to 0.2 s jitter and adapts** (owner decision 2026-10-03: Archidekt has been taking that rate). A 429 doubles the interval up to `requestIntervalMaxMs` (8 s); `paceRecoverRequests` (60) clean responses return it to the base. It is adaptive rather than a flat safe number because 1 s drew 429s on 2026-09-14: a fixed pace has to be slow enough for the worst day. `corpus.crawl_runs.throttles` and `throttled_position` record how often the source pushed back and where the crawl was, since a count alone cannot say where to look. `docs/roadmap/deck-crawl.md` is the full account and runbook.
 
 - **The `corpus` schema is reached only through `public.crawl_*` security-definer functions**, executable by `service_role` alone. Exposing `corpus` to PostgREST is exactly what a schema holding third-party decklists must not do; and PostgREST can't express compound conditions like the claim, so those belong in functions.
@@ -252,16 +253,22 @@ Web behaviour for these features (the tool, pages, auto-save, proxy rules) is in
 
 - **Vercel Hobby** (noncommercial) for `apps/web`, project `mtg-app`, functions in `cle1` next to the database. Details in `apps/web/AGENTS.md`.
 - **Supabase Pro** (8 GB, `us-east-2`). Its GitHub integration applies `supabase/migrations` when `main` changes; `db-push.yml` is the manual fallback. The integration can come unlinked with no failing check: after a release, confirm that hosted `supabase_migrations.schema_migrations` reached the newest version. A migration applied by hand must be marked with `supabase migration repair --status applied <version>` before `db push`, or the push runs it again. **Release trap:** merging a migration to `develop` publishes a Vercel preview that still runs against `main`'s schema, so a migration adding a column to a shared read path breaks the develop preview until `main` catches up.
-- **VPS** (Dokploy, Traefik): Typesense, the search API and the deck crawl.
+- **VPS** (Dokploy, Traefik): Typesense, the search API and its deck crawl, and the worker (`deploy/worker/`, `deploy/dokploy/worker.yml`).
 - **GitHub Actions**: Scryfall and Commander Spellbook syncs and search index rebuilds.
-- **This PC**: `aggregate:corpus`, `import:edhrec` and `serve:commander-requests` against the hosted database.
 - Check database size with `pg_database_size`; `VACUUM FULL` a table to see its live size. Storage is no longer a constraint.
 
-## Local data
+## The VPS worker
 
-C: has little free space. Put large local data — Scryfall bulk downloads, caches, screenshots, Docker/Postgres storage — under `X:\mtg_proj`. Local Supabase requires Docker Desktop's disk image to be on X:.
+All data lives in Supabase; nothing depends on a particular machine's disk. Scheduled work runs in two places: the daily Scryfall and Spellbook syncs in GitHub Actions (`sync.yml`), and everything that crawls or rebuilds statistics on the VPS.
 
-`X:\mtg_proj\tools\shoot.mjs` captures phone (390px) and desktop screenshots with the locally installed Chrome: start the app on :3100, then `node X:\mtg_proj\tools\shoot.mjs`. Output goes to `X:\mtg_proj\screens`.
+- **One container, one process** (`apps/worker/Dockerfile`, built from the repo root; `deploy/worker/` or `deploy/dokploy/worker.yml`): `cli serve`. Every `pollSeconds` it checks in, serves a deck lookup if Archidekt is free, then runs whatever is due:
+  - the daily crawl, started through the search API's `/cron/:source/scrape` at `crawlHourUtc` if no crawl run (`kind = 'crawl'`, not one that found the claim taken) started that UTC day;
+  - `aggregate:corpus` every `aggregateEveryHours` (skipped while `corpus.decks` is unchanged; a failed attempt also waits the full interval, so a rebuild stuck on its sanity gate is not retried every few seconds);
+  - `sync:edhrec` every `edhrecEveryDays`, in the background, so lookups don't wait three hours.
+- **The schedule is `app_config.worker`**, and "due" is read from `sync_runs` and `corpus.crawl_runs`, so a restart neither repeats nor skips work.
+- **Environment:** `DATABASE_URL` (Supabase **session** pooler), `SEARCH_API_URL`, `SEARCH_API_CRON_TOKEN` (starts the crawl; the admin token also works), `SEARCH_API_ADMIN_TOKEN` (search index drains), `WEB_APP_URL`, `REVALIDATE_SECRET`.
+- Any other worker command runs in the same image: `docker compose run --rm worker <command>`.
+- The Vercel cron at `/api/cron/{source}-scrape` still fires too; the claim makes the second trigger a no-op. It goes once the worker's trigger has proven itself (T042).
 
 ## Domain conventions
 

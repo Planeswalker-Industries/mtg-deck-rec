@@ -201,7 +201,7 @@ Worth measuring before merging: what a `sync:catalog --force` (34,829 row trigge
 
 `apps/worker/src/jobs/sync-search-index.ts`, CLI `sync:typesense [--rebuild]`:
 
-1. Claim a batch from `search_index_queue` with `for update skip locked` (the pattern `serve:commander-requests` already uses).
+1. Claim a batch from `search_index_queue` with `for update skip locked` (the pattern the deck-lookup queue already uses).
 2. Read the source rows for those ids, build documents through the core mappers, `POST /collections/<c>/documents/import?action=upsert` in JSONL batches.
 3. Delete the claimed rows **only after** the import returns success, so a crash replays rather than loses.
 4. `--rebuild` writes a fresh `cards_<timestamp>` collection, then moves the `cards` alias to it and drops the old one, so a full reindex is never a window where the site has no index.

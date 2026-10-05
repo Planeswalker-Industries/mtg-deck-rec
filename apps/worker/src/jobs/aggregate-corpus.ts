@@ -1,11 +1,11 @@
-import { stat } from 'node:fs/promises';
 import {
+  corpusVersion,
   decksSinceRelease,
-  DEFAULT_CORPUS_FILE,
   EXCLUSIONS,
   IDENTITIES,
   loadCatalog,
   loadCorpusConfig,
+  loadCorpusDecks,
   loadRoleCards,
   resolveDeck,
   shrunkInclusion,
@@ -13,21 +13,21 @@ import {
   type Exclusion,
 } from '../lib/corpus';
 import { connect } from '../lib/db';
-import { readJsonl, type JsonlStats } from '../lib/jsonl';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
-import type { SlimDeck } from '../sources/archidekt/deck';
 
 const BATCH_SIZE = 2000;
 const HEARTBEAT_EVERY = 2000;
-/** A rebuild must keep at least this share of the previous run's decks, so a truncated file can't wipe the stats. */
+/** A rebuild must keep at least this share of the previous run's decks, so a lost corpus can't wipe the stats. */
 const MIN_DECK_SHARE = 0.8;
-const MAX_PARSE_ERROR_RATE = 0.01;
+/** Where the decks come from, as sync_runs records it. */
+const CORPUS_URI = 'postgres:corpus.decks';
 
 interface KeyAggregate {
   commanders: CatalogCard[];
   identity: number;
   decks: number;
-  brackets: Record<string, number>;
+  /** Decks per source ('archidekt', ...). */
+  sources: Record<string, number>;
   /** Decks by last-updated month ('YYYY-MM'). */
   months: Record<string, number>;
   /** Role tag id → cards in that role, summed over the decks. */
@@ -42,26 +42,22 @@ const bump = (record: Record<string, number>, key: string) => {
 };
 
 /**
- * Deck corpus → commander_keys, commander_stats, card_global_stats, commander_card_stats, corpus_identity_stats.
+ * corpus.decks → commander_keys, commander_stats, card_global_stats, commander_card_stats, corpus_identity_stats.
  *
  * Decks are filtered by `resolveDeck` (legal catalogued commanders or pairs, cards within their identity, few unknown
  * cards). Basic lands are left out of the stats. A card's play rates count only decks updated in or after its release
  * month. Same failure model as the other syncs: stage, sanity-check, merge in one transaction.
  */
-export async function aggregateCorpus({
-  file = DEFAULT_CORPUS_FILE,
-  source = 'archidekt',
-  force = false,
-}: { file?: string | undefined; source?: 'archidekt' | undefined; force?: boolean } = {}): Promise<'succeeded' | 'skipped' | 'failed_sanity'> {
-  const fileStat = await stat(file);
+export async function aggregateCorpus({ force = false }: { force?: boolean } = {}): Promise<'succeeded' | 'skipped' | 'failed_sanity'> {
   const sql = connect();
   let runId: number | null = null;
-  const stats: JsonlStats = { lines: 0, parseErrors: 0 };
+  let decksRead = 0;
 
   try {
-    const start = await startRun(sql, 'corpus_aggregate', { uri: `file://${file}`, updatedAt: fileStat.mtime.toISOString() }, force);
+    const version = await corpusVersion(sql);
+    const start = await startRun(sql, 'corpus_aggregate', { uri: CORPUS_URI, updatedAt: version.updatedAt }, force);
     if (start.kind === 'skipped') {
-      console.log(`corpus_aggregate: ${file} is unchanged since the last successful run. Use --force to re-run.`);
+      console.log(`corpus_aggregate: corpus.decks is unchanged since the last successful run. Use --force to re-run.`);
       return 'skipped';
     }
     runId = start.runId;
@@ -75,30 +71,32 @@ export async function aggregateCorpus({
     const globalWith = new Map<number, number>();
     const monthsByIdentity = Array.from({ length: IDENTITIES }, (): Record<string, number> => ({}));
     const excluded = Object.fromEntries(EXCLUSIONS.map((e) => [e, 0])) as Record<Exclusion, number>;
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     let eligibleDecks = 0;
 
-    for await (const deck of readJsonl<SlimDeck>(file, stats)) {
-      if (stats.lines % HEARTBEAT_EVERY === 0) await heartbeat(sql, runId, stats.lines);
-      if (seen.has(deck.id)) {
+    for await (const deck of loadCorpusDecks(sql)) {
+      decksRead++;
+      if (decksRead % HEARTBEAT_EVERY === 0) await heartbeat(sql, runId, decksRead);
+      const deckKey = `${deck.source}:${deck.id}`;
+      if (seen.has(deckKey)) {
         excluded.duplicate++;
         continue;
       }
-      seen.add(deck.id);
+      seen.add(deckKey);
       const resolved = resolveDeck(deck, catalog, config);
       if (!resolved.ok) {
         excluded[resolved.reason]++;
         continue;
       }
 
-      const { key, commanders, identity, bracket, month, cardIds } = resolved.deck;
+      const { key, commanders, identity, month, cardIds } = resolved.deck;
       let aggregate = keys.get(key);
       if (!aggregate) {
-        aggregate = { commanders, identity, decks: 0, brackets: {}, months: {}, roleCounts: {}, cards: new Map() };
+        aggregate = { commanders, identity, decks: 0, sources: {}, months: {}, roleCounts: {}, cards: new Map() };
         keys.set(key, aggregate);
       }
       aggregate.decks++;
-      bump(aggregate.brackets, bracket);
+      bump(aggregate.sources, deck.source);
       bump(aggregate.months, month);
       for (const id of cardIds) {
         increment(aggregate.cards, id);
@@ -140,7 +138,7 @@ export async function aggregateCorpus({
       color_identity: a.identity,
       slug: a.commanders.map((c) => c.slug).join('--'),
       deck_count: a.decks,
-      bracket_counts: JSON.stringify(a.brackets),
+      source_counts: JSON.stringify(a.sources),
       deck_months: JSON.stringify(a.months),
       role_profile: JSON.stringify(
         Object.fromEntries(Object.entries(a.roleCounts).map(([role, cards]) => [role, Math.round((cards / a.decks) * 100) / 100])),
@@ -163,21 +161,19 @@ export async function aggregateCorpus({
     });
     const identityRows = monthsByIdentity.map((months, color_identity) => ({ color_identity, deck_months: JSON.stringify(months) }));
 
-    const errorRate = stats.lines > 0 ? stats.parseErrors / stats.lines : 1;
     const previousDecks = start.previousMetrics?.eligibleDecks;
     const metrics: SyncMetrics = {
-      decksRead: stats.lines,
+      decksRead,
       eligibleDecks,
       commanderKeys: keyRows.length,
       commanderCardStats: cardStatRows.length,
       cardsWithStats: globalRows.length,
-      parseErrors: stats.parseErrors,
       ...Object.fromEntries(EXCLUSIONS.map((e) => [`excluded_${e}`, excluded[e]])),
     };
 
-    if (!force && (eligibleDecks === 0 || errorRate > MAX_PARSE_ERROR_RATE || (previousDecks && eligibleDecks < previousDecks * MIN_DECK_SHARE))) {
-      const error = `sanity gate: ${eligibleDecks} eligible decks (previous ${previousDecks ?? 'none'}), parse error rate ${(errorRate * 100).toFixed(2)}%`;
-      await finishRun(sql, runId, 'failed_sanity', { rowsRead: stats.lines, metrics, error });
+    if (!force && (eligibleDecks === 0 || (previousDecks && eligibleDecks < previousDecks * MIN_DECK_SHARE))) {
+      const error = `sanity gate: ${eligibleDecks} eligible decks (previous ${previousDecks ?? 'none'})`;
+      await finishRun(sql, runId, 'failed_sanity', { rowsRead: decksRead, metrics, error });
       console.error(`corpus_aggregate: ${error}. Live tables unchanged; re-run with --force if this is expected.`);
       process.exitCode = 1;
       return 'failed_sanity';
@@ -193,7 +189,7 @@ export async function aggregateCorpus({
           color_identity smallint not null,
           slug text not null,
           deck_count integer not null,
-          bracket_counts text not null,
+          source_counts text not null,
           deck_months text not null,
           role_profile text not null
         )
@@ -219,11 +215,11 @@ export async function aggregateCorpus({
       await db`create temp table stg_identity (color_identity smallint primary key, deck_months text not null)`;
 
       for (let i = 0; i < keyRows.length; i += BATCH_SIZE) {
-        await db`insert into stg_keys ${db(keyRows.slice(i, i + BATCH_SIZE), 'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'bracket_counts', 'deck_months', 'role_profile')}`;
+        await db`insert into stg_keys ${db(keyRows.slice(i, i + BATCH_SIZE), 'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'source_counts', 'deck_months', 'role_profile')}`;
       }
       for (let i = 0; i < cardStatRows.length; i += BATCH_SIZE) {
         await db`insert into stg_card_stats ${db(cardStatRows.slice(i, i + BATCH_SIZE), 'key', 'card_id', 'decks_with', 'eligible_decks', 'inclusion_shrunk', 'synergy')}`;
-        await heartbeat(sql, runId, stats.lines);
+        await heartbeat(sql, runId, decksRead);
       }
       for (let i = 0; i < globalRows.length; i += BATCH_SIZE) {
         await db`insert into stg_global ${db(globalRows.slice(i, i + BATCH_SIZE), 'card_id', 'decks_with', 'eligible_decks', 'rate')}`;
@@ -254,8 +250,10 @@ export async function aggregateCorpus({
           where not exists (select 1 from stg_key_ids i where i.id = cs.commander_key_id)
         `;
         await db`
+          -- bracket_counts stays empty until every deck's bracket is estimated by the bracket engine (T058); the
+          -- bracket a deck's author declared is not used (owner decision 2026-10-05).
           insert into public.commander_stats as cs (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile)
-          select i.id, s.deck_count, jsonb_build_object(${source}::text, s.deck_count), s.bracket_counts::jsonb, s.deck_months::jsonb,
+          select i.id, s.deck_count, s.source_counts::jsonb, '{}'::jsonb, s.deck_months::jsonb,
                  s.role_profile::jsonb
           from stg_keys s
           join stg_key_ids i on i.key = s.key
@@ -348,10 +346,10 @@ export async function aggregateCorpus({
       db.release();
     }
 
-    await finishRun(sql, runId, 'succeeded', { rowsRead: stats.lines, rowsChanged: cardStatRows.length, metrics });
+    await finishRun(sql, runId, 'succeeded', { rowsRead: decksRead, rowsChanged: cardStatRows.length, metrics });
     const exclusions = EXCLUSIONS.filter((e) => excluded[e] > 0).map((e) => `${e} ${excluded[e]}`).join(', ') || 'none';
     console.log(
-      `corpus_aggregate: ${eligibleDecks} of ${stats.lines} decks counted (excluded: ${exclusions}); ` +
+      `corpus_aggregate: ${eligibleDecks} of ${decksRead} decks counted (excluded: ${exclusions}); ` +
         `${keyRows.length} commander keys, ${cardStatRows.length} commander-card rows, baselines for ${globalRows.length} cards`,
     );
 
@@ -372,7 +370,7 @@ export async function aggregateCorpus({
     return 'succeeded';
   } catch (err) {
     if (runId !== null) {
-      await finishRun(sql, runId, 'failed', { rowsRead: stats.lines, error: err instanceof Error ? err.message : String(err) }).catch(
+      await finishRun(sql, runId, 'failed', { rowsRead: decksRead, error: err instanceof Error ? err.message : String(err) }).catch(
         () => {},
       );
     }

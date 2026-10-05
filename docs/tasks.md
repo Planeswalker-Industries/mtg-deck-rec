@@ -353,7 +353,7 @@ Card-graph slice 1. Move `ADD_WEIGHTS`, `SWAP_WEIGHTS` and the cut thresholds (`
 
 **Priority:** HIGH | **Area:** Data / Scoring | **Status:** Not started | **Blocked by:** T053
 
-Card-graph slice 6, extended with the tests in the design's "Evaluation" section: add recall@20 by commander size, cut precision, collection-mode recall on synthetic collections, build overlap, bracket-estimator agreement and EDHREC agreement. Runs on the JSONL corpus now and on `corpus.decks` after T058. `cli eval:holdout`, report to `X:\mtg_proj\reports`.
+Card-graph slice 6, extended with the tests in the design's "Evaluation" section: add recall@20 by commander size, cut precision, collection-mode recall on synthetic collections, build overlap, bracket-estimator agreement and EDHREC agreement. Runs over `corpus.decks` (`loadCorpusDecks`). `cli eval:holdout`, report to `$MTG_DATA_DIR/reports` and the run's log.
 
 **Acceptance criteria:**
 - [ ] Baseline report for today's scoring
@@ -401,9 +401,9 @@ For commanders below `minDecks`, EDHREC's listed cards join `rec_add_candidates`
 
 ### T058: Aggregate every deck source, with brackets, curve and lands
 
-**Priority:** MEDIUM | **Area:** Data | **Status:** Not started | **Blocked by:** card-graph slices 2–4 (T035)
+**Priority:** MEDIUM | **Area:** Data | **Status:** Not started | **Blocked by:** card-graph slices 3–4 (T035)
 
-`aggregate:corpus` reads `corpus.decks` and complete, legal user decks, estimates every deck's bracket (T055's engine), and writes `card_bracket_stats`, `commander_card_bracket_stats` (bands with ≥ `minDecks` decks), `commander_stats.curve_profile` and `land_count`. Fixes the TS spike's `deletedAt` mismatch.
+`aggregate:corpus` (which reads `corpus.decks` since 2026-10-05) also reads complete, legal user decks, estimates every deck's bracket (T055's engine), and writes `card_bracket_stats`, `commander_card_bracket_stats` (bands with ≥ `minDecks` decks), `commander_stats.curve_profile` and `land_count`.
 
 **Acceptance criteria:**
 - [ ] Diff-only writes and sanity gate as the other aggregates
@@ -564,15 +564,16 @@ Editing by hand (contract v15) works only on a collection that already exists. W
 
 **Priority:** HIGH | **Area:** Backend / Data | **Status:** Slices 1–10 shelved 2026-09-21, waiting for a backend owner; slice 11 merged to `develop` (PR #111, 2026-09-28)
 
-The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md); the scoring built on it is [`roadmap/scoring-design.md`](roadmap/scoring-design.md) (T053–T061). The corpus moves from JSONL on X: into Postgres. Complete user decks become a source. Aggregation recomputes only the commanders whose decks changed. Sparse card-pair tables feed a new "deck affinity" score, EDHREC commander pages serve as a prior and a benchmark, and every commander is crawled rather than the top 50. It is split into 11 slices, each one PR.
+The full design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md); the scoring built on it is [`roadmap/scoring-design.md`](roadmap/scoring-design.md) (T053–T061). The corpus lives in Postgres (`corpus.decks`). Complete user decks become a source. Aggregation recomputes only the commanders whose decks changed. Sparse card-pair tables feed a new "deck affinity" score, EDHREC commander pages serve as a prior and a benchmark, and every commander is crawled rather than the top 50. It is split into 11 slices, each one PR.
 
 **Slice 11 (EDHREC statistics) is on `main`** (PR #111, released in PR #118). It was started ahead of the rest because the plan lets slices 10 and 11 run on their own tables.
-- **Fetching.** `X:\mtg_proj\tools\edhrec-crawl.mjs` saves every commander page from `json.edhrec.com`. It is a local script, not the `sources/edhrec/` worker adapter the plan names.
-- **Loading.** `import:edhrec` writes the saved pages into `external_commanders` and `external_commander_card_stats` (migration `20260928000200_external_commander_stats.sql`). Loaded locally on 2026-09-28 and on hosted on 2026-09-30 (6,787 commanders, 1,791,474 card rows).
+- **Fetching and loading.** `sync:edhrec` (2026-10-05) reads EDHREC's commander sitemap, fetches every page from `json.edhrec.com` at 1.5 s apart and merges them into `external_commanders` and `external_commander_card_stats` (migration `20260928000200_external_commander_stats.sql`). The VPS worker runs it weekly. Loaded on hosted on 2026-09-30 (6,787 commanders, 1,791,474 card rows) by the earlier file-based import it replaces.
 - **Evaluation.** `spike:edhrec:prior` is a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured, so the slice's gate is passed. `supabase/tests/external-stats.sql` holds the SQL checks.
 - **Wired, switched off:** `loadCardCorpus` reads the prior through `external_card_priors` (migration `20261002000100`), but `app_config.corpus.externalPriorShare` is 0, so nothing changes. EDHREC also seeds the crawl queue. Turning it on, and adding EDHREC's cards to the candidate pool, is T057; the per-commander benchmark is part of T054.
 
-**Slice 10 (full-suite crawl) is partly built** (2026-10-01). The daily crawl (closed T036; its trigger is T042) now goes commander by commander in the Go search API, not the TS worker the plan names: a `corpus.crawl_commanders` queue seeded from EDHREC, decks most viewed first, one page per commander on the first pass, then `newDecksPerRevisit` new or changed decks per revisit. Still open in the slice: moving `serve:commander-requests` (T009) off this PC by turning it into "move this commander to the front of the queue", raw payload files, and aggregation from `corpus.decks` (slice 2). It absorbs closed ticket T010.
+**Slice 10 (full-suite crawl) is partly built** (2026-10-01). The daily crawl (closed T036; its trigger is T042) now goes commander by commander in the Go search API, not the TS worker the plan names: a `corpus.crawl_commanders` queue seeded from EDHREC, decks most viewed first, one page per commander on the first pass, then `newDecksPerRevisit` new or changed decks per revisit. Deck lookups moved to the VPS worker on 2026-10-05 (T009), and a requested commander now comes first in the crawl's queue. Still open in the slice: raw payload files. It absorbs closed ticket T010.
+
+**Slice 2 (corpus in Postgres) is built** (2026-10-05): `aggregate:corpus` reads `corpus.decks`, and `import:decks` is the one-time move of an earlier deck file into it. Not yet released; see `status.md`, "Off one machine".
 
 **Owner decisions it rests on (2026-09-21):**
 - User decks count only when complete: 100 cards and legal. `save_deck` today flags on per-card legality alone.
@@ -602,6 +603,8 @@ The deck crawl (closed T036) works when started by hand, but the daily Vercel cr
 - `services/search-api/internal/crawl/` — `Runner.Preflight`, the claim
 
 **Context:** Hosted `corpus.crawl_runs`, read 2026-09-28 after that day's cron hour, holds three Archidekt runs: 2026-09-24 03:32 (failed on a deleted deck, fixed in #105), 2026-09-24 14:16 and 2026-09-27 21:30. None started in the cron's hour. Either the trigger never reaches the search API, or something refuses it before a run starts. A fourth run, 2026-09-30 13:12 UTC, succeeded, and it too started outside the cron's hour. Read again 2026-10-03: runs 6 and 7 started at 10:45 UTC on 2026-10-02 and 2026-10-03, both in the cron's hour, which meets the last criterion. Run 7 failed after starting, on an empty deck response (`deck response changed shape: no card entries`), not on the trigger; empty decks are now skipped as unqualified.
+
+**Since 2026-10-05** the VPS worker (`cli serve`) also starts the crawl at `app_config.worker.crawlHourUtc` when no crawl run started that day, so the Vercel cron is a fallback; drop it from `vercel.json` once the worker's trigger has run two days in a row.
 
 **Acceptance criteria:**
 - [ ] Read the Vercel cron log for `/api/cron/archidekt-scrape`: 401, 502, 503, or not firing
@@ -645,16 +648,17 @@ The Moxfield adapter (`services/search-api/internal/moxfield/`) is built and see
 
 ### T009: Always-on commander request consumer
 
-**Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** Not started
+**Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** Built 2026-10-05; deploy pending
 
-`serve:commander-requests` runs by hand from this PC. Deck lookups queue in `commander_requests`, and nothing consumes them while it is off. T035 slice 10 plans to move it to the VPS worker.
+Deck lookups queue in `commander_requests` and nothing consumes them until the worker runs. `cli serve` is that consumer: a long-running process in the worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`), which also triggers the daily crawl, rebuilds the corpus stats and refreshes EDHREC.
 
 **Files:**
-- `apps/worker/src/cli.ts` — `serve:commander-requests`
-- `apps/worker/src/lib/sync-runs.ts` — `finishRun`
+- `apps/worker/src/jobs/serve.ts`, `serve-commander-requests.ts`
+- `apps/worker/Dockerfile`, `deploy/worker/`, `deploy/dokploy/worker.yml`
 
 **Acceptance criteria:**
-- [ ] Deploy the consumer as a long-running process or scheduled job
+- [x] A long-running consumer that stores decks in `corpus.decks` under Archidekt's crawl claim
+- [ ] Deploy the worker container on the VPS
 - [ ] Verify `commander_requests` are consumed within reasonable time
 - [ ] Monitor the `worker_status` heartbeat from the UI
 

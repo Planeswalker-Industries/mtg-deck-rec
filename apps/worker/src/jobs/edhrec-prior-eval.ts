@@ -1,10 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { REPORTS_DIR } from '../lib/config';
-import { DEFAULT_CORPUS_FILE, loadCatalog, loadCorpusConfig, resolveDeck, shrunkInclusion } from '../lib/corpus';
+import { loadCatalog, loadCorpusConfig, loadCorpusDecks, resolveDeck, shrunkInclusion } from '../lib/corpus';
 import { connect } from '../lib/db';
-import { readJsonl } from '../lib/jsonl';
-import type { SlimDeck } from '../sources/archidekt/deck';
 import { median, quantile, random, shuffled, spearman } from './corpus-stability';
 
 /*
@@ -78,9 +76,8 @@ function grade(estimate: readonly Scored[], truth: readonly Scored[]): Trial {
 }
 
 export async function evaluateEdhrecPrior({
-  file = DEFAULT_CORPUS_FILE,
   repeats = DEFAULT_REPEATS,
-}: { file?: string | undefined; repeats?: number | undefined } = {}): Promise<void> {
+}: { repeats?: number | undefined } = {}): Promise<void> {
   const sql = connect();
   const decksByKey = new Map<string, { slug: string; decks: number[][] }>();
   const edhrecByKey = new Map<string, Map<number, number>>();
@@ -95,10 +92,11 @@ export async function evaluateEdhrecPrior({
     if (rates.length === 0) throw new Error('No card baselines yet. Run aggregate:corpus first.');
     baseline = new Map(rates.map((r) => [r.card_id, r.rate]));
 
-    const seen = new Set<number>();
-    for await (const deck of readJsonl<SlimDeck>(file)) {
-      if (seen.has(deck.id)) continue;
-      seen.add(deck.id);
+    const seen = new Set<string>();
+    for await (const deck of loadCorpusDecks(sql)) {
+      const deckKey = `${deck.source}:${deck.id}`;
+      if (seen.has(deckKey)) continue;
+      seen.add(deckKey);
       const resolved = resolveDeck(deck, catalog, config);
       if (!resolved.ok) continue;
       const entry = decksByKey.get(resolved.deck.key) ?? { slug: resolved.deck.commanders.map((c) => c.slug).join('--'), decks: [] };
@@ -112,7 +110,7 @@ export async function evaluateEdhrecPrior({
       join public.external_commander_card_stats s on s.external_commander_id = e.id
       where e.source = 'edhrec'
     `;
-    if (external.length === 0) throw new Error('No EDHREC statistics yet. Run import:edhrec first.');
+    if (external.length === 0) throw new Error('No EDHREC statistics yet. Run sync:edhrec first.');
     for (const row of external) {
       const key = row.commander_2 === null ? `${row.commander_1}` : `${row.commander_1}:${row.commander_2}`;
       let cards = edhrecByKey.get(key);

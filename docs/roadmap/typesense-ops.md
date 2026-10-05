@@ -177,7 +177,8 @@ SEARCH_API_URL=https://<host> SEARCH_API_ADMIN_TOKEN=... \
 |---|---|
 | Vercel (Production **and** Preview) | `SEARCH_API_URL`, `SEARCH_API_TOKEN` |
 | GitHub Actions secrets (the daily sync) | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
-| `apps/worker/.env.hosted` (this PC: corpus rebuilds, deck lookups) | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
+| The VPS worker (`deploy/worker/.env` or the Dokploy app: corpus rebuilds, deck lookups, EDHREC) | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
+| `apps/worker/.env.hosted` (any worker command run by hand against hosted) | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
 
 Unset anywhere is a working configuration — that side just reads Postgres.
 

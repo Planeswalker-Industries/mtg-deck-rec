@@ -13,7 +13,7 @@ the wider design they feed is [`card-graph-plan.md`](card-graph-plan.md).
 ## Why it exists
 
 Play rates are the strongest signal the recommender has, and until now the corpus grew only when a visitor asked for
-a commander nobody had looked up yet (`serve:commander-requests`, T009). That is demand-driven: the commanders
+a commander nobody had looked up yet (deck lookups, T009). That is demand-driven: the commanders
 nobody browses stay empty, and the ones that are popular today stay frozen at whatever week they were collected.
 
 A daily crawl that works through every commander fixes both. It takes commanders from a queue seeded from EDHREC's
@@ -416,8 +416,9 @@ update corpus.crawl_state set running_run_id = null, client_id = null, claimed_a
   `auth` included, in the same process that serves public read endpoints. The `crawl_*` functions narrow what the
   crawl *does*, not what the key *could* do. A proper fix is a Postgres role granted execute on those functions and
   nothing else, plus a JWT minted for it — Supabase's secret keys map to `service_role`.
-- **Commander requests.** `serve:commander-requests` still runs on this PC and writes the JSONL corpus. It should
-  become "move this commander to the front of `crawl_commanders`".
+- **Commander requests** (done 2026-10-05). The VPS worker (`cli serve`) serves deck lookups into `corpus.decks` under
+  this same claim, and `crawl_next_commanders` puts a requested commander first, so the crawl serves it while it holds
+  the claim. The worker also starts the daily crawl, which makes the Vercel cron a fallback (T042).
 - **Moxfield (T044).** Blocked. Its list is still the site-wide update-ordered feed, so it needs a per-commander
   search before it is re-enabled. Its deck parser reads an embed whose shape is still unpinned, which is why it refuses
   anything that is not exactly 100 cards: a heuristic that reads half a deck produces a plausible, wrong list. If

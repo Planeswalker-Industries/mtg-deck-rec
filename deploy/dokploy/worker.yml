@@ -1,0 +1,37 @@
+# The worker, for Dokploy. Point a Compose app at `deploy/dokploy/worker.yml`; same container as deploy/worker/,
+# joined to Dokploy's own network, where the search API answers as `search-api` (its fixed container name).
+#
+# Set these variables on this app:
+#   DATABASE_URL             Supabase's session pooler connection string (never the transaction pooler)
+#   SEARCH_API_ADMIN_TOKEN   the search API's write token, so finished syncs update the search index
+#   SEARCH_API_CRON_TOKEN    the search API's cron token, which starts the daily crawl
+#   WEB_APP_URL, REVALIDATE_SECRET   so a corpus rebuild refreshes the web app's cached pages
+#
+# The schedule (crawl hour, rebuild and EDHREC intervals) is app_config.worker in the database, not a panel setting.
+
+services:
+  worker:
+    container_name: mtg-worker
+    build:
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
+    image: ${WORKER_IMAGE:-mtg-worker:local}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?set DATABASE_URL on this app: the Supabase session pooler connection string}"
+      SEARCH_API_URL: "http://search-api:8080"
+      SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:-}"
+      SEARCH_API_CRON_TOKEN: "${SEARCH_API_CRON_TOKEN:-}"
+      WEB_APP_URL: "${WEB_APP_URL:-}"
+      REVALIDATE_SECRET: "${REVALIDATE_SECRET:-}"
+    networks:
+      - dokploy-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  dokploy-network:
+    external: true

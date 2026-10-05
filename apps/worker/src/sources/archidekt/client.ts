@@ -171,7 +171,10 @@ export function parseDeck(body: unknown): Deck {
     };
   });
 
-  const cards = field(body, 'cards', isArray, 'deck').map((entry) => {
+  const cards = field(body, 'cards', isArray, 'deck')
+    // Removed cards stay in the list with a deletion time; they are not part of the deck (as the crawl reads it too).
+    .filter((entry) => !isObject(entry) || entry.deletedAt === null || entry.deletedAt === undefined)
+    .map((entry) => {
     if (!isObject(entry)) throw new ShapeError('deck', 'card entry is not an object');
     const card = field(entry, 'card', isObject, 'deck');
     const oracleCard = field(card, 'oracleCard', isObject, 'deck');

@@ -25,7 +25,7 @@ Local only. This covers the Phase 0 spikes and what the numbers mean for the pla
 - **Access:**
   - Staff permit reading the API (forum thread 40353). The Terms of Use restrict use to personal, noncommercial access, so the project stays a noncommercial hobby until written permission exists.
   - Requests go one at a time with an honest User-Agent, 1.5 s apart. A 429 pauses the crawl for minutes and doubles the spacing.
-- **Stored:** 15,247 qualifying 100-card decks as slim oracle-id records on X: (never in Postgres). There are 300 per commander for the top 50 commanders by update rate, plus Liesa, Forgotten Archangel. Decks were taken most viewed first.
+- **Stored:** 15,247 qualifying 100-card decks as slim oracle-id records in a file (moved into `corpus.decks` by `import:decks` from 2026-10-05). There are 300 per commander for the top 50 commanders by update rate, plus Liesa, Forgotten Archangel. Decks were taken most viewed first.
 - **Counted:** 15,037 decks. Excluded: 145 invalid commander pairs, 53 with too many commanders, 11 with cards outside identity, 1 illegal commander.
 - **Recency:** 77% last updated in 2026, 13% in 2025. Most-viewed first did not make the corpus stale.
 - **Brackets:** 61% unset; B3 2,727, B4 1,856, B2 954, B5 301, B1 31. Too thin for bracket-specific stats yet.

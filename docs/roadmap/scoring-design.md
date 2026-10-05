@@ -41,16 +41,16 @@ How each source arrives, how it is cleaned, where it lives, and what is wrong wi
 
 | Source | Arrives | Cleaned and resolved | Stored in | Refresh | Gaps today |
 |---|---|---|---|---|---|
-| Archidekt decks (spike) | `spike:archidekt:crawl` and `serve:commander-requests` write JSONL on X: | `qualifyDeck` (100 cards, public, format 3, first category decides); `resolveDeck` (legal commanders and pair, identity, ≤ 3 unknown cards) | Aggregates only: `commander_stats`, `commander_card_stats`, `card_global_stats`, `corpus_identity_stats` | By hand from the PC | The only source that feeds stats today |
-| Archidekt decks (crawl) | Daily Go crawl on the VPS | Qualified on the deck; resolved to card ids on write by `crawl_upsert_decks` | `corpus.decks` (`commander_card_ids`, `cards {id: qty}`, update times) | Daily | **Nothing aggregates it.** No bracket, no views. Legality, identity and partner validity are not checked; that is left to aggregation |
+| Archidekt decks (deck lookups) | The VPS worker (`cli serve`) collects a requested commander's decks under the crawl's claim | `qualifyDeck` (100 cards, public, format 3, first category decides), then resolved by `crawl_upsert_decks` | `corpus.decks`, then the aggregates through `resolveDeck` (legal commanders and pair, identity, ≤ 3 unknown cards) | On request | Shares `corpus.decks` with the crawl |
+| Archidekt decks (crawl) | Daily Go crawl on the VPS, started by the VPS worker | Qualified on the deck; resolved to card ids on write by `crawl_upsert_decks` | `corpus.decks` (`commander_card_ids`, `cards {id: qty}`, update times), aggregated by `aggregate:corpus` | Daily | No bracket, no views. Legality, identity and partner validity are checked at aggregation (`resolveDeck`) |
 | Our players' decks | `save_deck` | Card ids resolved before saving | `decks`, `deck_cards` | On save | **Feeds no aggregate.** `include_in_corpus` checks per-card legality but not the 100-card count |
-| EDHREC | `edhrec-crawl.mjs` saves pages to X:; `import:edhrec` loads them | Printing id, then a unique name match. Every commander name must resolve | `external_commanders`, `external_commander_card_stats` | By hand | Prior wired in but off (`externalPriorShare = 0`). It only re-ranks, never adds candidates. Lists are trimmed, so a missing row means "not published" |
+| EDHREC | `sync:edhrec` on the VPS worker: the commander sitemap, then each page as JSON | Printing id, then a unique name match. Every commander name must resolve | `external_commanders`, `external_commander_card_stats` | Weekly | Prior wired in but off (`externalPriorShare = 0`). It only re-ranks, never adds candidates. Lists are trimmed, so a missing row means "not published" |
 | Commander Spellbook | `sync:combos`, daily export | Every piece resolved by oracle id, or the combo is skipped | `combos`, `combo_features` | Daily (GitHub Actions) | `service_role` only. Nothing reads it |
 | Scryfall and Tagger | `sync:catalog`, `sync:printings`, `sync:tags` | Content-hash diffs | `cards`, `card_stats`, `printings`, `card_tags`, `tag_closure` | Daily | None for scoring |
 | Collections | Import, link, or hand edit | `resolve_collection_rows` (Scryfall id → TCGplayer id → set+number → name) | `collection_items` (account) or IndexedDB (browser) | On edit | **Recommendations use card ids only; quantities are ignored** |
 
 Discrepancies to fix along the way:
-- The TS spike keeps `edhBracket` and ignores Archidekt's `deletedAt` card entries. The Go crawl reads `deletedAt` and drops the bracket. Owner decision: brackets are estimated, so the dropped field doesn't matter. The `deletedAt` mismatch should be fixed in the TS path.
+- The TS Archidekt client (deck lookups) keeps `edhBracket`; the Go crawl drops it. Owner decision: brackets are estimated, so the dropped field doesn't matter. Both now skip Archidekt's deleted card entries (`deletedAt`; the TS side fixed 2026-10-05).
 - `targetDecks` means two unrelated things: 100 in `app_config.commander_requests` and 60 in `app_config.archidekt`.
 - `estimateBracket` is never passed `hasMassLandDenial` (`apps/web/src/lib/server/deck.ts`).
 
@@ -222,7 +222,7 @@ The build engine runs as a pure function in `@mtg/core` over loaded rows, so the
 | Combos readable by the recommendation path: a security-definer `deck_combos(card_ids, max_missing, bracket)` executable by API roles, returning ids, missing pieces and results but **never `popularity`** | T055 |
 | `decks.is_built`, plus card quantities in recommendation requests | T056 |
 | EDHREC pool source in `rec_add_candidates` (repeat `enable_nestloop = off`), and the role and curve priors | T057 |
-| Aggregate `corpus.decks` and complete, legal user decks (card-graph slices 2–4) | T058 |
+| Complete, legal user decks into the aggregate, and per-key incremental aggregation (card-graph slices 3–4; `aggregate:corpus` already reads `corpus.decks`) | T058 |
 | A per-deck estimated bracket during aggregation; `card_bracket_stats (card_id, band, decks_with, eligible_decks)` and `commander_card_bracket_stats` (only bands with ≥ `minDecks` decks); `commander_stats.curve_profile` and `land_count` | T058 |
 | Pair tables (card-graph slice 5) | T060 |
 | `rec_events` (shown, accepted, declined), keyed like `swap_votes` | T061 |
@@ -241,7 +241,7 @@ One version bump per slice that touches the contract:
 
 ## Evaluation
 
-Built on card-graph-plan slice 6 (`cli eval:holdout`, reports to `X:\mtg_proj\reports`). It can start on the JSONL corpus before the corpus moves into Postgres.
+Built on card-graph-plan slice 6 (`cli eval:holdout`, reports to `$MTG_DATA_DIR/reports` and the run's log), over `corpus.decks` through `loadCorpusDecks`.
 
 | Test | Method | Metric |
 |---|---|---|
@@ -249,7 +249,7 @@ Built on card-graph-plan slice 6 (`cli eval:holdout`, reports to `X:\mtg_proj\re
 | Cuts | Add 10 identity-legal cards taken from other commanders' decks | precision@10 of the cuts |
 | Collection mode | Synthetic collection: the hidden cards plus a random sample of other cards drawn by global popularity | recall@20 of the hidden cards from owned-only adds; how many buy-list entries are hidden cards |
 | Build | Build for the commander and band of each held-out deck, with every card available | mean overlap with held-out decks for the same commander and band; error in role counts and land count |
-| Bracket estimator | Compare with the author-declared `edhBracket` on JSONL decks that have one | Agreement matrix (a sanity check only, since scoring uses the estimate) |
+| Bracket estimator | Compare with author-declared brackets where a source shows one (the deck lookups' Archidekt client reads `edhBracket`) | Agreement matrix (a sanity check only, since scoring uses the estimate) |
 | EDHREC agreement | The built 99 against the commander's EDHREC cards by inclusion | Overlap. Reported, never shown |
 | Live accept rate | `rec_events` | Accepted ÷ shown per mode, rank and component mix. Watched after each release |
 
@@ -273,7 +273,7 @@ Each slice is one PR into `develop`, gated by the evaluation from T054 on. The p
 | 3 | T056 | **Collection mode:** quantities, twins, `decks.is_built`, conflicts, owned-only default, buy list | T053 | Collection-mode recall recorded; buy list shown with price and date |
 | 4 | T055 | **Bracket engine and combos:** `app_config.brackets`, `estimateBracket` signals, `deck_combos`, the `combo` bonus, new must-cut reasons, `DeckAnalysis.combos` | T053; display per T045 | Estimator agreement reported; combo bonus passes the gate |
 | 5 | T057 | **EDHREC pool and prior on:** pool source, `externalPriorShare` from the evaluation, role and curve priors | T054 | The < 50 bucket's recall rises |
-| 6 | T058 | **Aggregation:** `corpus.decks` and user decks, per-deck bracket, per-band stats, curve and land profiles | card-graph slices 2–4 | `bracket` and `curve` components pass the gate |
+| 6 | T058 | **Aggregation:** user decks, per-deck bracket, per-band stats, curve and land profiles | card-graph slices 3–4 | `bracket` and `curve` components pass the gate |
 | 7 | T059 | **Build mode:** `BuildApi`, greedy fill, feasibility report, value fill | T055–T058 | Build overlap and role error reported; T050's picker lands in it |
 | 8 | T060 | **Deck affinity:** pair tables and the `deck` component (card-graph slices 5, 7, 8) | T058 | Recall@20 beats the T054 baseline |
 | 9 | T061 | **Live accept rate:** `rec_events`, `/privacy` line | — (can move earlier) | Accept rate per mode visible to admins |

@@ -1,5 +1,5 @@
 -- Commander deck lookups: when a pasted deck's commander has too few corpus decks, the visitor can ask for them. Lookups
--- run one at a time in a shared queue served by the worker (serve:commander-requests), which writes progress here for
+-- run one at a time in a shared queue served by the worker (`cli serve`), which writes progress here for
 -- the deck tool to show. Two visitors asking for the same commander share one lookup. API roles never touch the table
 -- directly; they go through the functions below, which apply rate limits, a queue cap and cooldowns from app_config.
 

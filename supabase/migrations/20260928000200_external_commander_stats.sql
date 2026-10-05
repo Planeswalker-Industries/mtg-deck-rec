@@ -1,5 +1,5 @@
--- Published statistics from other sites (EDHREC first), loaded by `import:edhrec` from commander pages crawled to
--- X:\mtg_proj\edhrec. A statistics source, never a deck source: EDHREC's numbers come from the same Archidekt and
+-- Published statistics from other sites (EDHREC first), loaded by `sync:edhrec` from EDHREC's commander pages. A
+-- statistics source, never a deck source: EDHREC's numbers come from the same Archidekt and
 -- Moxfield decks we crawl, so they are kept apart from our own deck counts and never added to them.
 -- docs/roadmap/card-graph-plan.md ("External statistics") says how they are meant to be used: a prior for commanders
 -- with too few decks of our own, and a benchmark. Nothing reads them yet.

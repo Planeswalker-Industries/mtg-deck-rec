@@ -1,12 +1,12 @@
 import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { measureCorpusStability } from './jobs/corpus-stability';
 import { profileTags } from './jobs/profile-tags';
-import { serveCommanderRequests } from './jobs/serve-commander-requests';
 import { evaluateEdhrecPrior } from './jobs/edhrec-prior-eval';
-import { importEdhrec } from './jobs/import-edhrec';
-import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
+import { importDecks } from './jobs/import-decks';
+import { serveWorker } from './jobs/serve';
 import { syncCatalog } from './jobs/sync-catalog';
 import { syncCombos } from './jobs/sync-combos';
+import { syncEdhrec } from './jobs/sync-edhrec';
 import { syncSearchIndex } from './jobs/sync-search-index';
 import { syncPrintings } from './jobs/sync-printings';
 import { syncTags } from './jobs/sync-tags';
@@ -24,21 +24,18 @@ Commands:
   sync:typesense [--rebuild]
                             Drain public.search_index_queue into the search index (--rebuild: build every
                             collection from scratch and move the aliases when it is done)
-  aggregate:corpus [--file path] [--force]
-                            Deck corpus (JSONL of slim decks; default: the Archidekt spike) → commander and card play-rate stats
-  import:edhrec [--dir path] [--force]
-                            EDHREC commander pages saved by X:\mtg_proj\tools\edhrec-crawl.mjs → external commander and card stats
-  serve:commander-requests [--once]
-                            Serve deck lookups the web app queues for commanders with too few decks (--once: until the queue is empty)
+  aggregate:corpus [--force]
+                            corpus.decks → commander and card play-rate stats (skips while corpus.decks is unchanged)
+  sync:edhrec [--force] [--limit N]
+                            EDHREC's commander pages (sitemap, then one page per 1.5 s) → external commander and card stats
+                            (--limit: only the first N pages, for a local check; pair it with --force past the sanity gate)
+  import:decks --file path  One-time move of a slim-deck JSONL file into corpus.decks (then aggregate:corpus)
+  serve [--once]            The VPS worker: deck lookups, the daily crawl trigger, corpus rebuilds and EDHREC refreshes on
+                            the app_config.worker schedule (--once: one pass)
   spike:corpus:stability [--repeats N]
                             How many decks a commander needs for stable card rankings (split-half resampling report)
   spike:edhrec:prior [--repeats N]
-                            Holdout test: does EDHREC beat the colour baseline as the prior for commanders with few decks?
-  spike:archidekt:rank      Rank our legal commanders by how often their 100-card Archidekt decks are updated (1 request each, resumable)
-  spike:archidekt:verify [--top N]
-                            Discount the top ranked commanders by how many of their listed decks they actually lead
-  spike:archidekt:crawl [--commanders N] [--commander "Exact Name"]... [--per-commander N] [--order views|updated]
-                            Collect qualifying decks for the top ranked commanders, or the named ones (resumable)`;
+                            Holdout test: does EDHREC beat the colour baseline as the prior for commanders with few decks?`;
 
 /** Reads `--name N` as a positive whole number, or undefined when the flag is absent. */
 function numberFlag(args: string[], name: string): number | undefined {
@@ -77,37 +74,23 @@ async function main(): Promise<void> {
       return;
     case 'sync:typesense':
       return syncSearchIndex({ rebuild: args.includes('--rebuild') });
-    case 'aggregate:corpus': {
-      const fileIndex = args.indexOf('--file');
-      await aggregateCorpus({ file: fileIndex === -1 ? undefined : args[fileIndex + 1], force });
+    case 'aggregate:corpus':
+      await aggregateCorpus({ force });
       return;
-    }
-    case 'import:edhrec': {
-      const dirIndex = args.indexOf('--dir');
-      await importEdhrec({ dir: dirIndex >= 0 ? args[dirIndex + 1] : undefined, force });
+    case 'sync:edhrec':
+      await syncEdhrec({ force, limit: numberFlag(args, 'limit') });
       return;
+    case 'import:decks': {
+      const file = args[args.indexOf('--file') + 1];
+      if (!args.includes('--file') || !file) throw new Error('import:decks needs --file <path to a slim-deck JSONL file>');
+      return importDecks({ file });
     }
-    case 'serve:commander-requests':
-      return serveCommanderRequests({ once: args.includes('--once') });
+    case 'serve':
+      return serveWorker({ once: args.includes('--once') });
     case 'spike:corpus:stability':
       return measureCorpusStability({ repeats: numberFlag(args, 'repeats') });
     case 'spike:edhrec:prior':
       return evaluateEdhrecPrior({ repeats: numberFlag(args, 'repeats') });
-    case 'spike:archidekt:rank':
-      return rankCommanders();
-    case 'spike:archidekt:verify':
-      return verifyCommanders({ top: numberFlag(args, 'top') });
-    case 'spike:archidekt:crawl': {
-      const orderIndex = args.indexOf('--order');
-      const order = orderIndex === -1 ? undefined : args[orderIndex + 1];
-      if (order !== undefined && !isCrawlOrder(order)) throw new Error('--order must be views or updated');
-      return crawlCommanders({
-        commanders: numberFlag(args, 'commanders'),
-        names: args.flatMap((arg, i) => (arg === '--commander' && args[i + 1] ? [args[i + 1] as string] : [])),
-        perCommander: numberFlag(args, 'per-commander'),
-        order,
-      });
-    }
     default:
       console.log(USAGE);
       if (command) process.exitCode = 1;

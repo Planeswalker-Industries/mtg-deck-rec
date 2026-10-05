@@ -1,10 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { REPORTS_DIR } from '../lib/config';
-import { DEFAULT_CORPUS_FILE, loadCatalog, loadCorpusConfig, resolveDeck, shrunkInclusion } from '../lib/corpus';
+import { loadCatalog, loadCorpusConfig, loadCorpusDecks, resolveDeck, shrunkInclusion } from '../lib/corpus';
 import { connect } from '../lib/db';
-import { readJsonl } from '../lib/jsonl';
-import type { SlimDeck } from '../sources/archidekt/deck';
 
 /*
  * Phase 0: how many decks a commander needs before its card rankings stop changing with the sample. For each commander
@@ -102,10 +100,9 @@ export function quantile(values: readonly number[], q: number): number {
 export const median = (values: readonly number[]) => quantile(values, 0.5);
 
 export async function measureCorpusStability({
-  file = DEFAULT_CORPUS_FILE,
   repeats = 30,
   seed = 20260914,
-}: { file?: string | undefined; repeats?: number | undefined; seed?: number | undefined } = {}): Promise<void> {
+}: { repeats?: number | undefined; seed?: number | undefined } = {}): Promise<void> {
   const sql = connect();
   const byKey = new Map<string, KeyDecks>();
   let baseline: Map<number, number>;
@@ -118,10 +115,11 @@ export async function measureCorpusStability({
     if (rates.length === 0) throw new Error('No card baselines yet. Run aggregate:corpus first.');
     baseline = new Map(rates.map((r) => [r.card_id, r.rate]));
 
-    const seen = new Set<number>();
-    for await (const deck of readJsonl<SlimDeck>(file)) {
-      if (seen.has(deck.id)) continue;
-      seen.add(deck.id);
+    const seen = new Set<string>();
+    for await (const deck of loadCorpusDecks(sql)) {
+      const deckKey = `${deck.source}:${deck.id}`;
+      if (seen.has(deckKey)) continue;
+      seen.add(deckKey);
       const resolved = resolveDeck(deck, catalog, config);
       if (!resolved.ok) continue;
       const entry = byKey.get(resolved.deck.key) ?? { slug: resolved.deck.commanders.map((c) => c.slug).join('--'), decks: [] };

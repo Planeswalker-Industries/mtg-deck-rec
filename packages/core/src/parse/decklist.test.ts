@@ -61,7 +61,7 @@ describe('parseDecklist: sections', () => {
     expect(only('SB: 2 Counterspell')).toMatchObject({ quantity: 2, name: 'Counterspell', section: 'sideboard' });
   });
 
-  it('handles a BOM and Windows line endings', () => {
+  it('handles a BOM and CRLF line endings', () => {
     expect(parseDecklist('﻿Commander\r\n1 Chulane, Teller of Tales\r\nDeck\r\n1 Sol Ring\r\n').lines.map((l) => l.section)).toEqual([
       'commander',
       'main',

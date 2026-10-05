@@ -46,6 +46,11 @@ export interface FetchPolicy {
   retryStatuses?: ReadonlySet<number>;
   /** Called before each backoff wait, so callers can report how often a service pushed back. */
   onRetry?: (status: number, delayMs: number) => void;
+  /**
+   * Statuses handed back as the response instead of thrown, for a caller that must read one before deciding what it
+   * means (a static bucket's 403 for a missing file, say, against a 403 that is a block).
+   */
+  passStatuses?: ReadonlySet<number>;
 }
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
@@ -56,12 +61,12 @@ const RETRYABLE = new Set([429, 500, 502, 503, 504]);
  */
 export async function politeFetch(
   url: string,
-  { limiter, accept = 'application/json;q=0.9,*/*;q=0.8', maxRetries = 5, retryStatuses = RETRYABLE, onRetry }: FetchPolicy = {},
+  { limiter, accept = 'application/json;q=0.9,*/*;q=0.8', maxRetries = 5, retryStatuses = RETRYABLE, onRetry, passStatuses }: FetchPolicy = {},
 ): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     await limiter?.wait();
     const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT, Accept: accept } });
-    if (res.ok) return res;
+    if (res.ok || passStatuses?.has(res.status)) return res;
     await res.body?.cancel();
     if (!retryStatuses.has(res.status) || attempt >= maxRetries) throw new HttpError(res.status, url);
 

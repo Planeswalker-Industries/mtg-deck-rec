@@ -1,17 +1,21 @@
 /**
- * Recommendation regression check. Runs decklists through the real parse, cut, add and swap code against the local
- * database and checks each fixture's expectations. Fixtures are JSON files (see FixtureFile) kept outside the repo by
- * default, since they can hold personal decklists.
+ * Recommendation regression check. Runs decklists through the real parse, cut, add and swap code against the database
+ * in .env.local and checks each fixture's expectations. Fixtures (see FixtureFile) live in the private
+ * public.regression_fixtures table, never in the repo: they hold real decklists.
  *
- * Usage: yarn workspace @mtg/web regress [fixtureDir]   (default: $MTG_DATA_DIR/regression, else X:/mtg_proj/regression)
+ * Usage (from apps/web, with --env-file=.env.local, which must set SUPABASE_SECRET_KEY):
+ *   yarn workspace @mtg/web regress                    run every stored fixture
+ *   yarn workspace @mtg/web regress --import <dir>     store or replace the fixtures in <dir>/*.json, by name
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defaultIncludeGameChangers } from "@mtg/core/commander";
 import type { Bracket, CardSummary, CutReason, RecContext } from "@mtg/core/contract";
+import type { Json } from "../src/lib/server/database.types";
 import { resolveDecklist } from "../src/lib/server/deck";
 import { getAddSuggestions, getCutSuggestions, getSwapSuggestions } from "../src/lib/server/recs";
 import { createPublicClient } from "../src/lib/server/supabase";
+import { createAdminClient } from "../src/lib/server/supabase-admin";
 
 interface TopExpectation {
   cards: string[];
@@ -21,7 +25,7 @@ interface TopExpectation {
 interface FixtureFile {
   name: string;
   decklist?: string;
-  /** Path to a decklist file, relative to the fixture file. */
+  /** Path to a decklist file, relative to the fixture file. Read into `decklist` when the fixture is imported. */
   deckFile?: string;
   bracket?: Bracket;
   includeGameChangers?: boolean;
@@ -42,18 +46,15 @@ interface Check {
   detail: string;
 }
 
-const dataDir = process.env.MTG_DATA_DIR ?? "X:/mtg_proj";
-const fixtureDir = path.resolve(process.argv[2] ?? path.join(dataDir, "regression"));
-
 const sameCard = (card: CardSummary, name: string) => card.name === name || card.name.split(" // ")[0] === name;
 /** 1-based rank, or 0 when absent. */
 const rankOf = (cards: readonly CardSummary[], name: string) => cards.findIndex((c) => sameCard(c, name)) + 1;
 const describeRank = (rank: number) => (rank > 0 ? `#${rank}` : "not suggested");
 
-async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> {
+async function runFixture(fixture: FixtureFile): Promise<Check[]> {
   const checks: Check[] = [];
   const check = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
-  const text = fixture.decklist ?? (fixture.deckFile ? readFileSync(path.resolve(path.dirname(file), fixture.deckFile), "utf8") : "");
+  const text = fixture.decklist ?? "";
   const db = createPublicClient();
 
   const parsed = await resolveDecklist(db, text);
@@ -133,17 +134,38 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
   return checks;
 }
 
+/** Stores every fixture file in `dir`, replacing a stored fixture of the same name; a deckFile is read in. */
+async function importFixtures(dir: string): Promise<void> {
+  const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+  if (files.length === 0) throw new Error(`No fixture files in ${dir}`);
+  const rows = files.map((f) => {
+    const file = path.join(dir, f);
+    const fixture = JSON.parse(readFileSync(file, "utf8")) as FixtureFile;
+    const { deckFile, ...rest } = fixture;
+    const decklist = fixture.decklist ?? (deckFile ? readFileSync(path.resolve(dir, deckFile), "utf8") : undefined);
+    return { name: fixture.name, fixture: { ...rest, decklist } as unknown as Json, updated_at: new Date().toISOString() };
+  });
+  const { error } = await createAdminClient().from("regression_fixtures").upsert(rows, { onConflict: "name" });
+  if (error) throw new Error(`storing fixtures: ${error.message}`);
+  console.log(`Stored ${rows.length} fixtures: ${rows.map((r) => r.name).join(", ")}`);
+}
+
 async function main(): Promise<void> {
-  const files = readdirSync(fixtureDir)
-    .filter((f) => f.endsWith(".json"))
-    .sort()
-    .map((f) => path.join(fixtureDir, f));
-  if (files.length === 0) throw new Error(`No fixtures in ${fixtureDir}`);
+  const importIndex = process.argv.indexOf("--import");
+  if (importIndex !== -1) {
+    const dir = process.argv[importIndex + 1];
+    if (!dir) throw new Error("--import needs a directory of fixture files");
+    return importFixtures(path.resolve(dir));
+  }
+
+  const { data, error } = await createAdminClient().from("regression_fixtures").select("fixture").order("name");
+  if (error) throw new Error(`reading fixtures: ${error.message}`);
+  const fixtures = data.map((row) => row.fixture as unknown as FixtureFile);
+  if (fixtures.length === 0) throw new Error("No fixtures stored yet. Load them with: regress --import <dir>");
 
   let failed = 0;
-  for (const file of files) {
-    const fixture = JSON.parse(readFileSync(file, "utf8")) as FixtureFile;
-    const checks = await runFixture(file, fixture).catch((err: unknown): Check[] => [
+  for (const fixture of fixtures) {
+    const checks = await runFixture(fixture).catch((err: unknown): Check[] => [
       { name: "run", ok: false, detail: err instanceof Error ? err.message : String(err) },
     ]);
     console.log(`\n${fixture.name}`);
@@ -152,7 +174,7 @@ async function main(): Promise<void> {
       if (!c.ok) failed++;
     }
   }
-  console.log(`\n${failed === 0 ? "All checks passed" : `${failed} check${failed === 1 ? "" : "s"} failed`} (${files.length} fixtures)`);
+  console.log(`\n${failed === 0 ? "All checks passed" : `${failed} check${failed === 1 ? "" : "s"} failed`} (${fixtures.length} fixtures)`);
   process.exitCode = failed === 0 ? 0 : 1;
 }
 

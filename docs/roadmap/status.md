@@ -19,7 +19,7 @@ Where the project stands, and why things are the way they are.
 - **Site:** https://mtg-app-psi.vercel.app, Vercel project `mtg-app` (root `apps/web`, functions in `cle1`)
 - **Database:** Supabase Pro since 2026-09-21, `us-east-2`, 8 GB. 425 MB used on 2026-09-28.
 - **Scryfall data:** 34,642 live cards on hosted (2026-09-28); printings are English only.
-- **Corpus on hosted:** 129 commanders have stats, rebuilt from this PC with `cli:hosted aggregate:corpus`. The crawled corpus (`corpus.decks`) holds 666 decks that nothing aggregates yet.
+- **Corpus on hosted:** 129 commanders have stats, built from about 15,000 decks that predate the crawl. The crawled corpus (`corpus.decks`) holds 666 decks. From the next release the stats are rebuilt from `corpus.decks` alone (see "Off one machine").
 - **EDHREC statistics:** loaded locally and on hosted (T035 slice 11; hosted 2026-09-30, 6,787 commanders); no code reads them yet.
 - **Commander Spellbook combos:** loaded locally (2026-10-04, 113,013 combos); not yet on hosted, and no code reads them yet.
 - **Contract version:** v19 on `main` and `develop`.
@@ -65,13 +65,29 @@ A daily Vercel cron calls the search API, which crawls Archidekt commander by co
 - The VPS reaches the database with the service-role key, which bypasses RLS; a role limited to the `crawl_*` functions is T043.
 - Either source switches itself off on a 403 or a challenge, audited as `crawl.disabled` in `audit_log`; only a human re-enables it.
 - The crawl reaches `corpus` only through the `public.crawl_*` security-definer functions, because exposing a schema of third-party decklists is what it exists to avoid.
-- Nothing aggregates `corpus.decks` yet; that is T035 slice 2.
+- From the next release `aggregate:corpus` reads `corpus.decks` (T035 slice 2).
 
 ## EDHREC statistics (T035 slice 11)
 
-On `main` since PR #118 and loaded on hosted (2026-09-30). A local script saved every EDHREC commander page; `import:edhrec` loaded ~6,800 commanders' published card counts into `external_commanders` and `external_commander_card_stats`. They are kept apart from our own deck counts because EDHREC aggregates the same Archidekt and Moxfield decks.
+On `main` since PR #118 and loaded on hosted (2026-09-30). Every EDHREC commander page was loaded, ~6,800 commanders' published card counts, into `external_commanders` and `external_commander_card_stats`. They are kept apart from our own deck counts because EDHREC aggregates the same Archidekt and Moxfield decks.
 
 The holdout test (`spike:edhrec:prior`) says EDHREC is the better prior for commanders with few decks of our own: with no decks of ours, its top 50 matched the hidden answer 80% of the time against 6% for the colour baseline. Next: wire the prior into scoring.
+
+## Off one machine (2026-10-05, not yet released)
+
+Nothing depends on one computer's disk any more. Data lives in Supabase. Scheduled work runs in GitHub Actions (Scryfall and Spellbook syncs) and in a new worker container on the VPS. That container runs `cli serve`, which:
+- serves deck lookups (T009);
+- starts the daily crawl;
+- rebuilds the corpus stats from `corpus.decks` (T035 slice 2);
+- refreshes EDHREC weekly with the new `sync:edhrec`.
+
+The recommendation regression fixtures moved into a private table. The file-based deck spike commands are gone.
+
+**Release order:**
+1. Migration `20261005000100` reaches `main` and hosted.
+2. Deploy the worker (`deploy/dokploy/worker.yml`) with its environment variables.
+3. **The first rebuild from `corpus.decks` fails its sanity gate on purpose.** Hosted's stats came from about 15,000 decks the crawl never stored, so a rebuild from 666 decks is far fewer than the last run, and the old stats stay in place. Either move those decks in once with `cli:hosted import:decks --file <the old deck file>` (the crawl then treats them as held), or accept the smaller corpus with `cli:hosted aggregate:corpus --force`.
+4. Watch `worker_status` and `corpus.crawl_runs` for the first trigger; then retire the Vercel cron (T042).
 
 ## Commander Spellbook combos (T047, data half)
 

@@ -87,7 +87,7 @@ const (
 	// Sixty clean responses before trying the base pace again - about a minute of quiet at one request a second. Short
 	// enough to recover within a run, long enough that it is not re-testing the limit every few requests.
 	fallbackPaceRecoverRequests = 60
-	// The worker's own per-commander page cap (serve:commander-requests): 2,400 listings at 60 a page.
+	// The same per-commander page cap the worker's deck lookups use: 2,400 listings at 60 a page.
 	fallbackMaxPagesPerCommander = 40
 )
 
