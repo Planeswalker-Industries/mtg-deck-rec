@@ -281,10 +281,10 @@ async function loadExternalPrior(
   const ids = [...new Set(commanderIds)].sort((a, b) => a - b);
   if (ids.length > MAX_COMMANDERS) return empty;
 
-  // Through the function, not the tables: `external_commanders` and `external_commander_card_stats` are revoked from
-  // anon and authenticated, so a table read here would be denied on every request - and, caught below, would make the
-  // prior a permanent silent no-op that looked like it was working.
-  const { data, error } = await db.rpc("external_card_priors", {
+  // Through the function, not the tables: `corpus.edhrec_commanders` and `corpus.edhrec_commander_cards` are out of
+  // reach of anon and authenticated, so a table read here would be denied on every request - and, caught below, would
+  // make the prior a permanent silent no-op that looked like it was working.
+  const { data, error } = await db.rpc("edhrec_card_priors", {
     p_commander_ids: ids,
     p_card_ids: [...new Set(cardIds)],
   });

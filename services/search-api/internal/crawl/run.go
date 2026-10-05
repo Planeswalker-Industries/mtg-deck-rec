@@ -18,7 +18,7 @@ import (
 // Source is the site-specific half of a crawl: how it lists one commander's decks and what its list and deck pages
 // mean. Nothing downstream sees the source - the runner works only with what Source answers.
 type Source interface {
-	// Name is the source key: the app_config policy row, the corpus.crawl_state row and the decks' source column.
+	// Name is the source key: the app_config policy row, the crawl.state row and the schema its raw decks live in.
 	Name() string
 	// ListURL is one page of the decks the source lists for a commander, most viewed first: an order that holds
 	// still between visits, so page 1 is the same decks tomorrow. (An update-ordered list does not: Archidekt bumps
@@ -448,11 +448,12 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 			if err != nil {
 				return result, fmt.Errorf("writing deck: %w", err)
 			}
-			// Not stored: it names a card the catalog does not have yet. Nothing is held for it, so the next visit
-			// fetches it again, by which time the daily catalog sync has normally caught up.
+			// Not stored: an id in it is not an oracle id at all. (A card the catalog merely lacks is stored raw; the
+			// collator holds the deck back from the corpus until it resolves.) Nothing is held for it, so the next
+			// visit fetches it again.
 			if len(unresolved) > 0 {
 				summary.SkippedUnresolved++
-				r.log.Warn("deck names a card the catalog does not have; not stored",
+				r.log.Warn("deck names an id that is not an oracle id; not stored",
 					"source", r.src.Name(), "deck", entry.ID, "missing", unresolved[0].Missing)
 				if result.Fetched >= policy.MaxFetchesPerCommander {
 					result.Outcome = OutcomeFetchCap
