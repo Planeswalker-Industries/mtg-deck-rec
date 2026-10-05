@@ -69,6 +69,7 @@ func (s fakeSource) ParseDeck(body []byte, id string) (Deck, error) {
 		Commanders []string       `json:"commanders"`
 		Cards      map[string]int `json:"cards"`
 		UpdatedAt  time.Time      `json:"updatedAt"`
+		Bracket    *int           `json:"bracket"`
 	}
 	if err := json.Unmarshal(body, &d); err != nil {
 		return Deck{}, err
@@ -77,7 +78,7 @@ func (s fakeSource) ParseDeck(body []byte, id string) (Deck, error) {
 	for _, n := range d.Cards {
 		size += n
 	}
-	return Deck{ID: id, Commanders: d.Commanders, Cards: d.Cards, Size: size, UpdatedAt: d.UpdatedAt}, nil
+	return Deck{ID: id, Commanders: d.Commanders, Cards: d.Cards, Size: size, UpdatedAt: d.UpdatedAt, DeclaredBracket: d.Bracket}, nil
 }
 
 func deckBody(updated string, commanders []string, cards map[string]int) []byte {
@@ -393,6 +394,30 @@ func TestNotFoundTriesTheFrontFace(t *testing.T) {
 	}
 }
 
+// The author's bracket travels with the deck to the store, and a deck without one sends none.
+func TestTheDeclaredBracketReachesTheStore(t *testing.T) {
+	store := newStore(liesa)
+	rated, _ := json.Marshal(map[string]any{
+		"commanders": []string{liesa.OracleID}, "cards": map[string]int{"aaa": 1}, "updatedAt": "2026-09-20T00:00:00Z", "bracket": 3,
+	})
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n222\n"),
+		src.DeckURL("111"):         rated,
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+	}}
+	run(t, store, getter)
+	brackets := map[string]*int{}
+	for _, row := range store.upserts {
+		brackets[row.SourceDeckID] = row.DeclaredBracket
+	}
+	if b := brackets["111"]; b == nil || *b != 3 {
+		t.Fatalf("a rated deck lost its bracket: %v", b)
+	}
+	if b, ok := brackets["222"]; !ok || b != nil {
+		t.Fatalf("an unrated deck should send none: %v", b)
+	}
+}
+
 // A commander the source has nothing for is recorded as not found - the verification log - and the run moves on.
 func TestNotFoundIsLoggedAndTheRunMovesOn(t *testing.T) {
 	ghost := Commander{CardID: 4, OracleID: "oc-ghost", Name: "Nobody Plays Me"}
@@ -411,22 +436,70 @@ func TestNotFoundIsLoggedAndTheRunMovesOn(t *testing.T) {
 	}
 }
 
-// A revisit reads the page it already has and stops, which is the whole of the "skip decks that have not been updated"
-// optimisation. It replaced a target of 350 new decks per revisit, which made one commander walk up to forty pages -
-// 2,400 fetches, hours at the polite pace - hunting decks that often were not there.
-func TestRevisitReadsOnlyItsPages(t *testing.T) {
+// A revisit grows a commander's sample (owner rule 2026-10-05): page 1, then on until it has fetched its share of new
+// or changed decks. It stops mid-page once it has, so the share also bounds a revisit's requests.
+func TestARevisitReadsOnUntilItsShareOfNewDecks(t *testing.T) {
 	store := newStore(revisit(liesa))
+	store.policy.RevisitNewDecks = 3
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(liesa.Name, 1): []byte("111\n" + moreMarker + "\n"),
-		src.ListURL(liesa.Name, 2): []byte("222\n333\n" + moreMarker + "\n"),
+		src.ListURL(liesa.Name, 2): []byte("222\n333\n444\n" + moreMarker + "\n"),
 		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+		src.DeckURL("333"):         ledBy(liesa.OracleID, "ccc"),
+		src.DeckURL("444"):         ledBy(liesa.OracleID, "ddd"),
 	}}
 	run(t, store, getter)
-	if getter.requests[src.ListURL(liesa.Name, 2)] != 0 {
-		t.Fatalf("a revisit read page 2 with revisitPages=%d", store.policy.RevisitPages)
-	}
-	if visit := store.visits[liesa.CardID]; visit.Counted != 1 {
+	visit := store.visits[liesa.CardID]
+	if visit.Outcome != OutcomeDone || visit.Fetched != 3 || visit.Counted != 3 {
 		t.Fatalf("visit: %+v", visit)
+	}
+	if getter.requests[src.DeckURL("444")] != 0 || getter.requests[src.ListURL(liesa.Name, 3)] != 0 {
+		t.Fatal("a revisit went past its share of new decks")
+	}
+}
+
+// Page 1 is read whole, however many of its decks are new: the share only decides whether to read further.
+func TestARevisitReadsAllOfPageOne(t *testing.T) {
+	store := newStore(revisit(liesa))
+	store.policy.RevisitNewDecks = 1
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n222\n333\n" + moreMarker + "\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+		src.DeckURL("333"):         ledBy(liesa.OracleID, "ccc"),
+	}}
+	run(t, store, getter)
+	visit := store.visits[liesa.CardID]
+	if visit.Outcome != OutcomeDone || visit.Fetched != 3 {
+		t.Fatalf("visit: %+v", visit)
+	}
+	if getter.requests[src.ListURL(liesa.Name, 2)] != 0 {
+		t.Fatal("a revisit that met its share on page 1 read page 2")
+	}
+}
+
+// A held deck whose listed time has not moved costs no request, so it does not count toward the share: a revisit whose
+// page 1 is all unchanged reads on.
+func TestUnchangedDecksDoNotCountTowardTheShare(t *testing.T) {
+	store := newStore(revisit(liesa))
+	store.policy.RevisitNewDecks = 1
+	sept1 := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	store.held = map[string]HeldDeck{
+		"111": {Hash: contentHash([]string{liesa.OracleID}, map[string]int{"aaa": 1}), ListedUpdatedAt: sept1},
+	}
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111@2026-09-01T00:00:00Z\n" + moreMarker + "\n"),
+		src.ListURL(liesa.Name, 2): []byte("222\n"),
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+	}}
+	run(t, store, getter)
+	visit := store.visits[liesa.CardID]
+	if getter.requests[src.DeckURL("111")] != 0 || visit.Fetched != 1 || visit.Counted != 1 {
+		t.Fatalf("visit: %+v", visit)
+	}
+	if visit.Outcome != OutcomeExhausted {
+		t.Fatalf("the list ran out before the share: %+v", visit)
 	}
 }
 
@@ -434,7 +507,7 @@ func TestRevisitReadsOnlyItsPages(t *testing.T) {
 // fetches, so without this one commander could take a whole run.
 func TestAVisitStopsAtTheFetchCap(t *testing.T) {
 	store := newStore(revisit(liesa))
-	store.policy.RevisitPages = 5
+	store.policy.RevisitNewDecks = 100
 	store.policy.MaxFetchesPerCommander = 2
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(liesa.Name, 1): []byte("111\n222\n333\n" + moreMarker + "\n"),
@@ -512,13 +585,10 @@ func TestRevisitStepsOverHeldDecks(t *testing.T) {
 	}
 }
 
-// A revisit of a huge commander stops at the page cap rather than taking the run.
-// `page_cap` means the absolute ceiling cut a visit short - it asked for more pages than MaxPagesPerCommander allows.
-// A visit that read exactly the pages it wanted is `done`, which matters because with revisitPages at 1 that is what
-// every healthy revisit does: reporting those as `page_cap` would bury the visits where the ceiling really did bite.
+// A revisit still short of its share stops at the page ceiling rather than taking the run. `page_cap` means the
+// absolute ceiling cut a visit short; a visit that got its share is `done`, so the two stay apart in the log.
 func TestThePageCeilingCutsAVisitShort(t *testing.T) {
 	store := newStore(revisit(liesa))
-	store.policy.RevisitPages = 5
 	store.policy.MaxPagesPerCommander = 1
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(liesa.Name, 1): []byte("111\n" + moreMarker + "\n"),
@@ -530,9 +600,10 @@ func TestThePageCeilingCutsAVisitShort(t *testing.T) {
 	}
 }
 
-// The ordinary revisit: it read the one page it was asked for, the list has more, and that is not a limit being hit.
-func TestARevisitThatReadItsPagesIsDone(t *testing.T) {
+// The ordinary revisit: it got its share of new decks, the list has more, and that is not a limit being hit.
+func TestARevisitThatGotItsShareIsDone(t *testing.T) {
 	store := newStore(revisit(liesa))
+	store.policy.RevisitNewDecks = 1
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(liesa.Name, 1): []byte("111\n" + moreMarker + "\n"),
 		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),

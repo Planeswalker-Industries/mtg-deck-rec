@@ -132,6 +132,9 @@ type DeckRow struct {
 	ContentHash     string         `json:"content_hash"`
 	ListedUpdatedAt time.Time      `json:"listed_updated_at"`
 	LastUpdatedAt   time.Time      `json:"last_updated_at"`
+	// The author's bracket, absent when they gave none. Not in the content hash: a deck whose author only re-rated it
+	// moves its listed time, which is what brings it back.
+	DeclaredBracket *int `json:"declared_bracket,omitempty"`
 }
 
 // UnresolvedDeck is a deck the database would not store because an id in it is not an oracle id at all. (A card the

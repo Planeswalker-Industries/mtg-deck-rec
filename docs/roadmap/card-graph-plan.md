@@ -392,7 +392,7 @@ Built 2026-10-01 in the Go search API (`internal/crawl/`, adapter `internal/arch
   polite crawl can page.
 - A requested commander goes to the front of the queue, and the VPS worker starts a run for it when none is going (T066).
 
-**How a commander's sample grows (owner rule, 2026-10-05; T056):**
+**How a commander's sample grows (owner rule, 2026-10-05; T056, built the same day):**
 - A first visit reads one page: up to 60 decks, most viewed first.
 - A revisit re-reads page 1 and fetches every deck that is new, or whose listed update time moved since the last
   crawl.
