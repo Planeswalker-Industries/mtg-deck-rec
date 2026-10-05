@@ -36,7 +36,7 @@ This app targets Next.js 16.3. APIs differ from older versions. Read the bundled
 
 ## Routing, 404s and indexing
 
-- **Real 404s:** `src/proxy.ts` (matcher `/card/:slug`, `/commander/:slug`) checks the card (live row) or commander key exists and rewrites missing slugs to `/_missing`, a path with no route, because Vercel serves the prerendered `/_not-found` with status 200. Keep the check a superset of what the page loaders need, so it never 404s a page that would render; database errors fall through to the page. RSC navigation payloads for a missing slug return 404 in dev but 200 in production; the browser shows the not-found page either way. `X:\mtg_proj\tools\not-found-check.mjs [baseUrl]` checks the status codes
+- **Real 404s:** `src/proxy.ts` (matcher `/card/:slug`, `/commander/:slug`) checks the card (live row) or commander key exists and rewrites missing slugs to `/_missing`, a path with no route, because Vercel serves the prerendered `/_not-found` with status 200. Keep the check a superset of what the page loaders need, so it never 404s a page that would render; database errors fall through to the page. RSC navigation payloads for a missing slug return 404 in dev but 200 in production; the browser shows the not-found page either way.
 - **`/decks/:commander/:code` goes through `proxy.ts` only for signed-out visitors**: the anon client can't tell a private deck from a missing one, so a stranger gets a real 404; a request with a session cookie falls through to the page. `/decks/[commander]/[code]/edit` sends signed-out visitors to sign in there too
 - The commander segment in `/decks/[commander]/[code]` is decoration: the code alone resolves the deck, and a stale segment is deliberately not redirected (the page is noindex, so duplicate paths cost nothing)
 - `proxy.ts` refreshes the auth session only when an `sb-*-auth-token` cookie is present. Redirect targets go through `safeNextPath` (`lib/safe-path.ts`)
@@ -207,7 +207,7 @@ Run with `yarn workspace @mtg/web tsx [--env-file=.env.local] scripts/<name>.ts`
 | `share-kill-switch-check.ts` | A challenge switches the source off with an audit row | local database |
 | `collection-resolve-check.ts` | Collection matching, including a batch past the row cap | local database |
 | `search-parity-check.ts` | The index agrees with Postgres | local database and index |
-| `rec-regress.ts` (`yarn workspace @mtg/web regress`) | Recommendation fixtures | local database, fixtures on X: |
+| `rec-regress.ts` (`yarn workspace @mtg/web regress [dir]`) | Recommendation fixtures | local database; fixture files in `[dir]` or `$MTG_DATA_DIR/regression`, never in the repo |
 | `dev-sign-in.ts` | Prints a sign-in link for a local account | local database |
 | `build-featured-decks.ts` | Regenerates the featured-decks fixture | local catalog and corpus |
 

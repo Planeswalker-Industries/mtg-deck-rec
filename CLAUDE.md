@@ -56,14 +56,14 @@ cd services/search-api && go test ./...          # the search API (Go, Fiber); i
 cd services/search-api && SUPABASE_TEST_URL=http://127.0.0.1:56321 SUPABASE_TEST_SERVICE_KEY=<service key> go test ./internal/crawl/ -run Live   # the crawl's store against a real PostgREST; skipped without both variables
 
 yarn workspace @mtg/web e2e                      # Playwright (apps/web/e2e) on a production build at :3300 (runs `next start`, so `build` first or it tests a stale bundle); E2E_BASE_URL=http://localhost:3100 to reuse a running server (installed Chrome), E2E_LOCAL_DATA=1 when it has the real catalog and corpus
-yarn workspace @mtg/web regress                  # recommendation regression fixtures (JSON in X:\mtg_proj\regression, local DB) → pass/FAIL per check
+yarn workspace @mtg/web regress [dir]            # recommendation regression fixtures (JSON in [dir], default $MTG_DATA_DIR/regression; local DB) → pass/FAIL per check
 ```
 
 Web check scripts (`yarn workspace @mtg/web tsx scripts/<name>.ts`, add `--env-file=.env.local` where a database is needed) are listed in `apps/web/AGENTS.md`.
 
 **Branches:** `develop` is the working branch. Start every branch from `develop` and merge it back into `develop` (PRs with `--base develop`); `main` is merged from `develop` manually, and it's what Vercel production and the Supabase GitHub integration deploy.
 
-CI (`.github/workflows/ci.yml`, pushes to main, develop and `phase*/**`, PRs): install, typecheck, lint, unit tests, then `supabase start` on an empty database (proves migrations apply from scratch), a build with `NEXT_PUBLIC_USE_MOCKS=1`, and the e2e suite. It fails a PR that reuses a migration version. Checks that need the real catalog, corpus or user decklists (regression harness, `E2E_LOCAL_DATA` tests, `X:\mtg_proj\tools` scripts) stay local: third-party decklists can't be public.
+CI (`.github/workflows/ci.yml`, pushes to main, develop and `phase*/**`, PRs): install, typecheck, lint, unit tests, then `supabase start` on an empty database (proves migrations apply from scratch), a build with `NEXT_PUBLIC_USE_MOCKS=1`, and the e2e suite. It fails a PR that reuses a migration version. Checks that need the real catalog, corpus or user decklists (regression harness, `E2E_LOCAL_DATA` tests, the machine's own tool scripts) stay local: third-party decklists can't be public.
 
 **Local test accounts:** `supabase/seed.sql` creates `anon@test.local` and `admin@test.local` on `supabase db reset`; the admin one is in `public.platform_admins`, the other deliberately is not. Sign in with `yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts anon` (run from `apps/web/`), which mints a link directly and costs none of the local email budget. It also takes a plain email address (the `@demo.local` cast from `admin-demo.sql`) and checks the account exists first, because `generateLink` **creates** an unknown one. The seed raises the local `auth` rate-limit budget, since every e2e sign-in comes from one address. `seed.sql` opens with a guard that raises if `auth.users` holds any other account, so it only runs on a fresh reset and never on hosted.
 
@@ -262,9 +262,7 @@ Web behaviour for these features (the tool, pages, auto-save, proxy rules) is in
 
 ## Local data
 
-C: has little free space. Put large local data — Scryfall bulk downloads, caches, screenshots, Docker/Postgres storage — under `X:\mtg_proj`. Local Supabase requires Docker Desktop's disk image to be on X:.
-
-`X:\mtg_proj\tools\shoot.mjs` captures phone (390px) and desktop screenshots with the locally installed Chrome: start the app on :3100, then `node X:\mtg_proj\tools\shoot.mjs`. Output goes to `X:\mtg_proj\screens`.
+The repo assumes no particular disk. Large local data (Scryfall bulk downloads, regression fixtures, screenshots) goes under the folder `MTG_DATA_DIR` names; unset, the worker uses a folder in the system temp directory. Whatever is particular to one machine (its disks, its tool scripts, where Docker keeps its data) belongs in `CLAUDE.local.md`, which is gitignored and read alongside this file.
 
 ## Domain conventions
 
