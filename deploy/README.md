@@ -86,6 +86,7 @@ Traefik under Swarm. [`deploy/dokploy/`](dokploy/) holds a file per app, shaped 
 |---|---|---|---|
 | Typesense | `deploy/dokploy/typesense.yml` | `TYPESENSE_ADMIN_KEY` | none |
 | search API | `deploy/dokploy/search-api.yml` | `TYPESENSE_ADMIN_KEY` (same value), `SEARCH_API_TOKEN`, `SEARCH_API_ADMIN_TOKEN`, and for the deck crawls `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SEARCH_API_CRON_TOKEN` | yes, container port **8080** |
+| worker | `deploy/dokploy/worker.yml` | `DATABASE_URL` (Supabase's session pooler), `SEARCH_API_CRON_TOKEN`, `SEARCH_API_ADMIN_TOKEN`, `WEB_APP_URL`, `REVALIDATE_SECRET` | none |
 
 They differ from the generic files above in three ways, each answering something a panel got wrong:
 
@@ -174,3 +175,27 @@ Typesense publishes nothing at all, so it takes no host port.
 [`docker-compose.search.yml`](../docker-compose.search.yml) at the repo root runs both services together on
 56325 and 56326. There is no panel to satisfy on a laptop and you always want both, so one `up` is the right shape
 there — the split exists for how the VPS deploys, not for how the stack works.
+
+## The worker
+
+[`worker/`](worker/) (and [`dokploy/worker.yml`](dokploy/worker.yml)) runs `apps/worker` as one long-running
+`cli serve` (T066). Each pass, every `pollSeconds`, it does the following:
+
+- serves deck lookups through the crawl;
+- starts each source's daily crawl;
+- collates the raw sources;
+- rebuilds the corpus stats when `corpus.decks` changed;
+- fetches EDHREC weekly.
+
+The schedule is `app_config.worker` in the database, so changing it needs no redeploy. Deploy it after the search API,
+which it reaches as `search-api` on the shared network. It publishes no port.
+
+```sh
+cd deploy/worker && cp .env.example .env && $EDITOR .env && docker compose up -d --build
+docker compose logs -f worker              # "worker: serving", then one line per duty that did something
+docker compose run --rm worker collate     # any other worker command, one off, in the same image
+```
+
+`DATABASE_URL` must be Supabase's **session** pooler: the jobs stage rows in temp tables, which the transaction
+pooler drops between statements. The deck tool shows the collector online while the worker's heartbeat
+(`worker_status`) is under 30 s old.

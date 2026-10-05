@@ -1,5 +1,6 @@
 import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { collate, COLLATE_SOURCES, type CollateSource } from './jobs/collate';
+import { serve } from './jobs/serve';
 import { syncCatalog } from './jobs/sync-catalog';
 import { syncEdhrec } from './jobs/sync-edhrec';
 import { syncSearchIndex } from './jobs/sync-search-index';
@@ -25,7 +26,9 @@ Commands:
                             Drain public.search_index_queue into the search index (--rebuild: build every
                             collection from scratch and move the aliases when it is done)
   aggregate:corpus [--force]
-                            The collated corpus.decks → commander and card play-rate stats (refuses an empty corpus)`;
+                            The collated corpus.decks → commander and card play-rate stats (refuses an empty corpus)
+  serve [--once]            The VPS worker: deck lookups, then the daily crawl, collation, stats rebuilds and EDHREC
+                            fetches as app_config.worker schedules them (--once: one pass, no EDHREC fetch)`;
 
 /** The value after a flag, as in `--limit 30`. */
 const flagValue = (args: string[], flag: string) => {
@@ -71,6 +74,9 @@ async function main(): Promise<void> {
       await collate({ force, ...(only ? { only: only as CollateSource[] } : {}) });
       return;
     }
+    case 'serve':
+      await serve({ once: args.includes('--once') });
+      return;
     case 'sync:typesense':
       return syncSearchIndex({ rebuild: args.includes('--rebuild') });
     case 'aggregate:corpus': {

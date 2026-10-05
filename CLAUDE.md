@@ -37,6 +37,7 @@ yarn workspace @mtg/worker cli sync:typesense [--rebuild]  # drain public.search
 yarn workspace @mtg/worker cli sync:edhrec [--limit N]    # EDHREC's commander pages → raw edhrec.commanders, edhrec.commander_cards (~3.5 h at 1.5 s a page; --limit: a trial run the collator ignores)
 yarn workspace @mtg/worker cli collate [--force] [--only archidekt,user,edhrec,spellbook,...]  # raw sources → corpus: only what changed since each source's last collation (--force: everything, and the removal gate lets a big drop through)
 yarn workspace @mtg/worker cli aggregate:corpus  # the collated corpus.decks → commander_keys, commander_stats, card_global_stats, commander_card_stats (skips while unchanged; --force re-runs; never writes from an empty corpus; run `collate` first)
+yarn workspace @mtg/worker cli serve [--once]    # the VPS worker (T066, deploy/worker/): deck lookups through the crawl, the daily crawl, collation, stats rebuilds, weekly EDHREC, as app_config.worker schedules them (--once: one pass)
 yarn workspace @mtg/worker cli:hosted <command>  # any worker command against the hosted database: loads apps/worker/.env.hosted (copy .env.example); plain `cli` always means local
 
 docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/tests/<file>.sql   # SQL checks, each rolls back:
@@ -51,6 +52,7 @@ docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supaba
 #   crawl-commanders.sql     per-commander crawl queue and raw deck writes: diff-only seed, queue order, visit stamps, service_role only (needs the local catalog)
 #   data-layers.sql          the private schemas, the source-naming rule, one deck id across sources, crawl.decks, corpus.decks rules (needs the local catalog)
 #   collator.sql             corpus.decks queues dirty commanders (a player's own delete included), corpus.spellbook_combos, collate_state, settings (needs the local catalog)
+#   vps-worker.sql           a requested commander comes first in the crawl's queue (and joins it), the worker's schedule (needs the local catalog)
 #   spellbook.sql            raw Spellbook combos: kept as published, constraints, no API role reads them
 docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supabase/demo/admin-demo.sql   # demo accounts, decks and collections for /admin (commits; re-runnable)
 
@@ -162,7 +164,8 @@ Built 2026-10-05 (T053, migration `20261005000200_data_layers.sql`); `docs/roadm
   - Not stored: `salt`, `rank`, prices, images, page panels. Not exposed: a private schema, RLS on, never shown in the UI.
 - **Commander deck lookups** (contract v2): a deck whose commander has no corpus can request decks.
   - Queue: `public.commander_requests`, one active row per commander (partial unique index). API roles only reach it through `get_commander_request`, `request_commander_decks` (rate limit per salted visitor hash, queue cap, cooldowns) and `get_commander_request_status`. Limits and the ETA pace live in `app_config.commander_requests`.
-  - Nothing serves them today. The worker that did (`serve:commander-requests`, run by hand from the owner's PC; it wrote decks into the old deck spike's file) was retired on 2026-10-05, offline since 2026-09-16. Requests wait in the queue and the deck tool shows the collector offline (no `worker_status` heartbeat for 30 s) until the VPS worker serves them (PR #128 rework, T009).
+  - **Served through the crawl by the VPS worker** (`apps/worker/src/jobs/lookups.ts`, T066; the PC worker that wrote into the deck spike's file was retired 2026-10-05). `crawl_next_commanders` hands out a commander with an active lookup first, adding it to `crawl.queue` if the seed list doesn't know it. The worker moves a request to `collecting`, starts a crawl run if none is going (at most every `crawlTriggerMinutes`), and once the queue row shows a visit after the request started: `collate` and `aggregate:corpus`, then `done` with the commander's corpus decks, or `not_enough_decks` below `minDecks` or when the crawl found none (`not_found`, `no_led_decks`). A switched-off source fails it with the reason; no visit within `visitTimeoutMinutes` fails it too. One Archidekt client, so lookups keep the crawl's pace, claim and kill switch.
+  - The deck tool shows the collector offline while the worker's `worker_status` heartbeat (`commander-requests`, every 10 s) is over 30 s old: until the worker is deployed, requests wait.
   - When a status action first sees `done`, it calls `updateTag("corpus")` and `updateTag("recs")`.
 - **Archidekt access** (the Go crawl's adapter, `services/search-api/internal/archidekt/`, is the one Archidekt client; the TypeScript client the deck spike and lookups used was retired on 2026-10-05): read access rests on staff's forum permission (thread 40353). Requests go one at a time, ≥ 1 s apart. `/api/decks/v3/?commanderName=<name>&deckFormat=3&size=100&orderBy=-viewCount|-updatedAt&page=N` lists decks (also `edhBracket=1..5`); `count` is capped at 1000 but pages continue past it. The filter also matches decks that merely contain the card, so `qualifyDeck` verifies the Commander category, format 3, public, exactly 100 cards (first category decides inclusion; Sideboard/Maybeboard/Considering never count). Never store `edhrecRank`/`salt`. Credit Archidekt with a link wherever its data is shown.
 
@@ -265,9 +268,9 @@ Web behaviour for these features (the tool, pages, auto-save, proxy rules) is in
 
 - **Vercel Hobby** (noncommercial) for `apps/web`, project `mtg-app`, functions in `cle1` next to the database. Details in `apps/web/AGENTS.md`.
 - **Supabase Pro** (8 GB, `us-east-2`). Its GitHub integration applies `supabase/migrations` when `main` changes; `db-push.yml` is the manual fallback. The integration can come unlinked with no failing check: after a release, confirm that hosted `supabase_migrations.schema_migrations` reached the newest version. A migration applied by hand must be marked with `supabase migration repair --status applied <version>` before `db push`, or the push runs it again. **Release trap:** merging a migration to `develop` publishes a Vercel preview that still runs against `main`'s schema, so a migration adding a column to a shared read path breaks the develop preview until `main` catches up.
-- **VPS** (Dokploy, Traefik): Typesense, the search API and the deck crawl.
+- **VPS** (Dokploy, Traefik): Typesense, the search API and the deck crawl, and the worker (`deploy/worker/`, `deploy/dokploy/worker.yml`; T066): one `cli serve` that serves deck lookups and starts the daily crawl, collates, rebuilds the corpus stats and fetches EDHREC on the `app_config.worker` schedule (`pollSeconds`, `crawlHourUtc`, `collateEveryMinutes`, `aggregateEveryHours`, `edhrecEveryDays`, `retryHours`). When each last ran is read from `sync_runs` and `crawl.runs`, so a restart neither repeats nor skips work.
 - **GitHub Actions**: Scryfall and Commander Spellbook syncs and search index rebuilds.
-- **This PC**: `sync:edhrec`, `collate` and `aggregate:corpus` against the hosted database, by hand, until the VPS worker takes them over.
+- **This PC**: any worker command against the hosted database by hand (`cli:hosted`), until the VPS worker is deployed and when a run is wanted now.
 - Check database size with `pg_database_size`; `VACUUM FULL` a table to see its live size. Storage is no longer a constraint.
 
 ## Local data

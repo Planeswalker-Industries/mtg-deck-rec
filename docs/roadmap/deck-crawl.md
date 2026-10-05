@@ -38,7 +38,8 @@ between visits, so a commander's page 1 is the same decks tomorrow.
 ## The shape of it
 
 ```
-Vercel cron (daily)
+VPS worker, `cli serve` (daily at app_config.worker.crawlHourUtc, and for a deck lookup)   apps/worker, T066
+Vercel cron (daily, the backup until the worker has proved itself)
   └─ GET  /api/cron/{archidekt,moxfield}-scrape        apps/web — CRON_SECRET bearer
       └─ POST /cron/:source/scrape                     services/search-api — cron token, answers 202
           └─ crawl.Runner.Run (background goroutine)
@@ -411,7 +412,9 @@ update crawl.state set running_run_id = null, client_id = null, claimed_at = nul
 
 ## Not done yet
 
-- **The daily trigger (T042).** Runs so far were started by hand; the Vercel cron has not produced one.
+- **The daily trigger (T042).** The Vercel cron has started runs only sometimes. The VPS worker (T066) starts each
+  source's run at `crawlHourUtc` unless one already started that day (UTC); the claim makes a second trigger harmless,
+  so the cron stays as a backup until two days of worker-started runs, then goes.
 - **Collation on hosted (T054).** `cli collate` resolves the raw decks into `corpus.decks` (the corpus rule:
   commander legality, colour identity, 100 cards, every card known) and `aggregate:corpus` reads that; built, and run
   by hand on hosted after release until the VPS worker (T066) schedules it. This stage stays the raw scrape.
@@ -419,9 +422,11 @@ update crawl.state set running_run_id = null, client_id = null, claimed_at = nul
   `auth` included, in the same process that serves public read endpoints. The `crawl_*` functions narrow what the
   crawl *does*, not what the key *could* do. A proper fix is a Postgres role granted execute on those functions and
   nothing else, plus a JWT minted for it — Supabase's secret keys map to `service_role`.
-- **Commander requests.** The PC worker that served them (`serve:commander-requests`, writing the JSONL corpus) was
-  retired on 2026-10-05. PR #128 moves lookups to the VPS worker. It should
-  become "move this commander to the front of `crawl.queue`".
+- **Commander requests go through the crawl (T066, built; live once the worker is deployed).** The PC worker that
+  served them was retired on 2026-10-05. Now `crawl_next_commanders` hands out a commander with an active lookup
+  first (adding it to the queue if the seed list doesn't know it), the worker starts a run when none is going, and once
+  the queue row says the commander was visited it collates, rebuilds the stats and closes the request. Lookups so obey
+  the crawl's pace, claim and kill switch: a switched-off source fails them with its reason.
 - **Moxfield (T044).** Blocked. Its list is still the site-wide update-ordered feed, so it needs a per-commander
   search before it is re-enabled. Its deck parser reads an embed whose shape is still unpinned, which is why it refuses
   anything that is not exactly 100 cards: a heuristic that reads half a deck produces a plausible, wrong list. If
