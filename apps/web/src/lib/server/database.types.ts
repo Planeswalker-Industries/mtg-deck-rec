@@ -855,90 +855,6 @@ export type Database = {
           },
         ]
       }
-      external_commander_card_stats: {
-        Row: {
-          card_id: number
-          decks_with: number
-          external_commander_id: number
-          potential_decks: number
-          synergy: number | null
-        }
-        Insert: {
-          card_id: number
-          decks_with: number
-          external_commander_id: number
-          potential_decks: number
-          synergy?: number | null
-        }
-        Update: {
-          card_id?: number
-          decks_with?: number
-          external_commander_id?: number
-          potential_decks?: number
-          synergy?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "external_commander_card_stats_card_id_fkey"
-            columns: ["card_id"]
-            isOneToOne: false
-            referencedRelation: "cards"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "external_commander_card_stats_external_commander_id_fkey"
-            columns: ["external_commander_id"]
-            isOneToOne: false
-            referencedRelation: "external_commanders"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      external_commanders: {
-        Row: {
-          commander_1: number
-          commander_2: number | null
-          deck_count: number
-          fetched_at: string
-          id: number
-          slug: string
-          source: string
-        }
-        Insert: {
-          commander_1: number
-          commander_2?: number | null
-          deck_count: number
-          fetched_at: string
-          id?: never
-          slug: string
-          source: string
-        }
-        Update: {
-          commander_1?: number
-          commander_2?: number | null
-          deck_count?: number
-          fetched_at?: string
-          id?: never
-          slug?: string
-          source?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "external_commanders_commander_1_fkey"
-            columns: ["commander_1"]
-            isOneToOne: false
-            referencedRelation: "cards"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "external_commanders_commander_2_fkey"
-            columns: ["commander_2"]
-            isOneToOne: false
-            referencedRelation: "cards"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       formats: {
         Row: {
           code: string
@@ -1749,10 +1665,6 @@ export type Database = {
         Returns: Json
       }
       crawl_create_run: { Args: { p_source: string }; Returns: number }
-      crawl_deck_hashes: {
-        Args: { p_ids: string[]; p_source: string }
-        Returns: Json
-      }
       crawl_deck_versions: {
         Args: { p_ids: string[]; p_source: string }
         Returns: Json
@@ -1798,7 +1710,7 @@ export type Database = {
         Args: { p_deck_id: string; p_name?: string }
         Returns: string
       }
-      external_card_priors: {
+      edhrec_card_priors: {
         Args: { p_card_ids: number[]; p_commander_ids: number[] }
         Returns: Json
       }

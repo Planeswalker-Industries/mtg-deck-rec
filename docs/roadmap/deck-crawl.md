@@ -67,7 +67,7 @@ only to the container log, so anything knowable at trigger time has to be said w
 | `apps/web/src/lib/server/crawl-cron.ts` | the shared cron route body |
 
 A source supplies four things — `ListURL`, `DeckURL`, `ParseList`, `ParseDeck` — and nothing downstream knows which
-site a deck came from. Adding a third source is those four methods, a `Defaults()` policy and a `crawl_state` row.
+site a deck came from. Adding a third source is those four methods, a `Defaults()` policy, a `crawl.state` row, and a schema of its own with a `decks` table shaped like `archidekt.decks` (plus its branch in the `crawl.decks` view).
 
 ## What one run does
 
@@ -75,7 +75,7 @@ site a deck came from. Adding a third source is those four methods, a `Defaults(
 2. **Read the state.** A disabled source stops here, having made no request.
 3. **Open a run row**, then **claim the source**. The claim is the only thing that decides whether this run crawls;
    losing it means another crawl is live, which is a normal outcome, not a failure.
-4. **Seed the queue** (`crawl_seed_commanders`): add the commanders `public.external_commanders` (EDHREC) knows and
+4. **Seed the queue** (`crawl_seed_commanders`): add the commanders `corpus.edhrec_commanders` (EDHREC) knows and
    refresh their deck counts, writing only what changed. A later EDHREC import reaches the queue on its own.
 5. **Visit commanders in queue order** until `runMinutes` is up or the queue is empty: never visited first, most
    played (EDHREC deck count) first, then the least recently visited. Per commander:
@@ -94,7 +94,7 @@ site a deck came from. Adding a third source is those four methods, a `Defaults(
 
 ### Outcomes and the verification log
 
-Each commander's last visit is a row in `corpus.crawl_commanders`:
+Each commander's last visit is a row in `crawl.queue`:
 
 | Outcome | |
 |---|---|
@@ -128,23 +128,23 @@ worker's `qualifyDeck`:
 - at least one card in the `Commander` category
 - exactly 100 cards, commander(s) included
 
-A deck failing any of them is a `NotQualified`: counted in `crawl_runs.skipped_unqualified` and stepped over. Only a
+A deck failing any of them is a `NotQualified`: counted in `crawl.runs.skipped_unqualified` and stepped over. Only a
 page that stopped looking like itself is a `ShapeError`, which quarantines the whole run rather than guessing.
 
 **An empty deck is unqualified, not a changed shape.** A deck someone just created, or emptied, answers with an empty
 (or null) `cards` list; it is skipped as `empty deck`. Only a body with no `cards` field at all quarantines. Until
 2026-10-03 an empty list read as a changed shape, and hosted run 7 stopped on one after 57 decks.
 
-A deck that answers **404 or 410** is stepped over too, counted in `crawl_runs.skipped_missing`. The loop runs at
+A deck that answers **404 or 410** is stepped over too, counted in `crawl.runs.skipped_missing`. The loop runs at
 one request every few seconds, so minutes pass between a deck being listed and being fetched; in that window it can be deleted, made private or have its id retired. That is ordinary at this rate. It used
 to fail the whole run — observed 2026-09-24, a crawl died on deck 26724957 after about a hundred decks, and because
 the next run walked the same feed it would have died on the same id every night.
 
-A deck naming a card **our catalog does not have yet** is not stored either, counted in
-`crawl_runs.skipped_unresolved` and logged at Warn with the oracle ids that failed. Decks are stored by catalog card
-id (below), and the alternative, storing it without the card, would leave a 99-card deck in the corpus for good
-(owner decision 2026-10-03). Nothing is held for it, so the commander's next visit fetches it again, by which time the
-daily catalog sync has normally caught up.
+A deck naming a card **our catalog does not have yet** is stored all the same: the raw table keeps what the source
+published, and the collator (T054) lets the deck into `corpus.decks` only once every card resolves, so no 99-card deck
+reaches the corpus (owner decision 2026-10-03) and the deck is not fetched again. Only an id that is **not an oracle id
+at all** is refused: counted in `crawl.runs.skipped_unresolved`, logged at Warn with the ids, and fetched again on the
+commander's next visit.
 
 The counters are separate on purpose: a rising `skipped_unqualified` says the browse filters admit decks the
 corpus does not want, a rising `skipped_missing` says the feed is stale or the crawl is falling behind
@@ -179,14 +179,14 @@ Every outbound request goes through `crawl.Fetcher`:
   (8 s), and `paceRecoverRequests` (60) responses with no 429 in them return it to the base. The reason it is not just
   a flat safe number is on the record: one request a second drew 429s on 2026-09-14, so a fixed pace would have to be
   slow enough for the worst day and needlessly slow on every other one. A run that was slowed down says so in its own
-  row — `corpus.crawl_runs.throttles` counts it and `throttled_position` names the commander and page it happened at,
+  row — `crawl.runs.throttles` counts it and `throttled_position` names the commander and page it happened at,
   because a count says there was resistance and only a position says where to look.
 - 429 and 5xx retry up to three times with exponential backoff, widened to `Retry-After` when the server sets one.
 - **403 or a challenge is never retried.** It is a decision by the source, and the crawl honours it.
 
 ### The kill switch
 
-One blocked response disables that source (`crawl_state.disabled`) and writes an `audit_log` row. There is
+One blocked response disables that source (`crawl.state.disabled`) and writes an `audit_log` row. There is
 deliberately no "how many blocks" threshold: a wall is a wall.
 
 ```sql
@@ -201,7 +201,7 @@ user-written, and one false positive switches off the pipeline until someone not
 
 ## Single flight
 
-`crawl_claim` takes the source's `crawl_state` row `for update`, so two triggers cannot both crawl — the loser closes
+`crawl_claim` takes the source's `crawl.state` row `for update`, so two triggers cannot both crawl — the loser closes
 its own run row as failed and reports busy. There is no read-then-write fast path, because that is a check with a gap
 in front of it.
 
@@ -217,20 +217,23 @@ waits for in-flight *requests*, and the scrape's request ended at its 202 — he
 
 ## The data
 
-Four tables in `corpus`, and nothing in the app reads them yet.
+The decks live in each source's own raw schema, and the crawl's machinery in `crawl` (since 2026-10-05, T053; the
+layers are in [`card-graph-plan.md`](card-graph-plan.md), "Data layers"). Nothing in the app reads them.
 
 | Table | |
 |---|---|
-| `corpus.decks` | one row per scraped deck: `commander_card_ids int[]` (sorted), `cards jsonb` (`{card id: quantity}`), `deck_size`, `content_hash`, the update times |
-| `corpus.crawl_runs` | one row per run, shaped like `sync_runs`: pages, decks listed/fetched/written, skipped unchanged, skipped unqualified, skipped missing, skipped unresolved, commanders visited, blocks, error |
-| `corpus.crawl_state` | one row per source: cursor, claim, kill switch, probe |
-| `corpus.crawl_commanders` | one row per source and commander: EDHREC deck count (queue order), the name that worked, last visit, outcome, counts |
+| `archidekt.decks` (`moxfield.decks` alike, empty) | one row per scraped deck, as the source sent it: `commanders uuid[]` and `card_oracle_ids uuid[]` (oracle ids, sorted), `quantities smallint[]` (aligned), `deck_size`, `declared_bracket`, `content_hash`, the update times. Ids come from one sequence across sources |
+| `crawl.decks` (view) | every deck source's raw decks with `source` as a column: what the `crawl_*` and admin functions read |
+| `crawl.runs` | one row per run, shaped like `sync_runs`: pages, decks listed/fetched/written, skipped unchanged, skipped unqualified, skipped missing, skipped unresolved, commanders visited, blocks, error |
+| `crawl.state` | one row per source: cursor, claim, kill switch, probe |
+| `crawl.queue` | one row per source and commander: EDHREC deck count (queue order), the name that worked, last visit, outcome, counts |
 
-**Decks are stored by `public.cards` id, not by oracle id.** The crawler sends the oracle ids the source reports;
-`crawl_upsert_decks` resolves them once, on write, through `cards_oracle_id_key`, and every read after that joins
-`cards` by primary key or not at all. Until 2026-10-03 the table held oracle ids as text, and joining text to the
-uuid column cast the indexed side: `crawl_seed_commanders` read the whole `cards` heap on every run, ran past
-PostgREST's 8 s `statement_timeout` cold, and hosted run 8 failed before its first request.
+**Decks are stored raw, in the source's oracle ids.** `crawl_upsert_decks` resolves nothing against the catalog;
+the collator does that once, into `corpus.decks`. The ids are `uuid`, so every join to `cards.oracle_id` is uuid to
+uuid and uses its unique index. Before 2026-10-03 the table held oracle ids as text, and joining text to the uuid
+column cast the indexed side: `crawl_seed_commanders` read the whole `cards` heap on every run, ran past PostgREST's
+8 s `statement_timeout` cold, and hosted run 8 failed before its first request. From 2026-10-03 to 2026-10-05 the
+decks were stored by card id instead; T053 moved them back to oracle ids, now typed.
 
 `content_hash` is sha256 over **sorted** commanders and **sorted** card/quantity pairs. Sorted because the hash has
 to describe the deck and not the order a site happened to list it in — an order-sensitive hash would rewrite every
@@ -242,11 +245,11 @@ next visit can step over it without a request.
 
 ### Why functions, not tables
 
-**The Go service never addresses a `corpus` table.** It calls security-definer functions in `public`, with
+**The Go service never addresses a table.** It calls security-definer functions in `public`, with
 execute revoked from `public`, `anon` and `authenticated` and granted to `service_role` alone.
 
-PostgREST can only address a table in a schema on its exposed list, so `/rest/v1/corpus.decks` is read as a table
-*named* `corpus.decks` in `public` — `PGRST205`. Putting `corpus` on that list is exactly what a schema holding
+PostgREST can only address a table in a schema on its exposed list, so `/rest/v1/archidekt.decks` is read as a table
+*named* `archidekt.decks` in `public` — `PGRST205`. Putting the raw schemas on that list is exactly what schemas holding
 third-party decklists must not do. The functions give the crawl the handful of operations it needs and leave the
 tables unreachable by the API roles.
 
@@ -346,37 +349,37 @@ Read what runs have done:
 ```sql
 select id, state, started_at, finished_at, decks_listed, decks_written,
        skipped_unchanged, skipped_unqualified, skipped_missing, skipped_unresolved, blocks, error
-  from corpus.crawl_runs where source = 'archidekt' order by id desc limit 20;
+  from crawl.runs where source = 'archidekt' order by id desc limit 20;
 ```
 
 Read the verification log (commanders Archidekt has no decks for under that name):
 
 ```sql
 select k.name, c.outcome, c.query_name, c.listed, c.fetched, c.wrong_commander, c.updated_at
-  from corpus.crawl_commanders c join public.cards k on k.id = c.commander_card_id
+  from crawl.queue c join public.cards k on k.id = c.commander_card_id
  where c.source = 'archidekt' and c.outcome in ('not_found', 'no_led_decks')
- order by c.seed_decks desc;
+ order by c.edhrec_deck_count desc;
 ```
 
 Put a commander back in the queue after fixing its name (it is tried with `query_name` first):
 
 ```sql
-update corpus.crawl_commanders set outcome = null, query_name = '<name Archidekt uses>'
+update crawl.queue set outcome = null, query_name = '<name Archidekt uses>'
  where source = 'archidekt' and commander_card_id = <card id>;
 ```
 
 Re-enable a source after a block, once you believe it is reachable:
 
 ```sql
-update corpus.crawl_state
+update crawl.state
    set disabled = false, disabled_reason = null, disabled_at = null
  where source = 'archidekt';
 ```
 
-Free a claim by hand (rarely needed — the stale window does this after six hours):
+Free a claim by hand (rarely needed — the stale window does this after eight hours):
 
 ```sql
-update corpus.crawl_state set running_run_id = null, client_id = null, claimed_at = null
+update crawl.state set running_run_id = null, client_id = null, claimed_at = null
  where source = 'archidekt';
 ```
 
@@ -409,15 +412,15 @@ update corpus.crawl_state set running_run_id = null, client_id = null, claimed_a
 ## Not done yet
 
 - **The daily trigger (T042).** Runs so far were started by hand; the Vercel cron has not produced one.
-- **Aggregation (T035 slice 2).** Nothing reads `corpus.decks`. Turning it into `commander_card_stats` / `card_global_stats` is the
-  next milestone, and is where legality, colour identity and `resolveDeck`'s filters apply — this stage is the raw
-  scrape.
+- **Collation and aggregation (T054).** Nothing reads the raw decks yet. The collator resolves them into
+  `corpus.decks`, where legality, colour identity and `resolveDeck`'s filters apply — this stage is the raw scrape.
 - **A database role that is not `service_role` (T043).** The VPS holds a key that bypasses RLS across the whole database,
   `auth` included, in the same process that serves public read endpoints. The `crawl_*` functions narrow what the
   crawl *does*, not what the key *could* do. A proper fix is a Postgres role granted execute on those functions and
   nothing else, plus a JWT minted for it — Supabase's secret keys map to `service_role`.
-- **Commander requests.** `serve:commander-requests` still runs on this PC and writes the JSONL corpus. It should
-  become "move this commander to the front of `crawl_commanders`".
+- **Commander requests.** The PC worker that served them (`serve:commander-requests`, writing the JSONL corpus) was
+  retired on 2026-10-05. PR #128 moves lookups to the VPS worker. It should
+  become "move this commander to the front of `crawl.queue`".
 - **Moxfield (T044).** Blocked. Its list is still the site-wide update-ordered feed, so it needs a per-commander
   search before it is re-enabled. Its deck parser reads an embed whose shape is still unpinned, which is why it refuses
   anything that is not exactly 100 cards: a heuristic that reads half a deck produces a plausible, wrong list. If

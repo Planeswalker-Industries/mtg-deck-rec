@@ -110,26 +110,35 @@ func TestLiveStoreRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Decks are stored by catalog card id, so the oracle ids have to be ones the local catalog has.
+	// Real oracle ids from the local catalog, so the queue half below has commanders to work with.
 	commander, card := liveOracleID(t, store, "atraxa-praetors-voice"), liveOracleID(t, store, "sol-ring")
 
-	// A deck naming a card the catalog does not have is not stored, and says which id failed.
+	// Decks are stored raw, as the source sent them: a card the catalog does not have is kept (the collator holds the
+	// deck back from the corpus until it resolves). Only an id that is not an oracle id at all is refused, and named.
 	stranger := DeckRow{
-		SourceDeckID:    "live-test-unresolved",
+		SourceDeckID:    "live-test-unknown-card",
 		Commanders:      []string{commander},
 		Cards:           map[string]int{"00000000-0000-4000-8000-00000000dead": 1},
 		DeckSize:        2,
-		ContentHash:     "live-test-unresolved",
+		ContentHash:     "live-test-unknown-card",
 		ListedUpdatedAt: time.Now().UTC().Truncate(time.Second),
 		LastUpdatedAt:   time.Now().UTC().Truncate(time.Second),
 	}
 	unresolved, err := store.UpsertDecks(ctx, []DeckRow{stranger})
-	if err != nil {
-		t.Fatalf("writing an unresolvable deck: %v", err)
+	if err != nil || len(unresolved) != 0 {
+		t.Fatalf("a deck naming a card the catalog lacks should be stored raw: %+v, %v", unresolved, err)
 	}
-	if len(unresolved) != 1 || unresolved[0].DeckID != stranger.SourceDeckID ||
-		len(unresolved[0].Missing) != 1 || unresolved[0].Missing[0] != "00000000-0000-4000-8000-00000000dead" {
-		t.Fatalf("the deck should come back unresolved, naming the card: %+v", unresolved)
+	malformed := stranger
+	malformed.SourceDeckID = "live-test-malformed"
+	malformed.ContentHash = "live-test-malformed"
+	malformed.Cards = map[string]int{"not-an-oracle-id": 1}
+	unresolved, err = store.UpsertDecks(ctx, []DeckRow{malformed})
+	if err != nil {
+		t.Fatalf("writing a malformed deck: %v", err)
+	}
+	if len(unresolved) != 1 || unresolved[0].DeckID != malformed.SourceDeckID ||
+		len(unresolved[0].Missing) != 1 || unresolved[0].Missing[0] != "not-an-oracle-id" {
+		t.Fatalf("the malformed deck should come back unresolved, naming the id: %+v", unresolved)
 	}
 
 	deckID := "live-test-deck"
@@ -191,7 +200,7 @@ func TestLiveStoreRoundTrip(t *testing.T) {
 			t.Fatal("a commander this run finished must not be handed back to it")
 		}
 	} else {
-		t.Log("no external_commanders locally; the queue half was not exercised")
+		t.Log("no EDHREC commanders (corpus.edhrec_commanders) locally; the queue half was not exercised")
 	}
 
 	if err := store.SetCursor(ctx, deckID); err != nil {
