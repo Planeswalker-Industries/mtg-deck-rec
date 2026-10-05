@@ -412,8 +412,9 @@ update crawl.state set running_run_id = null, client_id = null, claimed_at = nul
 ## Not done yet
 
 - **The daily trigger (T042).** Runs so far were started by hand; the Vercel cron has not produced one.
-- **Collation and aggregation (T054).** Nothing reads the raw decks yet. The collator resolves them into
-  `corpus.decks`, where legality, colour identity and `resolveDeck`'s filters apply — this stage is the raw scrape.
+- **Collation on hosted (T054).** `cli collate` resolves the raw decks into `corpus.decks` (the corpus rule:
+  commander legality, colour identity, 100 cards, every card known) and `aggregate:corpus` reads that; built, and run
+  by hand on hosted after release until the VPS worker (T066) schedules it. This stage stays the raw scrape.
 - **A database role that is not `service_role` (T043).** The VPS holds a key that bypasses RLS across the whole database,
   `auth` included, in the same process that serves public read endpoints. The `crawl_*` functions narrow what the
   crawl *does*, not what the key *could* do. A proper fix is a Postgres role granted execute on those functions and

@@ -447,7 +447,7 @@ Editing by hand (contract v15) works only on a collection that already exists. W
 
 ## Data Layers and Scoring
 
-One pipeline in layers, then one scoring engine on top. The pipeline (raw source schemas, the collator, the precompute worker) is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md); the scoring (formulas, the one marginal-value function, the three modes, bracket rules, the evaluation gate) is [`roadmap/scoring-design.md`](roadmap/scoring-design.md). Owner decisions of 2026-10-04/05 are recorded in both. The order is the roadmap in `scoring-design.md`: T053, T054, T055, T057, T058, T061, T059, T060, T062, T064, T063, with T056 and T065 at any time.
+One pipeline in layers, then one scoring engine on top. The pipeline (raw source schemas, the collator, the precompute worker) is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md); the scoring (formulas, the one marginal-value function, the three modes, bracket rules, the evaluation gate) is [`roadmap/scoring-design.md`](roadmap/scoring-design.md). Owner decisions of 2026-10-04/05 are recorded in both. The order is the roadmap in `scoring-design.md`: T053, T054, T055, T057, T058, T061, T059, T060, T062, T064, T063, with T056 and T065 at any time. T066 (the VPS worker) runs the pipeline's jobs on a schedule once T054 is out.
 
 ### T053: Data layers: schemas and table moves
 
@@ -471,26 +471,26 @@ Each source's data moves into its own schema, as the source published it (`archi
 
 ### T054: Collator
 
-**Priority:** HIGH | **Area:** Worker / Data | **Status:** Designed 2026-10-05 | **Blocked by:** T053
+**Priority:** HIGH | **Area:** Worker / Data | **Status:** Built 2026-10-05 (`cli collate`, `sync:edhrec`, migrations `20261005000500`–`600`); waiting for release, after PR #127 | **Blocked by:** T053
 
-`cli collate` resolves raw rows into `corpus` for every source (Archidekt decks, EDHREC pages, Spellbook combos, complete user decks): one deck rule, a `source` on every row, diff-only writes, dirty commanders marked. PR #128 is reworked on top of it:
-- its VPS worker runs the collator after each fetch, and `aggregate:corpus` reads the collated `corpus.decks`;
-- `sync:edhrec` writes `edhrec.*`;
-- `import:decks` is removed (the deck spike's files are stale);
-- the review fixes land: a deck lookup's rebuild keeps the sanity gate, lookups honour Archidekt's kill switch and 403s, the crawl-token fallback works with empty variables, the claim is released on shutdown, and the release notes are corrected.
+`cli collate` resolves raw rows into `corpus` for every source (Archidekt and Moxfield decks, players' saved decks, EDHREC pages, Spellbook combos) with one deck rule (`checkCorpusDeck`, `@mtg/core/commander`), only where something changed, each source in its own transaction with its progress in `corpus.collate_state`. `sync:edhrec` (from PR #128, rewritten for raw) fetches EDHREC's pages into `edhrec.*` as the `edhrec_pages` job. CLAUDE.md ("Data layers", "Deck corpus and play rates") has the rules. PR #128's VPS worker and review fixes moved to T066.
+
+**Files:** `apps/worker/src/jobs/collate.ts`, `sync-edhrec.ts`; `packages/core/src/formats/commander/corpus.ts`; `supabase/migrations/20261005000500_sync_job_collate.sql`, `20261005000600_collator.sql`; `supabase/tests/collator.sql`
+
+**Measured locally (2026-10-05)**, with hosted's 76,774 crawled decks copied in: 18 s to collate them all, 74,874 pass the rule (exclusions: 654 invalid partner pairs, 473 commanders not legal, 396 with no eligible commander, 252 with three or more commanders, 123 outside the colours, 2 others); `aggregate:corpus` over the result took 1 min 38 s for 2,716 commanders and 1.54M commander-card rows. A 30-page `sync:edhrec` trial resolved every listed card and the same commanders as the 2026-09-28 import, and a re-fetch wrote nothing.
 
 **Acceptance criteria:**
-- [ ] `corpus.decks` holds every raw deck that passes the rule; exclusions counted by reason
-- [ ] EDHREC pages and Spellbook combos collated; `listed_floor` computed
-- [ ] User decks only when complete and legal; a deleted deck or account leaves the corpus; the visibility copy says so
-- [ ] `sync_runs` job `corpus_collate` with a sanity gate per source
-- [ ] PR #128's review fixes
+- [x] `corpus.decks` holds every raw deck that passes the rule; exclusions counted by reason
+- [x] EDHREC pages and Spellbook combos collated; `listed_floor` computed
+- [x] Players' decks only when complete (the corpus rule, public or private); a deleted deck or account leaves the corpus; the visibility copy and `/privacy` say so
+- [x] `sync_runs` job `corpus_collate` with a sanity gate per source; a source with no finished fetch is never collated
+- [ ] On hosted, after release: `cli:hosted sync:edhrec` (about 3.5 h), then `collate`, then `aggregate:corpus`; check each run in `/admin` (sync runs)
 
 ---
 
 ### T055: Precompute worker and the serving request path
 
-**Priority:** HIGH | **Area:** Worker / Backend | **Status:** Designed 2026-10-05 | **Blocked by:** T054
+**Priority:** HIGH | **Area:** Worker / Backend | **Status:** Designed 2026-10-05; its inputs are ready (T054: `corpus.dirty_commanders` fills on every corpus write, `corpus.spellbook_combos` is collated) | **Blocked by:** T054
 
 The serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `spellbook_combo_pieces`, and per-dirty-commander `commander_stats`) are built by the precompute worker, and the add, cut and swap paths become indexed reads with scoring in `@mtg/core`. `rec_add_candidates`, `rec_swap_candidates`, `retry-timeout.ts` and `rec_timeouts` retire. On hosted, calls to the two functions average 0.8–1.0 s and peak at the 3 s timeout (2026-10-05).
 
@@ -499,6 +499,22 @@ The serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `
 - [ ] p95 add and swap latency on hosted recorded before and after
 - [ ] Diff-only writes, sanity gates, and a schedule in `app_config.worker`
 - [ ] T008 closed; T040 closed as moot
+
+---
+
+### T066: VPS worker
+
+**Priority:** HIGH | **Area:** Worker / Ops | **Status:** Not started (PR #128's worker, to be carried over) | **Blocked by:** T054
+
+The worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`) runs the jobs that run by hand today, on a schedule in `app_config.worker`: `collate` after every fetch, `aggregate:corpus` when the corpus changed, `sync:edhrec` weekly, and the daily crawl trigger (T042). Deck lookups (T009) go through the crawl: a requested commander jumps the crawl queue, and the worker starts a crawl run at once when the claim is free, so there is one Archidekt client with one politeness and kill-switch implementation.
+
+**Carry over from PR #128, with its review fixes:** the container and deploy files, `cli serve`; a lookup's rebuild keeps the sanity gate; lookups honour Archidekt's kill switch and 403s (by going through the crawl); the crawl-token fallback works with empty variables; the claim is released on shutdown.
+
+**Acceptance criteria:**
+- [ ] The worker deployed on the VPS with `DATABASE_URL` (session pooler), the search API tokens, `WEB_APP_URL` and `REVALIDATE_SECRET`
+- [ ] Schedule in `app_config.worker`; `worker_status` heartbeat shown to the deck tool
+- [ ] Deck lookups served through the crawl queue (closes T009)
+- [ ] Two days of worker-triggered crawls, then the Vercel cron goes (T042)
 
 ---
 
@@ -633,12 +649,12 @@ Pair tables (`commander_card_pairs`, `card_pairs`) from the precompute worker, t
 
 ### T035: Deck aggregation pipeline and card graph
 
-**Priority:** HIGH | **Area:** Backend / Data | **Status:** Unshelved by the owner 2026-10-05; continues as T053–T065. Slice 11 merged (PR #111, 2026-09-28)
+**Priority:** HIGH | **Area:** Backend / Data | **Status:** Unshelved by the owner 2026-10-05; continues as T053–T066. Slice 11 merged (PR #111, 2026-09-28)
 
 The design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), revised 2026-10-05, with the scoring in [`roadmap/scoring-design.md`](roadmap/scoring-design.md). Every source keeps its data in its own schema, as published. A collator resolves it into `corpus`, where every row names its source. A precompute worker builds everything the app reads, so a request is indexed reads plus small per-deck sums. Complete user decks become a source, aggregation recomputes only the commanders whose decks changed, sparse card-pair tables feed a "deck affinity" score, EDHREC commander pages serve as a prior and a benchmark, and every commander is crawled.
 
 **Slice 11 (EDHREC statistics) is on `main`** (PR #111, released in PR #118).
-- **Fetching.** A one-off local script fetched every commander page from `json.edhrec.com` (2026-09-28). `sync:edhrec` (PR #128) replaces it with a weekly job on the VPS worker, writing the raw `edhrec` schema once T053 lands.
+- **Fetching.** A one-off local script fetched every commander page from `json.edhrec.com` (2026-09-28). `sync:edhrec` (T054) replaces it, writing the raw `edhrec` schema; the VPS worker (T066) runs it weekly.
 - **Loading.** `import:edhrec` (retired 2026-10-05 with the stale saved pages it read) wrote the pages into `external_commanders` and `external_commander_card_stats` (now `corpus.edhrec_commanders` and `corpus.edhrec_commander_cards`) (migration `20260928000200_external_commander_stats.sql`). Loaded locally on 2026-09-28 and on hosted on 2026-09-30 (6,787 commanders, 1,791,474 card rows).
 - **Evaluation.** `spike:edhrec:prior` (retired 2026-10-05; T058 repeats it with a time split) was a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured. `supabase/tests/edhrec-stats.sql` holds the SQL checks.
 - **Wired, switched off:** `edhrec_card_priors` (added as `external_card_priors` in migration `20261002000100`, PR #123; renamed by T053) feeds the prior with `app_config.corpus.externalPriorShare` at 0. T061 replaces the share with weighting by sample size.
@@ -653,7 +669,7 @@ The design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), revise
 
 **Acceptance criteria:**
 - [x] The owner reviews the plan and sets the order (2026-10-05: [`roadmap/scoring-design.md`](roadmap/scoring-design.md), "Roadmap")
-- [ ] T053–T065
+- [ ] T053–T066
 - [x] Slice 11: EDHREC statistics loaded, and the holdout test shows the prior helps commanders with few decks
 - [x] Slice 11 follow-up: release to `main` and load hosted (2026-09-30)
 - [x] Slice 11 follow-up: wire the prior into scoring (switched off, PR #123); T061 turns it on
@@ -715,13 +731,13 @@ The Moxfield adapter (`services/search-api/internal/moxfield/`) is built and see
 
 ### T009: Always-on commander request consumer
 
-**Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** PC worker retired 2026-10-05; the VPS worker comes with PR #128's rework
+**Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** PC worker retired 2026-10-05; served through the crawl queue by the VPS worker (T066)
 
-Deck lookups queue in `commander_requests`, and nothing consumes them. The worker that did, `serve:commander-requests`, ran by hand from the owner's PC and wrote decks into the old deck spike's file; it had been offline since 2026-09-16 and was retired on 2026-10-05 with the rest of the spike code. PR #128 moves lookups to the VPS worker, writing raw decks like the crawl, and puts a requested commander at the front of the crawl's queue.
+Deck lookups queue in `commander_requests`, and nothing consumes them. The worker that did, `serve:commander-requests`, ran by hand from the owner's PC and wrote decks into the old deck spike's file; it had been offline since 2026-09-16 and was retired on 2026-10-05 with the rest of the spike code. T066 serves lookups through the crawl: a requested commander goes to the front of the crawl's queue, and the VPS worker starts a crawl run when the claim is free.
 
 **Files:**
-- PR #128: `apps/worker/src/jobs/serve.ts`, `serve-commander-requests.ts`
-- `apps/worker/src/lib/sync-runs.ts` — `finishRun`
+- T066's worker (`apps/worker/src/jobs/serve.ts` in PR #128)
+- `public.crawl_next_commanders` (requested commanders first)
 
 **Acceptance criteria:**
 - [ ] Deploy the consumer as a long-running process or scheduled job

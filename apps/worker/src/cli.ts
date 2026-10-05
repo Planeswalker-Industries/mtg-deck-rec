@@ -1,5 +1,7 @@
 import { aggregateCorpus } from './jobs/aggregate-corpus';
+import { collate, COLLATE_SOURCES, type CollateSource } from './jobs/collate';
 import { syncCatalog } from './jobs/sync-catalog';
+import { syncEdhrec } from './jobs/sync-edhrec';
 import { syncSearchIndex } from './jobs/sync-search-index';
 import { syncSpellbook } from './jobs/sync-spellbook';
 import { syncPrintings } from './jobs/sync-printings';
@@ -14,11 +16,22 @@ Commands:
   sync:printings [--force]  All Cards → printings, card stats (staple score), cheapest prices, flavor names (after sync:catalog)
   sync:tags [--force]       Oracle Tags → tags, hierarchy, card taggings (after sync:catalog)
   sync:spellbook [--force]  Commander Spellbook's combo export → spellbook.combos, spellbook.features, as published (skips if the export is unchanged)
+  sync:edhrec [--limit N]   EDHREC's commander pages → edhrec.commanders, edhrec.commander_cards, as published (about 3.5 h;
+                            --limit fetches only the first N pages, recorded as a trial run the collator ignores)
+  collate [--force] [--only source,...]
+                            Raw sources → corpus: decks (archidekt, moxfield, user), edhrec, spellbook; only what changed
+                            (--force: every source, and the removal gate lets a big drop through)
   sync:typesense [--rebuild]
                             Drain public.search_index_queue into the search index (--rebuild: build every
                             collection from scratch and move the aliases when it is done)
   aggregate:corpus [--force]
                             The collated corpus.decks → commander and card play-rate stats (refuses an empty corpus)`;
+
+/** The value after a flag, as in `--limit 30`. */
+const flagValue = (args: string[], flag: string) => {
+  const i = args.indexOf(flag);
+  return i === -1 ? undefined : args[i + 1];
+};
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
@@ -44,6 +57,20 @@ async function main(): Promise<void> {
     case 'sync:spellbook':
       await syncSpellbook({ force });
       return;
+    case 'sync:edhrec': {
+      const limitArg = flagValue(args, '--limit');
+      const limit = limitArg === undefined ? undefined : Number(limitArg);
+      if (limit !== undefined && !(Number.isInteger(limit) && limit > 0)) throw new Error('--limit needs a whole number of pages');
+      await syncEdhrec(limit === undefined ? {} : { limit });
+      return;
+    }
+    case 'collate': {
+      const only = flagValue(args, '--only')?.split(',');
+      const unknown = only?.filter((s) => !(COLLATE_SOURCES as readonly string[]).includes(s)) ?? [];
+      if (unknown.length > 0) throw new Error(`Unknown source ${unknown.join(', ')}. Sources: ${COLLATE_SOURCES.join(', ')}`);
+      await collate({ force, ...(only ? { only: only as CollateSource[] } : {}) });
+      return;
+    }
     case 'sync:typesense':
       return syncSearchIndex({ rebuild: args.includes('--rebuild') });
     case 'aggregate:corpus': {

@@ -26,8 +26,11 @@ export const COMMANDER_DECK_SIZE = 100;
 
 const frontName = (name: string) => name.split(' // ')[0] ?? name;
 
+/** The facts the partner rules read. */
+type PartnerFacts = Pick<CommanderCardFacts, 'name' | 'partnerKind' | 'partnerQualifier'>;
+
 /** Whether two commanders may share the command zone. */
-export function isValidPartnerPair(a: CommanderCardFacts, b: CommanderCardFacts): boolean {
+export function isValidPartnerPair(a: PartnerFacts, b: PartnerFacts): boolean {
   const kinds = new Set([a.partnerKind, b.partnerKind]);
   if (a.partnerKind === 'partner' && b.partnerKind === 'partner') return true;
   if (a.partnerKind === 'partner_with' && b.partnerKind === 'partner_with') {

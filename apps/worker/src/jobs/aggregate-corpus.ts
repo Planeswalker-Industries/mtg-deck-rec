@@ -84,15 +84,22 @@ export async function aggregateCorpus({ force = false }: { force?: boolean } = {
     const monthsByIdentity = Array.from({ length: IDENTITIES }, (): Record<string, number> => ({}));
     const excluded = Object.fromEntries(EXCLUSIONS.map((e) => [e, 0])) as Record<Exclusion, number>;
     let eligibleDecks = 0;
+    // A deck posted on two sites counts once: the same content hash from a second source is skipped. Identical decks on
+    // one site are different players' decks (an unchanged precon, say), and each counts.
+    const sourceByContent = new Map<string, string>();
 
-    // corpus.decks holds one row per (source, deck): duplicates within a source can't occur, and the collator keeps one
-    // copy of a deck posted on two sites.
     for await (const deck of loadCorpusDecks(sql)) {
       decksRead++;
       if (decksRead % HEARTBEAT_EVERY === 0) await heartbeat(sql, runId, decksRead);
       const resolved = resolveDeck(deck, catalog, config);
       if (!resolved.ok) {
         excluded[resolved.reason]++;
+        continue;
+      }
+      const firstSource = sourceByContent.get(deck.contentHash);
+      if (firstSource === undefined) sourceByContent.set(deck.contentHash, deck.source);
+      else if (firstSource !== deck.source) {
+        excluded.duplicate_across_sources++;
         continue;
       }
 

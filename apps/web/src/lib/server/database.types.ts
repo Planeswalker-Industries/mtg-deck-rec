@@ -1842,6 +1842,8 @@ export type Database = {
         | "scryfall_printings"
         | "edhrec_stats"
         | "spellbook_combos"
+        | "corpus_collate"
+        | "edhrec_pages"
       sync_status:
         | "running"
         | "succeeded"
@@ -1999,6 +2001,8 @@ export const Constants = {
         "scryfall_printings",
         "edhrec_stats",
         "spellbook_combos",
+        "corpus_collate",
+        "edhrec_pages",
       ],
       sync_status: [
         "running",

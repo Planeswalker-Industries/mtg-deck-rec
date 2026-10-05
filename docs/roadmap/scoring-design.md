@@ -1,7 +1,7 @@
 # Unified scoring design
 
 Status: **design, revised 2026-10-05** after the owner's review. Nothing here is built yet; [`../tasks.md`](../tasks.md)
-tracks it as T053–T065.
+tracks it as T053–T066.
 
 **What it does.** One scoring engine serves every recommendation the app makes, across every data source: Archidekt
 decks, EDHREC statistics, Commander Spellbook combos, and our players' decks. It covers three modes:
@@ -355,7 +355,7 @@ Each task is one PR into `develop`, gated by the evaluation from T058 on. Speed 
 | # | Task | What | Needs | Done when |
 |---|---|---|---|---|
 | 1 | T053 | **Data layers:** schemas and table moves; PR #127 reworked into `spellbook` | Hosted migration history repaired | Migrations apply from scratch; the crawl runs unchanged |
-| 2 | T054 | **Collator**, every source including complete user decks; PR #128 reworked | T053 | `corpus.decks` holds every raw deck that passes the rule; `aggregate:corpus` reads it |
+| 2 | T054 | **Collator**, every source including complete user decks; `sync:edhrec` into raw (from PR #128) | T053 | `corpus.decks` holds every raw deck that passes the rule; `aggregate:corpus` reads it |
 | 3 | T055 | **Precompute worker and request path**; the rec SQL functions retire | T054 | Same add and swap lists as before; p95 add latency down on hosted; T008 closed |
 | 4 | T057 | Weights and thresholds into `app_config.scoring` | — | Regression fixtures unchanged |
 | 5 | T058 | Offline evaluation with the seeded bootstrap gate | T054, T057 | Baseline report recorded |

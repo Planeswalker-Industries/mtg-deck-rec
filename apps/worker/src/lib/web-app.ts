@@ -8,7 +8,9 @@ const TAGS_BY_JOB: Record<SyncJob, CacheTag[]> = {
   scryfall_printings: ['catalog', 'recs'],
   oracle_tags: ['catalog', 'recs'],
   corpus_aggregate: ['corpus', 'recs'],
-  edhrec_stats: [], // nothing the web app caches reads it yet
+  corpus_collate: [], // nothing the web app caches reads corpus; the aggregate that follows refreshes it
+  edhrec_stats: [], // the retired import:edhrec; kept for its run history
+  edhrec_pages: [], // raw: nothing the web app caches reads it
   spellbook_combos: [], // nor this
 };
 

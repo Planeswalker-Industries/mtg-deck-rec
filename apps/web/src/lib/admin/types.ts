@@ -114,6 +114,8 @@ export const ADMIN_SYNC_JOBS = [
   "vote_aggregate",
   "edhrec_stats",
   "spellbook_combos",
+  "corpus_collate",
+  "edhrec_pages",
 ] as const;
 
 export const ADMIN_SYNC_STATUSES = ["running", "succeeded", "skipped_unchanged", "failed", "failed_sanity", "abandoned"] as const;
