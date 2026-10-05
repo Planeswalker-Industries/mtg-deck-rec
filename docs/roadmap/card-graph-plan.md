@@ -137,7 +137,7 @@ create table edhrec.commander_cards (
 );
 ```
 
-`sync:edhrec` (PR #128) writes these. They start empty and fill on its first run, about 3.5 hours. Not stored: salt,
+`sync:edhrec` (T054; first written for PR #128) writes these. They start empty and fill on its first run, about 3.5 hours. Not stored: salt,
 rank, prices, images, page panels.
 
 **`spellbook`**
@@ -502,7 +502,7 @@ Each task is one PR into `develop`. The original slices map onto them as shown.
 | Task | What | Was |
 |---|---|---|
 | T053 | Data layers: schemas and table moves (with PR #127 reworked into `spellbook`) | Slice 2, in part |
-| T054 | Collator, every source including complete user decks (with PR #128 reworked) | Slices 2–3 |
+| T054 | Collator, every source including complete user decks, and `sync:edhrec` into raw (from PR #128) | Slices 2–3 |
 | T055 | Precompute worker and the serving request path; retire the rec SQL functions | Slice 4, and new |
 | T056 | Crawl growth: revisits read on until 25 decks were new or changed; declared brackets in raw | Slice 10 |
 | T057 | Scoring weights into `app_config.scoring` | Slice 1 |

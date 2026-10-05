@@ -23,6 +23,12 @@ const DEFAULT_REQUEST_INTERVAL_MS = 1500;
  * truncated sitemap can't empty the table.
  */
 const MIN_SITEMAP_SHARE = 0.8;
+/**
+ * A finished fetch must read at least this share of the previous successful fetch's commander pages. Fewer means
+ * EDHREC's pages changed shape (every page reading as "not a commander page"), so the run fails its gate: nothing is
+ * removed, and the collator never reads it as a finished fetch.
+ */
+const MIN_PAGE_SHARE = 0.8;
 /** A Scryfall printing id; anything else is stored as unknown rather than refused. */
 const PRINTING_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -84,7 +90,7 @@ function cardRows(slug: string, cards: EdhrecCardStat[]) {
  * A page that is gone is S3's own 403 and is counted. Any other 403, or a page that is not JSON, is a block: the run
  * stops, EDHREC is switched off and the audit log says why. `--limit` fetches only the first pages, for a trial run.
  */
-export async function syncEdhrec({ limit }: { limit?: number } = {}): Promise<'succeeded' | 'skipped'> {
+export async function syncEdhrec({ limit }: { limit?: number } = {}): Promise<'succeeded' | 'skipped' | 'failed_sanity'> {
   const sql = connect();
   let runId: number | null = null;
   let pagesRead = 0;
@@ -102,7 +108,19 @@ export async function syncEdhrec({ limit }: { limit?: number } = {}): Promise<'s
     if (start.kind === 'skipped') return 'skipped';
     runId = start.runId;
 
-    const sitemap = await politeFetch(SITEMAP_URL, { limiter, accept: 'application/xml,text/xml;q=0.9' });
+    // The sitemap is a static file in a bucket too (checked 2026-10-05: `Server: AmazonS3`, `application/xml`): S3's own
+    // 403 means it moved, any other 403 or an answer that isn't XML (a challenge page) is a block.
+    const sitemap = await politeFetch(SITEMAP_URL, { limiter, accept: 'application/xml,text/xml;q=0.9', passStatuses: new Set([FORBIDDEN]) });
+    if (sitemap.status === FORBIDDEN) {
+      const server = sitemap.headers.get('server');
+      await sitemap.body?.cancel();
+      if (server !== S3_SERVER) await disable(sql, `EDHREC answered ${FORBIDDEN} from ${server ?? 'an unknown server'} for its sitemap`);
+      throw new Error(`${SITEMAP_URL} is gone (S3's 403): EDHREC moved its sitemap.`);
+    }
+    if (!(sitemap.headers.get('content-type') ?? '').includes('xml')) {
+      await sitemap.body?.cancel();
+      await disable(sql, `EDHREC answered ${sitemap.headers.get('content-type') ?? 'no content type'} instead of XML for its sitemap`);
+    }
     const listed = sitemapSlugs(await sitemap.text());
     if (listed.length === 0) throw new Error(`${SITEMAP_URL} listed no commander pages`);
     const slugs = limit === undefined ? listed : listed.slice(0, limit);
@@ -177,6 +195,16 @@ export async function syncEdhrec({ limit }: { limit?: number } = {}): Promise<'s
         counts.cardRowsWritten += written?.n ?? 0;
         if (headerChanged || (removed?.n ?? 0) > 0 || (written?.n ?? 0) > 0) counts.pagesWritten++;
       });
+    }
+
+    // A whole fetch that read far fewer commander pages than the last one stops here: nothing removed, run not counted.
+    const previousFetched = start.previousMetrics?.fetched;
+    if (limit === undefined && (counts.fetched === 0 || (previousFetched !== undefined && counts.fetched < previousFetched * MIN_PAGE_SHARE))) {
+      const error = `sanity gate: ${counts.fetched} commander pages read (previous ${previousFetched ?? 'none'})`;
+      await finishRun(sql, runId, 'failed_sanity', { rowsRead: pagesRead, metrics: { ...counts }, error });
+      console.error(`edhrec_pages: ${error}. Pages written so far stay; nothing removed, and the collator ignores this run.`);
+      process.exitCode = 1;
+      return 'failed_sanity';
     }
 
     // Pages EDHREC no longer lists, once the whole list was read and it looks whole.
