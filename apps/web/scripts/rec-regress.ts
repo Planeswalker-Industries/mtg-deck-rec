@@ -1,9 +1,9 @@
 /**
  * Recommendation regression check. Runs decklists through the real parse, cut, add and swap code against the local
- * database and checks each fixture's expectations. Fixtures are JSON files (see FixtureFile) kept outside the repo by
- * default, since they can hold personal decklists.
+ * database and checks each fixture's expectations. Fixtures are JSON files (see FixtureFile) kept outside the repo,
+ * since they hold real decklists; where they live is the machine's business.
  *
- * Usage: yarn workspace @mtg/web regress [fixtureDir]   (default: $MTG_DATA_DIR/regression, else X:/mtg_proj/regression)
+ * Usage: yarn workspace @mtg/web regress [fixtureDir]   (default: $MTG_DATA_DIR/regression)
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -42,8 +42,12 @@ interface Check {
   detail: string;
 }
 
-const dataDir = process.env.MTG_DATA_DIR ?? "X:/mtg_proj";
-const fixtureDir = path.resolve(process.argv[2] ?? path.join(dataDir, "regression"));
+/** The fixture folder: the argument, else `regression` under the machine's MTG_DATA_DIR. */
+function fixtureDirectory(): string {
+  const given = process.argv[2] ?? (process.env.MTG_DATA_DIR ? path.join(process.env.MTG_DATA_DIR, "regression") : undefined);
+  if (!given) throw new Error("No fixture folder: pass one (regress <dir>) or set MTG_DATA_DIR to the folder that holds regression/");
+  return path.resolve(given);
+}
 
 const sameCard = (card: CardSummary, name: string) => card.name === name || card.name.split(" // ")[0] === name;
 /** 1-based rank, or 0 when absent. */
@@ -134,6 +138,7 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
 }
 
 async function main(): Promise<void> {
+  const fixtureDir = fixtureDirectory();
   const files = readdirSync(fixtureDir)
     .filter((f) => f.endsWith(".json"))
     .sort()

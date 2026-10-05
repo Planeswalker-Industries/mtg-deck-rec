@@ -14,9 +14,8 @@
 # Ports 56325 and 56326 keep this in the project's own range, beside Supabase (API 56321, Postgres 56322,
 # Studio 56323, Mailpit 56324), so it never collides with another local stack on the default ports.
 #
-# The data lives in a named volume rather than a bind mount: C: has no room on the Windows machine, and Docker
-# Desktop's disk image is already on X: there, so the volume lands in the right place on both machines with no path
-# to configure. It is a cache of Postgres either way — `sync:typesense --rebuild` recreates all of it.
+# The data lives in a named volume rather than a bind mount, so it goes wherever Docker keeps its data and there is
+# no host path to configure. It is a cache of Postgres either way — `sync:typesense --rebuild` recreates all of it.
 #
 # The keys here are fixed development values on a loopback-only port, deliberately. Production generates real ones.
 services:
