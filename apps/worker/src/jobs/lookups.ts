@@ -21,6 +21,8 @@ export const WORKER_NAME = 'commander-requests';
 const LOOKUP_SOURCE = 'archidekt';
 /** Visit outcomes that mean Archidekt has no decks led by the commander under any name the crawl tried. */
 const NOTHING_FOUND = new Set(['not_found', 'no_led_decks']);
+/** The crawl never hands this commander out again until a person clears it, so a lookup can't wait for a visit. */
+const NEVER_REVISITED = 'not_found';
 const MS_PER_MINUTE = 60_000;
 
 interface LookupConfig {
@@ -39,6 +41,7 @@ interface ActiveRequest {
   status: 'collecting' | 'aggregating';
   started_at: Date;
   last_visited_at: Date | null;
+  last_run_id: string | null;
   outcome: string | null;
   listed: number | null;
 }
@@ -92,7 +95,7 @@ export async function serveLookups(sql: Sql): Promise<void> {
     where status in ('queued', 'checking')
   `;
   const active = await sql<ActiveRequest[]>`
-    select r.id::text, r.commander_card_id, r.status, r.started_at, q.last_visited_at, q.outcome, q.listed
+    select r.id::text, r.commander_card_id, r.status, r.started_at, q.last_visited_at, q.last_run_id::text, q.outcome, q.listed
     from public.commander_requests r
     left join crawl.queue q on q.source = ${LOOKUP_SOURCE} and q.commander_card_id = r.commander_card_id
     where r.status in ('collecting', 'aggregating')
@@ -101,8 +104,8 @@ export async function serveLookups(sql: Sql): Promise<void> {
   if (active.length === 0) return;
   await sql`update public.commander_requests set heartbeat_at = now() where status in ('collecting', 'aggregating')`;
 
-  const [state] = await sql<{ disabled: boolean; disabled_reason: string | null; running: boolean }[]>`
-    select disabled, disabled_reason, running_run_id is not null as running from crawl.state where source = ${LOOKUP_SOURCE}
+  const [state] = await sql<{ disabled: boolean; disabled_reason: string | null; running_run_id: string | null }[]>`
+    select disabled, disabled_reason, running_run_id::text from crawl.state where source = ${LOOKUP_SOURCE}
   `;
   if (!state || state.disabled) {
     const reason = state ? `Archidekt is switched off (${state.disabled_reason ?? 'no reason recorded'}).` : 'The crawl is not set up.';
@@ -113,15 +116,20 @@ export async function serveLookups(sql: Sql): Promise<void> {
   const ready: ActiveRequest[] = [];
   let waiting = 0;
   for (const r of active) {
-    const visited = r.last_visited_at !== null && r.last_visited_at >= r.started_at;
+    // A visit after the request, or one earlier in the run that is going now: that run won't hand the commander out again,
+    // and the decks it collected are already in raw.
+    const visited =
+      r.last_visited_at !== null &&
+      (r.last_visited_at >= r.started_at || (state.running_run_id !== null && r.last_run_id === state.running_run_id));
+    const nothingFound = r.outcome === NEVER_REVISITED || (visited && NOTHING_FOUND.has(r.outcome ?? ''));
     if (r.status === 'aggregating') ready.push(r);
-    else if (visited && NOTHING_FOUND.has(r.outcome ?? '')) await finish(sql, r.id, 'not_enough_decks', { listed: r.listed ?? 0, collected: 0 });
+    else if (nothingFound) await finish(sql, r.id, 'not_enough_decks', { listed: r.listed ?? 0, collected: 0 });
     else if (visited) ready.push(r);
     else if (Date.now() - r.started_at.getTime() > config.visitTimeoutMinutes * MS_PER_MINUTE) {
       await finish(sql, r.id, 'failed', { error: 'The crawl did not reach this commander in time.' });
     } else waiting++;
   }
-  if (waiting > 0 && !state.running) await triggerCrawl(LOOKUP_SOURCE, config.crawlTriggerMinutes);
+  if (waiting > 0 && state.running_run_id === null) await triggerCrawl(LOOKUP_SOURCE, config.crawlTriggerMinutes);
   if (ready.length === 0) return;
 
   // The crawl has their decks: collate them, rebuild the stats once for all of them, then report.

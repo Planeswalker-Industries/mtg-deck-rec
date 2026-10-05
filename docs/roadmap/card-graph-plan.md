@@ -46,7 +46,7 @@ computed while the player waits.
 | Crawl machinery | `corpus.crawl_runs`, `crawl_state`, `crawl_commanders` | `crawl.runs`, `crawl.state`, `crawl.queue`, unchanged otherwise |
 | Which decks count | `resolveDeck` in the worker; `save_deck` flags user decks on per-card legality only | The collator applies one rule to every deck source |
 | Crawl depth | Revisits re-read page 1 only, so samples grow only from churn (93 decks at most) | A revisit reads on until 25 decks were new or changed |
-| Where jobs run | The crawl on the VPS (search API); aggregates and EDHREC loads by hand; a VPS worker is in PR #128 | The VPS worker runs the collator and the precompute worker on a schedule |
+| Where jobs run | The crawl on the VPS (search API); aggregates and EDHREC loads by hand; a VPS worker was in PR #128 (now T066) | The VPS worker runs the collator and the precompute worker on a schedule |
 | Commander card stats | `commander_card_stats` and friends: full rebuild with diff writes | Recomputed **per dirty commander** |
 | Recommendation reads | `rec_add_candidates` and `rec_swap_candidates` score every request in SQL, then TypeScript re-scores. On hosted their calls average 0.8–1.0 s and peak at the 3 s timeout; one ran out of retries on 2026-09-30 (T008) | Indexed reads of precomputed serving tables; both functions retire |
 | Card pairs | None (T020 shelved them as too heavy) | `commander_card_pairs` plus a `card_pairs` global backoff |
@@ -390,7 +390,7 @@ Built 2026-10-01 in the Go search API (`internal/crawl/`, adapter `internal/arch
 - The queue is seeded from EDHREC's commander list and ordered by need: commanders under `targetDecks` (60) first.
 - Each commander's decks are listed most viewed first, never `-updatedAt`: Archidekt bumps `updatedAt` faster than a
   polite crawl can page.
-- A requested commander goes to the front of the queue (PR #128).
+- A requested commander goes to the front of the queue, and the VPS worker starts a run for it when none is going (T066).
 
 **How a commander's sample grows (owner rule, 2026-10-05; T056):**
 - A first visit reads one page: up to 60 decks, most viewed first.
@@ -510,6 +510,7 @@ Each task is one PR into `develop`. The original slices map onto them as shown.
 | T061 | EDHREC prior by sample size | Slice 11's prior |
 | T062 | Learned skeleton: curve and land profiles, EDHREC role and curve priors | New |
 | T064 | Deck affinity from card pairs, `LOW_AFFINITY`, contract `deck` component | Slices 5, 7–9 |
+| T066 | The VPS worker: deck lookups through the crawl, and the schedule for crawls, collation, stats and EDHREC (from PR #128) | New |
 
 T059 (collection mode), T060 (bracket rules and combos), T063 (build mode) and T065 (live accept rate) are scoring
 work in [`scoring-design.md`](scoring-design.md).
