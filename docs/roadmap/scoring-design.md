@@ -59,7 +59,7 @@ formulas, the modes, the bracket rules and the evaluation.
   Rename the first (`lookupDecks`).
 - `include_in_corpus` checks per-card legality but not the 100-card count. The collator's one rule replaces it (T054).
 - Recommendations use card ids only; collection quantities are ignored (T059).
-- The TypeScript Archidekt client reads `edhBracket`; the Go crawl drops it. The raw table stores it (T056).
+- The Go crawl drops the author's declared bracket (`edhBracket`); the raw table has a column for it (T056).
 
 ## Scoring components
 
@@ -69,7 +69,7 @@ Notation:
 - p0: the card's colour baseline rate.
 - e: EDHREC's inclusion for the card under K (`decks_with / potential_decks`); N_e: its `potential_decks`.
 - floor: the lowest inclusion K's EDHREC page lists; N_page: the page's deck count.
-- α: `shrinkAlpha`; κcap: `externalPriorCap` (new, in `app_config.corpus`).
+- α: `shrinkAlpha`; κcap: `edhrecPriorCap` (new, in `app_config.corpus`).
 
 | Component | Used by | Formula | Null when |
 |---|---|---|---|
@@ -159,7 +159,7 @@ the evaluation shows they help.
 A group of its own in Add results, not a score bonus. A bonus would saturate at the top of the scale and mix "how good
 is this card here" with "what it unlocks".
 
-- **Which combos:** from `combo_pieces` for the deck's cards, the combos the deck is exactly one named card short of,
+- **Which combos:** from `spellbook_combo_pieces` for the deck's cards, the combos the deck is exactly one named card short of,
   whose commander requirement is met and whose minimum bracket is at or below the chosen one. Template pieces ("a
   Legendary Elemental Creature") can't be checked automatically, so they are listed as also needed.
 - **Order:** by result (`app_config.scoring.comboResultWeight`: "Win the game" > infinite mana, damage or turns >
@@ -178,7 +178,7 @@ signals (`BracketSignals`):
 |---|---|---|---|
 | Game Changers | `cards.game_changer` | 0 in brackets 1–2, at most 3 in bracket 3 (`gameChangerLimit` today) | Hard |
 | Mass land denial | Tagger's `mass-land-denial` tag, planeswalkers excluded (`app_config.brackets.massLandDenialTagIds`) | None below bracket 4 | Hard |
-| Two-card combos | `combo_pieces`; minimum bracket from Spellbook's tag: E 1, O 2, C 2, S 3, P 3, R 4; banned never | A combo whose minimum is above the chosen bracket is over the line. In bracket 3 that is exactly the R combos; no mana value rule | Flag, cut offered |
+| Two-card combos | `spellbook_combo_pieces`; minimum bracket from Spellbook's tag: E 1, O 2, C 2, S 3, P 3, R 4; banned never | A combo whose minimum is above the chosen bracket is over the line. In bracket 3 that is exactly the R combos; no mana value rule | Flag, cut offered |
 | Extra turns | Tagger's `extra-turn` tag, planeswalkers excluded (`extraTurnTagIds`); combos with an infinite-turns result | None in bracket 1; in brackets 2–3 at most `maxExtraTurnCards` (2), and no extra-turn loop | Flag, cut offered |
 | Tutors | — | No limit (WotC, October 2025) | — |
 
@@ -198,7 +198,7 @@ Every source below is an indexed read of a serving table.
 | Pool source | When | Size |
 |---|---|---|
 | Top by `corpus` score (`commander_card_scores`). EDHREC-listed cards are in it, since their scores come from the prior | Always | 400 (today) |
-| Missing pieces of allowed combos (`combo_pieces`) | Adds, builds | Every match |
+| Missing pieces of allowed combos (`spellbook_combo_pieces`) | Adds, builds | Every match |
 | Pair neighbours of the deck's cards | Once pairs exist (T064) | [`card-graph-plan.md`](card-graph-plan.md) |
 | **All available owned cards** in the colour identity | Collection modes | The whole owned pool; scoring them all is lookups, not a query |
 | The target's `card_substitutes` | Swaps | Top 100 |
@@ -285,9 +285,9 @@ run it outside Next.js. The new `/deck` entry for it is T050's picker.
 
 | Change | Task |
 |---|---|
-| `app_config.scoring`: weights, `buyMargin` (0.05), `qualityFloor` (0.35), `priceFloor` (0.25), `comboResultWeight`, generic land and basic land counts by colours, `evalSeed`, `solRingTolerance`. `app_config.corpus.externalPriorCap` (200) | T057, T061 |
+| `app_config.scoring`: weights, `buyMargin` (0.05), `qualityFloor` (0.35), `priceFloor` (0.25), `comboResultWeight`, generic land and basic land counts by colours, `evalSeed`, `solRingTolerance`. `app_config.corpus.edhrecPriorCap` (200) | T057, T061 |
 | `app_config.brackets`: Game Changer limits, `massLandDenialTagIds`, `extraTurnTagIds`, planeswalkers excluded, `maxExtraTurnCards` (0 in bracket 1, 2 in brackets 2–3) | T060 |
-| Serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `combo_pieces`) and the request path | T055 ([`card-graph-plan.md`](card-graph-plan.md)) |
+| Serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `spellbook_combo_pieces`) and the request path | T055 ([`card-graph-plan.md`](card-graph-plan.md)) |
 | `decks.is_built`, plus card quantities in recommendation requests | T059 |
 | `commander_stats.curve_profile`, `land_count` and `basic_land_count`; EDHREC role and curve priors | T062 |
 | Pair tables | T064 |

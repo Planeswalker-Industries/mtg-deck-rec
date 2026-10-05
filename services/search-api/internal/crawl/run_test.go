@@ -141,7 +141,7 @@ type fakeStore struct {
 	seeded         int
 	held           map[string]HeldDeck
 	upserts        []DeckRow
-	unknownCards   map[string]bool // oracle ids the catalog does not have: decks naming one are not stored
+	unknownCards   map[string]bool // ids the database refuses: decks naming one come back unresolved, not stored
 	runID          int64
 	created        int
 	finished       []RunSummary
@@ -600,9 +600,9 @@ func TestRunSkipsDecksThatDoNotQualify(t *testing.T) {
 	}
 }
 
-// A deck naming a card the catalog does not have yet is counted and stepped over: not written, not held (so the next
-// visit fetches it again), and not counted toward the commander's target.
-func TestRunSkipsDecksTheCatalogCannotResolve(t *testing.T) {
+// A deck the database refuses (an id in it is not an oracle id) is counted and stepped over: not written, not held (so
+// the next visit fetches it again), and not counted toward the commander's target.
+func TestRunSkipsDecksTheDatabaseRefuses(t *testing.T) {
 	store := newStore(liesa)
 	store.unknownCards = map[string]bool{"new-card": true}
 	getter := &fakeGetter{pages: map[string][]byte{

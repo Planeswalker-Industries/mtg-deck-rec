@@ -1,8 +1,9 @@
--- Exercises `external_card_priors`: the one read the app makes of EDHREC's published numbers.
+-- Exercises `edhrec_card_priors`: the one read the app makes of EDHREC's published numbers.
 --
--- The point of the function is that `external_commanders` and `external_commander_card_stats` are revoked from the API
--- roles (20260928000200) and stay that way, so the checks at the end are the ones that matter: anon may call the
--- function and may not touch the tables behind it. Runs in a transaction and rolls back. Needs the local catalog.
+-- The point of the function is that `corpus.edhrec_commanders` and `corpus.edhrec_commander_cards` are out of the
+-- API roles' reach (a private schema since 20261005000200) and stay that way, so the checks at the end are the ones
+-- that matter: anon may call the function and may not touch the tables behind it. Runs in a transaction and rolls
+-- back. Needs the local catalog.
 \set ON_ERROR_STOP on
 begin;
 
@@ -28,55 +29,58 @@ select
 \gset
 select chk('fixtures resolve', :c1 is not null and :c2 is not null and :sol is not null and :signet is not null);
 
--- A solo page and a pair page, so the keying can be told apart.
-insert into public.external_commanders (source, slug, commander_1, commander_2, deck_count, fetched_at)
-values ('edhrec', 'zz-solo', :c1, null, 900, now()) returning id as solo \gset
-insert into public.external_commanders (source, slug, commander_1, commander_2, deck_count, fetched_at)
-values ('edhrec', 'zz-pair', least(:c1, :c2), greatest(:c1, :c2), 400, now()) returning id as pair \gset
+-- A solo page and a pair page, so the keying can be told apart. A loaded database already has real pages for these
+-- commanders; they go first, and come back when the transaction rolls back.
+delete from corpus.edhrec_commanders
+ where (commander_1, coalesce(commander_2, 0)) in ((:c1, 0), (least(:c1, :c2), greatest(:c1, :c2)));
+insert into corpus.edhrec_commanders (slug, commander_1, commander_2, deck_count, fetched_at)
+values ('zz-solo', :c1, null, 900, now()) returning id as solo \gset
+insert into corpus.edhrec_commanders (slug, commander_1, commander_2, deck_count, fetched_at)
+values ('zz-pair', least(:c1, :c2), greatest(:c1, :c2), 400, now()) returning id as pair \gset
 
-insert into public.external_commander_card_stats (external_commander_id, card_id, decks_with, potential_decks, synergy)
+insert into corpus.edhrec_commander_cards (edhrec_commander_id, card_id, decks_with, potential_decks, synergy)
 values (:solo, :sol, 810, 900, 0.1), (:solo, :signet, 450, 900, 0.05),
        (:pair, :sol, 200, 400, 0.02);
 
 -- === the rate ===
 select chk('inclusion is decks_with over potential_decks',
-  abs(((public.external_card_priors(array[:c1], array[:sol, :signet]) ->> :'sol')::real) - 0.9) < 0.0001,
-  public.external_card_priors(array[:c1], array[:sol, :signet])::text);
+  abs(((public.edhrec_card_priors(array[:c1], array[:sol, :signet]) ->> :'sol')::real) - 0.9) < 0.0001,
+  public.edhrec_card_priors(array[:c1], array[:sol, :signet])::text);
 select chk('every card asked for comes back',
-  (select count(*) = 2 from jsonb_object_keys(public.external_card_priors(array[:c1], array[:sol, :signet])) k));
+  (select count(*) = 2 from jsonb_object_keys(public.edhrec_card_priors(array[:c1], array[:sol, :signet])) k));
 select chk('a card not asked for does not',
-  (public.external_card_priors(array[:c1], array[:signet]) ->> :'sol') is null);
+  (public.edhrec_card_priors(array[:c1], array[:signet]) ->> :'sol') is null);
 
 -- === keying ===
 select chk('one commander reads the solo page, not the pair',
-  abs(((public.external_card_priors(array[:c1], array[:sol]) ->> :'sol')::real) - 0.9) < 0.0001);
+  abs(((public.edhrec_card_priors(array[:c1], array[:sol]) ->> :'sol')::real) - 0.9) < 0.0001);
 select chk('a pair reads the pair page',
-  abs(((public.external_card_priors(array[:c1, :c2], array[:sol]) ->> :'sol')::real) - 0.5) < 0.0001);
+  abs(((public.edhrec_card_priors(array[:c1, :c2], array[:sol]) ->> :'sol')::real) - 0.5) < 0.0001);
 select chk('a pair keys the same whichever order it is passed in',
-  public.external_card_priors(array[:c1, :c2], array[:sol]) = public.external_card_priors(array[:c2, :c1], array[:sol]));
+  public.edhrec_card_priors(array[:c1, :c2], array[:sol]) = public.edhrec_card_priors(array[:c2, :c1], array[:sol]));
 select chk('the same commander twice is still one commander',
-  public.external_card_priors(array[:c1, :c1], array[:sol]) = public.external_card_priors(array[:c1], array[:sol]));
+  public.edhrec_card_priors(array[:c1, :c1], array[:sol]) = public.edhrec_card_priors(array[:c1], array[:sol]));
 select chk('a commander with no page is an empty answer, not an error',
-  public.external_card_priors(array[:signet], array[:sol]) = '{}'::jsonb);
+  public.edhrec_card_priors(array[:signet], array[:sol]) = '{}'::jsonb);
 select chk('more commanders than a Commander deck can have is empty',
-  public.external_card_priors(array[:c1, :c2, :sol], array[:sol]) = '{}'::jsonb);
-select chk('no commanders is empty', public.external_card_priors('{}'::int[], array[:sol]) = '{}'::jsonb);
+  public.edhrec_card_priors(array[:c1, :c2, :sol], array[:sol]) = '{}'::jsonb);
+select chk('no commanders is empty', public.edhrec_card_priors('{}'::int[], array[:sol]) = '{}'::jsonb);
 
 -- === who may read what: the reason this function exists ===
 set local role anon;
 select chk('anon may call the function',
-  jsonb_typeof(public.external_card_priors(array[:c1], array[:sol])) = 'object');
+  jsonb_typeof(public.edhrec_card_priors(array[:c1], array[:sol])) = 'object');
 select must_fail('anon cannot read the commander pages',
-  $q$select 1 from public.external_commanders limit 1$q$, 'permission denied');
+  $q$select 1 from corpus.edhrec_commanders limit 1$q$, 'permission denied');
 select must_fail('anon cannot read the card statistics',
-  $q$select 1 from public.external_commander_card_stats limit 1$q$, 'permission denied');
+  $q$select 1 from corpus.edhrec_commander_cards limit 1$q$, 'permission denied');
 reset role;
 
 set local role authenticated;
 select chk('a signed-in visitor may call the function too',
-  jsonb_typeof(public.external_card_priors(array[:c1], array[:sol])) = 'object');
+  jsonb_typeof(public.edhrec_card_priors(array[:c1], array[:sol])) = 'object');
 select must_fail('but still cannot read the card statistics',
-  $q$select 1 from public.external_commander_card_stats limit 1$q$, 'permission denied');
+  $q$select 1 from corpus.edhrec_commander_cards limit 1$q$, 'permission denied');
 reset role;
 
 select name, case when ok then 'pass' else 'FAIL' end as result, detail from t order by ctid;

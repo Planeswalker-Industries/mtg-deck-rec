@@ -1,8 +1,8 @@
--- Exercises the per-commander crawl queue (corpus.crawl_commanders and the crawl_* functions around it): seeding from
--- EDHREC's list is diff-only, the queue hands out never-visited commanders first and leaves out the ones a run
--- already finished, a visit's outcome decides whether it counts as visited, a moved listed time is recorded on an
--- unchanged deck, and no API role but service_role reaches any of it. Runs in a transaction and rolls back, so it
--- leaves nothing behind. Needs the local catalog.
+-- Exercises the per-commander crawl queue (crawl.queue and the crawl_* functions around it): seeding from EDHREC's
+-- list is diff-only, the queue hands out never-visited commanders first and leaves out the ones a run already
+-- finished, a visit's outcome decides whether it counts as visited, decks are stored raw in the source's own table
+-- with a moved listed time recorded on an unchanged deck, and no API role but service_role reaches any of it. Runs in
+-- a transaction and rolls back, so it leaves nothing behind. Needs the local catalog.
 \set ON_ERROR_STOP on
 begin;
 
@@ -22,31 +22,33 @@ end $$;
 grant execute on function must_fail(text, text, text) to anon, authenticated, service_role;
 
 -- A source of its own, so the checks see only what they set up; the queue starts empty for it.
-insert into corpus.crawl_state (source) values ('moxfield') on conflict do nothing;
-delete from corpus.crawl_commanders where source = 'moxfield';
+insert into crawl.state (source) values ('moxfield') on conflict do nothing;
+delete from crawl.queue where source = 'moxfield';
 
 -- Two real commanders, and an EDHREC page for the pair as well as each alone, so a seed sums across pages.
 select
   (select id from public.cards where slug = 'thrasios-triton-hero' and deleted_at is null) as c1,
-  (select id from public.cards where slug = 'tymna-the-weaver' and deleted_at is null) as c2
+  (select id from public.cards where slug = 'tymna-the-weaver' and deleted_at is null) as c2,
+  (select oracle_id::text from public.cards where slug = 'thrasios-triton-hero' and deleted_at is null) as oc1,
+  (select oracle_id::text from public.cards where slug = 'tymna-the-weaver' and deleted_at is null) as oc2
 \gset
 select chk('fixtures resolve', :c1 is not null and :c2 is not null);
-delete from public.external_commanders;
-insert into public.external_commanders (source, slug, commander_1, commander_2, deck_count, fetched_at) values
-  ('edhrec', 'test-c1', :c1, null, 500, now()),
-  ('edhrec', 'test-c2', :c2, null, 100, now()),
-  ('edhrec', 'test-pair', least(:c1, :c2), greatest(:c1, :c2), 50, now());
+delete from corpus.edhrec_commanders;
+insert into corpus.edhrec_commanders (slug, commander_1, commander_2, deck_count, fetched_at) values
+  ('test-c1', :c1, null, 500, now()),
+  ('test-c2', :c2, null, 100, now()),
+  ('test-pair', least(:c1, :c2), greatest(:c1, :c2), 50, now());
 
 -- === seeding ===
 select chk('a first seed adds every commander', public.crawl_seed_commanders('moxfield') = 2);
-select chk('seed_decks sums the pages a commander is on',
-  (select seed_decks = 550 from corpus.crawl_commanders where source = 'moxfield' and commander_card_id = :c1));
+select chk('edhrec_deck_count sums the EDHREC pages a commander is on',
+  (select edhrec_deck_count = 550 from crawl.queue where source = 'moxfield' and commander_card_id = :c1));
 select chk('a second seed writes nothing', public.crawl_seed_commanders('moxfield') = 0);
-update public.external_commanders set deck_count = 900 where slug = 'test-c2';
+update corpus.edhrec_commanders set deck_count = 900 where slug = 'test-c2';
 select chk('a changed count is the only row rewritten', public.crawl_seed_commanders('moxfield') = 1);
 
 -- === the queue ===
-insert into corpus.crawl_runs (source, state) values ('moxfield', 'running') returning id as run_id \gset
+insert into crawl.runs (source, state) values ('moxfield', 'running') returning id as run_id \gset
 select chk('most played first',
   (select public.crawl_next_commanders('moxfield', :run_id, 5) -> 0 ->> 'cardId')::int = :c2);
 select chk('a queued commander carries its oracle id and is not yet visited',
@@ -59,50 +61,50 @@ select chk('a finished commander is not handed back to the same run',
   (select jsonb_array_length(public.crawl_next_commanders('moxfield', :run_id, 5)) = 1));
 select chk('a complete visit is stamped and its name kept',
   (select last_visited_at is not null and query_name = 'Tymna the Weaver' and counted = 40
-     from corpus.crawl_commanders where source = 'moxfield' and commander_card_id = :c2));
+     from crawl.queue where source = 'moxfield' and commander_card_id = :c2));
 
 select public.crawl_finish_commander('moxfield', :c1, :run_id, '{"outcome": "partial", "listed": 3}'::jsonb);
 select chk('a partial visit is not stamped, so it comes back first',
-  (select last_visited_at is null from corpus.crawl_commanders where source = 'moxfield' and commander_card_id = :c1));
-insert into corpus.crawl_runs (source, state) values ('moxfield', 'running') returning id as run2 \gset
+  (select last_visited_at is null from crawl.queue where source = 'moxfield' and commander_card_id = :c1));
+insert into crawl.runs (source, state) values ('moxfield', 'running') returning id as run2 \gset
 select chk('the next run starts with the unvisited commander',
   (select public.crawl_next_commanders('moxfield', :run2, 5) -> 0 ->> 'cardId')::int = :c1);
 
 select public.crawl_finish_commander('moxfield', :c1, :run2, '{"outcome": "not_found"}'::jsonb);
-insert into corpus.crawl_runs (source, state) values ('moxfield', 'running') returning id as run3 \gset
+insert into crawl.runs (source, state) values ('moxfield', 'running') returning id as run3 \gset
 select chk('a commander not found stays out of the queue',
   (select not exists (select 1 from jsonb_array_elements(public.crawl_next_commanders('moxfield', :run3, 5)) e
                        where (e ->> 'cardId')::int = :c1)));
 select chk('the status counts the verification log',
   (select (public.crawl_state('moxfield') ->> 'commandersNotFound')::int = 1));
 select must_fail('outcomes are a closed list',
-  format('update corpus.crawl_commanders set outcome = %L where source = %L', 'maybe', 'moxfield'), 'check');
+  format('update crawl.queue set outcome = %L where source = %L', 'maybe', 'moxfield'), 'check');
 
 -- === the queue is ordered by need ===
 
 -- An earlier check marked c1 not_found, which keeps it out of the queue entirely; clear that so this section is about
 -- the ordering and nothing else.
-update corpus.crawl_commanders set outcome = null, last_run_id = null where source = 'moxfield';
+update crawl.queue set outcome = null, last_run_id = null where source = 'moxfield';
 
 select (value->>'targetDecks')::int as target from public.app_config where key = 'moxfield' \gset
 
--- Decks the corpus already holds, keyed by the commander that leads them. They go on c2, which an earlier check made
--- the *most played* of the two (900 against 550): need has to beat popularity, and loading the less played commander
--- instead would let this pass for the wrong reason.
-insert into corpus.decks (source, source_deck_id, commander_card_ids, cards, deck_size, content_hash, listed_updated_at, last_updated_at)
-select 'moxfield', 'zz-held-' || g, array[:c2], jsonb_build_object(:c1::text, 1), 100, 'h-' || g, now(), now()
+-- Decks the source's raw table already holds, keyed by the commander that leads them (as oracle ids, the way the
+-- crawl stores them). They go on c2, which an earlier check made the *most played* of the two (900 against 550): need
+-- has to beat popularity, and loading the less played commander instead would let this pass for the wrong reason.
+insert into moxfield.decks (source_deck_id, commanders, card_oracle_ids, quantities, deck_size, content_hash, listed_updated_at, last_updated_at)
+select 'zz-held-' || g, array[:'oc2'::uuid], array[:'oc1'::uuid], array[1]::smallint[], 100, 'h-' || g, now(), now()
   from generate_series(1, :target + 5) g;
 
 -- Its own statement, deliberately: a mutating call and a read of what it wrote cannot share a SELECT, because every
 -- subquery in one statement sees the snapshot taken before it ran. Asserting in the same select read 0 and looked like
 -- a broken count.
 select public.crawl_seed_commanders('moxfield') as seeded \gset
-select chk('the seed counts what the corpus already holds',
-  (select held_decks = :target + 5 from corpus.crawl_commanders
+select chk('the seed counts what the raw table already holds',
+  (select held_decks = :target + 5 from crawl.queue
     where source = 'moxfield' and commander_card_id = :c2),
-  (select held_decks::text from corpus.crawl_commanders where source = 'moxfield' and commander_card_id = :c2));
+  (select held_decks::text from crawl.queue where source = 'moxfield' and commander_card_id = :c2));
 
-insert into corpus.crawl_runs (source, state) values ('moxfield', 'running') returning id as run4 \gset
+insert into crawl.runs (source, state) values ('moxfield', 'running') returning id as run4 \gset
 select chk('a commander over the target yields to one under it, however played it is',
   (select public.crawl_next_commanders('moxfield', :run4, 5) -> 0 ->> 'cardId')::int = :c1,
   public.crawl_next_commanders('moxfield', :run4, 5)::text);
@@ -112,8 +114,8 @@ select chk('the queue reports what it holds, so a log line can say why it chose'
   public.crawl_next_commanders('moxfield', :run4, 5)::text);
 
 -- With nothing held they are equally needy and most-played wins again, which is why the first pass is unchanged by any
--- of this: it starts with an empty corpus.
-delete from corpus.decks where source = 'moxfield' and source_deck_id like 'zz-held-%';
+-- of this: it starts with an empty raw table.
+delete from moxfield.decks where source_deck_id like 'zz-held-%';
 select public.crawl_seed_commanders('moxfield') as reseeded \gset
 select chk('with nothing held, most played leads again',
   (select public.crawl_next_commanders('moxfield', :run4, 5) -> 0 ->> 'cardId')::int = :c2,
@@ -121,7 +123,7 @@ select chk('with nothing held, most played leads again',
 
 select public.crawl_finish_commander('moxfield', :c1, :run4, '{"outcome": "fetch_cap", "fetched": 120}'::jsonb);
 select chk('fetch_cap is an outcome a visit may record',
-  (select outcome = 'fetch_cap' and fetched = 120 from corpus.crawl_commanders
+  (select outcome = 'fetch_cap' and fetched = 120 from crawl.queue
     where source = 'moxfield' and commander_card_id = :c1));
 
 -- === the run records pushback ===
@@ -129,17 +131,15 @@ select public.crawl_finish_run(:run4,
   '{"state": "succeeded", "throttles": 4, "throttled_position": "Liesa, Forgotten Archangel page 3"}'::jsonb);
 select chk('a run keeps how often the source pushed back, and where it was',
   (select throttles = 4 and throttled_position = 'Liesa, Forgotten Archangel page 3'
-     from corpus.crawl_runs where id = :run4));
+     from crawl.runs where id = :run4));
 select chk('a quiet run records no position',
-  (select throttled_position is null from corpus.crawl_runs where id = :run_id));
+  (select throttled_position is null from crawl.runs where id = :run_id));
 
 -- === writing decks ===
--- The crawler sends oracle ids, as the source reports them; the database stores card ids. A real commander and a real
--- card, so resolution is exercised.
+-- The crawler sends oracle ids, as the source reports them, and the raw table keeps them as they came: resolving them
+-- to card ids is the collator's job.
 select
-  (select oracle_id::text from public.cards where id = :c1) as oc1,
-  (select oracle_id::text from public.cards where deleted_at is null and name = 'Sol Ring' limit 1) as osol,
-  (select id from public.cards where deleted_at is null and name = 'Sol Ring' limit 1) as sol
+  (select oracle_id::text from public.cards where deleted_at is null and name = 'Sol Ring' limit 1) as osol
 \gset
 
 select public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
@@ -147,11 +147,13 @@ select public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_objec
   'deck_size', 2, 'content_hash', 'h1',
   'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) as first_write \gset
 select chk('a new deck is written', (:'first_write'::jsonb ->> 'written')::int = 1, :'first_write');
-select chk('it is stored by card id',
-  (select commander_card_ids = array[:c1] and cards = jsonb_build_object(:sol::text, 1)
-     from corpus.decks where source = 'moxfield' and source_deck_id = 'test-deck'),
-  (select commander_card_ids::text || ' ' || cards::text
-     from corpus.decks where source = 'moxfield' and source_deck_id = 'test-deck'));
+select chk('it is stored as the source sent it, in oracle ids, in the source''s own table',
+  (select commanders = array[:'oc1'::uuid] and card_oracle_ids = array[:'osol'::uuid] and quantities = array[1]::smallint[]
+     from moxfield.decks where source_deck_id = 'test-deck'),
+  (select commanders::text || ' ' || card_oracle_ids::text || ' ' || quantities::text
+     from moxfield.decks where source_deck_id = 'test-deck'));
+select chk('nothing lands in another source''s table',
+  not exists (select 1 from archidekt.decks where source_deck_id = 'test-deck'));
 select chk('the same deck written again changes nothing',
   (public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
     'source_deck_id', 'test-deck', 'commanders', jsonb_build_array(:'oc1'), 'cards', jsonb_build_object(:'osol', 1),
@@ -167,9 +169,10 @@ select chk('crawl_deck_versions reads back the hash and the listed time',
       and (v -> 'test-deck' ->> 'listedUpdatedAt')::timestamptz = '2026-09-10T00:00:00Z'
      from (select public.crawl_deck_versions('moxfield', array['test-deck', 'nope']) as v) x));
 
--- A deck naming a card the catalog does not have is not stored at all, and comes back with the ids that failed, so the
--- run can count it and the next visit fetches it again. A malformed id is one more id that matches nothing: one bad
--- value must not fail the batch it arrived in.
+-- A deck naming a card the catalog does not have yet is stored all the same: the raw table keeps what the source
+-- published, and the collator holds the deck back from the corpus until every card resolves. Only an id that is not an
+-- oracle id at all is refused, and comes back so the run can count it; one bad value must not fail the batch it
+-- arrived in.
 select public.crawl_upsert_decks('moxfield', jsonb_build_array(
   jsonb_build_object(
     'source_deck_id', 'test-unknown', 'commanders', jsonb_build_array(:'oc1'),
@@ -185,23 +188,31 @@ select public.crawl_upsert_decks('moxfield', jsonb_build_array(
     'source_deck_id', 'test-fine', 'commanders', jsonb_build_array(:'oc1'), 'cards', jsonb_build_object(:'osol', 1),
     'deck_size', 2, 'content_hash', 'h-fine',
     'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) as mixed \gset
-select chk('a deck with an unknown card is not stored',
-  not exists (select 1 from corpus.decks
-               where source = 'moxfield' and source_deck_id in ('test-unknown', 'test-malformed')));
+select chk('a deck with a card the catalog lacks is kept raw, unknown card included',
+  (select card_oracle_ids @> array['00000000-0000-4000-8000-00000000dead'::uuid]
+     from moxfield.decks where source_deck_id = 'test-unknown'));
+select chk('a deck with a malformed id is not stored',
+  not exists (select 1 from moxfield.decks where source_deck_id = 'test-malformed'));
 select chk('the rest of the batch is',
-  (:'mixed'::jsonb ->> 'written')::int = 1
-    and exists (select 1 from corpus.decks where source = 'moxfield' and source_deck_id = 'test-fine'),
+  (:'mixed'::jsonb ->> 'written')::int = 2
+    and exists (select 1 from moxfield.decks where source_deck_id = 'test-fine'),
   :'mixed');
-select chk('the unresolved decks come back with the ids that failed',
-  (:'mixed'::jsonb -> 'unresolved')
-    @> '[{"deckId": "test-unknown", "missing": ["00000000-0000-4000-8000-00000000dead"]},
-         {"deckId": "test-malformed", "missing": ["not-an-oracle-id"]}]'::jsonb
-    and jsonb_array_length(:'mixed'::jsonb -> 'unresolved') = 2,
+select chk('only the malformed deck comes back, with the id that failed',
+  (:'mixed'::jsonb -> 'unresolved') = '[{"deckId": "test-malformed", "missing": ["not-an-oracle-id"]}]'::jsonb,
   :'mixed');
+
+select public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_object(
+  'source_deck_id', 'test-bracket', 'commanders', jsonb_build_array(:'oc1'), 'cards', jsonb_build_object(:'osol', 1),
+  'deck_size', 2, 'content_hash', 'h-bracket', 'declared_bracket', 3,
+  'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) as bracketed \gset
+select chk('a declared bracket is kept when the source sends one',
+  (select declared_bracket = 3 from moxfield.decks where source_deck_id = 'test-bracket'));
+select must_fail('a source without a raw table is refused',
+  $q$select public.crawl_upsert_decks('nope', '[]'::jsonb)$q$, 'no raw deck table');
 
 select public.crawl_finish_run(:run4, '{"state": "succeeded", "skipped_unresolved": 2}'::jsonb);
 select chk('a run records how many decks it could not resolve',
-  (select skipped_unresolved = 2 from corpus.crawl_runs where id = :run4));
+  (select skipped_unresolved = 2 from crawl.runs where id = :run4));
 
 -- === API roles ===
 set local role anon;

@@ -449,17 +449,20 @@ One pipeline in layers, then one scoring engine on top. The pipeline (raw source
 
 ### T053: Data layers: schemas and table moves
 
-**Priority:** HIGH | **Area:** Database | **Status:** Designed 2026-10-05 | **Blocked by:** the hosted migration history (four migrations applied but not recorded, see `roadmap/status.md`)
+**Priority:** HIGH | **Area:** Database | **Status:** Built 2026-10-05 (migration `20261005000200_data_layers.sql`); waiting for release, and for PR #127's rework
 
-Each source's data moves into its own schema, as the source published it (`archidekt.decks` back to oracle ids, empty `edhrec.*` raw tables). The crawler's machinery moves to `crawl`, and `corpus` becomes the collated layer: today's EDHREC tables move in as `corpus.external_*`, and a new collated `corpus.decks` starts empty. PR #127 is reworked to create `spellbook.combos` and `spellbook.features` (with `edhrec_deck_count` in place of `popularity`) instead of `public.combos`. The step list is "The reorg migration" in the plan.
+Each source's data moves into its own schema, as the source published it (`archidekt.decks` back to oracle ids, empty `edhrec.*` raw tables). The crawler's machinery moves to `crawl`, and `corpus` becomes the collated layer: today's EDHREC tables move in as `corpus.external_*`, and a new collated `corpus.decks` starts empty. PR #127 is reworked to create `spellbook.combos` and `spellbook.features` (with `edhrec_deck_count` in place of `popularity`) instead of `public.combos`, and its command becomes `sync:spellbook` (from `sync:combos`). The step list is "The reorg migration" in the plan.
 
-**Files:** a new migration; `supabase/tests/crawl-commanders.sql`, `admin-crawled-decks.sql`, `external-stats.sql`, `combos.sql`; `CLAUDE.md` (data pipeline); `roadmap/deck-crawl.md`
+**Files:** `supabase/migrations/20261005000200_data_layers.sql`; `supabase/tests/crawl-commanders.sql`, `admin-crawled-decks.sql`, `edhrec-stats.sql` (was `external-stats.sql`), `edhrec-prior.sql`, `data-layers.sql`; `CLAUDE.md` (data pipeline); `roadmap/deck-crawl.md`
 
 **Acceptance criteria:**
-- [ ] Hosted migration history repaired before the migration ships
-- [ ] Schemas and moves as the plan lists; only `archidekt.decks` is rewritten
-- [ ] The 13 `crawl_*` functions keep their names and arguments, the Go service is unchanged, and a hosted crawl run succeeds after release
-- [ ] `external_card_priors` and the `/admin/crawls` pages read the moved tables; SQL checks pass
+- [x] Hosted migration history repaired before the migration ships (2026-10-05)
+- [x] Schemas and moves as the plan lists; only the crawled decks are rewritten, with a check that nothing is lost
+- [x] The 13 `crawl_*` functions keep their names and arguments, and the Go service needs no change (only comments and one log line moved); the live store test passes against local PostgREST
+- [ ] A hosted crawl run succeeds after release
+- [x] The EDHREC prior (renamed `edhrec_card_priors`) and the `/admin/crawls` functions read the moved tables; every SQL check passes
+- [x] The deck spike's code is retired: `spike:archidekt:*`, `spike:corpus:stability`, `spike:edhrec:prior`, `profile:tags`, `serve:commander-requests`, `import:edhrec` and the TypeScript Archidekt client. `aggregate:corpus` reads the collated `corpus.decks` and never writes from an empty one
+- [x] Tables, columns and functions that hold one source's data say which source (`corpus.edhrec_commanders`, `corpus.edhrec_commander_cards`, `crawl.queue.edhrec_deck_count`, `edhrec_card_priors`); `data-layers.sql` checks the rule
 - [ ] PR #127's tables live in `spellbook`
 
 ---
@@ -487,7 +490,7 @@ Each source's data moves into its own schema, as the source published it (`archi
 
 **Priority:** HIGH | **Area:** Worker / Backend | **Status:** Designed 2026-10-05 | **Blocked by:** T054
 
-The serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `combo_pieces`, and per-dirty-commander `commander_stats`) are built by the precompute worker, and the add, cut and swap paths become indexed reads with scoring in `@mtg/core`. `rec_add_candidates`, `rec_swap_candidates`, `retry-timeout.ts` and `rec_timeouts` retire. On hosted, calls to the two functions average 0.8–1.0 s and peak at the 3 s timeout (2026-10-05).
+The serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `spellbook_combo_pieces`, and per-dirty-commander `commander_stats`) are built by the precompute worker, and the add, cut and swap paths become indexed reads with scoring in `@mtg/core`. `rec_add_candidates`, `rec_swap_candidates`, `retry-timeout.ts` and `rec_timeouts` retire. On hosted, calls to the two functions average 0.8–1.0 s and peak at the 3 s timeout (2026-10-05).
 
 **Acceptance criteria:**
 - [ ] Parity: the same add and swap lists as before the switch (regression fixtures plus a parity script)
@@ -567,7 +570,7 @@ The priority mode. Owned only plus a separate "worth buying" list becomes the de
 
 **Priority:** MEDIUM | **Area:** Scoring | **Status:** Not started | **Blocked by:** T055, T058
 
-Replace `externalPriorShare` with the sample-size update in [`roadmap/scoring-design.md`](roadmap/scoring-design.md) ("`corpus`"): shrink toward EDHREC's rate with a strength of its deck count up to `externalPriorCap`, toward `min(p0, floor)` for cards a page doesn't list, and toward p0 without a page. The cap starts at 200 and is set by the evaluation.
+Replace `externalPriorShare` with `edhrecPriorCap` and the sample-size update in [`roadmap/scoring-design.md`](roadmap/scoring-design.md) ("`corpus`"): shrink toward EDHREC's rate with a strength of its deck count up to `externalPriorCap`, toward `min(p0, floor)` for cards a page doesn't list, and toward p0 without a page. The cap starts at 200 and is set by the evaluation.
 
 **Acceptance criteria:**
 - [ ] The formula in `@mtg/core/scoring` and the precompute worker, tested
@@ -634,9 +637,9 @@ The design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), revise
 
 **Slice 11 (EDHREC statistics) is on `main`** (PR #111, released in PR #118).
 - **Fetching.** A one-off local script fetched every commander page from `json.edhrec.com` (2026-09-28). `sync:edhrec` (PR #128) replaces it with a weekly job on the VPS worker, writing the raw `edhrec` schema once T053 lands.
-- **Loading.** `import:edhrec` wrote the pages into `external_commanders` and `external_commander_card_stats` (migration `20260928000200_external_commander_stats.sql`). Loaded locally on 2026-09-28 and on hosted on 2026-09-30 (6,787 commanders, 1,791,474 card rows).
-- **Evaluation.** `spike:edhrec:prior` is a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured. `supabase/tests/external-stats.sql` holds the SQL checks.
-- **Wired, switched off:** `external_card_priors` (migration `20261002000100`, PR #123) feeds the prior with `app_config.corpus.externalPriorShare` at 0. T061 replaces the share with weighting by sample size.
+- **Loading.** `import:edhrec` (retired 2026-10-05 with the stale saved pages it read) wrote the pages into `external_commanders` and `external_commander_card_stats` (now `corpus.edhrec_commanders` and `corpus.edhrec_commander_cards`) (migration `20260928000200_external_commander_stats.sql`). Loaded locally on 2026-09-28 and on hosted on 2026-09-30 (6,787 commanders, 1,791,474 card rows).
+- **Evaluation.** `spike:edhrec:prior` (retired 2026-10-05; T058 repeats it with a time split) was a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured. `supabase/tests/edhrec-stats.sql` holds the SQL checks.
+- **Wired, switched off:** `edhrec_card_priors` (added as `external_card_priors` in migration `20261002000100`, PR #123; renamed by T053) feeds the prior with `app_config.corpus.externalPriorShare` at 0. T061 replaces the share with weighting by sample size.
 
 **Slice 10 (full-suite crawl) is built** in the Go search API, not the TS worker the plan names: a commander queue seeded from EDHREC, decks most viewed first, one page per commander on the first visit. Revisits re-read page 1 only (2026-10-03), so samples grow only from churn; T056 restores growth (25 new or changed decks per revisit, owner rule 2026-10-05). Deck lookups move to the VPS worker in PR #128 (T009). It absorbs closed ticket T010.
 
@@ -710,12 +713,12 @@ The Moxfield adapter (`services/search-api/internal/moxfield/`) is built and see
 
 ### T009: Always-on commander request consumer
 
-**Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** Not started
+**Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** PC worker retired 2026-10-05; the VPS worker comes with PR #128's rework
 
-`serve:commander-requests` runs by hand from this PC. Deck lookups queue in `commander_requests`, and nothing consumes them while it is off. T035 slice 10 plans to move it to the VPS worker.
+Deck lookups queue in `commander_requests`, and nothing consumes them. The worker that did, `serve:commander-requests`, ran by hand from the owner's PC and wrote decks into the old deck spike's file; it had been offline since 2026-09-16 and was retired on 2026-10-05 with the rest of the spike code. PR #128 moves lookups to the VPS worker, writing raw decks like the crawl, and puts a requested commander at the front of the crawl's queue.
 
 **Files:**
-- `apps/worker/src/cli.ts` — `serve:commander-requests`
+- PR #128: `apps/worker/src/jobs/serve.ts`, `serve-commander-requests.ts`
 - `apps/worker/src/lib/sync-runs.ts` — `finishRun`
 
 **Acceptance criteria:**
@@ -913,13 +916,13 @@ Score cards by how they connect to the rest of the deck. T064's card-pair tables
 
 **Context:** EDHREC is now an allowed source.
 - **Consent.** On 2026-09-21 the owner's legal team consented to using all publicly facing data, EDHREC included. `CLAUDE.md`'s Hard constraints record this, and the crawler guardrails still apply.
-- **The data is loaded.** T035 slice 11 put EDHREC's per-commander numbers in `external_commander_card_stats`, including its published `synergy`, so this is now a query rather than a manual read of web pages.
-- **What exists so far.** `spike:edhrec:prior` compares inclusion estimates, not synergy; a first look at Liesa's top ten synergy cards agreed within a few points.
+- **The data is loaded.** T035 slice 11 put EDHREC's per-commander numbers in `corpus.edhrec_commander_cards`, including its published `synergy`, so this is now a query rather than a manual read of web pages.
+- **What exists so far.** The retired `spike:edhrec:prior` compared inclusion estimates, not synergy; a first look at Liesa's top ten synergy cards agreed within a few points.
 - **Later.** T035 automates this as a per-commander benchmark in the offline evaluation (slice 6). This ticket is the one-off check until then.
 
 **Acceptance criteria:**
 - [ ] Pick ~5 commanders with the most decks in our corpus
-- [ ] Compare their top synergy cards against EDHREC's from `external_commander_card_stats` (joined on `(commander_1, coalesce(commander_2, 0))`)
+- [ ] Compare their top synergy cards against EDHREC's from `corpus.edhrec_commander_cards` (joined on `(commander_1, coalesce(commander_2, 0))`)
 - [ ] Write up where we disagree and whether it looks like corpus size, shrinkage, EDHREC trimming its lists near 5% of decks, or a bug
 
 ---

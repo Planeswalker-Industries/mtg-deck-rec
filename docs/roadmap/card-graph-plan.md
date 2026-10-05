@@ -40,9 +40,9 @@ computed while the player waits.
 
 | Concern | `develop` on 2026-10-05 | Plan |
 |---|---|---|
-| Deck storage | `corpus.decks`, written by the Archidekt crawl with card ids resolved on write (68,763 decks, 3,235 commander keys on hosted); `aggregate:corpus` still reads a deck file | Raw `archidekt.decks` as fetched → collated `corpus.decks` for every deck source, with `source` on each row → serving tables |
-| External statistics | `public.external_commanders`, `public.external_commander_card_stats` (EDHREC, resolved on import) | Raw `edhrec.*` → collated `corpus.external_commanders`, `corpus.external_commander_cards` |
-| Combos | PR #127 (open) loads `public.combos` | Raw `spellbook.*` → `corpus.combos` → serving `combo_pieces` |
+| Deck storage | `corpus.decks`, written by the Archidekt crawl with card ids resolved on write (68,763 decks, 3,235 commander keys on hosted); `aggregate:corpus` read the old deck spike's file (T053 retired it and points the job at the collated `corpus.decks`) | Raw `archidekt.decks` as fetched → collated `corpus.decks` for every deck source, with `source` on each row → serving tables |
+| External statistics | `public.external_commanders`, `public.external_commander_card_stats` (EDHREC, resolved on import) | Raw `edhrec.*` → collated `corpus.edhrec_commanders`, `corpus.edhrec_commander_cards` |
+| Combos | PR #127 (open) loads `public.combos` | Raw `spellbook.*` → `corpus.spellbook_combos` → serving `spellbook_combo_pieces` |
 | Crawl machinery | `corpus.crawl_runs`, `crawl_state`, `crawl_commanders` | `crawl.runs`, `crawl.state`, `crawl.queue`, unchanged otherwise |
 | Which decks count | `resolveDeck` in the worker; `save_deck` flags user decks on per-card legality only | The collator applies one rule to every deck source |
 | Crawl depth | Revisits re-read page 1 only, so samples grow only from churn (93 decks at most) | A revisit reads on until 25 decks were new or changed |
@@ -59,10 +59,10 @@ computed while the player waits.
 ```
 fetchers                raw (one schema per source)      collator         corpus (collated)                     precompute       public (serving)
 Go crawl ─────────────► archidekt.decks ──────────────┐                ┌► corpus.decks           archidekt|user ─┐
-sync:edhrec ──────────► edhrec.commanders,           ├──► collate ────┼► corpus.external_*      edhrec          ├──► precompute ──► commander_card_scores, commander_stats,
-                        edhrec.commander_cards        │                └► corpus.combos          spellbook       ┘                   card_global_stats, commander_card_pairs,
-sync:combos ──────────► spellbook.combos,             │                                                                              card_pairs, card_substitutes,
-                        spellbook.features ───────────┘                                                                              card_roles, combo_pieces
+sync:edhrec ──────────► edhrec.commanders,           ├──► collate ────┼► corpus.edhrec_*        edhrec          ├──► precompute ──► commander_card_scores, commander_stats,
+                        edhrec.commander_cards        │                └► corpus.spellbook_*     spellbook       ┘                   card_global_stats, commander_card_pairs,
+sync:spellbook ───────► spellbook.combos,             │                                                                              card_pairs, card_substitutes,
+                        spellbook.features ───────────┘                                                                              card_roles, spellbook_combo_pieces
 public.decks (complete user decks) ──────────────────►  collate
 ```
 
@@ -77,7 +77,13 @@ public.decks (complete user decks) ───────────────
    resolve stays in raw and is retried when the catalog changes. It never reaches `corpus` half-resolved, so the
    2026-10-03 rule holds: no 99-card deck in the corpus. Unlike today, the deck is not fetched again.
 5. **A corpus row names its source in a column; a raw row's source is its schema.**
-6. **Raw, `crawl` and `corpus` are private.** `service_role` only (plus the read-only role, where it exists), and
+6. **Names say whose data a table holds.** A table with one source's rows names that source in its schema (raw) or
+   its name (`corpus.edhrec_commanders`, `corpus.spellbook_combos`) and has no `source` column; a table that mixes
+   sources has a generic name and a `source` column (`corpus.decks`, `crawl.runs`). Columns, functions and the fetch
+   commands follow suit (`crawl.queue.edhrec_deck_count`, `edhrec_card_priors`, `sync:edhrec`, `sync:spellbook`). The card
+   catalog is exempt (owner decision 2026-10-05): `cards`, `printings`, `tags` and the rest are our own catalog built
+   from Scryfall, keyed by our ids, so they keep their names, and so does the `oracle_tags` sync job.
+7. **Raw, `crawl` and `corpus` are private.** `service_role` only, and
    never in PostgREST's exposed schemas. Serving tables are public reads where the numbers are ours; a table carrying
    a third party's numbers stays `service_role` only.
 
@@ -87,7 +93,8 @@ public.decks (complete user decks) ───────────────
 
 ```sql
 create table archidekt.decks (
-  source_deck_id    text primary key,
+  id                bigint primary key default nextval('crawl.deck_id_seq'),  -- one id space across deck sources
+  source_deck_id    text not null unique,
   commanders        uuid[] not null,      -- oracle ids as the source reports them, sorted
   card_oracle_ids   uuid[] not null,      -- the rest of the deck, sorted
   quantities        smallint[] not null,  -- copies, aligned with card_oracle_ids
@@ -151,18 +158,19 @@ create table spellbook.features (id integer primary key, name text not null, sta
 
 PR #127 is reworked to create these in place of `public.combos` and `public.combo_features`.
 
-**`moxfield`** gets a schema the day Moxfield grants access (T044).
+**`moxfield`** has a `decks` table shaped like Archidekt's, empty: the crawl engine already carries a Moxfield adapter, seeded off until Moxfield grants access (T044). Every deck source's table takes its ids from one sequence (`crawl.deck_id_seq`), so a deck id names one deck whichever source it came from, and the `crawl.decks` view reads them together with the source as a column.
 
 ### `crawl`: the crawler's machinery
 
 `corpus.crawl_runs`, `crawl_state` and `crawl_commanders` move to `crawl.runs`, `crawl.state` and `crawl.queue`, with
 their columns unchanged. They record how the crawler works, not what a source published, and one engine serves every
-deck source (each row carries `source`).
+deck source (each row carries `source`). The `crawl.decks` view is what the engine and the admin pages read.
 
 The 13 `public.crawl_*` functions the Go service calls keep their names and arguments, so the service doesn't change.
 Only their bodies point at the new tables:
-- `crawl_upsert_decks` writes `archidekt.decks` and no longer resolves cards, so its `unresolved` list is always empty.
-- `crawl_seed_commanders` counts held decks from `archidekt.decks`. The commanders are stored as `uuid`, so the join
+- `crawl_upsert_decks` writes the source's own raw table (`archidekt.decks`) and resolves nothing. Its `unresolved`
+  list now holds only decks with an id that is not an oracle id at all.
+- `crawl_seed_commanders` counts held decks from the raw table. The commanders are stored as `uuid`, so the join
   to `cards.oracle_id` is uuid to uuid and uses its index. Casting the indexed side to text is what timed out hosted
   run 8.
 
@@ -198,43 +206,50 @@ create table corpus.dirty_commanders (    -- upsert-keyed, like search_index_que
 - **User decks** come from `public.decks` and `deck_cards` when complete and legal (T035 slice 3's rule). The
   `user_deck_id` foreign key means a deleted deck or account leaves the corpus at once, and a trigger marks the
   commander dirty.
-- **`corpus.external_commanders` and `corpus.external_commander_cards`** are today's `public.external_*` tables,
-  moved and renamed with their rows and `source` column. The collator writes them from `edhrec.*`. They gain
-  `external_commanders.listed_floor`, the lowest inclusion the page lists; scoring uses it for unlisted cards.
-- **`corpus.combos`** holds one row per combo: `source` ('spellbook'), `source_id` (the variant id), `card_ids`,
+- **`corpus.edhrec_commanders` and `corpus.edhrec_commander_cards`** are the old `public.external_commanders` and
+  `public.external_commander_card_stats`, moved and renamed with their rows. Their `source` column, always 'edhrec',
+  is gone: the names say it. The collator writes them from `edhrec.*`. They gain `edhrec_commanders.listed_floor`, the
+  lowest inclusion the page lists; scoring uses it for unlisted cards.
+- **`corpus.spellbook_combos`** holds one row per combo: `variant_id` (Spellbook's id), `card_ids`,
   `commander_card_ids`, `template_names`, `results` (standalone and contextual result names; Spellbook's hidden steps
   are dropped), `min_bracket` (from Spellbook's tag), `color_identity` and `mana_value_needed`. Combos tagged banned
   are left out. EDHREC's count stays in raw.
 
 ### The reorg migration (T053)
 
-1. Create the schemas `archidekt`, `edhrec`, `spellbook` and `crawl`, with usage for `service_role` (and the
-   read-only role where it exists).
-2. Move tables:
-   - `corpus.crawl_runs`, `crawl_state` and `crawl_commanders` → `crawl.runs`, `crawl.state`, `crawl.queue`.
-   - `corpus.decks` → `archidekt.decks`: drop `source`, convert card ids back to oracle ids, add `declared_bracket`.
-   - `public.external_commanders` and `external_commander_card_stats` → `corpus.external_commanders` and
-     `corpus.external_commander_cards`, adding `listed_floor` (computed once from the rows).
-3. Create the empty raw `edhrec.*` tables, the collated `corpus.decks` and `corpus.dirty_commanders`.
-4. Recreate every function that names a moved table, with the same names and arguments: the 13 crawl functions, the
-   `admin_*` crawl readers and `external_card_priors`.
-5. Grant as rule 6 says, and update the SQL checks (`crawl-commanders.sql`, `admin-crawled-decks.sql`,
-   `external-stats.sql`).
+**Built 2026-10-05** as `supabase/migrations/20261005000200_data_layers.sql`:
 
-Moving a table between schemas or renaming it rewrites no rows. Until the collator ships (T054), `corpus.decks` is
-empty and nothing reads it.
+1. Creates the schemas `archidekt`, `moxfield`, `edhrec`, `spellbook` and `crawl`, with usage for `service_role` only.
+2. Moves tables:
+   - `corpus.crawl_runs`, `crawl_state` and `crawl_commanders` → `crawl.runs`, `crawl.state`, `crawl.queue`.
+   - `corpus.decks` → `archidekt.decks`, with card ids converted back to oracle ids (`uuid[]`, quantities aligned). A
+     check refuses the migration if any deck, commander or card is lost on the way.
+   - `public.external_commanders` and `external_commander_card_stats` → `corpus.edhrec_commanders` and
+     `corpus.edhrec_commander_cards`, with the always-'edhrec' `source` column dropped (`external_commander_id` becomes
+     `edhrec_commander_id`). `listed_floor` is added empty; the collator fills it.
+   - `crawl.queue.seed_decks` becomes `edhrec_deck_count`, and every moved table's constraints are renamed after it.
+3. Creates the empty raw `edhrec.*` and `moxfield.decks` tables, the `crawl.decks` view, the collated `corpus.decks`
+   and `corpus.dirty_commanders`.
+4. Recreates every function that names a moved table, with the same names and arguments: the 13 crawl functions, the
+   `admin_*` crawl readers, and the EDHREC prior, renamed `edhrec_card_priors` (from `external_card_priors`).
+   `crawl_deck_hashes`, which nothing called, is dropped.
+5. Updates the SQL checks (`crawl-commanders.sql`, `admin-crawled-decks.sql`, `edhrec-stats.sql` (was `external-stats.sql`),
+   `edhrec-prior.sql`) and adds `data-layers.sql`.
+
+Moving a table between schemas or renaming it rewrites no rows; the deck conversion is the one rewrite (about 77,000
+decks on hosted). Until the collator ships (T054), `corpus.decks` is empty and nothing reads it.
 
 ## Collator (T054)
 
 `cli collate` on the VPS worker, recorded in `sync_runs` as `corpus_collate`.
 
-- **When:** after every fetch (a crawl run ending, `sync:edhrec`, `sync:combos`), and after `sync:catalog`, so raw
+- **When:** after every fetch (a crawl run ending, `sync:edhrec`, `sync:spellbook`), and after `sync:catalog`, so raw
   rows that failed to resolve get another try.
 - **Incremental:** per source, only raw rows changed since the last successful collation, plus rows still
   unresolved.
 - **Decks:** resolve oracle ids to card ids, apply the one rule, and write only rows whose content hash differs.
   Delete corpus rows whose raw row is gone, and mark changed commanders dirty.
-- **EDHREC:** resolve each page's names by printing id first, then by unique name, as `import:edhrec` does today.
+- **EDHREC:** resolve each page's names by printing id first, then by unique name, as the retired `import:edhrec` did.
   Every commander name must resolve. Compute `listed_floor`.
 - **Spellbook:** resolve every piece by oracle id or skip the combo, map the bracket tag to `min_bracket`, and drop
   banned combos and hidden steps.
@@ -255,7 +270,7 @@ tag similarity while the player waits.
 | `commander_card_pairs`, `card_pairs` | See "Statistics" | Lift and PMI | 4–11M | Per dirty commander; global weekly |
 | `card_substitutes` | `(card_id, substitute_id)` | idf-weighted functional tag similarity (exclusive tag modes applied, as `rec_swap_candidates` does): the top 50 inside the card's own colour identity, which suit every deck that can hold the card, plus the top 50 overall | ~3M | After `sync:tags`, changed cards only |
 | `card_roles` | `(card_id, role_id)` | Which tracked roles a card fills | ~60k | After `sync:tags` |
-| `combo_pieces` | `(card_id, combo_id)` | Which combos a card is in; per combo: pieces, minimum bracket, result weight, commander requirement | ~400k | After Spellbook collation |
+| `spellbook_combo_pieces` | `(card_id, combo_id)` | Which combos a card is in; per combo: pieces, minimum bracket, result weight, commander requirement | ~400k | After Spellbook collation |
 
 - **Keyed by commander cards**, not `commander_keys`. `commander_keys` rows stay what they are, our commander pages,
   so an EDHREC-only commander gets scores without becoming a page.
@@ -273,7 +288,7 @@ tag similarity while the player waits.
      top N of commander_card_scores for the deck's commanders      (the add pool)
      commander_card_scores for the deck's cards and owned cards     (cuts, collection mode)
      card_roles for pool ∪ deck · card_substitutes for a swap target
-     commander_card_pairs + card_pairs for the deck's cards · combo_pieces for the deck's cards
+     commander_card_pairs + card_pairs for the deck's cards · spellbook_combo_pieces for the deck's cards
 2. pure @mtg/core: m(c | deck) for adds, m(c | deck − c) for cuts, the swap blend, combo completions
 3. explain: components and evidence, top 20 per category
 ```
@@ -284,7 +299,7 @@ tag similarity while the player waits.
   Then the usual `startRun`/`finishRun`, index drain and cache revalidation.
 - **Schedule** (VPS worker, `app_config.worker`): collation after each fetch; dirty commanders recomputed after each
   collation; `card_global_stats` nightly; `card_pairs` weekly; `card_roles` and `card_substitutes` after `sync:tags`
-  changes; `combo_pieces` after Spellbook collation.
+  changes; `spellbook_combo_pieces` after Spellbook collation.
 - **Parity first.** The switch must reproduce today's add and swap lists (regression fixtures plus a parity script),
   so speed and scoring changes ship separately.
 
@@ -390,8 +405,8 @@ EDHREC publishes aggregates, not decklists, and its data comes from Moxfield and
 **statistics source, never a deck source**. Adding it to deck counts would count Archidekt decks twice and still yield
 no pairs.
 
-- **Layers:** `sync:edhrec` writes `edhrec.*` weekly; the collator resolves pages into `corpus.external_commanders`
-  and `corpus.external_commander_cards`. Commanders are keyed by their own cards, since EDHREC covers ~6,800
+- **Layers:** `sync:edhrec` writes `edhrec.*` weekly; the collator resolves pages into `corpus.edhrec_commanders`
+  and `corpus.edhrec_commander_cards`. Commanders are keyed by their own cards, since EDHREC covers ~6,800
   commanders and `commander_keys` rows are our commander pages.
 - **Its lists are trimmed by length, not by rate.** A page lists about 270 cards whatever its size. The lowest listed
   inclusion is 7.7% (median) for commanders under 100 decks, 4.8% for 100–999, 3.2% for 1,000–4,999 and 2.6% for
@@ -400,7 +415,7 @@ no pairs.
   each commander's candidate pool, and a benchmark in the evaluation.
 - **Never displayed.** If that changes, credit and link EDHREC wherever its numbers appear.
 
-**Prior evaluation (2026-09-28, `spike:edhrec:prior`).** For 49 commanders with at least 200 of our decks (from the old
+**Prior evaluation (2026-09-28, `spike:edhrec:prior`, since retired; T058 repeats it).** For 49 commanders with at least 200 of our decks (from the old
 deck file): hide all but 50 as the answer key, estimate each card's inclusion from n of the 50 shrunk toward the
 colour baseline or toward EDHREC's inclusion for that commander, and grade the top 50 against the hidden decks.
 
@@ -450,8 +465,8 @@ evidence        = the three deck cards contributing most
 Pairs say which cards decks run together; combos say which cards *work* together, whatever the commander and however
 few decks it has.
 
-- **Layers:** `sync:combos` writes `spellbook.*` daily from the published export; the collator writes
-  `corpus.combos`; the precompute worker writes `combo_pieces`.
+- **Layers:** `sync:spellbook` (PR #127's `sync:combos`, renamed) writes `spellbook.*` daily from the published export; the collator writes
+  `corpus.spellbook_combos`; the precompute worker writes `spellbook_combo_pieces`.
 - **Pool.** The missing piece of a combo the deck is one card short of joins the candidate pool.
 - **Shown as its own Add group** (decided 2026-10-05): "complete a combo", listing only combos the chosen bracket
   allows, each credited and linked to Spellbook. A combo already in the deck above the bracket is flagged with a cut

@@ -1,9 +1,9 @@
 -- The admin view of the crawled corpus: readable by a platform admin, refused to everyone else, and never through
 -- PostgREST. Runs in a transaction and rolls back, so it leaves nothing behind.
 --
--- The point of these checks is the guard. `corpus` holds third-party decklists and is deliberately off PostgREST's
--- exposed schema list; these functions are the single doorway to it, so "a signed-in non-admin gets nothing" is the
--- property that has to keep being true.
+-- The point of these checks is the guard. The raw deck schemas (archidekt, moxfield) hold third-party decklists and
+-- are deliberately off PostgREST's exposed schema list; these functions are the single doorway to them, so "a
+-- signed-in non-admin gets nothing" is the property that has to keep being true.
 \set ON_ERROR_STOP on
 begin;
 
@@ -21,15 +21,15 @@ create temp table parked as select * from public.platform_admins;
 delete from public.platform_admins;
 insert into public.platform_admins (user_id, note) values ('dddddddd-0000-4000-8000-000000000001', 'crawl test admin');
 
--- A deck of the test's own, with a commander the catalog knows so name resolution is actually exercised.
--- The second card id names no catalog row, standing in for a card the catalog has since dropped outright.
-insert into corpus.decks (source, source_deck_id, commander_card_ids, cards, deck_size, content_hash, listed_updated_at, last_updated_at)
-select 'archidekt', 'zz-admin-test-deck',
-       array[(select id from public.cards where deleted_at is null and name = 'Sol Ring' limit 1)],
-       jsonb_build_object(
-         (select id::text from public.cards where deleted_at is null and name = 'Sol Ring' limit 1), 1,
-         '2147483000', 29
-       ),
+-- A deck of the test's own, stored the way the crawl stores it (oracle ids), with a commander the catalog knows so
+-- name resolution is actually exercised. The second card's oracle id names no catalog row, standing in for a card the
+-- catalog doesn't have yet.
+insert into archidekt.decks (source_deck_id, commanders, card_oracle_ids, quantities, deck_size, content_hash, listed_updated_at, last_updated_at)
+select 'zz-admin-test-deck',
+       array[(select oracle_id from public.cards where deleted_at is null and name = 'Sol Ring' limit 1)],
+       array[(select oracle_id from public.cards where deleted_at is null and name = 'Sol Ring' limit 1),
+             '00000000-0000-4000-8000-00000000beef'::uuid],
+       array[1, 29]::smallint[],
        100, 'zz-admin-test-hash', now(), now();
 
 -- === signed out ===
@@ -74,10 +74,18 @@ $$;
 -- The schema itself stays unreachable: these functions are the only doorway, not a convenience over an open table.
 do $$
 begin
-  perform 1 from corpus.decks limit 1;
-  perform chk('a non-admin cannot read corpus.decks directly', false, 'it answered');
+  perform 1 from archidekt.decks limit 1;
+  perform chk('a non-admin cannot read archidekt.decks directly', false, 'it answered');
 exception when others then
-  perform chk('a non-admin cannot read corpus.decks directly', true, sqlerrm);
+  perform chk('a non-admin cannot read archidekt.decks directly', true, sqlerrm);
+end;
+$$;
+do $$
+begin
+  perform 1 from crawl.decks limit 1;
+  perform chk('a non-admin cannot read crawl.decks directly', false, 'it answered');
+exception when others then
+  perform chk('a non-admin cannot read crawl.decks directly', true, sqlerrm);
 end;
 $$;
 reset role;
@@ -113,10 +121,10 @@ select chk('a deck''s cards come back with quantities',
            (select count(*) = 2 from public.admin_crawled_deck_cards(
               (select id from public.admin_list_crawled_decks(p_search => 'zz-admin-test-deck')))));
 
-select chk('a card the catalog does not have is kept, with a null name and its stored id',
+select chk('a card the catalog does not have is kept, with a null name and its oracle id',
            (select count(*) = 1 from public.admin_crawled_deck_cards(
               (select id from public.admin_list_crawled_decks(p_search => 'zz-admin-test-deck')))
-             where name is null and oracle_id = '2147483000'));
+             where name is null and oracle_id = '00000000-0000-4000-8000-00000000beef'));
 
 select chk('a known card comes back with its oracle id',
            (select count(*) = 1 from public.admin_crawled_deck_cards(
