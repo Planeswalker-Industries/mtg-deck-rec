@@ -42,7 +42,7 @@ computed while the player waits.
 |---|---|---|
 | Deck storage | `corpus.decks`, written by the Archidekt crawl with card ids resolved on write (68,763 decks, 3,235 commander keys on hosted); `aggregate:corpus` read the old deck spike's file (T053 retired it and points the job at the collated `corpus.decks`) | Raw `archidekt.decks` as fetched → collated `corpus.decks` for every deck source, with `source` on each row → serving tables |
 | External statistics | `public.external_commanders`, `public.external_commander_card_stats` (EDHREC, resolved on import) | Raw `edhrec.*` → collated `corpus.edhrec_commanders`, `corpus.edhrec_commander_cards` |
-| Combos | PR #127 (open) loads `public.combos` | Raw `spellbook.*` → `corpus.spellbook_combos` → serving `spellbook_combo_pieces` |
+| Combos | PR #127 (open) loads `public.combos`; reworked the same day into raw `spellbook.combos` and `spellbook.features` | Raw `spellbook.*` → `corpus.spellbook_combos` → serving `spellbook_combo_pieces` |
 | Crawl machinery | `corpus.crawl_runs`, `crawl_state`, `crawl_commanders` | `crawl.runs`, `crawl.state`, `crawl.queue`, unchanged otherwise |
 | Which decks count | `resolveDeck` in the worker; `save_deck` flags user decks on per-card legality only | The collator applies one rule to every deck source |
 | Crawl depth | Revisits re-read page 1 only, so samples grow only from churn (93 decks at most) | A revisit reads on until 25 decks were new or changed |
@@ -144,19 +144,24 @@ rank, prices, images, page panels.
 
 ```sql
 create table spellbook.combos (
-  variant_id        text primary key,     -- '2645-5640-7935'; commanderspellbook.com/combo/<id>/
-  uses              jsonb not null,       -- [{oracleId, name, mustBeCommander}]
-  templates         text[] not null,      -- pieces described, not named
-  feature_ids       integer[] not null,
-  bracket_tag       text not null,
-  mana_value_needed smallint not null,
-  edhrec_deck_count integer,              -- Spellbook's count of EDHREC decks: never displayed, never leaves raw
-  combo_ids         integer[] not null
+  variant_id           text primary key,  -- '2645-5640-7935'; commanderspellbook.com/combo/<id>/
+  card_oracle_ids      uuid[] not null,   -- the named pieces, ascending
+  card_names           text[] not null,   -- aligned with card_oracle_ids
+  commander_oracle_ids uuid[] not null,   -- pieces that must be the commander, a subset
+  template_names       text[] not null,   -- pieces described, not named
+  feature_ids          integer[] not null,
+  bracket_tag          text not null,     -- as published; the collator maps it
+  mana_value_needed    smallint not null,
+  edhrec_deck_count    integer,           -- Spellbook's count of EDHREC decks: never displayed, never leaves raw
+  combo_ids            integer[] not null
 );
 create table spellbook.features (id integer primary key, name text not null, status text not null);
 ```
 
-PR #127 is reworked to create these in place of `public.combos` and `public.combo_features`.
+Built by PR #127, reworked 2026-10-05 (`20261005000400_spellbook.sql`) in place of `public.combos` and
+`public.combo_features`. The pieces are `uuid` arrays like `archidekt.decks`, not the `jsonb` list first sketched here:
+typed, so a malformed id can't be stored, and smaller. Bracket tags and result statuses are kept as published, so a
+value Spellbook adds later reaches raw and the collator decides what it means.
 
 **`moxfield`** has a `decks` table shaped like Archidekt's, empty: the crawl engine already carries a Moxfield adapter, seeded off until Moxfield grants access (T044). Every deck source's table takes its ids from one sequence (`crawl.deck_id_seq`), so a deck id names one deck whichever source it came from, and the `crawl.decks` view reads them together with the source as a column.
 
@@ -252,7 +257,8 @@ decks on hosted). Until the collator ships (T054), `corpus.decks` is empty and n
 - **EDHREC:** resolve each page's names by printing id first, then by unique name, as the retired `import:edhrec` did.
   Every commander name must resolve. Compute `listed_floor`.
 - **Spellbook:** resolve every piece by oracle id or skip the combo, map the bracket tag to `min_bracket`, and drop
-  banned combos and hidden steps.
+  banned combos and hidden steps. A tag or result status the collator doesn't know holds the combo back and is
+  counted, so a change on Spellbook's side shows up in the metrics instead of slipping through.
 - **Sanity gate per source**, like the syncs: a collation that would remove more than a set share of a source's
   corpus rows refuses (the share lives in `app_config.corpus`).
 - **Metrics** per source: rows resolved, unresolved, and excluded by reason.
@@ -465,7 +471,7 @@ evidence        = the three deck cards contributing most
 Pairs say which cards decks run together; combos say which cards *work* together, whatever the commander and however
 few decks it has.
 
-- **Layers:** `sync:spellbook` (PR #127's `sync:combos`, renamed) writes `spellbook.*` daily from the published export; the collator writes
+- **Layers:** `sync:spellbook` (PR #127, reworked) writes `spellbook.*` daily from the published export; the collator writes
   `corpus.spellbook_combos`; the precompute worker writes `spellbook_combo_pieces`.
 - **Pool.** The missing piece of a combo the deck is one card short of joins the candidate pool.
 - **Shown as its own Add group** (decided 2026-10-05): "complete a combo", listing only combos the chosen bracket

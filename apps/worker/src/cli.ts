@@ -1,6 +1,7 @@
 import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { syncCatalog } from './jobs/sync-catalog';
 import { syncSearchIndex } from './jobs/sync-search-index';
+import { syncSpellbook } from './jobs/sync-spellbook';
 import { syncPrintings } from './jobs/sync-printings';
 import { syncTags } from './jobs/sync-tags';
 import { downloadBulk, getBulkIndex, type BulkType } from './lib/bulk';
@@ -12,6 +13,7 @@ Commands:
   sync:catalog [--force]    Oracle Cards → cards, name aliases, functional twins (skips if the file is unchanged)
   sync:printings [--force]  All Cards → printings, card stats (staple score), cheapest prices, flavor names (after sync:catalog)
   sync:tags [--force]       Oracle Tags → tags, hierarchy, card taggings (after sync:catalog)
+  sync:spellbook [--force]  Commander Spellbook's combo export → spellbook.combos, spellbook.features, as published (skips if the export is unchanged)
   sync:typesense [--rebuild]
                             Drain public.search_index_queue into the search index (--rebuild: build every
                             collection from scratch and move the aliases when it is done)
@@ -39,6 +41,9 @@ async function main(): Promise<void> {
       return syncPrintings({ force });
     case 'sync:tags':
       return syncTags({ force });
+    case 'sync:spellbook':
+      await syncSpellbook({ force });
+      return;
     case 'sync:typesense':
       return syncSearchIndex({ rebuild: args.includes('--rebuild') });
     case 'aggregate:corpus': {

@@ -1841,6 +1841,7 @@ export type Database = {
         | "vote_aggregate"
         | "scryfall_printings"
         | "edhrec_stats"
+        | "spellbook_combos"
       sync_status:
         | "running"
         | "succeeded"
@@ -1997,6 +1998,7 @@ export const Constants = {
         "vote_aggregate",
         "scryfall_printings",
         "edhrec_stats",
+        "spellbook_combos",
       ],
       sync_status: [
         "running",

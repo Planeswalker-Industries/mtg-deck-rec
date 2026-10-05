@@ -21,6 +21,7 @@ Where the project stands, and why things are the way they are.
 - **Scryfall data:** 34,642 live cards on hosted (2026-09-28); printings are English only.
 - **Corpus on hosted:** 129 commanders have stats, from the 2026-09-15 run over the deck spike's 15,135 decks (rebuilt by hand with `cli:hosted aggregate:corpus`). The crawled corpus (`corpus.decks`) holds 68,763 decks over 3,235 commander keys (2026-10-05) that nothing aggregates yet; the first rebuild from it replaces the 2026-09-15 stats. The spike's deck files are stale and are not imported (owner decision 2026-10-05).
 - **EDHREC statistics:** loaded locally and on hosted (T035 slice 11; hosted 2026-09-30, 6,787 commanders). The prior that reads them is wired and switched off (PR #123).
+- **Commander Spellbook combos:** loaded raw locally (2026-10-05, 113,025 combos); not on hosted yet, and nothing reads them yet.
 - **Contract version:** v19 on `main` and `develop`.
 - **Migrations on hosted:** all applied and recorded up to `20261003000200`. On 2026-10-05 four of them (`20261001000100` to `20261003000200`) were found applied but unrecorded; the owner marked them applied with `supabase migration repair` the same day. (On 2026-09-30 the GitHub integration had come unlinked after `20260922000400`; it was relinked and the backlog pushed.)
 - **Search index:** live on the VPS behind the search API, read by Vercel.
@@ -40,7 +41,7 @@ Where the project stands, and why things are the way they are.
 | 2026-10-01 | #121 | v19 | Journey memory, the resume prompt, rename, deckbuilder fixes (#120) |
 | 2026-10-03 | #124, #126 | v19 | The crawl at 1 s with adaptive backoff and a queue ordered by need, and the EDHREC prior switched off (#123); crawled decks stored by card id, empty decks skipped (#125) |
 
-`develop` holds nothing that is not on `main`.
+`develop` holds PR #129 (data layers, T053), not yet on `main`.
 
 The Kitchen Table lane (PR #115) is the current design direction (walnut surfaces, one sleeve-blue accent, Bricolage Grotesque, the 12–60 px type scale, 44 px phone touch targets, one look per kind of control; journey steps shown as Cut, Add, Swap, Done), with a new home page pitch ("Make any commander compete", the "Sound familiar?" ribbon, Cut/Add/Swap steps). The spec is the UI section of `apps/web/AGENTS.md`. Left over: the How it works recordings (T049), starting from one commander (T050), local e2e failures (T051).
 
@@ -85,6 +86,10 @@ The owner reviewed the open PRs #127 (Commander Spellbook combos) and #128 (the 
 - **T053 is built** (2026-10-05, migration `20261005000200_data_layers.sql`): the schemas exist, the crawl tables and EDHREC tables moved, and crawled decks are stored raw as oracle ids. Not on hosted yet.
 - **The deck spike's code is retired** (2026-10-05): the spike crawler, its two measurement jobs, the tag profiler, the PC lookup worker, `import:edhrec` and the TypeScript Archidekt client. `aggregate:corpus` now reads only the collated `corpus.decks`, empty until the collator (T054), so hosted's stats stay at the 2026-09-15 run until then, and deck lookups wait for the VPS worker.
 - **The design's open questions were answered the same day:** in bracket 3 only Spellbook's R combos flag; Tagger's mass land denial and extra-turn tags count, planeswalkers excluded, with at most 2 extra-turn cards in brackets 2–3; the buy list and build start from placeholder values the evaluation retunes, with basics learned per commander; accept events get a `/privacy` line and no opt-out.
+
+## Commander Spellbook combos (T047, data half)
+
+Built 2026-10-04 (PR #127) and reworked 2026-10-05 into the raw `spellbook` schema; not yet on `main`. `sync:spellbook` reads Commander Spellbook's published daily export (one gzipped request of about 29 MB, about 10 s) and keeps every combo as Spellbook publishes it: the pieces as Scryfall oracle ids, its results and its bracket tag. That gives the recommender card-to-card relationships that don't depend on how many decks a commander has. The local load stored all 113,025 combos and 1,099 results, none malformed; a forced re-run of the same export wrote nothing. The daily workflow runs it once `SPELLBOOK_SYNC_ENABLED` is set, after the migration reaches hosted. Next: the collator resolves combos to our cards (T054), and bracket rules and the "complete a combo" Add group use them (T060).
 
 ## Open decisions for the owner
 
