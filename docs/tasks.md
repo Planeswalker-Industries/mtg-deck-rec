@@ -504,16 +504,22 @@ The serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `
 
 ### T066: VPS worker
 
-**Priority:** HIGH | **Area:** Worker / Ops | **Status:** Not started (PR #128's worker, to be carried over) | **Blocked by:** T054
+**Priority:** HIGH | **Area:** Worker / Ops | **Status:** Built 2026-10-05 (`cli serve`, migration `20261005000700`, `deploy/worker/`); waiting for release, then deployment on the VPS | **Blocked by:** T054
 
-The worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`) runs the jobs that run by hand today, on a schedule in `app_config.worker`: `collate` after every fetch, `aggregate:corpus` when the corpus changed, `sync:edhrec` weekly, and the daily crawl trigger (T042). Deck lookups (T009) go through the crawl: a requested commander jumps the crawl queue, and the worker starts a crawl run at once when the claim is free, so there is one Archidekt client with one politeness and kill-switch implementation.
+The worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`) runs the jobs that run by hand today, on a schedule in `app_config.worker`: deck lookups every pass, each source's daily crawl at `crawlHourUtc` (T042), `collate` every `collateEveryMinutes`, `aggregate:corpus` at most every `aggregateEveryHours` when the corpus changed, and `sync:edhrec` every `edhrecEveryDays` in the background (retried after `retryHours` when a fetch didn't finish). Deck lookups (T009) go through the crawl: a requested commander comes first in the crawl's queue, and the worker starts a crawl run when none is going, so there is one Archidekt client with one politeness and kill-switch implementation. CLAUDE.md ("Commander deck lookups", "Hosting") has the rules.
 
-**Carry over from PR #128, with its review fixes:** the container and deploy files, `cli serve`; a lookup's rebuild keeps the sanity gate; lookups honour Archidekt's kill switch and 403s (by going through the crawl); the crawl-token fallback works with empty variables; the claim is released on shutdown.
+**Carried over from PR #128:** the container (`apps/worker/Dockerfile`, `.dockerignore`) and deploy files, and `cli serve`, rewritten. **Its review fixes:**
+- a lookup's rebuild runs the ordinary aggregate, sanity gate included;
+- lookups honour Archidekt's kill switch and 403s, because the crawl serves them;
+- an empty `SEARCH_API_CRON_TOKEN` falls back to the admin token;
+- the worker holds no crawl claim, so there is none to release on shutdown.
+
+**Verified locally (2026-10-05):** the lookup flow with the crawl's visit simulated (done with 102 decks, `not_enough_decks` for a commander the crawl found none for, failed with the reason while Archidekt was switched off); the crawl trigger against a stub of the search API, with an empty cron token; the image builds (603 MB) and a container pass runs against the local database.
 
 **Acceptance criteria:**
 - [ ] The worker deployed on the VPS with `DATABASE_URL` (session pooler), the search API tokens, `WEB_APP_URL` and `REVALIDATE_SECRET`
-- [ ] Schedule in `app_config.worker`; `worker_status` heartbeat shown to the deck tool
-- [ ] Deck lookups served through the crawl queue (closes T009)
+- [x] Schedule in `app_config.worker`; `worker_status` heartbeat every 10 s for the deck tool
+- [x] Deck lookups served through the crawl queue (closes T009 once deployed)
 - [ ] Two days of worker-triggered crawls, then the Vercel cron goes (T042)
 
 ---
@@ -659,7 +665,7 @@ The design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), revise
 - **Evaluation.** `spike:edhrec:prior` (retired 2026-10-05; T058 repeats it with a time split) was a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured. `supabase/tests/edhrec-stats.sql` holds the SQL checks.
 - **Wired, switched off:** `edhrec_card_priors` (added as `external_card_priors` in migration `20261002000100`, PR #123; renamed by T053) feeds the prior with `app_config.corpus.externalPriorShare` at 0. T061 replaces the share with weighting by sample size.
 
-**Slice 10 (full-suite crawl) is built** in the Go search API, not the TS worker the plan names: a commander queue seeded from EDHREC, decks most viewed first, one page per commander on the first visit. Revisits re-read page 1 only (2026-10-03), so samples grow only from churn; T056 restores growth (25 new or changed decks per revisit, owner rule 2026-10-05). Deck lookups move to the VPS worker in PR #128 (T009). It absorbs closed ticket T010.
+**Slice 10 (full-suite crawl) is built** in the Go search API, not the TS worker the plan names: a commander queue seeded from EDHREC, decks most viewed first, one page per commander on the first visit. Revisits re-read page 1 only (2026-10-03), so samples grow only from churn; T056 restores growth (25 new or changed decks per revisit, owner rule 2026-10-05). Deck lookups go through the crawl's queue, served by the VPS worker (T066, T009). It absorbs closed ticket T010.
 
 **Owner decisions it rests on:**
 - 2026-09-21: user decks count only when complete (100 cards and legal); all data lives in Postgres, under the legal team's consent to all publicly facing data (the crawler guardrails still apply); collections stay one per account; win-condition analysis waits.
@@ -678,9 +684,9 @@ The design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), revise
 
 ### T042: Make the daily crawl cron produce runs
 
-**Priority:** MEDIUM | **Area:** DevOps / Data | **Status:** Not started
+**Priority:** MEDIUM | **Area:** DevOps / Data | **Status:** The VPS worker (T066) starts the daily run itself once deployed; the cron stays as a backup until then
 
-The deck crawl (closed T036) works when started by hand, but the daily Vercel cron has never produced a run. `vercel.json` schedules `/api/cron/archidekt-scrape` for 10:15 UTC, and a Hobby-plan cron fires somewhere within that hour. That route POSTs `/cron/archidekt/scrape` on the search API, which starts the crawl. Full runbook: [`roadmap/deck-crawl.md`](roadmap/deck-crawl.md).
+The deck crawl (closed T036) works when started by hand, but the daily Vercel cron has produced runs only sometimes. T066's worker starts each source's run at `app_config.worker.crawlHourUtc` unless one already started that day; with two days of those, the Vercel cron (`vercel.json`, the cron routes) can go. `vercel.json` schedules `/api/cron/archidekt-scrape` for 10:15 UTC, and a Hobby-plan cron fires somewhere within that hour. That route POSTs `/cron/archidekt/scrape` on the search API, which starts the crawl. Full runbook: [`roadmap/deck-crawl.md`](roadmap/deck-crawl.md).
 
 **Files:**
 - `apps/web/vercel.json` — the cron schedule
@@ -731,12 +737,12 @@ The Moxfield adapter (`services/search-api/internal/moxfield/`) is built and see
 
 ### T009: Always-on commander request consumer
 
-**Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** PC worker retired 2026-10-05; served through the crawl queue by the VPS worker (T066)
+**Priority:** MEDIUM | **Area:** Backend / Worker | **Status:** Built into the VPS worker (T066, 2026-10-05); live once it is deployed
 
 Deck lookups queue in `commander_requests`, and nothing consumes them. The worker that did, `serve:commander-requests`, ran by hand from the owner's PC and wrote decks into the old deck spike's file; it had been offline since 2026-09-16 and was retired on 2026-10-05 with the rest of the spike code. T066 serves lookups through the crawl: a requested commander goes to the front of the crawl's queue, and the VPS worker starts a crawl run when the claim is free.
 
 **Files:**
-- T066's worker (`apps/worker/src/jobs/serve.ts` in PR #128)
+- `apps/worker/src/jobs/lookups.ts`, `serve.ts` (T066)
 - `public.crawl_next_commanders` (requested commanders first)
 
 **Acceptance criteria:**
