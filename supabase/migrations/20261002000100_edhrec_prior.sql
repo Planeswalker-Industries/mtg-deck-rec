@@ -50,7 +50,7 @@ grant execute on function public.external_card_priors(integer[], integer[]) to a
 -- safe on their own and turning the prior on is a one-row config change that can be reverted the same way.
 --
 -- What to set it to: `spike:edhrec:prior` reports the top-50 overlap for the colour and EDHREC priors at 0, 5, 10, 20,
--- 30 and 50 decks of our own (X:\mtg_proj\reports\edhrec-prior-<date>.md). The share should be about where our own
+-- 30 and 50 decks of our own (its report, edhrec-prior-<date>.md). The share should be about where our own
 -- decks stop losing to EDHREC - read it off that curve rather than guessing.
 update public.app_config
    set value = value || '{"externalPriorShare": 0}'::jsonb, updated_at = now()
