@@ -85,7 +85,7 @@ let priceCheck: { at: string | null; loadedAt: number } | null = null;
  * When prices were last checked against Scryfall (prices_checked_at()). A card's prices_as_of only moves when its price
  * changes, so this is the as-of date to show. Cached briefly per server instance; null when it can't be read.
  */
-async function pricesCheckedAt(db: PublicClient): Promise<string | null> {
+export async function pricesCheckedAt(db: PublicClient): Promise<string | null> {
   if (priceCheck && Date.now() - priceCheck.loadedAt < PRICE_CHECK_TTL_MS) return priceCheck.at;
   const { data, error } = await db.rpc("prices_checked_at");
   if (error) return priceCheck?.at ?? null;
@@ -94,7 +94,7 @@ async function pricesCheckedAt(db: PublicClient): Promise<string | null> {
 }
 
 /** A price is as current as the newest price check, even when it hasn't moved since. */
-function withPriceCheck(row: CardRow, checkedAt: string | null): CardRow {
+export function withPriceCheck(row: CardRow, checkedAt: string | null): CardRow {
   if (!checkedAt || !row.prices_as_of || Date.parse(checkedAt) <= Date.parse(row.prices_as_of)) return row;
   return { ...row, prices_as_of: checkedAt };
 }

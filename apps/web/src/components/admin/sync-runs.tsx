@@ -45,6 +45,12 @@ const JOB_LABEL: Record<AdminSyncJob, string> = {
   spellbook_combos: "Spellbook combos",
   corpus_collate: "Corpus collation",
   edhrec_pages: "EDHREC pages",
+  precompute_commanders: "Commander stats",
+  precompute_baseline: "Nightly baseline",
+  precompute_scores: "Commander scores",
+  precompute_substitutes: "Card substitutes",
+  precompute_roles: "Card roles",
+  precompute_combos: "Combo pieces",
 };
 
 const STATUS_LABEL: Record<AdminSyncStatus, string> = {

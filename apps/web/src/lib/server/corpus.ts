@@ -3,26 +3,26 @@ import {
   commanderShareWithPrior,
   decksSinceRelease,
   pickCorpusSources,
+  servingSettings,
   shrunkInclusion,
   sourceDecksSinceRelease,
   sourcesConfidence,
+  DEFAULT_SERVING_SETTINGS,
   type CommanderCardRate,
   type CorpusKey,
   type CorpusSource,
 } from "@mtg/core/scoring";
 import { colorsToMask } from "@mtg/core/search";
+import { POSTGREST_MAX_ROWS } from "../constants";
+import { cachedConfig } from "./config-cache";
 import { fromIndex } from "./search-index";
 import type { PublicClient } from "./supabase";
 
-// externalPriorShare 0 means the EDHREC prior is off: the code path exists but changes no score until
-// app_config.corpus sets it. See corpusComponent's CorpusThresholds for what it does and how to pick a value.
+// The scoring settings' defaults are @mtg/core's, which the precompute worker reads too (externalPriorShare 0 keeps
+// the EDHREC prior off). severeSynergyScore only decides which cuts are severe, so it stays here.
 const DEFAULT_SETTINGS = {
-  shrinkAlpha: 20,
-  minDecks: 50,
-  fullDecks: 100,
-  partnerPoolWeight: 0.25,
+  ...DEFAULT_SERVING_SETTINGS,
   severeSynergyScore: 0.2,
-  externalPriorShare: 0,
 };
 type CorpusSettings = typeof DEFAULT_SETTINGS;
 type DeckMonths = Record<string, number>;
@@ -38,6 +38,11 @@ export interface CommanderCorpus {
   settings: CorpusSettings;
   /** The deck's own commander key, when that commander (or pair) has corpus decks. */
   keyId: number | null;
+  /**
+   * A commander key exists for exactly these commanders, decks or not. The precompute worker scores every such key and
+   * every commander on its own; a pair without one is combined from its partners' totals (serving.ts).
+   */
+  exactKey: boolean;
   slug: string | null;
   /** Keys whose decks count for this deck, with their weights: see `pickCorpusSources`. */
   sources: CorpusSource[];
@@ -70,18 +75,10 @@ export interface CardCorpus {
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 function parseSettings(value: unknown): CorpusSettings {
-  const raw = (value ?? {}) as Record<string, unknown>;
-  const read = (key: keyof CorpusSettings) => {
-    const v = raw[key];
-    return typeof v === "number" && Number.isFinite(v) ? v : DEFAULT_SETTINGS[key];
-  };
+  const severe = (value as Record<string, unknown> | null)?.severeSynergyScore;
   return {
-    shrinkAlpha: read("shrinkAlpha"),
-    minDecks: read("minDecks"),
-    fullDecks: read("fullDecks"),
-    partnerPoolWeight: read("partnerPoolWeight"),
-    severeSynergyScore: read("severeSynergyScore"),
-    externalPriorShare: read("externalPriorShare"),
+    ...servingSettings(value),
+    severeSynergyScore: typeof severe === "number" && Number.isFinite(severe) ? severe : DEFAULT_SETTINGS.severeSynergyScore,
   };
 }
 
@@ -100,30 +97,73 @@ export function commanderKeyCounts(corpus: CommanderCorpus | null): Pick<Command
   };
 }
 
-/** Finds the corpus decks that describe a deck's commander (or partner pair), borrowing from other pairings when it has too few. */
-export async function loadCommanderCorpus(db: PublicClient, commanderIds: readonly number[]): Promise<CommanderCorpus> {
-  const ids = [...new Set(commanderIds)].sort((a, b) => a - b);
-  const idList = ids.join(",");
-  const [configResult, probeResult, keysResult] = await Promise.all([
-    db.rpc("get_public_config", { p_key: "corpus" }),
-    db.from("card_global_stats").select("card_id").limit(1),
-    ids.length > 0 && ids.length <= 2
-      ? db
-          .from("commander_keys")
-          .select("id, slug, commander_1, commander_2, color_identity")
-          .or(`commander_1.in.(${idList}),commander_2.in.(${idList})`)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (configResult.error) throw new Error(`Loading corpus settings failed: ${configResult.error.message}`);
-  if (probeResult.error) throw new Error(`Checking the corpus failed: ${probeResult.error.message}`);
-  if (keysResult.error) throw new Error(`Loading commander keys failed: ${keysResult.error.message}`);
+/** The corpus settings and whether any stats exist yet: read per server instance at most once a minute. */
+export interface CorpusConfig {
+  settings: CorpusSettings;
+  /** False until the corpus has been aggregated. */
+  available: boolean;
+}
 
-  const settings = parseSettings(configResult.data);
-  const available = probeResult.data.length > 0;
+export function loadCorpusConfig(db: PublicClient): Promise<CorpusConfig> {
+  return cachedConfig("corpus", async () => {
+    const [configResult, probeResult] = await Promise.all([
+      db.rpc("get_public_config", { p_key: "corpus" }),
+      db.from("card_global_stats").select("card_id").limit(1),
+    ]);
+    if (configResult.error) throw new Error(`Loading corpus settings failed: ${configResult.error.message}`);
+    if (probeResult.error) throw new Error(`Checking the corpus failed: ${probeResult.error.message}`);
+    return { settings: parseSettings(configResult.data), available: probeResult.data.length > 0 };
+  });
+}
+
+/** Decks per month for each colour identity (corpus_identity_stats), for cards no deck runs. Cached like the settings. */
+export function loadIdentityMonths(db: PublicClient): Promise<Map<number, DeckMonths>> {
+  return cachedConfig("corpus-identity-months", async () => {
+    const { data, error } = await db.from("corpus_identity_stats").select("color_identity, deck_months");
+    if (error) throw new Error(`Loading corpus deck counts failed: ${error.message}`);
+    return new Map(data.map((r) => [r.color_identity, parseNumberRecord(r.deck_months)]));
+  });
+}
+
+/** A commander key involving the deck's commanders, with its stats (none once its decks are gone). */
+export interface CommanderKeyRow {
+  id: number;
+  slug: string;
+  commander_1: number;
+  commander_2: number | null;
+  color_identity: number;
+  commander_stats: { deck_count: number; deck_months: unknown; role_profile: unknown } | null;
+}
+
+/**
+ * Every key either commander leads or shares, with its stats, in one read (the stats are embedded through their key).
+ * In id order, as the precompute worker reads them, so borrowed sources are summed in the same order everywhere.
+ */
+async function readCommanderKeys(db: PublicClient, ids: readonly number[]): Promise<CommanderKeyRow[]> {
+  if (ids.length === 0 || ids.length > MAX_COMMANDERS) return [];
+  const idList = ids.join(",");
+  const { data, error } = await db
+    .from("commander_keys")
+    .select("id, slug, commander_1, commander_2, color_identity, commander_stats(deck_count, deck_months, role_profile)")
+    .or(`commander_1.in.(${idList}),commander_2.in.(${idList})`)
+    .order("id");
+  if (error) throw new Error(`Loading commander keys failed: ${error.message}`);
+  return data as CommanderKeyRow[];
+}
+
+/**
+ * The corpus decks that describe these commanders, from their keys: their own key, borrowing from other pairings when
+ * it has too few (pickCorpusSources). Pure, so both read paths and the tests build it the same way.
+ */
+export function commanderCorpusFrom(commanderIds: readonly number[], keys: readonly CommanderKeyRow[], config: CorpusConfig): CommanderCorpus {
+  const ids = [...new Set(commanderIds)].sort((a, b) => a - b);
+  const { settings, available } = config;
+  const exactKey = keys.some((k) => k.commander_1 === ids[0] && k.commander_2 === (ids[1] ?? null));
   const none: CommanderCorpus = {
     available,
     settings,
     keyId: null,
+    exactKey,
     slug: null,
     sources: [],
     sourceKeyIds: [],
@@ -133,26 +173,17 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
     roleProfile: {},
     confidence: "none",
   };
-  const keys = keysResult.data ?? [];
   if (!available || keys.length === 0) return none;
 
-  const { data: statRows, error } = await db
-    .from("commander_stats")
-    .select("commander_key_id, deck_count, deck_months, role_profile")
-    .in(
-      "commander_key_id",
-      keys.map((k) => k.id),
-    );
-  if (error) throw new Error(`Loading commander stats failed: ${error.message}`);
-  const statsByKey = new Map(statRows.map((r) => [r.commander_key_id, r]));
+  const statsByKey = new Map(keys.map((k) => [k.id, k.commander_stats]));
   const corpusKeys = keys.map(
     (k): CorpusKey => ({
       id: k.id,
       commander1: k.commander_1,
       commander2: k.commander_2,
       identity: k.color_identity,
-      deckCount: statsByKey.get(k.id)?.deck_count ?? 0,
-      deckMonths: parseNumberRecord(statsByKey.get(k.id)?.deck_months),
+      deckCount: k.commander_stats?.deck_count ?? 0,
+      deckMonths: parseNumberRecord(k.commander_stats?.deck_months),
     }),
   );
   const picked = pickCorpusSources(ids, corpusKeys, settings);
@@ -172,6 +203,7 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
     available,
     settings,
     keyId: picked.own?.id ?? null,
+    exactKey,
     slug: keys.find((k) => k.id === picked.own?.id)?.slug ?? null,
     sources: picked.sources,
     sourceKeyIds: picked.sources.map((s) => s.id),
@@ -181,6 +213,16 @@ export async function loadCommanderCorpus(db: PublicClient, commanderIds: readon
     roleProfile,
     confidence: sourcesConfidence(picked, settings),
   };
+}
+
+/**
+ * Finds the corpus decks that describe a deck's commander (or partner pair), borrowing from other pairings when it has
+ * too few. One read: the settings come from the per-instance cache.
+ */
+export async function loadCommanderCorpus(db: PublicClient, commanderIds: readonly number[]): Promise<CommanderCorpus> {
+  const ids = [...new Set(commanderIds)].sort((a, b) => a - b);
+  const [config, keys] = await Promise.all([loadCorpusConfig(db), readCommanderKeys(db, ids)]);
+  return commanderCorpusFrom(ids, keys, config);
 }
 
 interface GlobalRate {
@@ -193,6 +235,30 @@ interface GlobalRate {
 interface CardFacts {
   releaseMonth: string | null;
   identity: number;
+}
+
+type KeyCardRow = { commander_key_id: number; card_id: number; decks_with: number };
+
+/**
+ * The sources' counts for these cards, page by page: a partner pair can draw on dozens of keys, and their rows for a
+ * 400-card pool pass PostgREST's row cap, which used to cut the pair's counts short without a word.
+ */
+async function commanderCardRows(db: PublicClient, keyIds: readonly number[], cardIds: readonly number[]): Promise<KeyCardRow[]> {
+  const rows: KeyCardRow[] = [];
+  if (keyIds.length === 0) return rows;
+  for (let from = 0; ; from += POSTGREST_MAX_ROWS) {
+    const { data, error } = await db
+      .from("commander_card_stats")
+      .select("commander_key_id, card_id, decks_with")
+      .in("commander_key_id", [...keyIds])
+      .in("card_id", [...cardIds])
+      .order("commander_key_id")
+      .order("card_id")
+      .range(from, from + POSTGREST_MAX_ROWS - 1);
+    if (error) throw new Error(`Loading commander play rates failed: ${error.message}`);
+    rows.push(...data);
+    if (data.length < POSTGREST_MAX_ROWS) return rows;
+  }
 }
 
 /** Each source key's decks count at its own weight, and a card's total is the sum across the keys that ran it. */
@@ -332,20 +398,13 @@ export async function loadCardCorpus(
   if (indexed) {
     ({ global, cardFacts, commanderDecks } = indexed);
   } else {
-    const [globalResult, commanderResult, cardsResult, printingsResult] = await Promise.all([
+    const [globalResult, commanderRows, cardsResult, printingsResult] = await Promise.all([
       db.from("card_global_stats").select("card_id, decks_with, eligible_decks, rate").in("card_id", ids),
-      corpus.sourceKeyIds.length > 0
-        ? db
-            .from("commander_card_stats")
-            .select("commander_key_id, card_id, decks_with")
-            .in("commander_key_id", corpus.sourceKeyIds)
-            .in("card_id", ids)
-        : Promise.resolve({ data: [] as { commander_key_id: number; card_id: number; decks_with: number }[], error: null }),
+      commanderCardRows(db, corpus.sourceKeyIds, ids),
       db.from("cards").select("id, released_at, color_identity").in("id", ids),
       db.from("card_stats").select("card_id, first_printed_at").in("card_id", ids),
     ]);
     if (globalResult.error) throw new Error(`Loading card play rates failed: ${globalResult.error.message}`);
-    if (commanderResult.error) throw new Error(`Loading commander play rates failed: ${commanderResult.error.message}`);
     if (cardsResult.error) throw new Error(`Loading card release dates failed: ${cardsResult.error.message}`);
     if (printingsResult.error) throw new Error(`Loading first printings failed: ${printingsResult.error.message}`);
 
@@ -358,7 +417,7 @@ export async function loadCardCorpus(
         { releaseMonth: (firstPrinted.get(r.id) ?? r.released_at)?.slice(0, 7) ?? null, identity: r.color_identity },
       ]),
     );
-    commanderDecks = weightedCommanderDecks(corpus, commanderResult.data ?? []);
+    commanderDecks = weightedCommanderDecks(corpus, commanderRows);
   }
 
   const monthsByIdentity = new Map(identityResult.data.map((r) => [r.color_identity, parseNumberRecord(r.deck_months)]));

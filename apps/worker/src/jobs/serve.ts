@@ -1,8 +1,11 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { connect, type Sql } from '../lib/db';
-import { aggregateCorpus } from './aggregate-corpus';
 import { collate } from './collate';
 import { checkIn, serveLookups, triggerCrawl } from './lookups';
+import { precomputeBaseline, precomputeCommanders } from './precompute-commanders';
+import { precomputeScores, scoreSettingsChanged } from './precompute-scores';
+import { precomputeSubstitutes } from './precompute-substitutes';
+import { precomputeCombos, precomputeRoles } from './precompute-tables';
 import { syncEdhrec } from './sync-edhrec';
 
 /** app_config.worker; every value has a default, so a missing key never stops the worker. */
@@ -11,7 +14,7 @@ interface Schedule {
   crawlHourUtc: number;
   crawlSources: string[];
   collateEveryMinutes: number;
-  aggregateEveryHours: number;
+  baselineHourUtc: number;
   edhrecEveryDays: number;
   retryHours: number;
 }
@@ -21,7 +24,7 @@ const DEFAULT_SCHEDULE: Schedule = {
   crawlHourUtc: 10,
   crawlSources: ['archidekt'],
   collateEveryMinutes: 30,
-  aggregateEveryHours: 6,
+  baselineHourUtc: 4,
   edhrecEveryDays: 7,
   retryHours: 6,
 };
@@ -31,6 +34,11 @@ const MS_PER_MINUTE = 60_000;
 const HEARTBEAT_MS = 10_000;
 /** How often the daily crawl trigger may ask the search API again after it couldn't start a run. */
 const CRAWL_RETRY_MINUTES = 10;
+/**
+ * How long one pass may spend rebuilding substitute lists before the worker gets back to lookups. The first build of
+ * every card's list (about 15 minutes) spreads over several passes this way.
+ */
+const SUBSTITUTES_BUDGET_MS = 2 * MS_PER_MINUTE;
 
 async function loadSchedule(sql: Sql): Promise<Schedule> {
   const [row] = await sql<{ value: Partial<Schedule> }[]>`select value from public.app_config where key = 'worker'`;
@@ -53,14 +61,15 @@ async function dailyCrawls(sql: Sql, schedule: Schedule): Promise<void> {
 }
 
 /**
- * Whether the corpus stats are due a rebuild: no rebuild started within `aggregateEveryHours`. Every outcome counts
- * as a start, a skip for an unchanged corpus included, so a rebuild that fails its gate isn't retried every pass.
+ * Whether the nightly baseline is due: its hour has come and no baseline started today (UTC). Every outcome counts as
+ * a start, a failed gate included, so a refused baseline isn't retried every pass.
  */
-async function aggregateDue(sql: Sql, schedule: Schedule): Promise<boolean> {
+async function baselineDue(sql: Sql, schedule: Schedule): Promise<boolean> {
+  if (new Date().getUTCHours() < schedule.baselineHourUtc) return false;
   const [row] = await sql<{ due: boolean }[]>`
     select not exists (
       select 1 from public.sync_runs
-      where job = 'corpus_aggregate' and started_at > now() - make_interval(hours => ${schedule.aggregateEveryHours})
+      where job = 'precompute_baseline' and started_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'
     ) as due
   `;
   return row?.due ?? false;
@@ -95,8 +104,11 @@ async function duty(name: string, run: () => Promise<unknown>): Promise<void> {
  * then runs whatever app_config.worker says is due:
  *
  * - each source's daily crawl, started through the search API at `crawlHourUtc` (T042);
- * - a collation every `collateEveryMinutes` (a pass with nothing new records nothing);
- * - a corpus stats rebuild at most every `aggregateEveryHours`, when corpus.decks changed;
+ * - a collation every `collateEveryMinutes` (a pass with nothing new records nothing), then the precompute worker's
+ *   checks (T055): the stats and scores of commanders whose decks changed, substitute lists that are due (a few
+ *   minutes at a time, carried on in the next pass), card roles and combo pieces if their inputs moved;
+ * - the nightly baseline at `baselineHourUtc`, which ends by re-scoring every commander;
+ * - every score again whenever app_config.corpus changes;
  * - an EDHREC fetch every `edhrecEveryDays`, in the background, since it takes hours and lookups must not wait on it.
  *
  * When something last ran is read from sync_runs and crawl.runs, so a restart neither repeats nor skips work. A stop
@@ -116,6 +128,7 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
   const heartbeat = setInterval(() => void checkIn(sql).catch(() => {}), HEARTBEAT_MS);
   let edhrec: Promise<void> | null = null;
   let lastCollate = 0;
+  let substitutesPending = false;
   console.log(`worker: serving${once ? ' one pass' : ''}`);
 
   try {
@@ -124,11 +137,23 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
       await duty('check-in', () => checkIn(sql));
       await duty('deck lookups', () => serveLookups(sql));
       await duty('daily crawl', () => dailyCrawls(sql, schedule));
-      if (Date.now() - lastCollate >= schedule.collateEveryMinutes * MS_PER_MINUTE) {
+      const collating = Date.now() - lastCollate >= schedule.collateEveryMinutes * MS_PER_MINUTE;
+      if (collating) {
         lastCollate = Date.now();
         await duty('collation', () => collate());
+        await duty('commander stats', () => precomputeCommanders(sql));
       }
-      if (await aggregateDue(sql, schedule)) await duty('corpus rebuild', () => aggregateCorpus());
+      if (await baselineDue(sql, schedule)) await duty('nightly baseline', () => precomputeBaseline(sql));
+      if (await scoreSettingsChanged(sql)) await duty('scores', () => precomputeScores({ sql }));
+      if (collating || substitutesPending) {
+        await duty('substitutes', async () => {
+          substitutesPending = (await precomputeSubstitutes(sql, { budgetMs: SUBSTITUTES_BUDGET_MS })).remaining > 0;
+        });
+      }
+      if (collating) {
+        await duty('card roles', () => precomputeRoles(sql));
+        await duty('combo pieces', () => precomputeCombos(sql));
+      }
       if (!edhrec && !once && (await edhrecDue(sql, schedule))) {
         edhrec = duty('EDHREC fetch', () => syncEdhrec()).finally(() => {
           edhrec = null;

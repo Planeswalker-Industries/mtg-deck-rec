@@ -124,7 +124,7 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 ### T008: Swap pool caching across serverless instances
 
-**Priority:** HIGH | **Area:** Backend / Performance | **Status:** Closes with T055 (2026-10-05)
+**Priority:** HIGH | **Area:** Backend / Performance | **Status:** Closes with T055's retirement PR (serving reads built 2026-10-06)
 
 **Measured 2026-10-05 on hosted:** calls to `rec_add_candidates` and `rec_swap_candidates` average 0.8–1.0 s and peak at the 3 s `anon` timeout, and `rec_timeouts` gained a swap row on 2026-09-30. T055 replaces both functions with indexed reads of precomputed tables, which removes the query this ticket would cache. Build a cache here only if T055 slips.
 
@@ -490,15 +490,29 @@ Each source's data moves into its own schema, as the source published it (`archi
 
 ### T055: Precompute worker and the serving request path
 
-**Priority:** HIGH | **Area:** Worker / Backend | **Status:** Designed 2026-10-05; its inputs are ready (T054: `corpus.dirty_commanders` fills on every corpus write, `corpus.spellbook_combos` is collated) | **Blocked by:** T054
+**Priority:** HIGH | **Area:** Worker / Backend | **Status:** Built 2026-10-06 (migrations `20261005000900`, `20261005001000`), one round per add, cut and swap, `app_config.recs.servingReads` off; waiting for release, the first precompute on hosted and the switch, then the retirement PR | **Blocked by:** T054
 
-The serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `spellbook_combo_pieces`, and per-dirty-commander `commander_stats`) are built by the precompute worker, and the add, cut and swap paths become indexed reads with scoring in `@mtg/core`. `rec_add_candidates`, `rec_swap_candidates`, `retry-timeout.ts` and `rec_timeouts` retire. On hosted, calls to the two functions average 0.8–1.0 s and peak at the 3 s timeout (2026-10-05).
+The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substitutes`, `card_roles`, `spellbook_combo_pieces`, and per-dirty-commander `commander_stats`) are built by the precompute worker, and the add, cut and swap paths become indexed reads, sent in one round, with scoring in `@mtg/core`. `rec_add_candidates`, `rec_swap_candidates`, `retry-timeout.ts` and `rec_timeouts` retire. On hosted, calls to the two functions average 0.8–1.0 s and peak at the 3 s timeout (2026-10-05). CLAUDE.md ("Precompute worker") has the rules.
+
+**Verified locally (2026-10-06):** over the whole local corpus (74,926 decks), the per-commander pass and the nightly baseline write exactly what `aggregate:corpus` writes (0 rows changed), and the refactored `aggregate:corpus` writes nothing over its own output. `serving-parity.ts` on the three regression fixtures and 40 seeded decks (commanders with their own decks, thinly played ones, pairs, pairs no key knows, commanders with none): cuts, adds, 170 swap lists on each of three swap paths, the rater, 50 commander pages and 43 card pages identical; owned-only swaps, which draw from the stored substitutes by design, identical in 54 of 170. The commander corpus read in one request matches the two reads it replaced for all 43 decks. The fixtures give the same result on both paths (one check, Talisman of Hierarchy at #4 where the fixture wants top 3, fails on both). Warm local p50/p95, old path → serving path: adds 43/127 → 32/63 ms, cuts 15/22 → 10/17, swaps 72/162 → 25/32, the swap route's shared pool 71/172 → 36/47, the rater 94/116 → 10/37, commander pages 107/139 → 36/44, card pages 77/143 → 46/56.
+
+**One round per request (2026-10-06):** each add, cut and swap sends all its reads at once. The pool or the deck's cards come back whole from one function (`serving_add_pool`, `serving_swap_candidates`, `serving_cards`), `commander_sets` tells the pool which decks to draw on, the commander's keys come with their stats in one read, settings are cached per server instance for a minute, and the rate limit goes out with the reads. Rounds per request, counted by `serving-parity.ts` (old → serving): adds 3 → 1, cuts 2 → 1, swaps 3 → 1, the rater 3 → 1, plus the rate limit, which went first and now goes alongside. Card rows come from Postgres in the same call: the search index would have needed the ids first, a second round. Inlined, the swap function's tag names were aggregated again for every candidate (about 200 ms for 220); they are materialized like its matches.
+
+**Found on the way:** the old path's Postgres fallback read a pair's source keys through PostgREST's 1,000-row cap, so a pair that borrows dozens of keys lost part of its counts. It now pages (`commanderCardRows`, `corpus.ts`); the stored counts matched an SQL recount exactly.
 
 **Acceptance criteria:**
-- [ ] Parity: the same add and swap lists as before the switch (regression fixtures plus a parity script)
-- [ ] p95 add and swap latency on hosted recorded before and after
-- [ ] Diff-only writes, sanity gates, and a schedule in `app_config.worker`
-- [ ] T008 closed; T040 closed as moot
+- [x] Parity: the same add and swap lists as before the switch (regression fixtures plus a parity script), locally
+- [ ] Parity on hosted (`serving-parity.ts` through the publishable key, reads only) before the switch
+- [ ] p95 add and swap latency on hosted recorded before and after (`serving-parity.ts --timing`)
+- [x] Diff-only writes, sanity gates, and a schedule in `app_config.worker`
+- [x] One round per add, cut and swap on the serving path (`serving-parity.ts` counts them)
+- [ ] T008 closed; T040 closed as moot (the retirement PR)
+
+**Release steps (owner):**
+1. Merge to `main`, run `db-push.yml`, and confirm `schema_migrations` reaches `20261005001000`.
+2. After T054's hosted steps (`collate`, then `aggregate:corpus`, which now ends with every score), redeploy the worker, whose first passes build the substitutes, roles and combo pieces, or run `cli:hosted precompute --part substitutes,roles,combos` from this PC (substitutes take about 20 minutes).
+3. Parity and timing on hosted (Claude, reads only), then set `app_config.recs.servingReads` to true.
+4. A week later: the retirement PR drops `rec_add_candidates` (both overloads), `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, `retry-timeout.ts`, `loadCardCorpus`'s old path and the switch.
 
 ---
 
@@ -506,7 +520,7 @@ The serving tables (`commander_card_scores`, `card_substitutes`, `card_roles`, `
 
 **Priority:** HIGH | **Area:** Worker / Ops | **Status:** Built 2026-10-05 (`cli serve`, migration `20261005000700`, `deploy/worker/`); waiting for release, then deployment on the VPS | **Blocked by:** T054
 
-The worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`) runs the jobs that run by hand today, on a schedule in `app_config.worker`: deck lookups every pass, each source's daily crawl at `crawlHourUtc` (T042), `collate` every `collateEveryMinutes`, `aggregate:corpus` at most every `aggregateEveryHours` when the corpus changed, and `sync:edhrec` every `edhrecEveryDays` in the background (retried after `retryHours` when a fetch didn't finish). Deck lookups (T009) go through the crawl: a requested commander comes first in the crawl's queue, and the worker starts a crawl run when none is going, so there is one Archidekt client with one politeness and kill-switch implementation. CLAUDE.md ("Commander deck lookups", "Hosting") has the rules.
+The worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`) runs the jobs that run by hand today, on a schedule in `app_config.worker`: deck lookups every pass, each source's daily crawl at `crawlHourUtc` (T042), `collate` every `collateEveryMinutes` followed by the precompute worker's passes (T055: the commanders whose decks changed, substitutes as they come due, roles and combo pieces when their inputs move), the nightly baseline at `baselineHourUtc`, and `sync:edhrec` every `edhrecEveryDays` in the background (retried after `retryHours` when a fetch didn't finish). Deck lookups (T009) go through the crawl: a requested commander comes first in the crawl's queue, and the worker starts a crawl run when none is going, so there is one Archidekt client with one politeness and kill-switch implementation. CLAUDE.md ("Commander deck lookups", "Hosting") has the rules.
 
 **Carried over from PR #128:** the container (`apps/worker/Dockerfile`, `.dockerignore`) and deploy files, and `cli serve`, rewritten. **Its review fixes:**
 - a lookup's rebuild runs the ordinary aggregate, sanity gate included;
@@ -855,6 +869,7 @@ Needs 2 human raters, 50 cases × 5 commanders, precision@5 + MRR. The `/rate` r
 Three e2e tests fail locally against the real catalog and corpus, on `develop` as well as `feat/kitchen-table-lane` (checked 2026-09-29):
 - `home.spec.ts` "pointing at a ring slice names it in the centre": hovering the top of the deck wheel never names the lands slice.
 - `deck-journey.spec.ts` "the Cut list crosses out recommended cuts…" (and on `develop` also the full walk and the Replace tap test): Chulane has no local corpus, so the commander-lookup sheet opens after `analyzeDeck` has already tried to dismiss it, and blocks the page.
+- `deck-tool.spec.ts` "a name search's next page continues the list" (seen 2026-10-06) fails without a search index: the first page comes from `search_cards` and a later one (any offset) from `search_cards_filtered`, which rank differently, so cards repeat across pages. The index ranks both the same way.
 
 **Files:**
 - `apps/web/e2e/home.spec.ts`, `apps/web/e2e/deck-journey.spec.ts`
@@ -863,6 +878,7 @@ Three e2e tests fail locally against the real catalog and corpus, on `develop` a
 **Acceptance criteria:**
 - [ ] `analyzeDeck` waits for either the recommendations or the lookup sheet before dismissing, as the page walk scripts do
 - [ ] The ring test hovers a point that is on a slice at the size the ring renders (or asserts through the slice element)
+- [ ] A later page of a name search ranks the way the first did when the search index is down
 - [ ] Both specs pass locally with `E2E_LOCAL_DATA=1` and in CI (mocks)
 
 ---

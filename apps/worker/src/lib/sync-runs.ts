@@ -11,7 +11,13 @@ export type SyncJob =
   | 'corpus_collate'
   | 'edhrec_stats'
   | 'edhrec_pages'
-  | 'spellbook_combos';
+  | 'spellbook_combos'
+  | 'precompute_commanders'
+  | 'precompute_baseline'
+  | 'precompute_scores'
+  | 'precompute_substitutes'
+  | 'precompute_roles'
+  | 'precompute_combos';
 export type SyncMetrics = Record<string, number>;
 
 export const WORKER_ID = `${os.hostname()}:${process.pid}`;

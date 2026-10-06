@@ -1,49 +1,27 @@
 import {
   corpusVersion,
-  decksSinceRelease,
   EXCLUSIONS,
-  IDENTITIES,
   loadCatalog,
   loadCorpusConfig,
   loadCorpusDecks,
   loadRoleCards,
-  resolveDeck,
-  shrunkInclusion,
-  type CatalogCard,
-  type Exclusion,
 } from '../lib/corpus';
 import { connect } from '../lib/db';
+import { cardStatRows, globalStatRows, identityMonths, keyStatRows, mergeBaseline, mergeKeyStats, tallyDecks } from '../lib/key-stats';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
+import { precomputeScores } from './precompute-scores';
 
-const BATCH_SIZE = 2000;
 const HEARTBEAT_EVERY = 2000;
 /** A rebuild must keep at least this share of the previous run's decks, so a lost corpus can't wipe the stats. */
 const MIN_DECK_SHARE = 0.8;
 /** Where the decks come from, as sync_runs records it. */
 const CORPUS_URI = 'postgres:corpus.decks';
 
-interface KeyAggregate {
-  commanders: CatalogCard[];
-  identity: number;
-  decks: number;
-  /** Decks per source ('archidekt', 'user', ...). */
-  sources: Record<string, number>;
-  /** Decks by last-updated month ('YYYY-MM'). */
-  months: Record<string, number>;
-  /** Role tag id → cards in that role, summed over the decks. */
-  roleCounts: Record<string, number>;
-  /** card id → decks running it */
-  cards: Map<number, number>;
-}
-
-const increment = <K>(map: Map<K, number>, key: K) => map.set(key, (map.get(key) ?? 0) + 1);
-const bump = (record: Record<string, number>, key: string) => {
-  record[key] = (record[key] ?? 0) + 1;
-};
-
 /**
- * The collated corpus.decks → commander_keys, commander_stats, card_global_stats, commander_card_stats,
- * corpus_identity_stats.
+ * The full rebuild: the collated corpus.decks → commander_keys, commander_stats, card_global_stats,
+ * commander_card_stats, corpus_identity_stats, then every serving score (precompute_scores). The precompute worker's
+ * per-commander pass and nightly baseline (T055) write the same rows from the same code (lib/key-stats.ts), a
+ * commander at a time; this one empties the dirty queue up to where it read.
  *
  * corpus.decks is written by the collator (T054) from every deck source; until the collator runs, it is empty and this
  * job refuses to write. Decks are checked again by `resolveDeck` for what changed since collation. Basic lands are left
@@ -72,115 +50,37 @@ export async function aggregateCorpus({ force = false }: { force?: boolean } = {
       console.log('corpus_aggregate: corpus.decks is unchanged since the last successful run. Use --force to re-run.');
       return 'skipped';
     }
-    runId = start.runId;
+    const id = start.runId;
+    runId = id;
 
     const config = await loadCorpusConfig(sql);
     const catalog = await loadCatalog(sql);
-    const cardById = catalog;
     const rolesByCard = await loadRoleCards(sql);
+    // Every key is rebuilt, so every commander queued as dirty before this read is covered by it.
+    const [queued] = await sql<{ seq: string | null }[]>`select max(seq)::text as seq from corpus.dirty_commanders`;
 
-    const keys = new Map<string, KeyAggregate>();
+    const tally = await tallyDecks(loadCorpusDecks(sql), catalog, config, rolesByCard, async (n) => {
+      decksRead = n;
+      if (n % HEARTBEAT_EVERY === 0) await heartbeat(sql, id, n);
+    });
+    const { keys, excluded, eligibleDecks } = tally;
+    decksRead = tally.decksRead;
+
     const globalWith = new Map<number, number>();
-    const monthsByIdentity = Array.from({ length: IDENTITIES }, (): Record<string, number> => ({}));
-    const excluded = Object.fromEntries(EXCLUSIONS.map((e) => [e, 0])) as Record<Exclusion, number>;
-    let eligibleDecks = 0;
-    // A deck posted on two sites counts once: the same content hash from a second source is skipped. Identical decks on
-    // one site are different players' decks (an unchanged precon, say), and each counts.
-    const sourceByContent = new Map<string, string>();
+    for (const a of keys.values()) for (const [cardId, n] of a.cards) globalWith.set(cardId, (globalWith.get(cardId) ?? 0) + n);
+    const monthsByIdentity = identityMonths(keys);
+    const globalRows = globalStatRows(globalWith, monthsByIdentity, catalog);
+    const baseline = new Map(globalRows.map((r) => [r.card_id, r.rate]));
 
-    for await (const deck of loadCorpusDecks(sql)) {
-      decksRead++;
-      if (decksRead % HEARTBEAT_EVERY === 0) await heartbeat(sql, runId, decksRead);
-      const resolved = resolveDeck(deck, catalog, config);
-      if (!resolved.ok) {
-        excluded[resolved.reason]++;
-        continue;
-      }
-      const firstSource = sourceByContent.get(deck.contentHash);
-      if (firstSource === undefined) sourceByContent.set(deck.contentHash, deck.source);
-      else if (firstSource !== deck.source) {
-        excluded.duplicate_across_sources++;
-        continue;
-      }
-
-      const { key, commanders, identity, month, cardIds } = resolved.deck;
-      let aggregate = keys.get(key);
-      if (!aggregate) {
-        aggregate = { commanders, identity, decks: 0, sources: {}, months: {}, roleCounts: {}, cards: new Map() };
-        keys.set(key, aggregate);
-      }
-      aggregate.decks++;
-      bump(aggregate.sources, deck.source);
-      bump(aggregate.months, month);
-      for (const id of cardIds) {
-        increment(aggregate.cards, id);
-        increment(globalWith, id);
-        for (const role of rolesByCard.get(id) ?? []) bump(aggregate.roleCounts, role);
-      }
-      const identityMonths = monthsByIdentity[identity];
-      if (identityMonths) bump(identityMonths, month);
-      eligibleDecks++;
-    }
-
-    // A card's baseline counts decks its color identity allows that were updated since the card's release.
-    const eligibleMemo = new Map<string, number>();
-    const baselineDecksFor = (cardIdentity: number, releaseMonth: string | null) => {
-      const memoKey = `${cardIdentity}:${releaseMonth ?? ''}`;
-      let n = eligibleMemo.get(memoKey);
-      if (n === undefined) {
-        n = monthsByIdentity.reduce(
-          (sum, months, deckIdentity) => ((cardIdentity & ~deckIdentity) === 0 ? sum + decksSinceRelease(months, releaseMonth) : sum),
-          0,
-        );
-        eligibleMemo.set(memoKey, n);
-      }
-      return n;
-    };
-    const baseline = new Map<number, number>();
-    const globalRows = [...globalWith].map(([card_id, decks_with]) => {
-      const card = cardById.get(card_id);
-      const eligible_decks = Math.max(baselineDecksFor(card?.colorIdentity ?? 0, card?.releaseMonth ?? null), decks_with);
-      const rate = decks_with / Math.max(eligible_decks, 1);
-      baseline.set(card_id, rate);
-      return { card_id, decks_with, eligible_decks, rate };
-    });
-
-    const keyRows = [...keys].map(([key, a]) => ({
-      key,
-      commander_1: a.commanders[0]?.id ?? 0,
-      commander_2: a.commanders[1]?.id ?? null,
-      color_identity: a.identity,
-      slug: a.commanders.map((c) => c.slug).join('--'),
-      deck_count: a.decks,
-      source_counts: JSON.stringify(a.sources),
-      deck_months: JSON.stringify(a.months),
-      role_profile: JSON.stringify(
-        Object.fromEntries(Object.entries(a.roleCounts).map(([role, cards]) => [role, Math.round((cards / a.decks) * 100) / 100])),
-      ),
-    }));
-    const cardStatRows = [...keys].flatMap(([key, a]) => {
-      const sinceRelease = new Map<string | null, number>();
-      return [...a.cards].map(([card_id, decks_with]) => {
-        const releaseMonth = cardById.get(card_id)?.releaseMonth ?? null;
-        let since = sinceRelease.get(releaseMonth);
-        if (since === undefined) {
-          since = decksSinceRelease(a.months, releaseMonth);
-          sinceRelease.set(releaseMonth, since);
-        }
-        const eligible_decks = Math.max(since, decks_with);
-        const p0 = baseline.get(card_id) ?? 0;
-        const inclusion_shrunk = shrunkInclusion(decks_with, eligible_decks, p0, config.shrinkAlpha);
-        return { key, card_id, decks_with, eligible_decks, inclusion_shrunk, synergy: inclusion_shrunk - p0 };
-      });
-    });
-    const identityRows = monthsByIdentity.map((months, color_identity) => ({ color_identity, deck_months: JSON.stringify(months) }));
+    const keyRows = keyStatRows(keys);
+    const cardRows = cardStatRows(keys, catalog, baseline, config.shrinkAlpha);
 
     const previousDecks = start.previousMetrics?.eligibleDecks;
     const metrics: SyncMetrics = {
       decksRead,
       eligibleDecks,
       commanderKeys: keyRows.length,
-      commanderCardStats: cardStatRows.length,
+      commanderCardStats: cardRows.length,
       cardsWithStats: globalRows.length,
       ...Object.fromEntries(EXCLUSIONS.map((e) => [`excluded_${e}`, excluded[e]])),
     };
@@ -200,161 +100,14 @@ export async function aggregateCorpus({ force = false }: { force?: boolean } = {
 
     const db = await sql.reserve();
     try {
-      await db`
-        create temp table stg_keys (
-          key text primary key,
-          commander_1 integer not null,
-          commander_2 integer,
-          color_identity smallint not null,
-          slug text not null,
-          deck_count integer not null,
-          source_counts text not null,
-          deck_months text not null,
-          role_profile text not null
-        )
-      `;
-      await db`
-        create temp table stg_card_stats (
-          key text not null,
-          card_id integer not null,
-          decks_with integer not null,
-          eligible_decks integer not null,
-          inclusion_shrunk real not null,
-          synergy real not null
-        )
-      `;
-      await db`
-        create temp table stg_global (
-          card_id integer primary key,
-          decks_with integer not null,
-          eligible_decks integer not null,
-          rate real not null
-        )
-      `;
-      await db`create temp table stg_identity (color_identity smallint primary key, deck_months text not null)`;
-
-      for (let i = 0; i < keyRows.length; i += BATCH_SIZE) {
-        await db`insert into stg_keys ${db(keyRows.slice(i, i + BATCH_SIZE), 'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'source_counts', 'deck_months', 'role_profile')}`;
-      }
-      for (let i = 0; i < cardStatRows.length; i += BATCH_SIZE) {
-        await db`insert into stg_card_stats ${db(cardStatRows.slice(i, i + BATCH_SIZE), 'key', 'card_id', 'decks_with', 'eligible_decks', 'inclusion_shrunk', 'synergy')}`;
-        await heartbeat(sql, runId, decksRead);
-      }
-      for (let i = 0; i < globalRows.length; i += BATCH_SIZE) {
-        await db`insert into stg_global ${db(globalRows.slice(i, i + BATCH_SIZE), 'card_id', 'decks_with', 'eligible_decks', 'rate')}`;
-      }
-      await db`insert into stg_identity ${db(identityRows, 'color_identity', 'deck_months')}`;
-
       await db`begin`;
       try {
-        // Only rows that change are written; every rewritten row leaves a dead version behind. Rates are floats rebuilt
-        // from scratch, and a few new decks nudge every card's baseline, so shrunk inclusion and synergy moving by less
-        // than 0.001 don't count as changes (0.3% of the synergy scale).
-        await db`
-          insert into public.commander_keys as k (commander_1, commander_2, color_identity, slug)
-          select commander_1, commander_2, color_identity, slug from stg_keys
-          on conflict (commander_1, (coalesce(commander_2, 0))) do update
-            set color_identity = excluded.color_identity, slug = excluded.slug
-            where k.color_identity is distinct from excluded.color_identity or k.slug is distinct from excluded.slug
-        `;
-        await db`
-          create temp table stg_key_ids as
-          select s.key, k.id
-          from stg_keys s
-          join public.commander_keys k on k.commander_1 = s.commander_1 and coalesce(k.commander_2, 0) = coalesce(s.commander_2, 0)
-        `;
-
-        await db`
-          delete from public.commander_stats cs
-          where not exists (select 1 from stg_key_ids i where i.id = cs.commander_key_id)
-        `;
-        // bracket_counts stays empty: the bracket a deck's author declares is not used (owner decision 2026-10-05), and
-        // brackets our estimator assigns come with the bracket rules (T060).
-        await db`
-          insert into public.commander_stats as cs (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile)
-          select i.id, s.deck_count, s.source_counts::jsonb, '{}'::jsonb, s.deck_months::jsonb,
-                 s.role_profile::jsonb
-          from stg_keys s
-          join stg_key_ids i on i.key = s.key
-          on conflict (commander_key_id) do update set
-            deck_count = excluded.deck_count,
-            source_counts = excluded.source_counts,
-            bracket_counts = excluded.bracket_counts,
-            deck_months = excluded.deck_months,
-            role_profile = excluded.role_profile,
-            computed_at = now()
-          where (cs.deck_count, cs.source_counts, cs.bracket_counts, cs.deck_months, cs.role_profile)
-            is distinct from (excluded.deck_count, excluded.source_counts, excluded.bracket_counts, excluded.deck_months, excluded.role_profile)
-        `;
-
-        await db`
-          create temp table stg_commander_card_rows (
-            commander_key_id integer not null,
-            card_id integer not null,
-            decks_with integer not null,
-            eligible_decks integer not null,
-            inclusion_shrunk real not null,
-            synergy real not null,
-            primary key (commander_key_id, card_id)
-          )
-        `;
-        await db`
-          insert into stg_commander_card_rows
-          select i.id, s.card_id, s.decks_with, s.eligible_decks, s.inclusion_shrunk, s.synergy
-          from stg_card_stats s
-          join stg_key_ids i on i.key = s.key
-        `;
-        const [cardRowsRemoved] = await db<{ n: number }[]>`
-          with removed as (
-            delete from public.commander_card_stats cc
-            where not exists (
-              select 1 from stg_commander_card_rows s where s.commander_key_id = cc.commander_key_id and s.card_id = cc.card_id
-            )
-            returning 1
-          )
-          select count(*)::int as n from removed
-        `;
-        const [cardRowsWritten] = await db<{ n: number }[]>`
-          with written as (
-            insert into public.commander_card_stats as cc (commander_key_id, card_id, decks_with, eligible_decks, inclusion_shrunk, synergy)
-            select commander_key_id, card_id, decks_with, eligible_decks, inclusion_shrunk, synergy from stg_commander_card_rows
-            on conflict (commander_key_id, card_id) do update set
-              decks_with = excluded.decks_with,
-              eligible_decks = excluded.eligible_decks,
-              inclusion_shrunk = excluded.inclusion_shrunk,
-              synergy = excluded.synergy
-            where cc.decks_with is distinct from excluded.decks_with
-               or cc.eligible_decks is distinct from excluded.eligible_decks
-               or abs(cc.inclusion_shrunk - excluded.inclusion_shrunk) >= 0.001
-               or abs(cc.synergy - excluded.synergy) >= 0.001
-            returning 1
-          )
-          select count(*)::int as n from written
-        `;
-
-        await db`
-          delete from public.card_global_stats g
-          where not exists (select 1 from stg_global s where s.card_id = g.card_id)
-        `;
-        await db`
-          insert into public.card_global_stats as g (card_id, decks_with, eligible_decks, rate)
-          select card_id, decks_with, eligible_decks, least(rate, 1) from stg_global
-          on conflict (card_id) do update set
-            decks_with = excluded.decks_with,
-            eligible_decks = excluded.eligible_decks,
-            rate = excluded.rate,
-            computed_at = now()
-          where g.decks_with is distinct from excluded.decks_with or g.eligible_decks is distinct from excluded.eligible_decks
-        `;
-
-        await db`
-          insert into public.corpus_identity_stats as ci (color_identity, deck_months)
-          select color_identity, deck_months::jsonb from stg_identity
-          on conflict (color_identity) do update set deck_months = excluded.deck_months, computed_at = now()
-          where ci.deck_months is distinct from excluded.deck_months
-        `;
+        const merged = await mergeKeyStats(db, keyRows, cardRows, { everyKey: true });
+        await mergeBaseline(db, globalRows, monthsByIdentity);
+        // Every commander queued before the decks were read has just been rebuilt.
+        if (queued?.seq) await db`delete from corpus.dirty_commanders where seq <= ${queued.seq}::bigint`;
         console.log(
-          `corpus_aggregate: ${cardRowsWritten?.n ?? 0} commander-card rows written, ${cardRowsRemoved?.n ?? 0} removed (of ${cardStatRows.length})`,
+          `corpus_aggregate: ${merged.cardRowsWritten} commander-card rows written, ${merged.cardRowsRemoved} removed (of ${cardRows.length})`,
         );
         await db`commit`;
       } catch (err) {
@@ -365,12 +118,16 @@ export async function aggregateCorpus({ force = false }: { force?: boolean } = {
       db.release();
     }
 
-    await finishRun(sql, runId, 'succeeded', { rowsRead: decksRead, rowsChanged: cardStatRows.length, metrics });
+    await finishRun(sql, runId, 'succeeded', { rowsRead: decksRead, rowsChanged: cardRows.length, metrics });
+    // The run is recorded; a failure from here on is the scores' own.
+    runId = null;
     const exclusions = EXCLUSIONS.filter((e) => excluded[e] > 0).map((e) => `${e} ${excluded[e]}`).join(', ') || 'none';
     console.log(
       `corpus_aggregate: ${eligibleDecks} of ${decksRead} decks counted (excluded: ${exclusions}); ` +
-        `${keyRows.length} commander keys, ${cardStatRows.length} commander-card rows, baselines for ${globalRows.length} cards`,
+        `${keyRows.length} commander keys, ${cardRows.length} commander-card rows, baselines for ${globalRows.length} cards`,
     );
+    // The serving scores rest on these stats; rebuild them now rather than leave the app reading the old ones.
+    await precomputeScores({ sql });
 
     const sample = await sql<{ slug: string; deck_count: number; name: string; decks_with: number; synergy: number }[]>`
       with biggest as (select commander_key_id, deck_count from public.commander_stats order by deck_count desc limit 1)

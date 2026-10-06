@@ -12,6 +12,12 @@ const TAGS_BY_JOB: Record<SyncJob, CacheTag[]> = {
   edhrec_stats: [], // the retired import:edhrec; kept for its run history
   edhrec_pages: [], // raw: nothing the web app caches reads it
   spellbook_combos: [], // nor this
+  precompute_commanders: ['corpus', 'recs'],
+  precompute_baseline: ['corpus', 'recs'],
+  precompute_scores: ['corpus', 'recs'],
+  precompute_substitutes: ['catalog', 'recs'], // card pages (catalog) show a card's alternatives
+  precompute_roles: ['recs'],
+  precompute_combos: [], // nothing reads spellbook_combo_pieces until T060
 };
 
 const TIMEOUT_MS = 10_000;

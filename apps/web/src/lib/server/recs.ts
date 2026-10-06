@@ -41,6 +41,8 @@ import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
 import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { PublicClient } from "./supabase";
 import { isStatementTimeout, recordRecTimeout, retryOnTimeout } from "./retry-timeout";
+import { cachedConfig } from "./config-cache";
+import { loadServedAdds, loadServedCuts, loadServedSwapPool, loadServingReads } from "./serving";
 
 /** How many tag-similar candidates the database returns before blending and trimming. */
 const CANDIDATE_POOL = 120;
@@ -57,7 +59,7 @@ const ADD_CATEGORIES: readonly CardCategory[] = ["creature", "instant", "sorcery
 
 export class NotFoundError extends Error {}
 
-interface RawMatch {
+export interface RawMatch {
   targetTagId: string;
   candidateTagId: string;
   viaTagId: string | null;
@@ -82,10 +84,12 @@ const DEFAULT_OWNED_BOOST = 0;
  */
 export async function loadOwnedBoost(db: PublicClient, context: RecContext): Promise<number> {
   if (!ownedFirst(context)) return 0;
-  const { data, error } = await db.rpc("get_public_config", { p_key: "ownership" });
-  if (error) throw new Error(`Loading collection settings failed: ${error.message}`);
-  const boost = (data as { firstBoost?: unknown } | null)?.firstBoost;
-  return typeof boost === "number" && Number.isFinite(boost) ? boost : DEFAULT_OWNED_BOOST;
+  return cachedConfig("ownership", async () => {
+    const { data, error } = await db.rpc("get_public_config", { p_key: "ownership" });
+    if (error) throw new Error(`Loading collection settings failed: ${error.message}`);
+    const boost = (data as { firstBoost?: unknown } | null)?.firstBoost;
+    return typeof boost === "number" && Number.isFinite(boost) ? boost : DEFAULT_OWNED_BOOST;
+  });
 }
 const identityMaskOf = (ctx: RecContext, rows: ReadonlyMap<number, CardRow>) =>
   ctx.deck.commanders.reduce((mask, id) => mask | (rows.get(id)?.color_identity ?? 0), 0);
@@ -137,13 +141,25 @@ function roleTargetsFor(generic: readonly RoleTarget[], corpus: CommanderCorpus)
   });
 }
 
-export async function loadRoleTargets(db: PublicClient): Promise<RoleTarget[]> {
-  const { data, error } = await db.rpc("get_public_config", { p_key: "deck_role_targets" });
-  if (error) throw new Error(`Loading role targets failed: ${error.message}`);
-  return parseRoleTargets(data);
+export function loadRoleTargets(db: PublicClient): Promise<RoleTarget[]> {
+  return cachedConfig("deck_role_targets", async () => {
+    const { data, error } = await db.rpc("get_public_config", { p_key: "deck_role_targets" });
+    if (error) throw new Error(`Loading role targets failed: ${error.message}`);
+    return parseRoleTargets(data);
+  });
 }
 
-/** Which tracked roles (ramp, removal, ...) each card fills. */
+/** The tracked roles' tags, for naming the roles a card fills. */
+export function loadRoleTags(db: PublicClient): Promise<Map<string, TagRef>> {
+  return cachedConfig("role_tags", async () =>
+    fetchTags(
+      db,
+      (await loadRoleTargets(db)).map((t) => t.roleId),
+    ),
+  );
+}
+
+/** Which tracked roles (ramp, removal, ...) each card fills: rec_card_roles, the path before the serving tables. */
 async function loadCardRoles(db: PublicClient, cardIds: readonly number[], roleTargets: readonly RoleTarget[]): Promise<Map<number, string[]>> {
   const ids = [...new Set(cardIds)];
   if (ids.length === 0 || roleTargets.length === 0) return new Map();
@@ -194,22 +210,24 @@ export async function loadSwapPool(
     identityMask?: number | undefined;
   },
 ): Promise<SwapPool | null> {
+  if (await loadServingReads(db)) {
+    return loadServedSwapPool(db, { targetCardId, commanderIds, includeGameChangers, excludeIds, ownedIds: owned, poolSize, identityMask: identityOverride });
+  }
   const rows = await fetchCardsById(db, [...commanderIds, targetCardId]);
   const targetRow = rows.get(targetCardId);
   if (!targetRow) return null;
   const identityMask = identityOverride ?? commanderIds.reduce((mask, id) => mask | (rows.get(id)?.color_identity ?? 0), 0);
 
+  const candidateArgs = {
+    p_target: targetCardId,
+    p_exclude: [...excludeIds],
+    p_identity_mask: identityMask,
+    p_allow_game_changers: includeGameChangers,
+    p_owned: owned ? [...owned] : undefined,
+    p_limit: poolSize,
+  };
   const [candidatesResult, tagCountResult, corpus] = await Promise.all([
-    retryOnTimeout("Swap candidates", () =>
-      db.rpc("rec_swap_candidates", {
-        p_target: targetCardId,
-        p_exclude: [...excludeIds],
-        p_identity_mask: identityMask,
-        p_allow_game_changers: includeGameChangers,
-        p_owned: owned ? [...owned] : undefined,
-        p_limit: poolSize,
-      }),
-    ),
+    retryOnTimeout("Swap candidates", () => db.rpc("rec_swap_candidates", candidateArgs)),
     db.rpc("rec_functional_tag_count", { p_card_id: targetCardId }),
     loadCommanderCorpus(db, commanderIds),
   ]);
@@ -358,20 +376,41 @@ export async function getSwapSuggestions(
   return rankSwaps(pool, { context, limit, ownedBoost });
 }
 
-export async function getCutSuggestions(
-  db: PublicClient,
-  { context, limit = 20 }: { context: RecContext; limit?: number },
-): Promise<CutResult> {
-  const mainIds = mainDeckIds(context);
-  const [rows, roleTargets, corpus] = await Promise.all([
+/** What cut suggestions read: the deck's card rows, their play rates and roles, and the commander's corpus. */
+interface CutInputs {
+  rows: ReadonlyMap<number, CardRow>;
+  corpus: CommanderCorpus;
+  cardCorpus: ReadonlyMap<number, CardCorpus>;
+  rolesByCard: ReadonlyMap<number, readonly string[]>;
+}
+
+/** The cut inputs before the serving tables (T055): the rows and corpus, then play rates and roles. */
+async function loadCutInputs(db: PublicClient, context: RecContext, mainIds: readonly number[], roleTargets: readonly RoleTarget[]): Promise<CutInputs> {
+  const [rows, corpus] = await Promise.all([
     fetchCardsById(db, [...mainIds, ...context.deck.commanders]),
-    loadRoleTargets(db),
     loadCommanderCorpus(db, context.deck.commanders),
   ]);
   const [rolesByCard, cardCorpus] = await Promise.all([
     loadCardRoles(db, mainIds, roleTargets),
     loadCardCorpus(db, corpus, mainIds, context.deck.commanders),
   ]);
+  return { rows, corpus, cardCorpus, rolesByCard };
+}
+
+export async function getCutSuggestions(
+  db: PublicClient,
+  { context, limit = 20 }: { context: RecContext; limit?: number },
+): Promise<CutResult> {
+  const mainIds = mainDeckIds(context);
+  const [serving, roleTargets] = await Promise.all([loadServingReads(db), loadRoleTargets(db)]);
+  const { rows, corpus, cardCorpus, rolesByCard }: CutInputs = serving
+    ? await loadServedCuts(db, { commanderIds: context.deck.commanders, mainIds }).then((c) => ({
+        rows: c.rows,
+        corpus: c.corpus,
+        cardCorpus: c.rates,
+        rolesByCard: c.roles,
+      }))
+    : await loadCutInputs(db, context, mainIds, roleTargets);
 
   // Play rates judge a cut only once enough of the commander's decks could have run the card (updated since its
   // release); broad popularity says little about fit, and new cards aren't judged by older decks.
@@ -393,7 +432,7 @@ export async function getCutSuggestions(
           isCommanderLegal: row.legal_commander === "legal",
           withinIdentity: context.deck.commanders.length === 0 || fitsIdentity(row.color_identity, identityMask),
           gameChanger: row.game_changer,
-          roleIds: rolesByCard.get(id) ?? [],
+          roleIds: [...(rolesByCard.get(id) ?? [])],
           // Basic lands aren't in the corpus stats, so they'd all look unplayed.
           corpusScore: rate && !row.is_basic_land ? commanderCorpusScore(rate) : null,
         },
@@ -427,6 +466,91 @@ export async function getCutSuggestions(
   return { mode: modeOf(context), confidence: corpus.confidence, suggestions };
 }
 
+/** The add pool from rec_add_candidates, the path before the serving tables (T055). */
+async function loadAddCandidates(
+  db: PublicClient,
+  context: RecContext,
+  rows: ReadonlyMap<number, CardRow>,
+  corpus: CommanderCorpus,
+  useCommander: boolean,
+  exclude: readonly number[],
+  only: ReadonlySet<number> | null,
+): Promise<{ card_id: number; baseline: number }[]> {
+  const { data, error } = await retryOnTimeout("Add candidates", () =>
+    db.rpc("rec_add_candidates", {
+      p_key_ids: useCommander ? corpus.sourceKeyIds : [],
+      p_key_weights: useCommander ? corpus.sources.map((s) => s.weight) : [],
+      p_alpha: corpus.settings.shrinkAlpha,
+      p_identity_mask: identityMaskOf(context, rows),
+      p_exclude: [...exclude],
+      p_allow_game_changers: context.includeGameChangers,
+      p_owned: only ? [...only] : undefined,
+      p_limit: ADD_POOL,
+    }),
+  );
+  if (error) {
+    if (isStatementTimeout(error)) {
+      recordRecTimeout(db, {
+        fn: "add",
+        commanderIds: context.deck.commanders,
+        identityMask: identityMaskOf(context, rows),
+        ownedOnly: only !== null,
+      });
+    }
+    throw new Error(`Add candidates failed: ${error.message}`);
+  }
+  return data ?? [];
+}
+
+/** What add suggestions read: the commander's rows and corpus, the pool and its cards, and the deck's roles. */
+interface AddInputs {
+  corpus: CommanderCorpus;
+  commanderRows: ReadonlyMap<number, CardRow>;
+  /** The pool's card ids, best first. */
+  poolIds: readonly number[];
+  /** rec_add_candidates' baseline per card, for a card whose play rates are missing (the old path only). */
+  poolBaselines: ReadonlyMap<number, number>;
+  candidateRows: ReadonlyMap<number, CardRow>;
+  cardCorpus: ReadonlyMap<number, CardCorpus>;
+  /** The deck's main cards and the pool's. */
+  rolesByCard: ReadonlyMap<number, readonly string[]>;
+}
+
+/** The add inputs before the serving tables (T055): rows and corpus, then the pool, then its rows, rates and roles. */
+async function loadAddInputs(
+  db: PublicClient,
+  context: RecContext,
+  { deckIds, mainIds, exclude, only, roleTargets }: {
+    deckIds: readonly number[];
+    mainIds: readonly number[];
+    exclude: readonly number[];
+    only: ReadonlySet<number> | null;
+    roleTargets: readonly RoleTarget[];
+  },
+): Promise<AddInputs> {
+  const [rows, corpus] = await Promise.all([fetchCardsById(db, deckIds), loadCommanderCorpus(db, context.deck.commanders)]);
+  if (!corpus.available) {
+    return { corpus, commanderRows: rows, poolIds: [], poolBaselines: new Map(), candidateRows: new Map(), cardCorpus: new Map(), rolesByCard: new Map() };
+  }
+  const useCommander = commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
+  const pool = await loadAddCandidates(db, context, rows, corpus, useCommander, exclude, only);
+  const candidateIds = pool.map((p) => p.card_id);
+  const [candidateRows, cardCorpus, rolesByCard] = await Promise.all([
+    fetchCardsById(db, candidateIds),
+    loadCardCorpus(db, corpus, candidateIds, context.deck.commanders),
+    loadCardRoles(db, [...mainIds, ...candidateIds], roleTargets),
+  ]);
+  return {
+    corpus,
+    commanderRows: rows,
+    poolIds: candidateIds,
+    poolBaselines: new Map(pool.map((p) => [p.card_id, p.baseline])),
+    candidateRows,
+    cardCorpus,
+    rolesByCard,
+  };
+}
+
 /**
  * Cards to add: what decks with this commander run that this deck doesn't, scored by play rate and by the roles the
  * deck is short on. Without enough commander decks, cards widely played in decks of these colors stand in.
@@ -449,87 +573,72 @@ export async function getAddSuggestions(
   const owned = ownedIds(context);
   const only = onlyIds(context);
   const mode = modeOf(context);
+  const exclude = [...new Set([...deckIds, ...excludeCardIds])];
 
-  const [rows, corpus, roleTargets, ownedBoost] = await Promise.all([
-    fetchCardsById(db, deckIds),
-    loadCommanderCorpus(db, context.deck.commanders),
+  const [serving, roleTargets, roleTags, ownedBoost] = await Promise.all([
+    loadServingReads(db),
     loadRoleTargets(db),
+    loadRoleTags(db),
     loadOwnedBoost(db, context),
   ]);
+  const inputs: AddInputs = serving
+    ? await loadServedAdds(db, {
+        commanderIds: context.deck.commanders,
+        mainIds,
+        exclude,
+        allowGameChangers: context.includeGameChangers,
+        owned: only ? [...only] : null,
+        limit: ADD_POOL,
+      }).then((a) => ({
+        corpus: a.corpus,
+        commanderRows: a.commanderRows,
+        poolIds: a.poolIds,
+        poolBaselines: new Map<number, number>(),
+        candidateRows: a.pool.rows,
+        cardCorpus: a.pool.rates,
+        rolesByCard: new Map([...a.deckRoles, ...a.pool.roles]),
+      }))
+    : await loadAddInputs(db, context, { deckIds, mainIds, exclude, only, roleTargets });
+  const { corpus, commanderRows, poolIds, poolBaselines, candidateRows, cardCorpus, rolesByCard } = inputs;
+
   const commanderKey: AddResult["commanderKey"] = {
     id: corpus.keyId as CommanderKeyId | null,
     slug: corpus.slug,
     commanders: context.deck.commanders.flatMap((id) => {
-      const row = rows.get(id);
+      const row = commanderRows.get(id);
       return row ? [toCardSummary(row)] : [];
     }),
     ...commanderKeyCounts(corpus),
   };
   if (!corpus.available) return { mode, commanderKey, confidence: "none", groups: [] };
 
-  const useCommander = commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
-  const { data: pool, error } = await retryOnTimeout("Add candidates", () =>
-    db.rpc("rec_add_candidates", {
-      p_key_ids: useCommander ? corpus.sourceKeyIds : [],
-      p_key_weights: useCommander ? corpus.sources.map((s) => s.weight) : [],
-      p_alpha: corpus.settings.shrinkAlpha,
-      p_identity_mask: identityMaskOf(context, rows),
-      p_exclude: [...new Set([...deckIds, ...excludeCardIds])],
-      p_allow_game_changers: context.includeGameChangers,
-      p_owned: only ? [...only] : undefined,
-      p_limit: ADD_POOL,
-    }),
-  );
-  if (error) {
-    if (isStatementTimeout(error)) {
-      recordRecTimeout(db, {
-        fn: "add",
-        commanderIds: context.deck.commanders,
-        identityMask: identityMaskOf(context, rows),
-        ownedOnly: only !== null,
-      });
-    }
-    throw new Error(`Add candidates failed: ${error.message}`);
-  }
-
-  const candidateIds = (pool ?? []).map((p) => p.card_id);
-  const [candidateRows, cardCorpus, rolesByCard, roleTags] = await Promise.all([
-    fetchCardsById(db, candidateIds),
-    loadCardCorpus(db, corpus, candidateIds, context.deck.commanders),
-    loadCardRoles(db, [...mainIds, ...candidateIds], roleTargets),
-    fetchTags(
-      db,
-      roleTargets.map((t) => t.roleId),
-    ),
-  ]);
-
   const deckRoleCounts = new Map<string, number>();
   for (const id of mainIds) for (const role of rolesByCard.get(id) ?? []) deckRoleCounts.set(role, (deckRoleCounts.get(role) ?? 0) + 1);
   const shortfalls = roleShortfalls(deckRoleCounts, roleTargetsFor(roleTargets, corpus));
   const roleLabels = new Map(roleTargets.map((t) => [t.roleId, t.label]));
 
-  const scoredPool = (pool ?? []).map((candidate) => {
-    const rates = cardCorpus.get(candidate.card_id);
+  const scoredPool = poolIds.map((cardId) => {
+    const rates = cardCorpus.get(cardId);
     const corpusScore = corpusComponent(
       {
         commanderRate: rates?.commanderRate ?? null,
         commanderDeckCount: rates?.commanderDeckCount ?? 0,
-        baseline: rates?.baseline ?? candidate.baseline,
+        baseline: rates?.baseline ?? poolBaselines.get(cardId) ?? 0,
         baselineDeckCount: rates?.baselineDeckCount ?? 0,
         hasExternalPrior: rates?.hasExternalPrior ?? false,
       },
       corpus.settings,
     );
-    return { candidate, rates, corpusScore };
+    return { cardId, rates, corpusScore };
   });
   // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
   const neutralCorpus = neutralCorpusValue(scoredPool.flatMap((p) => (p.corpusScore ? [p.corpusScore.value] : [])));
 
-  const suggestions = scoredPool.flatMap(({ candidate, rates, corpusScore }): AddSuggestion[] => {
-    const row = candidateRows.get(candidate.card_id);
+  const suggestions = scoredPool.flatMap(({ cardId, rates, corpusScore }): AddSuggestion[] => {
+    const row = candidateRows.get(cardId);
     if (!row) return [];
     const card = toCardSummary(row);
-    const { gap, roleIds } = roleGap(rolesByCard.get(candidate.card_id) ?? [], shortfalls);
+    const { gap, roleIds } = roleGap([...(rolesByCard.get(cardId) ?? [])], shortfalls);
     return [
       {
         card,

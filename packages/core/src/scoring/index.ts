@@ -4,3 +4,4 @@ export * from './corpus';
 export * from './cut';
 export * from './swap';
 export * from './owned';
+export * from './serving';

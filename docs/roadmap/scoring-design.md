@@ -201,7 +201,7 @@ Every source below is an indexed read of a serving table.
 | Missing pieces of allowed combos (`spellbook_combo_pieces`) | Adds, builds | Every match |
 | Pair neighbours of the deck's cards | Once pairs exist (T064) | [`card-graph-plan.md`](card-graph-plan.md) |
 | **All available owned cards** in the colour identity | Collection modes | The whole owned pool; scoring them all is lookups, not a query |
-| The target's `card_substitutes` | Swaps | Top 100 |
+| The target's `card_substitutes` | Swaps | Top 220 in its colours plus top 220 overall (T055: the depth that kept the swap lists the same) |
 
 Hard filters apply in every pool: legal, inside the identity, not a basic land (lands are handled separately in
 builds), not already in the deck, Game Changers and mass land denial per bracket, and availability.

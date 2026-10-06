@@ -1,15 +1,16 @@
 import { loadCorpusConfig } from '../lib/corpus';
 import type { Sql } from '../lib/db';
 import { startCrawl } from '../lib/search-api';
-import { aggregateCorpus } from './aggregate-corpus';
 import { collate } from './collate';
+import { precomputeCommanders } from './precompute-commanders';
 
 /**
  * Deck lookups (contract v2; T009, served by the VPS worker since T066). A visitor whose commander has no decks of
  * ours asks for some; the request waits in public.commander_requests. Lookups go through the crawl rather than a
  * client of their own: crawl_next_commanders puts a requested commander at the front of the crawl's queue, this module
  * starts a crawl run when none is going, and once the crawl has visited the commander it collates, rebuilds the stats
- * and closes the request. So a lookup obeys the crawl's pace, claim and kill switch, and Archidekt sees one client.
+ * and scores of the commanders whose decks changed (the precompute worker's per-commander pass, T055) and closes the
+ * request. So a lookup obeys the crawl's pace, claim and kill switch, and Archidekt sees one client.
  *
  * A request moves queued → collecting → aggregating → done or not_enough_decks, or failed. Its state lives in the
  * database, so a restarted worker carries on where the last one stopped.
@@ -132,18 +133,15 @@ export async function serveLookups(sql: Sql): Promise<void> {
   if (waiting > 0 && state.running_run_id === null) await triggerCrawl(LOOKUP_SOURCE, config.crawlTriggerMinutes);
   if (ready.length === 0) return;
 
-  // The crawl has their decks: collate them, rebuild the stats once for all of them, then report.
+  // The crawl has their decks: collate them, rebuild the stats and scores of every commander whose decks changed (theirs
+  // among them), then report. A failure here leaves them 'aggregating', so the next pass tries again.
   const ids = ready.map((r) => r.id);
   await sql`
     update public.commander_requests set status = 'aggregating', heartbeat_at = now(), updated_at = now()
     where id = any (${ids}::bigint[])
   `;
   await collate({ only: [LOOKUP_SOURCE] });
-  const rebuilt = await aggregateCorpus();
-  if (rebuilt === 'failed_sanity') {
-    for (const r of ready) await finish(sql, r.id, 'failed', { error: 'Rebuilding the deck stats failed its sanity check.' });
-    return;
-  }
+  await precomputeCommanders(sql);
   // Enough decks of its own for play rates, the same bar the recommendations use.
   const { minDecks } = await loadCorpusConfig(sql);
   for (const r of ready) {
