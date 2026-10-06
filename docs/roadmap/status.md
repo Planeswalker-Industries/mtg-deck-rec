@@ -67,8 +67,8 @@ A daily Vercel cron calls the search API, which crawls Archidekt commander by co
 - The VPS reaches the database with the service-role key, which bypasses RLS; a role limited to the `crawl_*` functions is T043.
 - Either source switches itself off on a 403 or a challenge, audited as `crawl.disabled` in `audit_log`; only a human re-enables it.
 - The crawl reaches `corpus` only through the `public.crawl_*` security-definer functions, because exposing a schema of third-party decklists is what it exists to avoid.
-- **2026-10-05:** 12 runs since 2026-09-24 hold 68,763 decks over 3,235 commander keys; 947 keys have 50 or more decks, and none has more than 93, because revisits re-read page 1 only. T056 makes a revisit read on until 25 decks were new or changed (owner rule 2026-10-05).
-- Nothing aggregates `corpus.decks` yet; the collator (T054) does, after the data layers move (T053).
+- **2026-10-05:** 12 runs since 2026-09-24 hold 68,763 decks over 3,235 commander keys; 947 keys have 50 or more decks, and none has more than 93, because revisits re-read page 1 only. T056 (built 2026-10-05, live once the search API is redeployed) makes a revisit read on until 25 decks were new or changed (owner rule 2026-10-05), and stores each deck's declared bracket.
+- On hosted, nothing aggregates the crawled decks yet: the collator (T054) does once it is released.
 
 ## EDHREC statistics (T035 slice 11)
 

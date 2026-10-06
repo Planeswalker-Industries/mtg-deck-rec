@@ -21,11 +21,13 @@ commander list, most played first, and lists each one's decks on Archidekt most 
 
 - **A first visit reads one list page** (up to 60 decks). Every commander gets a small base before any gets more
   (owner decision 2026-10-01).
-- **A revisit re-reads `revisitPages` (1) pages** and fetches only the decks whose listed update time has moved, which
-  is the whole of the "skip what has not changed" optimisation. It replaced a target of 350 new decks per revisit: that
-  made a visit walk up to 40 pages — 2,400 deck fetches, hours at the polite pace — hunting decks that, for a commander
-  leading few of the decks its card merely appears in, were never there to find. `maxFetchesPerCommander` (120) now
-  bounds one visit's work directly, which a page cap never did.
+- **A revisit grows the sample** (T056, owner rule 2026-10-05). It reads page 1 whole and fetches every deck that is
+  new or whose listed update time moved; if that was fewer than `revisitNewDecks` (25), it reads on, page by page,
+  until it has fetched 25 or the list ends, stopping mid-page once it has. Every deck fetched counts, whichever
+  commander leads it, so 25 also bounds a revisit's requests past page 1; a held deck whose listed time hasn't moved
+  costs no request and doesn't count. It replaced `revisitPages` (page 1 only, 2026-10-03), under which no commander
+  passed 93 decks, which in turn replaced a target of 350 new decks per revisit that walked up to 40 pages hunting decks
+  that weren't there. `maxFetchesPerCommander` (120) and `maxPagesPerCommander` (40) stay as ceilings.
 - **Revisits begin only once every commander has had its first visit**: the queue hands out never-visited commanders
   before any second look.
 
@@ -88,9 +90,9 @@ site a deck came from. Adding a third source is those four methods, a `Defaults(
    3. Fetch the rest and write them. A deck whose cards are unchanged has only its new listed time recorded, and
       does not count. A deck led by another commander (the search also finds decks that merely run the card) is
       kept, since it is a real deck already paid for, but does not count either.
-   4. Stop after `firstVisitPages` (1) on a first visit and `revisitPages` (1) on a revisit, or sooner at
-      `maxFetchesPerCommander`, the end of the list, or `maxPagesPerCommander`. Record the visit
-      (`crawl_finish_commander`).
+   4. Stop after `firstVisitPages` (1) on a first visit; on a revisit, after page 1 once `revisitNewDecks` (25) decks
+      were fetched as new or changed. Or sooner at `maxFetchesPerCommander`, the end of the list, or
+      `maxPagesPerCommander`. Record the visit (`crawl_finish_commander`).
 6. **Close the run** and release the claim.
 
 ### Outcomes and the verification log
@@ -99,9 +101,9 @@ Each commander's last visit is a row in `crawl.queue`:
 
 | Outcome | |
 |---|---|
-| `done` | the visit read the pages it was asked for |
+| `done` | a first visit read the pages it was asked for, or a revisit fetched its `revisitNewDecks` |
 | `exhausted` | the commander's list ran out: the source has fewer decks for it than the visit was allowed to read |
-| `page_cap` | the **ceiling** cut the visit short — it asked for more pages than `maxPagesPerCommander` allows. A visit that read exactly the pages it wanted is `done`, because with `revisitPages` at 1 that is what every healthy revisit does |
+| `page_cap` | the **ceiling** cut the visit short: a first visit asked for more pages than `maxPagesPerCommander` allows, or a revisit reached it still short of its `revisitNewDecks`. A visit that got what it wanted is `done` |
 | `fetch_cap` | a visit stopped at `maxFetchesPerCommander` (120): one commander must not be able to take a whole run |
 | `partial` | the run's time ran out mid-visit; not stamped as visited, so it comes back first |
 | `not_found` | **no decks under its name or front face.** Left out of the queue until someone clears it |
@@ -284,7 +286,7 @@ Pace and budget live in `app_config.<source>` — the repo is public, so anti-ab
 ```json
 { "requestIntervalMs": 1000, "requestJitterMs": 200, "requestIntervalMaxMs": 8000, "paceRecoverRequests": 60,
   "backoffStartMs": 5000, "backoffMaxMs": 300000, "staleClaimSeconds": 28800, "runMinutes": 360,
-  "firstVisitPages": 1, "revisitPages": 1, "maxPagesPerCommander": 40, "maxFetchesPerCommander": 120,
+  "firstVisitPages": 1, "revisitNewDecks": 25, "maxPagesPerCommander": 40, "maxFetchesPerCommander": 120,
   "targetDecks": 60 }
 ```
 

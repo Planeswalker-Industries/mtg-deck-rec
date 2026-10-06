@@ -207,6 +207,11 @@ select public.crawl_upsert_decks('moxfield', jsonb_build_array(jsonb_build_objec
   'listed_updated_at', '2026-09-01T00:00:00Z', 'last_updated_at', '2026-09-01T00:00:00Z'))) as bracketed \gset
 select chk('a declared bracket is kept when the source sends one',
   (select declared_bracket = 3 from moxfield.decks where source_deck_id = 'test-bracket'));
+select chk('a deck the source sends no bracket for stores none',
+  (select declared_bracket is null from moxfield.decks where source_deck_id = 'test-deck'));
+select chk('a revisit''s share of new decks replaced its page count (T056)',
+  (select bool_and((value ->> 'revisitNewDecks')::int > 0 and not value ? 'revisitPages')
+     from public.app_config where key in ('archidekt', 'moxfield')));
 select must_fail('a source without a raw table is refused',
   $q$select public.crawl_upsert_decks('nope', '[]'::jsonb)$q$, 'no raw deck table');
 

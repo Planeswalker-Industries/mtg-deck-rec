@@ -197,6 +197,33 @@ func TestParseDeckQuarantinesOnAChangedShape(t *testing.T) {
 
 // A card nobody has categorised is in the deck. Archidekt leaves new cards uncategorised, so dropping them would
 // write back a fraction of the list - and quietly, because the rest of the deck still parses.
+// The author's bracket is kept when it is one of WotC's five, and none otherwise; a deck without one is still a deck.
+func TestParseDeckReadsTheDeclaredBracket(t *testing.T) {
+	commander := []string{`{"quantity":1,"categories":["Commander"],"card":{"oracleCard":{"uid":"cmd","name":"Com"}}}`}
+	for _, tc := range []struct {
+		header string
+		want   int // 0: none
+	}{
+		{publicCommanderDeck + `,"edhBracket":3`, 3},
+		{publicCommanderDeck + `,"edhBracket":null`, 0},
+		{publicCommanderDeck, 0},
+		{publicCommanderDeck + `,"edhBracket":9`, 0},
+		{publicCommanderDeck + `,"edhBracket":0`, 0},
+	} {
+		deck, err := ParseDeck(deckBody(t, tc.header, commander, 99), "x")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := 0
+		if deck.DeclaredBracket != nil {
+			got = *deck.DeclaredBracket
+		}
+		if got != tc.want {
+			t.Fatalf("%s: bracket %d, want %d", tc.header, got, tc.want)
+		}
+	}
+}
+
 func TestParseDeckKeepsUncategorisedCards(t *testing.T) {
 	entries := []string{
 		`{"quantity":1,"categories":["Commander"],"card":{"oracleCard":{"uid":"cmd","name":"Com"}}}`,

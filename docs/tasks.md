@@ -526,16 +526,17 @@ The worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`) 
 
 ### T056: Crawl growth
 
-**Priority:** MEDIUM | **Area:** Search API (Go) | **Status:** Owner rule 2026-10-05
+**Priority:** MEDIUM | **Area:** Search API (Go) | **Status:** Built 2026-10-05 (migration `20261005000800`); waiting for release and a search API redeploy
 
 A revisit re-reads page 1, then reads on until `revisitNewDecks` (25) decks were new or changed, or the list ends. `maxPagesPerCommander` and `maxFetchesPerCommander` stay as ceilings. It replaces `revisitPages` (page 1 only, 2026-10-03), under which no commander passed 93 decks. The adapter also records each deck's declared bracket in `archidekt.decks.declared_bracket` (needs T053). Rule in [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), "Crawl".
 
 **Files:** `services/search-api/internal/crawl/policy.go`, `run.go`, `internal/archidekt/`; a migration for `app_config.archidekt`; `roadmap/deck-crawl.md`
 
 **Acceptance criteria:**
-- [ ] Policy and tests; `app_config.archidekt.revisitNewDecks` = 25
+- [x] Policy and tests; `app_config.archidekt.revisitNewDecks` = 25 (and `revisitPages` removed)
 - [ ] A week of hosted runs shows commanders past 93 decks
-- [ ] `declared_bracket` filled for new fetches
+- [x] The adapter reads `edhBracket` into `declared_bracket` (1–5, none otherwise)
+- [ ] `declared_bracket` filled for new fetches on hosted
 
 ---
 
@@ -665,7 +666,7 @@ The design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), revise
 - **Evaluation.** `spike:edhrec:prior` (retired 2026-10-05; T058 repeats it with a time split) was a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured. `supabase/tests/edhrec-stats.sql` holds the SQL checks.
 - **Wired, switched off:** `edhrec_card_priors` (added as `external_card_priors` in migration `20261002000100`, PR #123; renamed by T053) feeds the prior with `app_config.corpus.externalPriorShare` at 0. T061 replaces the share with weighting by sample size.
 
-**Slice 10 (full-suite crawl) is built** in the Go search API, not the TS worker the plan names: a commander queue seeded from EDHREC, decks most viewed first, one page per commander on the first visit. Revisits re-read page 1 only (2026-10-03), so samples grow only from churn; T056 restores growth (25 new or changed decks per revisit, owner rule 2026-10-05). Deck lookups go through the crawl's queue, served by the VPS worker (T066, T009). It absorbs closed ticket T010.
+**Slice 10 (full-suite crawl) is built** in the Go search API, not the TS worker the plan names: a commander queue seeded from EDHREC, decks most viewed first, one page per commander on the first visit. Revisits re-read page 1 only (2026-10-03), so samples grow only from churn; T056 (built 2026-10-05) restores growth (25 new or changed decks per revisit, owner rule 2026-10-05). Deck lookups go through the crawl's queue, served by the VPS worker (T066, T009). It absorbs closed ticket T010.
 
 **Owner decisions it rests on:**
 - 2026-09-21: user decks count only when complete (100 cards and legal); all data lives in Postgres, under the legal team's consent to all publicly facing data (the crawler guardrails still apply); collections stay one per account; win-condition analysis waits.
