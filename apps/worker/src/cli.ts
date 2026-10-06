@@ -1,5 +1,6 @@
 import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { collate, COLLATE_SOURCES, type CollateSource } from './jobs/collate';
+import { evalHoldout } from './jobs/eval-holdout';
 import { precompute, PRECOMPUTE_PARTS, type PrecomputePart } from './jobs/precompute';
 import { serve } from './jobs/serve';
 import { syncCatalog } from './jobs/sync-catalog';
@@ -34,6 +35,10 @@ Commands:
                             commanders whose decks changed), baseline (the nightly baseline, then every score),
                             scores, substitutes, roles, combos. Default: every part, each only if its inputs moved
                             (--full: rebuild every substitute list and score; --force: past the sanity gates)
+  eval:holdout [--candidate file.json]
+                            The offline evaluation (T058): grades adds, cuts and collection mode on held-out decks;
+                            with a candidate ({"scoring": ..., "corpus": ...} over today's settings), runs both and
+                            applies the gate. Report in MTG_DATA_DIR/reports; reads only
   serve [--once]            The VPS worker: deck lookups, then the daily crawl, collation, stats rebuilds and EDHREC
                             fetches as app_config.worker schedules them (--once: one pass, no EDHREC fetch)`;
 
@@ -86,6 +91,11 @@ async function main(): Promise<void> {
       const unknown = parts?.filter((p) => !(PRECOMPUTE_PARTS as readonly string[]).includes(p)) ?? [];
       if (unknown.length > 0) throw new Error(`Unknown part ${unknown.join(', ')}. Parts: ${PRECOMPUTE_PARTS.join(', ')}`);
       await precompute({ full: args.includes('--full'), force, ...(parts ? { parts: parts as PrecomputePart[] } : {}) });
+      return;
+    }
+    case 'eval:holdout': {
+      const candidatePath = flagValue(args, '--candidate');
+      await evalHoldout(candidatePath ? { candidatePath } : {});
       return;
     }
     case 'serve':

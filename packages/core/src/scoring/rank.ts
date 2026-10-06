@@ -62,6 +62,9 @@ export interface RankCorpus {
   roleProfile: Readonly<Record<string, number>>;
 }
 
+/** How many widely played candidates a request scores before grouping cards to add (the app and the evaluation). */
+export const ADD_POOL_SIZE = 400;
+
 /** Card-to-add groups in display order. */
 export const ADD_CATEGORIES: readonly CardCategory[] = ['creature', 'instant', 'sorcery', 'artifact', 'enchantment', 'planeswalker', 'battle', 'land'];
 

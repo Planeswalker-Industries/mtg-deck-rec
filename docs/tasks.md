@@ -573,13 +573,19 @@ Move `ADD_WEIGHTS`, `SWAP_WEIGHTS` and the cut thresholds (`packages/core/src/sc
 
 ### T058: Offline evaluation
 
-**Priority:** HIGH | **Area:** Data / Scoring | **Status:** Not started | **Blocked by:** T054, T057
+**Priority:** HIGH | **Area:** Data / Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, migration `20261006000400`) | **Blocked by:** T054, T057
 
 `cli eval:holdout` over the collated `corpus.decks`: a 90/10 split by deck with a fixed seed (`app_config.scoring.evalSeed`), a time split for anything EDHREC touches, size buckets of 50 and up, 10–49 and under 10 decks, and the tests and bootstrap gate in [`roadmap/scoring-design.md`](roadmap/scoring-design.md), "Evaluation".
 
+**Built:** `apps/worker/src/jobs/eval-holdout.ts`, with the split, sampling, metrics, bootstrap and gate in `@mtg/core/scoring` `evaluate.ts` (tested) and its settings in `app_config.scoring.eval`. Adds hide 10 nonland cards and grade recall@20 over every category together; cuts plant 10 popular identity-legal cards from other commanders' decks and grade precision@10; collection mode owns the hidden cards plus 300 popular others. Simulated small commanders keep 0, 5, 10 or 20 of their training decks (commanders with 50 or more). Also reported: EDHREC agreement (our pool's top 50 against EDHREC's) and declared brackets against our estimate (none yet: the crawl records them from T056 on). About two minutes locally. The EDHREC time split is T061's: only the prior's test needs it.
+
+**Baseline (local, 2026-10-06, seed 20261006):** 7,518 held-out decks over 1,606 commanders. Adds recall@20 17.0% (95% interval 16.3–17.5%): 25.6% for commanders with 50+ training decks, 9.4% for 10–49, 9.1% under 10. Cuts precision@10 17.8%; collection-mode recall 31.0%; Sol Ring rate 21.5%; EDHREC agreement 53.8%. Simulated small commanders score 9.2% whether they keep 0 or 20 decks: below `minDecks` a commander's own decks don't count at all, which is the gap T061's prior is for.
+
+**Found:** adds weighted 0.9 play rates and 0.1 role gap (today 0.8 and 0.2) pass the gate: recall +0.28 points (interval +0.16 to +0.40), every bucket up, Sol Ring rate down 0.8 points. Not applied; a weight change is the owner's call once the remaining components are in.
+
 **Acceptance criteria:**
-- [ ] Baseline report for today's scoring
-- [ ] The gate is scripted: recall@20 up with a 95% bootstrap interval above zero (1,000 resamples over commanders), no bucket down by more than its half-width, Sol Ring rate within `solRingTolerance`, fixtures pass
+- [x] Baseline report for today's scoring
+- [x] The gate is scripted: recall@20 up with a 95% bootstrap interval above zero (1,000 resamples over commanders), no bucket down by more than its half-width, Sol Ring rate within `solRingTolerance`, fixtures pass (the fixtures run separately: `yarn workspace @mtg/web regress`)
 
 ---
 

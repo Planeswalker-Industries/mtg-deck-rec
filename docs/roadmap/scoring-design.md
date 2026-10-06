@@ -314,6 +314,9 @@ One version bump per task that touches the contract:
 Built on `cli eval:holdout` (T058), over the collated `corpus.decks`. Reports go to `$MTG_DATA_DIR/reports` and the
 run's log.
 
+**Built 2026-10-06** (T058, `apps/worker/src/jobs/eval-holdout.ts`; settings in `app_config.scoring.eval`). The baseline
+and what each test does are in [`../tasks.md`](../tasks.md) (T058). The time split for the EDHREC prior comes with T061.
+
 - **Split** `corpus.decks` 90/10 **by deck** with a fixed seed (`app_config.scoring.evalSeed`), and build the stats from
   the 90% only.
 - **Time split for anything EDHREC touches.** EDHREC's numbers already include many of our decks, so tests of the

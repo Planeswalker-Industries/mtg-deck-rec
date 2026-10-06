@@ -68,6 +68,50 @@ export const scoringConfigSchema = z.object({
 });
 
 export type ScoringConfig = z.infer<typeof scoringConfigSchema>;
+
+/**
+ * The offline evaluation's settings (`app_config.scoring.eval`, T058): the holdout split, what each test hides or adds,
+ * and the gate. Only the evaluation reads them.
+ */
+export const evalConfigSchema = z.object({
+  /** Fixes the split, the hidden cards and every resample, so two runs compare like with like. */
+  seed: z.number().int(),
+  /** Share of collated decks held out. */
+  holdoutShare: share,
+  /** Nonland cards hidden from each held-out deck. */
+  hiddenCards: z.number().int().positive(),
+  /** Adds are graded on their top this many. */
+  recallAt: z.number().int().positive(),
+  /** Cards from other commanders' decks added to each held-out deck for the cut test. */
+  injectedCuts: z.number().int().positive(),
+  /** Cuts are graded on their top this many. */
+  cutPrecisionAt: z.number().int().positive(),
+  /** Resamples over commanders for the bootstrap intervals. */
+  bootstrapResamples: z.number().int().positive(),
+  /** A hit whose baseline rate is at least this is a generic staple (the "Sol Ring rate"). */
+  stapleBaselineRate: share,
+  /** The most the Sol Ring rate may rise before a change fails the gate. */
+  solRingTolerance: share,
+  /** Commanders are bucketed by their own training decks: at least the first, at least the second, fewer. */
+  bucketMinDecks: z.tuple([z.number().int().positive(), z.number().int().positive()]),
+  /** Simulated small commanders keep only this many of their training decks… */
+  simulatedDecks: z.array(z.number().int().min(0)).min(1),
+  /** …and are drawn from commanders with at least this many. */
+  simulateFromDecks: z.number().int().positive(),
+  /** Collection test: owned cards besides the hidden ones, drawn by popularity. */
+  collectionExtraCards: z.number().int().min(0),
+  /** EDHREC agreement compares the top this many by our corpus score and by EDHREC's inclusion. */
+  edhrecTop: z.number().int().positive(),
+});
+
+export type EvalConfig = z.infer<typeof evalConfigSchema>;
+
+/** `app_config.scoring.eval`, validated. Throws on a missing or malformed value. */
+export function parseEvalConfig(value: unknown): EvalConfig {
+  const parsed = evalConfigSchema.safeParse(value);
+  if (!parsed.success) throw new Error(`app_config.scoring.eval is missing or malformed: ${parsed.error.message}`);
+  return parsed.data;
+}
 export type CorpusScoring = ScoringConfig['corpus'];
 export type SwapScoring = ScoringConfig['swap'];
 export type CutScoring = ScoringConfig['cuts'];

@@ -1,5 +1,6 @@
 import type { AddResult, CommanderKeyId, CutResult, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
 import {
+  ADD_POOL_SIZE,
   mainDeckIds,
   modeOf,
   onlyIds,
@@ -27,8 +28,6 @@ import type { PublicClient } from "./supabase";
 const CANDIDATE_POOL = 120;
 /** A pool shared across decks can't leave out any one deck's cards up front, so it holds more candidates. */
 export const SHARED_SWAP_POOL = CANDIDATE_POOL + 100;
-/** How many widely played candidates the database returns before scoring and grouping cards to add. */
-const ADD_POOL = 400;
 export const MAX_SWAP_LIMIT = 20;
 /** Replacements shown when a request names no limit. */
 export const DEFAULT_SWAP_LIMIT = 10;
@@ -177,7 +176,7 @@ export async function getAddSuggestions(
       exclude: [...new Set([...deckIds, ...excludeCardIds])],
       allowGameChangers: context.includeGameChangers,
       owned: only ? [...only] : null,
-      limit: ADD_POOL,
+      limit: ADD_POOL_SIZE,
     }),
     loadRoleTargets(db),
     loadRoleTags(db),
