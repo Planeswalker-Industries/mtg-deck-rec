@@ -539,6 +539,8 @@ export type Database = {
           corpus_value: number | null
           decks_with: number
           pool_score: number
+          prior_decks: number | null
+          prior_rate: number | null
           weight_scale: number | null
         }
         Insert: {
@@ -549,6 +551,8 @@ export type Database = {
           corpus_value?: number | null
           decks_with: number
           pool_score: number
+          prior_decks?: number | null
+          prior_rate?: number | null
           weight_scale?: number | null
         }
         Update: {
@@ -559,6 +563,8 @@ export type Database = {
           corpus_value?: number | null
           decks_with?: number
           pool_score?: number
+          prior_decks?: number | null
+          prior_rate?: number | null
           weight_scale?: number | null
         }
         Relationships: [
@@ -715,18 +721,24 @@ export type Database = {
         Row: {
           commander_1: number
           commander_2: number
+          edhrec_decks: number | null
+          edhrec_floor: number | null
           has_sources: boolean
           use_commander: boolean
         }
         Insert: {
           commander_1: number
           commander_2?: number
+          edhrec_decks?: number | null
+          edhrec_floor?: number | null
           has_sources: boolean
           use_commander: boolean
         }
         Update: {
           commander_1?: number
           commander_2?: number
+          edhrec_decks?: number | null
+          edhrec_floor?: number | null
           has_sources?: boolean
           use_commander?: boolean
         }
@@ -1836,10 +1848,6 @@ export type Database = {
         Args: { p_deck_id: string; p_name?: string }
         Returns: string
       }
-      edhrec_card_priors: {
-        Args: { p_card_ids: number[]; p_commander_ids: number[] }
-        Returns: Json
-      }
       get_commander_request: {
         Args: { p_card_id: number; p_client_key: string }
         Returns: Json
@@ -2110,6 +2118,10 @@ export type Database = {
         partner_decks_with: number | null
         partner_too_early: number | null
         role_ids: string[] | null
+        prior_rate: number | null
+        prior_decks: number | null
+        edhrec_floor: number | null
+        edhrec_decks: number | null
       }
     }
   }

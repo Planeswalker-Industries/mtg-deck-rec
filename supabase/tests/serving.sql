@@ -131,6 +131,13 @@ select chk('a card carries what fetchCardsById reads, its first printing''s mont
      join public.cards c on c.id = s.card_id
      left join public.card_stats st on st.card_id = c.id
      join public.card_global_stats g on g.card_id = c.id));
+update public.commander_card_scores set prior_rate = 0.42, prior_decks = 900
+ where commander_1 = :c1 and commander_2 = :c2 and card_id = :plain;
+update public.commander_sets set edhrec_floor = 0.03, edhrec_decks = 1200 where commander_1 = :c1 and commander_2 = :c2;
+select chk('a card carries its EDHREC listing and the set its page, for the prior (T061)',
+  (select prior_rate = 0.42::real and prior_decks = 900 and edhrec_floor = 0.03::real and edhrec_decks = 1200
+     from public.serving_cards(array[:c1, :c2], array[:plain]))
+  and (select prior_rate is null and edhrec_decks = 1200 from public.serving_cards(array[:c1, :c2], array[:blue2])));
 select chk('a card carries its roles',
   (select role_ids = (select array_agg(role_id order by role_id) from public.card_roles where card_id = :with_roles)
      from public.serving_cards('{}', array[:with_roles])));
@@ -265,6 +272,9 @@ select chk('the per-request recommendation functions and their switch are gone',
   and to_regprocedure('public.rec_add_candidates(integer[],real[],real,smallint,integer[],boolean,integer[],integer)') is null
   and to_regclass('public.rec_timeouts') is null
   and not exists (select 1 from public.app_config where key = 'recs'));
+select chk('the EDHREC prior is configured by its cap, and the old share and function are gone',
+  (select value ? 'edhrecPriorCap' and not value ? 'externalPriorShare' from public.app_config where key = 'corpus')
+  and to_regprocedure('public.edhrec_card_priors(integer[],integer[])') is null);
 select chk('the scoring weights are configured and private',
   (select value ? 'weights' and value ? 'corpus' and value ? 'swap' and value ? 'cuts' and not is_public
      from public.app_config where key = 'scoring'));

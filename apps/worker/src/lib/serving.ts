@@ -7,6 +7,8 @@ import {
   type CardFacts,
   type CorpusKey,
   type CorpusSettings,
+  type EdhrecListing,
+  type EdhrecPage,
   type ScoringConfig,
 } from '@mtg/core/scoring';
 import type { ReservedSql, Sql } from './db';
@@ -37,6 +39,38 @@ export const eligibleAt = (rows: KeyRows, i: number): number | null => {
 export async function loadServingSettings(sql: Sql): Promise<CorpusSettings> {
   const [row] = await sql<{ value: unknown }[]>`select value from public.app_config where key = 'corpus'`;
   return parseCorpusSettings(row?.value);
+}
+
+/** A commander's (or pair's) EDHREC page as the prior reads it: its size, its floor, and the cards it lists. */
+export interface PageRows {
+  page: EdhrecPage;
+  listings: Map<number, EdhrecListing>;
+}
+
+/**
+ * Every collated EDHREC page, keyed by its commander cards ('c1:c2', c2 0 for one). The floor is the page's
+ * listed_floor, or its lowest listed rate where the collator hasn't filled that in yet.
+ */
+export async function loadEdhrecPages(sql: Sql): Promise<Map<string, PageRows>> {
+  const rows = await sql<{ commander_1: number; commander_2: number; deck_count: number; listed_floor: number | null; card_id: number; decks_with: number; potential_decks: number }[]>`
+    select e.commander_1, coalesce(e.commander_2, 0) as commander_2, e.deck_count, e.listed_floor,
+           c.card_id, c.decks_with, c.potential_decks
+    from corpus.edhrec_commanders e
+    join corpus.edhrec_commander_cards c on c.edhrec_commander_id = e.id
+  `;
+  const pages = new Map<string, PageRows>();
+  for (const r of rows) {
+    const key = `${r.commander_1}:${r.commander_2}`;
+    let p = pages.get(key);
+    if (!p) {
+      p = { page: { deckCount: r.deck_count, floor: r.listed_floor ?? Number.POSITIVE_INFINITY }, listings: new Map() };
+      pages.set(key, p);
+    }
+    const rate = r.decks_with / Math.max(r.potential_decks, 1);
+    p.listings.set(r.card_id, { rate, potentialDecks: r.potential_decks });
+    if (r.listed_floor === null) p.page.floor = Math.min(p.page.floor, rate);
+  }
+  return pages;
 }
 
 /** app_config.scoring (required): the weights and thresholds the stored scores are computed with. */

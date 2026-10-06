@@ -6,12 +6,14 @@ import {
   ADD_POOL_SIZE,
   addPoolScore,
   bootstrapMean,
+  cardPrior,
   commanderShare,
   countsFromTotals,
   decksSinceRelease,
   evaluateGate,
   identityBaselineDecks,
   isHeldOut,
+  pageEvidence,
   parseCorpusSettings,
   parseEvalConfig,
   parseScoringConfig,
@@ -46,6 +48,7 @@ import { DATA_DIR } from '../lib/config';
 import { loadCatalog, loadCorpusConfig, loadCorpusDecks, resolveDeck, type CatalogCard, type CorpusConfig } from '../lib/corpus';
 import { connect, type Sql } from '../lib/db';
 import { globalStatRows, identityMonths, type KeyAggregate } from '../lib/key-stats';
+import { loadEdhrecPages, type PageRows } from '../lib/serving';
 
 /**
  * `cli eval:holdout` (T058; docs/roadmap/scoring-design.md, "Evaluation"). Holds out a seeded share of the collated
@@ -60,7 +63,9 @@ import { globalStatRows, identityMonths, type KeyAggregate } from '../lib/key-st
  * - agreement with EDHREC's lists and with authors' declared brackets, reported only.
  *
  * With `--candidate <file.json>` (`{ "scoring": {...}, "corpus": {...} }`, merged over today's settings) it runs both
- * on the same split and applies the gate. Writes a report to `$MTG_DATA_DIR/reports`; reads only.
+ * on the same split and applies the gate. `--time-split` holds out every deck updated after the EDHREC snapshot instead
+ * of a random share, which is how anything EDHREC touches must be tested (its numbers already include many of our
+ * older decks). Writes a report to `$MTG_DATA_DIR/reports`; reads only.
  */
 
 /** Hidden and planted cards are drawn per deck from the seed and the deck's id, so both runs see the same ones. */
@@ -96,7 +101,10 @@ interface Data {
   roles: Map<number, string[]>;
   roleTargets: RoleTarget[];
   decks: EvalDeck[];
-  edhrec: Map<string, number[]>;
+  /** EDHREC pages by commander set ('c1:c2', c2 0 for one). */
+  pages: Map<string, PageRows>;
+  /** 'YYYY-MM' of the EDHREC snapshot: decks updated after it can't be in EDHREC's numbers. */
+  edhrecMonth: string | null;
   declaredBrackets: Map<string, number>;
 }
 
@@ -127,13 +135,19 @@ interface SetModel {
   rates: (cardId: number) => CardPlayRates;
 }
 
+/** The serving tables' key for a commander set: 'c1:c2', with c2 0 for a single commander. */
+const setKeyOf = (commanderIds: readonly number[]) => {
+  const ids = [...new Set(commanderIds)].sort((a, b) => a - b);
+  return `${ids[0] ?? 0}:${ids[1] ?? 0}`;
+};
+
 const seedFor = (seed: number, salt: string, id: string) => Math.floor(stableUnit(`${seed}:${salt}:${id}`) * UINT32_RANGE);
 const frontIsLand = (typeLine: string) => /\bLand\b/.test(typeLine.split(' // ')[0] ?? typeLine);
 const mean = (xs: readonly number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
   const catalog = await loadCatalog(sql);
-  const [details, roleRows, targetsRow, edhrecRows, declaredRows] = await Promise.all([
+  const [details, roleRows, targetsRow, pages, snapshot, declaredRows] = await Promise.all([
     sql<{ id: number; oracle_id: string; type_line: string; mana_value: number; mana_cost: string | null; game_changer: boolean }[]>`
       select id, oracle_id, type_line, mana_value, mana_cost, game_changer from public.cards where deleted_at is null
     `,
@@ -141,12 +155,8 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
     sql<{ value: { roles?: { tagId?: unknown; label?: unknown; target?: unknown }[] } }[]>`
       select value from public.app_config where key = 'deck_role_targets'
     `,
-    sql<{ commander_1: number; commander_2: number | null; card_id: number }[]>`
-      select e.commander_1, e.commander_2, c.card_id
-      from corpus.edhrec_commanders e
-      join corpus.edhrec_commander_cards c on c.edhrec_commander_id = e.id
-      order by e.id, c.decks_with::double precision / greatest(c.potential_decks, 1) desc, c.card_id
-    `,
+    loadEdhrecPages(sql),
+    sql<{ month: string | null }[]>`select to_char(max(fetched_at), 'YYYY-MM') as month from corpus.edhrec_commanders`,
     sql<{ source_deck_id: string; declared_bracket: number }[]>`
       select source_deck_id, declared_bracket from archidekt.decks where declared_bracket is not null
     `,
@@ -188,11 +198,6 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
       : [],
   );
 
-  const edhrec = new Map<string, number[]>();
-  for (const r of edhrecRows) {
-    const key = r.commander_2 === null ? `${r.commander_1}` : `${r.commander_1}:${r.commander_2}`;
-    edhrec.set(key, [...(edhrec.get(key) ?? []), r.card_id]);
-  }
   const declaredBrackets = new Map(declaredRows.map((r) => [`archidekt:${r.source_deck_id}`, r.declared_bracket]));
 
   const decks: EvalDeck[] = [];
@@ -215,7 +220,7 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
       cardIds: [...resolved.deck.cardIds],
     });
   }
-  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, edhrec, declaredBrackets };
+  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets };
 }
 
 /** Per-key counts from these decks, as `tallyDecks` makes them. */
@@ -315,6 +320,10 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
   const picked = pickCorpusSources(ids, involved, settings.corpus);
   const mask = ids.reduce((m, id) => m | (data.catalog.get(id)?.colorIdentity ?? 0), 0);
   const pooled = picked.borrowedDeckCount > 0;
+  // The EDHREC prior (T061), as the precompute worker applies it: off when the cap is 0, and not for a pair no key knows.
+  const scored = ids.length === 1 || training.aggregates.has(ids.join(':'));
+  const pageRows = settings.corpus.edhrecPriorCap > 0 && scored ? (data.pages.get(setKeyOf(ids)) ?? null) : null;
+  const page = pageRows?.page ?? null;
 
   const sums = new Map<number, RowSums>();
   const roleTotals: Record<string, number> = {};
@@ -330,6 +339,9 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
       sums.set(card, sum);
     }
   }
+
+  if (pageRows) for (const cardId of pageRows.listings.keys()) if (!sums.has(cardId)) sums.set(cardId, { decksWith: 0, tooEarly: 0 });
+  const priorFor = (cardId: number, baselineRate: number) => cardPrior(page, pageRows?.listings.get(cardId) ?? null, baselineRate, settings.corpus);
 
   const totalsMemo = new Map<string, SourceDeckTotals>();
   const countsFor = (cardId: number) => {
@@ -352,19 +364,26 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
   const rates = (cardId: number): CardPlayRates => {
     let r = ratesMemo.get(cardId);
     if (!r) {
-      r = { ...servedCardRates(countsFor(cardId), baselineFor(cardId), settings.corpus, pooled), hasExternalPrior: false };
+      const baseline = baselineFor(cardId);
+      r = servedCardRates(countsFor(cardId), baseline, settings.corpus, pooled, priorFor(cardId, baseline.rate));
       ratesMemo.set(cardId, r);
     }
     return r;
   };
 
-  const useCommander = commanderShare(picked.effectiveDeckCount, settings.corpus) > 0;
+  const useCommander = commanderShare(picked.effectiveDeckCount + pageEvidence(page, settings.corpus), settings.corpus) > 0;
   const ordered = useCommander
     ? [...sums.keys()]
         .filter((id) => eligibleCandidate(data.cards.get(id), mask))
         .map((id) => ({
           id,
-          score: addPoolScore(countsFor(id), Math.fround(baselineFor(id).rate), settings.corpus.shrinkAlpha, settings.scoring.corpus),
+          score: addPoolScore(
+            countsFor(id),
+            Math.fround(baselineFor(id).rate),
+            settings.corpus.shrinkAlpha,
+            settings.scoring.corpus,
+            priorFor(id, baselineFor(id).rate),
+          ),
         }))
         .sort((a, b) => b.score - a.score || (data.catalog.get(a.id)?.name ?? '').localeCompare(data.catalog.get(b.id)?.name ?? ''))
         .map((e) => e.id)
@@ -570,11 +589,14 @@ function run(settings: Settings, data: Data, training: Training, trainingDecks: 
   // EDHREC agreement: our pool's top against EDHREC's top by inclusion, for commanders with a page.
   const edhrecOverlap: number[] = [];
   for (const key of commanders.keys()) {
-    const theirs = data.edhrec.get(key);
+    const pageRows = data.pages.get(setKeyOf(key.split(':').map(Number)));
     const model = models.get(key);
-    if (!theirs || !model) continue;
+    if (!pageRows || !model) continue;
     const ours = new Set(model.ordered.slice(0, e.edhrecTop));
-    const top = theirs.slice(0, e.edhrecTop);
+    const top = [...pageRows.listings]
+      .sort((a, b) => b[1].rate - a[1].rate || a[0] - b[0])
+      .slice(0, e.edhrecTop)
+      .map(([id]) => id);
     if (top.length > 0) edhrecOverlap.push(top.filter((id) => ours.has(id)).length / top.length);
   }
 
@@ -666,7 +688,7 @@ function markdown(summaries: readonly Summary[], extras: string[]): string {
   return lines.join('\n');
 }
 
-export async function evalHoldout({ candidatePath }: { candidatePath?: string } = {}): Promise<void> {
+export async function evalHoldout({ candidatePath, timeSplit = false }: { candidatePath?: string; timeSplit?: boolean } = {}): Promise<void> {
   const sql = connect();
   const started = Date.now();
   try {
@@ -680,8 +702,12 @@ export async function evalHoldout({ candidatePath }: { candidatePath?: string } 
     };
     const e = baseSettings.eval;
     const data = await loadData(sql, config);
-    const heldOut = data.decks.filter((d) => isHeldOut(d.id, e.seed, e.holdoutShare));
-    const train = data.decks.filter((d) => !isHeldOut(d.id, e.seed, e.holdoutShare));
+    // The time split holds out every deck updated after the EDHREC snapshot; otherwise a seeded share.
+    const snapshot = data.edhrecMonth;
+    if (timeSplit && !snapshot) throw new Error('--time-split needs an EDHREC snapshot (corpus.edhrec_commanders is empty).');
+    const held = (d: EvalDeck) => (timeSplit ? d.month > (snapshot ?? '') : isHeldOut(d.id, e.seed, e.holdoutShare));
+    const heldOut = data.decks.filter(held);
+    const train = data.decks.filter((d) => !held(d));
     const training = buildTraining(aggregate(train, data), data);
     const trainingDecks = groupBy(train, (d) => d.key);
     console.log(`eval:holdout: ${data.decks.length} decks, ${train.length} training, ${heldOut.length} held out.`);
@@ -690,7 +716,7 @@ export async function evalHoldout({ candidatePath }: { candidatePath?: string } 
     const order = [...baseline.commanders.keys()].sort();
     const summaries = [summarize('Today\'s settings', baseline, order, e)];
     const extras: string[] = [
-      `Run ${new Date().toISOString()}: seed ${e.seed}, ${pct(e.holdoutShare)} held out, ${e.hiddenCards} cards hidden, recall@${e.recallAt}, ` +
+      `Run ${new Date().toISOString()}: seed ${e.seed}, ${timeSplit ? `every deck updated after the EDHREC snapshot (${snapshot}) held out` : `${pct(e.holdoutShare)} held out`}, ${e.hiddenCards} cards hidden, recall@${e.recallAt}, ` +
         `${e.injectedCuts} planted, precision@${e.cutPrecisionAt}, ${e.bootstrapResamples} resamples.`,
     ];
 

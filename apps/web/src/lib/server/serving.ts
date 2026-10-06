@@ -1,5 +1,6 @@
 import type { TagId, TagRef } from "@mtg/core/contract";
 import {
+  cardPrior,
   commanderCardCounts,
   commanderShare,
   identityBaselineDecks,
@@ -64,9 +65,9 @@ function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
 }
 
 /**
- * A card's play rates under these commanders: its stored counts where a source deck ran it,
- * a pair's partner totals at their weight, or counts from the commander's deck months where nothing ran it; shrunk
- * toward the live baseline.
+ * A card's play rates under these commanders: its stored counts where a source deck ran it, a pair's partner totals at
+ * their weight, or counts from the commander's deck months where nothing ran it; shrunk toward the commander's EDHREC
+ * page when it has one (T061) and the live baseline otherwise.
  */
 function cardCorpusOf(card: ServingCard, corpus: CommanderCorpus, identityMonths: ReadonlyMap<number, Record<string, number>>): CardCorpus {
   const facts = { identity: card.color_identity ?? 0, releaseMonth: card.release_month };
@@ -84,7 +85,10 @@ function cardCorpusOf(card: ServingCard, corpus: CommanderCorpus, identityMonths
           decksWith: weight * (card.partner_decks_with ?? 0),
           tooEarly: weight * (card.partner_too_early ?? 0),
         });
-  return { ...servedCardRates(counts, baseline, corpus.settings, corpus.borrowedDeckCount > 0), hasExternalPrior: false };
+  const page = card.edhrec_decks !== null && card.edhrec_floor !== null ? { deckCount: card.edhrec_decks, floor: card.edhrec_floor } : null;
+  const listing = card.prior_rate !== null && card.prior_decks !== null ? { rate: card.prior_rate, potentialDecks: card.prior_decks } : null;
+  const prior = cardPrior(page, listing, baseline.rate, corpus.settings);
+  return servedCardRates(counts, baseline, corpus.settings, corpus.borrowedDeckCount > 0, prior);
 }
 
 /** Card rows, play rates (none until the corpus exists) and roles for a set of serving_card rows. */

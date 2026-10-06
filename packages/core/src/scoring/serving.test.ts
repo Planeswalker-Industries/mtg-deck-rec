@@ -3,6 +3,7 @@ import { TEST_SCORING } from './test-config';
 import { corpusComponent, pickCorpusSources, shrunkInclusion, type CorpusKey } from './corpus';
 import {
   addPoolScore,
+  cardPrior,
   commanderCardCounts,
   identityBaselineDecks,
   identityPoolDecks,
@@ -13,7 +14,7 @@ import {
   type KeyCardCount,
 } from './serving';
 
-const settings = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100, partnerPoolWeight: 0.25 };
+const settings = { shrinkAlpha: 20, minDecks: 50, fullDecks: 100, partnerPoolWeight: 0.25, edhrecPriorCap: 0 };
 const W = 1;
 const U = 2;
 const B = 4;
@@ -168,5 +169,51 @@ describe('partnerRowSums', () => {
     const combined = partnerRowSums([totalsFor(10), totalsFor(20)], settings.partnerPoolWeight);
     expect(combined.decksWith).toBeCloseTo(direct.decksWith, 12);
     expect(combined.tooEarly).toBeCloseTo(direct.tooEarly, 12);
+  });
+});
+
+describe('the EDHREC prior (T061)', () => {
+  const capped = { ...settings, edhrecPriorCap: 200 };
+  const page = { deckCount: 3000, floor: 0.05 };
+  const baseline = { rate: 0.1, decksWith: 900, eligibleDecks: 9000 };
+
+  it('is off without a page or with the cap at 0', () => {
+    expect(cardPrior(null, { rate: 0.6, potentialDecks: 2500 }, 0.1, capped)).toBeNull();
+    expect(cardPrior(page, { rate: 0.6, potentialDecks: 2500 }, 0.1, settings)).toBeNull();
+  });
+
+  it("shrinks toward the page's rate for a card it lists, and toward min(p0, floor) for one it leaves out", () => {
+    expect(cardPrior(page, { rate: 0.6, potentialDecks: 2500 }, 0.1, capped)).toEqual({ target: 0.6, strength: 200, listed: true });
+    expect(cardPrior(page, { rate: 0.6, potentialDecks: 80 }, 0.1, capped)).toEqual({ target: 0.6, strength: 80, listed: true });
+    expect(cardPrior(page, null, 0.1, capped)).toEqual({ target: 0.05, strength: 200, listed: false });
+    expect(cardPrior(page, null, 0.02, capped)).toEqual({ target: 0.02, strength: 200, listed: false });
+  });
+
+  it('carries the commander with no decks of our own, showing only the colours numbers', () => {
+    const prior = cardPrior(page, { rate: 0.6, potentialDecks: 2500 }, baseline.rate, capped);
+    const rates = servedCardRates({ decksWith: 0, commanderDecks: 0 }, baseline, capped, false, prior);
+    expect(rates.commanderRate?.inclusion).toBeCloseTo(0.6);
+    expect(rates.commanderDeckCount).toBe(200);
+    expect(rates.hasExternalPrior).toBe(true);
+    expect(rates.evidence.scope).toBe('colors');
+    expect(servedCorpusScore(rates, capped, TEST_SCORING.corpus)?.weightScale).toBe(1);
+  });
+
+  it('counts our decks and the prior by their sizes, and our decks take over as they grow', () => {
+    const prior = cardPrior(page, { rate: 0.6, potentialDecks: 2500 }, baseline.rate, capped);
+    const few = servedCardRates({ decksWith: 2, commanderDecks: 10 }, baseline, capped, false, prior);
+    expect(few.commanderRate?.inclusion).toBeCloseTo((2 + 200 * 0.6) / (10 + 200));
+    expect(few.commanderDeckCount).toBe(210);
+    expect(few.evidence.commanderDeckCount).toBe(10);
+    const many = servedCardRates({ decksWith: 2000, commanderDecks: 10000 }, baseline, capped, false, prior);
+    expect(many.commanderRate?.inclusion).toBeCloseTo((2000 + 120) / 10200);
+  });
+
+  it('changes nothing without a page', () => {
+    const counts = { decksWith: 12, commanderDecks: 60 };
+    expect(servedCardRates(counts, baseline, capped, false, null)).toEqual(servedCardRates(counts, baseline, settings, false));
+    expect(addPoolScore({ decksWith: 12, poolDecks: 60 }, 0.1, 20, TEST_SCORING.corpus, null)).toBe(
+      addPoolScore({ decksWith: 12, poolDecks: 60 }, 0.1, 20, TEST_SCORING.corpus),
+    );
   });
 });

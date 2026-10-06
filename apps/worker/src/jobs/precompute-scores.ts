@@ -1,8 +1,10 @@
 import {
   addPoolScore,
+  cardPrior,
   commanderShare,
   countsFromTotals,
   identityBaselineDecks,
+  pageEvidence,
   pickCorpusSources,
   servedCardRates,
   servedCorpusScore,
@@ -21,6 +23,7 @@ import {
   eligibleAt,
   loadBaselines,
   loadCardFacts,
+  loadEdhrecPages,
   loadIdentityMonths,
   loadKeyRows,
   loadKeys,
@@ -28,6 +31,7 @@ import {
   loadServingSettings,
   type KeyRow,
   type KeyRows,
+  type PageRows,
 } from '../lib/serving';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
@@ -49,13 +53,20 @@ interface CommanderSet {
   commander2: number;
 }
 
-type ScoreRow = [number, number, number, number, number, number, number | null, number | null];
+type ScoreRow = [number, number, number, number, number, number, number | null, number | null, number | null, number | null];
 
-const SCORE_COLUMNS = ['commander_1', 'commander_2', 'card_id', 'decks_with', 'commander_decks', 'pool_score', 'corpus_value', 'weight_scale'];
-const SET_COLUMNS = ['commander_1', 'commander_2', 'use_commander', 'has_sources'];
+const SCORE_COLUMNS = [
+  'commander_1', 'commander_2', 'card_id', 'decks_with', 'commander_decks', 'pool_score', 'corpus_value', 'weight_scale', 'prior_rate', 'prior_decks',
+];
+const SET_COLUMNS = ['commander_1', 'commander_2', 'use_commander', 'has_sources', 'edhrec_floor', 'edhrec_decks'];
 
-/** Every commander (or pair) the serving tables score: each key, and each commander of a pair on its own. */
-function commanderSets(keys: readonly KeyRow[], only: ReadonlySet<number> | null): CommanderSet[] {
+/**
+ * Every commander (or pair) the serving tables score: each key, each commander of a pair on its own, and, with the
+ * EDHREC prior on, every single commander with a page (most commanders we hold no decks for). A pair with a page but no
+ * key stays a pair no key knows, combined from its partners' totals per request without the prior: scoring it here
+ * would store every card its partners' decks borrow (3,200 such pairs locally, 6.5M rows).
+ */
+function commanderSets(keys: readonly KeyRow[], only: ReadonlySet<number> | null, pageKeys: Iterable<string>): CommanderSet[] {
   const sets = new Map<string, CommanderSet>();
   const add = (commander1: number, commander2: number) => {
     if (only && !only.has(commander1) && !only.has(commander2)) return;
@@ -67,6 +78,10 @@ function commanderSets(keys: readonly KeyRow[], only: ReadonlySet<number> | null
       add(k.commander1, 0);
       add(k.commander2, 0);
     }
+  }
+  for (const key of pageKeys) {
+    const [c1, c2] = key.split(':').map(Number);
+    if (c1 !== undefined && c2 === 0) add(c1, 0);
   }
   return [...sets.values()].sort((a, b) => a.commander1 - b.commander1 || a.commander2 - b.commander2);
 }
@@ -88,6 +103,8 @@ function partnerCommanders(keys: readonly KeyRow[], only: ReadonlySet<number> | 
 
 interface Inputs {
   settings: CorpusSettings;
+  /** EDHREC pages by commander set, when the prior is on (empty otherwise). */
+  pages: Map<string, PageRows>;
   /** app_config.scoring's corpus score shape. */
   scoring: CorpusScoring;
   keysByCommander: Map<number, KeyRow[]>;
@@ -106,16 +123,30 @@ function pickSet(set: CommanderSet, inputs: Inputs): CorpusSources {
   return pickCorpusSources(ids, involved, inputs.settings);
 }
 
+const pageOf = (set: CommanderSet, inputs: Inputs) => inputs.pages.get(`${set.commander1}:${set.commander2}`) ?? null;
+
 /**
- * Which pool a commander set's requests draw on (commander_sets): adds use its decks once they earn a share of the
- * score, as getAddSuggestions decided per request (commanderShare > 0); the rater and pages whenever any decks count.
+ * Which pool a commander set's requests draw on (commander_sets): adds use its own cards once its evidence (its decks,
+ * plus its EDHREC page's capped strength) earns a share of the score; the rater and pages whenever anything counts.
+ * The page's floor and size go with it, for the cards it has no row for.
  */
-const setFlags = (set: CommanderSet, picked: CorpusSources, inputs: Inputs) =>
-  [set.commander1, set.commander2, commanderShare(picked.effectiveDeckCount, inputs.settings) > 0, picked.sources.length > 0] as const;
+const setFlags = (set: CommanderSet, picked: CorpusSources, inputs: Inputs) => {
+  const page = pageOf(set, inputs);
+  const evidence = picked.effectiveDeckCount + pageEvidence(page?.page ?? null, inputs.settings);
+  return [
+    set.commander1,
+    set.commander2,
+    commanderShare(evidence, inputs.settings) > 0,
+    picked.sources.length > 0 || pageEvidence(page?.page ?? null, inputs.settings) > 0,
+    page ? page.page.floor : null,
+    page ? page.page.deckCount : null,
+  ] as const;
+};
 
 /** One commander's (or pair's) rows: every card a source deck ran, scored as the request would score it. */
 function* scoreRows(set: CommanderSet, picked: CorpusSources, inputs: Inputs): Generator<ScoreRow> {
-  if (picked.sources.length === 0) return;
+  const page = pageOf(set, inputs);
+  if (picked.sources.length === 0 && !page) return;
   const pooled = picked.borrowedDeckCount > 0;
 
   const sums = new Map<number, RowSums>();
@@ -135,6 +166,9 @@ function* scoreRows(set: CommanderSet, picked: CorpusSources, inputs: Inputs): G
     }
   }
 
+  // Cards the page lists get a row even when no deck of ours ran them: the prior speaks for them.
+  if (page) for (const cardId of page.listings.keys()) if (!sums.has(cardId)) sums.set(cardId, { decksWith: 0, tooEarly: 0 });
+
   // The sources' deck totals depend only on a card's identity and release month.
   const totalsMemo = new Map<string, SourceDeckTotals>();
   for (const [cardId, sum] of sums) {
@@ -151,19 +185,33 @@ function* scoreRows(set: CommanderSet, picked: CorpusSources, inputs: Inputs): G
       decksWith: 0,
       eligibleDecks: identityBaselineDecks(inputs.identityMonths, facts),
     };
-    const score = servedCorpusScore(servedCardRates(counts, baseline, inputs.settings, pooled), inputs.settings, inputs.scoring);
+    const listing = page?.listings.get(cardId) ?? null;
+    const prior = cardPrior(page?.page ?? null, listing, baseline.rate, inputs.settings);
+    const score = servedCorpusScore(servedCardRates(counts, baseline, inputs.settings, pooled, prior), inputs.settings, inputs.scoring);
     // The pool order reads the baseline as float4 cast to float8, as the retired rec_add_candidates did; fround gives
     // that exact value, so ties fall the same way.
-    const poolScore = addPoolScore(counts, Math.fround(baseline.rate), inputs.settings.shrinkAlpha, inputs.scoring);
-    yield [set.commander1, set.commander2, cardId, counts.decksWith, counts.commanderDecks, poolScore, score?.value ?? null, score?.weightScale ?? null];
+    const poolScore = addPoolScore(counts, Math.fround(baseline.rate), inputs.settings.shrinkAlpha, inputs.scoring, prior);
+    yield [
+      set.commander1,
+      set.commander2,
+      cardId,
+      counts.decksWith,
+      counts.commanderDecks,
+      poolScore,
+      score?.value ?? null,
+      score?.weightScale ?? null,
+      listing ? Math.fround(listing.rate) : null,
+      listing ? listing.potentialDecks : null,
+    ];
   }
 }
 
 /** How many rows a commander set will have: the cards its sources ran. */
 function setSize(set: CommanderSet, inputs: Inputs): number {
   const picked = pickSet(set, inputs);
-  if (picked.sources.length === 1) return inputs.rowsByKey.get(picked.sources[0]?.id ?? 0)?.cardIds.length ?? 0;
-  const cards = new Set<number>();
+  const page = pageOf(set, inputs);
+  if (picked.sources.length === 1 && !page) return inputs.rowsByKey.get(picked.sources[0]?.id ?? 0)?.cardIds.length ?? 0;
+  const cards = new Set<number>(page?.listings.keys() ?? []);
   for (const s of picked.sources) for (const id of inputs.rowsByKey.get(s.id)?.cardIds ?? []) cards.add(id);
   return cards.size;
 }
@@ -182,10 +230,15 @@ async function mergeChunk(db: ReservedSql, chunk: readonly CommanderSet[], input
   await db`begin`;
   try {
     await db`
-      insert into public.commander_sets as s (commander_1, commander_2, use_commander, has_sources)
-      select commander_1, commander_2, use_commander, has_sources from stg_sets
-      on conflict (commander_1, commander_2) do update set use_commander = excluded.use_commander, has_sources = excluded.has_sources
-      where (s.use_commander, s.has_sources) is distinct from (excluded.use_commander, excluded.has_sources)
+      insert into public.commander_sets as s (commander_1, commander_2, use_commander, has_sources, edhrec_floor, edhrec_decks)
+      select commander_1, commander_2, use_commander, has_sources, edhrec_floor, edhrec_decks from stg_sets
+      on conflict (commander_1, commander_2) do update set
+        use_commander = excluded.use_commander,
+        has_sources = excluded.has_sources,
+        edhrec_floor = excluded.edhrec_floor,
+        edhrec_decks = excluded.edhrec_decks
+      where (s.use_commander, s.has_sources, s.edhrec_floor, s.edhrec_decks)
+        is distinct from (excluded.use_commander, excluded.has_sources, excluded.edhrec_floor, excluded.edhrec_decks)
     `;
     const [removed] = await db<{ n: number }[]>`
       with gone as (
@@ -203,15 +256,19 @@ async function mergeChunk(db: ReservedSql, chunk: readonly CommanderSet[], input
     const [written] = await db<{ n: number }[]>`
       with changed as (
         insert into public.commander_card_scores as s
-          (commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale)
-        select commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale from stg_scores
+          (commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale, prior_rate, prior_decks)
+        select commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale, prior_rate, prior_decks
+        from stg_scores
         on conflict (commander_1, commander_2, card_id) do update set
           decks_with = excluded.decks_with,
           commander_decks = excluded.commander_decks,
           pool_score = excluded.pool_score,
           corpus_value = excluded.corpus_value,
-          weight_scale = excluded.weight_scale
-        where abs(s.decks_with - excluded.decks_with) > ${COUNT_TOLERANCE}
+          weight_scale = excluded.weight_scale,
+          prior_rate = excluded.prior_rate,
+          prior_decks = excluded.prior_decks
+        where (s.prior_rate, s.prior_decks) is distinct from (excluded.prior_rate, excluded.prior_decks)
+           or abs(s.decks_with - excluded.decks_with) > ${COUNT_TOLERANCE}
            or abs(s.commander_decks - excluded.commander_decks) > ${COUNT_TOLERANCE}
            or abs(s.pool_score - excluded.pool_score) >= ${SCORE_TOLERANCE}
            or (s.corpus_value is null) <> (excluded.corpus_value is null)
@@ -312,21 +369,24 @@ export async function precomputeScores({
     if (start.kind === 'skipped') return { status: 'succeeded', rows: 0 };
     runId = start.runId;
 
-    const [settings, scoringConfig, keys, baselines, facts, identityMonths] = await Promise.all([
+    const [settings, scoringConfig, keys, baselines, facts, identityMonths, allPages] = await Promise.all([
       loadServingSettings(sql),
       loadScoringConfig(sql),
       loadKeys(sql),
       loadBaselines(sql),
       loadCardFacts(sql),
       loadIdentityMonths(sql),
+      loadEdhrecPages(sql),
     ]);
+    // The prior off (cap 0) means no page counts: the scores are our decks' alone, as before T061.
+    const pages = settings.edhrecPriorCap > 0 ? allPages : new Map<string, PageRows>();
     const keysByCommander = new Map<number, KeyRow[]>();
     for (const k of keys) {
       for (const id of k.commander2 === null ? [k.commander1] : [k.commander1, k.commander2]) {
         keysByCommander.set(id, [...(keysByCommander.get(id) ?? []), k]);
       }
     }
-    const sets = commanderSets(keys, only);
+    const sets = commanderSets(keys, only, pages.keys());
     const partners = partnerCommanders(keys, only);
     // Only the keys these commanders' sets can draw on, when the run is for a few commanders.
     const neededKeys = full
@@ -334,7 +394,7 @@ export async function precomputeScores({
       : [...new Set([...sets.flatMap((s) => [s.commander1, s.commander2]), ...partners].flatMap((id) => (keysByCommander.get(id) ?? []).map((k) => k.id)))];
     const rowsByKey = await loadKeyRows(sql, neededKeys);
     const scoring = scoringConfig.corpus;
-    const inputs: Inputs = { settings, scoring, keysByCommander, rowsByKey, baselines, facts, identityMonths };
+    const inputs: Inputs = { settings, pages, scoring, keysByCommander, rowsByKey, baselines, facts, identityMonths };
 
     const rows = sets.reduce((sum, s) => sum + setSize(s, inputs), 0);
     const previousRows = start.previousMetrics?.rows;
@@ -356,12 +416,13 @@ export async function precomputeScores({
         create temp table if not exists stg_scores (
           commander_1 integer not null, commander_2 integer not null, card_id integer not null,
           decks_with double precision not null, commander_decks double precision not null, pool_score double precision not null,
-          corpus_value real, weight_scale real
+          corpus_value real, weight_scale real, prior_rate real, prior_decks integer
         )
       `;
       await db`
         create temp table if not exists stg_sets (
-          commander_1 integer not null, commander_2 integer not null, use_commander boolean, has_sources boolean
+          commander_1 integer not null, commander_2 integer not null, use_commander boolean, has_sources boolean,
+          edhrec_floor real, edhrec_decks integer
         )
       `;
       for (let i = 0; i < sets.length; i += SETS_PER_CHUNK) {

@@ -31,6 +31,6 @@ export const TEST_CORPUS_SETTINGS: CorpusSettings = {
   minDecks: 50,
   fullDecks: 100,
   partnerPoolWeight: 0.25,
-  externalPriorShare: 0,
+  edhrecPriorCap: 0,
   severeSynergyScore: 0.2,
 };

@@ -1,21 +1,13 @@
 import type { CorpusConfidence } from '../contract';
 import type { CorpusScoring } from './config';
 
-/** Deck counts where a commander's own decks start to count (minDecks) and get full weight (fullDecks). */
+/**
+ * Deck counts where a commander's evidence starts to count (minDecks) and gets full weight (fullDecks). Evidence is the
+ * commander's own decks, plus the EDHREC prior's strength when the commander has a page (T061, `cardPrior`).
+ */
 export interface CorpusThresholds {
   minDecks: number;
   fullDecks: number;
-  /**
-   * How much commander-specific weight a card earns from an external prior (EDHREC's published inclusion for this
-   * commander) when we hold no decks of our own, 0..1. 0 turns the prior off entirely, which is the default: merging
-   * this changes nothing until `app_config.corpus.externalPriorShare` is set.
-   *
-   * It exists because the alternative at zero decks is the colour baseline, and the holdout test
-   * (`spike:edhrec:prior`) measured that baseline's top 50 matching the hidden answer 6% of the time against EDHREC's
-   * 80%. The right value is read off that report's curve - the share should be about where our own decks start to beat
-   * EDHREC - not guessed at here.
-   */
-  externalPriorShare?: number;
 }
 
 /** How a commander's decks play a card: inclusion shrunk toward the baseline, and how far above the baseline it is. */
@@ -70,19 +62,6 @@ export function commanderShare(deckCount: number, { minDecks, fullDecks }: Corpu
   if (deckCount < minDecks) return 0;
   if (fullDecks <= minDecks) return 1;
   return clamp01((deckCount - minDecks) / (fullDecks - minDecks));
-}
-
-/**
- * Share of the corpus signal that is commander-specific rather than colour-wide, counting an external prior.
- *
- * Our own decks always win once there are enough of them - this is a floor, not an override - so a commander that
- * reaches fullDecks is scored on its own decks exactly as before. Below minDecks our own share is 0 and the floor is
- * what the card gets, which is the whole point: today that card falls back to the colour baseline.
- */
-export function commanderShareWithPrior(deckCount: number, thresholds: CorpusThresholds, hasExternalPrior: boolean): number {
-  const own = commanderShare(deckCount, thresholds);
-  if (!hasExternalPrior) return own;
-  return Math.max(own, clamp01(thresholds.externalPriorShare ?? 0));
 }
 
 export function corpusConfidence(deckCount: number, { minDecks, fullDecks }: CorpusThresholds): CorpusConfidence {
@@ -196,18 +175,18 @@ export function corpusComponent(
     baseline: number;
     baselineDeckCount: number;
     /**
-     * An external source publishes a rate for this card under this commander, and `commanderRate` was built from it.
-     * It earns `thresholds.externalPriorShare` of the commander-specific weight even with no decks of our own.
+     * The commander's EDHREC page lists this card, and `commanderRate` was shrunk toward its rate. Such a card is one
+     * somebody plays, so it is never "too new to judge".
      */
     hasExternalPrior?: boolean;
   },
   thresholds: CorpusThresholds,
   scoring: CorpusScoring,
 ): { value: number; weightScale: number } | null {
-  const share = commanderRate ? commanderShareWithPrior(commanderDeckCount, thresholds, hasExternalPrior) : 0;
-  // A card an external source lists for this commander is one somebody plays, so it is not "too new to judge" even
-  // when our own corpus has nothing that could have run it. Without this the prior would be discarded for exactly the
-  // recent cards it is most useful for.
+  // commanderDeckCount is the evidence: the commander's own decks, plus the prior's strength when it has a page.
+  const share = commanderRate ? commanderShare(commanderDeckCount, thresholds) : 0;
+  // A card the commander's EDHREC page lists is one somebody plays, so it is not "too new to judge" even when our own
+  // corpus has nothing that could have run it.
   if (share === 0 && baselineDeckCount < thresholds.minDecks && !hasExternalPrior) return null;
   const fromCommander = commanderRate ? commanderCorpusScore(commanderRate, scoring) : 0;
   return {

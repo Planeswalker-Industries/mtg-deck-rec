@@ -618,13 +618,17 @@ The priority mode. Owned only plus a separate "worth buying" list becomes the de
 
 ### T061: EDHREC prior by sample size
 
-**Priority:** MEDIUM | **Area:** Scoring | **Status:** Not started | **Blocked by:** T055, T058
+**Priority:** MEDIUM | **Area:** Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, migration `20261006000500`); the cap is 100 | **Blocked by:** T055, T058
 
 Replace `externalPriorShare` with `edhrecPriorCap` and the sample-size update in [`roadmap/scoring-design.md`](roadmap/scoring-design.md) ("`corpus`"): shrink toward EDHREC's rate with a strength of its deck count up to `externalPriorCap`, toward `min(p0, floor)` for cards a page doesn't list, and toward p0 without a page. The cap starts at 200 and is set by the evaluation.
 
+**Built:** `cardPrior` and `servedCardRates` (`@mtg/core/scoring`, tested); the precompute worker scores with it and stores each listed card's rate and potential decks and each set's page floor and size; the request redoes the same arithmetic; `cli eval:holdout --time-split` holds out the 5,200 decks updated after the EDHREC snapshot. `externalPriorShare` and `edhrec_card_priors` are gone. Every single commander with a page is scored (1,790 with no decks of ours locally); a pair no key knows is not (see `card-graph-plan.md`). Locally 5.76M score rows (5.15M before).
+
+**Evaluation (time split, local):** adds recall@20 17.2% → 25.0%; commanders under 10 decks 6.0% → 18.7%, 10–49 decks 7.6% → 26.0%, 50+ 24.0% → 26.0%; cuts precision@10 19.4% → 25.0%; collection recall 34.0% → 49.8%; Sol Ring rate 21.8% → 8.9%; EDHREC agreement 45.6% → 75.8%. Caps of 50, 200, 400 and 1000 moved recall by 0.1 point at most; cut precision fell as the cap rose (25.8% at 50, 23.2% at 1000), so 100. EDHREC's numbers include older versions of some held-out decks, so the gain is an upper estimate; the next fresh `sync:edhrec` and a later time split will say how much.
+
 **Acceptance criteria:**
-- [ ] The formula in `@mtg/core/scoring` and the precompute worker, tested
-- [ ] The 10–49 and under-10 buckets rise; none falls
+- [x] The formula in `@mtg/core/scoring` and the precompute worker, tested
+- [x] The 10–49 and under-10 buckets rise; none falls
 
 ---
 
@@ -689,7 +693,7 @@ The design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), revise
 - **Fetching.** A one-off local script fetched every commander page from `json.edhrec.com` (2026-09-28). `sync:edhrec` (T054) replaces it, writing the raw `edhrec` schema; the VPS worker (T066) runs it weekly.
 - **Loading.** `import:edhrec` (retired 2026-10-05 with the stale saved pages it read) wrote the pages into `external_commanders` and `external_commander_card_stats` (now `corpus.edhrec_commanders` and `corpus.edhrec_commander_cards`) (migration `20260928000200_external_commander_stats.sql`). Loaded locally on 2026-09-28 and on hosted on 2026-09-30 (6,787 commanders, 1,791,474 card rows).
 - **Evaluation.** `spike:edhrec:prior` (retired 2026-10-05; T058 repeats it with a time split) was a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured. `supabase/tests/edhrec-stats.sql` holds the SQL checks.
-- **Wired, switched off:** `edhrec_card_priors` (added as `external_card_priors` in migration `20261002000100`, PR #123; renamed by T053) feeds the prior with `app_config.corpus.externalPriorShare` at 0. T061 replaces the share with weighting by sample size.
+- **The prior:** `edhrec_card_priors` (added as `external_card_priors` in migration `20261002000100`, PR #123; renamed by T053) fed it per request with `app_config.corpus.externalPriorShare` at 0. T061 replaced both with weighting by sample size inside the stored scores (`edhrecPriorCap` 100).
 
 **Slice 10 (full-suite crawl) is built** in the Go search API, not the TS worker the plan names: a commander queue seeded from EDHREC, decks most viewed first, one page per commander on the first visit. Revisits re-read page 1 only (2026-10-03), so samples grow only from churn; T056 (built 2026-10-05) restores growth (25 new or changed decks per revisit, owner rule 2026-10-05). Deck lookups go through the crawl's queue, served by the VPS worker (T066, T009). It absorbs closed ticket T010.
 

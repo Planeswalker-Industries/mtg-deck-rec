@@ -129,8 +129,11 @@ export const corpusSettingsSchema = z.object({
   fullDecks: z.number().int().min(0),
   /** Weight of each borrowed deck against one of the commanders' own. */
   partnerPoolWeight: share,
-  /** EDHREC's prior share (T061 replaces it). */
-  externalPriorShare: share,
+  /**
+   * The most decks EDHREC's prior counts as (κcap, T061): a listed card's prior weighs its page's potential decks up to
+   * this, so our own decks take over as they grow. 0 turns the prior off.
+   */
+  edhrecPriorCap: z.number().min(0),
   /** Below this play-rate score a cut is mandatory rather than a suggestion. */
   severeSynergyScore: share,
 });
