@@ -6,7 +6,7 @@ import {
   loadCorpusDecks,
   loadRoleCards,
 } from '../lib/corpus';
-import { connect } from '../lib/db';
+import { connect, reserve } from '../lib/db';
 import { cardStatRows, globalStatRows, identityMonths, keyStatRows, mergeBaseline, mergeKeyStats, tallyDecks } from '../lib/key-stats';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 import { precomputeScores } from './precompute-scores';
@@ -98,7 +98,7 @@ export async function aggregateCorpus({ force = false }: { force?: boolean } = {
       return 'failed_sanity';
     }
 
-    const db = await sql.reserve();
+    const db = await reserve(sql);
     try {
       await db`begin`;
       try {

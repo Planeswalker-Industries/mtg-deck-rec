@@ -1,5 +1,5 @@
 import { IDENTITIES, loadCatalog, loadCorpusConfig, loadRoleCards, type CorpusDeck } from '../lib/corpus';
-import type { Sql } from '../lib/db';
+import { reserve, type Sql } from '../lib/db';
 import { cardStatRows, globalStatRows, keyStatRows, mergeBaseline, mergeKeyStats, tallyDecks } from '../lib/key-stats';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 import { precomputeScores } from './precompute-scores';
@@ -87,7 +87,7 @@ export async function precomputeCommanders(sql: Sql): Promise<{ commanders: numb
       const keyRows = keyStatRows(tally.keys);
       const cardRows = cardStatRows(tally.keys, catalog, baseline, config.shrinkAlpha);
 
-      const db = await sql.reserve();
+      const db = await reserve(sql);
       try {
         await db`begin`;
         try {
@@ -175,7 +175,7 @@ export async function precomputeBaseline(sql: Sql, { force = false }: { force?: 
       return 'failed_sanity';
     }
 
-    const db = await sql.reserve();
+    const db = await reserve(sql);
     try {
       await db`begin`;
       try {

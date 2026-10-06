@@ -15,7 +15,7 @@ import {
   type SearchClient,
   type TagIndexRow,
 } from '@mtg/core/search';
-import { connect, type ReservedSql, type Sql } from '../lib/db';
+import { connect, reserve, type ReservedSql, type Sql } from '../lib/db';
 import { requireSearchClient, searchClient } from '../lib/search-api';
 
 /**
@@ -142,7 +142,10 @@ async function readCommanderCardRows(sql: ReservedSql, pairs: readonly [number, 
       ${
         pairs === null
           ? sql``
-          : sql`and (ccs.commander_key_id, ccs.card_id) in ${sql(pairs.map(([key, card]) => [key, card]))}`
+          : // Two aligned arrays, not sql(pairs): the driver flattens nested arrays, which broke past one pair.
+            sql`and (ccs.commander_key_id, ccs.card_id) in (
+              select * from unnest(${pairs.map(([key]) => key)}::integer[], ${pairs.map(([, card]) => card)}::integer[])
+            )`
       }
   `;
 }
@@ -388,7 +391,7 @@ export async function syncSearchIndex({ rebuild: doRebuild = false }: { rebuild?
   const pool = connect();
   // One reserved connection for the whole job: the staged functional-tag table is a temp table, and a temp table
   // belongs to the session that made it. The sync jobs reserve for the same reason.
-  const sql = await pool.reserve();
+  const sql = await reserve(pool);
   try {
     if (!(await index.health())) throw new Error('The search index reports itself unhealthy.');
     await stageFunctionalTags(sql);
@@ -420,7 +423,7 @@ export async function syncSearchIndex({ rebuild: doRebuild = false }: { rebuild?
 export async function drainSearchIndexQuietly(pool: Sql, job: string): Promise<void> {
   const index = searchClient();
   if (!index) return;
-  const sql = await pool.reserve();
+  const sql = await reserve(pool);
   try {
     await stageFunctionalTags(sql);
     await ensureCollections(index);

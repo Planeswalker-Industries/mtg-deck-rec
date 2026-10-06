@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { JsonRootStream, spellbookVariant, type SpellbookFeature } from '@mtg/core/parse';
-import { connect } from '../lib/db';
+import { connect, reserve } from '../lib/db';
 import { politeFetch } from '../lib/http';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
@@ -138,7 +138,7 @@ export async function syncSpellbook({ force = false }: { force?: boolean } = {})
     }
 
     let written = { features: 0, featuresRemoved: 0, combos: 0, combosRemoved: 0 };
-    const db = await sql.reserve();
+    const db = await reserve(sql);
     try {
       await db`create temp table stg_features (id integer primary key, name text not null, status text not null)`;
       await db`
