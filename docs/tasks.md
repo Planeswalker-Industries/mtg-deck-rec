@@ -673,13 +673,22 @@ Replace `externalPriorShare` with `edhrecPriorCap` and the sample-size update in
 
 ### T064: Deck affinity from card pairs
 
-**Priority:** MEDIUM | **Area:** Data / Scoring | **Status:** Not started | **Blocked by:** T055, T058
+**Priority:** MEDIUM | **Area:** Data / Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, contract v23, migrations `20261006000900`–`001000`); the `deck` component weighs 0.1 in adds; hosted latency waits for the release | **Blocked by:** T055, T058
 
 Pair tables (`commander_card_pairs`, `card_pairs`) from the precompute worker, the `deck` component in adds, cuts, swaps and builds, `LOW_AFFINITY`, and the contract's `deck` component. Check the VPS has room for the weekly global recount (about 450 MB) beside Typesense first.
 
+**Built:** see `../CLAUDE.md` ("Card pairs and deck affinity"). The lift's shrinkage is the plan's P̂(B|A) made symmetric (α decks at the commoner card's rate); the first version shrank by α whole decks and kept only 66k pairs. Locally: 763k key pairs for 1,314 keys (median 388 a key, the largest 4,091; 94 MB) and 470k corpus pairs (79 MB, counted in 16 s), under the plan's 4.4M estimate because the corpus is smaller than it assumed. `serving_deck_affinity` answers in about 50–60 ms. The VPS has about 4.5 GB free for the 380 MB weekly count.
+
+**Evaluation (time split, 2026-10-06; today's settings: adds recall@20 25.0%, cuts precision@10 25.0%, collection recall 49.5%):**
+- `deck` at 0.1 in adds (corpus 0.8 → 0.7): recall 25.5% (+0.53 points, interval +0.30 to +0.80), 10–49 decks 26.0% → 26.4%, 50+ 26.0% → 26.6%, under 10 18.7% → 19.2%, collection recall 51.3%. Passes; adopted.
+- `deck` at 0.2: recall 25.0% (flat, fails), collection recall 53.5%, Sol Ring rate 8.9% → 5.0%.
+- `LOW_AFFINITY` cuts: precision 25.0% → 24.7%. Stays off.
+- Swaps keep the `deck` weight at 0: the evaluation doesn't grade swaps yet.
+- The regression fixtures: the one standing miss (Talisman of Hierarchy, #4 in its group since before this branch) is #5.
+
 **Acceptance criteria:**
-- [ ] Row counts within the plan's estimates
-- [ ] Recall@20 beats the T058 baseline; p95 add latency not worse on hosted
+- [x] Row counts within the plan's estimates
+- [ ] Recall@20 beats the T058 baseline (done: +0.53 points); p95 add latency not worse on hosted (after the release)
 
 ---
 

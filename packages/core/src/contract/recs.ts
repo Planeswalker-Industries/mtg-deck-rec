@@ -44,9 +44,10 @@ export interface RecContext {
  */
 /**
  * `role`: the card fills a role the deck is short on (cards to add). `curve`: the deck is short of cards at the card's
- * mana value against the commander's learned curve (cards to add; weight 0 until the evaluation passes it).
+ * mana value against the commander's learned curve (cards to add; weight 0 until the evaluation passes it). `deck`:
+ * how strongly the card connects to the cards already in the deck, from which cards decks run together (T064).
  */
-export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes' | 'role' | 'curve';
+export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes' | 'role' | 'curve' | 'deck';
 
 export interface ScoreBreakdown {
   /** 0..1 */
@@ -169,6 +170,8 @@ export interface SwapSuggestion {
   owned: OwnedInfo | null;
   /** Every owned copy is held by these built decks: the player can ask for swaps there to free one. */
   conflicts?: DeckConflict[];
+  /** The deck cards it connects to most (decks run them together), strongest first; absent without any. */
+  pairedWith?: CardId[];
 }
 
 export type BuySwapSuggestion = SwapSuggestion & BuyValue;
@@ -205,6 +208,8 @@ export interface AddSuggestion {
   conflicts?: DeckConflict[];
   /** Combos this card would complete that are above the deck's bracket: adding it takes the deck over the line. */
   completesOverBracket?: ComboRef[];
+  /** The deck cards it connects to most (decks run them together), strongest first; absent without any. */
+  pairedWith?: CardId[];
 }
 
 export type BuyAddSuggestion = AddSuggestion & BuyValue;
@@ -259,6 +264,8 @@ export type CutReason =
   | 'OVER_BRACKET_COMBO'
   /** More extra-turn cards than the bracket allows, or a piece of an extra-turn loop. Flagged, with a cut offered. */
   | 'OVER_BRACKET_EXTRA_TURNS'
+  /** Connects to little else in the deck: decks that run it rarely run the rest (T064; off until evaluated). */
+  | 'LOW_AFFINITY'
   | 'HIGH_MANA_VALUE'
   | 'NOT_OWNED';
 

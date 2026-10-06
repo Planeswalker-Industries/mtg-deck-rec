@@ -122,6 +122,8 @@ export const ADMIN_SYNC_JOBS = [
   "precompute_substitutes",
   "precompute_roles",
   "precompute_combos",
+  "precompute_pairs",
+  "precompute_global_pairs",
 ] as const;
 
 export const ADMIN_SYNC_STATUSES = ["running", "succeeded", "skipped_unchanged", "failed", "failed_sanity", "abandoned"] as const;

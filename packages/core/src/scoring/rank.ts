@@ -29,6 +29,7 @@ import { comboRef, type ComboFacts } from '../formats/commander/bracket';
 import { cardCategory, roleGap, roleShortfalls } from './add';
 import type { CorpusSettings, ScoringConfig } from './config';
 import { commanderCorpusScore, commanderShare, corpusComponent, neutralCorpusValue, type CommanderCardRate } from './corpus';
+import { deckAffinity, type DeckCardWeight, type PairLifts } from './affinity';
 import { bracketExclusions, comboResultWeight, cutBracketMarks, overBracket, type DeckBracketFacts } from './combos';
 import { scoreCuts, type RoleTarget } from './cut';
 import {
@@ -86,6 +87,14 @@ export interface RankCorpus {
   curveProfile: Profile;
   /** EDHREC's role and curve profile for these commanders, when they have a page (T062). */
   prior: ProfilePrior | null;
+}
+
+/** What deck affinity needs for one deck (T064): the pairs touching its cards and its cards' weights. */
+export interface AffinityInput {
+  lifts: PairLifts;
+  weights: ReadonlyMap<number, DeckCardWeight>;
+  /** Cards the deck's pairs point to most, best first: they join the add pool. */
+  neighbours: readonly number[];
 }
 
 /** How many widely played candidates a request scores before grouping cards to add (the app and the evaluation). */
@@ -234,6 +243,7 @@ export function rankCuts({
   scoring,
   availability,
   bracketFacts = null,
+  affinity = null,
   limit,
 }: {
   context: RecContext;
@@ -249,6 +259,8 @@ export function rankCuts({
   availability: Availability | null;
   /** The bracket rules and the deck's complete combos (T060); without them only Game Changers are checked. */
   bracketFacts?: DeckBracketFacts | null;
+  /** Card pairs for the deck (T064): LOW_AFFINITY, once switched on, for commanders with enough decks of their own. */
+  affinity?: AffinityInput | null;
   limit: number;
 }): CutResult {
   const mainIds = mainDeckIds(context);
@@ -257,6 +269,12 @@ export function rankCuts({
   const curve = scoring.skeleton.curveCuts ? curveTargetsFor(corpus, scoring) : null;
   const curveMean = curve ? curveMeanManaValue(curve) : null;
   const deckBuckets = curve ? deckCurveOf(mainIds, cards) : null;
+  const judgeAffinity = affinity && scoring.affinity.lowAffinityCuts && commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
+  const lowAffinity = (id: number) => {
+    if (!judgeAffinity || !affinity) return {};
+    const a = deckAffinity(id, mainIds, affinity.lifts, affinity.weights, scoring.affinity);
+    return a ? { lowAffinity: a.value < scoring.affinity.lowAffinityScore } : {};
+  };
   const highOnCurve = (manaValue: number) =>
     curve && deckBuckets && curveMean !== null
       ? { highOnCurve: manaValue >= curveMean && curveOverloaded(curve, deckBuckets, manaValue, scoring.skeleton.curveOverloadRatio) }
@@ -286,6 +304,7 @@ export function rankCuts({
           corpusScore: rate && !card.isBasicLand ? commanderCorpusScore(rate, scoring.corpus) : null,
           ...(bracket ? bracket.marks(id) : {}),
           ...highOnCurve(card.summary.manaValue),
+          ...(card.isBasicLand ? {} : lowAffinity(id)),
         },
       ];
     }),
@@ -348,6 +367,7 @@ export function rankAdds({
   standIns = NO_STAND_INS,
   bracketFacts = null,
   deckCards = NO_STAND_INS,
+  affinity = null,
   limitPerCategory,
 }: {
   context: RecContext;
@@ -375,6 +395,8 @@ export function rankAdds({
   bracketFacts?: DeckBracketFacts | null;
   /** The deck's main cards, for its curve (T062); the curve component is left out without them. */
   deckCards?: ReadonlyMap<number, RankCard>;
+  /** Card pairs for the deck (T064): the `deck` component, and the cards its pairs point to join the pool. */
+  affinity?: AffinityInput | null;
   limitPerCategory: number;
 }): AddRanking {
   const only = availability !== null && ownedOnly(context);
@@ -404,7 +426,11 @@ export function rankAdds({
     );
     return { cardId, rates: r, corpusScore };
   };
-  const scoredPool = poolIds.filter((id) => !excluded.has(id)).map(corpusOf);
+  const inPool = new Set(poolIds);
+  const poolWithNeighbours = [...poolIds, ...(affinity?.neighbours ?? []).filter((id) => !inPool.has(id) && cards.has(id))];
+  const scoredPool = poolWithNeighbours.filter((id) => !excluded.has(id)).map(corpusOf);
+  const mainIds = mainDeckIds(context);
+  const affinityOf = (cardId: number) => (affinity ? deckAffinity(cardId, mainIds, affinity.lifts, affinity.weights, scoring.affinity) : null);
   // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
   const neutralCorpus = neutralCorpusValue(
     scoredPool.flatMap((p) => (p.corpusScore ? [p.corpusScore.value] : [])),
@@ -423,11 +449,21 @@ export function rankAdds({
     if (!card) return [];
     const { gap, roleIds } = roleGap([...(roles.get(cardId) ?? [])], shortfalls);
     const owning = owningOf(card, availability, standIns);
+    const deck = affinityOf(cardId);
     const suggestion: AddSuggestion = {
       card: owning.summary,
       category: cardCategory(card.summary.typeLine),
       score: blendScore(
-        { tag: null, manaValue: null, staple: null, corpus: round2(corpusScore?.value ?? neutralCorpus), votes: null, role: round2(gap), curve: curveFor(card) },
+        {
+          tag: null,
+          manaValue: null,
+          staple: null,
+          corpus: round2(corpusScore?.value ?? neutralCorpus),
+          votes: null,
+          role: round2(gap),
+          curve: curveFor(card),
+          deck: deck ? round2(deck.value) : null,
+        },
         scoring.weights.add,
       ),
       corpus: r?.evidence ?? null,
@@ -438,6 +474,7 @@ export function rankAdds({
       owned: owning.owned,
       ...(owning.conflicts ? { conflicts: owning.conflicts } : {}),
       ...(overCombos.has(cardId) ? { completesOverBracket: overCombos.get(cardId) } : {}),
+      ...(deck && deck.pairedWith.length > 0 ? { pairedWith: deck.pairedWith.map((id) => id as CardId) } : {}),
     };
     return [{ suggestion, supplied: owning.supplied }];
   };
@@ -542,6 +579,7 @@ export function rankSwaps(
     standIns = NO_STAND_INS,
     buyPool = null,
     excluded = NO_EXCLUSIONS,
+    affinity = null,
   }: {
     context: RecContext;
     limit: number;
@@ -555,6 +593,8 @@ export function rankSwaps(
     buyPool?: SwapPool | null;
     /** Cards the bracket keeps out (`bracketExclusions`). */
     excluded?: ReadonlySet<number>;
+    /** Card pairs for the deck (T064): a replacement's `deck` component, against the deck without the target. */
+    affinity?: AffinityInput | null;
   },
 ): SwapResult {
   const only = availability !== null && ownedOnly(context);
@@ -565,6 +605,7 @@ export function rankSwaps(
     (c) => !inDeck.has(c.cardId) && !excluded.has(c.cardId) && c.tagSimilarity >= scoring.swap.tagSimilarityFloor,
   );
   const owns = ownsWith(availability);
+  const deckWithoutTarget = mainDeckIds(context).filter((id) => id !== target.id);
 
   // undefined: no corpus loaded at all. null: too new to judge by play rates.
   const corpusScores = new Map(
@@ -597,6 +638,7 @@ export function rankSwaps(
   const scored = candidates.map((c) => {
     const card = c.card.summary;
     const owning = owningOf(c.card, availability, standIns);
+    const deck = affinity ? deckAffinity(c.cardId, deckWithoutTarget, affinity.lifts, affinity.weights, scoring.affinity) : null;
     const known = corpusScores.get(c.cardId);
     const corpusScore = known === null ? { value: neutralCorpus, weightScale: scoring.corpus.baselineWeight } : (known ?? null);
     const suggestion: SwapSuggestion = {
@@ -608,6 +650,7 @@ export function rankSwaps(
       costDelta: costDelta(target, owning.summary, owns),
       owned: owning.owned,
       ...(owning.conflicts ? { conflicts: owning.conflicts } : {}),
+      ...(deck && deck.pairedWith.length > 0 ? { pairedWith: deck.pairedWith.map((id) => id as CardId) } : {}),
       score: blendScore(
           {
             tag: round2(c.tagSimilarity),
@@ -616,6 +659,7 @@ export function rankSwaps(
             corpus: corpusScore ? round2(corpusScore.value) : null,
             votes: null,
             role: null,
+            deck: deck ? round2(deck.value) : null,
           },
           corpusScore ? { ...baseWeights, corpus: baseWeights.corpus * corpusScore.weightScale } : baseWeights,
         ),

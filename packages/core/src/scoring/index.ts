@@ -10,3 +10,5 @@ export * from './rank';
 export * from './evaluate';
 export * from './combos';
 export * from './curve';
+export * from './pairs';
+export * from './affinity';

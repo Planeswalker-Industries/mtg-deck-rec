@@ -20,13 +20,18 @@ import {
   countsFromTotals,
   decksSinceRelease,
   evaluateGate,
+  globalPairs,
   identityBaselineDecks,
   isHeldOut,
+  keyPairs,
   pageEvidence,
+  pairNeighbours,
   parseCorpusSettings,
   parseEvalConfig,
+  parsePairSettings,
   parseScoringConfig,
   pickCorpusSources,
+  pmiIndex,
   scaledPrior,
   precisionAt,
   rankAdds,
@@ -40,6 +45,7 @@ import {
   sourcesConfidence,
   stableUnit,
   weightedSample,
+  type AffinityInput,
   type BaselineCounts,
   type CardFacts,
   type CardPlayRates,
@@ -47,6 +53,9 @@ import {
   type CorpusSettings,
   type EvalConfig,
   type Interval,
+  type PairRow,
+  type PairSettings,
+  type PmiIndex,
   type RankCard,
   type RankCorpus,
   type RoleTarget,
@@ -171,6 +180,8 @@ function estimateDeck(deck: EvalDeck, data: Data, brackets: BracketData) {
 }
 
 interface Settings {
+  /** How pairs are counted (`app_config.pairs`, T064). */
+  pairs: PairSettings;
   corpus: CorpusSettings;
   config: CorpusConfig;
   scoring: ScoringConfig;
@@ -187,6 +198,8 @@ interface Training {
   identityMonths: Map<number, Record<string, number>>;
   /** Baseline candidates per colour identity, best first, built on first use. */
   baselineOrder: Map<number, number[]>;
+  /** Card pairs from the training decks (T064): the corpus's, and each key's on first use. */
+  pairs?: { global: PmiIndex; ownFor: (key: string) => PmiIndex };
 }
 
 /** One commander set under one training: its corpus, its candidates in pool order, and play rates on demand. */
@@ -196,6 +209,8 @@ interface SetModel {
   ordered: number[];
   /** The colours' most played cards, which a collection's pool draws on beside the commander's (T059). */
   colours: number[];
+  /** Card pairs for a deck under these commanders (T064), with up to `neighbours` cards its pairs point to. */
+  affinityFor: (deckIds: readonly number[], neighbours: number, eligible: (cardId: number) => boolean) => AffinityInput | null;
   rates: (cardId: number) => CardPlayRates;
 }
 
@@ -483,6 +498,46 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
     ordered,
     colours: baselineOrder(training, mask, data),
     rates,
+    affinityFor: (deckIds, neighbours, eligible) => {
+      if (!training.pairs) return null;
+      const key = ids.join(':');
+      const lifts = { own: training.aggregates.has(key) ? training.pairs.ownFor(key) : EMPTY_PMI, global: training.pairs.global };
+      const keyCards = training.aggregates.get(key)?.cards;
+      const weights = new Map(
+        deckIds.map((id) => {
+          const r = rates(id);
+          return [id, { rate: r.commanderRate?.inclusion ?? r.baseline, keyDecks: keyCards?.get(id) ?? 0 }] as const;
+        }),
+      );
+      return { lifts, weights, neighbours: neighbours > 0 ? pairNeighbours(deckIds, lifts, neighbours, eligible) : [] };
+    },
+  };
+}
+
+const EMPTY_PMI: PmiIndex = new Map();
+const pmiOf = (rows: readonly PairRow[]) => pmiIndex(rows.map((r) => [r.cardA, r.cardB, r.lift] as const));
+
+/** Card pairs counted from training decks, as the precompute worker counts them from all of them. */
+function trainingPairs(train: readonly EvalDeck[], trainingDecks: Map<string, EvalDeck[]>, data: Data, settings: PairSettings): NonNullable<Training['pairs']> {
+  const global = pmiOf(
+    globalPairs(
+      train.map((d) => ({ cardIds: d.cardIds, identity: d.identity })),
+      (id) => data.catalog.get(id)?.colorIdentity ?? 0,
+      settings,
+    ),
+  );
+  const own = new Map<string, PmiIndex>();
+  const releaseMonth = (id: number) => data.facts.get(id)?.releaseMonth ?? null;
+  return {
+    global,
+    ownFor: (key) => {
+      let index = own.get(key);
+      if (!index) {
+        index = pmiOf(keyPairs(trainingDecks.get(key) ?? [], releaseMonth, settings));
+        own.set(key, index);
+      }
+      return index;
+    },
   };
 }
 
@@ -502,9 +557,11 @@ function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel,
   // A collection's pool is the commander's cards it holds and then the colours' cards it holds, as serving_add_pool
   // returns them with p_owned.
   const poolIds = owned ? [...new Set([...pick(model.ordered), ...pick(model.colours)])] : pick(model.ordered);
-  const cards = new Map(poolIds.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : [])));
-  const rates = new Map(poolIds.map((id) => [id, model.rates(id)]));
-  const roles = new Map([...poolIds, ...visible].map((id) => [id, data.roles.get(id) ?? []]));
+  const affinity = model.affinityFor(visible, settings.scoring.affinity.neighbours, (id) => !taken.has(id) && eligibleCandidate(data.cards.get(id), model.mask));
+  const scoredIds = [...poolIds, ...(affinity?.neighbours ?? [])];
+  const cards = new Map(scoredIds.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : [])));
+  const rates = new Map(scoredIds.map((id) => [id, model.rates(id)]));
+  const roles = new Map([...scoredIds, ...visible].map((id) => [id, data.roles.get(id) ?? []]));
   const { groups } = rankAdds({
     context: contextFor(deck, visible, owned ? [...owned] : undefined),
     poolIds,
@@ -517,6 +574,7 @@ function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel,
     ownedBoost: 0,
     scoring: settings.scoring,
     deckCards: new Map(visible.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : []))),
+    affinity,
     availability: owned ? availability({ owned: new Map([...owned].map((id) => [id, 1])), builtDecks: [] }, new Map()) : null,
     limitPerCategory: ALL_CATEGORIES,
   });
@@ -577,6 +635,7 @@ function gradeDeck(deck: EvalDeck, model: SetModel, training: Training, settings
     roleTargets: data.roleTargets,
     scoring: settings.scoring,
     availability: null,
+    affinity: settings.scoring.affinity.lowAffinityCuts ? model.affinityFor(cutDeck, 0, () => false) : null,
     limit: e.cutPrecisionAt,
   });
   const cutPrecision = precisionAt(
@@ -663,6 +722,11 @@ function run(settings: Settings, data: Data, training: Training, trainingDecks: 
       if (kept.length === 0) aggregates.delete(key);
       else aggregates.set(key, aggregate(kept, data).get(key) as KeyAggregate);
       const reduced = buildTraining(aggregates, data, { baseline: training.baseline, identityMonths: training.identityMonths });
+      if (training.pairs) {
+        const keptPairs = pmiOf(keyPairs(kept, (id) => data.facts.get(id)?.releaseMonth ?? null, settings.pairs));
+        const all = training.pairs;
+        reduced.pairs = { global: all.global, ownFor: (k) => (k === key ? keptPairs : all.ownFor(k)) };
+      }
       const commanderIds = held[0]?.commanderIds ?? [];
       const model = setModel(commanderIds, reduced, settings, data);
       const recalls = held.flatMap((deck) => {
@@ -780,8 +844,12 @@ export async function evalHoldout({ candidatePath, timeSplit = false }: { candid
   const started = Date.now();
   try {
     const config = await loadCorpusConfig(sql);
-    const [scoringRow] = await sql<{ value: Record<string, unknown> }[]>`select value from public.app_config where key = 'scoring'`;
+    const [[scoringRow], [pairsRow]] = await Promise.all([
+      sql<{ value: Record<string, unknown> }[]>`select value from public.app_config where key = 'scoring'`,
+      sql<{ value: unknown }[]>`select value from public.app_config where key = 'pairs'`,
+    ]);
     const baseSettings: Settings = {
+      pairs: parsePairSettings(pairsRow?.value),
       corpus: config,
       config,
       scoring: parseScoringConfig(scoringRow?.value),
@@ -797,6 +865,7 @@ export async function evalHoldout({ candidatePath, timeSplit = false }: { candid
     const train = data.decks.filter((d) => !held(d));
     const training = buildTraining(aggregate(train, data), data);
     const trainingDecks = groupBy(train, (d) => d.key);
+    training.pairs = trainingPairs(train, trainingDecks, data, baseSettings.pairs);
     console.log(`eval:holdout: ${data.decks.length} decks, ${train.length} training, ${heldOut.length} held out.`);
 
     const baseline = run(baseSettings, data, training, trainingDecks, heldOut);

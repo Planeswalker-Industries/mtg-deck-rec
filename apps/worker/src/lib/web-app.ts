@@ -17,7 +17,9 @@ const TAGS_BY_JOB: Record<SyncJob, CacheTag[]> = {
   precompute_scores: ['corpus', 'recs'],
   precompute_substitutes: ['catalog', 'recs'], // card pages (catalog) show a card's alternatives
   precompute_roles: ['recs'],
-  precompute_combos: [], // nothing reads spellbook_combo_pieces until T060
+  precompute_combos: [], // combos are read per request, never cached
+  precompute_pairs: [], // so are card pairs
+  precompute_global_pairs: [],
 };
 
 const TIMEOUT_MS = 10_000;

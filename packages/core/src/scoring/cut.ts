@@ -27,6 +27,8 @@ export interface CutCandidate {
    * average. When set, it replaces the fixed `highManaValue` rule.
    */
   highOnCurve?: boolean;
+  /** Connects to little else in the deck (T064): its affinity to the rest is under `affinity.lowAffinityScore`. */
+  lowAffinity?: boolean;
 }
 
 export interface RoleTarget {
@@ -110,6 +112,7 @@ export function scoreCuts(cards: readonly CutCandidate[], options: CutOptions): 
     const judged = card.comboPiece ? null : corpusScore;
     const lowSynergy = judged !== null && judged < scoring.lowSynergyScore;
     if (lowSynergy) reasons.push('LOW_SYNERGY');
+    if (card.lowAffinity) reasons.push('LOW_AFFINITY');
     const severeMisfit = judged !== null && options.severeSynergyScore !== undefined && judged < options.severeSynergyScore;
     const cardRoles = card.roleIds.filter((r) => tracked.has(r));
     const redundant = !card.isLand && !wellPlayed && cardRoles.length > 0 && cardRoles.every((r) => overloaded.has(r));

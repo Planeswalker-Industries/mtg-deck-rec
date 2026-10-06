@@ -5,7 +5,9 @@ import {
   commanderCardCounts,
   commanderShare,
   identityBaselineDecks,
+  pmiIndex,
   servedCardRates,
+  type AffinityInput,
   type RankCard,
   type SwapPool,
   type SwapPoolCandidate,
@@ -156,6 +158,51 @@ function deckCombosRead(
   });
 }
 
+/** `serving_deck_affinity`'s value: pair rows as [cardA, cardB, lift], card weights as [card, rate, keyDecks]. */
+interface AffinityValue {
+  own?: [number, number, number][];
+  global?: [number, number, number][];
+  cards?: [number, number, number][];
+  neighbours?: ServingCard[];
+}
+
+/**
+ * Card pairs for a deck (T064): the pairs touching its cards, their weights and, with `neighbours` (null: the configured
+ * number), the cards its pairs point to most, as serving_cards.
+ */
+function deckAffinityRead(
+  db: PublicClient,
+  input: { cardIds: readonly number[]; commanderIds: readonly number[]; exclude?: readonly number[]; allowGameChangers?: boolean; neighbours: number | null },
+) {
+  return db.rpc("serving_deck_affinity", {
+    p_commander_ids: [...input.commanderIds],
+    p_card_ids: [...input.cardIds],
+    p_exclude: [...(input.exclude ?? [])],
+    p_allow_game_changers: input.allowGameChangers ?? true,
+    ...(input.neighbours === null ? {} : { p_neighbours: input.neighbours }),
+  });
+}
+
+function affinityOf(data: unknown): { affinity: AffinityInput; neighbourCards: ServingCard[] } {
+  const value = (data ?? {}) as AffinityValue;
+  const neighbourCards = (value.neighbours ?? []).filter((c) => c.card_id !== null);
+  return {
+    affinity: {
+      lifts: { own: pmiIndex(value.own ?? []), global: pmiIndex(value.global ?? []) },
+      weights: new Map((value.cards ?? []).map(([card, rate, keyDecks]) => [card, { rate, keyDecks }])),
+      neighbours: neighbourCards.flatMap((c) => (c.card_id === null ? [] : [c.card_id])),
+    },
+    neighbourCards,
+  };
+}
+
+/** Card pairs for a swap's deck (no neighbours: a swap's pool is the target's substitutes). */
+export async function loadDeckAffinity(db: PublicClient, cardIds: readonly number[], commanderIds: readonly number[]): Promise<AffinityInput> {
+  const { data, error } = await deckAffinityRead(db, { cardIds, commanderIds, neighbours: 0 });
+  if (error) throw new Error(`Loading card pairs failed: ${error.message}`);
+  return affinityOf(data).affinity;
+}
+
 /** The deck's complete combos, for deck analysis. */
 export async function loadDeckCombos(db: PublicClient, cardIds: readonly number[], commanderIds: readonly number[]): Promise<ComboFacts[]> {
   const { data, error } = await deckCombosRead(db, { cardIds, commanderIds, near: false });
@@ -180,6 +227,8 @@ export interface ServedAdds {
   combos: ComboFacts[];
   /** The deck's main cards, for its curve (T062). */
   deckCards: Map<number, RankCard>;
+  /** Card pairs for the deck (T064); the cards they point to are in `pool`. */
+  affinity: AffinityInput;
 }
 
 export async function loadServedAdds(
@@ -203,7 +252,7 @@ export async function loadServedAdds(
       p_mode: "adds",
       ...(owned ? { p_owned: [...owned] } : {}),
     });
-  const [poolResult, openResult, combosResult, corpus, deckRolesResult, deckRows, commandersResult, identityMonths, checkedAt] = await Promise.all([
+  const [poolResult, openResult, combosResult, affinityResult, corpus, deckRolesResult, deckRows, commandersResult, identityMonths, checkedAt] = await Promise.all([
     pool(input.owned),
     input.owned ? pool(null) : Promise.resolve(null),
     deckCombosRead(db, {
@@ -212,6 +261,13 @@ export async function loadServedAdds(
       exclude: input.exclude,
       allowGameChangers: input.allowGameChangers,
       near: true,
+    }),
+    deckAffinityRead(db, {
+      cardIds: input.mainIds,
+      commanderIds,
+      exclude: input.exclude,
+      allowGameChangers: input.allowGameChangers,
+      neighbours: null,
     }),
     loadCommanderCorpus(db, commanderIds),
     input.mainIds.length > 0
@@ -226,6 +282,8 @@ export async function loadServedAdds(
   if (openResult?.error) throw new Error(`Loading the add pool failed: ${openResult.error.message}`);
   if (combosResult.error) throw new Error(`Loading the deck's combos failed: ${combosResult.error.message}`);
   const { combos, missingCards } = combosOf(combosResult.data ?? []);
+  if (affinityResult.error) throw new Error(`Loading card pairs failed: ${affinityResult.error.message}`);
+  const { affinity, neighbourCards } = affinityOf(affinityResult.data);
   if (deckRolesResult.error) throw new Error(`Loading card roles failed: ${deckRolesResult.error.message}`);
   if (commandersResult.error) throw new Error(`Loading commanders failed: ${commandersResult.error.message}`);
 
@@ -253,10 +311,16 @@ export async function loadServedAdds(
     corpus,
     commanderRows: servedCards(asCards(commandersResult.data), corpus, identityMonths, checkedAt).rows,
     poolIds: poolCards.flatMap((c) => (c.card_id === null ? [] : [c.card_id])),
-    pool: servedCards([...poolCards, ...missingCards.filter((c) => !seen.has(c.card_id ?? 0))], corpus, identityMonths, checkedAt),
+    pool: servedCards(
+      [...poolCards, ...[...missingCards, ...neighbourCards].filter((c) => !seen.has(c.card_id ?? 0))],
+      corpus,
+      identityMonths,
+      checkedAt,
+    ),
     deckRoles,
     combos,
     deckCards: new Map([...deckRows].map(([id, row]) => [id, rankCardOf(row)])),
+    affinity,
   };
 }
 
@@ -264,18 +328,25 @@ export async function loadServedAdds(
 export async function loadServedCuts(
   db: PublicClient,
   input: { commanderIds: readonly number[]; mainIds: readonly number[] },
-): Promise<ServedCards & { corpus: CommanderCorpus; combos: ComboFacts[] }> {
+): Promise<ServedCards & { corpus: CommanderCorpus; combos: ComboFacts[]; affinity: AffinityInput }> {
   const commanderIds = [...input.commanderIds];
-  const [cardsResult, combosResult, corpus, identityMonths, checkedAt] = await Promise.all([
+  const [cardsResult, combosResult, affinityResult, corpus, identityMonths, checkedAt] = await Promise.all([
     db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: [...input.mainIds, ...commanderIds] }),
     deckCombosRead(db, { cardIds: input.mainIds, commanderIds, near: false }),
+    deckAffinityRead(db, { cardIds: input.mainIds, commanderIds, neighbours: 0 }),
     loadCommanderCorpus(db, commanderIds),
     loadIdentityMonths(db),
     pricesCheckedAt(db),
   ]);
   if (cardsResult.error) throw new Error(`Loading the deck's cards failed: ${cardsResult.error.message}`);
   if (combosResult.error) throw new Error(`Loading the deck's combos failed: ${combosResult.error.message}`);
-  return { corpus, combos: combosOf(combosResult.data ?? []).combos, ...servedCards(asCards(cardsResult.data), corpus, identityMonths, checkedAt) };
+  if (affinityResult.error) throw new Error(`Loading card pairs failed: ${affinityResult.error.message}`);
+  return {
+    corpus,
+    combos: combosOf(combosResult.data ?? []).combos,
+    affinity: affinityOf(affinityResult.data).affinity,
+    ...servedCards(asCards(cardsResult.data), corpus, identityMonths, checkedAt),
+  };
 }
 
 /**

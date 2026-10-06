@@ -21,6 +21,7 @@ export const cutReasonLabel: Record<CutReason, string> = {
   OVER_BRACKET_MLD: "Mass land denial isn't allowed in this bracket",
   OVER_BRACKET_COMBO: "Part of a combo above this bracket",
   OVER_BRACKET_EXTRA_TURNS: "Too many extra turns for this bracket",
+  LOW_AFFINITY: "Doesn't go with the rest of the deck",
   HIGH_MANA_VALUE: "Expensive to cast",
   NOT_OWNED: "Not in your collection",
 };
@@ -36,6 +37,7 @@ export const cutReasonShortLabel: Record<CutReason, string> = {
   OVER_BRACKET_MLD: "Land denial",
   OVER_BRACKET_COMBO: "Combo over bracket",
   OVER_BRACKET_EXTRA_TURNS: "Extra turns",
+  LOW_AFFINITY: "Off-plan",
   HIGH_MANA_VALUE: "High mana value",
   NOT_OWNED: "Not owned",
 };

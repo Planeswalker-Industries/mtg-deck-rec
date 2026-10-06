@@ -20,7 +20,7 @@ import { availabilityFor, loadStandIns } from "./collection-availability";
 import { cachedConfig } from "./config-cache";
 import { commanderKeyCounts } from "./corpus";
 import { loadScoringConfig } from "./scoring-config";
-import { loadServedAdds, loadServedCuts, loadServedSwapPool } from "./serving";
+import { loadDeckAffinity, loadServedAdds, loadServedCuts, loadServedSwapPool } from "./serving";
 import type { PublicClient } from "./supabase";
 
 /**
@@ -138,7 +138,7 @@ export async function getSwapSuggestions(
 ): Promise<SwapResult> {
   const available = await availabilityFor(db, collection);
   const only = available !== null && ownedOnly(context);
-  const [pool, open, standIns, ownedBoost, scoring, bracket] = await Promise.all([
+  const [pool, open, standIns, ownedBoost, scoring, bracket, affinity] = await Promise.all([
     loadSwapPool(db, {
       targetCardId,
       commanderIds: context.deck.commanders,
@@ -152,10 +152,11 @@ export async function getSwapSuggestions(
     loadOwnedBoost(db, context),
     loadScoringConfig(),
     loadBracketBasics(db),
+    loadDeckAffinity(db, mainDeckIds(context), context.deck.commanders),
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
   const excluded = bracketExclusions({ ...bracket, combos: [] }, context.bracket);
-  return rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open, excluded });
+  return rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open, excluded, affinity });
 }
 
 export async function getCutSuggestions(
@@ -179,6 +180,7 @@ export async function getCutSuggestions(
     scoring,
     availability: available,
     bracketFacts: { ...bracket, combos: served.combos },
+    affinity: served.affinity,
     limit,
   });
 }
@@ -251,6 +253,7 @@ export async function getAddSuggestions(
     standIns,
     bracketFacts: { ...bracket, combos: served.combos },
     deckCards: served.deckCards,
+    affinity: served.affinity,
     limitPerCategory,
   });
   return { mode, commanderKey, confidence: corpus.confidence, groups, ...(buyList ? { buyList } : {}), ...(combos ? { combos } : {}) };

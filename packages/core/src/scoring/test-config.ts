@@ -7,10 +7,10 @@ import type { CorpusSettings, ScoringConfig } from './config';
  */
 export const TEST_SCORING: ScoringConfig = {
   weights: {
-    add: { tag: 0, manaValue: 0, staple: 0, corpus: 0.8, votes: 0, role: 0.2, curve: 0 },
+    add: { tag: 0, manaValue: 0, staple: 0, corpus: 0.8, votes: 0, role: 0.2, curve: 0, deck: 0 },
     swap: {
-      collection_less: { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0 },
-      collection_aware: { tag: 0.55, manaValue: 0.1, staple: 0.1, corpus: 0.15, votes: 0.1, role: 0, curve: 0 },
+      collection_less: { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0 },
+      collection_aware: { tag: 0.55, manaValue: 0.1, staple: 0.1, corpus: 0.15, votes: 0.1, role: 0, curve: 0, deck: 0 },
     },
   },
   corpus: { synergyScale: 0.3, synergyShare: 0.6, baselineWeight: 0.5, neutralValue: 0.5 },
@@ -26,6 +26,7 @@ export const TEST_SCORING: ScoringConfig = {
   },
   collection: { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 10 },
   skeleton: { edhrecPrior: false, curveCuts: false, curveOverloadRatio: 1.25, typicalNonlandCards: 64 },
+  affinity: { backoffBeta: 50, halfValue: 0.1, lowAffinityScore: 0.2, lowAffinityCuts: false, neighbours: 100 },
   combos: {
     resultClasses: [
       { match: '^(Win the game|Each opponent loses the game|Target opponent loses the game)$', weight: 1 },

@@ -17,7 +17,9 @@ export type SyncJob =
   | 'precompute_scores'
   | 'precompute_substitutes'
   | 'precompute_roles'
-  | 'precompute_combos';
+  | 'precompute_combos'
+  | 'precompute_pairs'
+  | 'precompute_global_pairs';
 export type SyncMetrics = Record<string, number>;
 
 export const WORKER_ID = `${os.hostname()}:${process.pid}`;

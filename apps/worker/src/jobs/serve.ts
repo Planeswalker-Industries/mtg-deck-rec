@@ -3,6 +3,7 @@ import { connect, type Sql } from '../lib/db';
 import { collate } from './collate';
 import { checkIn, serveLookups, triggerCrawl } from './lookups';
 import { precomputeBaseline, precomputeCommanders } from './precompute-commanders';
+import { precomputeGlobalPairs, precomputePairs } from './precompute-pairs';
 import { precomputeScores, scoreSettingsChanged } from './precompute-scores';
 import { precomputeSubstitutes } from './precompute-substitutes';
 import { precomputeCombos, precomputeRoles } from './precompute-tables';
@@ -16,6 +17,7 @@ interface Schedule {
   collateEveryMinutes: number;
   baselineHourUtc: number;
   edhrecEveryDays: number;
+  globalPairsEveryDays: number;
   retryHours: number;
 }
 
@@ -26,6 +28,7 @@ const DEFAULT_SCHEDULE: Schedule = {
   collateEveryMinutes: 30,
   baselineHourUtc: 4,
   edhrecEveryDays: 7,
+  globalPairsEveryDays: 7,
   retryHours: 6,
 };
 const MS_PER_SECOND = 1000;
@@ -90,6 +93,22 @@ async function edhrecDue(sql: Sql, schedule: Schedule): Promise<boolean> {
   return row?.due ?? false;
 }
 
+/** Whether the corpus's card pairs are due: none succeeded within `globalPairsEveryDays`, none started within `retryHours`. */
+async function globalPairsDue(sql: Sql, schedule: Schedule): Promise<boolean> {
+  const [row] = await sql<{ due: boolean }[]>`
+    select not exists (
+             select 1 from public.sync_runs
+             where job = 'precompute_global_pairs' and status = 'succeeded'
+               and started_at > now() - make_interval(days => ${schedule.globalPairsEveryDays})
+           )
+       and not exists (
+             select 1 from public.sync_runs
+             where job = 'precompute_global_pairs' and started_at > now() - make_interval(hours => ${schedule.retryHours})
+           ) as due
+  `;
+  return row?.due ?? false;
+}
+
 /** Runs one duty, logging a failure instead of letting it stop the others. */
 async function duty(name: string, run: () => Promise<unknown>): Promise<void> {
   try {
@@ -109,6 +128,7 @@ async function duty(name: string, run: () => Promise<unknown>): Promise<void> {
  *   minutes at a time, carried on in the next pass), card roles and combo pieces if their inputs moved;
  * - the nightly baseline at `baselineHourUtc`, which ends by re-scoring every commander;
  * - every score again whenever app_config.corpus changes;
+ * - the card pairs (T064) of keys whose stats moved, after each collation, and the corpus's every `globalPairsEveryDays`;
  * - an EDHREC fetch every `edhrecEveryDays`, in the background, since it takes hours and lookups must not wait on it.
  *
  * When something last ran is read from sync_runs and crawl.runs, so a restart neither repeats nor skips work. A stop
@@ -153,7 +173,9 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
       if (collating) {
         await duty('card roles', () => precomputeRoles(sql));
         await duty('combo pieces', () => precomputeCombos(sql));
+        await duty('card pairs', () => precomputePairs(sql));
       }
+      if (await globalPairsDue(sql, schedule)) await duty('corpus card pairs', () => precomputeGlobalPairs(sql, { force: true }));
       if (!edhrec && !once && (await edhrecDue(sql, schedule))) {
         edhrec = duty('EDHREC fetch', () => syncEdhrec()).finally(() => {
           edhrec = null;

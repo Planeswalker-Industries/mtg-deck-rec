@@ -140,6 +140,42 @@ export type Database = {
           },
         ]
       }
+      card_pairs: {
+        Row: {
+          card_a: number
+          card_b: number
+          lift: number
+          pair_decks: number
+        }
+        Insert: {
+          card_a: number
+          card_b: number
+          lift: number
+          pair_decks: number
+        }
+        Update: {
+          card_a?: number
+          card_b?: number
+          lift?: number
+          pair_decks?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_pairs_card_a_fkey"
+            columns: ["card_a"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_pairs_card_b_fkey"
+            columns: ["card_b"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_roles: {
         Row: {
           card_id: number
@@ -526,6 +562,48 @@ export type Database = {
             columns: ["printing_id"]
             isOneToOne: false
             referencedRelation: "printings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_card_pairs: {
+        Row: {
+          card_a: number
+          card_b: number
+          commander_1: number
+          commander_2: number
+          lift: number
+          pair_decks: number
+        }
+        Insert: {
+          card_a: number
+          card_b: number
+          commander_1: number
+          commander_2?: number
+          lift: number
+          pair_decks: number
+        }
+        Update: {
+          card_a?: number
+          card_b?: number
+          commander_1?: number
+          commander_2?: number
+          lift?: number
+          pair_decks?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_card_pairs_card_a_fkey"
+            columns: ["card_a"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commander_card_pairs_card_b_fkey"
+            columns: ["card_b"]
+            isOneToOne: false
+            referencedRelation: "cards"
             referencedColumns: ["id"]
           },
         ]
@@ -2046,6 +2124,16 @@ export type Database = {
         Args: { p_commander_ids: number[] }
         Returns: Json
       }
+      serving_deck_affinity: {
+        Args: {
+          p_allow_game_changers?: boolean
+          p_card_ids: number[]
+          p_commander_ids: number[]
+          p_exclude?: number[]
+          p_neighbours?: number
+        }
+        Returns: Json
+      }
       serving_deck_combos: {
         Args: {
           p_allow_game_changers?: boolean
@@ -2146,6 +2234,8 @@ export type Database = {
         | "precompute_substitutes"
         | "precompute_roles"
         | "precompute_combos"
+        | "precompute_pairs"
+        | "precompute_global_pairs"
       sync_status:
         | "running"
         | "succeeded"
@@ -2347,6 +2437,8 @@ export const Constants = {
         "precompute_substitutes",
         "precompute_roles",
         "precompute_combos",
+        "precompute_pairs",
+        "precompute_global_pairs",
       ],
       sync_status: [
         "running",

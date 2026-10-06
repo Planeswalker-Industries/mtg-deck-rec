@@ -19,6 +19,7 @@ const componentWeightsSchema = z.object({
   votes: share,
   role: share,
   curve: share,
+  deck: share,
 });
 
 export const scoringConfigSchema = z.object({
@@ -88,6 +89,19 @@ export const scoringConfigSchema = z.object({
      * this total (`scaledPrior`).
      */
     typicalNonlandCards: positive,
+  }),
+  /** Deck affinity from card pairs (T064). */
+  affinity: z.object({
+    /** β in the backoff from a commander's own pairs to the corpus's: w = decks / (decks + β). */
+    backoffBeta: positive,
+    /** The raw affinity that scores 0.5: score = raw / (raw + halfValue). */
+    halfValue: positive,
+    /** LOW_AFFINITY marks a cut whose affinity to the rest of the deck is under this… */
+    lowAffinityScore: share,
+    /** …once switched on. */
+    lowAffinityCuts: z.boolean(),
+    /** Cards the deck's strongest pairs point to, added to the add pool. */
+    neighbours: z.int().min(0),
   }),
   /** "Complete a combo" (T060): what a combo does decides its place, then the missing card's add score. */
   combos: z.object({

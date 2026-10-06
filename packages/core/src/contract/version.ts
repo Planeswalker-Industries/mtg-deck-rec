@@ -89,5 +89,10 @@
  * v22 (2026-10-06): the learned skeleton (T062). ScoreComponent gains 'curve': how short the deck is at the card's mana
  * value against the commander's curve. Every ScoreBreakdown carries it (null where it doesn't apply); its weight is 0
  * until the evaluation passes it.
+ *
+ * v23 (2026-10-06): deck affinity (T064). ScoreComponent gains 'deck' (how strongly a card connects to the deck's other
+ * cards, from card pairs), AddSuggestion and SwapSuggestion gain optional `pairedWith` (the deck cards it connects to
+ * most) and CutReason gains LOW_AFFINITY. The component's weight is 0 and the cut reason off until the evaluation
+ * passes them.
  */
-export const CONTRACT_VERSION = 22;
+export const CONTRACT_VERSION = 23;
