@@ -328,8 +328,12 @@ tag similarity while the player waits.
 
 **Built 2026-10-06** (T055; CLAUDE.md "Precompute worker" has the rules). Where it differs from the plan above:
 
-- **Substitute depth is 220 + 220**, not 50 + 50. On 240 sampled swap lists, 50 + 50 left a shown replacement out of
-  11% of them; 220 + 220, the depth of the shared swap pool, left none out. About 10.7M rows (795 MB) locally.
+- **Substitutes are stored per colour identity**, not as the top 50 in the card's own colours plus the top 50 overall.
+  For every colour identity that can hold the card, the list keeps the first 220 candidates in `rec_swap_candidates`'
+  order (and the first 220 that aren't Game Changers), so any deck's swap list comes from what is stored. 50 + 50 left
+  a shown replacement out of 11% of 240 sampled lists, and even 220 + 220 left 3 of 170 hosted lists short: a white
+  card in a white-blue deck could miss a blue candidate ranked #100 among white-blue cards but #283 overall. About 525
+  per card (2026-10-06).
 - **A pair no key knows is exact.** `partner_card_totals` holds each partner-capable commander's counts over all its
   keys at full weight; the pair's sums are the two partners' totals at `partnerPoolWeight`, which is what
   `pickCorpusSources` does, rather than an approximation from each partner's own rows.
