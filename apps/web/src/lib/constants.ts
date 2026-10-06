@@ -10,6 +10,12 @@
 export const COLLECTION_MAX_IMPORT_ROWS = 50_000;
 
 /**
+ * PostgREST answers at most this many rows (`[api] max_rows` in `supabase/config.toml`, the hosted default too) and drops
+ * the rest without saying so. A read that can return more pages through `.range()`.
+ */
+export const POSTGREST_MAX_ROWS = 1_000;
+
+/**
  * The CSS custom property the deck tool's sticky deck bar sets to its own height, so other sticky surfaces (the
  * deckbuilder's search filters) stop below it rather than under it. Tailwind classes spell it out literally,
  * `top-[var(--deck-bar-height,0px)]`, because class names cannot be built at runtime; keep the two in step.

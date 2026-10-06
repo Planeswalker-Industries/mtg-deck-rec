@@ -1,4 +1,4 @@
-# Status (2026-09-30)
+# Status (2026-10-06)
 
 Where the project stands, and why things are the way they are.
 
@@ -17,12 +17,13 @@ Where the project stands, and why things are the way they are.
 ## Live setup
 
 - **Site:** https://mtg-app-psi.vercel.app, Vercel project `mtg-app` (root `apps/web`, functions in `cle1`)
-- **Database:** Supabase Pro since 2026-09-21, `us-east-2`, 8 GB. 425 MB used on 2026-09-28.
+- **Database:** Supabase Pro since 2026-09-21, `us-east-2`, 8 GB. 705 MB used on 2026-10-05.
 - **Scryfall data:** 34,642 live cards on hosted (2026-09-28); printings are English only.
-- **Corpus on hosted:** 129 commanders have stats, rebuilt from this PC with `cli:hosted aggregate:corpus`. The crawled corpus (`corpus.decks`) holds 666 decks that nothing aggregates yet.
-- **EDHREC statistics:** loaded locally and on hosted (T035 slice 11; hosted 2026-09-30, 6,787 commanders); no code reads them yet.
+- **Corpus on hosted:** 129 commanders have stats, from the 2026-09-15 run over the deck spike's 15,135 decks (rebuilt by hand with `cli:hosted aggregate:corpus`). The crawled corpus (`corpus.decks`) holds 68,763 decks over 3,235 commander keys (2026-10-05) that nothing aggregates yet; the first rebuild from it replaces the 2026-09-15 stats. The spike's deck files are stale and are not imported (owner decision 2026-10-05).
+- **EDHREC statistics:** loaded locally and on hosted (T035 slice 11; hosted 2026-09-30, 6,787 commanders). The prior that reads them is wired and switched off (PR #123).
+- **Commander Spellbook combos:** loaded raw locally (2026-10-05, 113,025 combos); not on hosted yet, and nothing reads them yet.
 - **Contract version:** v19 on `main` and `develop`.
-- **Migrations on hosted:** all applied (2026-09-30). The Supabase GitHub integration had come unlinked after `20260922000400`. It was relinked, and the backlog went in by `supabase db push`, after two hand-applied migrations were marked applied.
+- **Migrations on hosted:** all applied and recorded up to `20261003000200`. On 2026-10-05 four of them (`20261001000100` to `20261003000200`) were found applied but unrecorded; the owner marked them applied with `supabase migration repair` the same day. (On 2026-09-30 the GitHub integration had come unlinked after `20260922000400`; it was relinked and the backlog pushed.)
 - **Search index:** live on the VPS behind the search API, read by Vercel.
 - **Auth:** Google sign-in is live locally and on hosted. Email sign-in still runs on Supabase's built-in SMTP, which is not production-grade (T033).
 
@@ -37,8 +38,10 @@ Where the project stands, and why things are the way they are.
 | 2026-09-28 | #112 | v16 → v17 | Deck-flow audit (#110: stale state and wasted requests across the recommendation flow; `excludeCardIds`); EDHREC statistics (#111, T035 slice 11) |
 | 2026-09-29 | #116 | v17 | Home page facelift (#114); the Kitchen Table design lane (#115) |
 | 2026-09-30 | #118 | v17 → v19 | Deckbuilder redesign (#117): build from a commander, multi-select type and cost filters, decklist rows with cost symbols, punctuation-blind name search (T052) |
+| 2026-10-01 | #121 | v19 | Journey memory, the resume prompt, rename, deckbuilder fixes (#120) |
+| 2026-10-03 | #124, #126 | v19 | The crawl at 1 s with adaptive backoff and a queue ordered by need, and the EDHREC prior switched off (#123); crawled decks stored by card id, empty decks skipped (#125) |
 
-`develop` holds nothing that is not on `main`.
+`develop` holds PR #129 (data layers, T053), not yet on `main`.
 
 The Kitchen Table lane (PR #115) is the current design direction (walnut surfaces, one sleeve-blue accent, Bricolage Grotesque, the 12–60 px type scale, 44 px phone touch targets, one look per kind of control; journey steps shown as Cut, Add, Swap, Done), with a new home page pitch ("Make any commander compete", the "Sound familiar?" ribbon, Cut/Add/Swap steps). The spec is the UI section of `apps/web/AGENTS.md`. Left over: the How it works recordings (T049), starting from one commander (T050), local e2e failures (T051).
 
@@ -52,11 +55,11 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 - **Recommendation ranking stays in SQL**, so the open blind eval still measures what it was built to measure.
 - **Live since 2026-09-23** (two Dokploy stacks, Traefik with TLS). Open under T032: the hosted parity check, the RAM measurement, and confirming the daily drain.
 - **Worker drains failed from about 2026-09-28 to 2026-09-30.** Dokploy gave the service a new generated domain, and only Vercel was updated, so the GitHub secret and `.env.hosted` hit the proxy's `404 page not found`. Both were fixed on 2026-09-30 and the index was rebuilt that day (runbook note in `typesense-ops.md`).
-- **Timeouts:** `rec_timeouts` has had nothing new since 2026-09-18, before the index went live. The planned re-read around 2026-09-30 decides whether T008 needs code.
+- **Timeouts:** `rec_timeouts` gained a swap row on 2026-09-30, and on 2026-10-05 calls to `rec_add_candidates` and `rec_swap_candidates` averaged 0.8–1.0 s with peaks at the 3 s timeout. The precompute worker (T055, built 2026-10-06) replaces both functions with indexed reads once `app_config.recs.servingReads` is switched on, and T008 closes when they retire.
 
 ## Deck crawls — Archidekt deployed, Moxfield blocked
 
-A daily Vercel cron calls the search API, which crawls Archidekt commander by commander (queue seeded from EDHREC's ~3,600 commanders, most played first; decks most viewed first; one page per commander on the first pass, one request every 2.5–3 s) for up to six hours and writes decklists into the private `corpus` schema. Rebuilt that way on 2026-10-01 because the earlier site-wide update-ordered walk only ever collected decks edited during the run. Full account and runbook: [`deck-crawl.md`](deck-crawl.md).
+A daily Vercel cron calls the search API, which crawls Archidekt commander by commander (queue seeded from EDHREC's ~3,600 commanders, most played first; decks most viewed first; one page per commander on the first pass, about one request a second with adaptive backoff) for up to six hours and writes decklists into the private `corpus` schema. Rebuilt that way on 2026-10-01 because the earlier site-wide update-ordered walk only ever collected decks edited during the run. Full account and runbook: [`deck-crawl.md`](deck-crawl.md).
 
 - **Archidekt** is configured on the VPS and writes decks when a run starts: runs on 2026-09-24 and 2026-09-27 wrote 666 decks. **None of those runs came from the daily cron** (none started in its 10:15 UTC hour, and 2026-09-28's hour produced no run), so the Vercel trigger is the open problem (T042). A further run on 2026-09-30 at 13:12 UTC succeeded, also outside the cron's hour. T036 closed on 2026-09-28 with its leftovers split out.
 - **2026-10-03:** the cron started runs in its hour on 2026-10-02 (succeeded, 85 decks written) and 2026-10-03 (failed after 57 decks: an empty deck read as a changed page, now skipped as unqualified). The first per-commander run (run 8, 21:24 UTC) failed before any request: seeding the queue timed out, because decks stored oracle ids as text and the join read the whole `cards` table. Migration `20261003000200` stores decks by card id instead and skips decks naming a card the catalog doesn't have yet (`skipped_unresolved`); it has to be applied on hosted, before the search API built from the same change is deployed, for the queue to seed.
@@ -64,17 +67,36 @@ A daily Vercel cron calls the search API, which crawls Archidekt commander by co
 - The VPS reaches the database with the service-role key, which bypasses RLS; a role limited to the `crawl_*` functions is T043.
 - Either source switches itself off on a 403 or a challenge, audited as `crawl.disabled` in `audit_log`; only a human re-enables it.
 - The crawl reaches `corpus` only through the `public.crawl_*` security-definer functions, because exposing a schema of third-party decklists is what it exists to avoid.
-- Nothing aggregates `corpus.decks` yet; that is T035 slice 2.
+- **2026-10-05:** 12 runs since 2026-09-24 hold 68,763 decks over 3,235 commander keys; 947 keys have 50 or more decks, and none has more than 93, because revisits re-read page 1 only. T056 (built 2026-10-05, live once the search API is redeployed) makes a revisit read on until 25 decks were new or changed (owner rule 2026-10-05), and stores each deck's declared bracket.
+- On hosted, nothing aggregates the crawled decks yet: the collator (T054) does once it is released.
 
 ## EDHREC statistics (T035 slice 11)
 
-On `main` since PR #118 and loaded on hosted (2026-09-30). A local script saved every EDHREC commander page; `import:edhrec` loaded ~6,800 commanders' published card counts into `external_commanders` and `external_commander_card_stats`. They are kept apart from our own deck counts because EDHREC aggregates the same Archidekt and Moxfield decks.
+On `main` since PR #118 and loaded on hosted (2026-09-30). A local script saved every EDHREC commander page; `import:edhrec` loaded ~6,800 commanders' published card counts into `external_commanders` and `external_commander_card_stats` (now `corpus.edhrec_commanders` and `corpus.edhrec_commander_cards`). Both were retired on 2026-10-05: the saved pages are stale, and `sync:edhrec` (T054) refetches the pages into the raw `edhrec` schema, weekly once the VPS worker (T066) runs it. They are kept apart from our own deck counts because EDHREC aggregates the same Archidekt and Moxfield decks.
 
-The holdout test (`spike:edhrec:prior`) says EDHREC is the better prior for commanders with few decks of our own: with no decks of ours, its top 50 matched the hidden answer 80% of the time against 6% for the colour baseline. Next: wire the prior into scoring.
+The holdout test (`spike:edhrec:prior`, since retired) says EDHREC is the better prior for commanders with few decks of our own: with no decks of ours, its top 50 matched the hidden answer 80% of the time against 6% for the colour baseline. The prior is wired and switched off (PR #123); T061 replaces its fixed share with weighting by sample size.
+
+## Data layers and scoring (designed 2026-10-05)
+
+The owner reviewed the open PRs #127 (Commander Spellbook combos) and #128 (the scoring design and a VPS worker) and set the direction:
+- **Data layers.** Each source keeps its data in its own schema as published (`archidekt`, `edhrec`, `spellbook`); the crawler's machinery moves to `crawl`; a collator resolves everything into `corpus` with a source on every row; a precompute worker builds everything the app reads. Plan: [`card-graph-plan.md`](card-graph-plan.md).
+- **Speed.** Requests become indexed reads of precomputed tables; the two rec SQL functions retire (T055).
+- **Scoring.** EDHREC weighted by its sample size, combos as their own Add group, one marginal-value function for adds, cuts, swaps and builds, bracket rules updated (no tutor limit since WotC's October 2025 update), and a seeded bootstrap gate on every weight change. Design: [`scoring-design.md`](scoring-design.md).
+- **Order:** T053 (with #127 reworked), T054 (with #128 reworked), T055, and the rest as the roadmap lists. The hosted migration history was repaired first.
+- **T053 is built** (2026-10-05, migration `20261005000200_data_layers.sql`): the schemas exist, the crawl tables and EDHREC tables moved, and crawled decks are stored raw as oracle ids. Not on hosted yet.
+- **Machine-specific paths are out of the repo** (2026-10-05): the regression harness reads its fixtures from `$MTG_DATA_DIR/regression` or a folder it is given, and notes about one machine's disks and tools live in the gitignored `CLAUDE.local.md`. Older commits still mention them (no history rewrite, owner decision).
+- **The deck spike's code is retired** (2026-10-05): the spike crawler, its two measurement jobs, the tag profiler, the PC lookup worker, `import:edhrec` and the TypeScript Archidekt client. `aggregate:corpus` now reads only the collated `corpus.decks`, which the collator (T054) fills; until it runs on hosted, hosted's stats stay at the 2026-09-15 run, and deck lookups wait for the VPS worker (T066).
+- **The design's open questions were answered the same day:** in bracket 3 only Spellbook's R combos flag; Tagger's mass land denial and extra-turn tags count, planeswalkers excluded, with at most 2 extra-turn cards in brackets 2–3; the buy list and build start from placeholder values the evaluation retunes, with basics learned per commander; accept events get a `/privacy` line and no opt-out.
+- **T054, the collator, is built** (2026-10-05, not yet on `main`): `cli collate` resolves every raw source into `corpus` with one deck rule, only where something changed, and `sync:edhrec` fetches EDHREC's pages raw (from PR #128, rewritten). Locally, with hosted's 76,774 crawled decks copied in, collation took 18 s and 74,874 decks passed; the aggregate over them took 1 min 38 s for 2,716 commanders. On hosted it runs by hand after release (`sync:edhrec`, `collate`, `aggregate:corpus`) until the VPS worker (T066) schedules it. `minDecks` and `fullDecks` are both 50.
+- **T055, the precompute worker, is built** (2026-10-06, not yet on `main`): `cli precompute` builds the serving tables (scores per commander and pair, substitutes, roles, combo pieces) and keeps the per-commander stats current after each collation, with the baseline nightly; the app reads them once `app_config.recs.servingReads` is on. Locally the passes rewrite exactly what `aggregate:corpus` writes, and the parity script found every collection-less list identical on both paths. On the serving path each add, cut and swap sends all its reads in one round (two or three before, after the rate limit), and locally swaps take 25 ms at the median instead of 72, adds 32 instead of 43 (63 ms at p95 instead of 127). The tables take about 1.7 GB locally (5.1M score rows, 10.7M substitute rows); storage was ruled no longer a constraint. Next: release, the first build on hosted, hosted parity and timing, the switch, and a week later the PR that retires the rec functions.
+- **T066, the VPS worker, is built** (2026-10-05, not yet deployed): one `cli serve` container (`deploy/worker/`) serves deck lookups through the crawl (a requested commander goes first in the crawl's queue) and runs the daily crawl, collation, stats rebuilds and the weekly EDHREC fetch on the `app_config.worker` schedule. Deck lookups stay unserved until it runs on the VPS.
+
+## Commander Spellbook combos (T047, data half)
+
+Built 2026-10-04 (PR #127) and reworked 2026-10-05 into the raw `spellbook` schema; not yet on `main`. `sync:spellbook` reads Commander Spellbook's published daily export (one gzipped request of about 29 MB, about 10 s) and keeps every combo as Spellbook publishes it: the pieces as Scryfall oracle ids, its results and its bracket tag. That gives the recommender card-to-card relationships that don't depend on how many decks a commander has. The local load stored all 113,025 combos and 1,099 results, none malformed; a forced re-run of the same export wrote nothing. The daily workflow runs it once `SPELLBOOK_SYNC_ENABLED` is set, after the migration reaches hosted. Next: the collator resolves combos to our cards (T054), and bracket rules and the "complete a combo" Add group use them (T060).
 
 ## Open decisions for the owner
 
 1. Where deck reports go (T003)
 2. Whether public deck pages get indexed (T028)
-3. Whether "Owned first" supersedes the 2026-09-18 "collection is a hard filter" decision (T037, T007)
-4. A domain and custom SMTP before launch (T033)
+3. A domain and custom SMTP before launch (T033)

@@ -1,0 +1,9 @@
+# Images built from the repo root (apps/worker/Dockerfile) install their own dependencies and must never carry a
+# secret: no installed modules, no build output, no env files, no history.
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+**/.turbo
+.git
+.yarn/install-state.gz

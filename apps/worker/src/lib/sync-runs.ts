@@ -3,7 +3,21 @@ import { drainSearchIndexQuietly } from '../jobs/sync-search-index';
 import type { Sql } from './db';
 import { refreshWebCaches } from './web-app';
 
-export type SyncJob = 'scryfall_catalog' | 'scryfall_printings' | 'oracle_tags' | 'corpus_aggregate' | 'edhrec_stats';
+export type SyncJob =
+  | 'scryfall_catalog'
+  | 'scryfall_printings'
+  | 'oracle_tags'
+  | 'corpus_aggregate'
+  | 'corpus_collate'
+  | 'edhrec_stats'
+  | 'edhrec_pages'
+  | 'spellbook_combos'
+  | 'precompute_commanders'
+  | 'precompute_baseline'
+  | 'precompute_scores'
+  | 'precompute_substitutes'
+  | 'precompute_roles'
+  | 'precompute_combos';
 export type SyncMetrics = Record<string, number>;
 
 export const WORKER_ID = `${os.hostname()}:${process.pid}`;

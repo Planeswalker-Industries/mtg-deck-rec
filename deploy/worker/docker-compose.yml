@@ -1,0 +1,50 @@
+# The worker on the VPS (apps/worker, T066): one long-running `cli serve` that
+#   - serves the deck lookups the web app queues (commander_requests) through the crawl: a requested commander goes
+#     first in the crawl's queue, and the worker starts a crawl run when none is going;
+#   - starts each source's daily crawl through the search API;
+#   - collates the raw sources into corpus, and rebuilds the corpus stats when corpus.decks changed;
+#   - fetches EDHREC's commander pages weekly.
+# When each of those is due lives in app_config.worker, read from the database, so a restart neither repeats nor skips
+# work. Any other worker command runs the same way:  docker compose run --rm worker <command>
+#
+#   cd deploy/worker
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d --build
+#   docker compose logs -f worker
+#
+# Deploy the search API first: the worker reaches it by name on the shared network.
+
+name: mtg-worker
+
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
+    image: ${WORKER_IMAGE:-mtg-worker:local}
+    restart: unless-stopped
+    # A stop lets the duty in hand finish its transaction; an EDHREC fetch stopped halfway keeps the pages it wrote.
+    stop_grace_period: 60s
+    environment:
+      # Supabase's **session** pooler (IPv4). The jobs stage rows in temp tables, which the transaction pooler drops.
+      DATABASE_URL: "${DATABASE_URL:?set DATABASE_URL in .env: the Supabase session pooler connection string}"
+      # The search API by name on the shared network: starts crawls, and takes the search index updates after syncs.
+      SEARCH_API_URL: "${SEARCH_API_URL:-http://search-api:8080}"
+      SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:-}"
+      SEARCH_API_CRON_TOKEN: "${SEARCH_API_CRON_TOKEN:-}"
+      # Refreshes the web app's cached pages after a rebuild; without them caches expire on their own schedule.
+      WEB_APP_URL: "${WEB_APP_URL:-}"
+      REVALIDATE_SECRET: "${REVALIDATE_SECRET:-}"
+    networks:
+      - mtg-search
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # The search stack's network (deploy/typesense creates it), where the search API answers as `search-api`.
+  mtg-search:
+    external: ${SEARCH_NETWORK_EXTERNAL:-true}
+    name: ${SEARCH_NETWORK:-mtg-search}

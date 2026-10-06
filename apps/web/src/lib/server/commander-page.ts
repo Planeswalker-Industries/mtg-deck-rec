@@ -1,10 +1,11 @@
 import { isStatementTimeout, recordRecTimeout, retryOnTimeout } from "./retry-timeout";
 import type { AddSuggestion, CardCategory, CardSummary, CommanderKeyId, CommanderPageData } from "@mtg/core/contract";
 import { ADD_WEIGHTS, blendScore, cardCategory, commanderCorpusScore } from "@mtg/core/scoring";
-import { fetchCardsById, toCardSummary } from "./cards";
+import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
 import { fromIndex } from "./search-index";
-import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
-import { fetchTags, loadRoleTargets } from "./recs";
+import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
+import { loadRoleTags, loadRoleTargets } from "./recs";
+import { loadServedCards, loadServedDeckPool, loadServingReads } from "./serving";
 import type { PublicClient } from "./supabase";
 
 /** Cards read per commander before ranking; plenty for 12 per card type. */
@@ -16,9 +17,9 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * The cards to rank for a commander page. A commander with enough decks of its own reads its stored play rates through an
- * index; rec_add_candidates is only needed to combine borrowed keys, and it can pass the API role's 3 s statement timeout
- * while the hosted database is cold.
+ * The cards to rank for a commander page. A commander with enough decks of its own reads its stored play rates through
+ * an index; one that borrows decks from other pairings had them combined by rec_add_candidates, which could pass the API
+ * role's 3 s statement timeout while the hosted database was cold (the serving path reads the precompute's pool).
  */
 async function loadTopCardIds(
   db: PublicClient,
@@ -86,26 +87,38 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
   if (!key) return null;
 
   const commanderIds = key.commander_2 === null ? [key.commander_1] : [key.commander_1, key.commander_2];
-  const [corpus, commanderRows, roleTargets, statsResult] = await Promise.all([
+  const [corpus, commanderRows, roleTargets, roleTags, statsResult, serving] = await Promise.all([
     loadCommanderCorpus(db, commanderIds),
     fetchCardsById(db, commanderIds),
     loadRoleTargets(db),
+    loadRoleTags(db),
     db.from("commander_stats").select("computed_at").eq("commander_key_id", key.id).maybeSingle(),
+    loadServingReads(db),
   ]);
   if (statsResult.error) throw new Error(`Loading commander stats failed: ${statsResult.error.message}`);
   // Borrowed decks only fill in: a page for commanders nobody has run together would describe other decks.
   if (corpus.ownDeckCount === 0) return null;
 
-  const cardIds = await loadTopCardIds(db, corpus, key.color_identity, commanderIds);
-
-  const [cardRows, cardCorpus, roleTags] = await Promise.all([
-    fetchCardsById(db, cardIds),
-    loadCardCorpus(db, corpus, cardIds, commanderIds),
-    fetchTags(
-      db,
-      roleTargets.map((t) => t.roleId),
-    ),
-  ]);
+  // The serving path reads a borrowing page's pool with its cards in one call, and an own-key page's cards in one
+  // more after the index lists them; the old path takes the list, then the rows and play rates.
+  let cardIds: number[];
+  let cardRows: ReadonlyMap<number, CardRow>;
+  let cardCorpus: ReadonlyMap<number, CardCorpus>;
+  if (serving && corpus.borrowedDeckCount > 0) {
+    const deal = await loadServedDeckPool(db, { commanderIds, exclude: commanderIds, limit: TOP_POOL });
+    ({ poolIds: cardIds } = deal);
+    cardRows = deal.pool.rows;
+    cardCorpus = deal.pool.rates;
+  } else {
+    cardIds = await loadTopCardIds(db, corpus, key.color_identity, commanderIds);
+    if (serving) {
+      const served = await loadServedCards(db, corpus, commanderIds, cardIds);
+      cardRows = served.rows;
+      cardCorpus = served.rates;
+    } else {
+      [cardRows, cardCorpus] = await Promise.all([fetchCardsById(db, cardIds), loadCardCorpus(db, corpus, cardIds, commanderIds)]);
+    }
+  }
 
   const suggestions = cardIds.flatMap((id): AddSuggestion[] => {
     const row = cardRows.get(id);

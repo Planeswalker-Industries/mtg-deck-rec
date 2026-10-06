@@ -113,6 +113,15 @@ export const ADMIN_SYNC_JOBS = [
   "precon_import",
   "vote_aggregate",
   "edhrec_stats",
+  "spellbook_combos",
+  "corpus_collate",
+  "edhrec_pages",
+  "precompute_commanders",
+  "precompute_baseline",
+  "precompute_scores",
+  "precompute_substitutes",
+  "precompute_roles",
+  "precompute_combos",
 ] as const;
 
 export const ADMIN_SYNC_STATUSES = ["running", "succeeded", "skipped_unchanged", "failed", "failed_sanity", "abandoned"] as const;

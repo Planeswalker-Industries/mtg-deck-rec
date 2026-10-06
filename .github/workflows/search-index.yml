@@ -2,7 +2,7 @@ name: Search index
 
 # Rebuilds or drains the search index on demand, so neither needs a shell on the VPS or a Node install anywhere.
 #
-# It runs where the Scryfall syncs already run, with the secrets they already use, on a machine that already has
+# It runs where the daily syncs already run, with the secrets they already use, on a machine that already has
 # Node — so this adds a button rather than a service. The daily sync drains the queue on its own; this is for the
 # first build, and for the times you want one without waiting for tomorrow.
 #
@@ -11,7 +11,7 @@ name: Search index
 #   * the GitHub API, which is what makes it a Postman request (see docs/roadmap/typesense-ops.md)
 #   * `gh workflow run search-index.yml -f rebuild=true`
 #
-# Secrets (the same two the Scryfall sync uses):
+# Secrets (the same two the daily syncs use):
 #   DATABASE_URL            Supabase session pooler (IPv4; this job uses temp tables, so not the transaction pooler)
 #   SEARCH_API_URL          the search API on the VPS
 #   SEARCH_API_ADMIN_TOKEN  its write token

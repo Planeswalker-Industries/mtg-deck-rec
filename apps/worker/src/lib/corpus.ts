@@ -1,17 +1,12 @@
-import path from 'node:path';
-import { isValidPartnerPair, type CommanderCardFacts } from '@mtg/core/commander';
+import { corpusCommanders, type CorpusCommanderFacts, type CorpusExclusion } from '@mtg/core/commander';
 import type { CardId } from '@mtg/core/contract';
-import type { SlimDeck } from '../sources/archidekt/deck';
-import { DATA_DIR } from './config';
 import type { Sql } from './db';
 
-/** Shared by the corpus jobs so aggregation and measurement always count the same decks. */
+/** Shared by the corpus jobs, so every job counts the same decks. */
 
-export const DEFAULT_CORPUS_FILE = path.join(DATA_DIR, 'archidekt', 'spike', 'decks.jsonl');
-/** Decks fetched but not kept (wrong commander, not 100 cards, ...), so they aren't fetched again. */
-export const DEFAULT_REJECTS_FILE = path.join(DATA_DIR, 'archidekt', 'spike', 'rejects.jsonl');
 export const IDENTITIES = 32;
-const MAX_COMMANDERS = 2;
+/** Decks read from corpus.decks per round trip. */
+const CORPUS_CURSOR_ROWS = 1000;
 
 export interface CorpusConfig {
   shrinkAlpha: number;
@@ -36,16 +31,38 @@ export interface CatalogCard {
   releaseMonth: string | null;
 }
 
+/**
+ * One deck as the collated corpus.decks holds it: resolved to our card ids by the collator (T054), with basics out of
+ * the card list.
+ */
+export interface CorpusDeck {
+  source: string;
+  /** The source's own deck id; unique within a source. */
+  sourceDeckId: string;
+  /** Commander card ids, ascending. */
+  commanderIds: number[];
+  /** Card ids of the rest of the deck, distinct, basics excluded. */
+  cardIds: number[];
+  /** 'YYYY-MM' the deck was last updated. */
+  month: string;
+  /** Over commanders and cards (hex): the same deck posted on two sites has the same hash. */
+  contentHash: string;
+}
+
+/**
+ * Why the aggregate skips a collated deck: the corpus rule's commander half, or what changed in the catalog since the
+ * deck was collated (a card dropped, a commander banned).
+ */
 export const EXCLUSIONS = [
-  'duplicate',
-  'too_many_commanders',
-  'commander_not_in_catalog',
+  'commander_count',
+  'unresolved_commander',
   'commander_not_legal',
   'no_eligible_commander',
   'invalid_partner_pair',
   'outside_identity',
   'unresolved_cards',
-] as const;
+  'duplicate_across_sources',
+] as const satisfies readonly (CorpusExclusion | 'duplicate_across_sources')[];
 export type Exclusion = (typeof EXCLUSIONS)[number];
 
 export interface ResolvedDeck {
@@ -54,7 +71,6 @@ export interface ResolvedDeck {
   /** Sorted by card id. */
   commanders: CatalogCard[];
   identity: number;
-  bracket: string;
   /** 'YYYY-MM' the deck was last updated. */
   month: string;
   /** Non-basic cards in the 99, as catalog card ids. */
@@ -68,12 +84,11 @@ export async function loadCorpusConfig(sql: Sql): Promise<CorpusConfig> {
   return { ...DEFAULT_CONFIG, ...row?.value };
 }
 
-/** Live catalog cards by oracle id. */
-export async function loadCatalog(sql: Sql): Promise<Map<string, CatalogCard>> {
+/** Live catalog cards by card id. */
+export async function loadCatalog(sql: Sql): Promise<Map<number, CatalogCard>> {
   const rows = await sql<
     {
       id: number;
-      oracle_id: string;
       name: string;
       color_identity: number;
       can_be_commander: boolean;
@@ -86,15 +101,15 @@ export async function loadCatalog(sql: Sql): Promise<Map<string, CatalogCard>> {
     }[]
   >`
     -- First printing, not cards.released_at: Oracle Cards dates a card by its representative (often latest) printing.
-    select c.id, c.oracle_id::text, c.name, c.color_identity, c.can_be_commander, c.legal_commander, c.is_basic_land, c.slug,
+    select c.id, c.name, c.color_identity, c.can_be_commander, c.legal_commander, c.is_basic_land, c.slug,
            c.partner_kind, c.partner_qualifier, to_char(coalesce(st.first_printed_at, c.released_at), 'YYYY-MM') as release_month
     from public.cards c
     left join public.card_stats st on st.card_id = c.id
     where c.deleted_at is null
   `;
-  const catalog = new Map<string, CatalogCard>();
+  const catalog = new Map<number, CatalogCard>();
   for (const r of rows) {
-    catalog.set(r.oracle_id, {
+    catalog.set(r.id, {
       id: r.id,
       name: r.name,
       colorIdentity: r.color_identity,
@@ -133,7 +148,43 @@ export async function loadRoleCards(sql: Sql): Promise<Map<number, string[]>> {
   return rolesByCard;
 }
 
-const commanderFacts = (c: CatalogCard): CommanderCardFacts => ({
+/**
+ * The collated decks the corpus jobs count, streamed so the whole corpus is never in memory at once. corpus.decks is
+ * written only by the collator (T054); until it runs, the table is empty.
+ */
+export async function* loadCorpusDecks(sql: Sql): AsyncGenerator<CorpusDeck> {
+  const cursor = sql<
+    { source: string; source_deck_id: string; commander_card_ids: number[]; card_ids: number[]; month: string; content_hash: string }[]
+  >`
+    select source, source_deck_id, commander_card_ids, card_ids, to_char(updated_month, 'YYYY-MM') as month,
+           encode(content_hash, 'hex') as content_hash
+    from corpus.decks
+    order by id
+  `.cursor(CORPUS_CURSOR_ROWS);
+  for await (const rows of cursor) {
+    for (const r of rows) {
+      yield {
+        source: r.source,
+        sourceDeckId: r.source_deck_id,
+        commanderIds: r.commander_card_ids,
+        cardIds: r.card_ids,
+        month: r.month,
+        contentHash: r.content_hash,
+      };
+    }
+  }
+}
+
+/** When corpus.decks last changed and how many decks it holds. */
+export async function corpusVersion(sql: Sql): Promise<{ updatedAt: string; decks: number }> {
+  const [row] = await sql<{ updated_at: Date | null; decks: number }[]>`
+    select max(collated_at) as updated_at, count(*)::int as decks from corpus.decks
+  `;
+  return { updatedAt: (row?.updated_at ?? new Date(0)).toISOString(), decks: row?.decks ?? 0 };
+}
+
+/** The facts the corpus rule reads, from a catalog card. */
+export const commanderFacts = (c: CatalogCard): CorpusCommanderFacts => ({
   id: c.id as CardId,
   name: c.name,
   colorIdentityMask: c.colorIdentity,
@@ -141,51 +192,43 @@ const commanderFacts = (c: CatalogCard): CommanderCardFacts => ({
   canBeCommander: c.canBeCommander,
   partnerKind: c.partnerKind,
   partnerQualifier: c.partnerQualifier,
-  copyLimit: null,
-  gameChanger: false,
 });
 
 /**
- * A deck counts when its commanders (one, or a legal pair) are in the catalog and legal, every card fits their color
- * identity, and no more than `maxUnresolvedCards` cards are missing from the catalog. Duplicates are the caller's to
- * detect.
+ * A collated deck counts when its commanders still pass the corpus rule (`corpusCommanders`), every card still fits
+ * their colour identity, and no more than `maxUnresolvedCards` cards have left the live catalog. The collator applied
+ * the whole rule when it wrote the deck, so this only catches what changed since: a card the catalog has since dropped,
+ * a commander since banned.
  */
 export function resolveDeck(
-  deck: SlimDeck,
-  catalog: ReadonlyMap<string, CatalogCard>,
+  deck: CorpusDeck,
+  catalog: ReadonlyMap<number, CatalogCard>,
   config: CorpusConfig,
 ): { ok: true; deck: ResolvedDeck } | { ok: false; reason: Exclusion } {
-  if (deck.commanders.length > MAX_COMMANDERS) return { ok: false, reason: 'too_many_commanders' };
-  const commanders = deck.commanders.map((oracleId) => catalog.get(oracleId));
-  if (!commanders.every((c): c is CatalogCard => c !== undefined)) return { ok: false, reason: 'commander_not_in_catalog' };
-  if (!commanders.every((c) => c.legal)) return { ok: false, reason: 'commander_not_legal' };
-  if (!commanders.some((c) => c.canBeCommander)) return { ok: false, reason: 'no_eligible_commander' };
-  // Archidekt's Commander category also holds companions and misfiled cards; only real pairs share a command zone.
-  const [first, second] = commanders;
-  if (first && second && !isValidPartnerPair(commanderFacts(first), commanderFacts(second))) {
-    return { ok: false, reason: 'invalid_partner_pair' };
-  }
-
-  const identity = commanders.reduce((mask, c) => mask | c.colorIdentity, 0);
+  const checked = corpusCommanders(deck.commanderIds.map((id) => {
+    const card = catalog.get(id);
+    return card && commanderFacts(card);
+  }));
+  if (!checked.ok) return checked;
+  const commanders = checked.commanders.map((c) => catalog.get(c.id) as CatalogCard);
+  const { identity } = checked;
   const cardIds = new Set<number>();
   let unresolved = 0;
-  for (const [oracleId] of deck.cards) {
-    const card = catalog.get(oracleId);
+  for (const id of deck.cardIds) {
+    const card = catalog.get(id);
     if (!card) unresolved++;
     else if ((card.colorIdentity & ~identity) !== 0) return { ok: false, reason: 'outside_identity' };
     else if (!card.isBasicLand) cardIds.add(card.id);
   }
   if (unresolved > config.maxUnresolvedCards) return { ok: false, reason: 'unresolved_cards' };
 
-  commanders.sort((a, b) => a.id - b.id);
   return {
     ok: true,
     deck: {
       key: commanders.map((c) => c.id).join(':'),
       commanders,
       identity,
-      bracket: deck.edhBracket === null ? 'unset' : String(deck.edhBracket),
-      month: deck.updatedAt.slice(0, 7),
+      month: deck.month,
       cardIds,
     },
   };

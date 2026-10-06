@@ -28,10 +28,11 @@ type Policy struct {
 	RunDuration time.Duration
 	// FirstVisitPages is how many list pages a commander's first visit reads.
 	FirstVisitPages int
-	// RevisitPages is how many list pages a commander's later visits read. One, by default: a revisit's job is to
-	// re-read the page it already has and fetch only the decks whose listed time moved, which is the whole of the
-	// "skip decks that have not been updated" optimisation. Raise it to grow each commander's sample instead.
-	RevisitPages int
+	// RevisitNewDecks is how a revisit grows a commander's sample (owner rule 2026-10-05). A revisit reads page 1 whole,
+	// fetching every deck that is new or whose listed update time moved; if fewer than this many were fetched, it
+	// reads on, page by page, until this many were or the list ends. Every deck fetched because it was new or changed
+	// counts, whichever commander leads it, so this also bounds a revisit's deck requests past page 1.
+	RevisitNewDecks int
 	// MaxPagesPerCommander is the absolute ceiling on one visit's pages, whatever the two settings above ask for.
 	MaxPagesPerCommander int
 	// MaxFetchesPerCommander caps the deck fetches one visit may make. The page cap alone does not bound the work: at
@@ -55,7 +56,7 @@ type Defaults struct {
 	StaleClaim             time.Duration
 	RunDuration            time.Duration
 	FirstVisitPages        int
-	RevisitPages           int
+	RevisitNewDecks        int
 	MaxPagesPerCommander   int
 	MaxFetchesPerCommander int
 	RequestIntervalMax     time.Duration
@@ -74,10 +75,10 @@ const (
 	// One page (up to 60 decks on Archidekt) gives every commander a small base before any gets more (owner decision
 	// 2026-10-01); later visits grow it.
 	fallbackFirstVisitPages = 1
-	// One page, the same page: a revisit re-reads what it already has and fetches only what moved (owner decision
-	// 2026-10-03). The 350-new-decks target this replaced made a revisit walk pages looking for decks that, for a
-	// commander leading few of the decks its card appears in, were not there to find.
-	fallbackRevisitPages = 1
+	// 25 new or changed decks a revisit (owner rule 2026-10-05). Page 1 alone, the rule before it (2026-10-03), grew a
+	// sample only as decks entered the top 60 by views: no commander passed 93 decks. The 350-new-decks target before
+	// that walked pages hunting decks that were not there; 25, counting every deck fetched, stays small.
+	fallbackRevisitNewDecks = 25
 	// 120 fetches is two pages' worth: enough for a visit that wants to grow a commander's sample, far short of the
 	// hours a 40-page walk costs.
 	fallbackMaxFetchesPerCommander = 120
@@ -101,7 +102,7 @@ func (d Defaults) Policy() Policy {
 		StaleClaim:             orDuration(d.StaleClaim, fallbackStaleClaim),
 		RunDuration:            orDuration(d.RunDuration, fallbackRunDuration),
 		FirstVisitPages:        orInt(d.FirstVisitPages, fallbackFirstVisitPages),
-		RevisitPages:           orInt(d.RevisitPages, fallbackRevisitPages),
+		RevisitNewDecks:        orInt(d.RevisitNewDecks, fallbackRevisitNewDecks),
 		MaxPagesPerCommander:   orInt(d.MaxPagesPerCommander, fallbackMaxPagesPerCommander),
 		MaxFetchesPerCommander: orInt(d.MaxFetchesPerCommander, fallbackMaxFetchesPerCommander),
 		RequestIntervalMax:     orDuration(d.RequestIntervalMax, fallbackRequestIntervalMax),
@@ -138,7 +139,7 @@ func ParsePolicy(raw json.RawMessage, d Defaults) (Policy, error) {
 		StaleClaimSeconds      int `json:"staleClaimSeconds"`
 		RunMinutes             int `json:"runMinutes"`
 		FirstVisitPages        int `json:"firstVisitPages"`
-		RevisitPages           int `json:"revisitPages"`
+		RevisitNewDecks        int `json:"revisitNewDecks"`
 		MaxFetchesPerCommander int `json:"maxFetchesPerCommander"`
 		RequestIntervalMaxMs   int `json:"requestIntervalMaxMs"`
 		PaceRecoverRequests    int `json:"paceRecoverRequests"`
@@ -154,7 +155,7 @@ func ParsePolicy(raw json.RawMessage, d Defaults) (Policy, error) {
 	p.StaleClaim = orDuration(time.Duration(fields.StaleClaimSeconds)*time.Second, p.StaleClaim)
 	p.RunDuration = orDuration(time.Duration(fields.RunMinutes)*time.Minute, p.RunDuration)
 	p.FirstVisitPages = orInt(fields.FirstVisitPages, p.FirstVisitPages)
-	p.RevisitPages = orInt(fields.RevisitPages, p.RevisitPages)
+	p.RevisitNewDecks = orInt(fields.RevisitNewDecks, p.RevisitNewDecks)
 	p.MaxFetchesPerCommander = orInt(fields.MaxFetchesPerCommander, p.MaxFetchesPerCommander)
 	p.RequestIntervalMax = orDuration(time.Duration(fields.RequestIntervalMaxMs)*time.Millisecond, p.RequestIntervalMax)
 	p.PaceRecoverRequests = orInt(fields.PaceRecoverRequests, p.PaceRecoverRequests)

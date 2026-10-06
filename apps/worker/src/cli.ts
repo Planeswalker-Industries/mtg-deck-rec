@@ -1,12 +1,11 @@
 import { aggregateCorpus } from './jobs/aggregate-corpus';
-import { measureCorpusStability } from './jobs/corpus-stability';
-import { profileTags } from './jobs/profile-tags';
-import { serveCommanderRequests } from './jobs/serve-commander-requests';
-import { evaluateEdhrecPrior } from './jobs/edhrec-prior-eval';
-import { importEdhrec } from './jobs/import-edhrec';
-import { crawlCommanders, isCrawlOrder, rankCommanders, verifyCommanders } from './jobs/spike-archidekt';
+import { collate, COLLATE_SOURCES, type CollateSource } from './jobs/collate';
+import { precompute, PRECOMPUTE_PARTS, type PrecomputePart } from './jobs/precompute';
+import { serve } from './jobs/serve';
 import { syncCatalog } from './jobs/sync-catalog';
+import { syncEdhrec } from './jobs/sync-edhrec';
 import { syncSearchIndex } from './jobs/sync-search-index';
+import { syncSpellbook } from './jobs/sync-spellbook';
 import { syncPrintings } from './jobs/sync-printings';
 import { syncTags } from './jobs/sync-tags';
 import { downloadBulk, getBulkIndex, type BulkType } from './lib/bulk';
@@ -15,37 +14,34 @@ const USAGE = `Usage: yarn workspace @mtg/worker cli <command>
 
 Commands:
   bulk:download [type...]   Download Scryfall bulk files to MTG_DATA_DIR/bulk (default: oracle_cards oracle_tags)
-  profile:tags              Profile Oracle Tags against Oracle Cards (Phase 0 tag spike)
   sync:catalog [--force]    Oracle Cards → cards, name aliases, functional twins (skips if the file is unchanged)
   sync:printings [--force]  All Cards → printings, card stats (staple score), cheapest prices, flavor names (after sync:catalog)
   sync:tags [--force]       Oracle Tags → tags, hierarchy, card taggings (after sync:catalog)
+  sync:spellbook [--force]  Commander Spellbook's combo export → spellbook.combos, spellbook.features, as published (skips if the export is unchanged)
+  sync:edhrec [--limit N]   EDHREC's commander pages → edhrec.commanders, edhrec.commander_cards, as published (about 3.5 h;
+                            --limit fetches only the first N pages, recorded as a trial run the collator ignores)
+  collate [--force] [--only source,...]
+                            Raw sources → corpus: decks (archidekt, moxfield, user), edhrec, spellbook; only what changed
+                            (--force: every source, and the removal gate lets a big drop through)
   sync:typesense [--rebuild]
                             Drain public.search_index_queue into the search index (--rebuild: build every
                             collection from scratch and move the aliases when it is done)
-  aggregate:corpus [--file path] [--force]
-                            Deck corpus (JSONL of slim decks; default: the Archidekt spike) → commander and card play-rate stats
-  import:edhrec [--dir path] [--force]
-                            EDHREC commander pages saved by X:\mtg_proj\tools\edhrec-crawl.mjs → external commander and card stats
-  serve:commander-requests [--once]
-                            Serve deck lookups the web app queues for commanders with too few decks (--once: until the queue is empty)
-  spike:corpus:stability [--repeats N]
-                            How many decks a commander needs for stable card rankings (split-half resampling report)
-  spike:edhrec:prior [--repeats N]
-                            Holdout test: does EDHREC beat the colour baseline as the prior for commanders with few decks?
-  spike:archidekt:rank      Rank our legal commanders by how often their 100-card Archidekt decks are updated (1 request each, resumable)
-  spike:archidekt:verify [--top N]
-                            Discount the top ranked commanders by how many of their listed decks they actually lead
-  spike:archidekt:crawl [--commanders N] [--commander "Exact Name"]... [--per-commander N] [--order views|updated]
-                            Collect qualifying decks for the top ranked commanders, or the named ones (resumable)`;
+  aggregate:corpus [--force]
+                            The full rebuild: the collated corpus.decks → commander and card play-rate stats, then every
+                            score (refuses an empty corpus; the worker's precompute passes keep the same tables current)
+  precompute [--part name,...] [--full] [--force]
+                            The serving tables the recommendations read (T055): commanders (stats and scores of
+                            commanders whose decks changed), baseline (the nightly baseline, then every score),
+                            scores, substitutes, roles, combos. Default: every part, each only if its inputs moved
+                            (--full: rebuild every substitute list and score; --force: past the sanity gates)
+  serve [--once]            The VPS worker: deck lookups, then the daily crawl, collation, stats rebuilds and EDHREC
+                            fetches as app_config.worker schedules them (--once: one pass, no EDHREC fetch)`;
 
-/** Reads `--name N` as a positive whole number, or undefined when the flag is absent. */
-function numberFlag(args: string[], name: string): number | undefined {
-  const index = args.indexOf(`--${name}`);
-  if (index === -1) return undefined;
-  const value = Number(args[index + 1]);
-  if (!Number.isInteger(value) || value <= 0) throw new Error(`--${name} needs a positive whole number`);
-  return value;
-}
+/** The value after a flag, as in `--limit 30`. */
+const flagValue = (args: string[], flag: string) => {
+  const i = args.indexOf(flag);
+  return i === -1 ? undefined : args[i + 1];
+};
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
@@ -62,46 +58,44 @@ async function main(): Promise<void> {
       }
       return;
     }
-    case 'profile:tags':
-      return profileTags();
     case 'sync:catalog':
       return syncCatalog({ force });
     case 'sync:printings':
       return syncPrintings({ force });
     case 'sync:tags':
       return syncTags({ force });
+    case 'sync:spellbook':
+      await syncSpellbook({ force });
+      return;
+    case 'sync:edhrec': {
+      const limitArg = flagValue(args, '--limit');
+      const limit = limitArg === undefined ? undefined : Number(limitArg);
+      if (limit !== undefined && !(Number.isInteger(limit) && limit > 0)) throw new Error('--limit needs a whole number of pages');
+      await syncEdhrec(limit === undefined ? {} : { limit });
+      return;
+    }
+    case 'collate': {
+      const only = flagValue(args, '--only')?.split(',');
+      const unknown = only?.filter((s) => !(COLLATE_SOURCES as readonly string[]).includes(s)) ?? [];
+      if (unknown.length > 0) throw new Error(`Unknown source ${unknown.join(', ')}. Sources: ${COLLATE_SOURCES.join(', ')}`);
+      await collate({ force, ...(only ? { only: only as CollateSource[] } : {}) });
+      return;
+    }
+    case 'precompute': {
+      const parts = flagValue(args, '--part')?.split(',');
+      const unknown = parts?.filter((p) => !(PRECOMPUTE_PARTS as readonly string[]).includes(p)) ?? [];
+      if (unknown.length > 0) throw new Error(`Unknown part ${unknown.join(', ')}. Parts: ${PRECOMPUTE_PARTS.join(', ')}`);
+      await precompute({ full: args.includes('--full'), force, ...(parts ? { parts: parts as PrecomputePart[] } : {}) });
+      return;
+    }
+    case 'serve':
+      await serve({ once: args.includes('--once') });
+      return;
     case 'sync:typesense':
       return syncSearchIndex({ rebuild: args.includes('--rebuild') });
     case 'aggregate:corpus': {
-      const fileIndex = args.indexOf('--file');
-      await aggregateCorpus({ file: fileIndex === -1 ? undefined : args[fileIndex + 1], force });
+      await aggregateCorpus({ force });
       return;
-    }
-    case 'import:edhrec': {
-      const dirIndex = args.indexOf('--dir');
-      await importEdhrec({ dir: dirIndex >= 0 ? args[dirIndex + 1] : undefined, force });
-      return;
-    }
-    case 'serve:commander-requests':
-      return serveCommanderRequests({ once: args.includes('--once') });
-    case 'spike:corpus:stability':
-      return measureCorpusStability({ repeats: numberFlag(args, 'repeats') });
-    case 'spike:edhrec:prior':
-      return evaluateEdhrecPrior({ repeats: numberFlag(args, 'repeats') });
-    case 'spike:archidekt:rank':
-      return rankCommanders();
-    case 'spike:archidekt:verify':
-      return verifyCommanders({ top: numberFlag(args, 'top') });
-    case 'spike:archidekt:crawl': {
-      const orderIndex = args.indexOf('--order');
-      const order = orderIndex === -1 ? undefined : args[orderIndex + 1];
-      if (order !== undefined && !isCrawlOrder(order)) throw new Error('--order must be views or updated');
-      return crawlCommanders({
-        commanders: numberFlag(args, 'commanders'),
-        names: args.flatMap((arg, i) => (arg === '--commander' && args[i + 1] ? [args[i + 1] as string] : [])),
-        perCommander: numberFlag(args, 'per-commander'),
-        order,
-      });
     }
     default:
       console.log(USAGE);

@@ -52,6 +52,24 @@ func TestPolicyStaleClaimOutlastsARun(t *testing.T) {
 	}
 }
 
+// A revisit's share of new or changed decks: 25 unless the row says otherwise (owner rule 2026-10-05).
+func TestPolicyRevisitNewDecks(t *testing.T) {
+	p, err := ParsePolicy(json.RawMessage("null"), Defaults{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.RevisitNewDecks != fallbackRevisitNewDecks {
+		t.Fatalf("fallback share: %d", p.RevisitNewDecks)
+	}
+	p, err = ParsePolicy(json.RawMessage(`{"revisitNewDecks": 40}`), Defaults{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.RevisitNewDecks != 40 {
+		t.Fatalf("share from the row: %d", p.RevisitNewDecks)
+	}
+}
+
 func TestPolicyRejectsGarbage(t *testing.T) {
 	if _, err := ParsePolicy(json.RawMessage(`{"requestIntervalMs":"soon"}`), Defaults{}); err == nil {
 		t.Fatal("a typed row should fail")

@@ -79,9 +79,9 @@ export default function PrivacyPage() {
       <Section title="How we use it">
         <p>
           Anything you submit — decks, collections, votes and lookups — becomes part of how the site works and is used to
-          improve its recommendations. For example, saved decks feed the play rates shown on card and commander pages,
-          and votes tell us which replacements are good ones. Private decks are hidden from other people but still count
-          toward those statistics, which are totals with no names attached.
+          improve its recommendations. For example, complete saved decks feed the play rates shown on card and commander
+          pages, and votes tell us which replacements are good ones. Private decks are hidden from other people but still
+          count toward those statistics, which are totals with no names attached.
         </p>
         <p>
           That is the only thing we use it for. We do not sell your data, rent it, share it with advertisers, or use it

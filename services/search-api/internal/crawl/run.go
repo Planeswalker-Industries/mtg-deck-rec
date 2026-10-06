@@ -18,7 +18,7 @@ import (
 // Source is the site-specific half of a crawl: how it lists one commander's decks and what its list and deck pages
 // mean. Nothing downstream sees the source - the runner works only with what Source answers.
 type Source interface {
-	// Name is the source key: the app_config policy row, the corpus.crawl_state row and the decks' source column.
+	// Name is the source key: the app_config policy row, the crawl.state row and the schema its raw decks live in.
 	Name() string
 	// ListURL is one page of the decks the source lists for a commander, most viewed first: an order that holds
 	// still between visits, so page 1 is the same decks tomorrow. (An update-ordered list does not: Archidekt bumps
@@ -62,6 +62,9 @@ type Deck struct {
 	Cards          map[string]int // the rest of the 100: oracle id to number of copies
 	Size           int            // total copies including the commander(s)
 	UpdatedAt      time.Time
+	// DeclaredBracket is the bracket (1-5) the deck's author gave it, when the source has one. It checks our bracket
+	// estimate and never scores (owner decision 2026-10-05).
+	DeclaredBracket *int
 }
 
 // NotQualified means the page parsed but the deck is not one the corpus wants. It is an ordinary outcome of walking
@@ -317,9 +320,10 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 
 // visit lists one commander's decks, most viewed first, and writes the ones that are new or changed.
 //
-// A first visit reads Policy.FirstVisitPages; a revisit walks on until Policy.NewDecksPerRevisit decks led by this
-// commander were new or changed, the list ends, or Policy.MaxPagesPerCommander. A held deck whose listed update time
-// has not moved is stepped over without a request.
+// A first visit reads Policy.FirstVisitPages. A revisit reads page 1 whole, then reads on until it has fetched
+// Policy.RevisitNewDecks decks that were new or changed (stopping mid-page once it has), or the list ends (owner rule
+// 2026-10-05). Policy.MaxPagesPerCommander and Policy.MaxFetchesPerCommander bound either. A held deck whose listed
+// update time has not moved is stepped over without a request, and does not count.
 //
 // A returned error ends the run (a block, a list that stopped looking like itself, a failed write); the result
 // still says what the visit did up to that point.
@@ -364,14 +368,13 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 		}
 	}
 
-	wanted := policy.RevisitPages
-	if !commander.Visited {
-		wanted = policy.FirstVisitPages
-	}
-	maxPages := min(wanted, policy.MaxPagesPerCommander)
-	// Whether the absolute ceiling is what stopped the visit, rather than the pages it was asked to read. The two are
-	// different outcomes: reading your allotted page is `done`, being cut off by the ceiling is `page_cap`.
-	ceilingBound := policy.MaxPagesPerCommander < wanted
+	firstVisit := !commander.Visited
+	// A first visit's pages, against the absolute ceiling. Whether the ceiling is what stopped it, rather than the pages
+	// it was asked to read, decides the outcome: reading your allotted page is `done`, being cut off is `page_cap`.
+	firstVisitPages := min(policy.FirstVisitPages, policy.MaxPagesPerCommander)
+	ceilingBound := policy.MaxPagesPerCommander < policy.FirstVisitPages
+	// Decks this visit fetched because they were new or changed: a revisit reads on until it has its share.
+	requested := 0
 
 	for pageNo := 1; ; pageNo++ {
 		if pageNo > 1 {
@@ -404,11 +407,17 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 				summary.SkippedUnchanged++
 				continue
 			}
+			// Past page 1, a revisit stops as soon as it has its share; page 1 is always read whole.
+			if !firstVisit && pageNo > 1 && requested >= policy.RevisitNewDecks {
+				result.Outcome = OutcomeDone
+				return result, nil
+			}
 			if !r.now().Before(deadline) {
 				result.Outcome = OutcomePartial
 				return result, nil
 			}
 
+			requested++
 			row, err := r.fetchDeck(ctx, entry.ID, summary)
 			r.notePushback(summary, commander, pageNo)
 			if err != nil {
@@ -448,11 +457,12 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 			if err != nil {
 				return result, fmt.Errorf("writing deck: %w", err)
 			}
-			// Not stored: it names a card the catalog does not have yet. Nothing is held for it, so the next visit
-			// fetches it again, by which time the daily catalog sync has normally caught up.
+			// Not stored: an id in it is not an oracle id at all. (A card the catalog merely lacks is stored raw; the
+			// collator holds the deck back from the corpus until it resolves.) Nothing is held for it, so the next
+			// visit fetches it again.
 			if len(unresolved) > 0 {
 				summary.SkippedUnresolved++
-				r.log.Warn("deck names a card the catalog does not have; not stored",
+				r.log.Warn("deck names an id that is not an oracle id; not stored",
 					"source", r.src.Name(), "deck", entry.ID, "missing", unresolved[0].Missing)
 				if result.Fetched >= policy.MaxFetchesPerCommander {
 					result.Outcome = OutcomeFetchCap
@@ -482,8 +492,19 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 			}
 		}
 
-		if !page.HasNext || pageNo >= maxPages {
-			result.Outcome = visitEnd(commander, result, page.HasNext, ceilingBound)
+		switch {
+		case !page.HasNext:
+			result.Outcome = visitEnd(commander, result, false, false)
+			return result, nil
+		case firstVisit && pageNo >= firstVisitPages:
+			result.Outcome = visitEnd(commander, result, true, ceilingBound)
+			return result, nil
+		case !firstVisit && requested >= policy.RevisitNewDecks:
+			result.Outcome = OutcomeDone
+			return result, nil
+		case !firstVisit && pageNo >= policy.MaxPagesPerCommander:
+			// Short of its share with the list still going: the ceiling cut it off.
+			result.Outcome = OutcomePageCap
 			return result, nil
 		}
 	}
@@ -492,7 +513,7 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 // visitEnd names how a visit that read all the pages it was allowed finished.
 //
 // `page_cap` means the absolute ceiling cut the visit short, not merely that the visit read the pages it was asked to.
-// With revisitPages at 1 the latter is what every healthy revisit does, so reporting that as `page_cap` would make the
+// Reading its allotted page is what every healthy first visit does, so reporting that as `page_cap` would make the
 // normal case look like a limit was hit and bury the visits where the ceiling really did bite.
 func visitEnd(commander Commander, result CommanderResult, hasNext, ceilingBound bool) string {
 	switch {
@@ -566,6 +587,7 @@ func (r *Runner) fetchDeck(ctx context.Context, id string, summary *RunSummary) 
 		ContentHash:     contentHash(deck.Commanders, deck.Cards),
 		ListedUpdatedAt: deck.UpdatedAt,
 		LastUpdatedAt:   deck.UpdatedAt,
+		DeclaredBracket: deck.DeclaredBracket,
 	}, nil
 }
 

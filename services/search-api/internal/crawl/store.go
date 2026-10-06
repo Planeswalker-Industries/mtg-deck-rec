@@ -10,8 +10,8 @@ import (
 )
 
 // Store is what a crawl needs from the database, so the run can be tested against a fake. Each instance is bound to
-// one source (the app_config key, the crawl_state row and the decks it writes are all keyed by that source); the run
-// never passes a source name around.
+// one source (the app_config key, the crawl.state row and the raw deck table it writes are all keyed by that source);
+// the run never passes a source name around.
 type Store interface {
 	// Policy is the crawl's politeness and budget from app_config.<source>.
 	Policy(ctx context.Context) (Policy, error)
@@ -29,10 +29,10 @@ type Store interface {
 	// whole corpus. Ids we hold nothing for are absent.
 	DeckVersions(ctx context.Context, ids []string) (map[string]HeldDeck, error)
 	// UpsertDecks writes rows; the database skips any whose content hash and listed update time are both unchanged.
-	// It stores decks by catalog card id, so a deck naming a card the catalog does not have yet is not stored at all
-	// and comes back as unresolved.
+	// It stores decks raw, in the source's own schema, as the source sent them; only a deck with an id that is not an
+	// oracle id at all is refused, and comes back as unresolved.
 	UpsertDecks(ctx context.Context, rows []DeckRow) ([]UnresolvedDeck, error)
-	// CreateRun makes a crawl_runs row for the source and returns its id, so the claim can point at it.
+	// CreateRun makes a crawl.runs row for the source and returns its id, so the claim can point at it.
 	CreateRun(ctx context.Context) (int64, error)
 	// FinishRun closes a run with what it saw and did.
 	FinishRun(ctx context.Context, runID int64, summary RunSummary) error
@@ -50,7 +50,7 @@ type Store interface {
 	Disable(ctx context.Context, reason string) error
 }
 
-// CrawlState mirrors the source's corpus.crawl_state row, plus how many decks the corpus already holds for it.
+// CrawlState mirrors the source's crawl.state row, plus how many decks its raw table holds.
 type CrawlState struct {
 	LastDeckID     string
 	RunningRunID   int64
@@ -82,7 +82,7 @@ type Commander struct {
 	Visited bool `json:"visited"`
 }
 
-// Commander visit outcomes, as corpus.crawl_commanders.outcome stores them.
+// Commander visit outcomes, as crawl.queue.outcome stores them.
 const (
 	OutcomeDone       = "done"         // the visit did what it set out to: its first page, or its revisit target
 	OutcomeExhausted  = "exhausted"    // the commander's list ran out before the revisit target
@@ -94,7 +94,7 @@ const (
 	OutcomeFetchCap   = "fetch_cap"    // the visit stopped at Policy.MaxFetchesPerCommander
 )
 
-// CommanderResult is what one visit did, written back to corpus.crawl_commanders.
+// CommanderResult is what one visit did, written back to crawl.queue.
 type CommanderResult struct {
 	Outcome        string `json:"outcome"`
 	Error          string `json:"error,omitempty"`
@@ -132,17 +132,20 @@ type DeckRow struct {
 	ContentHash     string         `json:"content_hash"`
 	ListedUpdatedAt time.Time      `json:"listed_updated_at"`
 	LastUpdatedAt   time.Time      `json:"last_updated_at"`
+	// The author's bracket, absent when they gave none. Not in the content hash: a deck whose author only re-rated it
+	// moves its listed time, which is what brings it back.
+	DeclaredBracket *int `json:"declared_bracket,omitempty"`
 }
 
-// UnresolvedDeck is a deck the database would not store because it names a card the catalog does not have, normally
-// one printed since the last catalog sync. Nothing is held for it, so the next visit fetches it again.
+// UnresolvedDeck is a deck the database would not store because an id in it is not an oracle id at all. (A card the
+// catalog merely lacks is stored raw.) Nothing is held for it, so the next visit fetches it again.
 type UnresolvedDeck struct {
 	DeckID string `json:"deckId"`
-	// The oracle ids that matched no card, for the log.
+	// The ids that are not oracle ids, for the log.
 	Missing []string `json:"missing"`
 }
 
-// RunSummary is written back to crawl_runs (json tags are the column names).
+// RunSummary is written back to crawl.runs (json tags are the column names).
 type RunSummary struct {
 	State              string `json:"state"`
 	PagesSeen          int    `json:"pages_seen"`
@@ -155,8 +158,8 @@ type RunSummary struct {
 	// because the two say different things: unqualified means the browse filters admit decks the corpus does not
 	// want, missing means the feed is stale or the crawl is falling behind deletions.
 	SkippedMissing int `json:"skipped_missing"`
-	// Decks fetched but not stored because they name a card the catalog does not have yet. Apart from the others
-	// because the cause is on our side, not the source's: a count that stays high means the catalog sync is behind.
+	// Decks fetched but not stored because an id in them is not an oracle id. Apart from the others because it is
+	// worth a look whenever it is above zero: the source sent something its own format does not allow.
 	SkippedUnresolved int `json:"skipped_unresolved"`
 	CommandersVisited int `json:"commanders_visited"`
 	// How many times the source answered 429, and where the crawl was the last time it did. The pace widens itself in

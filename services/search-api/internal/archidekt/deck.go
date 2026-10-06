@@ -17,6 +17,13 @@ const commanderFormat = 3
 // mid-edit or a variant format, and does not belong in the corpus.
 const deckSize = 100
 
+// WotC's brackets run from 1 (exhibition) to 5 (cEDH). An edhBracket outside them is stored as none rather than
+// refused: the deck is still a deck, and archidekt.decks would reject the number.
+const (
+	lowestBracket  = 1
+	highestBracket = 5
+)
+
 // deckResponse is the deck-detail API shape, pinned against testdata/deck-page.json. Cards arrive as entries with a
 // nested card twice (edition and printing), and the oracle id lives at card.oracleCard.uid; a commander is an entry
 // whose categories include "Commander".
@@ -25,6 +32,8 @@ type deckResponse struct {
 	Private    bool   `json:"private"`
 	Unlisted   bool   `json:"unlisted"`
 	UpdatedAt  string `json:"updatedAt"`
+	// The bracket the author gave the deck, null when they gave none (seen live 2026-10-05).
+	EdhBracket *int `json:"edhBracket"`
 	// Category metadata decides which cards count as in-deck: categories the deck says are not in the deck
 	// (sideboard, maybeboard, considering - or marked includedInDeck=false) are excluded, mirroring the worker's
 	// qualifyDeck.
@@ -154,6 +163,10 @@ func parseDeckBody(body []byte, id string) (crawl.Deck, deckMeta, error) {
 
 	deck.UpdatedAt = updated
 	deck.Size = size
+	if b := resp.EdhBracket; b != nil && *b >= lowestBracket && *b <= highestBracket {
+		bracket := *b
+		deck.DeclaredBracket = &bracket
+	}
 	for oracleID := range commanders {
 		deck.Commanders = append(deck.Commanders, oracleID)
 	}
