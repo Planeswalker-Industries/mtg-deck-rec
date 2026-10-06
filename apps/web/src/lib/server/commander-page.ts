@@ -1,10 +1,11 @@
 import type { AddSuggestion, CardCategory, CardSummary, CommanderKeyId, CommanderPageData } from "@mtg/core/contract";
-import { ADD_WEIGHTS, blendScore, cardCategory, commanderCorpusScore } from "@mtg/core/scoring";
+import { blendScore, cardCategory, commanderCorpusScore } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
 import { fromIndex } from "./search-index";
 import { commanderKeyCounts, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
 import { loadRoleTags, loadRoleTargets } from "./recs";
 import { loadServedCards, loadServedDeckPool } from "./serving";
+import { loadScoringConfig } from "./scoring-config";
 import type { PublicClient } from "./supabase";
 
 /** Cards read per commander before ranking; plenty for 12 per card type. */
@@ -55,12 +56,13 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
   if (!key) return null;
 
   const commanderIds = key.commander_2 === null ? [key.commander_1] : [key.commander_1, key.commander_2];
-  const [corpus, commanderRows, roleTargets, roleTags, statsResult] = await Promise.all([
+  const [corpus, commanderRows, roleTargets, roleTags, statsResult, scoring] = await Promise.all([
     loadCommanderCorpus(db, commanderIds),
     fetchCardsById(db, commanderIds),
     loadRoleTargets(db),
     loadRoleTags(db),
     db.from("commander_stats").select("computed_at").eq("commander_key_id", key.id).maybeSingle(),
+    loadScoringConfig(),
   ]);
   if (statsResult.error) throw new Error(`Loading commander stats failed: ${statsResult.error.message}`);
   // Borrowed decks only fill in: a page for commanders nobody has run together would describe other decks.
@@ -93,8 +95,8 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
         card: toCardSummary(row),
         category: cardCategory(row.type_line),
         score: blendScore(
-          { tag: null, manaValue: null, staple: null, corpus: round2(commanderCorpusScore(rates.commanderRate)), votes: null, role: null },
-          ADD_WEIGHTS,
+          { tag: null, manaValue: null, staple: null, corpus: round2(commanderCorpusScore(rates.commanderRate, scoring.corpus)), votes: null, role: null },
+          scoring.weights.add,
         ),
         corpus: rates.evidence,
         fillsRoles: [],

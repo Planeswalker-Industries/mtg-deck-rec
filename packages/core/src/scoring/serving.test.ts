@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TEST_SCORING } from './test-config';
 import { corpusComponent, pickCorpusSources, shrunkInclusion, type CorpusKey } from './corpus';
 import {
   addPoolScore,
@@ -84,7 +85,7 @@ describe('addPoolScore', () => {
     const baseline = 0.12;
     const inclusion = (30 + 20 * baseline) / (80 + 20);
     const sql = 0.6 * (0.5 + 0.5 * Math.max(-1, Math.min(1, (inclusion - baseline) / 0.3))) + 0.4 * Math.sqrt(Math.min(1, Math.max(inclusion, 0)));
-    expect(addPoolScore(counts, baseline, 20)).toBeCloseTo(sql, 12);
+    expect(addPoolScore(counts, baseline, 20, TEST_SCORING.corpus)).toBeCloseTo(sql, 12);
   });
 });
 
@@ -132,10 +133,10 @@ describe('servedCardRates', () => {
 
   it('scores exactly as corpusComponent does', () => {
     const rates = servedCardRates({ decksWith: 30, commanderDecks: 75 }, baseline, settings, false);
-    expect(servedCorpusScore(rates, settings)).toEqual(
+    expect(servedCorpusScore(rates, settings, TEST_SCORING.corpus)).toEqual(
       corpusComponent(
         { commanderRate: rates.commanderRate, commanderDeckCount: 75, baseline: 0.1, baselineDeckCount: 9000 },
-        settings,
+        settings, TEST_SCORING.corpus
       ),
     );
   });

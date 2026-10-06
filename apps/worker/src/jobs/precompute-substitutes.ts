@@ -3,14 +3,14 @@ import { copyRows } from '../lib/serving';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
 /**
- * card_substitutes (T055): each card's substitutes, computed by precompute_substitutes (the functional tag
- * similarity the retired rec_swap_candidates scored, over every card, the first `substitutesDepth` inside every colour identity that can hold the card) and
- * written only where a list changed.
+ * card_substitutes (T055): each card's substitutes, computed by precompute_substitutes (the functional tag similarity
+ * the retired rec_swap_candidates scored, over every card; the first `substitutesDepth` inside every colour identity
+ * that can hold the card) and written only where a list changed.
  *
  * A card is rebuilt when it is new, when what its similarity rests on moved (its functional tags and their idf, its
- * colours, mana value and functional twin, the depth, the functional tag config: `tags_hash`), when a tag near its own
- * was switched on or off, and every `substitutesRebuildDays`, which is what catches a list that changed through its
- * candidates rather than through the card itself.
+ * colours, mana value and functional twin, the depth, the functional tag config, the pool order's weights:
+ * `tags_hash`), when a tag near its own was switched on or off, and every `substitutesRebuildDays`, which is what
+ * catches a list that changed through its candidates rather than through the card itself.
  */
 
 /** Cards whose lists are computed and merged together. */
@@ -54,6 +54,12 @@ async function currentHashes(sql: Sql, depths: Depths): Promise<Map<number, stri
       from public.app_config
       where key in ('functional_tag_roots', 'functional_tag_denied_roots', 'functional_tag_exclusive_groups')
     ),
+    -- The pool order's weights (app_config.scoring): moving them reorders every list.
+    pool_order as (
+      select md5(coalesce((value #> '{weights,swap,collection_less}')::text, '') || coalesce(value #>> '{swap,manaValueFalloff}', '')) as hash
+      from public.app_config
+      where key = 'scoring'
+    ),
     tagged as (
       select ct.card_id, string_agg(ct.tag_id::text || ':' || round(t.idf::numeric, 4)::text, ',' order by ct.tag_id) as tags
       from public.card_tags ct
@@ -62,7 +68,7 @@ async function currentHashes(sql: Sql, depths: Depths): Promise<Map<number, stri
       group by ct.card_id
     )
     select c.id as card_id,
-           md5(concat_ws('|', 'by-identity', ${depths.substitutesDepth}::int, (select hash from config),
+           md5(concat_ws('|', 'by-identity', ${depths.substitutesDepth}::int, (select hash from config), (select hash from pool_order),
                          c.color_identity, c.mana_value, c.equivalence_base_id, coalesce(g.tags, ''))) as tags_hash
     from public.cards c
     left join tagged g on g.card_id = c.id

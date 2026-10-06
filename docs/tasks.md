@@ -559,13 +559,15 @@ A revisit re-reads page 1, then reads on until `revisitNewDecks` (25) decks were
 
 ### T057: Scoring weights into `app_config.scoring`
 
-**Priority:** HIGH | **Area:** Backend / Scoring | **Status:** Not started
+**Priority:** HIGH | **Area:** Backend / Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, migration `20261006000300`)
 
 Move `ADD_WEIGHTS`, `SWAP_WEIGHTS` and the cut thresholds (`packages/core/src/scoring/`) into `app_config.scoring`, read by TypeScript. While `rec_swap_candidates` still exists it reads the same row instead of mirroring the weights (repeat `enable_nestloop = off`).
 
+**Built:** `app_config.scoring` (private) holds every weight and threshold; `@mtg/core/scoring` validates it and `app_config.corpus` and refuses a missing value. The app reads it with the secret key (`scoring-config.ts`), the worker and the swap pool's SQL read it directly. Ranking moved into `@mtg/core/scoring` `rank.ts` (`rankAdds`, `rankCuts`, `rankSwaps`) so the evaluation (T058) uses the same code. Checked: 784 outputs (cuts, adds in three modes, swaps in three modes, the rater, 25 commander pages, card pages) on 40 local corpus decks identical before and after; the scores pass rewrote 0 of 5.1M rows. On release the worker re-scores once (the stored settings gained the score shape) and rebuilds every substitute list once (their hash gained the weights); both write nothing.
+
 **Acceptance criteria:**
-- [ ] Weights read from `app_config.scoring`; no scoring constant left in code
-- [ ] Regression fixtures unchanged
+- [x] Weights read from `app_config.scoring`; no scoring constant left in code
+- [x] Regression fixtures unchanged
 
 ---
 

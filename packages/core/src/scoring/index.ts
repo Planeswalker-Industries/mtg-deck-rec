@@ -5,3 +5,5 @@ export * from './cut';
 export * from './swap';
 export * from './owned';
 export * from './serving';
+export * from './config';
+export * from './rank';

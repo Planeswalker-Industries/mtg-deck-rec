@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ADD_WEIGHTS, cardCategory, cardTypes, roleGap, roleShortfalls } from './add';
+import { TEST_SCORING } from './test-config';
+import { cardCategory, cardTypes, roleGap, roleShortfalls } from './add';
 import { blendScore } from './swap';
 
 describe('cardCategory', () => {
@@ -53,15 +54,15 @@ describe('roleShortfalls and roleGap', () => {
   });
 
   it('ranks a card that fills a short role above an equally played card that does not', () => {
-    const fills = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.6, votes: null, role: 0.75 }, ADD_WEIGHTS);
-    const doesNot = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.6, votes: null, role: 0 }, ADD_WEIGHTS);
+    const fills = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.6, votes: null, role: 0.75 }, TEST_SCORING.weights.add);
+    const doesNot = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.6, votes: null, role: 0 }, TEST_SCORING.weights.add);
     expect(fills.total).toBeGreaterThan(doesNot.total);
     expect(fills.effectiveWeights.corpus).toBeCloseTo(0.8);
   });
 
   it('keeps a widely played card above a rarely played one that fills the most needed role', () => {
-    const staple = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.68, votes: null, role: 0 }, ADD_WEIGHTS);
-    const niche = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.38, votes: null, role: 1 }, ADD_WEIGHTS);
+    const staple = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.68, votes: null, role: 0 }, TEST_SCORING.weights.add);
+    const niche = blendScore({ tag: null, manaValue: null, staple: null, corpus: 0.38, votes: null, role: 1 }, TEST_SCORING.weights.add);
     expect(staple.total).toBeGreaterThan(niche.total);
   });
 });

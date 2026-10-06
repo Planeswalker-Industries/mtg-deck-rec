@@ -1,4 +1,5 @@
 import type { CorpusEvidence } from '../contract';
+import type { CorpusScoring } from './config';
 import {
   commanderCorpusScore,
   commanderShare,
@@ -22,34 +23,6 @@ export const IDENTITY_COUNT = 32;
 
 export interface ServingSettings extends CorpusThresholds, PoolSettings {
   shrinkAlpha: number;
-}
-
-/**
- * Used for any key app_config.corpus lacks; the web app and the precompute worker read the settings through
- * `servingSettings`, so both fall back to the same numbers. externalPriorShare 0 keeps the EDHREC prior off.
- */
-export const DEFAULT_SERVING_SETTINGS: Readonly<Required<ServingSettings>> = {
-  shrinkAlpha: 20,
-  minDecks: 50,
-  fullDecks: 100,
-  partnerPoolWeight: 0.25,
-  externalPriorShare: 0,
-};
-
-/** The scoring settings in app_config.corpus, each missing or malformed key replaced by its default. */
-export function servingSettings(value: unknown): Required<ServingSettings> {
-  const raw = (value ?? {}) as Record<string, unknown>;
-  const read = (key: keyof ServingSettings) => {
-    const v = raw[key];
-    return typeof v === 'number' && Number.isFinite(v) ? v : DEFAULT_SERVING_SETTINGS[key];
-  };
-  return {
-    shrinkAlpha: read('shrinkAlpha'),
-    minDecks: read('minDecks'),
-    fullDecks: read('fullDecks'),
-    partnerPoolWeight: read('partnerPoolWeight'),
-    externalPriorShare: read('externalPriorShare'),
-  };
 }
 
 /** One commander key's counts for one card: a `commander_card_stats` row. */
@@ -158,9 +131,14 @@ export function identityPoolDecks(sources: readonly CorpusSource[]): number[] {
 }
 
 /** The add pool's order (`pool_score`, as the retired `rec_add_candidates` ranked it): the commander-specific score over `poolDecks`. */
-export function addPoolScore(counts: Pick<CommanderCardCounts, 'decksWith' | 'poolDecks'>, baseline: number, alpha: number): number {
+export function addPoolScore(
+  counts: Pick<CommanderCardCounts, 'decksWith' | 'poolDecks'>,
+  baseline: number,
+  alpha: number,
+  scoring: CorpusScoring,
+): number {
   const inclusion = shrunkInclusion(counts.decksWith, counts.poolDecks, baseline, alpha);
-  return commanderCorpusScore({ inclusion, synergy: inclusion - baseline });
+  return commanderCorpusScore({ inclusion, synergy: inclusion - baseline }, scoring);
 }
 
 /** Decks of every identity that allows the card, updated since its release: the baseline's count for a card no deck runs. */
@@ -241,7 +219,11 @@ export function servedCardRates(
 }
 
 /** The stored final corpus score: `corpusComponent` over the served rates (null: too few decks anywhere to judge). */
-export function servedCorpusScore(rates: ServedCardRates, settings: ServingSettings): { value: number; weightScale: number } | null {
+export function servedCorpusScore(
+  rates: ServedCardRates,
+  settings: ServingSettings,
+  scoring: CorpusScoring,
+): { value: number; weightScale: number } | null {
   return corpusComponent(
     {
       commanderRate: rates.commanderRate,
@@ -250,5 +232,6 @@ export function servedCorpusScore(rates: ServedCardRates, settings: ServingSetti
       baselineDeckCount: rates.baselineDeckCount,
     },
     settings,
+    scoring,
   );
 }

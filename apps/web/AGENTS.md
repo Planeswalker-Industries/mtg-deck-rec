@@ -30,7 +30,7 @@ This app targets Next.js 16.3. APIs differ from older versions. Read the bundled
 
 ## Caching
 
-- **Settings:** the corpus settings and whether a corpus exists, decks per month per colour identity, role targets and their tags and the owned-first boost are cached per server instance for a minute (`cachedConfig`, `lib/server/config-cache.ts`), so a request doesn't read them first. An admin change shows within a minute; a failed load isn't kept, so the next request tries again
+- **Settings:** the corpus settings and whether a corpus exists, decks per month per colour identity, role targets and their tags, the owned-first boost and the scoring weights are cached per server instance for a minute (`cachedConfig`, `lib/server/config-cache.ts`), so a request doesn't read them first. The scoring weights (`app_config.scoring`) are private: `loadScoringConfig` (`lib/server/scoring-config.ts`) reads them with `SUPABASE_SECRET_KEY`, so every environment that serves recommendations needs that key, and the result never reaches client code. An admin change shows within a minute; a failed load isn't kept, so the next request tries again
 - **Swap suggestions:** `loadSwapPool` (candidates, card rows, tags, play rates, from the serving tables) doesn't depend on the rest of the deck; `rankSwaps` removes the deck's own cards and blends scores. The swap route calls `getCachedSwapSuggestions` (`lib/server/recs-cache.ts`: `use cache`, `cacheLife("hours")`, tag `recs`), keyed by target, commander ids and the Game Changer setting. Owned-only requests skip the cache; owned-first shares it
 - **Commander pages:** `loadCommanderPage` is wrapped by `getCommanderPage` (`cacheLife("days")`, tag `corpus`). Cards are ranked by `commanderCorpusScore` over the same release-aware rates as the deck tool, and banned cards are skipped. A page reads its top 500 from `commander_card_stats` by index; one that borrows partner decks takes them from `commander_card_scores` (`serving_add_pool`)
 - **Card pages:** `loadCardPage` is wrapped by `getCardPage` (`cacheLife("days")`, tags `catalog` and `corpus`). Functional tags come through `card_functional_tags` (API roles can't read the `functional_tags` view). Alternatives are a swap pool limited to the card's own colour identity (`loadSwapPool` `identityMask`), ranked with no deck. "Commanders whose decks run it most" uses `card_top_commanders`
@@ -188,6 +188,7 @@ The one part of the app not built on the contract or on shadcn. Three locks: `pr
 | `lib/server/recs.ts`, `recs-route.ts`, `recs-cache.ts` | Recommendation pipeline, route handler wrapper, swap caching |
 | `lib/server/serving.ts` | The serving reads (T055): one round per add, cut and swap; `serving_card` rows to card rows and play rates; the `servingReads` switch |
 | `lib/server/config-cache.ts` | Settings cached per server instance for a minute |
+| `lib/server/scoring-config.ts` | `app_config.scoring`, read with the secret key |
 | `lib/server/retry-timeout.ts` | Statement-timeout retry (SQLSTATE 57014) for the card tags' Postgres fallback |
 | `lib/server/search-index.ts` | `fromIndex`: index first, Postgres fallback |
 | `lib/server/share-import.ts` | `fetchShareLink`, kill switch |

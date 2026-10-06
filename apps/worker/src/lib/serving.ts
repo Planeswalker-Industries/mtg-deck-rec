@@ -1,6 +1,14 @@
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { servingSettings, type BaselineCounts, type CardFacts, type CorpusKey, type ServingSettings } from '@mtg/core/scoring';
+import {
+  parseCorpusSettings,
+  parseScoringConfig,
+  type BaselineCounts,
+  type CardFacts,
+  type CorpusKey,
+  type CorpusSettings,
+  type ScoringConfig,
+} from '@mtg/core/scoring';
 import type { ReservedSql, Sql } from './db';
 
 /** What the precompute worker reads to build the serving tables (T055). */
@@ -25,9 +33,16 @@ export const eligibleAt = (rows: KeyRows, i: number): number | null => {
   return n === NO_ELIGIBLE_COUNT ? null : n;
 };
 
-export async function loadServingSettings(sql: Sql): Promise<Required<ServingSettings>> {
+/** app_config.corpus's scoring settings (required). */
+export async function loadServingSettings(sql: Sql): Promise<CorpusSettings> {
   const [row] = await sql<{ value: unknown }[]>`select value from public.app_config where key = 'corpus'`;
-  return servingSettings(row?.value);
+  return parseCorpusSettings(row?.value);
+}
+
+/** app_config.scoring (required): the weights and thresholds the stored scores are computed with. */
+export async function loadScoringConfig(sql: Sql): Promise<ScoringConfig> {
+  const [row] = await sql<{ value: unknown }[]>`select value from public.app_config where key = 'scoring'`;
+  return parseScoringConfig(row?.value);
 }
 
 /** Every commander key, with its decks when it has any (a key whose decks are gone keeps its page row). */

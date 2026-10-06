@@ -1,23 +1,16 @@
-import type { CommanderKeyRef, CorpusConfidence, CorpusEvidence } from "@mtg/core/contract";
+import type { CommanderKeyRef, CorpusConfidence } from "@mtg/core/contract";
 import {
+  parseCorpusSettings,
   pickCorpusSources,
-  servingSettings,
   sourcesConfidence,
-  DEFAULT_SERVING_SETTINGS,
-  type CommanderCardRate,
+  type CardPlayRates,
   type CorpusKey,
+  type CorpusSettings,
   type CorpusSource,
 } from "@mtg/core/scoring";
 import { cachedConfig } from "./config-cache";
 import type { PublicClient } from "./supabase";
 
-// The scoring settings' defaults are @mtg/core's, which the precompute worker reads too (externalPriorShare 0 keeps
-// the EDHREC prior off). severeSynergyScore only decides which cuts are severe, so it stays here.
-const DEFAULT_SETTINGS = {
-  ...DEFAULT_SERVING_SETTINGS,
-  severeSynergyScore: 0.2,
-};
-type CorpusSettings = typeof DEFAULT_SETTINGS;
 type DeckMonths = Record<string, number>;
 
 /** A Commander deck has one commander or a partner pair, so more ids than this is not a deck we can key a page by. */
@@ -49,27 +42,8 @@ export interface CommanderCorpus {
   confidence: CorpusConfidence;
 }
 
-export interface CardCorpus {
-  /** Share of eligible corpus decks (the card's colors allow it, updated since its release) that run it. */
-  baseline: number;
-  baselineDeckCount: number;
-  /** The commander's decks that could have run the card (colors allow it, updated since its release), at their weights. */
-  commanderDeckCount: number;
-  /** The commander's decks, shrunk toward the prior; null when none could have run the card and there is no prior. */
-  commanderRate: CommanderCardRate | null;
-  /** An external source (EDHREC) publishes a rate for this card under this commander, and it shaped `commanderRate`. */
-  hasExternalPrior: boolean;
-  /** Marked limited when too few decks, anywhere, could have run the card. */
-  evidence: CorpusEvidence;
-}
-
-function parseSettings(value: unknown): CorpusSettings {
-  const severe = (value as Record<string, unknown> | null)?.severeSynergyScore;
-  return {
-    ...servingSettings(value),
-    severeSynergyScore: typeof severe === "number" && Number.isFinite(severe) ? severe : DEFAULT_SETTINGS.severeSynergyScore,
-  };
-}
+/** A card's play rates under the deck's commanders (`@mtg/core` `CardPlayRates`). */
+export type CardCorpus = CardPlayRates;
 
 function parseNumberRecord(value: unknown): DeckMonths {
   if (typeof value !== "object" || value === null) return {};
@@ -101,7 +75,7 @@ export function loadCorpusConfig(db: PublicClient): Promise<CorpusConfig> {
     ]);
     if (configResult.error) throw new Error(`Loading corpus settings failed: ${configResult.error.message}`);
     if (probeResult.error) throw new Error(`Checking the corpus failed: ${probeResult.error.message}`);
-    return { settings: parseSettings(configResult.data), available: probeResult.data.length > 0 };
+    return { settings: parseCorpusSettings(configResult.data), available: probeResult.data.length > 0 };
   });
 }
 

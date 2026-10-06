@@ -11,7 +11,8 @@ import {
   type CardFacts,
   type CorpusSources,
   type RowSums,
-  type ServingSettings,
+  type CorpusScoring,
+  type CorpusSettings,
   type SourceDeckTotals,
 } from '@mtg/core/scoring';
 import { connect, reserve, type ReservedSql, type Sql } from '../lib/db';
@@ -23,6 +24,7 @@ import {
   loadIdentityMonths,
   loadKeyRows,
   loadKeys,
+  loadScoringConfig,
   loadServingSettings,
   type KeyRow,
   type KeyRows,
@@ -85,7 +87,9 @@ function partnerCommanders(keys: readonly KeyRow[], only: ReadonlySet<number> | 
 }
 
 interface Inputs {
-  settings: Required<ServingSettings>;
+  settings: CorpusSettings;
+  /** app_config.scoring's corpus score shape. */
+  scoring: CorpusScoring;
   keysByCommander: Map<number, KeyRow[]>;
   rowsByKey: Map<number, KeyRows>;
   baselines: Map<number, BaselineCounts>;
@@ -147,10 +151,10 @@ function* scoreRows(set: CommanderSet, picked: CorpusSources, inputs: Inputs): G
       decksWith: 0,
       eligibleDecks: identityBaselineDecks(inputs.identityMonths, facts),
     };
-    const score = servedCorpusScore(servedCardRates(counts, baseline, inputs.settings, pooled), inputs.settings);
+    const score = servedCorpusScore(servedCardRates(counts, baseline, inputs.settings, pooled), inputs.settings, inputs.scoring);
     // The pool order reads the baseline as float4 cast to float8, as the retired rec_add_candidates did; fround gives
     // that exact value, so ties fall the same way.
-    const poolScore = addPoolScore(counts, Math.fround(baseline.rate), inputs.settings.shrinkAlpha);
+    const poolScore = addPoolScore(counts, Math.fround(baseline.rate), inputs.settings.shrinkAlpha, inputs.scoring);
     yield [set.commander1, set.commander2, cardId, counts.decksWith, counts.commanderDecks, poolScore, score?.value ?? null, score?.weightScale ?? null];
   }
 }
@@ -308,8 +312,9 @@ export async function precomputeScores({
     if (start.kind === 'skipped') return { status: 'succeeded', rows: 0 };
     runId = start.runId;
 
-    const [settings, keys, baselines, facts, identityMonths] = await Promise.all([
+    const [settings, scoringConfig, keys, baselines, facts, identityMonths] = await Promise.all([
       loadServingSettings(sql),
+      loadScoringConfig(sql),
       loadKeys(sql),
       loadBaselines(sql),
       loadCardFacts(sql),
@@ -328,7 +333,8 @@ export async function precomputeScores({
       ? undefined
       : [...new Set([...sets.flatMap((s) => [s.commander1, s.commander2]), ...partners].flatMap((id) => (keysByCommander.get(id) ?? []).map((k) => k.id)))];
     const rowsByKey = await loadKeyRows(sql, neededKeys);
-    const inputs: Inputs = { settings, keysByCommander, rowsByKey, baselines, facts, identityMonths };
+    const scoring = scoringConfig.corpus;
+    const inputs: Inputs = { settings, scoring, keysByCommander, rowsByKey, baselines, facts, identityMonths };
 
     const rows = sets.reduce((sum, s) => sum + setSize(s, inputs), 0);
     const previousRows = start.previousMetrics?.rows;
@@ -395,7 +401,7 @@ export async function precomputeScores({
     metrics.rowsRemoved = removed;
     if (full) {
       await sql`
-        insert into public.precompute_state (part, version) values ('scores', ${sql.json({ settings })})
+        insert into public.precompute_state (part, version) values ('scores', ${sql.json({ settings, scoring })})
         on conflict (part) do update set version = excluded.version, updated_at = now()
       `;
     }
@@ -419,11 +425,18 @@ export async function precomputeScores({
 const canonical = (value: unknown) =>
   JSON.stringify(value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);
 
-/** Whether app_config.corpus changed since the last full scores run, which means every score is stale. */
+/**
+ * Whether app_config.corpus or the corpus score's shape (app_config.scoring.corpus) changed since the last full scores
+ * run, which means every score is stale.
+ */
 export async function scoreSettingsChanged(sql: Sql): Promise<boolean> {
-  const [settings, [state]] = await Promise.all([
+  const [settings, scoringConfig, [state]] = await Promise.all([
     loadServingSettings(sql),
-    sql<{ version: { settings?: unknown } }[]>`select version from public.precompute_state where part = 'scores'`,
+    loadScoringConfig(sql),
+    sql<{ version: { settings?: unknown; scoring?: unknown } }[]>`select version from public.precompute_state where part = 'scores'`,
   ]);
-  return canonical(state?.version.settings ?? null) !== canonical(settings);
+  return (
+    canonical(state?.version.settings ?? null) !== canonical(settings) ||
+    canonical(state?.version.scoring ?? null) !== canonical(scoringConfig.corpus)
+  );
 }

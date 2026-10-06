@@ -1,4 +1,5 @@
 import type { CardId, CutReason, CutSeverity } from '../contract';
+import type { CutScoring } from './config';
 
 export interface CutCandidate {
   cardId: CardId;
@@ -29,6 +30,8 @@ export interface CutOptions {
    * (corpus.severeSynergyScore); absent means no card is a misfit on play rates alone.
    */
   severeSynergyScore?: number;
+  /** Thresholds and weights (`app_config.scoring.cuts`). */
+  scoring: CutScoring;
 }
 
 export interface CutScore {
@@ -39,32 +42,19 @@ export interface CutScore {
   severity: CutSeverity;
 }
 
-/** A role is overloaded once the deck has this much more than its target. */
-export const ROLE_OVERLOAD_RATIO = 1.25;
-
-/** Nonland cards at or above this mana value are flagged as expensive. */
-export const HIGH_MANA_VALUE = 6;
-
-/** Below this play-rate score (roughly: in under 3% of the commander's decks, and no more than elsewhere) a card is low synergy. */
-export const LOW_SYNERGY_SCORE = 0.35;
-
-/** At or above this play-rate score, decks with the commander clearly run the card; cost alone isn't a reason to cut it. */
-export const WELL_PLAYED_SCORE = 0.5;
-
-/** Optional cuts stay below rule problems, which always score 1. */
-const OPTIONAL_CUT_CAP = 0.95;
-
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Cut suggestions: rule problems first (score 1), then optional cuts. Rule problems and severe misfits are mandatory
- * (the deck is better without them whatever replaces them) and sort first; the rest are suggestions. With play rates from the commander's decks, an
- * optional cut scores 0.5·(1 − play rate) + 0.3·(role overloaded) + 0.2·(relative mana value), and cards those decks
- * clearly run are flagged for neither cost nor role overlap (generic role targets don't know that, say, Krenko decks
- * run far more removal). Without play rates: cards whose every tracked role is overloaded, then expensive cards.
+ * (the deck is better without them whatever replaces them) and sort first; the rest are suggestions. With play rates
+ * from the commander's decks, an optional cut weighs (1 − play rate), role overload and relative mana value
+ * (`scoring.withCorpus`), and cards those decks clearly run are flagged for neither cost nor role overlap (generic role
+ * targets don't know that, say, Krenko decks run far more removal). Without play rates: cards whose every tracked role
+ * is overloaded, then expensive cards (`scoring.withoutCorpus`).
  * Cards with no reason are left out rather than guessed at. Pass the main deck only (no commanders).
  */
 export function scoreCuts(cards: readonly CutCandidate[], options: CutOptions): CutScore[] {
+  const { scoring } = options;
   const tracked = new Set(options.roleTargets.map((t) => t.roleId));
   const roleCounts = new Map<string, number>();
   for (const card of cards) {
@@ -73,7 +63,7 @@ export function scoreCuts(cards: readonly CutCandidate[], options: CutOptions): 
     }
   }
   const overloaded = new Set(
-    options.roleTargets.filter((t) => (roleCounts.get(t.roleId) ?? 0) > t.target * ROLE_OVERLOAD_RATIO).map((t) => t.roleId),
+    options.roleTargets.filter((t) => (roleCounts.get(t.roleId) ?? 0) > t.target * scoring.roleOverloadRatio).map((t) => t.roleId),
   );
   const gameChangerCount = cards.filter((c) => c.gameChanger).length;
   const maxManaValue = Math.max(1, ...cards.map((c) => c.manaValue));
@@ -88,15 +78,15 @@ export function scoreCuts(cards: readonly CutCandidate[], options: CutOptions): 
     const mustCut = reasons.length > 0;
 
     const corpusScore = card.corpusScore ?? null;
-    const wellPlayed = corpusScore !== null && corpusScore >= WELL_PLAYED_SCORE;
-    const lowSynergy = corpusScore !== null && corpusScore < LOW_SYNERGY_SCORE;
+    const wellPlayed = corpusScore !== null && corpusScore >= scoring.wellPlayedScore;
+    const lowSynergy = corpusScore !== null && corpusScore < scoring.lowSynergyScore;
     if (lowSynergy) reasons.push('LOW_SYNERGY');
     const severeMisfit =
       corpusScore !== null && options.severeSynergyScore !== undefined && corpusScore < options.severeSynergyScore;
     const cardRoles = card.roleIds.filter((r) => tracked.has(r));
     const redundant = !card.isLand && !wellPlayed && cardRoles.length > 0 && cardRoles.every((r) => overloaded.has(r));
     if (redundant) reasons.push('ROLE_REDUNDANT');
-    const expensive = !card.isLand && card.manaValue >= HIGH_MANA_VALUE;
+    const expensive = !card.isLand && card.manaValue >= scoring.highManaValue;
     if (expensive) reasons.push('HIGH_MANA_VALUE');
 
     if (reasons.length === 0) continue;
@@ -105,8 +95,13 @@ export function scoreCuts(cards: readonly CutCandidate[], options: CutOptions): 
     const manaShare = card.isLand ? 0 : card.manaValue / maxManaValue;
     let cutScore: number;
     if (mustCut) cutScore = 1;
-    else if (corpusScore !== null) cutScore = Math.min(OPTIONAL_CUT_CAP, 0.5 * (1 - corpusScore) + 0.3 * (redundant ? 1 : 0) + 0.2 * manaShare);
-    else cutScore = redundant ? 0.5 + 0.4 * manaShare : 0.3 + 0.2 * manaShare;
+    else if (corpusScore !== null) {
+      const w = scoring.withCorpus;
+      cutScore = Math.min(scoring.optionalCutCap, w.corpus * (1 - corpusScore) + w.role * (redundant ? 1 : 0) + w.manaValue * manaShare);
+    } else {
+      const w = scoring.withoutCorpus;
+      cutScore = redundant ? w.redundantBase + w.redundantManaValue * manaShare : w.base + w.manaValue * manaShare;
+    }
     const severity: CutSeverity = mustCut || severeMisfit ? 'mandatory' : 'suggested';
     results.push({ cardId: card.cardId, cutScore: round2(cutScore), reasons, severity });
   }

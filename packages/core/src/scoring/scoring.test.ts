@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { TEST_SCORING } from './test-config';
 import type { CardId } from '../contract';
-import { HIGH_MANA_VALUE, scoreCuts, type CutCandidate, type RoleTarget } from './cut';
-import { blendScore, manaValueProximity, SWAP_WEIGHTS } from './swap';
+import { scoreCuts, type CutCandidate, type RoleTarget } from './cut';
+import { blendScore, manaValueProximity } from './swap';
 
 describe('blendScore', () => {
   it('renormalizes weights over the components that have data', () => {
-    const score = blendScore({ tag: 1, manaValue: 0.5, staple: 0.8, corpus: null, votes: null, role: null }, SWAP_WEIGHTS.collection_less);
+    const score = blendScore({ tag: 1, manaValue: 0.5, staple: 0.8, corpus: null, votes: null, role: null }, TEST_SCORING.weights.swap.collection_less);
     expect(score.effectiveWeights.corpus).toBe(0);
     expect(score.effectiveWeights.votes).toBe(0);
     expect(score.effectiveWeights.tag + score.effectiveWeights.manaValue + score.effectiveWeights.staple).toBeCloseTo(1);
@@ -13,22 +14,22 @@ describe('blendScore', () => {
   });
 
   it('ranks a widely reprinted staple above an obscure card with the same function', () => {
-    const staple = blendScore({ tag: 0.5, manaValue: 1, staple: 1, corpus: null, votes: null, role: null }, SWAP_WEIGHTS.collection_less);
-    const obscure = blendScore({ tag: 1, manaValue: 1, staple: 0, corpus: null, votes: null, role: null }, SWAP_WEIGHTS.collection_less);
+    const staple = blendScore({ tag: 0.5, manaValue: 1, staple: 1, corpus: null, votes: null, role: null }, TEST_SCORING.weights.swap.collection_less);
+    const obscure = blendScore({ tag: 1, manaValue: 1, staple: 0, corpus: null, votes: null, role: null }, TEST_SCORING.weights.swap.collection_less);
     expect(staple.total).toBeGreaterThan(obscure.total * 0.75);
   });
 
   it('gives votes no weight without votes and ramps them up with volume', () => {
     const base = { tag: 0.5, manaValue: 0.5, staple: 0.5, corpus: 0.5, votes: 1, role: null };
-    expect(blendScore(base, SWAP_WEIGHTS.collection_less, 0).effectiveWeights.votes).toBe(0);
-    const few = blendScore(base, SWAP_WEIGHTS.collection_less, 5).effectiveWeights.votes;
-    const many = blendScore(base, SWAP_WEIGHTS.collection_less, 500).effectiveWeights.votes;
+    expect(blendScore(base, TEST_SCORING.weights.swap.collection_less, { count: 0, halfWeightCount: TEST_SCORING.swap.voteHalfWeightCount }).effectiveWeights.votes).toBe(0);
+    const few = blendScore(base, TEST_SCORING.weights.swap.collection_less, { count: 5, halfWeightCount: TEST_SCORING.swap.voteHalfWeightCount }).effectiveWeights.votes;
+    const many = blendScore(base, TEST_SCORING.weights.swap.collection_less, { count: 500, halfWeightCount: TEST_SCORING.swap.voteHalfWeightCount }).effectiveWeights.votes;
     expect(few).toBeGreaterThan(0);
     expect(many).toBeGreaterThan(few);
   });
 
   it('stays within 0..1 even with out-of-range inputs', () => {
-    const score = blendScore({ tag: 3, manaValue: -1, staple: null, corpus: null, votes: null, role: null }, SWAP_WEIGHTS.collection_aware);
+    const score = blendScore({ tag: 3, manaValue: -1, staple: null, corpus: null, votes: null, role: null }, TEST_SCORING.weights.swap.collection_aware);
     expect(score.total).toBeGreaterThanOrEqual(0);
     expect(score.total).toBeLessThanOrEqual(1);
   });
@@ -36,9 +37,9 @@ describe('blendScore', () => {
 
 describe('manaValueProximity', () => {
   it('is 1 at equal mana value and decreases with distance', () => {
-    expect(manaValueProximity(3, 3)).toBe(1);
-    expect(manaValueProximity(2, 3)).toBeGreaterThan(manaValueProximity(1, 3));
-    expect(manaValueProximity(4, 3)).toBeCloseTo(manaValueProximity(2, 3));
+    expect(manaValueProximity(3, 3, TEST_SCORING.swap.manaValueFalloff)).toBe(1);
+    expect(manaValueProximity(2, 3, TEST_SCORING.swap.manaValueFalloff)).toBeGreaterThan(manaValueProximity(1, 3, TEST_SCORING.swap.manaValueFalloff));
+    expect(manaValueProximity(4, 3, TEST_SCORING.swap.manaValueFalloff)).toBeCloseTo(manaValueProximity(2, 3, TEST_SCORING.swap.manaValueFalloff));
   });
 });
 
@@ -55,12 +56,12 @@ describe('scoreCuts', () => {
     ...overrides,
   });
   const ramp: RoleTarget = { roleId: 'ramp', label: 'Ramp', target: 2 };
-  const options = { includeGameChangers: true, gameChangerLimit: 3, roleTargets: [ramp] };
+  const options = { includeGameChangers: true, gameChangerLimit: 3, roleTargets: [ramp], scoring: TEST_SCORING.cuts };
 
   it('puts rule problems first with a score of 1', () => {
     const offColor = card({ withinIdentity: false });
     const banned = card({ isCommanderLegal: false });
-    const expensive = card({ manaValue: HIGH_MANA_VALUE });
+    const expensive = card({ manaValue: TEST_SCORING.cuts.highManaValue });
     const [first, second, third] = scoreCuts([expensive, offColor, banned], options);
     expect(first?.cutScore).toBe(1);
     expect(second?.cutScore).toBe(1);

@@ -265,6 +265,13 @@ select chk('the per-request recommendation functions and their switch are gone',
   and to_regprocedure('public.rec_add_candidates(integer[],real[],real,smallint,integer[],boolean,integer[],integer)') is null
   and to_regclass('public.rec_timeouts') is null
   and not exists (select 1 from public.app_config where key = 'recs'));
+select chk('the scoring weights are configured and private',
+  (select value ? 'weights' and value ? 'corpus' and value ? 'swap' and value ? 'cuts' and not is_public
+     from public.app_config where key = 'scoring'));
+set local role anon;
+select chk('anon cannot read the scoring weights through the public config',
+  (select public.get_public_config('scoring')) is null);
+reset role;
 select chk('the substitute depth is configured and private',
   (select (value ->> 'substitutesDepth')::int > 0 and not value ? 'substitutesOwn' and not is_public
      from public.app_config where key = 'precompute'));

@@ -1,9 +1,15 @@
 import type { TagId, TagRef } from "@mtg/core/contract";
-import { commanderCardCounts, commanderShare, identityBaselineDecks, servedCardRates } from "@mtg/core/scoring";
-import { pricesCheckedAt, withPriceCheck, type CardRow } from "./cards";
+import {
+  commanderCardCounts,
+  commanderShare,
+  identityBaselineDecks,
+  servedCardRates,
+  type SwapPool,
+  type SwapPoolCandidate,
+} from "@mtg/core/scoring";
+import { pricesCheckedAt, rankCardOf, withPriceCheck, type CardRow } from "./cards";
 import { loadCommanderCorpus, loadIdentityMonths, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { Database } from "./database.types";
-import type { RawMatch, SwapPool, SwapPoolCandidate } from "./recs";
 import type { PublicClient } from "./supabase";
 
 /**
@@ -14,6 +20,14 @@ import type { PublicClient } from "./supabase";
  */
 
 type ServingCard = Database["public"]["CompositeTypes"]["serving_card"];
+
+/** One tag match as serving_swap_candidates returns it, by tag id. */
+interface RawMatch {
+  targetTagId: string;
+  candidateTagId: string;
+  viaTagId: string | null;
+  distance: number;
+}
 
 /** Which pool a serving_add_pool row came from (see that function). */
 type PoolKind = "commander" | "partners" | "baseline";
@@ -218,8 +232,8 @@ export async function loadServedSwapPool(
   if (candidatesResult.error) throw new Error(`Swap candidates failed: ${candidatesResult.error.message}`);
   if (tagCountResult.error) throw new Error(`Tag count failed: ${tagCountResult.error.message}`);
   if (targetResult.error) throw new Error(`Loading the card failed: ${targetResult.error.message}`);
-  const target = servedCards(asCards(targetResult.data), corpus, identityMonths, checkedAt).rows.get(input.targetCardId);
-  if (!target) return null;
+  const targetRow = servedCards(asCards(targetResult.data), corpus, identityMonths, checkedAt).rows.get(input.targetCardId);
+  if (!targetRow) return null;
 
   const rows = candidatesResult.data ?? [];
   const tags = new Map<string, TagRef>();
@@ -235,7 +249,7 @@ export async function loadServedSwapPool(
     checkedAt,
   );
   return {
-    target,
+    target: rankCardOf(targetRow),
     tagCount: tagCountResult.data ?? 0,
     corpus,
     candidates: rows.flatMap((r): SwapPoolCandidate[] => {
@@ -246,7 +260,7 @@ export async function loadServedSwapPool(
       return [
         {
           cardId,
-          row,
+          card: rankCardOf(row),
           tagSimilarity: r.tag_similarity,
           stapleScore: r.staple_score,
           functionalTwin: r.is_functional_twin,

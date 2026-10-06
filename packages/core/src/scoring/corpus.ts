@@ -1,4 +1,5 @@
 import type { CorpusConfidence } from '../contract';
+import type { CorpusScoring } from './config';
 
 /** Deck counts where a commander's own decks start to count (minDecks) and get full weight (fullDecks). */
 export interface CorpusThresholds {
@@ -22,11 +23,6 @@ export interface CommanderCardRate {
   inclusion: number;
   synergy: number;
 }
-
-/** Synergy this far above the baseline (30 points) scores as fully commander-specific. */
-const SYNERGY_SCALE = 0.3;
-/** With only baseline play rates, the corpus component keeps this share of its weight. */
-export const BASELINE_CORPUS_WEIGHT = 0.5;
 
 const clamp = (n: number, low: number, high: number) => Math.min(high, Math.max(low, n));
 const clamp01 = (n: number) => clamp(n, 0, 1);
@@ -56,10 +52,12 @@ export function decksSinceRelease(deckMonths: Readonly<Record<string, number>>, 
 
 /**
  * 0..1 score from a commander's decks. Mostly synergy (cards this commander's decks run more than decks in general),
- * partly inclusion, so proven staples still score: 0.6·(0.5 + 0.5·clip(synergy / 0.3)) + 0.4·√inclusion.
+ * partly inclusion, so proven staples still score: s·(0.5 + 0.5·clip(synergy / scale)) + (1 − s)·√inclusion, with s
+ * `synergyShare` and scale `synergyScale` (`app_config.scoring.corpus`). The 0.5s map clipped synergy onto 0..1.
  */
-export function commanderCorpusScore({ inclusion, synergy }: CommanderCardRate): number {
-  return clamp01(0.6 * (0.5 + 0.5 * clamp(synergy / SYNERGY_SCALE, -1, 1)) + 0.4 * Math.sqrt(clamp01(inclusion)));
+export function commanderCorpusScore({ inclusion, synergy }: CommanderCardRate, { synergyScale, synergyShare }: CorpusScoring): number {
+  const fromSynergy = 0.5 + 0.5 * clamp(synergy / synergyScale, -1, 1);
+  return clamp01(synergyShare * fromSynergy + (1 - synergyShare) * Math.sqrt(clamp01(inclusion)));
 }
 
 /** 0..1 score from how widely the card is played in decks whose color identity allows it. */
@@ -204,29 +202,27 @@ export function corpusComponent(
     hasExternalPrior?: boolean;
   },
   thresholds: CorpusThresholds,
+  scoring: CorpusScoring,
 ): { value: number; weightScale: number } | null {
   const share = commanderRate ? commanderShareWithPrior(commanderDeckCount, thresholds, hasExternalPrior) : 0;
   // A card an external source lists for this commander is one somebody plays, so it is not "too new to judge" even
   // when our own corpus has nothing that could have run it. Without this the prior would be discarded for exactly the
   // recent cards it is most useful for.
   if (share === 0 && baselineDeckCount < thresholds.minDecks && !hasExternalPrior) return null;
-  const fromCommander = commanderRate ? commanderCorpusScore(commanderRate) : 0;
+  const fromCommander = commanderRate ? commanderCorpusScore(commanderRate, scoring) : 0;
   return {
     value: share * fromCommander + (1 - share) * baselineCorpusScore(baseline),
-    weightScale: BASELINE_CORPUS_WEIGHT + (1 - BASELINE_CORPUS_WEIGHT) * share,
+    weightScale: scoring.baselineWeight + (1 - scoring.baselineWeight) * share,
   };
 }
-
-/** Stand-in when no other candidate has a play-rate score either. */
-const DEFAULT_NEUTRAL_CORPUS_VALUE = 0.5;
 
 /**
  * Play-rate score for cards too new to judge (`corpusComponent` returned null): the median of the other candidates'
  * scores. A new card then ranks like a typical option, so what it does and costs decide; being new neither buries it
  * nor promotes it.
  */
-export function neutralCorpusValue(knownValues: readonly number[]): number {
-  if (knownValues.length === 0) return DEFAULT_NEUTRAL_CORPUS_VALUE;
+export function neutralCorpusValue(knownValues: readonly number[], { neutralValue }: Pick<CorpusScoring, 'neutralValue'>): number {
+  if (knownValues.length === 0) return neutralValue;
   const sorted = [...knownValues].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? (sorted[mid] ?? 0) : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;

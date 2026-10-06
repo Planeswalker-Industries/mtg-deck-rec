@@ -1,5 +1,6 @@
 import { corpusCommanders, type CorpusCommanderFacts, type CorpusExclusion } from '@mtg/core/commander';
 import type { CardId } from '@mtg/core/contract';
+import { parseCorpusSettings, type CorpusSettings } from '@mtg/core/scoring';
 import type { Sql } from './db';
 
 /** Shared by the corpus jobs, so every job counts the same decks. */
@@ -8,14 +9,10 @@ export const IDENTITIES = 32;
 /** Decks read from corpus.decks per round trip. */
 const CORPUS_CURSOR_ROWS = 1000;
 
-export interface CorpusConfig {
-  shrinkAlpha: number;
-  minDecks: number;
-  fullDecks: number;
+/** app_config.corpus: the scoring settings, plus how many cards that left the catalog a counted deck may hold. */
+export interface CorpusConfig extends CorpusSettings {
   maxUnresolvedCards: number;
 }
-
-const DEFAULT_CONFIG: CorpusConfig = { shrinkAlpha: 20, minDecks: 50, fullDecks: 300, maxUnresolvedCards: 3 };
 
 export interface CatalogCard {
   id: number;
@@ -79,9 +76,15 @@ export interface ResolvedDeck {
 
 export { decksSinceRelease, shrunkInclusion } from '@mtg/core/scoring';
 
+/** app_config.corpus, required: a missing or malformed value stops the job rather than falling back to numbers in code. */
 export async function loadCorpusConfig(sql: Sql): Promise<CorpusConfig> {
-  const [row] = await sql<{ value: Partial<CorpusConfig> }[]>`select value from public.app_config where key = 'corpus'`;
-  return { ...DEFAULT_CONFIG, ...row?.value };
+  const [row] = await sql<{ value: unknown }[]>`select value from public.app_config where key = 'corpus'`;
+  const settings = parseCorpusSettings(row?.value);
+  const maxUnresolved = (row?.value as Record<string, unknown> | undefined)?.maxUnresolvedCards;
+  if (typeof maxUnresolved !== 'number' || !Number.isInteger(maxUnresolved) || maxUnresolved < 0) {
+    throw new Error('app_config.corpus.maxUnresolvedCards is missing or malformed');
+  }
+  return { ...settings, maxUnresolvedCards: maxUnresolved };
 }
 
 /** Live catalog cards by card id. */
