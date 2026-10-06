@@ -14,7 +14,7 @@ import {
   type ServingSettings,
   type SourceDeckTotals,
 } from '@mtg/core/scoring';
-import { connect, type ReservedSql, type Sql } from '../lib/db';
+import { connect, reserve, type ReservedSql, type Sql } from '../lib/db';
 import {
   copyRows,
   eligibleAt,
@@ -340,7 +340,7 @@ export async function precomputeScores({
       return { status: 'failed_sanity', rows };
     }
 
-    const db = await sql.reserve();
+    const db = await reserve(sql);
     let written = 0;
     let removed = 0;
     let staged = 0;

@@ -1,5 +1,5 @@
 import { downloadBulk, getBulkIndex } from '../lib/bulk';
-import { connect } from '../lib/db';
+import { connect, reserve } from '../lib/db';
 import { readJsonl, type JsonlStats } from '../lib/jsonl';
 import { CARD_COLUMNS, toCardRows, type CardNameRow, type CardRow, type ScryfallCard } from '../lib/scryfall-card';
 import { finishRun, heartbeat, startRun } from '../lib/sync-runs';
@@ -36,7 +36,7 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
     runId = start.runId;
     const { filePath } = await downloadBulk(entry);
 
-    const db = await sql.reserve();
+    const db = await reserve(sql);
     try {
       await db`
         create temp table stg_cards (

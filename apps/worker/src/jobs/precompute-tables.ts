@@ -1,4 +1,4 @@
-import type { Sql } from '../lib/db';
+import { reserve, type Sql } from '../lib/db';
 import { finishRun, startRun, type SyncJob } from '../lib/sync-runs';
 
 /**
@@ -34,7 +34,7 @@ async function diffRun(
 ): Promise<void> {
   const start = await startRun(sql, job, { uri, updatedAt: new Date().toISOString() }, true);
   if (start.kind === 'skipped') return;
-  const db = await sql.reserve();
+  const db = await reserve(sql);
   let result: { staged: number; written: number; removed: number };
   try {
     await db`begin`;

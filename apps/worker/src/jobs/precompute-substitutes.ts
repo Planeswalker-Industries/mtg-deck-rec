@@ -1,4 +1,4 @@
-import type { Sql } from '../lib/db';
+import { reserve, type Sql } from '../lib/db';
 import { copyRows } from '../lib/serving';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
@@ -185,7 +185,7 @@ export async function precomputeSubstitutes(
         }
       }
 
-      const db = await sql.reserve();
+      const db = await reserve(sql);
       try {
         await db`
           create temp table if not exists stg_substitutes (
