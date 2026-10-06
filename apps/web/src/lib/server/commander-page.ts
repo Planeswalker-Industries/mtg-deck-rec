@@ -1,11 +1,10 @@
-import { isStatementTimeout, recordRecTimeout, retryOnTimeout } from "./retry-timeout";
 import type { AddSuggestion, CardCategory, CardSummary, CommanderKeyId, CommanderPageData } from "@mtg/core/contract";
 import { ADD_WEIGHTS, blendScore, cardCategory, commanderCorpusScore } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
 import { fromIndex } from "./search-index";
-import { commanderKeyCounts, loadCardCorpus, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
+import { commanderKeyCounts, loadCommanderCorpus, type CardCorpus, type CommanderCorpus } from "./corpus";
 import { loadRoleTags, loadRoleTargets } from "./recs";
-import { loadServedCards, loadServedDeckPool, loadServingReads } from "./serving";
+import { loadServedCards, loadServedDeckPool } from "./serving";
 import type { PublicClient } from "./supabase";
 
 /** Cards read per commander before ranking; plenty for 12 per card type. */
@@ -17,54 +16,23 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * The cards to rank for a commander page. A commander with enough decks of its own reads its stored play rates through
- * an index; one that borrows decks from other pairings had them combined by rec_add_candidates, which could pass the API
- * role's 3 s statement timeout while the hosted database was cold (the serving path reads the precompute's pool).
+ * The cards to rank for a commander page with enough decks of its own: its stored play rates, most played first, from
+ * the search index or through an index in Postgres. A page that borrows decks reads the precompute's pool instead.
  */
-async function loadTopCardIds(
-  db: PublicClient,
-  corpus: CommanderCorpus,
-  identityMask: number,
-  commanderIds: readonly number[],
-): Promise<number[]> {
-  if (corpus.borrowedDeckCount === 0) {
-    // One key, one sort, no join: the index answers this straight out of the collection it is sorted by, already
-    // ordered and de-duplicated, and pages it on its own side.
-    const indexed = await fromIndex("Commander cards", (index) =>
-      index.commanderCardsTop({ keyIds: corpus.sourceKeyIds, limit: TOP_POOL }),
-    );
-    if (indexed) return [...new Set(indexed.value)].filter((id) => !commanderIds.includes(id));
+async function loadTopCardIds(db: PublicClient, corpus: CommanderCorpus, commanderIds: readonly number[]): Promise<number[]> {
+  // One key, one sort, no join: the index answers this straight out of the collection it is sorted by, already
+  // ordered and de-duplicated, and pages it on its own side.
+  const indexed = await fromIndex("Commander cards", (index) => index.commanderCardsTop({ keyIds: corpus.sourceKeyIds, limit: TOP_POOL }));
+  if (indexed) return [...new Set(indexed.value)].filter((id) => !commanderIds.includes(id));
 
-    const { data, error } = await db
-      .from("commander_card_stats")
-      .select("card_id")
-      .in("commander_key_id", corpus.sourceKeyIds)
-      .order("inclusion_shrunk", { ascending: false })
-      .limit(TOP_POOL);
-    if (error) {
-      if (isStatementTimeout(error)) recordRecTimeout(db, { fn: "add", commanderIds, identityMask });
-      throw new Error(`Loading commander cards failed: ${error.message}`);
-    }
-    return [...new Set(data.map((r) => r.card_id))].filter((id) => !commanderIds.includes(id));
-  }
-
-  // Ordered by the same play-rate score as cards to add, over own and borrowed decks at their weights.
-  const { data, error } = await retryOnTimeout("Loading commander cards", () =>
-    db.rpc("rec_add_candidates", {
-      p_key_ids: corpus.sourceKeyIds,
-      p_key_weights: corpus.sources.map((s) => s.weight),
-      p_alpha: corpus.settings.shrinkAlpha,
-      p_identity_mask: identityMask,
-      p_exclude: [...commanderIds],
-      p_allow_game_changers: true,
-      p_limit: TOP_POOL,
-    }),
-  );
-  if (error) {
-    if (isStatementTimeout(error)) recordRecTimeout(db, { fn: "add", commanderIds, identityMask });
-    throw new Error(`Loading commander cards failed: ${error.message}`);
-  }
-  return (data ?? []).map((p) => p.card_id);
+  const { data, error } = await db
+    .from("commander_card_stats")
+    .select("card_id")
+    .in("commander_key_id", corpus.sourceKeyIds)
+    .order("inclusion_shrunk", { ascending: false })
+    .limit(TOP_POOL);
+  if (error) throw new Error(`Loading commander cards failed: ${error.message}`);
+  return [...new Set(data.map((r) => r.card_id))].filter((id) => !commanderIds.includes(id));
 }
 
 /**
@@ -87,37 +55,32 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
   if (!key) return null;
 
   const commanderIds = key.commander_2 === null ? [key.commander_1] : [key.commander_1, key.commander_2];
-  const [corpus, commanderRows, roleTargets, roleTags, statsResult, serving] = await Promise.all([
+  const [corpus, commanderRows, roleTargets, roleTags, statsResult] = await Promise.all([
     loadCommanderCorpus(db, commanderIds),
     fetchCardsById(db, commanderIds),
     loadRoleTargets(db),
     loadRoleTags(db),
     db.from("commander_stats").select("computed_at").eq("commander_key_id", key.id).maybeSingle(),
-    loadServingReads(db),
   ]);
   if (statsResult.error) throw new Error(`Loading commander stats failed: ${statsResult.error.message}`);
   // Borrowed decks only fill in: a page for commanders nobody has run together would describe other decks.
   if (corpus.ownDeckCount === 0) return null;
 
-  // The serving path reads a borrowing page's pool with its cards in one call, and an own-key page's cards in one
-  // more after the index lists them; the old path takes the list, then the rows and play rates.
+  // A page that borrows decks reads the precompute's pool with its cards in one call; an own-key page lists its cards
+  // first, then reads them.
   let cardIds: number[];
   let cardRows: ReadonlyMap<number, CardRow>;
   let cardCorpus: ReadonlyMap<number, CardCorpus>;
-  if (serving && corpus.borrowedDeckCount > 0) {
+  if (corpus.borrowedDeckCount > 0) {
     const deal = await loadServedDeckPool(db, { commanderIds, exclude: commanderIds, limit: TOP_POOL });
-    ({ poolIds: cardIds } = deal);
+    cardIds = deal.poolIds;
     cardRows = deal.pool.rows;
     cardCorpus = deal.pool.rates;
   } else {
-    cardIds = await loadTopCardIds(db, corpus, key.color_identity, commanderIds);
-    if (serving) {
-      const served = await loadServedCards(db, corpus, commanderIds, cardIds);
-      cardRows = served.rows;
-      cardCorpus = served.rates;
-    } else {
-      [cardRows, cardCorpus] = await Promise.all([fetchCardsById(db, cardIds), loadCardCorpus(db, corpus, cardIds, commanderIds)]);
-    }
+    cardIds = await loadTopCardIds(db, corpus, commanderIds);
+    const served = await loadServedCards(db, corpus, commanderIds, cardIds);
+    cardRows = served.rows;
+    cardCorpus = served.rates;
   }
 
   const suggestions = cardIds.flatMap((id): AddSuggestion[] => {

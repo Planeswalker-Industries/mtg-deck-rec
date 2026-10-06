@@ -3,8 +3,8 @@ import { copyRows } from '../lib/serving';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
 /**
- * card_substitutes (T055): each card's substitutes, computed by precompute_substitutes (rec_swap_candidates'
- * similarity over every card, the first `substitutesDepth` inside every colour identity that can hold the card) and
+ * card_substitutes (T055): each card's substitutes, computed by precompute_substitutes (the functional tag
+ * similarity the retired rec_swap_candidates scored, over every card, the first `substitutesDepth` inside every colour identity that can hold the card) and
  * written only where a list changed.
  *
  * A card is rebuilt when it is new, when what its similarity rests on moved (its functional tags and their idf, its

@@ -1,7 +1,7 @@
 -- The serving tables and the reads the request path makes of them (T055): what the API roles may read and run, that
 -- each read works out the commander set itself (its pool, its colours, its counts), applies the deck's filters
 -- (colours, legality, Game Changers, cards in the deck, owned only) in the old functions' order, and returns each card
--- whole, and that the precompute worker's similarity is rec_swap_candidates'. Runs in a transaction and rolls back, so
+-- whole, and that the stored substitutes hold every deck's first N in pool order. Runs in a transaction and rolls back, so
 -- it leaves nothing behind. Needs the local catalog.
 \set ON_ERROR_STOP on
 begin;
@@ -167,27 +167,48 @@ delete from public.card_substitutes where card_id = :counterspell;
 insert into public.card_substitutes (card_id, substitute_id, tag_similarity, is_functional_twin)
 select :counterspell, card_id, tag_similarity, is_functional_twin
 from public.precompute_substitutes(:counterspell, 220);
-select chk('the stored similarity is rec_swap_candidates''',
+-- The reference: every candidate the similarity reaches (a depth past any colour identity's list), in the pool order
+-- the swap functions use: twins first, then 0.4 similarity + 0.2 staple score + 0.1 mana value proximity, then name.
+create temp table deep as
+select d.card_id, d.tag_similarity, d.is_functional_twin, c.color_identity, c.game_changer,
+       row_number() over (
+         order by d.is_functional_twin desc,
+                  (0.4 * d.tag_similarity + 0.2 * coalesce(st.staple_score, 0)
+                    + 0.1 * exp(greatest(-abs(c.mana_value - (select mana_value from public.cards where id = :counterspell)) / 1.5, -700))) desc,
+                  c.name
+       ) as pool_rank
+from public.precompute_substitutes(:counterspell, 100000) d
+join public.cards c on c.id = d.card_id
+left join public.card_stats st on st.card_id = d.card_id;
+select chk('a shallower list is part of a deeper one, with the same similarity',
   not exists (
     select 1
-    from public.rec_swap_candidates(:counterspell, '{}', 31::smallint, true, null, 40) o
-    left join public.precompute_substitutes(:counterspell, 40) n on n.card_id = o.card_id
-    where n.card_id is null or n.tag_similarity <> o.tag_similarity or n.is_functional_twin <> o.is_functional_twin
+    from public.precompute_substitutes(:counterspell, 40) n
+    left join deep d on d.card_id = n.card_id
+    where d.card_id is null or d.tag_similarity <> n.tag_similarity or d.is_functional_twin <> n.is_functional_twin
   ));
 select chk('every colour identity that can hold the card gets its own first N, with and without Game Changers',
   not exists (
     select 1
     from generate_series(0, 31) k (mask)
     cross join (values (true), (false)) g (gc)
-    cross join lateral public.rec_swap_candidates(:counterspell, '{}', k.mask::smallint, g.gc, null, 40) o
+    cross join lateral (
+      select d.card_id from deep d
+      where (d.color_identity & ~k.mask) = 0 and (g.gc or not d.game_changer)
+      order by d.pool_rank limit 40
+    ) o
     where (2 & ~k.mask) = 0
       and o.card_id not in (select card_id from public.precompute_substitutes(:counterspell, 40))
   ));
-select chk('read back, the stored list is rec_swap_candidates'' list: same cards, order, scores and matches',
-  (select array_agg(row(card_id, tag_similarity, staple_score, is_functional_twin, matches)::text order by ord)
-     from public.rec_swap_candidates(:counterspell, '{}', 23::smallint, true, null, 60) with ordinality as o (card_id, tag_similarity, staple_score, is_functional_twin, matches, ord))
-  = (select array_agg(row((card).card_id, tag_similarity, staple_score, is_functional_twin, matches)::text order by ord)
-     from public.serving_swap_candidates(:counterspell, array[:thrasios, :tymna], '{}', true, null, 60) with ordinality as s (tag_similarity, staple_score, is_functional_twin, matches, match_tags, card, ord)));
+select chk('read back, the stored list is the first N in pool order inside the deck''s colours',
+  (select array_agg(card_id order by pool_rank)
+     from (select d.card_id, d.pool_rank from deep d
+           join public.cards c on c.id = d.card_id
+           where (d.color_identity & ~23) = 0 and c.legal_commander = 'legal' and not c.is_basic_land
+           order by d.pool_rank limit 60) x)
+  = (select array_agg((card).card_id order by ord)
+     from public.serving_swap_candidates(:counterspell, array[:thrasios, :tymna], '{}', true, null, 60)
+          with ordinality as s (tag_similarity, staple_score, is_functional_twin, matches, match_tags, card, ord)));
 select chk('every tag a match names comes with its slug and label',
   not exists (
     select 1
@@ -239,8 +260,11 @@ select chk('service_role reads combo pieces, commander sets and the precompute s
 reset role;
 
 -- === settings ===
-select chk('the serving reads switch exists and the app may read it',
-  (select value ? 'servingReads' and is_public from public.app_config where key = 'recs'));
+select chk('the per-request recommendation functions and their switch are gone',
+  to_regprocedure('public.rec_swap_candidates(integer,integer[],smallint,boolean,integer[],integer)') is null
+  and to_regprocedure('public.rec_add_candidates(integer[],real[],real,smallint,integer[],boolean,integer[],integer)') is null
+  and to_regclass('public.rec_timeouts') is null
+  and not exists (select 1 from public.app_config where key = 'recs'));
 select chk('the substitute depth is configured and private',
   (select (value ->> 'substitutesDepth')::int > 0 and not value ? 'substitutesOwn' and not is_public
      from public.app_config where key = 'precompute'));

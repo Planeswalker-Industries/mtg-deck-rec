@@ -1126,50 +1126,6 @@ export type Database = {
         }
         Relationships: []
       }
-      rec_timeouts: {
-        Row: {
-          commander_ids: number[]
-          first_seen: string
-          fn: string
-          hits: number
-          id: number
-          identity_mask: number
-          last_seen: string
-          owned_only: boolean
-          target_card_id: number | null
-        }
-        Insert: {
-          commander_ids?: number[]
-          first_seen?: string
-          fn: string
-          hits?: number
-          id?: never
-          identity_mask?: number
-          last_seen?: string
-          owned_only?: boolean
-          target_card_id?: number | null
-        }
-        Update: {
-          commander_ids?: number[]
-          first_seen?: string
-          fn?: string
-          hits?: number
-          id?: never
-          identity_mask?: number
-          last_seen?: string
-          owned_only?: boolean
-          target_card_id?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "rec_timeouts_target_card_id_fkey"
-            columns: ["target_card_id"]
-            isOneToOne: false
-            referencedRelation: "cards"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       search_index_queue: {
         Row: {
           collection: string
@@ -1898,22 +1854,12 @@ export type Database = {
         Returns: number
       }
       is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
-      log_rec_timeout: {
-        Args: {
-          p_commander_ids?: number[]
-          p_fn: string
-          p_identity_mask?: number
-          p_owned_only?: boolean
-          p_target_card_id?: number
-        }
-        Returns: undefined
-      }
       my_collection_entries: { Args: never; Returns: Json }
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
       new_deck_code: { Args: never; Returns: string }
       precompute_substitutes: {
-        Args: { p_all: number; p_own: number; p_target: number }
+        Args: { p_depth: number; p_target: number }
         Returns: {
           card_id: number
           is_functional_twin: boolean
@@ -1922,66 +1868,7 @@ export type Database = {
       }
       prices_checked_at: { Args: never; Returns: string }
       rebuild_tag_closure: { Args: never; Returns: undefined }
-      rec_add_candidates:
-        | {
-            Args: {
-              p_allow_game_changers: boolean
-              p_alpha: number
-              p_deck_count: number
-              p_exclude: number[]
-              p_identity_mask: number
-              p_key_ids: number[]
-              p_limit?: number
-              p_owned?: number[]
-            }
-            Returns: {
-              baseline: number
-              card_id: number
-              decks_with: number
-            }[]
-          }
-        | {
-            Args: {
-              p_allow_game_changers: boolean
-              p_alpha: number
-              p_exclude: number[]
-              p_identity_mask: number
-              p_key_ids: number[]
-              p_key_weights: number[]
-              p_limit?: number
-              p_owned?: number[]
-            }
-            Returns: {
-              baseline: number
-              card_id: number
-              decks_with: number
-            }[]
-          }
-      rec_card_roles: {
-        Args: { p_card_ids: number[]; p_role_ids: string[] }
-        Returns: {
-          card_id: number
-          role_id: string
-        }[]
-      }
       rec_functional_tag_count: { Args: { p_card_id: number }; Returns: number }
-      rec_swap_candidates: {
-        Args: {
-          p_allow_game_changers: boolean
-          p_exclude: number[]
-          p_identity_mask: number
-          p_limit?: number
-          p_owned?: number[]
-          p_target: number
-        }
-        Returns: {
-          card_id: number
-          is_functional_twin: boolean
-          matches: Json
-          staple_score: number
-          tag_similarity: number
-        }[]
-      }
       rename_deck: {
         Args: { p_deck_id: string; p_name: string }
         Returns: undefined

@@ -124,7 +124,7 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 ### T008: Swap pool caching across serverless instances
 
-**Priority:** HIGH | **Area:** Backend / Performance | **Status:** Closes with T055's retirement PR (serving reads built 2026-10-06)
+**Priority:** HIGH | **Area:** Backend / Performance | **Status:** Done on `feat/scoring-pipeline` (2026-10-06): the per-request rec functions are removed (migration `20261006000200`); closes when that branch merges
 
 **Measured 2026-10-05 on hosted:** calls to `rec_add_candidates` and `rec_swap_candidates` average 0.8–1.0 s and peak at the 3 s `anon` timeout, and `rec_timeouts` gained a swap row on 2026-09-30. T055 replaces both functions with indexed reads of precomputed tables, which removes the query this ticket would cache. Build a cache here only if T055 slips.
 
@@ -515,7 +515,7 @@ The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substi
 2. ~~`collate`, `aggregate:corpus`, `precompute --part substitutes,roles`.~~ Done 2026-10-06.
 3. Release `20261006000100`, then `cli:hosted precompute --part substitutes` (every list is rebuilt, about 90 minutes on hosted; about 0.55 GB more).
 4. Parity and timing on hosted (Claude, reads only), then set `app_config.recs.servingReads` to true.
-5. The old path's removal (`rec_add_candidates` both overloads, `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, `retry-timeout.ts`, `loadCardCorpus`'s old path and the switch) goes in with the scoring pipeline branch (T057–T065), more than a week after the switch.
+5. The old path's removal is built on `feat/scoring-pipeline` (migration `20261006000200`: `rec_add_candidates` both overloads, `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, the switch; in the app `loadCardCorpus`, the timeout recording, `serving-parity.ts` and the search API's `/v1/commander-cards/rates`). It merges with that branch (T057–T065), more than a week after the switch, which must be on first.
 
 ---
 
@@ -791,7 +791,7 @@ Some `commander_keys` rows name two cards that aren't a legal partner pair (Arch
 
 ### T040: Drop the unused `rec_add_candidates(p_deck_count)` overload
 
-**Priority:** LOW | **Area:** Database | **Status:** Moot once T055 retires `rec_add_candidates`; do it only if T055 slips
+**Priority:** LOW | **Area:** Database | **Status:** Moot: both overloads are dropped on `feat/scoring-pipeline` (migration `20261006000200`); closes when that branch merges
 
 `rec_add_candidates` has two overloads. The app calls only the one taking `p_key_weights`; the older `p_deck_count` one was kept "until deployed apps stop calling it", and none does.
 

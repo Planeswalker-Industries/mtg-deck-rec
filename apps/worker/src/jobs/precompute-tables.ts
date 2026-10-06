@@ -68,8 +68,8 @@ async function roleIds(sql: Sql): Promise<string[]> {
 }
 
 /**
- * card_roles: which tracked roles each card fills through the tag hierarchy, disabled tags left out, as rec_card_roles
- * answered per request. Rebuilt when the roles, the kill switch or the tags change.
+ * card_roles: which tracked roles each card fills through the tag hierarchy, disabled tags left out (what the retired
+ * rec_card_roles answered per request). Rebuilt when the roles, the kill switch or the tags change.
  */
 export async function precomputeRoles(sql: Sql, { force = false }: { force?: boolean } = {}): Promise<void> {
   const roles = await roleIds(sql);

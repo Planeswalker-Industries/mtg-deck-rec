@@ -128,7 +128,7 @@ export async function loadCatalog(sql: Sql): Promise<Map<number, CatalogCard>> {
 
 /**
  * Which tracked roles (deck_role_targets) each card fills, through the tag hierarchy and skipping disabled tags.
- * Mirrors public.rec_card_roles, which the app uses for the deck being analyzed.
+ * The same rule as card_roles, which the precompute worker writes and the app reads (`precompute-tables.ts`).
  */
 export async function loadRoleCards(sql: Sql): Promise<Map<number, string[]>> {
   const [config] = await sql<{ value: { roles?: { tagId?: unknown }[] } }[]>`

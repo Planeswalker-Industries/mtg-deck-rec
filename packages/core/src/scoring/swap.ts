@@ -8,7 +8,8 @@ const COMPONENTS: readonly ScoreComponent[] = ['tag', 'manaValue', 'staple', 'co
 /**
  * Starting weights per mode; tuned later against the recommendation regression set.
  * Without play-rate or vote data, collection-less weights renormalize to tag 57%, staple 29%, mana value 14%.
- * rec_swap_candidates orders its candidate pool with the same no-corpus weights; change both together.
+ * precompute_substitutes and serving_swap_candidates order the candidate pool with the same no-corpus weights; change
+ * them together.
  */
 export const SWAP_WEIGHTS: Record<RecMode, ComponentWeights> = {
   collection_less: { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 },

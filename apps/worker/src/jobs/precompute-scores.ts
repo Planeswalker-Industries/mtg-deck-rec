@@ -148,7 +148,8 @@ function* scoreRows(set: CommanderSet, picked: CorpusSources, inputs: Inputs): G
       eligibleDecks: identityBaselineDecks(inputs.identityMonths, facts),
     };
     const score = servedCorpusScore(servedCardRates(counts, baseline, inputs.settings, pooled), inputs.settings);
-    // rec_add_candidates read the baseline as float4 cast to float8; fround gives that exact value.
+    // The pool order reads the baseline as float4 cast to float8, as the retired rec_add_candidates did; fround gives
+    // that exact value, so ties fall the same way.
     const poolScore = addPoolScore(counts, Math.fround(baseline.rate), inputs.settings.shrinkAlpha);
     yield [set.commander1, set.commander2, cardId, counts.decksWith, counts.commanderDecks, poolScore, score?.value ?? null, score?.weightScale ?? null];
   }

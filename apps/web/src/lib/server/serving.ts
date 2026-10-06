@@ -1,45 +1,22 @@
 import type { TagId, TagRef } from "@mtg/core/contract";
 import { commanderCardCounts, commanderShare, identityBaselineDecks, servedCardRates } from "@mtg/core/scoring";
 import { pricesCheckedAt, withPriceCheck, type CardRow } from "./cards";
-import { cachedConfig } from "./config-cache";
 import { loadCommanderCorpus, loadIdentityMonths, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { Database } from "./database.types";
 import type { RawMatch, SwapPool, SwapPoolCandidate } from "./recs";
 import type { PublicClient } from "./supabase";
 
 /**
- * The recommendation reads after the precompute worker (T055). Every read a request makes goes out at once: the
- * database functions take the deck's commander ids and work out the rest themselves, and each card comes back as one
- * serving_card row (the card, its stored counts for those commanders, its baseline and its roles). The rows become the
- * same CardRow and CardCorpus values the old loads built, so the ranking in recs.ts is shared. Behind
- * app_config.recs.servingReads until it has run on hosted; serving-parity.ts checks both paths give the same lists.
- * Keep `next/cache` out of this file, so scripts can run it outside Next.js.
+ * The recommendation reads (T055). Every read a request makes goes out at once: the database functions take the
+ * deck's commander ids and work out the rest themselves, and each card comes back as one serving_card row (the card,
+ * its stored counts for those commanders, its baseline and its roles), which becomes the CardRow and CardCorpus the
+ * ranking in recs.ts reads. Keep `next/cache` out of this file, so scripts can run it outside Next.js.
  */
 
 type ServingCard = Database["public"]["CompositeTypes"]["serving_card"];
 
 /** Which pool a serving_add_pool row came from (see that function). */
 type PoolKind = "commander" | "partners" | "baseline";
-
-let servingReadsOverride: boolean | null = null;
-
-/**
- * Pins the read path regardless of app_config, so a script can run the old and the new path on the same input
- * (serving-parity.ts). The app never calls it; null goes back to the config.
- */
-export function overrideServingReads(value: boolean | null): void {
-  servingReadsOverride = value;
-}
-
-/** Whether the request path reads the serving tables (app_config.recs.servingReads). Off when the row is missing. */
-export async function loadServingReads(db: PublicClient): Promise<boolean> {
-  if (servingReadsOverride !== null) return servingReadsOverride;
-  return cachedConfig("recs", async () => {
-    const { data, error } = await db.rpc("get_public_config", { p_key: "recs" });
-    if (error) throw new Error(`Loading recommendation settings failed: ${error.message}`);
-    return (data as { servingReads?: unknown } | null)?.servingReads === true;
-  });
-}
 
 /** A serving_card as the CardRow fetchCardsById gives: the same columns, the price date applied the same way. */
 function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
@@ -73,7 +50,7 @@ function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
 }
 
 /**
- * A card's play rates under these commanders, as loadCardCorpus gave them: its stored counts where a source deck ran it,
+ * A card's play rates under these commanders: its stored counts where a source deck ran it,
  * a pair's partner totals at their weight, or counts from the commander's deck months where nothing ran it; shrunk
  * toward the live baseline.
  */
@@ -288,7 +265,7 @@ export async function loadServedSwapPool(
 
 /**
  * A pool for the rater or a commander page, read in one round with its cards: the commander's own decks whenever any
- * count (the colours' most played cards otherwise), as rec_add_candidates gave them with every source key.
+ * count (the colours' most played cards otherwise), over every source key.
  */
 export async function loadServedDeckPool(
   db: PublicClient,
@@ -312,7 +289,7 @@ export async function loadServedDeckPool(
   if (commandersResult.error) throw new Error(`Loading commanders failed: ${commandersResult.error.message}`);
   const rows = poolResult.data ?? [];
   const kinds = new Set(rows.map((r) => r.pool as PoolKind));
-  // A pair no key knows draws on its partners' decks whenever there are any, as rec_add_candidates did with sources.
+  // A pair no key knows draws on its partners' decks whenever there are any.
   const chosen: PoolKind = kinds.has("commander") ? "commander" : kinds.has("partners") && corpus.sources.length > 0 ? "partners" : "baseline";
   const poolCards = rows
     .filter((r) => r.pool === chosen)

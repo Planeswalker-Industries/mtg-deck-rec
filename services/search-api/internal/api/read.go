@@ -359,44 +359,6 @@ func (s *Server) allTags(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"tags": all})
 }
 
-// commanderCardRates is the play-rate half of loadCardCorpus: for these commander keys and these cards, what the
-// corpus says. One request in place of a key-by-chunk fan-out on the caller's side.
-func (s *Server) commanderCardRates(c fiber.Ctx) error {
-	var body struct {
-		KeyIDs  []int `json:"keyIds"`
-		CardIDs []int `json:"cardIds"`
-	}
-	if err := decodeBody(c, &body); err != nil {
-		return err
-	}
-	if len(body.KeyIDs) == 0 || len(body.CardIDs) == 0 {
-		return c.JSON(fiber.Map{"rates": []json.RawMessage{}})
-	}
-	if len(body.CardIDs) > maxIDsPerRequest {
-		return badRequest(fmt.Sprintf("at most %d card ids per request", maxIDsPerRequest))
-	}
-	if len(body.KeyIDs) > maxKeysPerRequest {
-		return badRequest(fmt.Sprintf("at most %d commander keys per request", maxKeysPerRequest))
-	}
-
-	searches := make([]typesense.SearchParams, 0)
-	for _, page := range chunk(body.CardIDs, typesense.MaxPerPage) {
-		for _, keyID := range body.KeyIDs {
-			searches = append(searches, typesense.SearchParams{
-				Collection: commanderCardsCollection,
-				Q:          "*",
-				FilterBy:   fmt.Sprintf("key_id:=%d && card_id:[%s]", keyID, joinInts(page)),
-				PerPage:    typesense.MaxPerPage,
-			})
-		}
-	}
-	results, err := s.ts.MultiSearch(c.Context(), searches)
-	if err != nil {
-		return err
-	}
-	return c.JSON(fiber.Map{"rates": documents(results)})
-}
-
 // commanderCardsTop is what a commander page ranks: the cards its decks play most, by shrunk inclusion. Only the ids
 // come back — the caller fetches the cards themselves through cardsByID and scores them with its own weights.
 func (s *Server) commanderCardsTop(c fiber.Ctx) error {

@@ -1,9 +1,8 @@
-import { isStatementTimeout, recordRecTimeout, retryOnTimeout } from "./retry-timeout";
 import type { CardSummary, CommanderKeyId, RaterDeal } from "@mtg/core/contract";
-import { fetchCardsById, toCardSummary, type CardRow } from "./cards";
-import { commanderKeyCounts, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
+import { toCardSummary } from "./cards";
+import { commanderKeyCounts } from "./corpus";
 import { NotFoundError } from "./recs";
-import { loadServedDeckPool, loadServingReads } from "./serving";
+import { loadServedDeckPool } from "./serving";
 import type { PublicClient } from "./supabase";
 
 /** Cards considered per commander, most played first; the rater deals rounds from these at random. */
@@ -11,36 +10,6 @@ const DEAL_POOL = 80;
 const DEAL_SIZE = 40;
 
 const isLand = (typeLine: string) => /\bLand\b/.test(typeLine.split(" // ")[0] ?? typeLine);
-
-interface Deal {
-  corpus: CommanderCorpus;
-  commanderRows: ReadonlyMap<number, CardRow>;
-  poolIds: readonly number[];
-  poolRows: ReadonlyMap<number, CardRow>;
-}
-
-/** The rater's pool from rec_add_candidates, the path before the serving tables (T055): three rounds. */
-async function dealFromAddCandidates(db: PublicClient, commanderIds: number[]): Promise<Deal> {
-  const [commanderRows, corpus] = await Promise.all([fetchCardsById(db, commanderIds), loadCommanderCorpus(db, commanderIds)]);
-  const identityMask = commanderIds.reduce((mask, id) => mask | (commanderRows.get(id)?.color_identity ?? 0), 0);
-  const { data: pool, error } = await retryOnTimeout("Dealing rater cards", () =>
-    db.rpc("rec_add_candidates", {
-      p_key_ids: corpus.sourceKeyIds,
-      p_key_weights: corpus.sources.map((s) => s.weight),
-      p_alpha: corpus.settings.shrinkAlpha,
-      p_identity_mask: identityMask,
-      p_exclude: commanderIds,
-      p_allow_game_changers: true,
-      p_limit: DEAL_POOL,
-    }),
-  );
-  if (error) {
-    if (isStatementTimeout(error)) recordRecTimeout(db, { fn: "add", commanderIds, identityMask });
-    throw new Error(`Dealing rater cards failed: ${error.message}`);
-  }
-  const poolIds = (pool ?? []).map((p) => p.card_id);
-  return { corpus, commanderRows, poolIds, poolRows: await fetchCardsById(db, poolIds) };
-}
 
 /**
  * Cards for the standalone rater: what the commander's decks play most (the same play-rate ordering as cards to add,
@@ -64,15 +33,9 @@ export async function dealRaterCards(
   }
   const commanderIds = [...new Set(ids)].sort((a, b) => a - b);
 
-  // One round on the serving tables: the commanders, their corpus and the pool with its cards go out together.
-  const { corpus, commanderRows, poolIds, poolRows } = (await loadServingReads(db))
-    ? await loadServedDeckPool(db, { commanderIds, exclude: commanderIds, limit: DEAL_POOL }).then((d) => ({
-        corpus: d.corpus,
-        commanderRows: d.commanderRows,
-        poolIds: d.poolIds,
-        poolRows: d.pool.rows,
-      }))
-    : await dealFromAddCandidates(db, commanderIds);
+  // One round: the commanders, their corpus and the pool with its cards go out together.
+  const { corpus, commanderRows, poolIds, pool } = await loadServedDeckPool(db, { commanderIds, exclude: commanderIds, limit: DEAL_POOL });
+  const poolRows = pool.rows;
   if (!commanderIds.every((id) => commanderRows.has(id)) || !commanderIds.some((id) => commanderRows.get(id)?.can_be_commander)) {
     throw new NotFoundError("That card can't lead a Commander deck.");
   }

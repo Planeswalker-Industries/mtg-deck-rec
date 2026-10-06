@@ -79,7 +79,7 @@ describe('identityPoolDecks', () => {
 });
 
 describe('addPoolScore', () => {
-  it("matches rec_add_candidates' ordering expression", () => {
+  it("matches the add pool's ordering expression (serving_partner_pool)", () => {
     const counts = { decksWith: 30, poolDecks: 80 };
     const baseline = 0.12;
     const inclusion = (30 + 20 * baseline) / (80 + 20);

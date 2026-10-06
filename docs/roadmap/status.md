@@ -55,7 +55,7 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 - **Recommendation ranking stays in SQL**, so the open blind eval still measures what it was built to measure.
 - **Live since 2026-09-23** (two Dokploy stacks, Traefik with TLS). Open under T032: the hosted parity check, the RAM measurement, and confirming the daily drain.
 - **Worker drains failed from about 2026-09-28 to 2026-09-30.** Dokploy gave the service a new generated domain, and only Vercel was updated, so the GitHub secret and `.env.hosted` hit the proxy's `404 page not found`. Both were fixed on 2026-09-30 and the index was rebuilt that day (runbook note in `typesense-ops.md`).
-- **Timeouts:** `rec_timeouts` gained a swap row on 2026-09-30, and on 2026-10-05 calls to `rec_add_candidates` and `rec_swap_candidates` averaged 0.8–1.0 s with peaks at the 3 s timeout. The precompute worker (T055, built 2026-10-06) replaces both functions with indexed reads once `app_config.recs.servingReads` is switched on, and T008 closes when they retire.
+- **Timeouts:** `rec_timeouts` gained a swap row on 2026-09-30, and on 2026-10-05 calls to `rec_add_candidates` and `rec_swap_candidates` averaged 0.8–1.0 s with peaks at the 3 s timeout. The precompute worker (T055) replaces both with indexed reads once `app_config.recs.servingReads` is switched on; `feat/scoring-pipeline` removes the old functions (T008).
 
 ## Deck crawls — Archidekt deployed, Moxfield blocked
 

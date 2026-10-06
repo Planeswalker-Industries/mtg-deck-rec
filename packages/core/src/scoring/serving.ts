@@ -80,7 +80,7 @@ export interface CommanderCardCounts {
   /** Decks that could have run it: sources whose colours allow it, updated since its release. What the request scores. */
   commanderDecks: number;
   /**
-   * The add pool's count, as `rec_add_candidates` made it: every deck of the sources whose colours allow the card, less
+   * The add pool's count, as the retired `rec_add_candidates` made it: every deck of the sources whose colours allow the card, less
    * the decks too early for it among the keys that ran it. It differs from `commanderDecks` for keys that never ran the
    * card, whose older decks it still counts. Kept as it was, so the pool holds the same cards (T055 parity).
    */
@@ -157,7 +157,7 @@ export function identityPoolDecks(sources: readonly CorpusSource[]): number[] {
   );
 }
 
-/** The add pool's order (`rec_add_candidates`): the commander-specific score over `poolDecks`. */
+/** The add pool's order (`pool_score`, as the retired `rec_add_candidates` ranked it): the commander-specific score over `poolDecks`. */
 export function addPoolScore(counts: Pick<CommanderCardCounts, 'decksWith' | 'poolDecks'>, baseline: number, alpha: number): number {
   const inclusion = shrunkInclusion(counts.decksWith, counts.poolDecks, baseline, alpha);
   return commanderCorpusScore({ inclusion, synergy: inclusion - baseline });

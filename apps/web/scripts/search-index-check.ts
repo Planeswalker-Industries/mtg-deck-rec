@@ -77,7 +77,6 @@ function brokenIndex(): SearchClient {
     searchCards: fail,
     pageExists: fail,
     allTags: fail,
-    commanderCardRates: fail,
     commanderCardsTop: fail,
   } as unknown as SearchClient;
 }
