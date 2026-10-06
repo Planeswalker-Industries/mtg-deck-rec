@@ -124,6 +124,11 @@ export interface SavedDeckSummary {
    * choices still count toward play rates, and the control that sets it has to say so.
    */
   isPublic: boolean;
+  /**
+   * The player has put this deck together: its cards are taken, so suggestions for their other decks tag a card held
+   * here as a conflict. A list still being brewed holds nothing.
+   */
+  isBuilt: boolean;
   cardCount: number;
   /** The stored bracket, estimated or overridden, when one is known. */
   bracket?: Bracket;

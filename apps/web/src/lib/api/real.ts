@@ -22,6 +22,7 @@ import {
   openSavedDeckAction,
   renameDeckAction,
   saveDeckAction,
+  setDeckBuiltAction,
   setDeckVisibilityAction,
 } from "@/app/decks/actions";
 
@@ -72,6 +73,7 @@ export const realActions: ActionsApi = {
   renameDeck: (input) => renameDeckAction(input),
   duplicateDeck: (input) => duplicateDeckAction(input),
   setDeckVisibility: (input) => setDeckVisibilityAction(input),
+  setDeckBuilt: (input) => setDeckBuiltAction(input),
   deleteDeck: (input) => deleteDeckAction(input),
   exportDeck: notYet,
   castVote: (input) => castVoteAction(input),

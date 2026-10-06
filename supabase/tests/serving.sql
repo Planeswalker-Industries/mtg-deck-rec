@@ -71,8 +71,9 @@ select chk('Game Changers stay out when the bracket allows none',
   (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', false, null, 10)) = array[:plain, :blue1]);
 select chk('cards in the deck stay out',
   (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], array[:plain], true, null, 10)) = array[:changer, :blue1]);
-select chk('owned only keeps to the collection',
-  (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', true, array[:blue1], 10)) = array[:blue1]);
+select chk('owned only keeps to the collection, in the commander''s pool and the colours'' (T059)',
+  (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', true, array[:blue1], 10) where pool = 'commander') = array[:blue1]
+  and (select bool_and((card).card_id = :blue1) from public.serving_add_pool(array[:c1, :c2], '{}', true, array[:blue1], 10)));
 select chk('the pool stops at its limit',
   (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', true, null, 1)) = array[:plain]);
 select chk('each pool card comes whole, with the commanders'' stored counts',

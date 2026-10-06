@@ -118,6 +118,8 @@ export interface ActionsApi {
   duplicateDeck(input: { deckId: DeckId; name?: string }): Promise<Result<{ deckId: DeckId }>>;
   /** Shows or hides the deck page. Never changes whether the deck feeds play rates. */
   setDeckVisibility(input: { deckId: DeckId; isPublic: boolean }): Promise<Result<null>>;
+  /** Marks the deck put together (its cards are taken) or not. Changes nothing about the deck itself. */
+  setDeckBuilt(input: { deckId: DeckId; isBuilt: boolean }): Promise<Result<null>>;
   deleteDeck(input: { deckId: DeckId }): Promise<Result<null>>;
   exportDeck(input: { deckId: DeckId; format: ExportFormat }): Promise<Result<{ filename: string; content: string }>>;
 

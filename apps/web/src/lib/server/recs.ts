@@ -1,10 +1,11 @@
+import type { CollectionCopies } from "@mtg/core/collection";
 import type { AddResult, CommanderKeyId, CutResult, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
 import {
   ADD_POOL_SIZE,
   mainDeckIds,
   modeOf,
-  onlyIds,
   ownedFirst,
+  ownedOnly,
   rankAdds,
   rankCuts,
   rankSwaps,
@@ -13,6 +14,7 @@ import {
   type SwapPool,
 } from "@mtg/core/scoring";
 import { rankCardOf, toCardSummary, type CardRow } from "./cards";
+import { availabilityFor, loadStandIns } from "./collection-availability";
 import { cachedConfig } from "./config-cache";
 import { commanderKeyCounts } from "./corpus";
 import { loadScoringConfig } from "./scoring-config";
@@ -107,36 +109,60 @@ export function loadSwapPool(
   return loadServedSwapPool(db, input);
 }
 
-/** Replacements for one card, computed for this deck alone. The swap route caches through getCachedSwapSuggestions instead. */
+/** The pool every deck with these commanders shares: what 'only' mode's buy list is drawn from. */
+const openSwapPool = (db: PublicClient, targetCardId: number, commanderIds: readonly number[], includeGameChangers: boolean) =>
+  loadSwapPool(db, { targetCardId, commanderIds, includeGameChangers, excludeIds: [], ownedIds: null, poolSize: SHARED_SWAP_POOL });
+
+/**
+ * Replacements for one card, computed for this deck alone. The swap route caches through getCachedSwapSuggestions
+ * instead, which passes its cached pool as `buyPool`. In 'only' mode the pool is the collection's and the buy list
+ * comes from the pool everyone gets.
+ */
 export async function getSwapSuggestions(
   db: PublicClient,
-  { context, targetCardId, limit = DEFAULT_SWAP_LIMIT }: { context: RecContext; targetCardId: number; limit?: number },
+  {
+    context,
+    collection = null,
+    targetCardId,
+    limit = DEFAULT_SWAP_LIMIT,
+    buyPool = openSwapPool,
+  }: {
+    context: RecContext;
+    collection?: CollectionCopies | null;
+    targetCardId: number;
+    limit?: number;
+    buyPool?: typeof openSwapPool;
+  },
 ): Promise<SwapResult> {
-  const only = onlyIds(context);
-  const [pool, ownedBoost, scoring] = await Promise.all([
+  const available = await availabilityFor(db, collection);
+  const only = available !== null && ownedOnly(context);
+  const [pool, open, standIns, ownedBoost, scoring] = await Promise.all([
     loadSwapPool(db, {
       targetCardId,
       commanderIds: context.deck.commanders,
       includeGameChangers: context.includeGameChangers,
       excludeIds: [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])],
-      ownedIds: only ? [...only] : null,
+      ownedIds: only ? available.poolIds() : null,
       poolSize: CANDIDATE_POOL,
     }),
+    only ? buyPool(db, targetCardId, context.deck.commanders, context.includeGameChangers) : Promise.resolve(null),
+    loadStandIns(db, available),
     loadOwnedBoost(db, context),
     loadScoringConfig(),
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
-  return rankSwaps(pool, { context, limit, ownedBoost, scoring });
+  return rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open });
 }
 
 export async function getCutSuggestions(
   db: PublicClient,
-  { context, limit = 20 }: { context: RecContext; limit?: number },
+  { context, collection = null, limit = 20 }: { context: RecContext; collection?: CollectionCopies | null; limit?: number },
 ): Promise<CutResult> {
-  const [served, roleTargets, scoring] = await Promise.all([
+  const [served, roleTargets, scoring, available] = await Promise.all([
     loadServedCuts(db, { commanderIds: context.deck.commanders, mainIds: mainDeckIds(context) }),
     loadRoleTargets(db),
     loadScoringConfig(),
+    availabilityFor(db, collection),
   ]);
   return rankCuts({
     context,
@@ -146,38 +172,45 @@ export async function getCutSuggestions(
     corpus: served.corpus,
     roleTargets,
     scoring,
+    availability: available,
     limit,
   });
 }
 
 /**
  * Cards to add: what decks with this commander run that this deck doesn't, scored by play rate and by the roles the
- * deck is short on. Without enough commander decks, cards widely played in decks of these colors stand in.
+ * deck is short on. Without enough commander decks, cards widely played in decks of these colors stand in. In 'only'
+ * mode the pool is the collection's (the commander's cards and the colours' it holds) and the pool everyone gets is
+ * read beside it for the buy list.
  */
 export async function getAddSuggestions(
   db: PublicClient,
   {
     context,
+    collection = null,
     limitPerCategory = 8,
     excludeCardIds = [],
   }: {
     context: RecContext;
+    collection?: CollectionCopies | null;
     limitPerCategory?: number | undefined;
     /** Cards the player passed on: left out of the pool like the deck's own, but not read as part of the deck. */
     excludeCardIds?: readonly number[] | undefined;
   },
 ): Promise<AddResult> {
   const deckIds = [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])];
-  const only = onlyIds(context);
-  const [served, roleTargets, roleTags, ownedBoost, scoring] = await Promise.all([
+  const available = await availabilityFor(db, collection);
+  const only = available !== null && ownedOnly(context);
+  const [served, standIns, roleTargets, roleTags, ownedBoost, scoring] = await Promise.all([
     loadServedAdds(db, {
       commanderIds: context.deck.commanders,
       mainIds: mainDeckIds(context),
       exclude: [...new Set([...deckIds, ...excludeCardIds])],
       allowGameChangers: context.includeGameChangers,
-      owned: only ? [...only] : null,
+      owned: only ? available.poolIds() : null,
       limit: ADD_POOL_SIZE,
     }),
+    loadStandIns(db, available),
     loadRoleTargets(db),
     loadRoleTags(db),
     loadOwnedBoost(db, context),
@@ -196,7 +229,7 @@ export async function getAddSuggestions(
   const mode = modeOf(context);
   if (!corpus.available) return { mode, commanderKey, confidence: "none", groups: [] };
 
-  const groups = rankAdds({
+  const { groups, buyList } = rankAdds({
     context,
     poolIds: served.poolIds,
     cards: rankCards(served.pool.rows),
@@ -207,7 +240,9 @@ export async function getAddSuggestions(
     roleTags,
     ownedBoost,
     scoring,
+    availability: available,
+    standIns,
     limitPerCategory,
   });
-  return { mode, commanderKey, confidence: corpus.confidence, groups };
+  return { mode, commanderKey, confidence: corpus.confidence, groups, ...(buyList ? { buyList } : {}) };
 }

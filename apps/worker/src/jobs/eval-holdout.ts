@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { availability } from '@mtg/core/collection';
 import { estimateBracket, maskToIdentity } from '@mtg/core/commander';
 import type { CardId, CardSummary, OracleId, RecContext } from '@mtg/core/contract';
 import {
@@ -132,6 +133,8 @@ interface SetModel {
   corpus: RankCorpus;
   mask: number;
   ordered: number[];
+  /** The colours' most played cards, which a collection's pool draws on beside the commander's (T059). */
+  colours: number[];
   rates: (cardId: number) => CardPlayRates;
 }
 
@@ -401,6 +404,7 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
     },
     mask,
     ordered,
+    colours: baselineOrder(training, mask, data),
     rates,
   };
 }
@@ -417,11 +421,14 @@ const contextFor = (deck: EvalDeck, cards: readonly number[], owned?: readonly n
 /** The adds for a deck as one list, best first, every category together. */
 function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel, settings: Settings, data: Data, owned?: ReadonlySet<number>): number[] {
   const taken = new Set([...deck.commanderIds, ...visible]);
-  const poolIds = model.ordered.filter((id) => !taken.has(id) && (!owned || owned.has(id))).slice(0, ADD_POOL_SIZE);
+  const pick = (order: readonly number[]) => order.filter((id) => !taken.has(id) && (!owned || owned.has(id))).slice(0, ADD_POOL_SIZE);
+  // A collection's pool is the commander's cards it holds and then the colours' cards it holds, as serving_add_pool
+  // returns them with p_owned.
+  const poolIds = owned ? [...new Set([...pick(model.ordered), ...pick(model.colours)])] : pick(model.ordered);
   const cards = new Map(poolIds.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : [])));
   const rates = new Map(poolIds.map((id) => [id, model.rates(id)]));
   const roles = new Map([...poolIds, ...visible].map((id) => [id, data.roles.get(id) ?? []]));
-  const groups = rankAdds({
+  const { groups } = rankAdds({
     context: contextFor(deck, visible, owned ? [...owned] : undefined),
     poolIds,
     cards,
@@ -432,6 +439,7 @@ function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel,
     roleTags: new Map(),
     ownedBoost: 0,
     scoring: settings.scoring,
+    availability: owned ? availability({ owned: new Map([...owned].map((id) => [id, 1])), builtDecks: [] }, new Map()) : null,
     limitPerCategory: ALL_CATEGORIES,
   });
   return groups
@@ -490,6 +498,7 @@ function gradeDeck(deck: EvalDeck, model: SetModel, training: Training, settings
     corpus: model.corpus,
     roleTargets: data.roleTargets,
     scoring: settings.scoring,
+    availability: null,
     limit: e.cutPrecisionAt,
   });
   const cutPrecision = precisionAt(

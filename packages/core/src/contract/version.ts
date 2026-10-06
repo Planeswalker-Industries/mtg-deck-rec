@@ -71,5 +71,12 @@
  * ({2}{W}{W}) so rows can show its symbols. CardSearchInput gains the legendary type filter (CardTypeFilter), `sort`
  * (name_asc / name_desc) and `ownedOnly` (only cards in a collection; a session collection makes the search a POST).
  * manaCost is a new required field, so every CardSummary producer fills it ('' for no cost); the rest is additive.
+ *
+ * v20 (2026-10-06): collection mode (T059). OwnershipInput 'session' carries optional `quantities` (one copy each when
+ * omitted) and 'account' an optional `deckId`, the deck being improved. A saved deck can be marked built
+ * (SavedDeckSummary.isBuilt, ActionsApi.setDeckBuilt): its cards are taken, so suggestions for the player's other decks
+ * tag a card held there with `conflicts`. An owned rules-identical twin stands in for a card (OwnedInfo.standsInFor).
+ * 'only' mode adds AddResult.buyList and SwapResult.buyList: unowned cards worth buying, with their gain over the best
+ * available card and gain per dollar. isBuilt is a new required field; the rest is additive.
  */
-export const CONTRACT_VERSION = 19;
+export const CONTRACT_VERSION = 20;

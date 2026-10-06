@@ -591,15 +591,19 @@ Move `ADD_WEIGHTS`, `SWAP_WEIGHTS` and the cut thresholds (`packages/core/src/sc
 
 ### T059: Collection mode: availability, conflicts and the buy list
 
-**Priority:** HIGH | **Area:** Full stack / Contract | **Status:** Not started | **Blocked by:** T055, T057
+**Priority:** HIGH | **Area:** Full stack / Contract | **Status:** Data, scoring and contract built on `feat/scoring-pipeline` (2026-10-06, contract v20, migration `20261006000600`); the UI is shelved until the data work is done | **Blocked by:** T055, T057
 
 The priority mode. Owned only plus a separate "worth buying" list becomes the default (owner decision 2026-10-05, closes T037, reframes T007). Recommendations get quantities; an owned functional twin stands in for a card; `decks.is_built` marks decks that hold their cards, and cards in them are conflicts the player can swap out there. Every owned card in the identity is scored, which is lookups once T055 lands.
 
+**Built:** `availability` (`@mtg/core/collection`) and the ranking on it (`rankAdds`, `rankCuts`, `rankSwaps`, `buyList`), tested; `decks.is_built`, `set_deck_built`, `my_card_availability` and `collection-mode.sql`; `serving_add_pool` with a collection returns the colours' cards it holds as well as the commander's; the buy list's settings in `app_config.scoring.collection` (margin 0.05, price floor $0.25, 10 cards); contract v20 (`conflicts`, `buyList`, `OwnedInfo.standsInFor`, quantities and the open deck in `OwnershipInput`, `isBuilt`, `setDeckBuilt`) with the mocks; the deck tool sends the open deck with an account collection. A collection's pool is its 400 best cards in the commander's pool plus its 400 best in the colours' (PostgREST's row cap allows 1,000), not literally every owned card. Collection-mode recall on the time split: 49.5% (49.8% before; within the interval).
+
+**Shelved UI (owner decision 2026-10-06: UI waits until data delivery is ready):** the built control on the deck page, the buy list and conflict tags in the deck tool, a stand-in's "stands in for" line, browser collections sending quantities, and switching the deck tool's default from 'first' to 'only' (only once the buy list shows, or 'only' would hide every unowned card with nothing in their place).
+
 **Acceptance criteria:**
-- [ ] `available()` per the design (quantities, twins, built decks, basics), tested in `@mtg/core`
-- [ ] `decks.is_built` migration, SQL checks, and a control on the deck page
-- [ ] Contract bump: `conflict`, `buyList`, quantities in `OwnershipInput`, `'only'` default
-- [ ] The evaluation's collection-mode recall recorded
+- [x] `available()` per the design (quantities, twins, built decks, basics), tested in `@mtg/core`
+- [ ] `decks.is_built` migration, SQL checks, and a control on the deck page (the control is shelved UI)
+- [x] Contract bump: `conflicts`, `buyList`, quantities in `OwnershipInput`, `'only'` default (the contract's; the deck tool's waits for the UI)
+- [x] The evaluation's collection-mode recall recorded
 
 ---
 

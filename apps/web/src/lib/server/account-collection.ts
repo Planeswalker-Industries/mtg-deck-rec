@@ -1,4 +1,5 @@
-import type { CardId, CollectionEntry, CollectionTotals, ResolvedCollectionRow, SourceApp } from "@mtg/core/contract";
+import type { CollectionCopies } from "@mtg/core/collection";
+import type { CardId, CollectionEntry, CollectionTotals, DeckId, ResolvedCollectionRow, SourceApp } from "@mtg/core/contract";
 import type { createAuthClient } from "./auth";
 
 type AuthClient = Awaited<ReturnType<typeof createAuthClient>>;
@@ -84,6 +85,26 @@ export async function accountCollectionEntries(db: AuthClient): Promise<Collecti
   const { data, error } = await db.rpc("my_collection_entries");
   if (error) throw new Error(`Loading the collection failed: ${error.message}`);
   return (data ?? []) as unknown as CollectionEntry[];
+}
+
+/**
+ * The signed-in user's copies per card and the copies each of their other built decks holds (T059), for
+ * recommendations. `deckId` is the deck being improved: its copies are its own, never a conflict.
+ */
+export async function accountCollectionCopies(db: AuthClient, deckId?: DeckId): Promise<CollectionCopies> {
+  const { data, error } = await db.rpc("my_card_availability", deckId ? { p_deck_id: deckId } : {});
+  if (error) throw new Error(`Loading the collection failed: ${error.message}`);
+  const value = (data ?? {}) as {
+    owned?: [number, number][];
+    built?: { id: string; code: string; name: string; cards: [number, number][] }[];
+  };
+  return {
+    owned: new Map(value.owned ?? []),
+    builtDecks: (value.built ?? []).map((d) => ({
+      deck: { deckId: d.id as DeckId, code: d.code, name: d.name },
+      copies: new Map(d.cards),
+    })),
+  };
 }
 
 export async function accountOwnedCardIds(db: AuthClient): Promise<CardId[]> {

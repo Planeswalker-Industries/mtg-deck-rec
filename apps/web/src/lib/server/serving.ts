@@ -118,7 +118,11 @@ function servedCards(
 
 const asCards = (data: unknown) => (data ?? []) as ServingCard[];
 
-/** What add suggestions need, read in one round: the commanders, the pool and its cards, the deck's roles. */
+/**
+ * What add suggestions need, read in one round: the commanders, the pool and its cards, the deck's roles. With `owned`
+ * (a collection in 'only' mode), the collection's pool (the commander's cards and the colours' it holds) and, beside
+ * it, the pool everyone gets, for the buy list.
+ */
 export interface ServedAdds {
   corpus: CommanderCorpus;
   commanderRows: Map<number, CardRow>;
@@ -140,15 +144,18 @@ export async function loadServedAdds(
   },
 ): Promise<ServedAdds> {
   const commanderIds = [...input.commanderIds];
-  const [poolResult, corpus, deckRolesResult, commandersResult, identityMonths, checkedAt] = await Promise.all([
+  const pool = (owned: readonly number[] | null) =>
     db.rpc("serving_add_pool", {
       p_commander_ids: commanderIds,
       p_exclude: [...input.exclude],
       p_allow_game_changers: input.allowGameChangers,
       p_limit: input.limit,
       p_mode: "adds",
-      ...(input.owned ? { p_owned: [...input.owned] } : {}),
-    }),
+      ...(owned ? { p_owned: [...owned] } : {}),
+    });
+  const [poolResult, openResult, corpus, deckRolesResult, commandersResult, identityMonths, checkedAt] = await Promise.all([
+    pool(input.owned),
+    input.owned ? pool(null) : Promise.resolve(null),
     loadCommanderCorpus(db, commanderIds),
     input.mainIds.length > 0
       ? db.from("card_roles").select("card_id, role_id").in("card_id", [...input.mainIds])
@@ -158,19 +165,27 @@ export async function loadServedAdds(
     pricesCheckedAt(db),
   ]);
   if (poolResult.error) throw new Error(`Loading the add pool failed: ${poolResult.error.message}`);
+  if (openResult?.error) throw new Error(`Loading the add pool failed: ${openResult.error.message}`);
   if (deckRolesResult.error) throw new Error(`Loading card roles failed: ${deckRolesResult.error.message}`);
   if (commandersResult.error) throw new Error(`Loading commanders failed: ${commandersResult.error.message}`);
 
   // One pool for a commander set the precompute scored; both for a pair no key knows, which picks here with the rule
-  // the old path used per request.
-  const rows = poolResult.data ?? [];
-  const kinds = new Set(rows.map((r) => r.pool as PoolKind));
+  // the old path used per request. A collection's pool keeps the colours' cards too, after the chosen pool's.
   const useCommander = commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
-  const chosen: PoolKind = kinds.has("commander") ? "commander" : kinds.has("partners") && useCommander ? "partners" : "baseline";
-  const poolCards = rows
-    .filter((r) => r.pool === chosen)
-    .sort((a, b) => a.position - b.position)
-    .map((r) => r.card);
+  const chosenCards = (rows: readonly { pool: string; position: number; card: ServingCard }[], withBaseline: boolean) => {
+    const kinds = new Set(rows.map((r) => r.pool as PoolKind));
+    const chosen: PoolKind = kinds.has("commander") ? "commander" : kinds.has("partners") && useCommander ? "partners" : "baseline";
+    const order = (kind: PoolKind) =>
+      rows
+        .filter((r) => r.pool === kind)
+        .sort((a, b) => a.position - b.position)
+        .map((r) => r.card);
+    return withBaseline && chosen !== "baseline" ? [...order(chosen), ...order("baseline")] : order(chosen);
+  };
+  const seen = new Set<number>();
+  const poolCards = [...chosenCards(poolResult.data ?? [], input.owned !== null), ...chosenCards(openResult?.data ?? [], false)].filter(
+    (c) => c.card_id !== null && !seen.has(c.card_id) && seen.add(c.card_id),
+  );
 
   const deckRoles = new Map<number, string[]>();
   for (const { card_id, role_id } of deckRolesResult.data ?? []) deckRoles.set(card_id, [...(deckRoles.get(card_id) ?? []), role_id]);

@@ -1,5 +1,8 @@
 import type {
   AddSuggestion,
+  BuyAddSuggestion,
+  BuySwapSuggestion,
+  BuyValue,
   CardCategory,
   CardSummary,
   CorpusConfidence,
@@ -7,13 +10,17 @@ import type {
   CostDelta,
   CutResult,
   CutSuggestion,
+  DeckConflict,
+  OwnedInfo,
   RecContext,
   RecMode,
+  ScoreBreakdown,
   SwapResult,
   SwapSuggestion,
   TagMatch,
   TagRef,
 } from '../contract';
+import { isOwnedStatus, type Availability } from '../collection/availability';
 import { fitsIdentity, gameChangerLimit } from '../formats/commander';
 import { cardCategory, roleGap, roleShortfalls } from './add';
 import type { CorpusSettings, ScoringConfig } from './config';
@@ -69,14 +76,13 @@ export const ADD_POOL_SIZE = 400;
 export const ADD_CATEGORIES: readonly CardCategory[] = ['creature', 'instant', 'sorcery', 'artifact', 'enchantment', 'planeswalker', 'battle', 'land'];
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
 const frontType = (typeLine: string) => typeLine.split(' // ')[0] ?? typeLine;
 
+/** No owned twins loaded: a card only an owned twin could supply counts as unowned. */
+const NO_STAND_INS: ReadonlyMap<number, RankCard> = new Map();
+
 export const modeOf = (ctx: RecContext): RecMode => (ctx.ownership ? 'collection_aware' : 'collection_less');
-/** Every card the collection holds, for badges and cost: in 'first' mode as much as in 'only'. */
-export const ownedIds = (ctx: RecContext): ReadonlySet<number> | null =>
-  ctx.ownership?.kind === 'session' ? new Set<number>(ctx.ownership.ownedCardIds) : null;
-/** The cards suggestions are limited to: the collection in 'only' mode, nothing in 'first' mode. */
-export const onlyIds = (ctx: RecContext): ReadonlySet<number> | null => (ownedOnly(ctx) ? ownedIds(ctx) : null);
 /** The deck's main cards, once each. */
 export const mainDeckIds = (ctx: RecContext): number[] => [
   ...new Set(ctx.deck.cards.filter((c) => c.section === 'main').map((c) => c.cardId)),
@@ -95,12 +101,75 @@ export function roleTargetsFor(generic: readonly RoleTarget[], corpus: RankCorpu
   });
 }
 
-export function costDelta(target: CardSummary, replacement: CardSummary, owned: ReadonlySet<number> | null): CostDelta {
+/** What a collection makes of a card in a suggestion. */
+interface Owning {
+  /** The card to show: the card itself, or an owned twin standing in for it. */
+  summary: CardSummary;
+  owned: OwnedInfo | null;
+  conflicts?: DeckConflict[];
+  /** The collection supplies it: a copy is free, every copy is in a built deck, or it is a basic land. */
+  supplied: boolean;
+}
+
+const unowned = (summary: CardSummary): Owning => ({ summary, owned: null, supplied: false });
+
+function owningOf(card: RankCard, availability: Availability | null, standIns: ReadonlyMap<number, RankCard>): Owning {
+  if (!availability) return unowned(card.summary);
+  const a = availability.of(card.summary.id, card.isBasicLand);
+  if (a.status === 'unowned') return unowned(card.summary);
+  if (a.status === 'basic') return { summary: card.summary, owned: a.owned > 0 ? { quantity: a.owned } : null, supplied: true };
+  let summary = card.summary;
+  let owned: OwnedInfo = { quantity: a.owned };
+  if (a.cardId !== card.summary.id) {
+    // An owned twin stands in. Without its row there is nothing to show, so the card counts as unowned.
+    const twin = standIns.get(a.cardId);
+    if (!twin) return unowned(card.summary);
+    summary = twin.summary;
+    owned = { quantity: a.owned, standsInFor: { id: card.summary.id, name: card.summary.name } };
+  }
+  return a.status === 'conflict' ? { summary, owned, conflicts: a.decks, supplied: true } : { summary, owned, supplied: true };
+}
+
+/** Keeps each shown card once, at its first (best) place: a card and the twin standing in for it show as one. */
+function onceEach<T extends { card: CardSummary }>(sorted: readonly T[]): T[] {
+  const seen = new Set<number>();
+  return sorted.filter((s) => !seen.has(s.card.id) && seen.add(s.card.id));
+}
+
+/**
+ * The buy list (scoring-design.md, "Mode A"): unowned cards scoring at least `buyMargin` above the best card the
+ * collection supplies for the same slot (0 when it supplies none), ranked by gain per dollar with prices under the floor
+ * counted as the floor. Cards without a price come after priced ones, by gain.
+ */
+export function buyList<T extends { card: CardSummary; score: ScoreBreakdown }>(
+  candidates: readonly T[],
+  bestSupplied: (candidate: T) => number,
+  settings: ScoringConfig['collection'],
+): (T & BuyValue)[] {
+  return candidates
+    .flatMap((c): (T & BuyValue)[] => {
+      const gain = round3(c.score.total - bestSupplied(c));
+      if (gain < settings.buyMargin) return [];
+      const usd = c.card.price?.usd;
+      return [{ ...c, gain, valueScore: usd === undefined ? null : round3(gain / Math.max(usd, settings.priceFloorUsd)) }];
+    })
+    .sort((a, b) => {
+      if ((a.valueScore === null) !== (b.valueScore === null)) return a.valueScore === null ? 1 : -1;
+      return (b.valueScore ?? 0) - (a.valueScore ?? 0) || b.gain - a.gain || a.card.name.localeCompare(b.card.name);
+    })
+    .slice(0, settings.buyListSize);
+}
+
+/** Whether the collection holds the card (available, a conflict or a basic land); false without a collection. */
+const ownsWith = (availability: Availability | null) => (cardId: number) =>
+  availability !== null && isOwnedStatus(availability.of(cardId));
+
+export function costDelta(target: CardSummary, replacement: CardSummary, owns: (cardId: number) => boolean): CostDelta {
   const targetUsd = target.price?.usd;
   const replacementUsd = replacement.price?.usd;
   const asOf = replacement.price?.asOf ?? target.price?.asOf ?? null;
-  if (owned?.has(replacement.id) && owned.has(target.id)) return { usd: 0, basis: 'both_owned', asOf };
-  if (owned?.has(replacement.id)) {
+  if (owns(replacement.id) && owns(target.id)) return { usd: 0, basis: 'both_owned', asOf };
+  if (owns(replacement.id)) {
     return targetUsd === undefined
       ? { usd: null, basis: 'price_unavailable', asOf: null }
       : { usd: -targetUsd, basis: 'owned_replacement', asOf };
@@ -121,6 +190,7 @@ export function rankCuts({
   corpus,
   roleTargets,
   scoring,
+  availability,
   limit,
 }: {
   context: RecContext;
@@ -132,6 +202,8 @@ export function rankCuts({
   /** The generic targets; the commander's role profile moves them (`roleTargetsFor`). */
   roleTargets: readonly RoleTarget[];
   scoring: ScoringConfig;
+  /** The player's collection; null without one. */
+  availability: Availability | null;
   limit: number;
 }): CutResult {
   const mainIds = mainDeckIds(context);
@@ -170,12 +242,14 @@ export function rankCuts({
     },
   );
 
-  const owned = ownedIds(context);
   const suggestions = scored.slice(0, limit).flatMap((s): CutSuggestion[] => {
     const card = cards.get(s.cardId);
     if (!card) return [];
-    // Only 'only' mode flags unowned cards: in 'first' mode the collection is a preference, not a rule.
-    const notOwned = owned !== null && ownedOnly(context) && !owned.has(s.cardId);
+    const a = availability?.of(s.cardId, card.isBasicLand) ?? null;
+    // Only 'only' mode flags unowned cards: in 'first' mode the collection is a preference, not a rule. A basic land, or
+    // a card an owned twin can stand in for, is never unowned.
+    const notOwned = a?.status === 'unowned' && ownedOnly(context);
+    const ownCopies = a && a.status !== 'unowned' && (a.status === 'basic' || a.cardId === s.cardId) ? a.owned : 0;
     return [
       {
         card: card.summary,
@@ -183,16 +257,23 @@ export function rankCuts({
         reasons: notOwned ? [...s.reasons, 'NOT_OWNED'] : s.reasons,
         severity: s.severity,
         corpus: commanderRateFor(s.cardId)?.evidence ?? null,
-        owned: owned?.has(s.cardId) ? { quantity: 1 } : null,
+        owned: ownCopies > 0 ? { quantity: ownCopies } : null,
       },
     ];
   });
   return { mode: modeOf(context), confidence: corpus.confidence, suggestions };
 }
 
+/** Cards to add in display groups, and in 'only' mode the cards worth buying. */
+export interface AddRanking {
+  groups: { category: CardCategory; suggestions: AddSuggestion[] }[];
+  buyList?: BuyAddSuggestion[];
+}
+
 /**
  * Cards to add, grouped by type: what decks with this commander run, scored by play rate and by the roles the deck is
- * short on. In 'first' mode owned cards move up by `ownedBoost`.
+ * short on. In 'only' mode the groups hold what the collection supplies and the unowned cards that would do clearly
+ * better go to the buy list; in 'first' mode owned cards move up by `ownedBoost`.
  */
 export function rankAdds({
   context,
@@ -205,10 +286,12 @@ export function rankAdds({
   roleTags,
   ownedBoost,
   scoring,
+  availability,
+  standIns = NO_STAND_INS,
   limitPerCategory,
 }: {
   context: RecContext;
-  /** The pool's card ids, best first. */
+  /** The pool's card ids: in 'only' mode the collection's pool and the open pool together, for the buy list. */
   poolIds: readonly number[];
   /** The pool's cards. */
   cards: ReadonlyMap<number, RankCard>;
@@ -221,9 +304,13 @@ export function rankAdds({
   roleTags: ReadonlyMap<string, TagRef>;
   ownedBoost: number;
   scoring: ScoringConfig;
+  /** The player's collection; null without one. */
+  availability: Availability | null;
+  /** Rows for owned cards that may stand in for a twin (`Availability.standInIds`). */
+  standIns?: ReadonlyMap<number, RankCard>;
   limitPerCategory: number;
-}): { category: CardCategory; suggestions: AddSuggestion[] }[] {
-  const owned = ownedIds(context);
+}): AddRanking {
+  const only = availability !== null && ownedOnly(context);
   const deckRoleCounts = new Map<string, number>();
   for (const id of mainDeckIds(context)) for (const role of roles.get(id) ?? []) deckRoleCounts.set(role, (deckRoleCounts.get(role) ?? 0) + 1);
   const shortfalls = roleShortfalls(deckRoleCounts, roleTargetsFor(roleTargets, corpus));
@@ -250,35 +337,44 @@ export function rankAdds({
     scoring.corpus,
   );
 
-  const suggestions = scoredPool.flatMap(({ cardId, rates: r, corpusScore }): AddSuggestion[] => {
+  const scored = scoredPool.flatMap(({ cardId, rates: r, corpusScore }) => {
     const card = cards.get(cardId);
     if (!card) return [];
     const { gap, roleIds } = roleGap([...(roles.get(cardId) ?? [])], shortfalls);
-    return [
-      {
-        card: card.summary,
-        category: cardCategory(card.summary.typeLine),
-        score: blendScore(
-          { tag: null, manaValue: null, staple: null, corpus: round2(corpusScore?.value ?? neutralCorpus), votes: null, role: round2(gap) },
-          scoring.weights.add,
-        ),
-        corpus: r?.evidence ?? null,
-        fillsRoles: roleIds.flatMap((id): TagRef[] => {
-          const tag = roleTags.get(id);
-          return tag ? [{ ...tag, label: roleLabels.get(id) ?? tag.label }] : [];
-        }),
-        owned: owned?.has(card.summary.id) ? { quantity: 1 } : null,
-      },
-    ];
+    const owning = owningOf(card, availability, standIns);
+    const suggestion: AddSuggestion = {
+      card: owning.summary,
+      category: cardCategory(card.summary.typeLine),
+      score: blendScore(
+        { tag: null, manaValue: null, staple: null, corpus: round2(corpusScore?.value ?? neutralCorpus), votes: null, role: round2(gap) },
+        scoring.weights.add,
+      ),
+      corpus: r?.evidence ?? null,
+      fillsRoles: roleIds.flatMap((id): TagRef[] => {
+        const tag = roleTags.get(id);
+        return tag ? [{ ...tag, label: roleLabels.get(id) ?? tag.label }] : [];
+      }),
+      owned: owning.owned,
+      ...(owning.conflicts ? { conflicts: owning.conflicts } : {}),
+    };
+    return [{ suggestion, supplied: owning.supplied }];
   });
+  const listed = (only ? scored.filter((s) => s.supplied) : scored).map((s) => s.suggestion);
 
-  return ADD_CATEGORIES.map((category) => ({
+  const groups = ADD_CATEGORIES.map((category) => ({
     category,
-    suggestions: suggestions
-      .filter((s) => s.category === category)
-      .sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost))
-      .slice(0, limitPerCategory),
+    suggestions: onceEach(
+      listed
+        .filter((s) => s.category === category)
+        .sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost)),
+    ).slice(0, limitPerCategory),
   })).filter((g) => g.suggestions.length > 0);
+  if (!only) return { groups };
+
+  const best = new Map<CardCategory, number>();
+  for (const s of listed) best.set(s.category, Math.max(best.get(s.category) ?? 0, s.score.total));
+  const candidates = scored.filter((s) => !s.supplied).map((s) => s.suggestion);
+  return { groups, buyList: buyList(candidates, (c) => best.get(c.category) ?? 0, scoring.collection) };
 }
 
 export interface SwapPoolCandidate {
@@ -299,22 +395,48 @@ export interface SwapPool {
   candidates: SwapPoolCandidate[];
 }
 
+/** Each card once, the first pool's row first. */
+function mergeCandidates(first: readonly SwapPoolCandidate[], second: readonly SwapPoolCandidate[]): SwapPoolCandidate[] {
+  const ids = new Set(first.map((c) => c.cardId));
+  return [...first, ...second.filter((c) => !ids.has(c.cardId))];
+}
+
 /**
- * Ranks a swap pool for one deck: leaves out the deck's own cards (and unowned cards in 'only' mode), then blends
- * scores. In 'first' mode owned cards move up by `ownedBoost`.
+ * Ranks a swap pool for one deck: leaves out the deck's own cards, then blends scores. In 'only' mode the suggestions
+ * are what the collection supplies (the pool read for it) and the unowned cards of `buyPool` (the pool everyone gets)
+ * that would do clearly better go to the buy list; in 'first' mode owned cards move up by `ownedBoost`.
  */
 export function rankSwaps(
   pool: SwapPool,
-  { context, limit, ownedBoost, scoring }: { context: RecContext; limit: number; ownedBoost: number; scoring: ScoringConfig },
+  {
+    context,
+    limit,
+    ownedBoost,
+    scoring,
+    availability = null,
+    standIns = NO_STAND_INS,
+    buyPool = null,
+  }: {
+    context: RecContext;
+    limit: number;
+    ownedBoost: number;
+    scoring: ScoringConfig;
+    /** The player's collection; null without one. */
+    availability?: Availability | null;
+    /** Rows for owned cards that may stand in for a twin (`Availability.standInIds`). */
+    standIns?: ReadonlyMap<number, RankCard>;
+    /** 'only' mode: the unfiltered pool the buy list is drawn from. */
+    buyPool?: SwapPool | null;
+  },
 ): SwapResult {
-  const owned = ownedIds(context);
-  const only = onlyIds(context);
+  const only = availability !== null && ownedOnly(context);
   const mode = modeOf(context);
   const target = pool.target.summary;
   const inDeck = new Set<number>([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)]);
-  const candidates = pool.candidates.filter(
-    (c) => !inDeck.has(c.cardId) && (!only || only.has(c.cardId)) && c.tagSimilarity >= scoring.swap.tagSimilarityFloor,
+  const candidates = (only && buyPool ? mergeCandidates(pool.candidates, buyPool.candidates) : pool.candidates).filter(
+    (c) => !inDeck.has(c.cardId) && c.tagSimilarity >= scoring.swap.tagSimilarityFloor,
   );
+  const owns = ownsWith(availability);
 
   // undefined: no corpus loaded at all. null: too new to judge by play rates.
   const corpusScores = new Map(
@@ -344,20 +466,21 @@ export function rankSwaps(
   // everyday weights and differs from a collection-less ranking only by the owned boost.
   const baseWeights = scoring.weights.swap[only ? 'collection_aware' : 'collection_less'];
 
-  const suggestions = candidates
-    .map((c): SwapSuggestion => {
-      const card = c.card.summary;
-      const known = corpusScores.get(c.cardId);
-      const corpusScore = known === null ? { value: neutralCorpus, weightScale: scoring.corpus.baselineWeight } : (known ?? null);
-      return {
-        card,
-        functionalTwin: c.functionalTwin,
-        matchedTags: c.matchedTags,
-        corpus: c.rates?.evidence ?? null,
-        votes: { score: 0.5, voteCount: 0, myVote: null },
-        costDelta: costDelta(target, card, owned),
-        owned: owned?.has(card.id) ? { quantity: 1 } : null,
-        score: blendScore(
+  const scored = candidates.map((c) => {
+    const card = c.card.summary;
+    const owning = owningOf(c.card, availability, standIns);
+    const known = corpusScores.get(c.cardId);
+    const corpusScore = known === null ? { value: neutralCorpus, weightScale: scoring.corpus.baselineWeight } : (known ?? null);
+    const suggestion: SwapSuggestion = {
+      card: owning.summary,
+      functionalTwin: c.functionalTwin,
+      matchedTags: c.matchedTags,
+      corpus: c.rates?.evidence ?? null,
+      votes: { score: 0.5, voteCount: 0, myVote: null },
+      costDelta: costDelta(target, owning.summary, owns),
+      owned: owning.owned,
+      ...(owning.conflicts ? { conflicts: owning.conflicts } : {}),
+      score: blendScore(
           {
             tag: round2(c.tagSimilarity),
             manaValue: round2(manaValueProximity(card.manaValue, target.manaValue, scoring.swap.manaValueFalloff)),
@@ -368,12 +491,21 @@ export function rankSwaps(
           },
           corpusScore ? { ...baseWeights, corpus: baseWeights.corpus * corpusScore.weightScale } : baseWeights,
         ),
-      };
-    })
-    .sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost))
-    .slice(0, limit);
+    };
+    return { suggestion, supplied: owning.supplied };
+  });
+  const listed = (only ? scored.filter((s) => s.supplied) : scored).map((s) => s.suggestion);
+  const suggestions = onceEach(
+    listed.sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost)),
+  ).slice(0, limit);
 
   const result: SwapResult = { mode, target, confidence: pool.corpus.confidence, suggestions };
+  if (only) {
+    const best = listed.reduce((max, s) => Math.max(max, s.score.total), 0);
+    const unowned: SwapSuggestion[] = scored.filter((s) => !s.supplied).map((s) => s.suggestion);
+    const list: BuySwapSuggestion[] = buyList(unowned, () => best, scoring.collection);
+    result.buyList = list;
+  }
   if (suggestions.length === 0) {
     result.emptyReason = pool.tagCount === 0 ? 'NO_TAGS_ON_TARGET' : only ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
   }

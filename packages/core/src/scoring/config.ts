@@ -65,6 +65,15 @@ export const scoringConfigSchema = z.object({
     /** Without play rates: overloaded-role cards first, then expensive cards, each lifted by relative mana value. */
     withoutCorpus: z.object({ redundantBase: share, redundantManaValue: share, base: share, manaValue: share }),
   }),
+  /** Collection mode (T059): the buy list beside suggestions limited to what the collection supplies. */
+  collection: z.object({
+    /** An unowned card joins the buy list when it scores this much above the best card the collection supplies for the slot. */
+    buyMargin: share,
+    /** The buy list ranks by gain per dollar with prices under this counted as this, so bulk cards don't divide by almost nothing. */
+    priceFloorUsd: positive,
+    /** How many cards a buy list holds. */
+    buyListSize: z.int().min(0),
+  }),
 });
 
 export type ScoringConfig = z.infer<typeof scoringConfigSchema>;

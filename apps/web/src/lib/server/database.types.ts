@@ -884,6 +884,7 @@ export type Database = {
           created_at: string
           id: string
           include_in_corpus: boolean
+          is_built: boolean
           is_public: boolean
           name: string
           updated_at: string
@@ -899,6 +900,7 @@ export type Database = {
           created_at?: string
           id?: string
           include_in_corpus?: boolean
+          is_built?: boolean
           is_public?: boolean
           name: string
           updated_at?: string
@@ -914,6 +916,7 @@ export type Database = {
           created_at?: string
           id?: string
           include_in_corpus?: boolean
+          is_built?: boolean
           is_public?: boolean
           name?: string
           updated_at?: string
@@ -1862,6 +1865,7 @@ export type Database = {
         Returns: number
       }
       is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
+      my_card_availability: { Args: { p_deck_id?: string }; Returns: Json }
       my_collection_entries: { Args: never; Returns: Json }
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
@@ -2038,6 +2042,10 @@ export type Database = {
       set_collection_card_quantity: {
         Args: { p_card_id: number; p_quantity: number }
         Returns: number
+      }
+      set_deck_built: {
+        Args: { p_deck_id: string; p_is_built: boolean }
+        Returns: undefined
       }
       set_deck_visibility: {
         Args: { p_deck_id: string; p_is_public: boolean }

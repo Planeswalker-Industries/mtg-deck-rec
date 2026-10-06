@@ -24,6 +24,7 @@ export const TEST_SCORING: ScoringConfig = {
     withCorpus: { corpus: 0.5, role: 0.3, manaValue: 0.2 },
     withoutCorpus: { redundantBase: 0.5, redundantManaValue: 0.4, base: 0.3, manaValue: 0.2 },
   },
+  collection: { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 10 },
 };
 
 export const TEST_CORPUS_SETTINGS: CorpusSettings = {

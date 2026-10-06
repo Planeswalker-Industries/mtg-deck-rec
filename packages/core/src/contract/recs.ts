@@ -1,18 +1,29 @@
 import type { CardSummary, TagRef } from './cards';
 import type { CommanderKeyRef, CorpusConfidence, DeckInput } from './decks';
-import type { Bracket, CardId, IsoDateTime, TagId } from './ids';
+import type { Bracket, CardId, DeckId, IsoDateTime, TagId } from './ids';
 
 export type RecMode = 'collection_less' | 'collection_aware';
 
 export type OwnershipInput =
   /** Anonymous: collection lives in IndexedDB; ids sent per request. */
-  | { kind: 'session'; catalogEpoch: string; ownedCardIds: CardId[] }
-  /** Authenticated: server joins the persisted collection. */
-  | { kind: 'account' };
+  | {
+      kind: 'session';
+      catalogEpoch: string;
+      ownedCardIds: CardId[];
+      /** Copies of each card in `ownedCardIds`, in the same order. Omitted means one copy each (clients before v20). */
+      quantities?: number[];
+    }
+  /** Authenticated: server joins the persisted collection, and the copies the player's built decks hold. */
+  | {
+      kind: 'account';
+      /** The saved deck being improved, if any: the copies it holds are its own, never a conflict. */
+      deckId?: DeckId;
+    };
 
 /**
- * What a collection does to suggestions. only: suggest owned cards and nothing else (cuts flag unowned cards).
- * first: suggest from everything, with owned cards ranked ahead of comparable ones; scores themselves are unchanged.
+ * What a collection does to suggestions. only (the default): suggest cards the collection can supply, plus a separate
+ * buy list of unowned cards that would do clearly better (cuts flag unowned cards). first: suggest from everything,
+ * with owned cards ranked ahead of comparable ones; scores themselves are unchanged.
  */
 export type OwnershipMode = 'only' | 'first';
 
@@ -119,7 +130,28 @@ export interface CostDelta {
 }
 
 export interface OwnedInfo {
+  /** Copies owned: of the card, or of the twin standing in for it. */
   quantity: number;
+  /**
+   * The card shown is an owned rules-identical twin standing in for this one, which the scores were read for (it is
+   * the more played name). Absent when the card itself is owned.
+   */
+  standsInFor?: { id: CardId; name: string };
+}
+
+/** A saved deck marked built that holds a copy a suggestion would need. */
+export interface DeckConflict {
+  deckId: DeckId;
+  code: string;
+  name: string;
+}
+
+/** Why an unowned card is on the buy list ('only' mode with a collection). */
+export interface BuyValue {
+  /** How much higher it scores than the best card the collection supplies for the same slot (its add group, or the swap). */
+  gain: number;
+  /** gain / max(price, price floor): what the buy list is ranked by. null when the card has no price. */
+  valueScore: number | null;
 }
 
 export interface SwapSuggestion {
@@ -132,13 +164,19 @@ export interface SwapSuggestion {
   votes: VoteSummary;
   costDelta: CostDelta;
   owned: OwnedInfo | null;
+  /** Every owned copy is held by these built decks: the player can ask for swaps there to free one. */
+  conflicts?: DeckConflict[];
 }
+
+export type BuySwapSuggestion = SwapSuggestion & BuyValue;
 
 export interface SwapResult {
   mode: RecMode;
   target: CardSummary;
   confidence: CorpusConfidence;
   suggestions: SwapSuggestion[];
+  /** 'only' mode: unowned replacements worth buying, best value first. Shown apart from the suggestions, as such. */
+  buyList?: BuySwapSuggestion[];
   emptyReason?: 'NO_TAGS_ON_TARGET' | 'NOTHING_OWNED_FITS' | 'NO_CANDIDATES';
 }
 
@@ -160,13 +198,19 @@ export interface AddSuggestion {
   /** Roles this card fills that the deck is short on vs the commander's role profile. */
   fillsRoles: TagRef[];
   owned: OwnedInfo | null;
+  /** Every owned copy is held by these built decks: the player can ask for swaps there to free one. */
+  conflicts?: DeckConflict[];
 }
+
+export type BuyAddSuggestion = AddSuggestion & BuyValue;
 
 export interface AddResult {
   mode: RecMode;
   commanderKey: CommanderKeyRef;
   confidence: CorpusConfidence;
   groups: { category: CardCategory; suggestions: AddSuggestion[] }[];
+  /** 'only' mode: unowned cards worth buying, best value first, every group together. Shown apart, as such. */
+  buyList?: BuyAddSuggestion[];
 }
 
 export type CutReason =

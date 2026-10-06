@@ -35,6 +35,7 @@ import type {
 import type { CommanderRequest, CommanderRequestStatus } from '../commander-requests';
 import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
 import { ownedFirst, ownedOnly, rankKey } from '../../scoring/owned';
+import { buyList } from '../../scoring/rank';
 import { cardTypes } from '../../scoring/add';
 import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
 import { cardQuantity, setCardQuantity } from '../../collection/edit';
@@ -64,6 +65,8 @@ const MOCK_ACCOUNT_OWNED = new Set<number>([2, 3, 5, 9, 12, 16, 17]);
 const MOCK_SEVERE_SYNERGY_SCORE = 0.2;
 /** Mock stand-in for app_config.ownership.firstBoost: how far an owned card moves up in 'first' mode. */
 const MOCK_OWNED_FIRST_BOOST = 0.1;
+/** The buy list's settings, as `app_config.scoring.collection` starts them (a shorter list, for the mock catalog). */
+const MOCK_BUY_LIST = { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 5 };
 const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 };
 const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
 
@@ -270,7 +273,7 @@ const ownedInfo = (owned: Set<number> | null, id: number) => (owned?.has(id) ? {
 /** In-memory implementations of the contract for frontend work (NEXT_PUBLIC_USE_MOCKS=1). */
 export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {}): MockApis {
   const delay = <T>(value: T, ms = latencyMs) => wait(value, ms);
-  const decks = new Map<string, { name: string; deck: DeckInput; isPublic: boolean; bracket?: Bracket; updatedAt: string }>();
+  const decks = new Map<string, { name: string; deck: DeckInput; isPublic: boolean; isBuilt: boolean; bracket?: Bracket; updatedAt: string }>();
   /** Mock codes stand in for the database's random ones, and match the shape openSavedDeckInputSchema accepts. */
   const deckCode = (id: string) => `mockdeck${id.replace(/\D/g, '') || '1'}`;
   const favorites = new Set<string>();
@@ -296,10 +299,9 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         const boost = ownedFirst(context) ? MOCK_OWNED_FIRST_BOOST : 0;
         const inDeck = deckCardIds(context.deck);
         const identity = deckIdentity(context.deck);
-        const suggestions = mockCards
+        const scored = mockCards
           .filter((c) => c.id !== target.id && !inDeck.has(c.id) && !isBasicLand(c) && withinIdentity(c, identity))
           .filter((c) => context.includeGameChangers || !c.gameChanger)
-          .filter((c) => !only || only.has(c.id))
           .map((c): SwapSuggestion => {
             const matchedTags = tagMatches(target.id, c.id);
             const corpus = corpusFor(c.id);
@@ -325,11 +327,17 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
               owned: ownedInfo(owned, c.id),
             };
           })
-          .filter((s) => (s.score.components.tag ?? 0) >= 0.25)
+          .filter((s) => (s.score.components.tag ?? 0) >= 0.25);
+        const listed = scored.filter((s) => !only || only.has(s.card.id));
+        const suggestions = listed
           .sort((a, b) => rankKey(b.score.total, b.owned !== null, boost) - rankKey(a.score.total, a.owned !== null, boost))
           .slice(0, limit);
 
         const result: SwapResult = { mode: modeOf(context), target, confidence: confidenceOf(context), suggestions };
+        if (only) {
+          const best = listed.reduce((max, s) => Math.max(max, s.score.total), 0);
+          result.buyList = buyList(scored.filter((s) => !only.has(s.card.id)), () => best, MOCK_BUY_LIST);
+        }
         if (suggestions.length === 0) {
           const noTags = (mockCardTags[target.id] ?? []).length === 0;
           result.emptyReason = noTags ? 'NO_TAGS_ON_TARGET' : only ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
@@ -348,10 +356,10 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         const inDeck = new Set<number>([...deckCardIds(context.deck), ...excludeCardIds]);
         const identity = deckIdentity(context.deck);
         const groups = new Map<CardCategory, AddSuggestion[]>();
+        const unowned: AddSuggestion[] = [];
         for (const c of mockCards) {
           if (inDeck.has(c.id) || isBasicLand(c) || !withinIdentity(c, identity)) continue;
           if (!context.includeGameChangers && c.gameChanger) continue;
-          if (only && !only.has(c.id)) continue;
           const corpus = corpusFor(c.id);
           const category = categoryOf(c.typeLine);
           const suggestion: AddSuggestion = {
@@ -362,8 +370,10 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             fillsRoles: (mockCardTags[c.id] ?? []).map((tag): TagRef => mockTagParent[tag.id] ?? tag),
             owned: ownedInfo(owned, c.id),
           };
-          groups.set(category, [...(groups.get(category) ?? []), suggestion]);
+          if (only && !only.has(c.id)) unowned.push(suggestion);
+          else groups.set(category, [...(groups.get(category) ?? []), suggestion]);
         }
+        const best = new Map([...groups].map(([category, list]) => [category, Math.max(...list.map((s) => s.score.total))]));
         const result: AddResult = {
           mode: modeOf(context),
           commanderKey: commanderKeyRef(context.deck.commanders),
@@ -374,6 +384,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
               .sort((a, b) => rankKey(b.score.total, b.owned !== null, boost) - rankKey(a.score.total, a.owned !== null, boost))
               .slice(0, limitPerCategory),
           })),
+          ...(only ? { buyList: buyList(unowned, (s) => best.get(s.category) ?? 0, MOCK_BUY_LIST) } : {}),
         };
         return delay(ok(result));
       } catch (e) {
@@ -549,7 +560,8 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
 
     async saveDeck({ deckId, name, deck, isPublic, bracket }) {
       const id = deckId ?? (`mock-deck-${nextDeckId++}` as DeckId);
-      decks.set(id, { name, deck, isPublic, ...(bracket === undefined ? {} : { bracket }), updatedAt: new Date().toISOString() });
+      const isBuilt = (deckId ? decks.get(deckId)?.isBuilt : undefined) ?? false;
+      decks.set(id, { name, deck, isPublic, isBuilt, ...(bracket === undefined ? {} : { bracket }), updatedAt: new Date().toISOString() });
       return delay(ok({ deckId: id, code: deckCode(id) }));
     },
 
@@ -587,7 +599,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       const saved = decks.get(deckId);
       if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
       const id = `mock-deck-${nextDeckId++}` as DeckId;
-      decks.set(id, { ...saved, name: name ?? `${saved.name} (copy)`, updatedAt: new Date().toISOString() });
+      decks.set(id, { ...saved, name: name ?? `${saved.name} (copy)`, isBuilt: false, updatedAt: new Date().toISOString() });
       return delay(ok({ deckId: id }));
     },
 
@@ -595,6 +607,13 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       const saved = decks.get(deckId);
       if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
       decks.set(deckId, { ...saved, isPublic, updatedAt: new Date().toISOString() });
+      return delay(ok(null));
+    },
+
+    async setDeckBuilt({ deckId, isBuilt }) {
+      const saved = decks.get(deckId);
+      if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
+      decks.set(deckId, { ...saved, isBuilt });
       return delay(ok(null));
     },
 
@@ -783,6 +802,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         name: d.name,
         commanderKey: commanderKeyRef(d.deck.commanders),
         isPublic: d.isPublic,
+        isBuilt: d.isBuilt,
         cardCount: d.deck.commanders.length + d.deck.cards.reduce((n, c) => n + c.quantity, 0),
         ...(d.bracket === undefined ? {} : { bracket: d.bracket }),
         updatedAt: d.updatedAt,
