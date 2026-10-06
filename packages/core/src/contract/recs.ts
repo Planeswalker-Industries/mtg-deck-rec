@@ -42,8 +42,11 @@ export interface RecContext {
  * tag: does the same job (functional tag similarity) · manaValue: similar cost · staple: how widely the card is
  * reprinted, especially in Commander precons · corpus: play rate with this commander · votes: community votes.
  */
-/** `role`: the card fills a role the deck is short on (cards to add). */
-export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes' | 'role';
+/**
+ * `role`: the card fills a role the deck is short on (cards to add). `curve`: the deck is short of cards at the card's
+ * mana value against the commander's learned curve (cards to add; weight 0 until the evaluation passes it).
+ */
+export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes' | 'role' | 'curve';
 
 export interface ScoreBreakdown {
   /** 0..1 */

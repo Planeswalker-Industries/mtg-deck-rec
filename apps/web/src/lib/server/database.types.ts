@@ -721,24 +721,30 @@ export type Database = {
         Row: {
           commander_1: number
           commander_2: number
+          edhrec_curve_profile: Json | null
           edhrec_decks: number | null
           edhrec_floor: number | null
+          edhrec_role_profile: Json | null
           has_sources: boolean
           use_commander: boolean
         }
         Insert: {
           commander_1: number
           commander_2?: number
+          edhrec_curve_profile?: Json | null
           edhrec_decks?: number | null
           edhrec_floor?: number | null
+          edhrec_role_profile?: Json | null
           has_sources: boolean
           use_commander: boolean
         }
         Update: {
           commander_1?: number
           commander_2?: number
+          edhrec_curve_profile?: Json | null
           edhrec_decks?: number | null
           edhrec_floor?: number | null
+          edhrec_role_profile?: Json | null
           has_sources?: boolean
           use_commander?: boolean
         }
@@ -754,29 +760,38 @@ export type Database = {
       }
       commander_stats: {
         Row: {
+          basic_land_count: number | null
           bracket_counts: Json
           commander_key_id: number
           computed_at: string
+          curve_profile: Json
           deck_count: number
           deck_months: Json
+          land_count: number | null
           role_profile: Json
           source_counts: Json
         }
         Insert: {
+          basic_land_count?: number | null
           bracket_counts: Json
           commander_key_id: number
           computed_at?: string
+          curve_profile?: Json
           deck_count: number
           deck_months?: Json
+          land_count?: number | null
           role_profile?: Json
           source_counts: Json
         }
         Update: {
+          basic_land_count?: number | null
           bracket_counts?: Json
           commander_key_id?: number
           computed_at?: string
+          curve_profile?: Json
           deck_count?: number
           deck_months?: Json
+          land_count?: number | null
           role_profile?: Json
           source_counts?: Json
         }
@@ -2026,6 +2041,10 @@ export type Database = {
           card_id: number
           position: number
         }[]
+      }
+      serving_commander_profile: {
+        Args: { p_commander_ids: number[] }
+        Returns: Json
       }
       serving_deck_combos: {
         Args: {

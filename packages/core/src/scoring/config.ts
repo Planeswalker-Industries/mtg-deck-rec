@@ -18,6 +18,7 @@ const componentWeightsSchema = z.object({
   corpus: share,
   votes: share,
   role: share,
+  curve: share,
 });
 
 export const scoringConfigSchema = z.object({
@@ -73,6 +74,20 @@ export const scoringConfigSchema = z.object({
     priceFloorUsd: positive,
     /** How many cards a buy list holds. */
     buyListSize: z.int().min(0),
+  }),
+  /** The learned skeleton (T062): each new piece off until the evaluation passes it. */
+  skeleton: z.object({
+    /** Role targets (and the curve) move toward EDHREC's profile for a commander with a page, by its decks. */
+    edhrecPrior: z.boolean(),
+    /** HIGH_MANA_VALUE from the commander's curve (the card's bucket over it) instead of `cuts.highManaValue`. */
+    curveCuts: z.boolean(),
+    /** A curve bucket is over the commander's curve once the deck runs this many times its target there. */
+    curveOverloadRatio: positive,
+    /**
+     * Nonland cards a Commander deck runs: EDHREC's trimmed lists sum to well under it, so its profiles are scaled to
+     * this total (`scaledPrior`).
+     */
+    typicalNonlandCards: positive,
   }),
   /** "Complete a combo" (T060): what a combo does decides its place, then the missing card's add score. */
   combos: z.object({

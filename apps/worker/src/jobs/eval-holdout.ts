@@ -27,6 +27,7 @@ import {
   parseEvalConfig,
   parseScoringConfig,
   pickCorpusSources,
+  scaledPrior,
   precisionAt,
   rankAdds,
   rankCuts,
@@ -56,8 +57,8 @@ import {
 import { DATA_DIR } from '../lib/config';
 import { loadCatalog, loadCorpusConfig, loadCorpusDecks, resolveDeck, type CatalogCard, type CorpusConfig } from '../lib/corpus';
 import { connect, type Sql } from '../lib/db';
-import { globalStatRows, identityMonths, type KeyAggregate } from '../lib/key-stats';
-import { loadEdhrecPages, type PageRows } from '../lib/serving';
+import { globalStatRows, identityMonths, tallyShape, type KeyAggregate } from '../lib/key-stats';
+import { edhrecProfiles, loadEdhrecPages, type PageRows } from '../lib/serving';
 
 /**
  * `cli eval:holdout` (T058; docs/roadmap/scoring-design.md, "Evaluation"). Holds out a seeded share of the collated
@@ -99,6 +100,7 @@ interface EvalDeck {
   month: string;
   /** Non-basic cards in the 99. */
   cardIds: number[];
+  basicLands: number;
 }
 
 interface Data {
@@ -280,6 +282,7 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
       identity: resolved.deck.identity,
       month: resolved.deck.month,
       cardIds: [...resolved.deck.cardIds],
+      basicLands: deck.basicLands,
     });
   }
   return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets };
@@ -298,6 +301,9 @@ function aggregate(decks: readonly EvalDeck[], data: Data): Map<string, KeyAggre
         sources: {},
         months: {},
         roleCounts: {},
+        curveCounts: {},
+        lands: 0,
+        basicLands: 0,
         cards: new Map(),
       };
       out.set(d.key, a);
@@ -308,7 +314,10 @@ function aggregate(decks: readonly EvalDeck[], data: Data): Map<string, KeyAggre
     for (const id of d.cardIds) {
       a.cards.set(id, (a.cards.get(id) ?? 0) + 1);
       for (const role of data.roles.get(id) ?? []) a.roleCounts[role] = (a.roleCounts[role] ?? 0) + 1;
+      tallyShape(a, data.catalog.get(id));
     }
+    a.lands += d.basicLands;
+    a.basicLands += d.basicLands;
   }
   return out;
 }
@@ -389,10 +398,12 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
 
   const sums = new Map<number, RowSums>();
   const roleTotals: Record<string, number> = {};
+  const curveTotals: Record<string, number> = {};
   for (const source of picked.sources) {
     const a = training.aggregates.get(training.keyByIndex.get(source.id) ?? '');
     if (!a) continue;
     for (const [role, n] of Object.entries(a.roleCounts)) roleTotals[role] = (roleTotals[role] ?? 0) + n * source.weight;
+    for (const [bucket, n] of Object.entries(a.curveCounts)) curveTotals[bucket] = (curveTotals[bucket] ?? 0) + n * source.weight;
     for (const [card, dw] of a.cards) {
       const eligible = Math.max(decksSinceRelease(a.months, data.facts.get(card)?.releaseMonth ?? null), dw);
       const sum = sums.get(card) ?? { decksWith: 0, tooEarly: 0 };
@@ -451,15 +462,22 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
         .map((e) => e.id)
     : baselineOrder(training, mask, data);
 
-  const roleProfile = Object.fromEntries(
-    Object.entries(roleTotals).map(([role, total]) => [role, total / Math.max(picked.effectiveDeckCount, 1)]),
-  );
+  const perDeck = (totals: Record<string, number>) =>
+    Object.fromEntries(Object.entries(totals).map(([k, total]) => [k, total / Math.max(picked.effectiveDeckCount, 1)]));
+  // EDHREC's profiles for the set's page (T062), whenever it has one; the scoring decides whether they count.
+  const profilePage = data.pages.get(setKeyOf(ids));
+  const profiles = profilePage ? scaledPrior(edhrecProfiles(profilePage, data.roles, data.catalog), settings.scoring.skeleton.typicalNonlandCards) : null;
   return {
     corpus: {
       settings: settings.corpus,
       confidence: sourcesConfidence(picked, settings.corpus),
       effectiveDeckCount: picked.effectiveDeckCount,
-      roleProfile,
+      roleProfile: perDeck(roleTotals),
+      curveProfile: perDeck(curveTotals),
+      prior:
+        profiles && profilePage
+          ? { roles: profiles.roles, curve: profiles.curve, evidence: pageEvidence(profilePage.page, settings.corpus) }
+          : null,
     },
     mask,
     ordered,
@@ -498,6 +516,7 @@ function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel,
     roleTags: new Map(),
     ownedBoost: 0,
     scoring: settings.scoring,
+    deckCards: new Map(visible.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : []))),
     availability: owned ? availability({ owned: new Map([...owned].map((id) => [id, 1])), builtDecks: [] }, new Map()) : null,
     limitPerCategory: ALL_CATEGORIES,
   });

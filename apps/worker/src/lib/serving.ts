@@ -1,6 +1,8 @@
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
+  curveBucket,
+  isFrontLand,
   parseCorpusSettings,
   parseScoringConfig,
   type BaselineCounts,
@@ -71,6 +73,47 @@ export async function loadEdhrecPages(sql: Sql): Promise<Map<string, PageRows>> 
     if (r.listed_floor === null) p.page.floor = Math.min(p.page.floor, rate);
   }
   return pages;
+}
+
+/** Each card's mana value and whether its front face is a land, for curve profiles (T062). */
+export interface CardShape {
+  manaValue: number;
+  isLand: boolean;
+}
+
+export async function loadCardShapes(sql: Sql): Promise<Map<number, CardShape>> {
+  const rows = await sql<{ id: number; mana_value: number; type_line: string }[]>`
+    select id, mana_value::double precision as mana_value, type_line from public.cards where deleted_at is null
+  `;
+  return new Map(rows.map((r) => [r.id, { manaValue: r.mana_value, isLand: isFrontLand(r.type_line) }]));
+}
+
+/** Two places: the profiles are averages of card counts. */
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * EDHREC's role and curve profiles for a page (T062): the summed inclusion of its listed cards in each tracked role and,
+ * for nonland cards, at each mana value bucket. Summed inclusion is the expected number of such cards per deck; pages
+ * are trimmed, so it runs a little under.
+ */
+export function edhrecProfiles(
+  page: PageRows,
+  rolesByCard: ReadonlyMap<number, readonly string[]>,
+  shapes: ReadonlyMap<number, CardShape>,
+): { roles: Record<string, number>; curve: Record<string, number> } {
+  const roles: Record<string, number> = {};
+  const curve: Record<string, number> = {};
+  for (const [cardId, listing] of page.listings) {
+    for (const role of rolesByCard.get(cardId) ?? []) roles[role] = (roles[role] ?? 0) + listing.rate;
+    const shape = shapes.get(cardId);
+    if (shape && !shape.isLand) {
+      const bucket = curveBucket(shape.manaValue);
+      curve[bucket] = (curve[bucket] ?? 0) + listing.rate;
+    }
+  }
+  const rounded = (profile: Record<string, number>) =>
+    Object.fromEntries(Object.entries(profile).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, round2(v)]));
+  return { roles: rounded(roles), curve: rounded(curve) };
 }
 
 /** app_config.scoring (required): the weights and thresholds the stored scores are computed with. */

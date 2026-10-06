@@ -85,5 +85,9 @@
  * OVER_BRACKET_COMBO and OVER_BRACKET_EXTRA_TURNS (flags, with a cut offered). AddResult gains `combos`
  * (ComboSuggestion: "complete a combo", the combos one card short that the bracket allows) and AddSuggestion
  * `completesOverBracket`. Every combo carries its Spellbook link, which the UI credits.
+ *
+ * v22 (2026-10-06): the learned skeleton (T062). ScoreComponent gains 'curve': how short the deck is at the card's mana
+ * value against the commander's curve. Every ScoreBreakdown carries it (null where it doesn't apply); its weight is 0
+ * until the evaluation passes it.
  */
-export const CONTRACT_VERSION = 21;
+export const CONTRACT_VERSION = 22;

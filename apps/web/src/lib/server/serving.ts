@@ -6,10 +6,11 @@ import {
   commanderShare,
   identityBaselineDecks,
   servedCardRates,
+  type RankCard,
   type SwapPool,
   type SwapPoolCandidate,
 } from "@mtg/core/scoring";
-import { pricesCheckedAt, rankCardOf, withPriceCheck, type CardRow } from "./cards";
+import { fetchCardsById, pricesCheckedAt, rankCardOf, withPriceCheck, type CardRow } from "./cards";
 import { loadCommanderCorpus, loadIdentityMonths, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { Database } from "./database.types";
 import type { PublicClient } from "./supabase";
@@ -177,6 +178,8 @@ export interface ServedAdds {
   deckRoles: Map<number, string[]>;
   /** The deck's complete combos and those one named card short (T060). */
   combos: ComboFacts[];
+  /** The deck's main cards, for its curve (T062). */
+  deckCards: Map<number, RankCard>;
 }
 
 export async function loadServedAdds(
@@ -200,7 +203,7 @@ export async function loadServedAdds(
       p_mode: "adds",
       ...(owned ? { p_owned: [...owned] } : {}),
     });
-  const [poolResult, openResult, combosResult, corpus, deckRolesResult, commandersResult, identityMonths, checkedAt] = await Promise.all([
+  const [poolResult, openResult, combosResult, corpus, deckRolesResult, deckRows, commandersResult, identityMonths, checkedAt] = await Promise.all([
     pool(input.owned),
     input.owned ? pool(null) : Promise.resolve(null),
     deckCombosRead(db, {
@@ -214,6 +217,7 @@ export async function loadServedAdds(
     input.mainIds.length > 0
       ? db.from("card_roles").select("card_id, role_id").in("card_id", [...input.mainIds])
       : Promise.resolve({ data: [] as { card_id: number; role_id: string }[], error: null }),
+    fetchCardsById(db, input.mainIds),
     db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: commanderIds }),
     loadIdentityMonths(db),
     pricesCheckedAt(db),
@@ -252,6 +256,7 @@ export async function loadServedAdds(
     pool: servedCards([...poolCards, ...missingCards.filter((c) => !seen.has(c.card_id ?? 0))], corpus, identityMonths, checkedAt),
     deckRoles,
     combos,
+    deckCards: new Map([...deckRows].map(([id, row]) => [id, rankCardOf(row)])),
   };
 }
 

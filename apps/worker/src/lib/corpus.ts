@@ -1,6 +1,6 @@
 import { corpusCommanders, type CorpusCommanderFacts, type CorpusExclusion } from '@mtg/core/commander';
 import type { CardId } from '@mtg/core/contract';
-import { parseCorpusSettings, type CorpusSettings } from '@mtg/core/scoring';
+import { isFrontLand, parseCorpusSettings, type CorpusSettings } from '@mtg/core/scoring';
 import type { Sql } from './db';
 
 /** Shared by the corpus jobs, so every job counts the same decks. */
@@ -26,6 +26,9 @@ export interface CatalogCard {
   partnerQualifier: string | null;
   /** 'YYYY-MM' of the card's release, or null when unknown. */
   releaseMonth: string | null;
+  manaValue: number;
+  /** The front face is a land (`isFrontLand`). */
+  isLand: boolean;
 }
 
 /**
@@ -44,6 +47,8 @@ export interface CorpusDeck {
   month: string;
   /** Over commanders and cards (hex): the same deck posted on two sites has the same hash. */
   contentHash: string;
+  /** Basic land copies, which `cardIds` leaves out. */
+  basicLands: number;
 }
 
 /**
@@ -101,11 +106,14 @@ export async function loadCatalog(sql: Sql): Promise<Map<number, CatalogCard>> {
       partner_kind: string | null;
       partner_qualifier: string | null;
       release_month: string | null;
+      mana_value: number;
+      type_line: string;
     }[]
   >`
     -- First printing, not cards.released_at: Oracle Cards dates a card by its representative (often latest) printing.
     select c.id, c.name, c.color_identity, c.can_be_commander, c.legal_commander, c.is_basic_land, c.slug,
-           c.partner_kind, c.partner_qualifier, to_char(coalesce(st.first_printed_at, c.released_at), 'YYYY-MM') as release_month
+           c.partner_kind, c.partner_qualifier, to_char(coalesce(st.first_printed_at, c.released_at), 'YYYY-MM') as release_month,
+           c.mana_value::double precision as mana_value, c.type_line
     from public.cards c
     left join public.card_stats st on st.card_id = c.id
     where c.deleted_at is null
@@ -123,6 +131,8 @@ export async function loadCatalog(sql: Sql): Promise<Map<number, CatalogCard>> {
       partnerKind: r.partner_kind,
       partnerQualifier: r.partner_qualifier,
       releaseMonth: r.release_month,
+      manaValue: r.mana_value,
+      isLand: isFrontLand(r.type_line),
     });
   }
   if (catalog.size === 0) throw new Error('The card catalog is empty. Run sync:catalog first.');
@@ -157,10 +167,10 @@ export async function loadRoleCards(sql: Sql): Promise<Map<number, string[]>> {
  */
 export async function* loadCorpusDecks(sql: Sql): AsyncGenerator<CorpusDeck> {
   const cursor = sql<
-    { source: string; source_deck_id: string; commander_card_ids: number[]; card_ids: number[]; month: string; content_hash: string }[]
+    { source: string; source_deck_id: string; commander_card_ids: number[]; card_ids: number[]; month: string; content_hash: string; basic_lands: number }[]
   >`
     select source, source_deck_id, commander_card_ids, card_ids, to_char(updated_month, 'YYYY-MM') as month,
-           encode(content_hash, 'hex') as content_hash
+           encode(content_hash, 'hex') as content_hash, basic_lands
     from corpus.decks
     order by id
   `.cursor(CORPUS_CURSOR_ROWS);
@@ -173,6 +183,7 @@ export async function* loadCorpusDecks(sql: Sql): AsyncGenerator<CorpusDeck> {
         cardIds: r.card_ids,
         month: r.month,
         contentHash: r.content_hash,
+        basicLands: r.basic_lands,
       };
     }
   }

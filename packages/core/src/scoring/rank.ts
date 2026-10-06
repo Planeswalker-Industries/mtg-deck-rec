@@ -31,6 +31,16 @@ import type { CorpusSettings, ScoringConfig } from './config';
 import { commanderCorpusScore, commanderShare, corpusComponent, neutralCorpusValue, type CommanderCardRate } from './corpus';
 import { bracketExclusions, comboResultWeight, cutBracketMarks, overBracket, type DeckBracketFacts } from './combos';
 import { scoreCuts, type RoleTarget } from './cut';
+import {
+  curveMeanManaValue,
+  curveOverloaded,
+  curveShortfall,
+  curveTargets,
+  deckCurve,
+  isFrontLand,
+  type Profile,
+  type ProfilePrior,
+} from './curve';
 import { ownedOnly, rankKey } from './owned';
 import { blendScore, manaValueProximity } from './swap';
 
@@ -72,6 +82,10 @@ export interface RankCorpus {
   effectiveDeckCount: number;
   /** Average cards per deck in each tracked role (by role tag id). */
   roleProfile: Readonly<Record<string, number>>;
+  /** Average nonland cards per deck at each mana value bucket (T062). */
+  curveProfile: Profile;
+  /** EDHREC's role and curve profile for these commanders, when they have a page (T062). */
+  prior: ProfilePrior | null;
 }
 
 /** How many widely played candidates a request scores before grouping cards to add (the app and the evaluation). */
@@ -98,14 +112,36 @@ export const mainDeckIds = (ctx: RecContext): number[] => [
  * Role targets for this deck: the generic targets, moved toward how many cards the commander's decks actually run in
  * each role as those decks gain weight. Liesa decks, for one, run far more removal than a generic deck.
  */
-export function roleTargetsFor(generic: readonly RoleTarget[], corpus: RankCorpus): RoleTarget[] {
+export function roleTargetsFor(generic: readonly RoleTarget[], corpus: RankCorpus, edhrecPrior = false): RoleTarget[] {
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  // With the EDHREC prior on (T062), the generic targets first move toward the commander's EDHREC page by its decks.
+  const prior = edhrecPrior ? corpus.prior : null;
+  const priorShare = prior ? commanderShare(prior.evidence, corpus.settings) : 0;
+  const base =
+    prior && priorShare > 0
+      ? generic.map((t) => {
+          const typical = prior.roles[t.roleId];
+          return typical === undefined ? t : { ...t, target: round1(priorShare * typical + (1 - priorShare) * t.target) };
+        })
+      : [...generic];
   const share = commanderShare(corpus.effectiveDeckCount, corpus.settings);
-  if (share === 0) return [...generic];
-  return generic.map((t) => {
+  if (share === 0) return base;
+  return base.map((t) => {
     const typical = corpus.roleProfile[t.roleId];
-    return typical === undefined ? t : { ...t, target: Math.round((share * typical + (1 - share) * t.target) * 10) / 10 };
+    return typical === undefined ? t : { ...t, target: round1(share * typical + (1 - share) * t.target) };
   });
 }
+
+/** The curve a deck is measured against for these commanders (`curveTargets`), with the EDHREC prior when it is on. */
+export const curveTargetsFor = (corpus: RankCorpus, scoring: ScoringConfig): Profile | null =>
+  curveTargets(corpus.curveProfile, corpus.effectiveDeckCount, scoring.skeleton.edhrecPrior ? corpus.prior : null, corpus.settings);
+
+/** A deck's nonland cards per curve bucket, from the cards the caller loaded. */
+const deckCurveOf = (ids: readonly number[], cards: ReadonlyMap<number, RankCard>) =>
+  deckCurve(ids.flatMap((id) => {
+    const card = cards.get(id);
+    return card ? [{ manaValue: card.summary.manaValue, isLand: isFrontLand(card.summary.typeLine) }] : [];
+  }));
 
 /** What a collection makes of a card in a suggestion. */
 interface Owning {
@@ -217,6 +253,14 @@ export function rankCuts({
 }): CutResult {
   const mainIds = mainDeckIds(context);
   const bracket = bracketFacts ? cutBracketMarks(bracketFacts, context.bracket, context.deck.commanders) : null;
+  // The learned curve's cut rule (T062), once switched on: expensive means over this commander's curve, not a fixed cost.
+  const curve = scoring.skeleton.curveCuts ? curveTargetsFor(corpus, scoring) : null;
+  const curveMean = curve ? curveMeanManaValue(curve) : null;
+  const deckBuckets = curve ? deckCurveOf(mainIds, cards) : null;
+  const highOnCurve = (manaValue: number) =>
+    curve && deckBuckets && curveMean !== null
+      ? { highOnCurve: manaValue >= curveMean && curveOverloaded(curve, deckBuckets, manaValue, scoring.skeleton.curveOverloadRatio) }
+      : {};
   // Play rates judge a cut only once enough of the commander's decks could have run the card (updated since its
   // release); broad popularity says little about fit, and new cards aren't judged by older decks.
   const commanderRateFor = (id: number) => {
@@ -241,13 +285,14 @@ export function rankCuts({
           // Basic lands aren't in the corpus stats, so they'd all look unplayed.
           corpusScore: rate && !card.isBasicLand ? commanderCorpusScore(rate, scoring.corpus) : null,
           ...(bracket ? bracket.marks(id) : {}),
+          ...highOnCurve(card.summary.manaValue),
         },
       ];
     }),
     {
       includeGameChangers: context.includeGameChangers,
       gameChangerLimit: gameChangerLimit(context.bracket),
-      roleTargets: roleTargetsFor(roleTargets, corpus),
+      roleTargets: roleTargetsFor(roleTargets, corpus, scoring.skeleton.edhrecPrior),
       severeSynergyScore: corpus.settings.severeSynergyScore,
       scoring: scoring.cuts,
       ...(bracket ? bracket.options : {}),
@@ -302,6 +347,7 @@ export function rankAdds({
   availability,
   standIns = NO_STAND_INS,
   bracketFacts = null,
+  deckCards = NO_STAND_INS,
   limitPerCategory,
 }: {
   context: RecContext;
@@ -327,13 +373,20 @@ export function rankAdds({
    * card short make the "complete a combo" group. Their missing cards' rows and rates belong in `cards` and `rates`.
    */
   bracketFacts?: DeckBracketFacts | null;
+  /** The deck's main cards, for its curve (T062); the curve component is left out without them. */
+  deckCards?: ReadonlyMap<number, RankCard>;
   limitPerCategory: number;
 }): AddRanking {
   const only = availability !== null && ownedOnly(context);
   const excluded = bracketExclusions(bracketFacts, context.bracket);
   const deckRoleCounts = new Map<string, number>();
   for (const id of mainDeckIds(context)) for (const role of roles.get(id) ?? []) deckRoleCounts.set(role, (deckRoleCounts.get(role) ?? 0) + 1);
-  const shortfalls = roleShortfalls(deckRoleCounts, roleTargetsFor(roleTargets, corpus));
+  const shortfalls = roleShortfalls(deckRoleCounts, roleTargetsFor(roleTargets, corpus, scoring.skeleton.edhrecPrior));
+  const curve = curveTargetsFor(corpus, scoring);
+  const deckBuckets = curve ? deckCurveOf(mainDeckIds(context), deckCards) : null;
+  /** The curve component (T062): null without a curve, and for lands, which the curve doesn't count. */
+  const curveFor = (card: RankCard) =>
+    curve && deckBuckets && !isFrontLand(card.summary.typeLine) ? round2(curveShortfall(curve, deckBuckets, card.summary.manaValue)) : null;
   const roleLabels = new Map(roleTargets.map((t) => [t.roleId, t.label]));
 
   const corpusOf = (cardId: number) => {
@@ -374,7 +427,7 @@ export function rankAdds({
       card: owning.summary,
       category: cardCategory(card.summary.typeLine),
       score: blendScore(
-        { tag: null, manaValue: null, staple: null, corpus: round2(corpusScore?.value ?? neutralCorpus), votes: null, role: round2(gap) },
+        { tag: null, manaValue: null, staple: null, corpus: round2(corpusScore?.value ?? neutralCorpus), votes: null, role: round2(gap), curve: curveFor(card) },
         scoring.weights.add,
       ),
       corpus: r?.evidence ?? null,

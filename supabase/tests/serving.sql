@@ -139,6 +139,14 @@ select chk('a card carries its EDHREC listing and the set its page, for the prio
   (select prior_rate = 0.42::real and prior_decks = 900 and edhrec_floor = 0.03::real and edhrec_decks = 1200
      from public.serving_cards(array[:c1, :c2], array[:plain]))
   and (select prior_rate is null and edhrec_decks = 1200 from public.serving_cards(array[:c1, :c2], array[:blue2])));
+update public.commander_sets set edhrec_role_profile = '{"r": 9.5}', edhrec_curve_profile = '{"2": 12}'
+ where commander_1 = :c1 and commander_2 = :c2;
+select chk('the commanders'' EDHREC profile comes with its decks, in any order (T062)',
+  public.serving_commander_profile(array[:c2, :c1]) = '{"roles": {"r": 9.5}, "curve": {"2": 12}, "decks": 1200}'::jsonb
+  and public.serving_commander_profile(array[:plain]) is null);
+select chk('commander stats hold a curve and land counts (T062)',
+  (select count(*) = count(*) filter (where curve_profile is not null) from public.commander_stats)
+  and exists (select 1 from information_schema.columns where table_name = 'commander_stats' and column_name = 'basic_land_count'));
 select chk('a card carries its roles',
   (select role_ids = (select array_agg(role_id order by role_id) from public.card_roles where card_id = :with_roles)
      from public.serving_cards('{}', array[:with_roles])));

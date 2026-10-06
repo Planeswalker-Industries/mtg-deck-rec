@@ -1,9 +1,10 @@
 import type { ScoreBreakdown, ScoreComponent } from '../contract';
 
-export type ComponentValues = Record<ScoreComponent, number | null>;
+/** A component left out counts as null: no data. */
+export type ComponentValues = Partial<Record<ScoreComponent, number | null>>;
 export type ComponentWeights = Record<ScoreComponent, number>;
 
-const COMPONENTS: readonly ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
+const COMPONENTS: readonly ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve'];
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
@@ -25,10 +26,11 @@ export interface VoteRamp {
  */
 export function blendScore(components: ComponentValues, weights: ComponentWeights, votes?: VoteRamp): ScoreBreakdown {
   const voteShare = votes ? votes.count / (votes.count + votes.halfWeightCount) : 0;
+  const values = Object.fromEntries(COMPONENTS.map((k) => [k, components[k] ?? null])) as Record<ScoreComponent, number | null>;
   const raw = {} as ComponentWeights;
   for (const k of COMPONENTS) {
     const weight = k === 'votes' ? weights.votes * voteShare : weights[k];
-    raw[k] = components[k] === null ? 0 : weight;
+    raw[k] = values[k] === null ? 0 : weight;
   }
   const sum = COMPONENTS.reduce((acc, k) => acc + raw[k], 0);
 
@@ -36,7 +38,7 @@ export function blendScore(components: ComponentValues, weights: ComponentWeight
   let total = 0;
   for (const k of COMPONENTS) {
     effectiveWeights[k] = sum > 0 ? raw[k] / sum : 0;
-    total += effectiveWeights[k] * clamp01(components[k] ?? 0);
+    total += effectiveWeights[k] * clamp01(values[k] ?? 0);
   }
-  return { total: clamp01(total), components, effectiveWeights };
+  return { total: clamp01(total), components: values, effectiveWeights };
 }

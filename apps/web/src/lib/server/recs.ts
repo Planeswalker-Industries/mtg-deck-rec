@@ -250,6 +250,7 @@ export async function getAddSuggestions(
     availability: available,
     standIns,
     bracketFacts: { ...bracket, combos: served.combos },
+    deckCards: served.deckCards,
     limitPerCategory,
   });
   return { mode, commanderKey, confidence: corpus.confidence, groups, ...(buyList ? { buyList } : {}), ...(combos ? { combos } : {}) };

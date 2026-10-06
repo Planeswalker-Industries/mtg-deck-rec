@@ -10,6 +10,7 @@ import {
   type CorpusDeck,
   type Exclusion,
 } from './corpus';
+import { curveBucket } from '@mtg/core/scoring';
 import { copyRows } from './serving';
 
 /**
@@ -28,6 +29,11 @@ export interface KeyAggregate {
   months: Record<string, number>;
   /** Role tag id → cards in that role, summed over the decks. */
   roleCounts: Record<string, number>;
+  /** Curve bucket ('0' to '7') → nonland cards there, summed over the decks (T062). */
+  curveCounts: Record<string, number>;
+  /** Lands and basic lands, summed over the decks (T062). */
+  lands: number;
+  basicLands: number;
   /** card id → decks running it */
   cards: Map<number, number>;
 }
@@ -81,7 +87,7 @@ export async function tallyDecks(
     const { key, commanders, identity, month, cardIds } = resolved.deck;
     let aggregate = keys.get(key);
     if (!aggregate) {
-      aggregate = { commanders, identity, decks: 0, sources: {}, months: {}, roleCounts: {}, cards: new Map() };
+      aggregate = { commanders, identity, decks: 0, sources: {}, months: {}, roleCounts: {}, curveCounts: {}, lands: 0, basicLands: 0, cards: new Map() };
       keys.set(key, aggregate);
     }
     aggregate.decks++;
@@ -90,11 +96,24 @@ export async function tallyDecks(
     for (const id of cardIds) {
       increment(aggregate.cards, id);
       for (const role of rolesByCard.get(id) ?? []) bump(aggregate.roleCounts, role);
+      tallyShape(aggregate, catalog.get(id));
     }
+    aggregate.lands += deck.basicLands;
+    aggregate.basicLands += deck.basicLands;
     eligibleDecks++;
   }
   return { keys, excluded, decksRead, eligibleDecks };
 }
+
+/** One card's place in a deck's shape: a land, or a nonland card at its mana value. */
+export function tallyShape(aggregate: Pick<KeyAggregate, 'curveCounts' | 'lands'>, card: Pick<CatalogCard, 'manaValue' | 'isLand'> | undefined): void {
+  if (!card) return;
+  if (card.isLand) aggregate.lands++;
+  else bump(aggregate.curveCounts, curveBucket(card.manaValue));
+}
+
+/** Per-deck averages, to two places. */
+const perDeck = (total: number, decks: number) => Math.round((total / Math.max(decks, 1)) * 100) / 100;
 
 /** Decks per month for each colour identity, from the keys' own months. */
 export function identityMonths(keys: ReadonlyMap<string, KeyAggregate>): Record<string, number>[] {
@@ -117,6 +136,9 @@ export interface KeyStatRow {
   source_counts: string;
   deck_months: string;
   role_profile: string;
+  curve_profile: string;
+  land_count: number;
+  basic_land_count: number;
 }
 
 export interface CardStatRow {
@@ -141,6 +163,11 @@ export function keyStatRows(keys: ReadonlyMap<string, KeyAggregate>): KeyStatRow
     role_profile: JSON.stringify(
       Object.fromEntries(Object.entries(a.roleCounts).map(([role, cards]) => [role, Math.round((cards / a.decks) * 100) / 100])),
     ),
+    curve_profile: JSON.stringify(
+      Object.fromEntries(Object.entries(a.curveCounts).sort(([x], [y]) => Number(x) - Number(y)).map(([bucket, cards]) => [bucket, perDeck(cards, a.decks)])),
+    ),
+    land_count: perDeck(a.lands, a.decks),
+    basic_land_count: perDeck(a.basicLands, a.decks),
   }));
 }
 
@@ -236,7 +263,10 @@ export async function mergeBaseline(db: ReservedSql, globalRows: readonly Global
   `;
 }
 
-const KEY_COLUMNS = ['key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'source_counts', 'deck_months', 'role_profile'];
+const KEY_COLUMNS = [
+  'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'source_counts', 'deck_months', 'role_profile',
+  'curve_profile', 'land_count', 'basic_land_count',
+];
 const CARD_COLUMNS = ['key', 'card_id', 'decks_with', 'eligible_decks', 'inclusion_shrunk', 'synergy'];
 
 /**
@@ -261,7 +291,10 @@ export async function mergeKeyStats(
       deck_count integer not null,
       source_counts text not null,
       deck_months text not null,
-      role_profile text not null
+      role_profile text not null,
+      curve_profile text not null,
+      land_count real not null,
+      basic_land_count real not null
     )
   `;
   await db`
@@ -311,8 +344,10 @@ export async function mergeKeyStats(
   // bracket_counts stays empty: the bracket a deck's author declares is not used (owner decision 2026-10-05), and
   // brackets our estimator assigns come with the bracket rules (T060).
   await db`
-    insert into public.commander_stats as cs (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile)
-    select i.id, s.deck_count, s.source_counts::jsonb, '{}'::jsonb, s.deck_months::jsonb, s.role_profile::jsonb
+    insert into public.commander_stats as cs
+      (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile, curve_profile, land_count, basic_land_count)
+    select i.id, s.deck_count, s.source_counts::jsonb, '{}'::jsonb, s.deck_months::jsonb, s.role_profile::jsonb,
+           s.curve_profile::jsonb, s.land_count, s.basic_land_count
     from stg_keys s
     join stg_key_ids i on i.key = s.key
     on conflict (commander_key_id) do update set
@@ -321,9 +356,13 @@ export async function mergeKeyStats(
       bracket_counts = excluded.bracket_counts,
       deck_months = excluded.deck_months,
       role_profile = excluded.role_profile,
+      curve_profile = excluded.curve_profile,
+      land_count = excluded.land_count,
+      basic_land_count = excluded.basic_land_count,
       computed_at = now()
-    where (cs.deck_count, cs.source_counts, cs.bracket_counts, cs.deck_months, cs.role_profile)
-      is distinct from (excluded.deck_count, excluded.source_counts, excluded.bracket_counts, excluded.deck_months, excluded.role_profile)
+    where (cs.deck_count, cs.source_counts, cs.bracket_counts, cs.deck_months, cs.role_profile, cs.curve_profile, cs.land_count, cs.basic_land_count)
+      is distinct from (excluded.deck_count, excluded.source_counts, excluded.bracket_counts, excluded.deck_months, excluded.role_profile,
+                        excluded.curve_profile, excluded.land_count, excluded.basic_land_count)
   `;
 
   await db`drop table if exists stg_commander_card_rows`;

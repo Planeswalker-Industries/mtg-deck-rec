@@ -640,13 +640,21 @@ Replace `externalPriorShare` with `edhrecPriorCap` and the sample-size update in
 
 ### T062: Learned skeleton: curve and land profiles
 
-**Priority:** MEDIUM | **Area:** Data / Scoring | **Status:** Not started | **Blocked by:** T055, T058
+**Priority:** MEDIUM | **Area:** Data / Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, contract v22, migration `20261006000800`); every new piece is off, none passed the gate | **Blocked by:** T055, T058
 
 `commander_stats` gains `curve_profile`, `land_count` and `basic_land_count` (learned per commander, so builds need no fixed minimum of basics); EDHREC supplies role and curve priors for thin commanders; the `curve` component joins adds and cuts, and its cut signal replaces the fixed "mana value 6 or more" rule.
 
+**Built:** see `../CLAUDE.md` ("The learned skeleton"). Contract v22 adds the `curve` ScoreComponent (weight 0 everywhere). Locally the commanders' curves sum to 63.7 nonland cards per deck (10th–90th percentile 62.1–65.2) and 35 lands, of which 18.6 basic.
+
+**Evaluation (time split, 2026-10-06; today's settings: adds recall@20 25.0%, cuts precision@10 25.0%):**
+- `curve` at 0.1 in adds (corpus 0.8, role 0.1): recall 23.8%, commanders with 50+ decks 26.0% → 24.0%. Fails. At 0.1 with corpus 0.75 and role 0.15: 23.6%. Fails. The curve stays a build input, not an add score.
+- `skeleton.curveCuts`: cuts precision 25.0% → 25.0%, nothing else moved. No gain, so it stays off.
+- `skeleton.edhrecPrior`: recall 25.0% → 24.8% (−0.16 points, interval −0.30 to −0.02), every bucket a little down. Fails.
+- The two together weren't run: each failed alone (a run stopped for low memory on the way).
+
 **Acceptance criteria:**
-- [ ] Profiles written per dirty commander, diff-only
-- [ ] `curve` passes the evaluation gate before it gets weight
+- [x] Profiles written per dirty commander, diff-only
+- [x] `curve` passes the evaluation gate before it gets weight (it didn't, so it has none)
 
 ---
 

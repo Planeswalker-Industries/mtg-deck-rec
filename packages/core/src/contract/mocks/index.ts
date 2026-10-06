@@ -67,8 +67,8 @@ const MOCK_SEVERE_SYNERGY_SCORE = 0.2;
 const MOCK_OWNED_FIRST_BOOST = 0.1;
 /** The buy list's settings, as `app_config.scoring.collection` starts them (a shorter list, for the mock catalog). */
 const MOCK_BUY_LIST = { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 5 };
-const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 };
-const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
+const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0 };
+const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve'];
 
 const byId = new Map<number, CardSummary>(mockCards.map((c) => [c.id, c]));
 const byName = new Map<string, CardSummary>(
@@ -122,7 +122,8 @@ const corpusFor = (id: number): CorpusEvidence => {
 const corpusScore = (e: CorpusEvidence) =>
   round(clamp(0.6 * (0.5 + 0.5 * clamp(e.synergy / 0.3, -1, 1)) + 0.4 * Math.sqrt(e.inclusionRate), 0, 1));
 
-const blend = (components: Record<ScoreComponent, number | null>, voteCount: number): ScoreBreakdown => {
+const blend = (given: Partial<Record<ScoreComponent, number | null>>, voteCount: number): ScoreBreakdown => {
+  const components = Object.fromEntries(COMPONENTS.map((k) => [k, given[k] ?? null])) as Record<ScoreComponent, number | null>;
   const raw = Object.fromEntries(
     COMPONENTS.map((k) => {
       if (components[k] === null) return [k, 0];

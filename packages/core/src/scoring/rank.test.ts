@@ -37,7 +37,7 @@ const rates = (inclusion: number): CardPlayRates => ({
   evidence: { scope: 'commander', decksWith: Math.round(inclusion * 500), commanderDeckCount: 500, inclusionRate: inclusion, synergy: inclusion - 0.05, limited: false },
 });
 
-const corpus: RankCorpus = { settings: TEST_CORPUS_SETTINGS, confidence: 'full', effectiveDeckCount: 500, roleProfile: {} };
+const corpus: RankCorpus = { settings: TEST_CORPUS_SETTINGS, confidence: 'full', effectiveDeckCount: 500, roleProfile: {}, curveProfile: {}, prior: null };
 
 const context = (ownershipMode: 'only' | 'first' = 'only', deckCards: number[] = []): RecContext => ({
   deck: {

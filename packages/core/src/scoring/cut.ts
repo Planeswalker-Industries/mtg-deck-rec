@@ -22,6 +22,11 @@ export interface CutCandidate {
   extraTurnLoop?: boolean;
   /** A piece of a complete combo the bracket allows: combo pieces often have low play rates on their own. */
   comboPiece?: boolean;
+  /**
+   * Expensive for this commander (T062): the card's mana value bucket is over the commander's curve and at or above its
+   * average. When set, it replaces the fixed `highManaValue` rule.
+   */
+  highOnCurve?: boolean;
 }
 
 export interface RoleTarget {
@@ -109,7 +114,7 @@ export function scoreCuts(cards: readonly CutCandidate[], options: CutOptions): 
     const cardRoles = card.roleIds.filter((r) => tracked.has(r));
     const redundant = !card.isLand && !wellPlayed && cardRoles.length > 0 && cardRoles.every((r) => overloaded.has(r));
     if (redundant) reasons.push('ROLE_REDUNDANT');
-    const expensive = !card.isLand && card.manaValue >= scoring.highManaValue;
+    const expensive = !card.isLand && (card.highOnCurve ?? card.manaValue >= scoring.highManaValue);
     if (expensive) reasons.push('HIGH_MANA_VALUE');
 
     if (reasons.length === 0) continue;

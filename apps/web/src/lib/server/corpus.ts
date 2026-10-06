@@ -1,5 +1,6 @@
 import type { CommanderKeyRef, CorpusConfidence } from "@mtg/core/contract";
 import {
+  pageEvidence,
   parseCorpusSettings,
   pickCorpusSources,
   sourcesConfidence,
@@ -7,6 +8,8 @@ import {
   type CorpusKey,
   type CorpusSettings,
   type CorpusSource,
+  type Profile,
+  type ProfilePrior,
 } from "@mtg/core/scoring";
 import { cachedConfig } from "./config-cache";
 import type { PublicClient } from "./supabase";
@@ -39,6 +42,10 @@ export interface CommanderCorpus {
   effectiveDeckCount: number;
   /** Average cards per deck in each tracked role (by role tag id), across those decks at their weights. */
   roleProfile: Record<string, number>;
+  /** Average nonland cards per deck at each mana value bucket, the same way (T062). */
+  curveProfile: Profile;
+  /** EDHREC's role and curve profile for exactly these commanders, when they have a page (T062). */
+  prior: ProfilePrior | null;
   confidence: CorpusConfidence;
 }
 
@@ -95,7 +102,7 @@ export interface CommanderKeyRow {
   commander_1: number;
   commander_2: number | null;
   color_identity: number;
-  commander_stats: { deck_count: number; deck_months: unknown; role_profile: unknown } | null;
+  commander_stats: { deck_count: number; deck_months: unknown; role_profile: unknown; curve_profile: unknown } | null;
 }
 
 /**
@@ -107,7 +114,7 @@ async function readCommanderKeys(db: PublicClient, ids: readonly number[]): Prom
   const idList = ids.join(",");
   const { data, error } = await db
     .from("commander_keys")
-    .select("id, slug, commander_1, commander_2, color_identity, commander_stats(deck_count, deck_months, role_profile)")
+    .select("id, slug, commander_1, commander_2, color_identity, commander_stats(deck_count, deck_months, role_profile, curve_profile)")
     .or(`commander_1.in.(${idList}),commander_2.in.(${idList})`)
     .order("id");
   if (error) throw new Error(`Loading commander keys failed: ${error.message}`);
@@ -134,6 +141,8 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
     borrowedDeckCount: 0,
     effectiveDeckCount: 0,
     roleProfile: {},
+    curveProfile: {},
+    prior: null,
     confidence: "none",
   };
   if (!available || keys.length === 0) return none;
@@ -153,15 +162,16 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
   if (picked.sources.length === 0) return none;
 
   // Each key's averages weighted by its decks at their weight, so own and borrowed decks count as they do for play rates.
-  const roleTotals: Record<string, number> = {};
-  for (const source of picked.sources) {
-    for (const [role, average] of Object.entries(parseNumberRecord(statsByKey.get(source.id)?.role_profile))) {
-      roleTotals[role] = (roleTotals[role] ?? 0) + average * source.deckCount * source.weight;
+  const weighted = (profileOf: (stats: CommanderKeyRow["commander_stats"]) => unknown) => {
+    const totals: Record<string, number> = {};
+    for (const source of picked.sources) {
+      for (const [key, average] of Object.entries(parseNumberRecord(profileOf(statsByKey.get(source.id) ?? null)))) {
+        totals[key] = (totals[key] ?? 0) + average * source.deckCount * source.weight;
+      }
     }
-  }
-  const roleProfile = Object.fromEntries(
-    Object.entries(roleTotals).map(([role, total]) => [role, total / Math.max(picked.effectiveDeckCount, 1)]),
-  );
+    return Object.fromEntries(Object.entries(totals).map(([key, total]) => [key, total / Math.max(picked.effectiveDeckCount, 1)]));
+  };
+  const roleProfile = weighted((s) => s?.role_profile);
   return {
     available,
     settings,
@@ -174,8 +184,21 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
     borrowedDeckCount: picked.borrowedDeckCount,
     effectiveDeckCount: picked.effectiveDeckCount,
     roleProfile,
+    curveProfile: weighted((s) => s?.curve_profile),
+    prior: null,
     confidence: sourcesConfidence(picked, settings),
   };
+}
+
+/** EDHREC's profiles for exactly these commanders (`serving_commander_profile`), with the decks they rest on. */
+async function readCommanderProfile(db: PublicClient, ids: readonly number[], settings: Promise<CorpusConfig>): Promise<ProfilePrior | null> {
+  if (ids.length === 0 || ids.length > MAX_COMMANDERS) return null;
+  const { data, error } = await db.rpc("serving_commander_profile", { p_commander_ids: [...ids] });
+  if (error) throw new Error(`Loading the commander's profile failed: ${error.message}`);
+  const value = data as { roles?: unknown; curve?: unknown; decks?: unknown } | null;
+  if (!value || typeof value.decks !== "number") return null;
+  const evidence = pageEvidence({ deckCount: value.decks, floor: 0 }, (await settings).settings);
+  return { roles: parseNumberRecord(value.roles), curve: parseNumberRecord(value.curve), evidence };
 }
 
 /**
@@ -184,6 +207,7 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
  */
 export async function loadCommanderCorpus(db: PublicClient, commanderIds: readonly number[]): Promise<CommanderCorpus> {
   const ids = [...new Set(commanderIds)].sort((a, b) => a - b);
-  const [config, keys] = await Promise.all([loadCorpusConfig(db), readCommanderKeys(db, ids)]);
-  return commanderCorpusFrom(ids, keys, config);
+  const config = loadCorpusConfig(db);
+  const [settings, keys, prior] = await Promise.all([config, readCommanderKeys(db, ids), readCommanderProfile(db, ids, config)]);
+  return { ...commanderCorpusFrom(ids, keys, settings), prior };
 }

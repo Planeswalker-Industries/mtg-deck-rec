@@ -6,6 +6,7 @@ import {
   identityBaselineDecks,
   pageEvidence,
   pickCorpusSources,
+  scaledPrior,
   servedCardRates,
   servedCorpusScore,
   sourceDeckTotals,
@@ -17,12 +18,15 @@ import {
   type CorpusSettings,
   type SourceDeckTotals,
 } from '@mtg/core/scoring';
+import { loadRoleCards } from '../lib/corpus';
 import { connect, reserve, type ReservedSql, type Sql } from '../lib/db';
 import {
   copyRows,
+  edhrecProfiles,
   eligibleAt,
   loadBaselines,
   loadCardFacts,
+  loadCardShapes,
   loadEdhrecPages,
   loadIdentityMonths,
   loadKeyRows,
@@ -58,7 +62,9 @@ type ScoreRow = [number, number, number, number, number, number, number | null, 
 const SCORE_COLUMNS = [
   'commander_1', 'commander_2', 'card_id', 'decks_with', 'commander_decks', 'pool_score', 'corpus_value', 'weight_scale', 'prior_rate', 'prior_decks',
 ];
-const SET_COLUMNS = ['commander_1', 'commander_2', 'use_commander', 'has_sources', 'edhrec_floor', 'edhrec_decks'];
+const SET_COLUMNS = [
+  'commander_1', 'commander_2', 'use_commander', 'has_sources', 'edhrec_floor', 'edhrec_decks', 'edhrec_role_profile', 'edhrec_curve_profile',
+];
 
 /**
  * Every commander (or pair) the serving tables score: each key, each commander of a pair on its own, and, with the
@@ -103,6 +109,8 @@ function partnerCommanders(keys: readonly KeyRow[], only: ReadonlySet<number> | 
 
 interface Inputs {
   settings: CorpusSettings;
+  /** EDHREC's role and curve profiles by page (T062), as JSON text for the stage. */
+  profiles: Map<string, { roles: string; curve: string }>;
   /** EDHREC pages by commander set, when the prior is on (empty otherwise). */
   pages: Map<string, PageRows>;
   /** app_config.scoring's corpus score shape. */
@@ -140,6 +148,8 @@ const setFlags = (set: CommanderSet, picked: CorpusSources, inputs: Inputs) => {
     picked.sources.length > 0 || pageEvidence(page?.page ?? null, inputs.settings) > 0,
     page ? page.page.floor : null,
     page ? page.page.deckCount : null,
+    inputs.profiles.get(`${set.commander1}:${set.commander2}`)?.roles ?? null,
+    inputs.profiles.get(`${set.commander1}:${set.commander2}`)?.curve ?? null,
   ] as const;
 };
 
@@ -230,15 +240,21 @@ async function mergeChunk(db: ReservedSql, chunk: readonly CommanderSet[], input
   await db`begin`;
   try {
     await db`
-      insert into public.commander_sets as s (commander_1, commander_2, use_commander, has_sources, edhrec_floor, edhrec_decks)
-      select commander_1, commander_2, use_commander, has_sources, edhrec_floor, edhrec_decks from stg_sets
+      insert into public.commander_sets as s
+        (commander_1, commander_2, use_commander, has_sources, edhrec_floor, edhrec_decks, edhrec_role_profile, edhrec_curve_profile)
+      select commander_1, commander_2, use_commander, has_sources, edhrec_floor, edhrec_decks,
+             edhrec_role_profile::jsonb, edhrec_curve_profile::jsonb
+      from stg_sets
       on conflict (commander_1, commander_2) do update set
         use_commander = excluded.use_commander,
         has_sources = excluded.has_sources,
         edhrec_floor = excluded.edhrec_floor,
-        edhrec_decks = excluded.edhrec_decks
-      where (s.use_commander, s.has_sources, s.edhrec_floor, s.edhrec_decks)
-        is distinct from (excluded.use_commander, excluded.has_sources, excluded.edhrec_floor, excluded.edhrec_decks)
+        edhrec_decks = excluded.edhrec_decks,
+        edhrec_role_profile = excluded.edhrec_role_profile,
+        edhrec_curve_profile = excluded.edhrec_curve_profile
+      where (s.use_commander, s.has_sources, s.edhrec_floor, s.edhrec_decks, s.edhrec_role_profile, s.edhrec_curve_profile)
+        is distinct from (excluded.use_commander, excluded.has_sources, excluded.edhrec_floor, excluded.edhrec_decks,
+                          excluded.edhrec_role_profile, excluded.edhrec_curve_profile)
     `;
     const [removed] = await db<{ n: number }[]>`
       with gone as (
@@ -378,6 +394,8 @@ export async function precomputeScores({
       loadIdentityMonths(sql),
       loadEdhrecPages(sql),
     ]);
+    // EDHREC's role and curve profiles for every page that counts (T062).
+    const [rolesByCard, shapes] = settings.edhrecPriorCap > 0 ? await Promise.all([loadRoleCards(sql), loadCardShapes(sql)]) : [new Map(), new Map()];
     // The prior off (cap 0) means no page counts: the scores are our decks' alone, as before T061.
     const pages = settings.edhrecPriorCap > 0 ? allPages : new Map<string, PageRows>();
     const keysByCommander = new Map<number, KeyRow[]>();
@@ -394,7 +412,13 @@ export async function precomputeScores({
       : [...new Set([...sets.flatMap((s) => [s.commander1, s.commander2]), ...partners].flatMap((id) => (keysByCommander.get(id) ?? []).map((k) => k.id)))];
     const rowsByKey = await loadKeyRows(sql, neededKeys);
     const scoring = scoringConfig.corpus;
-    const inputs: Inputs = { settings, pages, scoring, keysByCommander, rowsByKey, baselines, facts, identityMonths };
+    const profiles = new Map(
+      [...pages].map(([key, page]) => {
+        const p = scaledPrior(edhrecProfiles(page, rolesByCard, shapes), scoringConfig.skeleton.typicalNonlandCards);
+        return [key, { roles: JSON.stringify(p.roles), curve: JSON.stringify(p.curve) }] as const;
+      }),
+    );
+    const inputs: Inputs = { settings, pages, profiles, scoring, keysByCommander, rowsByKey, baselines, facts, identityMonths };
 
     const rows = sets.reduce((sum, s) => sum + setSize(s, inputs), 0);
     const previousRows = start.previousMetrics?.rows;
@@ -422,7 +446,7 @@ export async function precomputeScores({
       await db`
         create temp table if not exists stg_sets (
           commander_1 integer not null, commander_2 integer not null, use_commander boolean, has_sources boolean,
-          edhrec_floor real, edhrec_decks integer
+          edhrec_floor real, edhrec_decks integer, edhrec_role_profile text, edhrec_curve_profile text
         )
       `;
       for (let i = 0; i < sets.length; i += SETS_PER_CHUNK) {

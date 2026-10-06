@@ -16,6 +16,7 @@ const LABELS: Record<ScoreComponent, { name: string; blurb: string }> = {
   manaValue: { name: "Costs about the same", blurb: "Mana value close to the card it replaces" },
   staple: { name: "Widely printed", blurb: "Turns up in a lot of precons and reprints" },
   votes: { name: "What other players picked", blurb: "Votes on this exact swap" },
+  curve: { name: "Fits the curve", blurb: "The deck is short of cards at this mana value" },
 };
 
 const ORDER: readonly ScoreComponent[] = ["tag", "corpus", "role", "manaValue", "staple", "votes"];
