@@ -18,6 +18,9 @@ export const cutReasonLabel: Record<CutReason, string> = {
   ROLE_REDUNDANT: "Deck already has plenty of these",
   GAME_CHANGER_EXCLUDED: "Game Changer",
   OVER_BRACKET_GC_LIMIT: "Too many Game Changers for this bracket",
+  OVER_BRACKET_MLD: "Mass land denial isn't allowed in this bracket",
+  OVER_BRACKET_COMBO: "Part of a combo above this bracket",
+  OVER_BRACKET_EXTRA_TURNS: "Too many extra turns for this bracket",
   HIGH_MANA_VALUE: "Expensive to cast",
   NOT_OWNED: "Not in your collection",
 };
@@ -30,6 +33,9 @@ export const cutReasonShortLabel: Record<CutReason, string> = {
   ROLE_REDUNDANT: "Redundant",
   GAME_CHANGER_EXCLUDED: "Game Changer",
   OVER_BRACKET_GC_LIMIT: "Over GC limit",
+  OVER_BRACKET_MLD: "Land denial",
+  OVER_BRACKET_COMBO: "Combo over bracket",
+  OVER_BRACKET_EXTRA_TURNS: "Extra turns",
   HIGH_MANA_VALUE: "High mana value",
   NOT_OWNED: "Not owned",
 };
@@ -40,6 +46,7 @@ export const HARD_CUT_REASONS: ReadonlySet<CutReason> = new Set([
   "OUTSIDE_COLOR_IDENTITY",
   "GAME_CHANGER_EXCLUDED",
   "OVER_BRACKET_GC_LIMIT",
+  "OVER_BRACKET_MLD",
 ]);
 
 export const emptySwapMessage: Record<NonNullable<SwapResult["emptyReason"]>, string> = {

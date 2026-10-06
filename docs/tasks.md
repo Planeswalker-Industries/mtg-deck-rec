@@ -609,14 +609,16 @@ The priority mode. Owned only plus a separate "worth buying" list becomes the de
 
 ### T060: Bracket rules and combos
 
-**Priority:** HIGH | **Area:** Core / Data / Contract | **Status:** Not started | **Blocked by:** T054 (combos collated), T055; display per T045
+**Priority:** HIGH | **Area:** Core / Data / Contract | **Status:** Data, scoring and contract built on `feat/scoring-pipeline` (2026-10-06, contract v21, migration `20261006000700`); display waits for T045 and the shelved UI | **Blocked by:** T054 (combos collated), T055; display per T045
 
 `estimateBracket` gains two-card combos (Spellbook's tag as a minimum bracket), mass land denial and chained extra turns, with tag UUIDs and limits in a new `app_config.brackets`. Game Changers and mass land denial are hard limits; combos and extra turns are flagged with a cut offered (`OVER_BRACKET_COMBO`, `OVER_BRACKET_EXTRA_TURNS`). No tutor limit (WotC, October 2025). Add results gain the "complete a combo" group, credited and linked to Spellbook. Continues T047.
 
+**Built:** the rules and the combo reads are in `../CLAUDE.md` ("Combos", "Bracket rules"); `bracketSignals`, `estimateBracket`, `cutBracketMarks`, the combo group and `comboResultWeight` are tested in `@mtg/core`; `bracket-rules.sql` checks the reads. Every combo applies, not only two-card ones: Spellbook's tag already says how strong a combo is, whatever its size. Only the cut reasons got labels in the web app; the combo group, `completesOverBracket`, `DeckAnalysis.combos` and `bracketSignals` have no UI yet.
+
 **Acceptance criteria:**
-- [ ] `app_config.brackets` with the owner's answers (2026-10-05): R combos flag in bracket 3; `mass-land-denial` and `extra-turn` tag UUIDs, planeswalkers excluded; `maxExtraTurnCards` 0 in bracket 1 and 2 in brackets 2–3
-- [ ] `BracketSignals`, cut reasons and the combo group, tested; `DeckAnalysis.combos` (contract bump), credited and linked
-- [ ] Estimator agreement with declared brackets reported (a check only)
+- [x] `app_config.brackets` with the owner's answers (2026-10-05): R combos flag in bracket 3; `mass-land-denial` and `extra-turn` tag UUIDs, planeswalkers excluded; `maxExtraTurnCards` 0 in bracket 1 and 2 in brackets 2–3
+- [x] `BracketSignals`, cut reasons and the combo group, tested; `DeckAnalysis.combos` (contract bump), credited and linked
+- [ ] Estimator agreement with declared brackets reported (a check only): wired into `eval:holdout`, but no crawled deck has a declared bracket yet, locally or on hosted (0 of 82,062 hosted decks on 2026-10-06); it reports once the crawl has stored some
 
 ---
 

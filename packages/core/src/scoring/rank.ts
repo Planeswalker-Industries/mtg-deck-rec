@@ -4,6 +4,9 @@ import type {
   BuySwapSuggestion,
   BuyValue,
   CardCategory,
+  CardId,
+  ComboRef,
+  ComboSuggestion,
   CardSummary,
   CorpusConfidence,
   CorpusEvidence,
@@ -22,9 +25,11 @@ import type {
 } from '../contract';
 import { isOwnedStatus, type Availability } from '../collection/availability';
 import { fitsIdentity, gameChangerLimit } from '../formats/commander';
+import { comboRef, type ComboFacts } from '../formats/commander/bracket';
 import { cardCategory, roleGap, roleShortfalls } from './add';
 import type { CorpusSettings, ScoringConfig } from './config';
 import { commanderCorpusScore, commanderShare, corpusComponent, neutralCorpusValue, type CommanderCardRate } from './corpus';
+import { bracketExclusions, comboResultWeight, cutBracketMarks, overBracket, type DeckBracketFacts } from './combos';
 import { scoreCuts, type RoleTarget } from './cut';
 import { ownedOnly, rankKey } from './owned';
 import { blendScore, manaValueProximity } from './swap';
@@ -81,6 +86,7 @@ const frontType = (typeLine: string) => typeLine.split(' // ')[0] ?? typeLine;
 
 /** No owned twins loaded: a card only an owned twin could supply counts as unowned. */
 const NO_STAND_INS: ReadonlyMap<number, RankCard> = new Map();
+const NO_EXCLUSIONS: ReadonlySet<number> = new Set();
 
 export const modeOf = (ctx: RecContext): RecMode => (ctx.ownership ? 'collection_aware' : 'collection_less');
 /** The deck's main cards, once each. */
@@ -191,6 +197,7 @@ export function rankCuts({
   roleTargets,
   scoring,
   availability,
+  bracketFacts = null,
   limit,
 }: {
   context: RecContext;
@@ -204,9 +211,12 @@ export function rankCuts({
   scoring: ScoringConfig;
   /** The player's collection; null without one. */
   availability: Availability | null;
+  /** The bracket rules and the deck's complete combos (T060); without them only Game Changers are checked. */
+  bracketFacts?: DeckBracketFacts | null;
   limit: number;
 }): CutResult {
   const mainIds = mainDeckIds(context);
+  const bracket = bracketFacts ? cutBracketMarks(bracketFacts, context.bracket, context.deck.commanders) : null;
   // Play rates judge a cut only once enough of the commander's decks could have run the card (updated since its
   // release); broad popularity says little about fit, and new cards aren't judged by older decks.
   const commanderRateFor = (id: number) => {
@@ -230,6 +240,7 @@ export function rankCuts({
           roleIds: [...(roles.get(id) ?? [])],
           // Basic lands aren't in the corpus stats, so they'd all look unplayed.
           corpusScore: rate && !card.isBasicLand ? commanderCorpusScore(rate, scoring.corpus) : null,
+          ...(bracket ? bracket.marks(id) : {}),
         },
       ];
     }),
@@ -239,6 +250,7 @@ export function rankCuts({
       roleTargets: roleTargetsFor(roleTargets, corpus),
       severeSynergyScore: corpus.settings.severeSynergyScore,
       scoring: scoring.cuts,
+      ...(bracket ? bracket.options : {}),
     },
   );
 
@@ -264,10 +276,11 @@ export function rankCuts({
   return { mode: modeOf(context), confidence: corpus.confidence, suggestions };
 }
 
-/** Cards to add in display groups, and in 'only' mode the cards worth buying. */
+/** Cards to add in display groups, in 'only' mode the cards worth buying, and the combos one card short. */
 export interface AddRanking {
   groups: { category: CardCategory; suggestions: AddSuggestion[] }[];
   buyList?: BuyAddSuggestion[];
+  combos?: ComboSuggestion[];
 }
 
 /**
@@ -288,6 +301,7 @@ export function rankAdds({
   scoring,
   availability,
   standIns = NO_STAND_INS,
+  bracketFacts = null,
   limitPerCategory,
 }: {
   context: RecContext;
@@ -308,15 +322,21 @@ export function rankAdds({
   availability: Availability | null;
   /** Rows for owned cards that may stand in for a twin (`Availability.standInIds`). */
   standIns?: ReadonlyMap<number, RankCard>;
+  /**
+   * The bracket rules and the deck's combos (T060): mass land denial stays out below its bracket, and the combos one
+   * card short make the "complete a combo" group. Their missing cards' rows and rates belong in `cards` and `rates`.
+   */
+  bracketFacts?: DeckBracketFacts | null;
   limitPerCategory: number;
 }): AddRanking {
   const only = availability !== null && ownedOnly(context);
+  const excluded = bracketExclusions(bracketFacts, context.bracket);
   const deckRoleCounts = new Map<string, number>();
   for (const id of mainDeckIds(context)) for (const role of roles.get(id) ?? []) deckRoleCounts.set(role, (deckRoleCounts.get(role) ?? 0) + 1);
   const shortfalls = roleShortfalls(deckRoleCounts, roleTargetsFor(roleTargets, corpus));
   const roleLabels = new Map(roleTargets.map((t) => [t.roleId, t.label]));
 
-  const scoredPool = poolIds.map((cardId) => {
+  const corpusOf = (cardId: number) => {
     const r = rates.get(cardId);
     const corpusScore = corpusComponent(
       {
@@ -330,14 +350,22 @@ export function rankAdds({
       scoring.corpus,
     );
     return { cardId, rates: r, corpusScore };
-  });
+  };
+  const scoredPool = poolIds.filter((id) => !excluded.has(id)).map(corpusOf);
   // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
   const neutralCorpus = neutralCorpusValue(
     scoredPool.flatMap((p) => (p.corpusScore ? [p.corpusScore.value] : [])),
     scoring.corpus,
   );
 
-  const scored = scoredPool.flatMap(({ cardId, rates: r, corpusScore }) => {
+  // A card that would complete a combo above the bracket says so.
+  const overCombos = new Map<number, ComboRef[]>();
+  for (const c of bracketFacts?.combos ?? []) {
+    if (c.missing === null || !bracketFacts || !overBracket(c, context.bracket, bracketFacts.rules)) continue;
+    overCombos.set(c.missing, [...(overCombos.get(c.missing) ?? []), comboRef(c)]);
+  }
+
+  const scoreOne = ({ cardId, rates: r, corpusScore }: ReturnType<typeof corpusOf>) => {
     const card = cards.get(cardId);
     if (!card) return [];
     const { gap, roleIds } = roleGap([...(roles.get(cardId) ?? [])], shortfalls);
@@ -356,10 +384,13 @@ export function rankAdds({
       }),
       owned: owning.owned,
       ...(owning.conflicts ? { conflicts: owning.conflicts } : {}),
+      ...(overCombos.has(cardId) ? { completesOverBracket: overCombos.get(cardId) } : {}),
     };
     return [{ suggestion, supplied: owning.supplied }];
-  });
+  };
+  const scored = scoredPool.flatMap(scoreOne);
   const listed = (only ? scored.filter((s) => s.supplied) : scored).map((s) => s.suggestion);
+  const combos = bracketFacts ? completeACombo(bracketFacts, context.bracket, excluded, (id) => scoreOne(corpusOf(id))[0], only, scoring) : undefined;
 
   const groups = ADD_CATEGORIES.map((category) => ({
     category,
@@ -369,12 +400,53 @@ export function rankAdds({
         .sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost)),
     ).slice(0, limitPerCategory),
   })).filter((g) => g.suggestions.length > 0);
-  if (!only) return { groups };
+  if (!only) return { groups, ...(combos ? { combos } : {}) };
 
   const best = new Map<CardCategory, number>();
   for (const s of listed) best.set(s.category, Math.max(best.get(s.category) ?? 0, s.score.total));
   const candidates = scored.filter((s) => !s.supplied).map((s) => s.suggestion);
-  return { groups, buyList: buyList(candidates, (c) => best.get(c.category) ?? 0, scoring.collection) };
+  return { groups, buyList: buyList(candidates, (c) => best.get(c.category) ?? 0, scoring.collection), ...(combos ? { combos } : {}) };
+}
+
+/**
+ * "Complete a combo" (scoring-design.md, "Combos"): the combos the deck is one named card short of that the bracket
+ * allows, one entry per missing card (its best combo), ordered by what the combo does and then by the missing card's
+ * score as an add. In 'only' mode the collection has to supply the missing card.
+ */
+function completeACombo(
+  facts: DeckBracketFacts,
+  bracket: RecContext['bracket'],
+  excluded: ReadonlySet<number>,
+  score: (cardId: number) => { suggestion: AddSuggestion; supplied: boolean } | undefined,
+  only: boolean,
+  scoring: ScoringConfig,
+): ComboSuggestion[] {
+  const best = new Map<number, { combo: ComboFacts; weight: number }>();
+  for (const c of facts.combos) {
+    if (c.missing === null || excluded.has(c.missing) || overBracket(c, bracket, facts.rules)) continue;
+    const weight = comboResultWeight(c, scoring.combos);
+    const held = best.get(c.missing);
+    if (!held || weight > held.weight || (weight === held.weight && c.pieces.length < held.combo.pieces.length)) best.set(c.missing, { combo: c, weight });
+  }
+  return [...best]
+    .flatMap(([missing, { combo, weight }]) => {
+      const scored = score(missing);
+      if (!scored || (only && !scored.supplied)) return [];
+      const { suggestion } = scored;
+      const entry: ComboSuggestion = {
+        ...comboRef(combo),
+        card: suggestion.card,
+        pieceIds: combo.pieces.filter((id) => id !== missing).map((id) => id as CardId),
+        alsoNeeded: [...combo.templateNames],
+        score: suggestion.score,
+        owned: suggestion.owned,
+        ...(suggestion.conflicts ? { conflicts: suggestion.conflicts } : {}),
+      };
+      return [{ entry, weight }];
+    })
+    .sort((a, b) => b.weight - a.weight || b.entry.score.total - a.entry.score.total || a.entry.card.name.localeCompare(b.entry.card.name))
+    .slice(0, scoring.combos.maxSuggestions)
+    .map((e) => e.entry);
 }
 
 export interface SwapPoolCandidate {
@@ -416,6 +488,7 @@ export function rankSwaps(
     availability = null,
     standIns = NO_STAND_INS,
     buyPool = null,
+    excluded = NO_EXCLUSIONS,
   }: {
     context: RecContext;
     limit: number;
@@ -427,6 +500,8 @@ export function rankSwaps(
     standIns?: ReadonlyMap<number, RankCard>;
     /** 'only' mode: the unfiltered pool the buy list is drawn from. */
     buyPool?: SwapPool | null;
+    /** Cards the bracket keeps out (`bracketExclusions`). */
+    excluded?: ReadonlySet<number>;
   },
 ): SwapResult {
   const only = availability !== null && ownedOnly(context);
@@ -434,7 +509,7 @@ export function rankSwaps(
   const target = pool.target.summary;
   const inDeck = new Set<number>([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)]);
   const candidates = (only && buyPool ? mergeCandidates(pool.candidates, buyPool.candidates) : pool.candidates).filter(
-    (c) => !inDeck.has(c.cardId) && c.tagSimilarity >= scoring.swap.tagSimilarityFloor,
+    (c) => !inDeck.has(c.cardId) && !excluded.has(c.cardId) && c.tagSimilarity >= scoring.swap.tagSimilarityFloor,
   );
   const owns = ownsWith(availability);
 

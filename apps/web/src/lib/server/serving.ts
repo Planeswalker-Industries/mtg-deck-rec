@@ -1,3 +1,4 @@
+import type { ComboFacts } from "@mtg/core/commander";
 import type { TagId, TagRef } from "@mtg/core/contract";
 import {
   cardPrior,
@@ -118,6 +119,49 @@ function servedCards(
 
 const asCards = (data: unknown) => (data ?? []) as ServingCard[];
 
+type ComboRow = Database["public"]["Functions"]["serving_deck_combos"]["Returns"][number];
+
+/** How many combo rows a read asks for: under PostgREST's row cap, complete combos first. */
+const COMBO_ROW_LIMIT = 600;
+
+/** The deck's combos as the bracket rules and the combo group read them, and the missing pieces' serving_cards. */
+function combosOf(rows: readonly ComboRow[]): { combos: ComboFacts[]; missingCards: ServingCard[] } {
+  return {
+    combos: rows.map((r) => ({
+      variantId: r.variant_id,
+      pieces: r.pieces,
+      minBracket: r.min_bracket,
+      results: r.results,
+      contextualResults: r.contextual_results,
+      templateNames: r.template_names,
+      missing: r.missing ?? null,
+    })),
+    missingCards: rows.flatMap((r) => (r.missing !== null && r.card?.card_id ? [r.card] : [])),
+  };
+}
+
+/** The deck's combos from Commander Spellbook (T060): complete ones, and with `near` those one named card short. */
+function deckCombosRead(
+  db: PublicClient,
+  input: { cardIds: readonly number[]; commanderIds: readonly number[]; exclude?: readonly number[]; allowGameChangers?: boolean; near: boolean },
+) {
+  return db.rpc("serving_deck_combos", {
+    p_card_ids: [...input.cardIds],
+    p_commander_ids: [...input.commanderIds],
+    p_exclude: [...(input.exclude ?? [])],
+    p_allow_game_changers: input.allowGameChangers ?? true,
+    p_near: input.near,
+    p_limit: COMBO_ROW_LIMIT,
+  });
+}
+
+/** The deck's complete combos, for deck analysis. */
+export async function loadDeckCombos(db: PublicClient, cardIds: readonly number[], commanderIds: readonly number[]): Promise<ComboFacts[]> {
+  const { data, error } = await deckCombosRead(db, { cardIds, commanderIds, near: false });
+  if (error) throw new Error(`Loading the deck's combos failed: ${error.message}`);
+  return combosOf(data ?? []).combos;
+}
+
 /**
  * What add suggestions need, read in one round: the commanders, the pool and its cards, the deck's roles. With `owned`
  * (a collection in 'only' mode), the collection's pool (the commander's cards and the colours' it holds) and, beside
@@ -128,8 +172,11 @@ export interface ServedAdds {
   commanderRows: Map<number, CardRow>;
   /** The pool's card ids, best first. */
   poolIds: number[];
+  /** The pool's cards, and the cards that would complete one of `combos`. */
   pool: ServedCards;
   deckRoles: Map<number, string[]>;
+  /** The deck's complete combos and those one named card short (T060). */
+  combos: ComboFacts[];
 }
 
 export async function loadServedAdds(
@@ -153,9 +200,16 @@ export async function loadServedAdds(
       p_mode: "adds",
       ...(owned ? { p_owned: [...owned] } : {}),
     });
-  const [poolResult, openResult, corpus, deckRolesResult, commandersResult, identityMonths, checkedAt] = await Promise.all([
+  const [poolResult, openResult, combosResult, corpus, deckRolesResult, commandersResult, identityMonths, checkedAt] = await Promise.all([
     pool(input.owned),
     input.owned ? pool(null) : Promise.resolve(null),
+    deckCombosRead(db, {
+      cardIds: input.mainIds,
+      commanderIds,
+      exclude: input.exclude,
+      allowGameChangers: input.allowGameChangers,
+      near: true,
+    }),
     loadCommanderCorpus(db, commanderIds),
     input.mainIds.length > 0
       ? db.from("card_roles").select("card_id, role_id").in("card_id", [...input.mainIds])
@@ -166,6 +220,8 @@ export async function loadServedAdds(
   ]);
   if (poolResult.error) throw new Error(`Loading the add pool failed: ${poolResult.error.message}`);
   if (openResult?.error) throw new Error(`Loading the add pool failed: ${openResult.error.message}`);
+  if (combosResult.error) throw new Error(`Loading the deck's combos failed: ${combosResult.error.message}`);
+  const { combos, missingCards } = combosOf(combosResult.data ?? []);
   if (deckRolesResult.error) throw new Error(`Loading card roles failed: ${deckRolesResult.error.message}`);
   if (commandersResult.error) throw new Error(`Loading commanders failed: ${commandersResult.error.message}`);
 
@@ -193,8 +249,9 @@ export async function loadServedAdds(
     corpus,
     commanderRows: servedCards(asCards(commandersResult.data), corpus, identityMonths, checkedAt).rows,
     poolIds: poolCards.flatMap((c) => (c.card_id === null ? [] : [c.card_id])),
-    pool: servedCards(poolCards, corpus, identityMonths, checkedAt),
+    pool: servedCards([...poolCards, ...missingCards.filter((c) => !seen.has(c.card_id ?? 0))], corpus, identityMonths, checkedAt),
     deckRoles,
+    combos,
   };
 }
 
@@ -202,16 +259,18 @@ export async function loadServedAdds(
 export async function loadServedCuts(
   db: PublicClient,
   input: { commanderIds: readonly number[]; mainIds: readonly number[] },
-): Promise<ServedCards & { corpus: CommanderCorpus }> {
+): Promise<ServedCards & { corpus: CommanderCorpus; combos: ComboFacts[] }> {
   const commanderIds = [...input.commanderIds];
-  const [cardsResult, corpus, identityMonths, checkedAt] = await Promise.all([
+  const [cardsResult, combosResult, corpus, identityMonths, checkedAt] = await Promise.all([
     db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: [...input.mainIds, ...commanderIds] }),
+    deckCombosRead(db, { cardIds: input.mainIds, commanderIds, near: false }),
     loadCommanderCorpus(db, commanderIds),
     loadIdentityMonths(db),
     pricesCheckedAt(db),
   ]);
   if (cardsResult.error) throw new Error(`Loading the deck's cards failed: ${cardsResult.error.message}`);
-  return { corpus, ...servedCards(asCards(cardsResult.data), corpus, identityMonths, checkedAt) };
+  if (combosResult.error) throw new Error(`Loading the deck's combos failed: ${combosResult.error.message}`);
+  return { corpus, combos: combosOf(combosResult.data ?? []).combos, ...servedCards(asCards(cardsResult.data), corpus, identityMonths, checkedAt) };
 }
 
 /**

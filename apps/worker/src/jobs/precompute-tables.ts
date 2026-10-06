@@ -2,8 +2,8 @@ import { reserve, type Sql } from '../lib/db';
 import { finishRun, startRun, type SyncJob } from '../lib/sync-runs';
 
 /**
- * The two small serving tables (T055), each a diff of one query against what is stored: card_roles from the tag
- * hierarchy, spellbook_combo_pieces from the collated combos. Each part keeps the version of its inputs in
+ * The small serving tables (T055), each a diff of one query against what is stored: card_roles from the tag
+ * hierarchy, spellbook_combo_pieces and spellbook_combo_details (T060) from the collated combos. Each part keeps the version of its inputs in
  * precompute_state and does nothing, recording nothing, while they haven't moved.
  */
 
@@ -111,13 +111,17 @@ export async function precomputeRoles(sql: Sql, { force = false }: { force?: boo
   await saveVersion(sql, 'roles', version);
 }
 
-/** spellbook_combo_pieces from corpus.spellbook_combos, after each collation of Commander Spellbook. */
+/**
+ * spellbook_combo_pieces (which combos each card is in) and spellbook_combo_details (each combo's results and template
+ * pieces) from corpus.spellbook_combos, after each collation of Commander Spellbook.
+ */
 export async function precomputeCombos(sql: Sql, { force = false }: { force?: boolean } = {}): Promise<void> {
   const [state] = await sql<{ collated_at: Date | null }[]>`
     select collated_at from corpus.collate_state where source = 'spellbook'
   `;
   if (!state?.collated_at) return;
-  const version = { collatedAt: state.collated_at.toISOString() };
+  // `tables` names what the part writes, so adding a table rebuilds once.
+  const version = { collatedAt: state.collated_at.toISOString(), tables: 'pieces+details' };
   if (!force && sameVersion(await storedVersion(sql, 'combos'), version)) return;
 
   await diffRun(sql, 'precompute_combos', 'postgres:corpus.spellbook_combos', async (db) => {
@@ -152,7 +156,37 @@ export async function precomputeCombos(sql: Sql, { force = false }: { force?: bo
       )
       select count(*)::int as n from changed
     `;
-    return { staged: staged?.n ?? 0, written: written?.n ?? 0, removed: removed?.n ?? 0 };
+    await db`
+      create temp table stg_details on commit drop as
+      select variant_id, results, contextual_results, template_names from corpus.spellbook_combos
+    `;
+    const [detailsRemoved] = await db<{ n: number }[]>`
+      with gone as (
+        delete from public.spellbook_combo_details x
+        where not exists (select 1 from stg_details s where s.variant_id = x.variant_id)
+        returning 1
+      )
+      select count(*)::int as n from gone
+    `;
+    const [detailsWritten] = await db<{ n: number }[]>`
+      with changed as (
+        insert into public.spellbook_combo_details as x (variant_id, results, contextual_results, template_names)
+        select variant_id, results, contextual_results, template_names from stg_details
+        on conflict (variant_id) do update set
+          results = excluded.results,
+          contextual_results = excluded.contextual_results,
+          template_names = excluded.template_names
+        where (x.results, x.contextual_results, x.template_names)
+          is distinct from (excluded.results, excluded.contextual_results, excluded.template_names)
+        returning 1
+      )
+      select count(*)::int as n from changed
+    `;
+    return {
+      staged: staged?.n ?? 0,
+      written: (written?.n ?? 0) + (detailsWritten?.n ?? 0),
+      removed: (removed?.n ?? 0) + (detailsRemoved?.n ?? 0),
+    };
   });
   await saveVersion(sql, 'combos', version);
 }

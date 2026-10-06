@@ -1,7 +1,15 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { availability } from '@mtg/core/collection';
-import { estimateBracket, maskToIdentity } from '@mtg/core/commander';
+import {
+  bracketSignals,
+  estimateBracket,
+  maskToIdentity,
+  parseBracketRules,
+  type BracketCards,
+  type BracketRules,
+  type ComboFacts,
+} from '@mtg/core/commander';
 import type { CardId, CardSummary, OracleId, RecContext } from '@mtg/core/contract';
 import {
   ADD_POOL_SIZE,
@@ -107,6 +115,57 @@ interface Data {
   /** 'YYYY-MM' of the EDHREC snapshot: decks updated after it can't be in EDHREC's numbers. */
   edhrecMonth: string | null;
   declaredBrackets: Map<string, number>;
+}
+
+/** The bracket rules, the cards they watch and every collated combo by card, for the estimator check (T060). */
+interface BracketData {
+  rules: BracketRules;
+  cards: BracketCards;
+  combosByCard: Map<number, (ComboFacts & { commanderPieces: number[] })[]>;
+}
+
+async function loadBracketData(sql: Sql): Promise<BracketData> {
+  const [[rulesRow], [cardsRow], combos] = await Promise.all([
+    sql<{ value: unknown }[]>`select value from public.app_config where key = 'brackets'`,
+    sql<{ value: { massLandDenial: number[]; extraTurns: number[] } }[]>`select public.bracket_cards() as value`,
+    sql<{ variant_id: string; card_ids: number[]; commander_card_ids: number[]; template_names: string[]; results: string[]; contextual_results: string[]; min_bracket: number }[]>`
+      select variant_id, card_ids, commander_card_ids, template_names, results, contextual_results, min_bracket
+      from corpus.spellbook_combos
+    `,
+  ]);
+  const combosByCard = new Map<number, (ComboFacts & { commanderPieces: number[] })[]>();
+  for (const c of combos) {
+    const combo = {
+      variantId: c.variant_id,
+      pieces: c.card_ids,
+      commanderPieces: c.commander_card_ids,
+      minBracket: c.min_bracket,
+      results: c.results,
+      contextualResults: c.contextual_results,
+      templateNames: c.template_names,
+      missing: null,
+    };
+    for (const id of c.card_ids) combosByCard.set(id, [...(combosByCard.get(id) ?? []), combo]);
+  }
+  return {
+    rules: parseBracketRules(rulesRow?.value),
+    cards: { massLandDenial: new Set(cardsRow?.value.massLandDenial ?? []), extraTurns: new Set(cardsRow?.value.extraTurns ?? []) },
+    combosByCard,
+  };
+}
+
+/** Our estimate for a deck, from every signal: Game Changers, mass land denial, extra turns and its complete combos. */
+function estimateDeck(deck: EvalDeck, data: Data, brackets: BracketData) {
+  const ids = new Set([...deck.commanderIds, ...deck.cardIds]);
+  const commanders = new Set(deck.commanderIds);
+  const combos = new Map<string, ComboFacts>();
+  for (const id of ids) {
+    for (const c of brackets.combosByCard.get(id) ?? []) {
+      if (c.pieces.every((p) => ids.has(p)) && c.commanderPieces.every((p) => commanders.has(p))) combos.set(c.variantId, c);
+    }
+  }
+  const signals = bracketSignals([...ids], (id) => data.gameChangers.has(id), brackets.cards, [...combos.values()], brackets.rules);
+  return estimateBracket(signals, brackets.rules);
 }
 
 interface Settings {
@@ -729,19 +788,26 @@ export async function evalHoldout({ candidatePath, timeSplit = false }: { candid
         `${e.injectedCuts} planted, precision@${e.cutPrecisionAt}, ${e.bootstrapResamples} resamples.`,
     ];
 
-    // Authors' declared brackets against our estimate: a check on the estimator only, never a score.
+    // Authors' declared brackets against our estimate: a check on the estimator only, never a score. Declared 1 and 5
+    // can't match: the estimate stays within 2–4.
+    const brackets = await loadBracketData(sql);
     const agreement = new Map<string, number>();
+    let declaredDecks = 0;
+    let exact = 0;
     for (const deck of heldOut) {
       const declared = data.declaredBrackets.get(deck.id);
       if (declared === undefined) continue;
-      const estimated = estimateBracket({ gameChangerCount: [...deck.commanderIds, ...deck.cardIds].filter((id) => data.gameChangers.has(id)).length });
+      const estimated = estimateDeck(deck, data, brackets);
+      declaredDecks += 1;
+      if (estimated === Math.min(4, Math.max(2, declared))) exact += 1;
       const cell = `${declared}→${estimated}`;
       agreement.set(cell, (agreement.get(cell) ?? 0) + 1);
     }
     extras.push(
       agreement.size === 0
         ? 'Bracket estimator: no held-out deck has a declared bracket yet (the crawl records them from T056 on).'
-        : `Bracket estimator, declared→estimated: ${[...agreement].map(([cell, n]) => `${cell} ${n}`).join(', ')}.`,
+        : `Bracket estimator: ${pct(exact / declaredDecks)} of ${declaredDecks} declared brackets matched (1 and 5 read as 2 and 4); ` +
+            `declared→estimated: ${[...agreement].sort(([a], [b]) => a.localeCompare(b)).map(([cell, n]) => `${cell} ${n}`).join(', ')}.`,
     );
 
     let gateLines: string[] = [];

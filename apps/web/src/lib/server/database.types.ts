@@ -1231,6 +1231,27 @@ export type Database = {
         }
         Relationships: []
       }
+      spellbook_combo_details: {
+        Row: {
+          contextual_results: string[]
+          results: string[]
+          template_names: string[]
+          variant_id: string
+        }
+        Insert: {
+          contextual_results?: string[]
+          results?: string[]
+          template_names?: string[]
+          variant_id: string
+        }
+        Update: {
+          contextual_results?: string[]
+          results?: string[]
+          template_names?: string[]
+          variant_id?: string
+        }
+        Relationships: []
+      }
       spellbook_combo_pieces: {
         Row: {
           card_id: number
@@ -1709,6 +1730,7 @@ export type Database = {
         Args: { p_banned: boolean; p_user_id: string }
         Returns: undefined
       }
+      bracket_cards: { Args: never; Returns: Json }
       card_category: { Args: { p_type_line: string }; Returns: string }
       card_functional_tags: {
         Args: { p_card_id: number }
@@ -2003,6 +2025,26 @@ export type Database = {
         Returns: {
           card_id: number
           position: number
+        }[]
+      }
+      serving_deck_combos: {
+        Args: {
+          p_allow_game_changers?: boolean
+          p_card_ids: number[]
+          p_commander_ids: number[]
+          p_exclude?: number[]
+          p_limit?: number
+          p_near?: boolean
+        }
+        Returns: {
+          card: Database["public"]["CompositeTypes"]["serving_card"]
+          contextual_results: string[]
+          min_bracket: number
+          missing: number
+          pieces: number[]
+          results: string[]
+          template_names: string[]
+          variant_id: string
         }[]
       }
       serving_partner_pool: {

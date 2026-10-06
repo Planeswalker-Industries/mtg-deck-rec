@@ -1,4 +1,14 @@
-import { deckIdentityMask, estimateBracket, maskToIdentity, validateCommanderDeck } from "@mtg/core/commander";
+import {
+  bracketSignals,
+  deckCombo,
+  deckIdentityMask,
+  estimateBracket,
+  maskToIdentity,
+  validateCommanderDeck,
+  type BracketCards,
+  type BracketRules,
+  type ComboFacts,
+} from "@mtg/core/commander";
 import type {
   CardId,
   CommanderKeyId,
@@ -10,8 +20,10 @@ import type {
   ResolveVia,
 } from "@mtg/core/contract";
 import { normalizeName, parseDecklist } from "@mtg/core/parse";
+import { loadBracketBasics } from "./brackets";
 import { fetchCardsById, toCardSummary, toCommanderFacts, type CardRow } from "./cards";
 import { commanderKeyCounts, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
+import { loadDeckCombos } from "./serving";
 import type { PublicClient } from "./supabase";
 
 /** Typo matches at or above this trigram similarity are accepted and flagged; below it the line stays unresolved. */
@@ -90,14 +102,28 @@ export async function resolveDecklist(db: PublicClient, text: string): Promise<P
 
   if (!resolved.every((l) => l.resolution.status === "resolved")) return { lines: resolved, analysis: null };
   const deck = deckFromLines(resolved);
-  const corpus = await loadCommanderCorpus(db, deck.commanders);
-  return { lines: resolved, analysis: analyzeDeck(deck, cards, today, corpus) };
+  const [corpus, bracket] = await Promise.all([loadCommanderCorpus(db, deck.commanders), loadDeckBracket(db, deck)]);
+  return { lines: resolved, analysis: analyzeDeck(deck, cards, bracket, today, corpus) };
+}
+
+/** What the bracket estimate reads beyond the cards (T060): the rules, the cards they watch, the deck's combos. */
+export interface DeckBracket {
+  rules: BracketRules;
+  cards: BracketCards;
+  combos: ComboFacts[];
+}
+
+async function loadDeckBracket(db: PublicClient, deck: DeckInput): Promise<DeckBracket> {
+  const mainIds = [...new Set(deck.cards.filter((c) => c.section === "main").map((c) => c.cardId))];
+  const [basics, combos] = await Promise.all([loadBracketBasics(db), loadDeckCombos(db, mainIds, deck.commanders)]);
+  return { ...basics, combos };
 }
 
 /** Commander analysis for a resolved deck. Without corpus data, the commander key reports no decks. */
 export function analyzeDeck(
   deck: DeckInput,
   cards: ReadonlyMap<number, CardRow>,
+  bracket: DeckBracket,
   today = new Date().toISOString().slice(0, 10),
   corpus: CommanderCorpus | null = null,
 ): DeckAnalysis {
@@ -112,7 +138,8 @@ export function analyzeDeck(
   const entries = deck.cards.map((e) => ({ card: toCommanderFacts(row(e.cardId)), quantity: e.quantity, section: e.section }));
   const deckCardIds = [...new Set([...deck.commanders, ...deck.cards.filter((c) => c.section === "main").map((c) => c.cardId)])];
   const gameChangerIds = deckCardIds.filter((id) => row(id).game_changer);
-  const estimatedBracket = estimateBracket({ gameChangerCount: gameChangerIds.length });
+  const signals = bracketSignals(deckCardIds, (id) => row(id).game_changer, bracket.cards, bracket.combos, bracket.rules);
+  const estimatedBracket = estimateBracket(signals, bracket.rules);
 
   const analysis: DeckAnalysis = {
     deck,
@@ -124,7 +151,9 @@ export function analyzeDeck(
       ...commanderKeyCounts(corpus),
     },
     estimatedBracket,
+    bracketSignals: signals,
     gameChangerIds,
+    combos: bracket.combos.filter((c) => c.missing === null).map(deckCombo),
     issues: validateCommanderDeck(commanders, entries, estimatedBracket),
   };
   if (commanders.length === 0) {
@@ -138,9 +167,10 @@ export function analyzeDeck(
 
 /** Loads the cards for a deck the client already resolved, then analyzes it. */
 export async function analyzeDeckById(db: PublicClient, deck: DeckInput): Promise<DeckAnalysis> {
-  const [cards, corpus] = await Promise.all([
+  const [cards, corpus, bracket] = await Promise.all([
     fetchCardsById(db, [...deck.commanders, ...deck.cards.map((c) => c.cardId)]),
     loadCommanderCorpus(db, deck.commanders),
+    loadDeckBracket(db, deck),
   ]);
-  return analyzeDeck(deck, cards, undefined, corpus);
+  return analyzeDeck(deck, cards, bracket, undefined, corpus);
 }

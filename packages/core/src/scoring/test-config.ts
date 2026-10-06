@@ -25,6 +25,17 @@ export const TEST_SCORING: ScoringConfig = {
     withoutCorpus: { redundantBase: 0.5, redundantManaValue: 0.4, base: 0.3, manaValue: 0.2 },
   },
   collection: { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 10 },
+  combos: {
+    resultClasses: [
+      { match: '^(Win the game|Each opponent loses the game|Target opponent loses the game)$', weight: 1 },
+      { match: '^Infinite ((colored|colorless|white|blue|black|red|green) )?mana$', weight: 0.8 },
+      { match: '^Infinite (combat )?damage$', weight: 0.8 },
+      { match: '^Infinite (turns|combat phases)', weight: 0.8 },
+    ],
+    standaloneWeight: 0.5,
+    contextualWeight: 0.2,
+    maxSuggestions: 8,
+  },
 };
 
 export const TEST_CORPUS_SETTINGS: CorpusSettings = {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { availability, type BuiltDeck } from '../collection/availability';
 import type { CardId, CardSummary, DeckId, IsoDateTime, OracleId, RecContext } from '../contract';
 import { rankAdds, rankCuts, rankSwaps, type CardPlayRates, type RankCard, type RankCorpus, type SwapPool } from './rank';
+import { comboResultWeight } from './combos';
 import { TEST_CORPUS_SETTINGS, TEST_SCORING } from './test-config';
 
 const WHITE = 1;
@@ -205,5 +206,127 @@ describe('rankSwaps with a collection (T059)', () => {
     });
     expect(result.emptyReason).toBe('NOTHING_OWNED_FITS');
     expect(result.buyList?.map((s) => s.card.name)).toEqual(['Sol Ring']);
+  });
+});
+
+describe('bracket rules and combos (T060)', () => {
+  const rules = {
+    massLandDenialTagIds: [],
+    extraTurnTagIds: [],
+    massLandDenialFromBracket: 4,
+    maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 },
+    extraTurnLoopResults: ['Infinite turns'],
+    extraTurnLoopFromBracket: 4,
+  };
+  const armageddon = card(40, 'Armageddon', 'Sorcery');
+  const timeWarp = card(41, 'Time Warp', 'Sorcery');
+  const temporal = card(42, 'Temporal Mastery', 'Sorcery');
+  const nexus = card(43, 'Nexus of Fate', 'Instant');
+  const kiki = card(50, 'Kiki-Jiki, Mirror Breaker', 'Legendary Creature — Goblin Shaman');
+  const exarch = card(51, 'Deceiver Exarch', 'Creature — Cleric');
+  const oracle = card(52, "Thassa's Oracle", 'Creature — Merfolk Wizard');
+  const consult = card(53, 'Demonic Consultation', 'Instant');
+  const more = new Map([armageddon, timeWarp, temporal, nexus, kiki, exarch, oracle, consult].map((c) => [c.summary.id as number, c]));
+  const allCards = new Map([...cards, ...more]);
+  const bracketCards = { massLandDenial: new Set([40]), extraTurns: new Set([41, 42, 43]) };
+  const combo = (variantId: string, pieces: number[], minBracket: number, missing: number | null, results: string[]) => ({
+    variantId,
+    pieces,
+    minBracket,
+    results,
+    contextualResults: [],
+    templateNames: [],
+    missing,
+  });
+  const lowRates = new Map<number, CardPlayRates>([...allCards.keys()].map((id) => [id, rates(0.01)]));
+
+  const cutsAt = (bracket: 2 | 3 | 4, deckCards: number[], combos: ReturnType<typeof combo>[]) =>
+    rankCuts({
+      context: { ...context('only', deckCards), ownership: null, bracket },
+      cards: allCards,
+      rates: lowRates,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      scoring: TEST_SCORING,
+      availability: null,
+      bracketFacts: { rules, cards: bracketCards, combos },
+      limit: 20,
+    });
+
+  it('cuts mass land denial below bracket 4, and only flags an over-bracket combo', () => {
+    const kikiCombo = combo('50-51', [50, 51], 4, null, ['Infinite creature tokens with haste']);
+    const result = cutsAt(3, [40, 50, 51], [kikiCombo]);
+    const byName = new Map(result.suggestions.map((s) => [s.card.name, s]));
+    expect(byName.get('Armageddon')?.reasons).toContain('OVER_BRACKET_MLD');
+    expect(byName.get('Armageddon')?.severity).toBe('mandatory');
+    expect(byName.get('Deceiver Exarch')?.reasons).toContain('OVER_BRACKET_COMBO');
+    expect(byName.get('Deceiver Exarch')?.severity).toBe('suggested');
+    expect(byName.get('Deceiver Exarch')?.cutScore).toBe(TEST_SCORING.cuts.optionalCutCap);
+    expect(cutsAt(4, [40, 50, 51], [kikiCombo]).suggestions.flatMap((s) => s.reasons)).not.toContain('OVER_BRACKET_COMBO');
+  });
+
+  it('protects the pieces of a combo the bracket allows from low play-rate cuts', () => {
+    const allowed = combo('50-51', [50, 51], 3, null, ['Infinite creature tokens with haste']);
+    const reasons = cutsAt(3, [50, 51], [allowed]).suggestions.flatMap((s) => s.reasons);
+    expect(reasons).not.toContain('LOW_SYNERGY');
+    expect(cutsAt(3, [50, 51], []).suggestions.flatMap((s) => s.reasons)).toContain('LOW_SYNERGY');
+  });
+
+  it('flags extra turns past the bracket limit', () => {
+    const flagged = (bracket: 2 | 3 | 4, ids: number[]) =>
+      cutsAt(bracket, ids, []).suggestions.filter((s) => s.reasons.includes('OVER_BRACKET_EXTRA_TURNS')).length;
+    expect(flagged(3, [41, 42])).toBe(0);
+    expect(flagged(3, [41, 42, 43])).toBe(3);
+    expect(flagged(4, [41, 42, 43])).toBe(0);
+  });
+
+  const addsAt = (bracket: 3 | 4, deckCards: number[], combos: ReturnType<typeof combo>[]) =>
+    rankAdds({
+      context: { ...context('only', deckCards), ownership: null, bracket },
+      poolIds: [1, 2, 40, 51],
+      cards: allCards,
+      rates: lowRates,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: TEST_SCORING,
+      availability: null,
+      bracketFacts: { rules, cards: bracketCards, combos },
+      limitPerCategory: 10,
+    });
+
+  it('keeps mass land denial out of adds below bracket 4', () => {
+    const names = (bracket: 3 | 4) => addsAt(bracket, [], []).groups.flatMap((g) => g.suggestions.map((s) => s.card.name));
+    expect(names(3)).not.toContain('Armageddon');
+    expect(names(4)).toContain('Armageddon');
+  });
+
+  it('offers the combos one card short that the bracket allows, the best result first', () => {
+    const win = combo('52-53', [52, 53], 3, 53, ['Win the game']);
+    const tokens = combo('50-51', [50, 51], 3, 51, ['Infinite creature tokens with haste']);
+    const { combos } = addsAt(3, [50, 52], [tokens, win]);
+    expect(combos?.map((c) => c.card.name)).toEqual(['Demonic Consultation', 'Deceiver Exarch']);
+    expect(combos?.[0]).toMatchObject({ pieceIds: [52], url: 'https://commanderspellbook.com/combo/52-53/', minBracket: 3 });
+  });
+
+  it('says when an add would complete a combo above the bracket, and leaves that combo out of the group', () => {
+    const over = combo('50-51', [50, 51], 4, 51, ['Infinite creature tokens with haste']);
+    const result = addsAt(3, [50], [over]);
+    const exarchAdd = result.groups.flatMap((g) => g.suggestions).find((s) => s.card.name === 'Deceiver Exarch');
+    expect(exarchAdd?.completesOverBracket?.map((c) => c.id)).toEqual(['50-51']);
+    expect(result.combos).toEqual([]);
+  });
+});
+
+describe('comboResultWeight', () => {
+  it('ranks winning over infinite mana over other results over contextual ones', () => {
+    const weight = (results: string[], contextualResults: string[] = []) => comboResultWeight({ results, contextualResults }, TEST_SCORING.combos);
+    expect(weight(['Infinite colored mana', 'Win the game'])).toBe(1);
+    expect(weight(['Infinite colorless mana'])).toBe(0.8);
+    expect(weight(['Infinite lifegain'])).toBe(0.5);
+    expect(weight([], ['Infinite lifegain triggers'])).toBe(0.2);
   });
 });

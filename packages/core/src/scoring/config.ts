@@ -74,6 +74,17 @@ export const scoringConfigSchema = z.object({
     /** How many cards a buy list holds. */
     buyListSize: z.int().min(0),
   }),
+  /** "Complete a combo" (T060): what a combo does decides its place, then the missing card's add score. */
+  combos: z.object({
+    /** Result classes, first match wins: a case-insensitive regular expression over a standalone result, and its weight. */
+    resultClasses: z.array(z.object({ match: z.string(), weight: share })),
+    /** A standalone result no class matches. */
+    standaloneWeight: share,
+    /** A combo whose results only matter in context. */
+    contextualWeight: share,
+    /** How many combos the group lists. */
+    maxSuggestions: z.int().min(0),
+  }),
 });
 
 export type ScoringConfig = z.infer<typeof scoringConfigSchema>;

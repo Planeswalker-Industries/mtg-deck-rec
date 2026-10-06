@@ -2,6 +2,7 @@ import type { CollectionCopies } from "@mtg/core/collection";
 import type { AddResult, CommanderKeyId, CutResult, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
 import {
   ADD_POOL_SIZE,
+  bracketExclusions,
   mainDeckIds,
   modeOf,
   ownedFirst,
@@ -13,6 +14,7 @@ import {
   type RoleTarget,
   type SwapPool,
 } from "@mtg/core/scoring";
+import { loadBracketBasics } from "./brackets";
 import { rankCardOf, toCardSummary, type CardRow } from "./cards";
 import { availabilityFor, loadStandIns } from "./collection-availability";
 import { cachedConfig } from "./config-cache";
@@ -136,7 +138,7 @@ export async function getSwapSuggestions(
 ): Promise<SwapResult> {
   const available = await availabilityFor(db, collection);
   const only = available !== null && ownedOnly(context);
-  const [pool, open, standIns, ownedBoost, scoring] = await Promise.all([
+  const [pool, open, standIns, ownedBoost, scoring, bracket] = await Promise.all([
     loadSwapPool(db, {
       targetCardId,
       commanderIds: context.deck.commanders,
@@ -149,20 +151,23 @@ export async function getSwapSuggestions(
     loadStandIns(db, available),
     loadOwnedBoost(db, context),
     loadScoringConfig(),
+    loadBracketBasics(db),
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
-  return rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open });
+  const excluded = bracketExclusions({ ...bracket, combos: [] }, context.bracket);
+  return rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open, excluded });
 }
 
 export async function getCutSuggestions(
   db: PublicClient,
   { context, collection = null, limit = 20 }: { context: RecContext; collection?: CollectionCopies | null; limit?: number },
 ): Promise<CutResult> {
-  const [served, roleTargets, scoring, available] = await Promise.all([
+  const [served, roleTargets, scoring, available, bracket] = await Promise.all([
     loadServedCuts(db, { commanderIds: context.deck.commanders, mainIds: mainDeckIds(context) }),
     loadRoleTargets(db),
     loadScoringConfig(),
     availabilityFor(db, collection),
+    loadBracketBasics(db),
   ]);
   return rankCuts({
     context,
@@ -173,6 +178,7 @@ export async function getCutSuggestions(
     roleTargets,
     scoring,
     availability: available,
+    bracketFacts: { ...bracket, combos: served.combos },
     limit,
   });
 }
@@ -201,7 +207,7 @@ export async function getAddSuggestions(
   const deckIds = [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])];
   const available = await availabilityFor(db, collection);
   const only = available !== null && ownedOnly(context);
-  const [served, standIns, roleTargets, roleTags, ownedBoost, scoring] = await Promise.all([
+  const [served, standIns, roleTargets, roleTags, ownedBoost, scoring, bracket] = await Promise.all([
     loadServedAdds(db, {
       commanderIds: context.deck.commanders,
       mainIds: mainDeckIds(context),
@@ -215,6 +221,7 @@ export async function getAddSuggestions(
     loadRoleTags(db),
     loadOwnedBoost(db, context),
     loadScoringConfig(),
+    loadBracketBasics(db),
   ]);
   const { corpus } = served;
   const commanderKey: AddResult["commanderKey"] = {
@@ -229,7 +236,7 @@ export async function getAddSuggestions(
   const mode = modeOf(context);
   if (!corpus.available) return { mode, commanderKey, confidence: "none", groups: [] };
 
-  const { groups, buyList } = rankAdds({
+  const { groups, buyList, combos } = rankAdds({
     context,
     poolIds: served.poolIds,
     cards: rankCards(served.pool.rows),
@@ -242,7 +249,8 @@ export async function getAddSuggestions(
     scoring,
     availability: available,
     standIns,
+    bracketFacts: { ...bracket, combos: served.combos },
     limitPerCategory,
   });
-  return { mode, commanderKey, confidence: corpus.confidence, groups, ...(buyList ? { buyList } : {}) };
+  return { mode, commanderKey, confidence: corpus.confidence, groups, ...(buyList ? { buyList } : {}), ...(combos ? { combos } : {}) };
 }

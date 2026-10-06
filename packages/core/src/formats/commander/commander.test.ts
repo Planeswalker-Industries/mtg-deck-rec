@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId } from '../../contract';
-import { defaultIncludeGameChangers, estimateBracket, gameChangerLimit } from './bracket';
+import {
+  bracketSignals,
+  comboUrl,
+  defaultIncludeGameChangers,
+  estimateBracket,
+  gameChangerLimit,
+  parseBracketRules,
+  type ComboFacts,
+} from './bracket';
 import { fitsIdentity, identityToMask, maskToIdentity } from './color-identity';
 import { isValidPartnerPair, validateCommanderDeck, type CommanderCardFacts, type CommanderDeckEntry } from './validate';
 
@@ -35,12 +43,57 @@ describe('color identity', () => {
   });
 });
 
+// app_config.brackets as 20261006000700_bracket_rules.sql seeds it.
+const RULES = parseBracketRules({
+  massLandDenialTagIds: ['mld'],
+  extraTurnTagIds: ['extra-turn'],
+  massLandDenialFromBracket: 4,
+  maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 },
+  extraTurnLoopResults: ['Infinite turns'],
+  extraTurnLoopFromBracket: 4,
+});
+
 describe('brackets', () => {
+  const ARMAGEDDON = 10;
+  const TIME_WARP = 20;
+  const TEMPORAL_MASTERY = 21;
+  const NEXUS_OF_FATE = 22;
+  const cards = { massLandDenial: new Set([ARMAGEDDON]), extraTurns: new Set([TIME_WARP, TEMPORAL_MASTERY, NEXUS_OF_FATE]) };
+  const combo = (minBracket: number, overrides: Partial<ComboFacts> = {}): ComboFacts => ({
+    variantId: '1-2',
+    pieces: [1, 2],
+    minBracket,
+    results: ['Infinite colorless mana'],
+    contextualResults: [],
+    templateNames: [],
+    missing: null,
+    ...overrides,
+  });
+  const signals = (ids: number[], gameChangers: number[] = [], combos: ComboFacts[] = []) =>
+    bracketSignals(ids, (id) => gameChangers.includes(id), cards, combos, RULES);
+
   it('estimates from Game Changers and mass land denial', () => {
-    expect(estimateBracket({ gameChangerCount: 0 })).toBe(2);
-    expect(estimateBracket({ gameChangerCount: 3 })).toBe(3);
-    expect(estimateBracket({ gameChangerCount: 4 })).toBe(4);
-    expect(estimateBracket({ gameChangerCount: 0, hasMassLandDenial: true })).toBe(4);
+    expect(estimateBracket(signals([1, 2]), RULES)).toBe(2);
+    expect(estimateBracket(signals([1, 2, 3], [1, 2, 3]), RULES)).toBe(3);
+    expect(estimateBracket(signals([1, 2, 3, 4], [1, 2, 3, 4]), RULES)).toBe(4);
+    expect(estimateBracket(signals([ARMAGEDDON]), RULES)).toBe(4);
+  });
+
+  it('allows two extra-turn cards below bracket 4, and no extra-turn loop', () => {
+    expect(estimateBracket(signals([TIME_WARP, TEMPORAL_MASTERY]), RULES)).toBe(2);
+    expect(estimateBracket(signals([TIME_WARP, TEMPORAL_MASTERY, NEXUS_OF_FATE]), RULES)).toBe(4);
+    expect(estimateBracket(signals([1, 2], [], [combo(1, { results: ['Infinite turns'] })]), RULES)).toBe(4);
+  });
+
+  it("reads a combo's minimum bracket, and only a combo it can check", () => {
+    expect(estimateBracket(signals([1, 2], [], [combo(3)]), RULES)).toBe(3);
+    expect(estimateBracket(signals([1, 2], [], [combo(4)]), RULES)).toBe(4);
+    expect(signals([1, 2], [], [combo(4, { templateNames: ['a Legendary Elemental Creature'] })]).comboBracket).toBeNull();
+    expect(signals([1], [], [combo(4, { missing: 2 })]).comboBracket).toBeNull();
+  });
+
+  it('links a combo to its Commander Spellbook page', () => {
+    expect(comboUrl('2645-5640')).toBe('https://commanderspellbook.com/combo/2645-5640/');
   });
 
   it('limits Game Changers per bracket', () => {

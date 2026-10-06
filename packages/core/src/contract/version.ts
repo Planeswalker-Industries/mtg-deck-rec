@@ -78,5 +78,12 @@
  * tag a card held there with `conflicts`. An owned rules-identical twin stands in for a card (OwnedInfo.standsInFor).
  * 'only' mode adds AddResult.buyList and SwapResult.buyList: unowned cards worth buying, with their gain over the best
  * available card and gain per dollar. isBuilt is a new required field; the rest is additive.
+ *
+ * v21 (2026-10-06): bracket rules and combos (T060). DeckAnalysis gains `bracketSignals` (Game Changers, mass land
+ * denial, extra turns, the deck's highest combo bracket, an extra-turn loop) and `combos` (DeckCombo: the Commander
+ * Spellbook combos it holds), both required. CutReason gains OVER_BRACKET_MLD (a hard limit, mandatory),
+ * OVER_BRACKET_COMBO and OVER_BRACKET_EXTRA_TURNS (flags, with a cut offered). AddResult gains `combos`
+ * (ComboSuggestion: "complete a combo", the combos one card short that the bracket allows) and AddSuggestion
+ * `completesOverBracket`. Every combo carries its Spellbook link, which the UI credits.
  */
-export const CONTRACT_VERSION = 20;
+export const CONTRACT_VERSION = 21;

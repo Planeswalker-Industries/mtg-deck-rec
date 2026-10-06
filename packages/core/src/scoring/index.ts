@@ -8,3 +8,4 @@ export * from './serving';
 export * from './config';
 export * from './rank';
 export * from './evaluate';
+export * from './combos';

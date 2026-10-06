@@ -200,9 +200,37 @@ export interface AddSuggestion {
   owned: OwnedInfo | null;
   /** Every owned copy is held by these built decks: the player can ask for swaps there to free one. */
   conflicts?: DeckConflict[];
+  /** Combos this card would complete that are above the deck's bracket: adding it takes the deck over the line. */
+  completesOverBracket?: ComboRef[];
 }
 
 export type BuyAddSuggestion = AddSuggestion & BuyValue;
+
+/** A Commander Spellbook combo. Credit and link Commander Spellbook wherever one shows. */
+export interface ComboRef {
+  /** Commander Spellbook's variant id: one exact set of cards. */
+  id: string;
+  /** The combo's page on commanderspellbook.com. */
+  url: string;
+  /** What it does: the standalone results ("Win the game"), then those that matter in context. */
+  results: string[];
+  /** The lowest bracket it belongs in, from Spellbook's bracket tag. */
+  minBracket: Bracket;
+}
+
+/** "Complete a combo": a combo the deck is one named card short of, which its bracket allows. */
+export interface ComboSuggestion extends ComboRef {
+  /** The card the deck is missing. */
+  card: CardSummary;
+  /** The pieces already in the deck. */
+  pieceIds: CardId[];
+  /** Pieces Spellbook names by template ("a Legendary Elemental Creature"): also needed, not checked. */
+  alsoNeeded: string[];
+  /** The missing card's score as a card to add. */
+  score: ScoreBreakdown;
+  owned: OwnedInfo | null;
+  conflicts?: DeckConflict[];
+}
 
 export interface AddResult {
   mode: RecMode;
@@ -211,6 +239,8 @@ export interface AddResult {
   groups: { category: CardCategory; suggestions: AddSuggestion[] }[];
   /** 'only' mode: unowned cards worth buying, best value first, every group together. Shown apart, as such. */
   buyList?: BuyAddSuggestion[];
+  /** "Complete a combo": its own group, best result first. Credited and linked to Commander Spellbook. */
+  combos?: ComboSuggestion[];
 }
 
 export type CutReason =
@@ -220,6 +250,12 @@ export type CutReason =
   | 'ROLE_REDUNDANT'
   | 'GAME_CHANGER_EXCLUDED'
   | 'OVER_BRACKET_GC_LIMIT'
+  /** Mass land denial below the bracket that allows it: a hard limit, so a mandatory cut. */
+  | 'OVER_BRACKET_MLD'
+  /** A piece of a combo above the deck's bracket. Flagged, with a cut offered. */
+  | 'OVER_BRACKET_COMBO'
+  /** More extra-turn cards than the bracket allows, or a piece of an extra-turn loop. Flagged, with a cut offered. */
+  | 'OVER_BRACKET_EXTRA_TURNS'
   | 'HIGH_MANA_VALUE'
   | 'NOT_OWNED';
 

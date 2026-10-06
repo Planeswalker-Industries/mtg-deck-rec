@@ -259,7 +259,15 @@ const analyze = (deck: DeckInput): DeckAnalysis => {
     colorIdentity: identity,
     commanderKey: commanderKeyRef(deck.commanders),
     estimatedBracket,
+    bracketSignals: {
+      gameChangerCount: gameChangerIds.length,
+      massLandDenialIds: [],
+      extraTurnIds: [],
+      comboBracket: null,
+      extraTurnLoop: false,
+    },
     gameChangerIds,
+    combos: [],
     issues,
   };
   if (commanders.length === 0) analysis.commanderCandidates = all.filter(isCommanderEligible);
