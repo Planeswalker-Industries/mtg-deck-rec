@@ -326,6 +326,26 @@ tag similarity while the player waits.
 - **Parity first.** The switch must reproduce today's add and swap lists (regression fixtures plus a parity script),
   so speed and scoring changes ship separately.
 
+**Built 2026-10-06** (T055; CLAUDE.md "Precompute worker" has the rules). Where it differs from the plan above:
+
+- **Substitute depth is 220 + 220**, not 50 + 50. On 240 sampled swap lists, 50 + 50 left a shown replacement out of
+  11% of them; 220 + 220, the depth of the shared swap pool, left none out. About 10.7M rows (795 MB) locally.
+- **A pair no key knows is exact.** `partner_card_totals` holds each partner-capable commander's counts over all its
+  keys at full weight; the pair's sums are the two partners' totals at `partnerPoolWeight`, which is what
+  `pickCorpusSources` does, rather than an approximation from each partner's own rows.
+- **The add pool keeps `rec_add_candidates`' order** (`pool_score`), so the lists match; ordering it by the stored final
+  corpus score is a scoring change for T058.
+- **No EDHREC-only rows yet.** The prior is off on hosted, so the scores are our own decks' alone; T061 adds the prior
+  and the EDHREC-only commanders.
+- **Size:** 5.1M score rows for 3,007 commanders locally (786 MB), more than the ~3M estimated, because a pair that
+  borrows holds every card its partners' keys ran.
+- **The request path is one round, as planned**, with card rows read from Postgres in the same call rather than from the
+  search index, which would have taken a second round. Each pool function takes the deck's commander ids and returns
+  every card whole (the card, its stored counts, baseline, release month and roles), `commander_sets` records which
+  pool a commander set draws on, the commander's keys come with their stats in one read, settings are cached per server
+  instance for a minute, and the rate limit goes out with the reads. `commander_card_pairs`, `card_pairs` and
+  `spellbook_combo_pieces` join the same round when the scoring work reads them.
+
 ## Scale
 
 Hosted on 2026-10-05:

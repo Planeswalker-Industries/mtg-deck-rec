@@ -1,5 +1,6 @@
 import { aggregateCorpus } from './jobs/aggregate-corpus';
 import { collate, COLLATE_SOURCES, type CollateSource } from './jobs/collate';
+import { precompute, PRECOMPUTE_PARTS, type PrecomputePart } from './jobs/precompute';
 import { serve } from './jobs/serve';
 import { syncCatalog } from './jobs/sync-catalog';
 import { syncEdhrec } from './jobs/sync-edhrec';
@@ -26,7 +27,13 @@ Commands:
                             Drain public.search_index_queue into the search index (--rebuild: build every
                             collection from scratch and move the aliases when it is done)
   aggregate:corpus [--force]
-                            The collated corpus.decks → commander and card play-rate stats (refuses an empty corpus)
+                            The full rebuild: the collated corpus.decks → commander and card play-rate stats, then every
+                            score (refuses an empty corpus; the worker's precompute passes keep the same tables current)
+  precompute [--part name,...] [--full] [--force]
+                            The serving tables the recommendations read (T055): commanders (stats and scores of
+                            commanders whose decks changed), baseline (the nightly baseline, then every score),
+                            scores, substitutes, roles, combos. Default: every part, each only if its inputs moved
+                            (--full: rebuild every substitute list and score; --force: past the sanity gates)
   serve [--once]            The VPS worker: deck lookups, then the daily crawl, collation, stats rebuilds and EDHREC
                             fetches as app_config.worker schedules them (--once: one pass, no EDHREC fetch)`;
 
@@ -72,6 +79,13 @@ async function main(): Promise<void> {
       const unknown = only?.filter((s) => !(COLLATE_SOURCES as readonly string[]).includes(s)) ?? [];
       if (unknown.length > 0) throw new Error(`Unknown source ${unknown.join(', ')}. Sources: ${COLLATE_SOURCES.join(', ')}`);
       await collate({ force, ...(only ? { only: only as CollateSource[] } : {}) });
+      return;
+    }
+    case 'precompute': {
+      const parts = flagValue(args, '--part')?.split(',');
+      const unknown = parts?.filter((p) => !(PRECOMPUTE_PARTS as readonly string[]).includes(p)) ?? [];
+      if (unknown.length > 0) throw new Error(`Unknown part ${unknown.join(', ')}. Parts: ${PRECOMPUTE_PARTS.join(', ')}`);
+      await precompute({ full: args.includes('--full'), force, ...(parts ? { parts: parts as PrecomputePart[] } : {}) });
       return;
     }
     case 'serve':

@@ -140,6 +140,36 @@ export type Database = {
           },
         ]
       }
+      card_roles: {
+        Row: {
+          card_id: number
+          role_id: string
+        }
+        Insert: {
+          card_id: number
+          role_id: string
+        }
+        Update: {
+          card_id?: number
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_roles_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_roles_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_stats: {
         Row: {
           card_id: number
@@ -179,6 +209,35 @@ export type Database = {
             foreignKeyName: "card_stats_card_id_fkey"
             columns: ["card_id"]
             isOneToOne: true
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      card_substitutes: {
+        Row: {
+          card_id: number
+          is_functional_twin: boolean
+          substitute_id: number
+          tag_similarity: number
+        }
+        Insert: {
+          card_id: number
+          is_functional_twin: boolean
+          substitute_id: number
+          tag_similarity: number
+        }
+        Update: {
+          card_id?: number
+          is_functional_twin?: boolean
+          substitute_id?: number
+          tag_similarity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_substitutes_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
             referencedRelation: "cards"
             referencedColumns: ["id"]
           },
@@ -471,6 +530,47 @@ export type Database = {
           },
         ]
       }
+      commander_card_scores: {
+        Row: {
+          card_id: number
+          commander_1: number
+          commander_2: number
+          commander_decks: number
+          corpus_value: number | null
+          decks_with: number
+          pool_score: number
+          weight_scale: number | null
+        }
+        Insert: {
+          card_id: number
+          commander_1: number
+          commander_2?: number
+          commander_decks: number
+          corpus_value?: number | null
+          decks_with: number
+          pool_score: number
+          weight_scale?: number | null
+        }
+        Update: {
+          card_id?: number
+          commander_1?: number
+          commander_2?: number
+          commander_decks?: number
+          corpus_value?: number | null
+          decks_with?: number
+          pool_score?: number
+          weight_scale?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_card_scores_commander_1_fkey"
+            columns: ["commander_1"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commander_card_stats: {
         Row: {
           card_id: number
@@ -605,6 +705,35 @@ export type Database = {
           {
             foreignKeyName: "commander_requests_commander_card_id_fkey"
             columns: ["commander_card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commander_sets: {
+        Row: {
+          commander_1: number
+          commander_2: number
+          has_sources: boolean
+          use_commander: boolean
+        }
+        Insert: {
+          commander_1: number
+          commander_2?: number
+          has_sources: boolean
+          use_commander: boolean
+        }
+        Update: {
+          commander_1?: number
+          commander_2?: number
+          has_sources?: boolean
+          use_commander?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_sets_commander_1_fkey"
+            columns: ["commander_1"]
             isOneToOne: false
             referencedRelation: "cards"
             referencedColumns: ["id"]
@@ -825,6 +954,35 @@ export type Database = {
         }
         Relationships: []
       }
+      partner_card_totals: {
+        Row: {
+          card_id: number
+          commander_id: number
+          decks_with: number
+          too_early: number
+        }
+        Insert: {
+          card_id: number
+          commander_id: number
+          decks_with: number
+          too_early: number
+        }
+        Update: {
+          card_id?: number
+          commander_id?: number
+          decks_with?: number
+          too_early?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_card_totals_commander_id_fkey"
+            columns: ["commander_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_admins: {
         Row: {
           created_at: string
@@ -843,6 +1001,24 @@ export type Database = {
           granted_by?: string | null
           note?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      precompute_state: {
+        Row: {
+          part: string
+          updated_at: string
+          version: Json
+        }
+        Insert: {
+          part: string
+          updated_at?: string
+          version?: Json
+        }
+        Update: {
+          part?: string
+          updated_at?: string
+          version?: Json
         }
         Relationships: []
       }
@@ -1083,6 +1259,67 @@ export type Database = {
           target_id?: number
         }
         Relationships: []
+      }
+      spellbook_combo_pieces: {
+        Row: {
+          card_id: number
+          commander_pieces: number[]
+          min_bracket: number
+          pieces: number[]
+          template_pieces: number
+          variant_id: string
+        }
+        Insert: {
+          card_id: number
+          commander_pieces?: number[]
+          min_bracket: number
+          pieces: number[]
+          template_pieces?: number
+          variant_id: string
+        }
+        Update: {
+          card_id?: number
+          commander_pieces?: number[]
+          min_bracket?: number
+          pieces?: number[]
+          template_pieces?: number
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spellbook_combo_pieces_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      substitute_targets: {
+        Row: {
+          built_at: string
+          card_id: number
+          tags_hash: string
+        }
+        Insert: {
+          built_at?: string
+          card_id: number
+          tags_hash: string
+        }
+        Update: {
+          built_at?: string
+          card_id?: number
+          tags_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "substitute_targets_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: true
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       swap_votes: {
         Row: {
@@ -1675,6 +1912,14 @@ export type Database = {
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
       new_deck_code: { Args: never; Returns: string }
+      precompute_substitutes: {
+        Args: { p_all: number; p_own: number; p_target: number }
+        Returns: {
+          card_id: number
+          is_functional_twin: boolean
+          tag_similarity: number
+        }[]
+      }
       prices_checked_at: { Args: never; Returns: string }
       rebuild_tag_closure: { Args: never; Returns: undefined }
       rec_add_candidates:
@@ -1808,6 +2053,93 @@ export type Database = {
           card_id: number
         }[]
       }
+      serving_add_pool: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_commander_ids: number[]
+          p_exclude: number[]
+          p_limit?: number
+          p_mode?: string
+          p_owned?: number[]
+        }
+        Returns: {
+          card: Database["public"]["CompositeTypes"]["serving_card"]
+          pool: string
+          position: number
+        }[]
+      }
+      serving_baseline_pool: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_exclude: number[]
+          p_identity_mask: number
+          p_limit: number
+          p_owned: number[]
+        }
+        Returns: {
+          card_id: number
+          position: number
+        }[]
+      }
+      serving_cards: {
+        Args: { p_card_ids: number[]; p_commander_ids: number[] }
+        Returns: Database["public"]["CompositeTypes"]["serving_card"][]
+        SetofOptions: {
+          from: "*"
+          to: "serving_card"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      serving_commander_pool: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_commander_1: number
+          p_commander_2: number
+          p_exclude: number[]
+          p_identity_mask: number
+          p_limit: number
+          p_owned: number[]
+        }
+        Returns: {
+          card_id: number
+          position: number
+        }[]
+      }
+      serving_partner_pool: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_commander_1: number
+          p_commander_2: number
+          p_exclude: number[]
+          p_identity_mask: number
+          p_limit: number
+          p_owned: number[]
+        }
+        Returns: {
+          card_id: number
+          position: number
+        }[]
+      }
+      serving_swap_candidates: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_commander_ids: number[]
+          p_exclude: number[]
+          p_identity_mask?: number
+          p_limit?: number
+          p_owned?: number[]
+          p_target: number
+        }
+        Returns: {
+          card: Database["public"]["CompositeTypes"]["serving_card"]
+          is_functional_twin: boolean
+          match_tags: Json
+          matches: Json
+          staple_score: number
+          tag_similarity: number
+        }[]
+      }
       set_collection_card_quantity: {
         Args: { p_card_id: number; p_quantity: number }
         Returns: number
@@ -1844,6 +2176,12 @@ export type Database = {
         | "spellbook_combos"
         | "corpus_collate"
         | "edhrec_pages"
+        | "precompute_commanders"
+        | "precompute_baseline"
+        | "precompute_scores"
+        | "precompute_substitutes"
+        | "precompute_roles"
+        | "precompute_combos"
       sync_status:
         | "running"
         | "succeeded"
@@ -1853,7 +2191,39 @@ export type Database = {
         | "abandoned"
     }
     CompositeTypes: {
-      [_ in never]: never
+      serving_card: {
+        card_id: number | null
+        oracle_id: string | null
+        name: string | null
+        slug: string | null
+        mana_value: number | null
+        mana_cost: string | null
+        type_line: string | null
+        color_identity: number | null
+        images: Json | null
+        game_changer: boolean | null
+        released_at: string | null
+        reference_price_usd: number | null
+        reference_price_finish: string | null
+        prices_as_of: string | null
+        legal_commander: string | null
+        can_be_commander: boolean | null
+        partner_kind: string | null
+        partner_qualifier: string | null
+        copy_limit: number | null
+        is_basic_land: boolean | null
+        artist: string | null
+        keywords: string[] | null
+        release_month: string | null
+        baseline_rate: number | null
+        baseline_decks_with: number | null
+        baseline_eligible_decks: number | null
+        decks_with: number | null
+        commander_decks: number | null
+        partner_decks_with: number | null
+        partner_too_early: number | null
+        role_ids: string[] | null
+      }
     }
   }
 }
@@ -2003,6 +2373,12 @@ export const Constants = {
         "spellbook_combos",
         "corpus_collate",
         "edhrec_pages",
+        "precompute_commanders",
+        "precompute_baseline",
+        "precompute_scores",
+        "precompute_substitutes",
+        "precompute_roles",
+        "precompute_combos",
       ],
       sync_status: [
         "running",

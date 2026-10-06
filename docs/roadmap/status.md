@@ -1,4 +1,4 @@
-# Status (2026-10-05)
+# Status (2026-10-06)
 
 Where the project stands, and why things are the way they are.
 
@@ -55,7 +55,7 @@ Plan: [`typesense-plan.md`](typesense-plan.md). Runbook: [`typesense-ops.md`](ty
 - **Recommendation ranking stays in SQL**, so the open blind eval still measures what it was built to measure.
 - **Live since 2026-09-23** (two Dokploy stacks, Traefik with TLS). Open under T032: the hosted parity check, the RAM measurement, and confirming the daily drain.
 - **Worker drains failed from about 2026-09-28 to 2026-09-30.** Dokploy gave the service a new generated domain, and only Vercel was updated, so the GitHub secret and `.env.hosted` hit the proxy's `404 page not found`. Both were fixed on 2026-09-30 and the index was rebuilt that day (runbook note in `typesense-ops.md`).
-- **Timeouts:** `rec_timeouts` gained a swap row on 2026-09-30, and on 2026-10-05 calls to `rec_add_candidates` and `rec_swap_candidates` averaged 0.8–1.0 s with peaks at the 3 s timeout. The precompute worker (T055) replaces both functions with indexed reads, which closes T008.
+- **Timeouts:** `rec_timeouts` gained a swap row on 2026-09-30, and on 2026-10-05 calls to `rec_add_candidates` and `rec_swap_candidates` averaged 0.8–1.0 s with peaks at the 3 s timeout. The precompute worker (T055, built 2026-10-06) replaces both functions with indexed reads once `app_config.recs.servingReads` is switched on, and T008 closes when they retire.
 
 ## Deck crawls — Archidekt deployed, Moxfield blocked
 
@@ -88,6 +88,7 @@ The owner reviewed the open PRs #127 (Commander Spellbook combos) and #128 (the 
 - **The deck spike's code is retired** (2026-10-05): the spike crawler, its two measurement jobs, the tag profiler, the PC lookup worker, `import:edhrec` and the TypeScript Archidekt client. `aggregate:corpus` now reads only the collated `corpus.decks`, which the collator (T054) fills; until it runs on hosted, hosted's stats stay at the 2026-09-15 run, and deck lookups wait for the VPS worker (T066).
 - **The design's open questions were answered the same day:** in bracket 3 only Spellbook's R combos flag; Tagger's mass land denial and extra-turn tags count, planeswalkers excluded, with at most 2 extra-turn cards in brackets 2–3; the buy list and build start from placeholder values the evaluation retunes, with basics learned per commander; accept events get a `/privacy` line and no opt-out.
 - **T054, the collator, is built** (2026-10-05, not yet on `main`): `cli collate` resolves every raw source into `corpus` with one deck rule, only where something changed, and `sync:edhrec` fetches EDHREC's pages raw (from PR #128, rewritten). Locally, with hosted's 76,774 crawled decks copied in, collation took 18 s and 74,874 decks passed; the aggregate over them took 1 min 38 s for 2,716 commanders. On hosted it runs by hand after release (`sync:edhrec`, `collate`, `aggregate:corpus`) until the VPS worker (T066) schedules it. `minDecks` and `fullDecks` are both 50.
+- **T055, the precompute worker, is built** (2026-10-06, not yet on `main`): `cli precompute` builds the serving tables (scores per commander and pair, substitutes, roles, combo pieces) and keeps the per-commander stats current after each collation, with the baseline nightly; the app reads them once `app_config.recs.servingReads` is on. Locally the passes rewrite exactly what `aggregate:corpus` writes, and the parity script found every collection-less list identical on both paths. On the serving path each add, cut and swap sends all its reads in one round (two or three before, after the rate limit), and locally swaps take 25 ms at the median instead of 72, adds 32 instead of 43 (63 ms at p95 instead of 127). The tables take about 1.7 GB locally (5.1M score rows, 10.7M substitute rows); storage was ruled no longer a constraint. Next: release, the first build on hosted, hosted parity and timing, the switch, and a week later the PR that retires the rec functions.
 - **T066, the VPS worker, is built** (2026-10-05, not yet deployed): one `cli serve` container (`deploy/worker/`) serves deck lookups through the crawl (a requested commander goes first in the crawl's queue) and runs the daily crawl, collation, stats rebuilds and the weekly EDHREC fetch on the `app_config.worker` schedule. Deck lookups stay unserved until it runs on the VPS.
 
 ## Commander Spellbook combos (T047, data half)

@@ -57,7 +57,8 @@ select chk('a finished lookup no longer jumps the queue',
 -- === settings ===
 select chk('the worker''s schedule is configured',
   (select (value ? 'pollSeconds') and (value ? 'crawlHourUtc') and (value ? 'collateEveryMinutes')
-          and (value ? 'aggregateEveryHours') and (value ? 'edhrecEveryDays') and (value ? 'retryHours')
+          and (value ? 'baselineHourUtc') and (value ? 'substitutesRebuildDays') and not (value ? 'aggregateEveryHours')
+          and (value ? 'edhrecEveryDays') and (value ? 'retryHours')
           and value -> 'crawlSources' = '["archidekt"]'::jsonb
      from public.app_config where key = 'worker'));
 select chk('a lookup waits a bounded time for the crawl',
