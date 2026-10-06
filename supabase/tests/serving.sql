@@ -166,19 +166,22 @@ select (select id from public.cards where deleted_at is null and name = 'Counter
 delete from public.card_substitutes where card_id = :counterspell;
 insert into public.card_substitutes (card_id, substitute_id, tag_similarity, is_functional_twin)
 select :counterspell, card_id, tag_similarity, is_functional_twin
-from public.precompute_substitutes(:counterspell, 220, 220);
+from public.precompute_substitutes(:counterspell, 220);
 select chk('the stored similarity is rec_swap_candidates''',
   not exists (
     select 1
     from public.rec_swap_candidates(:counterspell, '{}', 31::smallint, true, null, 40) o
-    left join public.precompute_substitutes(:counterspell, 40, 40) n on n.card_id = o.card_id
+    left join public.precompute_substitutes(:counterspell, 40) n on n.card_id = o.card_id
     where n.card_id is null or n.tag_similarity <> o.tag_similarity or n.is_functional_twin <> o.is_functional_twin
   ));
-select chk('and the card''s own colours get their own list',
+select chk('every colour identity that can hold the card gets its own first N, with and without Game Changers',
   not exists (
     select 1
-    from public.rec_swap_candidates(:counterspell, '{}', 2::smallint, true, null, 40) o
-    where o.card_id not in (select card_id from public.precompute_substitutes(:counterspell, 40, 1))
+    from generate_series(0, 31) k (mask)
+    cross join (values (true), (false)) g (gc)
+    cross join lateral public.rec_swap_candidates(:counterspell, '{}', k.mask::smallint, g.gc, null, 40) o
+    where (2 & ~k.mask) = 0
+      and o.card_id not in (select card_id from public.precompute_substitutes(:counterspell, 40))
   ));
 select chk('read back, the stored list is rec_swap_candidates'' list: same cards, order, scores and matches',
   (select array_agg(row(card_id, tag_similarity, staple_score, is_functional_twin, matches)::text order by ord)
@@ -222,7 +225,7 @@ select must_fail('anon cannot write substitutes', 'delete from public.card_subst
 select must_fail('anon cannot read combo pieces before T060 opens them', 'select count(*) from public.spellbook_combo_pieces', 'permission denied');
 select must_fail('anon cannot read the precompute state', 'select count(*) from public.precompute_state', 'permission denied');
 select must_fail('anon cannot read the substitute build state', 'select count(*) from public.substitute_targets', 'permission denied');
-select must_fail('anon cannot run the precompute similarity', 'select count(*) from public.precompute_substitutes(1, 1, 1)', 'permission denied');
+select must_fail('anon cannot run the precompute similarity', 'select count(*) from public.precompute_substitutes(1, 1)', 'permission denied');
 reset role;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111"}';
@@ -238,8 +241,8 @@ reset role;
 -- === settings ===
 select chk('the serving reads switch exists and the app may read it',
   (select value ? 'servingReads' and is_public from public.app_config where key = 'recs'));
-select chk('substitute depths are configured and private',
-  (select (value ->> 'substitutesOwn')::int > 0 and (value ->> 'substitutesAll')::int > 0 and not is_public
+select chk('the substitute depth is configured and private',
+  (select (value ->> 'substitutesDepth')::int > 0 and not value ? 'substitutesOwn' and not is_public
      from public.app_config where key = 'precompute'));
 
 select name, case when ok then 'PASS' else 'FAIL' end as result, detail from t order by ctid;
