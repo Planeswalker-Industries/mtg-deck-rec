@@ -339,8 +339,10 @@ tag similarity while the player waits.
   `pickCorpusSources` does, rather than an approximation from each partner's own rows.
 - **The add pool keeps `rec_add_candidates`' order** (`pool_score`), so the lists match; ordering it by the stored final
   corpus score is a scoring change for T058.
-- **No EDHREC-only rows yet.** The prior is off on hosted, so the scores are our own decks' alone; T061 adds the prior
-  and the EDHREC-only commanders.
+- **The EDHREC prior is on (T061, 2026-10-06), with EDHREC-only rows for single commanders.** Every single commander
+  with a page is scored, decks of ours or not (1,790 locally, about 0.6M rows). A pair with a page but no key of ours is
+  not: scoring it would store every card its partners' decks borrow (6.5M rows for 3,200 pairs), so it stays combined
+  from its partners' totals per request, without the prior.
 - **Size:** 5.1M score rows for 3,007 commanders locally (786 MB), more than the ~3M estimated, because a pair that
   borrows holds every card its partners' keys ran.
 - **The request path is one round, as planned**, with card rows read from Postgres in the same call rather than from the

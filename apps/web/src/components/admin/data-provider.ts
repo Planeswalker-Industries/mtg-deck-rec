@@ -4,6 +4,7 @@ import type { DataProvider, GetListParams, GetManyReferenceParams, RaRecord } fr
 import { HttpError } from "react-admin";
 import {
   ADMIN_USER_SORTS,
+  type AdminAcceptRate,
   type AdminSyncRun,
   type AdminSyncRunPage,
   type AdminTag,
@@ -28,6 +29,7 @@ import {
 const USERS = "/api/admin/users";
 const TAGS = "/api/admin/tags";
 const SYNC_RUNS = "/api/admin/sync-runs";
+const ACCEPT_RATES = "/api/admin/accept-rates";
 
 /** React Admin's default page size, used when a list asks without saying. */
 const DEFAULT_PER_PAGE = 25;
@@ -168,7 +170,24 @@ const syncRuns: ResourceApi = {
   remove: refuse("Sync runs are the worker's history and can't be deleted here."),
 };
 
+/** One read of every row: a few dozen at most, so the list shows them all on one page. */
+const acceptRates: ResourceApi = {
+  async list(_resource, params) {
+    const query = new URLSearchParams();
+    const mode = filterText(params, "mode");
+    const days: unknown = params.filter?.days;
+    if (mode) query.set("mode", mode);
+    if (typeof days === "number" || typeof days === "string") query.set("days", String(days));
+    const rows = await call<AdminAcceptRate[]>(`${ACCEPT_RATES}?${query}`);
+    return { data: rows, total: rows.length };
+  },
+  one: refuse("Accept rates are a list; there is nothing more to show per row."),
+  update: refuse("Accept rates are counted from recorded events and can't be changed."),
+  remove: refuse("Accept rates are counted from recorded events and can't be deleted."),
+};
+
 const RESOURCES: Record<string, ResourceApi> = {
+  "accept-rates": acceptRates,
   users,
   "platform-admins": users,
   tags,

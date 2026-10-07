@@ -1,6 +1,7 @@
 import type { ApiError } from "@mtg/core/contract";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+  ListAdminAcceptRatesInput,
   ListAdminCrawledDecksInput,
   ListAdminSyncRunsInput,
   ListAdminTagsInput,
@@ -9,9 +10,11 @@ import type {
   UpdateAdminUserInput,
 } from "@/lib/admin/schemas";
 import type {
+  AdminAcceptRate,
   AdminCrawledDeckCard,
   AdminCrawledDeckPage,
   AdminCrawlSource,
+  AdminRecMode,
   AdminSyncJob,
   AdminSyncRun,
   AdminSyncRunPage,
@@ -248,6 +251,32 @@ const JOBS_MATCH: Same<AdminSyncJob, DbSyncJob> = true;
 const STATUSES_MATCH: Same<AdminSyncStatus, DbSyncStatus> = true;
 void JOBS_MATCH;
 void STATUSES_MATCH;
+
+/** Places in a list past this aren't reported: hardly anyone looks that far down. */
+const ACCEPT_RATE_MAX_POSITION = 20;
+
+/** Accept rate per kind of list and position over the last `days` days (T065). */
+export async function listAdminAcceptRates(db: AuthedClient, input: ListAdminAcceptRatesInput): Promise<AdminAcceptRate[]> {
+  const { data, error } = await db.rpc("admin_rec_accept_rates", {
+    p_days: input.days,
+    ...(input.mode ? { p_mode: input.mode } : {}),
+    p_max_position: ACCEPT_RATE_MAX_POSITION,
+  });
+  if (error) throw asAdminError(error);
+  return (data ?? []).map((row) => {
+    const shown = Number(row.shown);
+    const accepted = Number(row.accepted);
+    return {
+      id: `${row.mode}:${row.position}`,
+      mode: row.mode as AdminRecMode,
+      position: row.position,
+      shown,
+      accepted,
+      declined: Number(row.declined),
+      acceptRate: shown > 0 ? accepted / shown : null,
+    };
+  });
+}
 
 export async function listAdminSyncRuns(db: AuthedClient, input: ListAdminSyncRunsInput): Promise<AdminSyncRunPage> {
   const { data, error } = await db.rpc("admin_list_sync_runs", {

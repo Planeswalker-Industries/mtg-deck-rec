@@ -40,6 +40,7 @@ interface DeckRow {
   code: string;
   name: string;
   is_public: boolean;
+  is_built: boolean;
   commander_1: number | null;
   commander_2: number | null;
   card_count: number;
@@ -47,7 +48,7 @@ interface DeckRow {
   updated_at: string;
 }
 
-const DECK_COLUMNS = "id, code, name, is_public, commander_1, commander_2, card_count, bracket, updated_at" as const;
+const DECK_COLUMNS = "id, code, name, is_public, is_built, commander_1, commander_2, card_count, bracket, updated_at" as const;
 
 /**
  * The caller's decks, newest change first.
@@ -81,6 +82,7 @@ export async function listMyDecks(db: AuthClient, userId: string): Promise<Saved
       // A saved deck is not a corpus key, so it carries no deck counts of its own; the commander page has those.
       commanderKey: { id: null, slug: null, commanders, deckCount: 0, confidence: "none" },
       isPublic: row.is_public,
+      isBuilt: row.is_built,
       cardCount: row.card_count,
       ...(row.bracket === null ? {} : { bracket: row.bracket as Bracket }),
       updatedAt: row.updated_at,
@@ -175,6 +177,12 @@ export async function duplicateDeck(db: AuthClient, deckId: DeckId, name?: strin
 
 export async function setDeckVisibility(db: AuthClient, deckId: DeckId, isPublic: boolean): Promise<void> {
   const { error } = await db.rpc("set_deck_visibility", { p_deck_id: deckId, p_is_public: isPublic });
+  if (error) rethrow(error.message);
+}
+
+/** Marks one of the caller's decks put together (its cards are taken) or not, through set_deck_built. */
+export async function setDeckBuilt(db: AuthClient, deckId: DeckId, isBuilt: boolean): Promise<void> {
+  const { error } = await db.rpc("set_deck_built", { p_deck_id: deckId, p_is_built: isBuilt });
   if (error) rethrow(error.message);
 }
 

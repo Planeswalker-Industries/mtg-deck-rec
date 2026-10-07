@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { DeckInput } from './decks';
 import type { ApiError, Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
-import type { RecContext, VoteContext } from './recs';
+import type { RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
 import type { CardTypeFilter } from './cards';
 import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
 
@@ -18,6 +18,8 @@ export const MAX_OWNED_CARDS = 60_000;
 /** Cards an add request may leave out: a round can pass on at most as many cards as a deck can list. */
 export const MAX_ADD_EXCLUDE = MAX_DECK_ENTRIES;
 const MAX_URL_CHARS = 2_000;
+/** Most copies of one card a collection can hold, matching collection_items.quantity's check. */
+export const MAX_CARD_COPIES = 100_000;
 const MAX_COPIES = 250;
 
 const cardId = (message: string) =>
@@ -25,6 +27,12 @@ const cardId = (message: string) =>
     .int({ error: message })
     .min(1, message)
     .transform((id) => id as CardId);
+
+const deckId = (message: string) =>
+  z
+    .string({ error: message })
+    .uuid(message)
+    .transform((id) => id as DeckId);
 
 export const deckInputSchema: InputSchema<DeckInput> = z.object(
   {
@@ -45,12 +53,21 @@ export const deckInputSchema: InputSchema<DeckInput> = z.object(
 const ownershipSchema = z.discriminatedUnion(
   'kind',
   [
-    z.object({
-      kind: z.literal('session'),
-      catalogEpoch: z.string().max(100),
-      ownedCardIds: z.array(cardId('Invalid card in the collection.')).max(MAX_OWNED_CARDS, 'That collection is too large.'),
-    }),
-    z.object({ kind: z.literal('account') }),
+    z
+      .object({
+        kind: z.literal('session'),
+        catalogEpoch: z.string().max(100),
+        ownedCardIds: z.array(cardId('Invalid card in the collection.')).max(MAX_OWNED_CARDS, 'That collection is too large.'),
+        quantities: z
+          .array(z.int().min(1).max(MAX_CARD_COPIES))
+          .max(MAX_OWNED_CARDS, 'That collection is too large.')
+          .optional(),
+      })
+      .refine((o) => o.quantities === undefined || o.quantities.length === o.ownedCardIds.length, {
+        error: 'Invalid collection.',
+        path: ['quantities'],
+      }),
+    z.object({ kind: z.literal('account'), deckId: deckId('That deck is not valid.').optional() }),
   ],
   { error: 'Invalid collection.' },
 );
@@ -87,6 +104,8 @@ export const addInputSchema = z.object(
   request,
 );
 export const cutInputSchema = z.object({ context: recContextSchema, limit }, request);
+/** A build (v24): the context's main cards are cards to keep; `fill` says what fills slots the collection can't. */
+export const buildInputSchema = z.object({ context: recContextSchema, fill: z.enum(['none', 'value']).optional() }, request);
 
 export const parseDeckInputSchema = z.object(
   {
@@ -125,6 +144,34 @@ const voteContextSchema: InputSchema<VoteContext> = z.object(
   },
   { error: 'Invalid vote details.' },
 );
+
+/** The most cards one recorded list holds: a build's 99 and then some. */
+export const MAX_REC_EVENT_CARDS = 120;
+const SCORE_COMPONENTS = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'] as const satisfies readonly ScoreComponent[];
+
+export const recEventInputSchema: InputSchema<RecEvent> = z
+  .object(
+    {
+      kind: z.enum(['shown', 'accepted', 'declined'], { error: 'Invalid event.' }),
+      mode: z.enum(['add', 'cut', 'swap', 'build'], { error: 'Invalid event list.' }),
+      batchId: z.guid('Invalid event batch.'),
+      cardIds: z
+        .array(cardId('Invalid card.'))
+        .min(1, 'An event names at least one card.')
+        .max(MAX_REC_EVENT_CARDS, `An event names at most ${MAX_REC_EVENT_CARDS} cards.`),
+      position: z.int().min(0).max(MAX_REC_EVENT_CARDS - 1).optional(),
+      targetCardId: cardId('Invalid card being replaced.').optional(),
+      commanderIds: z.array(cardId('Invalid commander.')).max(2, 'A deck has at most two commanders.'),
+      bracket: z.literal([1, 2, 3, 4, 5], { error: 'Pick a bracket from 1 to 5.' }),
+      collection: z.enum(['none', 'only', 'first'], { error: 'Invalid collection setting.' }),
+      components: z.partialRecord(z.enum(SCORE_COMPONENTS), z.number().min(0).max(1).nullable()).optional(),
+    },
+    request,
+  )
+  .refine((e) => (e.kind === 'shown' ? e.position === undefined : e.position !== undefined && e.cardIds.length === 1), {
+    message: 'A list shown has no position; a decision names one card and its position.',
+    path: ['position'],
+  });
 
 export const castVoteInputSchema = z
   .object(
@@ -294,12 +341,6 @@ export const saveCollectionBatchInputSchema = z.object(
 /** Mirrors app_config.decks.maxNameChars. The database is the authority; this is the friendly refusal. */
 export const MAX_DECK_NAME_CHARS = 80;
 
-const deckId = (message: string) =>
-  z
-    .string({ error: message })
-    .uuid(message)
-    .transform((id) => id as DeckId);
-
 const deckName = z
   .string({ error: 'Give the deck a name.' })
   .trim()
@@ -317,9 +358,6 @@ export const saveDeckInputSchema = z.object(
   },
   request,
 );
-
-/** Most copies of one card a collection can hold, matching collection_items.quantity's check. */
-export const MAX_CARD_COPIES = 100_000;
 
 export const setCollectionCardQuantityInputSchema = z.object(
   {
@@ -344,6 +382,11 @@ export const duplicateDeckInputSchema = z.object(
 
 export const deckVisibilityInputSchema = z.object(
   { deckId: deckId('That deck is not valid.'), isPublic: z.boolean({ error: 'Choose whether the deck is public.' }) },
+  request,
+);
+
+export const deckBuiltInputSchema = z.object(
+  { deckId: deckId('That deck is not valid.'), isBuilt: z.boolean({ error: 'Choose whether the deck is built.' }) },
   request,
 );
 

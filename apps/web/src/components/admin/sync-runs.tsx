@@ -51,6 +51,8 @@ const JOB_LABEL: Record<AdminSyncJob, string> = {
   precompute_substitutes: "Card substitutes",
   precompute_roles: "Card roles",
   precompute_combos: "Combo pieces",
+  precompute_pairs: "Card pairs",
+  precompute_global_pairs: "Card pairs (all decks)",
 };
 
 const STATUS_LABEL: Record<AdminSyncStatus, string> = {

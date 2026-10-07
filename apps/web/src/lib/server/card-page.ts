@@ -1,12 +1,14 @@
 import type { CardDetail, CardFace, CardSummary, CommanderLegality, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
+import { rankSwaps } from "@mtg/core/scoring";
 import { fetchCardsById, toCardSummary } from "./cards";
-import { loadSwapPool, rankSwaps } from "./recs";
+import { loadCorpusConfig } from "./corpus";
+import { loadSwapPool } from "./recs";
+import { loadScoringConfig } from "./scoring-config";
 import type { PublicClient } from "./supabase";
 
 const ALTERNATIVES = 12;
 const ALTERNATIVE_POOL = 120;
 const PLAYED_WITH = 12;
-const DEFAULT_MIN_DECKS = 50;
 
 /** A card page has no deck: alternatives are for any deck in the card's colors, Game Changers included. */
 const NO_DECK: RecContext = {
@@ -59,20 +61,19 @@ export async function loadCardPage(db: PublicClient, slug: string): Promise<Card
   if (error) throw new Error(`Loading card failed: ${error.message}`);
   if (!found) return null;
 
-  const [rows, tagsResult, configResult, keyResult] = await Promise.all([
+  const [rows, tagsResult, corpusConfig, scoring, keyResult] = await Promise.all([
     fetchCardsById(db, [found.id]),
     db.rpc("card_functional_tags", { p_card_id: found.id }),
-    db.rpc("get_public_config", { p_key: "corpus" }),
+    loadCorpusConfig(db),
+    loadScoringConfig(),
     db.from("commander_keys").select("id").eq("slug", slug).is("commander_2", null).maybeSingle(),
   ]);
   if (tagsResult.error) throw new Error(`Loading card tags failed: ${tagsResult.error.message}`);
-  if (configResult.error) throw new Error(`Loading corpus settings failed: ${configResult.error.message}`);
   if (keyResult.error) throw new Error(`Loading commander key failed: ${keyResult.error.message}`);
   const row = rows.get(found.id);
   if (!row) return null;
 
-  const configured = (configResult.data as { minDecks?: unknown } | null)?.minDecks;
-  const minDecks = typeof configured === "number" ? configured : DEFAULT_MIN_DECKS;
+  const { minDecks } = corpusConfig.settings;
   const [pool, topResult, keyStats] = await Promise.all([
     loadSwapPool(db, {
       targetCardId: row.id,
@@ -131,7 +132,7 @@ export async function loadCardPage(db: PublicClient, slug: string): Promise<Card
   return {
     card,
     alternatives: pool
-      ? rankSwaps(pool, { context: NO_DECK, limit: ALTERNATIVES })
+      ? rankSwaps(pool, { context: NO_DECK, limit: ALTERNATIVES, ownedBoost: 0, scoring })
       : { mode: "collection_less", target: summary, confidence: "none", suggestions: [], emptyReason: "NO_CANDIDATES" },
     playedWith,
     commanderSlug: (keyStats.data?.deck_count ?? 0) > 0 ? slug : null,

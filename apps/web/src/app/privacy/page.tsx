@@ -54,6 +54,12 @@ export default function PrivacyPage() {
             When you rate a suggested replacement, we keep the vote along with what was on screen at the time (the other
             suggestions shown and their order), so we can tell which suggestions work.
           </Item>
+          <Item term="Suggestions you see">
+            When the deck tool shows you cards to add, cut or swap, we record which cards it showed and in what order, and
+            which ones you took or passed on, with the deck&apos;s commander and bracket. It tells us how good our
+            suggestions are. It is kept like votes: with your account if you are signed in, otherwise with the salted hash
+            below, and there is no setting to turn it off.
+          </Item>
           <Item term="A salted hash of your IP address">
             To stop abuse we count requests per visitor. We never store your IP address itself, only a one-way hash of
             it mixed with a secret value. People sharing one network share one hash.
@@ -118,7 +124,7 @@ export default function PrivacyPage() {
             Your email address and account id, in our internal records. We keep these to prevent abuse, such as banned
             users signing up again or one person running many accounts. They are not used for anything else.
           </li>
-          <li>Your votes, with nothing left that links them to you.</li>
+          <li>Your votes and the suggestions you took or passed on, with nothing left that links them to you.</li>
           <li>Statistics your decks contributed to, which never contained your name.</li>
         </ul>
       </Section>

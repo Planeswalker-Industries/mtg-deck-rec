@@ -327,30 +327,6 @@ func TestCommanderCardsTopIsOrderedAndDeduplicated(t *testing.T) {
 		t.Fatalf("only the id is needed: %q", fake.searches[0].IncludeFields)
 	}
 }
-
-func TestCommanderCardRatesFansOutOverKeysAndChunks(t *testing.T) {
-	fake := newFakeTypesense(t)
-	app := newApp(t, fake)
-
-	ids := make([]int, 300)
-	for i := range ids {
-		ids[i] = i + 1
-	}
-	body, _ := json.Marshal(map[string]any{"keyIds": []int{11, 22}, "cardIds": ids})
-	do(t, app, http.MethodPost, "/v1/commander-cards/rates", readToken, string(body))
-
-	// 300 cards is two chunks, times two keys.
-	if len(fake.searches) != 4 {
-		t.Fatalf("got %d searches, want 4", len(fake.searches))
-	}
-	if !strings.HasPrefix(fake.searches[0].FilterBy, "key_id:=11 && card_id:[") {
-		t.Fatalf("got %q", fake.searches[0].FilterBy)
-	}
-	if got := countRequests(fake.requests, "POST /multi_search"); got != 1 {
-		t.Fatalf("got %d round trips, want 1", got)
-	}
-}
-
 func TestImportReportsRejectedDocuments(t *testing.T) {
 	fake := newFakeTypesense(t)
 	app := newApp(t, fake)

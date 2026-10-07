@@ -1,6 +1,7 @@
-import type { ApiError, CardId, RecContext, Result } from "@mtg/core/contract";
+import { sessionCopies, type CollectionCopies } from "@mtg/core/collection";
+import type { ApiError, CardId, DeckId, RecContext, Result } from "@mtg/core/contract";
 import { parseInput, type InputSchema } from "@mtg/core/schemas";
-import { accountOwnedCardIds } from "./account-collection";
+import { accountCollectionCopies, accountOwnedCardIds } from "./account-collection";
 import { createAuthClient } from "./auth";
 import { checkRateLimit, knownRateLimit } from "./rate-limit";
 import { NotFoundError } from "./recs";
@@ -35,9 +36,18 @@ export async function accountOwnedIds(): Promise<CardId[] | null> {
   return accountOwnedCardIds(db);
 }
 
+/** The signed-in visitor's copies and built decks, or null when nobody is signed in. */
+async function accountCopies(deckId: DeckId | undefined): Promise<CollectionCopies | null> {
+  const db = await createAuthClient();
+  const { data } = await db.auth.getClaims();
+  if (!data?.claims?.sub) return null;
+  return accountCollectionCopies(db, deckId);
+}
+
 /**
- * The shared flow for POST /api/recs/*: count the request against the visitor's budget, validate the body, swap an
- * account collection for the signed-in user's owned card ids, run, and map failures to status codes.
+ * The shared flow for POST /api/recs/*: count the request against the visitor's budget, validate the body, read the
+ * collection (a session's from the request, an account's copies and built decks from the database), run, and map
+ * failures to status codes.
  *
  * The budget check goes out together with the request's own reads rather than ahead of them, so it costs no round trip
  * of its own (T055). A request over budget throws away what it read, and from then on this instance answers that
@@ -46,7 +56,7 @@ export async function accountOwnedIds(): Promise<CardId[] | null> {
 export async function handleRecsRequest<I extends { context: RecContext }, T>(
   request: Request,
   schema: InputSchema<I>,
-  run: (db: PublicClient, input: I) => Promise<T>,
+  run: (db: PublicClient, input: I, collection: CollectionCopies | null) => Promise<T>,
   unavailableMessage: string,
 ): Promise<Response> {
   const visitor = visitorKey(request.headers);
@@ -61,14 +71,14 @@ export async function handleRecsRequest<I extends { context: RecContext }, T>(
   // Never rejects: every outcome is a response, so the budget check decides alone whether it is sent.
   const answer = async (): Promise<Response> => {
     try {
-      let data = input.data;
-      if (data.context.ownership?.kind === "account") {
+      const { ownership } = input.data.context;
+      let collection = sessionCopies(ownership);
+      if (ownership?.kind === "account") {
         // The pool or the ranking depends on the collection, so an account collection is read first.
-        const ownedCardIds = await accountOwnedIds();
-        if (!ownedCardIds) return errorResponse({ code: "UNAUTHENTICATED", message: "Sign in to use your saved collection." });
-        data = { ...data, context: { ...data.context, ownership: { kind: "session", catalogEpoch: "account", ownedCardIds } } };
+        collection = await accountCopies(ownership.deckId);
+        if (!collection) return errorResponse({ code: "UNAUTHENTICATED", message: "Sign in to use your saved collection." });
       }
-      return Response.json({ ok: true, data: await run(db, data) } satisfies Result<T>);
+      return Response.json({ ok: true, data: await run(db, input.data, collection) } satisfies Result<T>);
     } catch (err) {
       if (err instanceof NotFoundError) return errorResponse({ code: "NOT_FOUND", message: err.message });
       console.error(err);

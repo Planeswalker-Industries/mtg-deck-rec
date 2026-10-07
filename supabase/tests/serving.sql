@@ -1,7 +1,7 @@
 -- The serving tables and the reads the request path makes of them (T055): what the API roles may read and run, that
 -- each read works out the commander set itself (its pool, its colours, its counts), applies the deck's filters
 -- (colours, legality, Game Changers, cards in the deck, owned only) in the old functions' order, and returns each card
--- whole, and that the precompute worker's similarity is rec_swap_candidates'. Runs in a transaction and rolls back, so
+-- whole, and that the stored substitutes hold every deck's first N in pool order. Runs in a transaction and rolls back, so
 -- it leaves nothing behind. Needs the local catalog.
 \set ON_ERROR_STOP on
 begin;
@@ -71,8 +71,9 @@ select chk('Game Changers stay out when the bracket allows none',
   (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', false, null, 10)) = array[:plain, :blue1]);
 select chk('cards in the deck stay out',
   (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], array[:plain], true, null, 10)) = array[:changer, :blue1]);
-select chk('owned only keeps to the collection',
-  (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', true, array[:blue1], 10)) = array[:blue1]);
+select chk('owned only keeps to the collection, in the commander''s pool and the colours'' (T059)',
+  (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', true, array[:blue1], 10) where pool = 'commander') = array[:blue1]
+  and (select bool_and((card).card_id = :blue1) from public.serving_add_pool(array[:c1, :c2], '{}', true, array[:blue1], 10)));
 select chk('the pool stops at its limit',
   (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', true, null, 1)) = array[:plain]);
 select chk('each pool card comes whole, with the commanders'' stored counts',
@@ -131,6 +132,21 @@ select chk('a card carries what fetchCardsById reads, its first printing''s mont
      join public.cards c on c.id = s.card_id
      left join public.card_stats st on st.card_id = c.id
      join public.card_global_stats g on g.card_id = c.id));
+update public.commander_card_scores set prior_rate = 0.42, prior_decks = 900
+ where commander_1 = :c1 and commander_2 = :c2 and card_id = :plain;
+update public.commander_sets set edhrec_floor = 0.03, edhrec_decks = 1200 where commander_1 = :c1 and commander_2 = :c2;
+select chk('a card carries its EDHREC listing and the set its page, for the prior (T061)',
+  (select prior_rate = 0.42::real and prior_decks = 900 and edhrec_floor = 0.03::real and edhrec_decks = 1200
+     from public.serving_cards(array[:c1, :c2], array[:plain]))
+  and (select prior_rate is null and edhrec_decks = 1200 from public.serving_cards(array[:c1, :c2], array[:blue2])));
+update public.commander_sets set edhrec_role_profile = '{"r": 9.5}', edhrec_curve_profile = '{"2": 12}'
+ where commander_1 = :c1 and commander_2 = :c2;
+select chk('the commanders'' EDHREC profile comes with its decks, in any order (T062)',
+  public.serving_commander_profile(array[:c2, :c1]) = '{"roles": {"r": 9.5}, "curve": {"2": 12}, "decks": 1200}'::jsonb
+  and public.serving_commander_profile(array[:plain]) is null);
+select chk('commander stats hold a curve and land counts (T062)',
+  (select count(*) = count(*) filter (where curve_profile is not null) from public.commander_stats)
+  and exists (select 1 from information_schema.columns where table_name = 'commander_stats' and column_name = 'basic_land_count'));
 select chk('a card carries its roles',
   (select role_ids = (select array_agg(role_id order by role_id) from public.card_roles where card_id = :with_roles)
      from public.serving_cards('{}', array[:with_roles])));
@@ -167,27 +183,48 @@ delete from public.card_substitutes where card_id = :counterspell;
 insert into public.card_substitutes (card_id, substitute_id, tag_similarity, is_functional_twin)
 select :counterspell, card_id, tag_similarity, is_functional_twin
 from public.precompute_substitutes(:counterspell, 220);
-select chk('the stored similarity is rec_swap_candidates''',
+-- The reference: every candidate the similarity reaches (a depth past any colour identity's list), in the pool order
+-- the swap functions use: twins first, then 0.4 similarity + 0.2 staple score + 0.1 mana value proximity, then name.
+create temp table deep as
+select d.card_id, d.tag_similarity, d.is_functional_twin, c.color_identity, c.game_changer,
+       row_number() over (
+         order by d.is_functional_twin desc,
+                  (0.4 * d.tag_similarity + 0.2 * coalesce(st.staple_score, 0)
+                    + 0.1 * exp(greatest(-abs(c.mana_value - (select mana_value from public.cards where id = :counterspell)) / 1.5, -700))) desc,
+                  c.name
+       ) as pool_rank
+from public.precompute_substitutes(:counterspell, 100000) d
+join public.cards c on c.id = d.card_id
+left join public.card_stats st on st.card_id = d.card_id;
+select chk('a shallower list is part of a deeper one, with the same similarity',
   not exists (
     select 1
-    from public.rec_swap_candidates(:counterspell, '{}', 31::smallint, true, null, 40) o
-    left join public.precompute_substitutes(:counterspell, 40) n on n.card_id = o.card_id
-    where n.card_id is null or n.tag_similarity <> o.tag_similarity or n.is_functional_twin <> o.is_functional_twin
+    from public.precompute_substitutes(:counterspell, 40) n
+    left join deep d on d.card_id = n.card_id
+    where d.card_id is null or d.tag_similarity <> n.tag_similarity or d.is_functional_twin <> n.is_functional_twin
   ));
 select chk('every colour identity that can hold the card gets its own first N, with and without Game Changers',
   not exists (
     select 1
     from generate_series(0, 31) k (mask)
     cross join (values (true), (false)) g (gc)
-    cross join lateral public.rec_swap_candidates(:counterspell, '{}', k.mask::smallint, g.gc, null, 40) o
+    cross join lateral (
+      select d.card_id from deep d
+      where (d.color_identity & ~k.mask) = 0 and (g.gc or not d.game_changer)
+      order by d.pool_rank limit 40
+    ) o
     where (2 & ~k.mask) = 0
       and o.card_id not in (select card_id from public.precompute_substitutes(:counterspell, 40))
   ));
-select chk('read back, the stored list is rec_swap_candidates'' list: same cards, order, scores and matches',
-  (select array_agg(row(card_id, tag_similarity, staple_score, is_functional_twin, matches)::text order by ord)
-     from public.rec_swap_candidates(:counterspell, '{}', 23::smallint, true, null, 60) with ordinality as o (card_id, tag_similarity, staple_score, is_functional_twin, matches, ord))
-  = (select array_agg(row((card).card_id, tag_similarity, staple_score, is_functional_twin, matches)::text order by ord)
-     from public.serving_swap_candidates(:counterspell, array[:thrasios, :tymna], '{}', true, null, 60) with ordinality as s (tag_similarity, staple_score, is_functional_twin, matches, match_tags, card, ord)));
+select chk('read back, the stored list is the first N in pool order inside the deck''s colours',
+  (select array_agg(card_id order by pool_rank)
+     from (select d.card_id, d.pool_rank from deep d
+           join public.cards c on c.id = d.card_id
+           where (d.color_identity & ~23) = 0 and c.legal_commander = 'legal' and not c.is_basic_land
+           order by d.pool_rank limit 60) x)
+  = (select array_agg((card).card_id order by ord)
+     from public.serving_swap_candidates(:counterspell, array[:thrasios, :tymna], '{}', true, null, 60)
+          with ordinality as s (tag_similarity, staple_score, is_functional_twin, matches, match_tags, card, ord)));
 select chk('every tag a match names comes with its slug and label',
   not exists (
     select 1
@@ -239,8 +276,16 @@ select chk('service_role reads combo pieces, commander sets and the precompute s
 reset role;
 
 -- === settings ===
-select chk('the serving reads switch exists and the app may read it',
-  (select value ? 'servingReads' and is_public from public.app_config where key = 'recs'));
+select chk('the EDHREC prior is configured by its cap, and the old share and function are gone',
+  (select value ? 'edhrecPriorCap' and not value ? 'externalPriorShare' from public.app_config where key = 'corpus')
+  and to_regprocedure('public.edhrec_card_priors(integer[],integer[])') is null);
+select chk('the scoring weights are configured and private',
+  (select value ? 'weights' and value ? 'corpus' and value ? 'swap' and value ? 'cuts' and not is_public
+     from public.app_config where key = 'scoring'));
+set local role anon;
+select chk('anon cannot read the scoring weights through the public config',
+  (select public.get_public_config('scoring')) is null);
+reset role;
 select chk('the substitute depth is configured and private',
   (select (value ->> 'substitutesDepth')::int > 0 and not value ? 'substitutesOwn' and not is_public
      from public.app_config where key = 'precompute'));

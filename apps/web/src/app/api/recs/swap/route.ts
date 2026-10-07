@@ -7,8 +7,8 @@ export function POST(request: Request): Promise<Response> {
   return handleRecsRequest(
     request,
     swapInputSchema,
-    (db, { context, targetCardId, limit }) =>
-      getCachedSwapSuggestions(db, { context, targetCardId, limit: capLimit(limit, MAX_SWAP_LIMIT) }),
+    (db, { context, targetCardId, limit }, collection) =>
+      getCachedSwapSuggestions(db, { context, collection, targetCardId, limit: capLimit(limit, MAX_SWAP_LIMIT) }),
     "Couldn't load replacements. Try again in a moment.",
   );
 }

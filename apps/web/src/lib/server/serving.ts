@@ -1,45 +1,44 @@
+import type { ComboFacts } from "@mtg/core/commander";
 import type { TagId, TagRef } from "@mtg/core/contract";
-import { commanderCardCounts, commanderShare, identityBaselineDecks, servedCardRates } from "@mtg/core/scoring";
-import { pricesCheckedAt, withPriceCheck, type CardRow } from "./cards";
-import { cachedConfig } from "./config-cache";
+import {
+  BASIC_LAND_NAMES,
+  cardPrior,
+  commanderCardCounts,
+  commanderShare,
+  identityBaselineDecks,
+  pmiIndex,
+  servedCardRates,
+  type AffinityInput,
+  type BasicColour,
+  type BuildAffinity,
+  type RankCard,
+  type SwapPool,
+  type SwapPoolCandidate,
+} from "@mtg/core/scoring";
+import { fetchCardsById, pricesCheckedAt, rankCardOf, withPriceCheck, type CardRow } from "./cards";
 import { loadCommanderCorpus, loadIdentityMonths, type CardCorpus, type CommanderCorpus } from "./corpus";
 import type { Database } from "./database.types";
-import type { RawMatch, SwapPool, SwapPoolCandidate } from "./recs";
 import type { PublicClient } from "./supabase";
 
 /**
- * The recommendation reads after the precompute worker (T055). Every read a request makes goes out at once: the
- * database functions take the deck's commander ids and work out the rest themselves, and each card comes back as one
- * serving_card row (the card, its stored counts for those commanders, its baseline and its roles). The rows become the
- * same CardRow and CardCorpus values the old loads built, so the ranking in recs.ts is shared. Behind
- * app_config.recs.servingReads until it has run on hosted; serving-parity.ts checks both paths give the same lists.
- * Keep `next/cache` out of this file, so scripts can run it outside Next.js.
+ * The recommendation reads (T055). Every read a request makes goes out at once: the database functions take the
+ * deck's commander ids and work out the rest themselves, and each card comes back as one serving_card row (the card,
+ * its stored counts for those commanders, its baseline and its roles), which becomes the CardRow and CardCorpus the
+ * ranking in recs.ts reads. Keep `next/cache` out of this file, so scripts can run it outside Next.js.
  */
 
 type ServingCard = Database["public"]["CompositeTypes"]["serving_card"];
 
+/** One tag match as serving_swap_candidates returns it, by tag id. */
+interface RawMatch {
+  targetTagId: string;
+  candidateTagId: string;
+  viaTagId: string | null;
+  distance: number;
+}
+
 /** Which pool a serving_add_pool row came from (see that function). */
 type PoolKind = "commander" | "partners" | "baseline";
-
-let servingReadsOverride: boolean | null = null;
-
-/**
- * Pins the read path regardless of app_config, so a script can run the old and the new path on the same input
- * (serving-parity.ts). The app never calls it; null goes back to the config.
- */
-export function overrideServingReads(value: boolean | null): void {
-  servingReadsOverride = value;
-}
-
-/** Whether the request path reads the serving tables (app_config.recs.servingReads). Off when the row is missing. */
-export async function loadServingReads(db: PublicClient): Promise<boolean> {
-  if (servingReadsOverride !== null) return servingReadsOverride;
-  return cachedConfig("recs", async () => {
-    const { data, error } = await db.rpc("get_public_config", { p_key: "recs" });
-    if (error) throw new Error(`Loading recommendation settings failed: ${error.message}`);
-    return (data as { servingReads?: unknown } | null)?.servingReads === true;
-  });
-}
 
 /** A serving_card as the CardRow fetchCardsById gives: the same columns, the price date applied the same way. */
 function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
@@ -73,9 +72,9 @@ function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
 }
 
 /**
- * A card's play rates under these commanders, as loadCardCorpus gave them: its stored counts where a source deck ran it,
- * a pair's partner totals at their weight, or counts from the commander's deck months where nothing ran it; shrunk
- * toward the live baseline.
+ * A card's play rates under these commanders: its stored counts where a source deck ran it, a pair's partner totals at
+ * their weight, or counts from the commander's deck months where nothing ran it; shrunk toward the commander's EDHREC
+ * page when it has one (T061) and the live baseline otherwise.
  */
 function cardCorpusOf(card: ServingCard, corpus: CommanderCorpus, identityMonths: ReadonlyMap<number, Record<string, number>>): CardCorpus {
   const facts = { identity: card.color_identity ?? 0, releaseMonth: card.release_month };
@@ -93,7 +92,10 @@ function cardCorpusOf(card: ServingCard, corpus: CommanderCorpus, identityMonths
           decksWith: weight * (card.partner_decks_with ?? 0),
           tooEarly: weight * (card.partner_too_early ?? 0),
         });
-  return { ...servedCardRates(counts, baseline, corpus.settings, corpus.borrowedDeckCount > 0), hasExternalPrior: false };
+  const page = card.edhrec_decks !== null && card.edhrec_floor !== null ? { deckCount: card.edhrec_decks, floor: card.edhrec_floor } : null;
+  const listing = card.prior_rate !== null && card.prior_decks !== null ? { rate: card.prior_rate, potentialDecks: card.prior_decks } : null;
+  const prior = cardPrior(page, listing, baseline.rate, corpus.settings);
+  return servedCardRates(counts, baseline, corpus.settings, corpus.borrowedDeckCount > 0, prior);
 }
 
 /** Card rows, play rates (none until the corpus exists) and roles for a set of serving_card rows. */
@@ -123,14 +125,117 @@ function servedCards(
 
 const asCards = (data: unknown) => (data ?? []) as ServingCard[];
 
-/** What add suggestions need, read in one round: the commanders, the pool and its cards, the deck's roles. */
+type ComboRow = Database["public"]["Functions"]["serving_deck_combos"]["Returns"][number];
+
+/** How many combo rows a read asks for: under PostgREST's row cap, complete combos first. */
+const COMBO_ROW_LIMIT = 600;
+
+/** Combo rows as the bracket rules and the combo group read them. */
+const comboFactsOf = (rows: readonly Omit<ComboRow, "card">[]): ComboFacts[] =>
+  rows.map((r) => ({
+    variantId: r.variant_id,
+    pieces: r.pieces,
+    minBracket: r.min_bracket,
+    results: r.results,
+    contextualResults: r.contextual_results,
+    templateNames: r.template_names,
+    missing: r.missing ?? null,
+  }));
+
+/** The deck's combos as the bracket rules and the combo group read them, and the missing pieces' serving_cards. */
+function combosOf(rows: readonly ComboRow[]): { combos: ComboFacts[]; missingCards: ServingCard[] } {
+  return {
+    combos: comboFactsOf(rows),
+    missingCards: rows.flatMap((r) => (r.missing !== null && r.card?.card_id ? [r.card] : [])),
+  };
+}
+
+/** The deck's combos from Commander Spellbook (T060): complete ones, and with `near` those one named card short. */
+function deckCombosRead(
+  db: PublicClient,
+  input: { cardIds: readonly number[]; commanderIds: readonly number[]; exclude?: readonly number[]; allowGameChangers?: boolean; near: boolean },
+) {
+  return db.rpc("serving_deck_combos", {
+    p_card_ids: [...input.cardIds],
+    p_commander_ids: [...input.commanderIds],
+    p_exclude: [...(input.exclude ?? [])],
+    p_allow_game_changers: input.allowGameChangers ?? true,
+    p_near: input.near,
+    p_limit: COMBO_ROW_LIMIT,
+  });
+}
+
+/** `serving_deck_affinity`'s value: pair rows as [cardA, cardB, lift], card weights as [card, rate, keyDecks]. */
+interface AffinityValue {
+  own?: [number, number, number][];
+  global?: [number, number, number][];
+  cards?: [number, number, number][];
+  neighbours?: ServingCard[];
+}
+
+/**
+ * Card pairs for a deck (T064): the pairs touching its cards, their weights and, with `neighbours` (null: the configured
+ * number), the cards its pairs point to most, as serving_cards.
+ */
+function deckAffinityRead(
+  db: PublicClient,
+  input: { cardIds: readonly number[]; commanderIds: readonly number[]; exclude?: readonly number[]; allowGameChangers?: boolean; neighbours: number | null },
+) {
+  return db.rpc("serving_deck_affinity", {
+    p_commander_ids: [...input.commanderIds],
+    p_card_ids: [...input.cardIds],
+    p_exclude: [...(input.exclude ?? [])],
+    p_allow_game_changers: input.allowGameChangers ?? true,
+    ...(input.neighbours === null ? {} : { p_neighbours: input.neighbours }),
+  });
+}
+
+function affinityOf(data: unknown): { affinity: AffinityInput; neighbourCards: ServingCard[] } {
+  const value = (data ?? {}) as AffinityValue;
+  const neighbourCards = (value.neighbours ?? []).filter((c) => c.card_id !== null);
+  return {
+    affinity: {
+      lifts: { own: pmiIndex(value.own ?? []), global: pmiIndex(value.global ?? []) },
+      weights: new Map((value.cards ?? []).map(([card, rate, keyDecks]) => [card, { rate, keyDecks }])),
+      neighbours: neighbourCards.flatMap((c) => (c.card_id === null ? [] : [c.card_id])),
+    },
+    neighbourCards,
+  };
+}
+
+/** Card pairs for a swap's deck (no neighbours: a swap's pool is the target's substitutes). */
+export async function loadDeckAffinity(db: PublicClient, cardIds: readonly number[], commanderIds: readonly number[]): Promise<AffinityInput> {
+  const { data, error } = await deckAffinityRead(db, { cardIds, commanderIds, neighbours: 0 });
+  if (error) throw new Error(`Loading card pairs failed: ${error.message}`);
+  return affinityOf(data).affinity;
+}
+
+/** The deck's complete combos, for deck analysis. */
+export async function loadDeckCombos(db: PublicClient, cardIds: readonly number[], commanderIds: readonly number[]): Promise<ComboFacts[]> {
+  const { data, error } = await deckCombosRead(db, { cardIds, commanderIds, near: false });
+  if (error) throw new Error(`Loading the deck's combos failed: ${error.message}`);
+  return combosOf(data ?? []).combos;
+}
+
+/**
+ * What add suggestions need, read in one round: the commanders, the pool and its cards, the deck's roles. With `owned`
+ * (a collection in 'only' mode), the collection's pool (the commander's cards and the colours' it holds) and, beside
+ * it, the pool everyone gets, for the buy list.
+ */
 export interface ServedAdds {
   corpus: CommanderCorpus;
   commanderRows: Map<number, CardRow>;
   /** The pool's card ids, best first. */
   poolIds: number[];
+  /** The pool's cards, and the cards that would complete one of `combos`. */
   pool: ServedCards;
   deckRoles: Map<number, string[]>;
+  /** The deck's complete combos and those one named card short (T060). */
+  combos: ComboFacts[];
+  /** The deck's main cards, for its curve (T062). */
+  deckCards: Map<number, RankCard>;
+  /** Card pairs for the deck (T064); the cards they point to are in `pool`. */
+  affinity: AffinityInput;
 }
 
 export async function loadServedAdds(
@@ -145,37 +250,67 @@ export async function loadServedAdds(
   },
 ): Promise<ServedAdds> {
   const commanderIds = [...input.commanderIds];
-  const [poolResult, corpus, deckRolesResult, commandersResult, identityMonths, checkedAt] = await Promise.all([
+  const pool = (owned: readonly number[] | null) =>
     db.rpc("serving_add_pool", {
       p_commander_ids: commanderIds,
       p_exclude: [...input.exclude],
       p_allow_game_changers: input.allowGameChangers,
       p_limit: input.limit,
       p_mode: "adds",
-      ...(input.owned ? { p_owned: [...input.owned] } : {}),
+      ...(owned ? { p_owned: [...owned] } : {}),
+    });
+  const [poolResult, openResult, combosResult, affinityResult, corpus, deckRolesResult, deckRows, commandersResult, identityMonths, checkedAt] = await Promise.all([
+    pool(input.owned),
+    input.owned ? pool(null) : Promise.resolve(null),
+    deckCombosRead(db, {
+      cardIds: input.mainIds,
+      commanderIds,
+      exclude: input.exclude,
+      allowGameChangers: input.allowGameChangers,
+      near: true,
+    }),
+    deckAffinityRead(db, {
+      cardIds: input.mainIds,
+      commanderIds,
+      exclude: input.exclude,
+      allowGameChangers: input.allowGameChangers,
+      neighbours: null,
     }),
     loadCommanderCorpus(db, commanderIds),
     input.mainIds.length > 0
       ? db.from("card_roles").select("card_id, role_id").in("card_id", [...input.mainIds])
       : Promise.resolve({ data: [] as { card_id: number; role_id: string }[], error: null }),
+    fetchCardsById(db, input.mainIds),
     db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: commanderIds }),
     loadIdentityMonths(db),
     pricesCheckedAt(db),
   ]);
   if (poolResult.error) throw new Error(`Loading the add pool failed: ${poolResult.error.message}`);
+  if (openResult?.error) throw new Error(`Loading the add pool failed: ${openResult.error.message}`);
+  if (combosResult.error) throw new Error(`Loading the deck's combos failed: ${combosResult.error.message}`);
+  const { combos, missingCards } = combosOf(combosResult.data ?? []);
+  if (affinityResult.error) throw new Error(`Loading card pairs failed: ${affinityResult.error.message}`);
+  const { affinity, neighbourCards } = affinityOf(affinityResult.data);
   if (deckRolesResult.error) throw new Error(`Loading card roles failed: ${deckRolesResult.error.message}`);
   if (commandersResult.error) throw new Error(`Loading commanders failed: ${commandersResult.error.message}`);
 
   // One pool for a commander set the precompute scored; both for a pair no key knows, which picks here with the rule
-  // the old path used per request.
-  const rows = poolResult.data ?? [];
-  const kinds = new Set(rows.map((r) => r.pool as PoolKind));
+  // the old path used per request. A collection's pool keeps the colours' cards too, after the chosen pool's.
   const useCommander = commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
-  const chosen: PoolKind = kinds.has("commander") ? "commander" : kinds.has("partners") && useCommander ? "partners" : "baseline";
-  const poolCards = rows
-    .filter((r) => r.pool === chosen)
-    .sort((a, b) => a.position - b.position)
-    .map((r) => r.card);
+  const chosenCards = (rows: readonly { pool: string; position: number; card: ServingCard }[], withBaseline: boolean) => {
+    const kinds = new Set(rows.map((r) => r.pool as PoolKind));
+    const chosen: PoolKind = kinds.has("commander") ? "commander" : kinds.has("partners") && useCommander ? "partners" : "baseline";
+    const order = (kind: PoolKind) =>
+      rows
+        .filter((r) => r.pool === kind)
+        .sort((a, b) => a.position - b.position)
+        .map((r) => r.card);
+    return withBaseline && chosen !== "baseline" ? [...order(chosen), ...order("baseline")] : order(chosen);
+  };
+  const seen = new Set<number>();
+  const poolCards = [...chosenCards(poolResult.data ?? [], input.owned !== null), ...chosenCards(openResult?.data ?? [], false)].filter(
+    (c) => c.card_id !== null && !seen.has(c.card_id) && seen.add(c.card_id),
+  );
 
   const deckRoles = new Map<number, string[]>();
   for (const { card_id, role_id } of deckRolesResult.data ?? []) deckRoles.set(card_id, [...(deckRoles.get(card_id) ?? []), role_id]);
@@ -183,8 +318,118 @@ export async function loadServedAdds(
     corpus,
     commanderRows: servedCards(asCards(commandersResult.data), corpus, identityMonths, checkedAt).rows,
     poolIds: poolCards.flatMap((c) => (c.card_id === null ? [] : [c.card_id])),
-    pool: servedCards(poolCards, corpus, identityMonths, checkedAt),
+    pool: servedCards(
+      [...poolCards, ...[...missingCards, ...neighbourCards].filter((c) => !seen.has(c.card_id ?? 0))],
+      corpus,
+      identityMonths,
+      checkedAt,
+    ),
     deckRoles,
+    combos,
+    deckCards: new Map([...deckRows].map(([id, row]) => [id, rankCardOf(row)])),
+    affinity,
+  };
+}
+
+/** What a build reads (T063), in one round: `serving_build_pool`'s value and the commanders' corpus. */
+export interface ServedBuild {
+  corpus: CommanderCorpus;
+  commanderRows: Map<number, CardRow>;
+  /** The pool the build picks from (the collection's with one), best first. */
+  poolIds: number[];
+  /** Everyone's pool, for the value fill (with a collection only). */
+  fillIds: number[];
+  /** Rows for both pools, the kept cards, the combos' missing pieces and the basic lands. */
+  cards: ServedCards;
+  combos: ComboFacts[];
+  affinity: BuildAffinity;
+  basics: Map<BasicColour, RankCard>;
+}
+
+interface BuildPoolValue {
+  pool?: { part: "own" | "open"; pool: PoolKind; position: number; card: ServingCard }[];
+  own?: [number, number, number][];
+  global?: [number, number, number][];
+  cards?: [number, number, number][];
+  combos?: Omit<ComboRow, "card">[];
+  missing?: ServingCard[];
+  basics?: ServingCard[];
+}
+
+export async function loadServedBuild(
+  db: PublicClient,
+  input: {
+    commanderIds: readonly number[];
+    keptIds: readonly number[];
+    allowGameChangers: boolean;
+    owned: readonly number[] | null;
+    limit: number;
+  },
+): Promise<ServedBuild> {
+  const commanderIds = [...input.commanderIds];
+  const [buildResult, keptResult, corpus, identityMonths, checkedAt] = await Promise.all([
+    db.rpc("serving_build_pool", {
+      p_commander_ids: commanderIds,
+      p_card_ids: [...input.keptIds],
+      p_exclude: [...new Set([...commanderIds, ...input.keptIds])],
+      p_allow_game_changers: input.allowGameChangers,
+      p_basic_names: Object.values(BASIC_LAND_NAMES),
+      p_limit: input.limit,
+      ...(input.owned ? { p_owned: [...input.owned] } : {}),
+    }),
+    db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: [...commanderIds, ...input.keptIds] }),
+    loadCommanderCorpus(db, commanderIds),
+    loadIdentityMonths(db),
+    pricesCheckedAt(db),
+  ]);
+  if (buildResult.error) throw new Error(`Loading the build pool failed: ${buildResult.error.message}`);
+  if (keptResult.error) throw new Error(`Loading the deck's cards failed: ${keptResult.error.message}`);
+  const value = (buildResult.data ?? {}) as BuildPoolValue;
+
+  // The same pool choice as adds: the commander's pool, a pair's partners while their decks count, the colours' otherwise.
+  const useCommander = commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
+  const rows = value.pool ?? [];
+  const order = (part: "own" | "open") => {
+    const mine = rows.filter((r) => r.part === part && r.card.card_id !== null);
+    const kinds = new Set(mine.map((r) => r.pool));
+    const chosen: PoolKind = kinds.has("commander") ? "commander" : kinds.has("partners") && useCommander ? "partners" : "baseline";
+    const of = (kind: PoolKind) =>
+      mine
+        .filter((r) => r.pool === kind)
+        .sort((a, b) => a.position - b.position)
+        .map((r) => r.card);
+    // A collection's pool keeps the colours' cards too, after the chosen pool's.
+    return input.owned && part === "own" && chosen !== "baseline" ? [...of(chosen), ...of("baseline")] : of(chosen);
+  };
+  const ownCards = order("own");
+  const openCards = input.owned ? order("open") : [];
+  const idsOf = (cards: readonly ServingCard[]) => [...new Set(cards.flatMap((c) => (c.card_id === null ? [] : [c.card_id])))];
+  const basicCards = value.basics ?? [];
+  const cards = servedCards(
+    [...ownCards, ...openCards, ...(value.missing ?? []), ...basicCards, ...asCards(keptResult.data)],
+    corpus,
+    identityMonths,
+    checkedAt,
+  );
+  const basicByName = new Map(Object.entries(BASIC_LAND_NAMES).map(([colour, name]) => [name, colour as BasicColour]));
+  const basics = new Map<BasicColour, RankCard>();
+  for (const c of basicCards) {
+    const colour = basicByName.get(c.name ?? "");
+    const row = c.card_id === null ? undefined : cards.rows.get(c.card_id);
+    if (colour && row) basics.set(colour, rankCardOf(row));
+  }
+  return {
+    corpus,
+    commanderRows: servedCards(asCards(keptResult.data).filter((c) => commanderIds.includes(c.card_id ?? 0)), corpus, identityMonths, checkedAt).rows,
+    poolIds: idsOf(ownCards),
+    fillIds: idsOf(openCards),
+    cards,
+    combos: comboFactsOf(value.combos ?? []),
+    affinity: {
+      lifts: { own: pmiIndex(value.own ?? []), global: pmiIndex(value.global ?? []) },
+      weights: new Map((value.cards ?? []).map(([card, rate, keyDecks]) => [card, { rate, keyDecks }])),
+    },
+    basics,
   };
 }
 
@@ -192,16 +437,25 @@ export async function loadServedAdds(
 export async function loadServedCuts(
   db: PublicClient,
   input: { commanderIds: readonly number[]; mainIds: readonly number[] },
-): Promise<ServedCards & { corpus: CommanderCorpus }> {
+): Promise<ServedCards & { corpus: CommanderCorpus; combos: ComboFacts[]; affinity: AffinityInput }> {
   const commanderIds = [...input.commanderIds];
-  const [cardsResult, corpus, identityMonths, checkedAt] = await Promise.all([
+  const [cardsResult, combosResult, affinityResult, corpus, identityMonths, checkedAt] = await Promise.all([
     db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: [...input.mainIds, ...commanderIds] }),
+    deckCombosRead(db, { cardIds: input.mainIds, commanderIds, near: false }),
+    deckAffinityRead(db, { cardIds: input.mainIds, commanderIds, neighbours: 0 }),
     loadCommanderCorpus(db, commanderIds),
     loadIdentityMonths(db),
     pricesCheckedAt(db),
   ]);
   if (cardsResult.error) throw new Error(`Loading the deck's cards failed: ${cardsResult.error.message}`);
-  return { corpus, ...servedCards(asCards(cardsResult.data), corpus, identityMonths, checkedAt) };
+  if (combosResult.error) throw new Error(`Loading the deck's combos failed: ${combosResult.error.message}`);
+  if (affinityResult.error) throw new Error(`Loading card pairs failed: ${affinityResult.error.message}`);
+  return {
+    corpus,
+    combos: combosOf(combosResult.data ?? []).combos,
+    affinity: affinityOf(affinityResult.data).affinity,
+    ...servedCards(asCards(cardsResult.data), corpus, identityMonths, checkedAt),
+  };
 }
 
 /**
@@ -241,8 +495,8 @@ export async function loadServedSwapPool(
   if (candidatesResult.error) throw new Error(`Swap candidates failed: ${candidatesResult.error.message}`);
   if (tagCountResult.error) throw new Error(`Tag count failed: ${tagCountResult.error.message}`);
   if (targetResult.error) throw new Error(`Loading the card failed: ${targetResult.error.message}`);
-  const target = servedCards(asCards(targetResult.data), corpus, identityMonths, checkedAt).rows.get(input.targetCardId);
-  if (!target) return null;
+  const targetRow = servedCards(asCards(targetResult.data), corpus, identityMonths, checkedAt).rows.get(input.targetCardId);
+  if (!targetRow) return null;
 
   const rows = candidatesResult.data ?? [];
   const tags = new Map<string, TagRef>();
@@ -258,7 +512,7 @@ export async function loadServedSwapPool(
     checkedAt,
   );
   return {
-    target,
+    target: rankCardOf(targetRow),
     tagCount: tagCountResult.data ?? 0,
     corpus,
     candidates: rows.flatMap((r): SwapPoolCandidate[] => {
@@ -269,7 +523,7 @@ export async function loadServedSwapPool(
       return [
         {
           cardId,
-          row,
+          card: rankCardOf(row),
           tagSimilarity: r.tag_similarity,
           stapleScore: r.staple_score,
           functionalTwin: r.is_functional_twin,
@@ -288,7 +542,7 @@ export async function loadServedSwapPool(
 
 /**
  * A pool for the rater or a commander page, read in one round with its cards: the commander's own decks whenever any
- * count (the colours' most played cards otherwise), as rec_add_candidates gave them with every source key.
+ * count (the colours' most played cards otherwise), over every source key.
  */
 export async function loadServedDeckPool(
   db: PublicClient,
@@ -312,7 +566,7 @@ export async function loadServedDeckPool(
   if (commandersResult.error) throw new Error(`Loading commanders failed: ${commandersResult.error.message}`);
   const rows = poolResult.data ?? [];
   const kinds = new Set(rows.map((r) => r.pool as PoolKind));
-  // A pair no key knows draws on its partners' decks whenever there are any, as rec_add_candidates did with sources.
+  // A pair no key knows draws on its partners' decks whenever there are any.
   const chosen: PoolKind = kinds.has("commander") ? "commander" : kinds.has("partners") && corpus.sources.length > 0 ? "partners" : "baseline";
   const poolCards = rows
     .filter((r) => r.pool === chosen)

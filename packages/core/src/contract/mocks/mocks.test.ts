@@ -188,3 +188,21 @@ describe('mock add exclusions', () => {
     expect(after.some((id) => passed.includes(id))).toBe(false);
   });
 });
+
+describe('mock build', () => {
+  it('builds from owned cards, accounts for every slot, and fills by value on request', async () => {
+    const { apis, context } = await setup();
+    const ownership = { kind: 'account' as const };
+    const base = context({ ownership });
+    const commanderOnly = { ...base, deck: { ...base.deck, cards: [] } };
+    const owned = await apis.recs.build({ context: commanderOnly });
+    expect(owned.ok).toBe(true);
+    if (!owned.ok) return;
+    const f = owned.data.feasibility;
+    expect(f.filled + f.filledByValue + f.open).toBe(f.slots);
+    expect(owned.data.groups.flatMap((g) => g.cards).every((c) => c.owned !== null && c.origin === 'pick')).toBe(true);
+
+    const filled = await apis.recs.build({ context: commanderOnly, fill: 'value' });
+    expect(filled.ok && filled.data.fillCost !== undefined && filled.data.feasibility.filledByValue > 0).toBe(true);
+  });
+});

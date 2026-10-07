@@ -71,5 +71,40 @@
  * ({2}{W}{W}) so rows can show its symbols. CardSearchInput gains the legendary type filter (CardTypeFilter), `sort`
  * (name_asc / name_desc) and `ownedOnly` (only cards in a collection; a session collection makes the search a POST).
  * manaCost is a new required field, so every CardSummary producer fills it ('' for no cost); the rest is additive.
+ *
+ * v20 (2026-10-06): collection mode (T059). OwnershipInput 'session' carries optional `quantities` (one copy each when
+ * omitted) and 'account' an optional `deckId`, the deck being improved. A saved deck can be marked built
+ * (SavedDeckSummary.isBuilt, ActionsApi.setDeckBuilt): its cards are taken, so suggestions for the player's other decks
+ * tag a card held there with `conflicts`. An owned rules-identical twin stands in for a card (OwnedInfo.standsInFor).
+ * 'only' mode adds AddResult.buyList and SwapResult.buyList: unowned cards worth buying, with their gain over the best
+ * available card and gain per dollar. isBuilt is a new required field; the rest is additive.
+ *
+ * v21 (2026-10-06): bracket rules and combos (T060). DeckAnalysis gains `bracketSignals` (Game Changers, mass land
+ * denial, extra turns, the deck's highest combo bracket, an extra-turn loop) and `combos` (DeckCombo: the Commander
+ * Spellbook combos it holds), both required. CutReason gains OVER_BRACKET_MLD (a hard limit, mandatory),
+ * OVER_BRACKET_COMBO and OVER_BRACKET_EXTRA_TURNS (flags, with a cut offered). AddResult gains `combos`
+ * (ComboSuggestion: "complete a combo", the combos one card short that the bracket allows) and AddSuggestion
+ * `completesOverBracket`. Every combo carries its Spellbook link, which the UI credits.
+ *
+ * v22 (2026-10-06): the learned skeleton (T062). ScoreComponent gains 'curve': how short the deck is at the card's mana
+ * value against the commander's curve. Every ScoreBreakdown carries it (null where it doesn't apply); its weight is 0
+ * until the evaluation passes it.
+ *
+ * v23 (2026-10-06): deck affinity (T064). ScoreComponent gains 'deck' (how strongly a card connects to the deck's other
+ * cards, from card pairs), AddSuggestion and SwapSuggestion gain optional `pairedWith` (the deck cards it connects to
+ * most) and CutReason gains LOW_AFFINITY. The component's weight is 0 and the cut reason off until the evaluation
+ * passes them.
+ *
+ * v24 (2026-10-06): building a deck (T063). RecsApi.build takes a RecContext (its commanders, bracket and collection;
+ * its main cards are kept) and `fill` ('none' or 'value'), and returns BuildResult: the cards grouped like adds
+ * (BuildCard: an AddSuggestion with its origin, kept, pick or fill), the basic lands, the land target, "complete a
+ * combo" entries, the build's bracket estimate and signals, the feasibility report (slots filled from the collection,
+ * by the value fill, still open, roles still short) and, with the value fill, its cost. The design named it
+ * BuildApi.build; it sits on RecsApi because it shares the recommendation routes' transport. Additive.
+ *
+ * v25 (2026-10-06): the live accept rate (T065). ActionsApi.recordRecEvent records a suggestion list shown (RecEvent
+ * kind 'shown', its cards in order, under a client-generated batch id) and each card from it taken or passed on
+ * ('accepted', 'declined', with its position and score components), for adds, cuts, swaps and builds. Keyed per
+ * visitor like swap votes, never read back. Additive.
  */
-export const CONTRACT_VERSION = 19;
+export const CONTRACT_VERSION = 25;

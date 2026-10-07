@@ -235,14 +235,16 @@ export function useDeckTool(
   const hasCollection = source.kind === "browser" || source.kind === "account";
   /**
    * A collection mode needs a collection; without one the choice is kept but not applied. A browser collection sends
-   * its card ids; an account collection is read on the server.
+   * its card ids; an account collection is read on the server, with the open deck named so the copies it holds count
+   * as its own rather than as a conflict.
    */
   const ownershipFor = (mode: CollectionMode): CollectionUse | null => {
     if (mode === "off") return null;
     if (browserCollection && ownedIds) {
       return { ownership: { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: ownedIds }, mode };
     }
-    return source.kind === "account" ? { ownership: { kind: "account" }, mode } : null;
+    if (source.kind !== "account") return null;
+    return { ownership: { kind: "account", ...(openDeck ? { deckId: openDeck.deckId } : {}) }, mode };
   };
   const ownership = ownershipFor(collectionMode);
   const ownershipKey = collectionKey(ownership);

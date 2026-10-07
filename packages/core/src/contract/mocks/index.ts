@@ -17,6 +17,8 @@ import type { Bracket, CardId, CommanderKeyId, DeckId, TagId } from '../ids';
 import type {
   AddResult,
   AddSuggestion,
+  BuildCard,
+  BuildResult,
   CardCategory,
   CorpusEvidence,
   CostDelta,
@@ -35,6 +37,7 @@ import type {
 import type { CommanderRequest, CommanderRequestStatus } from '../commander-requests';
 import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
 import { ownedFirst, ownedOnly, rankKey } from '../../scoring/owned';
+import { buyList } from '../../scoring/rank';
 import { cardTypes } from '../../scoring/add';
 import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
 import { cardQuantity, setCardQuantity } from '../../collection/edit';
@@ -64,8 +67,12 @@ const MOCK_ACCOUNT_OWNED = new Set<number>([2, 3, 5, 9, 12, 16, 17]);
 const MOCK_SEVERE_SYNERGY_SCORE = 0.2;
 /** Mock stand-in for app_config.ownership.firstBoost: how far an owned card moves up in 'first' mode. */
 const MOCK_OWNED_FIRST_BOOST = 0.1;
-const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0 };
-const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role'];
+/** The buy list's settings, as `app_config.scoring.collection` starts them (a shorter list, for the mock catalog). */
+const MOCK_BUY_LIST = { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 5 };
+/** Lands a mock build aims for, about what Commander decks run (`app_config.scoring.build` holds the real counts). */
+const MOCK_BUILD_LANDS = 36;
+const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0 };
+const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'];
 
 const byId = new Map<number, CardSummary>(mockCards.map((c) => [c.id, c]));
 const byName = new Map<string, CardSummary>(
@@ -119,7 +126,8 @@ const corpusFor = (id: number): CorpusEvidence => {
 const corpusScore = (e: CorpusEvidence) =>
   round(clamp(0.6 * (0.5 + 0.5 * clamp(e.synergy / 0.3, -1, 1)) + 0.4 * Math.sqrt(e.inclusionRate), 0, 1));
 
-const blend = (components: Record<ScoreComponent, number | null>, voteCount: number): ScoreBreakdown => {
+const blend = (given: Partial<Record<ScoreComponent, number | null>>, voteCount: number): ScoreBreakdown => {
+  const components = Object.fromEntries(COMPONENTS.map((k) => [k, given[k] ?? null])) as Record<ScoreComponent, number | null>;
   const raw = Object.fromEntries(
     COMPONENTS.map((k) => {
       if (components[k] === null) return [k, 0];
@@ -256,7 +264,15 @@ const analyze = (deck: DeckInput): DeckAnalysis => {
     colorIdentity: identity,
     commanderKey: commanderKeyRef(deck.commanders),
     estimatedBracket,
+    bracketSignals: {
+      gameChangerCount: gameChangerIds.length,
+      massLandDenialIds: [],
+      extraTurnIds: [],
+      comboBracket: null,
+      extraTurnLoop: false,
+    },
     gameChangerIds,
+    combos: [],
     issues,
   };
   if (commanders.length === 0) analysis.commanderCandidates = all.filter(isCommanderEligible);
@@ -270,7 +286,7 @@ const ownedInfo = (owned: Set<number> | null, id: number) => (owned?.has(id) ? {
 /** In-memory implementations of the contract for frontend work (NEXT_PUBLIC_USE_MOCKS=1). */
 export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {}): MockApis {
   const delay = <T>(value: T, ms = latencyMs) => wait(value, ms);
-  const decks = new Map<string, { name: string; deck: DeckInput; isPublic: boolean; bracket?: Bracket; updatedAt: string }>();
+  const decks = new Map<string, { name: string; deck: DeckInput; isPublic: boolean; isBuilt: boolean; bracket?: Bracket; updatedAt: string }>();
   /** Mock codes stand in for the database's random ones, and match the shape openSavedDeckInputSchema accepts. */
   const deckCode = (id: string) => `mockdeck${id.replace(/\D/g, '') || '1'}`;
   const favorites = new Set<string>();
@@ -296,10 +312,9 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         const boost = ownedFirst(context) ? MOCK_OWNED_FIRST_BOOST : 0;
         const inDeck = deckCardIds(context.deck);
         const identity = deckIdentity(context.deck);
-        const suggestions = mockCards
+        const scored = mockCards
           .filter((c) => c.id !== target.id && !inDeck.has(c.id) && !isBasicLand(c) && withinIdentity(c, identity))
           .filter((c) => context.includeGameChangers || !c.gameChanger)
-          .filter((c) => !only || only.has(c.id))
           .map((c): SwapSuggestion => {
             const matchedTags = tagMatches(target.id, c.id);
             const corpus = corpusFor(c.id);
@@ -325,11 +340,17 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
               owned: ownedInfo(owned, c.id),
             };
           })
-          .filter((s) => (s.score.components.tag ?? 0) >= 0.25)
+          .filter((s) => (s.score.components.tag ?? 0) >= 0.25);
+        const listed = scored.filter((s) => !only || only.has(s.card.id));
+        const suggestions = listed
           .sort((a, b) => rankKey(b.score.total, b.owned !== null, boost) - rankKey(a.score.total, a.owned !== null, boost))
           .slice(0, limit);
 
         const result: SwapResult = { mode: modeOf(context), target, confidence: confidenceOf(context), suggestions };
+        if (only) {
+          const best = listed.reduce((max, s) => Math.max(max, s.score.total), 0);
+          result.buyList = buyList(scored.filter((s) => !only.has(s.card.id)), () => best, MOCK_BUY_LIST);
+        }
         if (suggestions.length === 0) {
           const noTags = (mockCardTags[target.id] ?? []).length === 0;
           result.emptyReason = noTags ? 'NO_TAGS_ON_TARGET' : only ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
@@ -348,10 +369,10 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         const inDeck = new Set<number>([...deckCardIds(context.deck), ...excludeCardIds]);
         const identity = deckIdentity(context.deck);
         const groups = new Map<CardCategory, AddSuggestion[]>();
+        const unowned: AddSuggestion[] = [];
         for (const c of mockCards) {
           if (inDeck.has(c.id) || isBasicLand(c) || !withinIdentity(c, identity)) continue;
           if (!context.includeGameChangers && c.gameChanger) continue;
-          if (only && !only.has(c.id)) continue;
           const corpus = corpusFor(c.id);
           const category = categoryOf(c.typeLine);
           const suggestion: AddSuggestion = {
@@ -362,8 +383,10 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             fillsRoles: (mockCardTags[c.id] ?? []).map((tag): TagRef => mockTagParent[tag.id] ?? tag),
             owned: ownedInfo(owned, c.id),
           };
-          groups.set(category, [...(groups.get(category) ?? []), suggestion]);
+          if (only && !only.has(c.id)) unowned.push(suggestion);
+          else groups.set(category, [...(groups.get(category) ?? []), suggestion]);
         }
+        const best = new Map([...groups].map(([category, list]) => [category, Math.max(...list.map((s) => s.score.total))]));
         const result: AddResult = {
           mode: modeOf(context),
           commanderKey: commanderKeyRef(context.deck.commanders),
@@ -374,6 +397,74 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
               .sort((a, b) => rankKey(b.score.total, b.owned !== null, boost) - rankKey(a.score.total, a.owned !== null, boost))
               .slice(0, limitPerCategory),
           })),
+          ...(only ? { buyList: buyList(unowned, (s) => best.get(s.category) ?? 0, MOCK_BUY_LIST) } : {}),
+        };
+        return delay(ok(result));
+      } catch (e) {
+        return delay(fail('VALIDATION', (e as Error).message));
+      }
+    },
+
+    async build({ context, fill = 'none' }) {
+      try {
+        const owned = ownedIds(context.ownership);
+        const commanders = context.deck.commanders.map(getCard);
+        const identity = unionIdentity(commanders);
+        const slots = 100 - commanders.length;
+        const kept = [...new Set(context.deck.cards.filter((e) => e.section === 'main').map((e) => e.cardId))].map(getCard).filter((c) => !isBasicLand(c));
+        const taken = new Set<number>([...context.deck.commanders, ...kept.map((c) => c.id)]);
+        const scored = (c: CardSummary, origin: BuildCard['origin']): BuildCard => {
+          const corpus = corpusFor(c.id);
+          return {
+            card: c,
+            category: categoryOf(c.typeLine),
+            corpus,
+            score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null, role: null }, 0),
+            fillsRoles: [],
+            owned: ownedInfo(owned, c.id),
+            origin,
+          };
+        };
+        // The mock catalog is small: every eligible card the collection supplies, best first, up to the nonland slots.
+        const candidates = mockCards
+          .filter((c) => !taken.has(c.id) && !isBasicLand(c) && withinIdentity(c, identity))
+          .filter((c) => context.includeGameChangers || !c.gameChanger)
+          .map((c) => scored(c, 'pick'))
+          .sort((a, b) => b.score.total - a.score.total || a.card.name.localeCompare(b.card.name));
+        const room = Math.max(0, slots - MOCK_BUILD_LANDS - kept.length);
+        const picks = candidates.filter((s) => !owned || owned.has(s.card.id)).slice(0, room);
+        const fills = owned && fill === 'value' ? candidates.filter((s) => !owned.has(s.card.id)).slice(0, room - picks.length) : [];
+        const cards = [...kept.map((c) => scored(c, 'kept')), ...picks, ...fills.map((s) => ({ ...s, origin: 'fill' as const }))];
+        const basicCards = mockCards.filter((c) => isBasicLand(c) && withinIdentity(c, identity));
+        const basicTotal = Math.min(MOCK_BUILD_LANDS, slots - cards.length);
+        const basics = basicCards.map((card, i) => ({
+          card,
+          quantity: Math.floor(basicTotal / basicCards.length) + (i < basicTotal % basicCards.length ? 1 : 0),
+        }));
+        const placed = cards.length + basics.reduce((n, b) => n + b.quantity, 0);
+        const gameChangerCount = [...commanders, ...cards.map((s) => s.card)].filter((c) => c.gameChanger).length;
+        const groups = new Map<CardCategory, BuildCard[]>();
+        for (const s of cards) groups.set(s.category, [...(groups.get(s.category) ?? []), s]);
+        const result: BuildResult = {
+          mode: modeOf(context),
+          commanderKey: commanderKeyRef(context.deck.commanders),
+          confidence: confidenceOf(context),
+          groups: [...groups].map(([category, list]) => ({ category, cards: list })),
+          basics: basics.filter((b) => b.quantity > 0),
+          landTarget: MOCK_BUILD_LANDS,
+          combos: [],
+          estimatedBracket: gameChangerCount === 0 ? 2 : gameChangerCount <= 3 ? 3 : 4,
+          bracketSignals: { gameChangerCount, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
+          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed, roleShortfalls: [] },
+          ...(owned && fill === 'value'
+            ? {
+                fillCost: {
+                  usd: round(fills.reduce((sum, s) => sum + (s.card.price?.usd ?? 0), 0)),
+                  cards: fills.length,
+                  asOf: fills.find((s) => s.card.price)?.card.price?.asOf ?? null,
+                },
+              }
+            : {}),
         };
         return delay(ok(result));
       } catch (e) {
@@ -549,7 +640,8 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
 
     async saveDeck({ deckId, name, deck, isPublic, bracket }) {
       const id = deckId ?? (`mock-deck-${nextDeckId++}` as DeckId);
-      decks.set(id, { name, deck, isPublic, ...(bracket === undefined ? {} : { bracket }), updatedAt: new Date().toISOString() });
+      const isBuilt = (deckId ? decks.get(deckId)?.isBuilt : undefined) ?? false;
+      decks.set(id, { name, deck, isPublic, isBuilt, ...(bracket === undefined ? {} : { bracket }), updatedAt: new Date().toISOString() });
       return delay(ok({ deckId: id, code: deckCode(id) }));
     },
 
@@ -587,7 +679,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       const saved = decks.get(deckId);
       if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
       const id = `mock-deck-${nextDeckId++}` as DeckId;
-      decks.set(id, { ...saved, name: name ?? `${saved.name} (copy)`, updatedAt: new Date().toISOString() });
+      decks.set(id, { ...saved, name: name ?? `${saved.name} (copy)`, isBuilt: false, updatedAt: new Date().toISOString() });
       return delay(ok({ deckId: id }));
     },
 
@@ -595,6 +687,13 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       const saved = decks.get(deckId);
       if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
       decks.set(deckId, { ...saved, isPublic, updatedAt: new Date().toISOString() });
+      return delay(ok(null));
+    },
+
+    async setDeckBuilt({ deckId, isBuilt }) {
+      const saved = decks.get(deckId);
+      if (!saved) return delay(fail('NOT_FOUND', 'Deck not found.'));
+      decks.set(deckId, { ...saved, isBuilt });
       return delay(ok(null));
     },
 
@@ -622,6 +721,11 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       if (value === 0) votes.delete(key);
       else votes.set(key, value);
       return delay(ok(voteSummary(targetCardId, replacementCardId)));
+    },
+
+    // Events only feed the accept rate, which the mocks don't keep.
+    async recordRecEvent() {
+      return delay(ok(null));
     },
 
     async setFavorite({ kind, refId, on }) {
@@ -783,6 +887,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         name: d.name,
         commanderKey: commanderKeyRef(d.deck.commanders),
         isPublic: d.isPublic,
+        isBuilt: d.isBuilt,
         cardCount: d.deck.commanders.length + d.deck.cards.reduce((n, c) => n + c.quantity, 0),
         ...(d.bracket === undefined ? {} : { bracket: d.bracket }),
         updatedAt: d.updatedAt,

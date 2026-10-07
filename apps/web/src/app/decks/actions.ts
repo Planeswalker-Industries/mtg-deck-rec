@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import type { ActionsApi, ApiError, Result } from "@mtg/core/contract";
 import {
+  deckBuiltInputSchema,
   deckVisibilityInputSchema,
   deleteDeckInputSchema,
   duplicateDeckInputSchema,
@@ -21,6 +22,7 @@ import {
   openSavedDeck,
   renameDeck,
   saveDeck,
+  setDeckBuilt,
   setDeckVisibility,
   type DeckRefusal,
 } from "@/lib/server/saved-decks";
@@ -135,6 +137,22 @@ export async function setDeckVisibilityAction(
     return { ok: true, data: null };
   } catch (err) {
     return failed(err, "Couldn't change who can see that deck. Try again in a moment.");
+  }
+}
+
+export async function setDeckBuiltAction(
+  input: Parameters<ActionsApi["setDeckBuilt"]>[0],
+): ReturnType<ActionsApi["setDeckBuilt"]> {
+  const parsed = parseInput(deckBuiltInputSchema, input);
+  if (!parsed.ok) return parsed;
+  const blocked = await limited();
+  if (blocked) return blocked;
+  try {
+    await setDeckBuilt(await createAuthClient(), parsed.data.deckId, parsed.data.isBuilt);
+    refreshList();
+    return { ok: true, data: null };
+  } catch (err) {
+    return failed(err, "Couldn't mark that deck. Try again in a moment.");
   }
 }
 

@@ -1,7 +1,9 @@
 import type { InputSchema } from "@mtg/core/schemas";
 import { z } from "zod";
 import {
+  ADMIN_ACCEPT_RATE_DAYS,
   ADMIN_PER_PAGE_MAX,
+  ADMIN_REC_MODES,
   ADMIN_SYNC_JOBS,
   ADMIN_SYNC_STATUSES,
   ADMIN_TAG_SORTS,
@@ -10,6 +12,7 @@ import {
   MAX_ADMIN_SEARCH_CHARS,
   MAX_DISPLAY_NAME_CHARS,
   MAX_TAG_REASON_CHARS,
+  type AdminRecMode,
   type AdminSyncJob,
   type AdminSyncStatus,
   type AdminTagSort,
@@ -97,6 +100,16 @@ export interface UpdateAdminTagInput {
 export const updateAdminTagInputSchema: InputSchema<UpdateAdminTagInput> = z.object({
   disabled: z.boolean({ error: "Say whether the tag is on or off." }),
   disabledReason: z.string().max(MAX_TAG_REASON_CHARS, `A reason is at most ${MAX_TAG_REASON_CHARS} characters.`).nullable().optional(),
+});
+
+export interface ListAdminAcceptRatesInput {
+  mode?: AdminRecMode;
+  days: number;
+}
+
+export const listAdminAcceptRatesInputSchema: InputSchema<ListAdminAcceptRatesInput> = z.object({
+  mode: z.enum(ADMIN_REC_MODES).optional(),
+  days: z.literal(ADMIN_ACCEPT_RATE_DAYS).default(ADMIN_ACCEPT_RATE_DAYS[1]),
 });
 
 export interface ListAdminSyncRunsInput {

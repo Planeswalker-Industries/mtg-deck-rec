@@ -140,6 +140,42 @@ export type Database = {
           },
         ]
       }
+      card_pairs: {
+        Row: {
+          card_a: number
+          card_b: number
+          lift: number
+          pair_decks: number
+        }
+        Insert: {
+          card_a: number
+          card_b: number
+          lift: number
+          pair_decks: number
+        }
+        Update: {
+          card_a?: number
+          card_b?: number
+          lift?: number
+          pair_decks?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_pairs_card_a_fkey"
+            columns: ["card_a"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_pairs_card_b_fkey"
+            columns: ["card_b"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_roles: {
         Row: {
           card_id: number
@@ -530,6 +566,48 @@ export type Database = {
           },
         ]
       }
+      commander_card_pairs: {
+        Row: {
+          card_a: number
+          card_b: number
+          commander_1: number
+          commander_2: number
+          lift: number
+          pair_decks: number
+        }
+        Insert: {
+          card_a: number
+          card_b: number
+          commander_1: number
+          commander_2?: number
+          lift: number
+          pair_decks: number
+        }
+        Update: {
+          card_a?: number
+          card_b?: number
+          commander_1?: number
+          commander_2?: number
+          lift?: number
+          pair_decks?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_card_pairs_card_a_fkey"
+            columns: ["card_a"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commander_card_pairs_card_b_fkey"
+            columns: ["card_b"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commander_card_scores: {
         Row: {
           card_id: number
@@ -539,6 +617,8 @@ export type Database = {
           corpus_value: number | null
           decks_with: number
           pool_score: number
+          prior_decks: number | null
+          prior_rate: number | null
           weight_scale: number | null
         }
         Insert: {
@@ -549,6 +629,8 @@ export type Database = {
           corpus_value?: number | null
           decks_with: number
           pool_score: number
+          prior_decks?: number | null
+          prior_rate?: number | null
           weight_scale?: number | null
         }
         Update: {
@@ -559,6 +641,8 @@ export type Database = {
           corpus_value?: number | null
           decks_with?: number
           pool_score?: number
+          prior_decks?: number | null
+          prior_rate?: number | null
           weight_scale?: number | null
         }
         Relationships: [
@@ -715,18 +799,30 @@ export type Database = {
         Row: {
           commander_1: number
           commander_2: number
+          edhrec_curve_profile: Json | null
+          edhrec_decks: number | null
+          edhrec_floor: number | null
+          edhrec_role_profile: Json | null
           has_sources: boolean
           use_commander: boolean
         }
         Insert: {
           commander_1: number
           commander_2?: number
+          edhrec_curve_profile?: Json | null
+          edhrec_decks?: number | null
+          edhrec_floor?: number | null
+          edhrec_role_profile?: Json | null
           has_sources: boolean
           use_commander: boolean
         }
         Update: {
           commander_1?: number
           commander_2?: number
+          edhrec_curve_profile?: Json | null
+          edhrec_decks?: number | null
+          edhrec_floor?: number | null
+          edhrec_role_profile?: Json | null
           has_sources?: boolean
           use_commander?: boolean
         }
@@ -742,29 +838,38 @@ export type Database = {
       }
       commander_stats: {
         Row: {
+          basic_land_count: number | null
           bracket_counts: Json
           commander_key_id: number
           computed_at: string
+          curve_profile: Json
           deck_count: number
           deck_months: Json
+          land_count: number | null
           role_profile: Json
           source_counts: Json
         }
         Insert: {
+          basic_land_count?: number | null
           bracket_counts: Json
           commander_key_id: number
           computed_at?: string
+          curve_profile?: Json
           deck_count: number
           deck_months?: Json
+          land_count?: number | null
           role_profile?: Json
           source_counts: Json
         }
         Update: {
+          basic_land_count?: number | null
           bracket_counts?: Json
           commander_key_id?: number
           computed_at?: string
+          curve_profile?: Json
           deck_count?: number
           deck_months?: Json
+          land_count?: number | null
           role_profile?: Json
           source_counts?: Json
         }
@@ -872,6 +977,7 @@ export type Database = {
           created_at: string
           id: string
           include_in_corpus: boolean
+          is_built: boolean
           is_public: boolean
           name: string
           updated_at: string
@@ -887,6 +993,7 @@ export type Database = {
           created_at?: string
           id?: string
           include_in_corpus?: boolean
+          is_built?: boolean
           is_public?: boolean
           name: string
           updated_at?: string
@@ -902,6 +1009,7 @@ export type Database = {
           created_at?: string
           id?: string
           include_in_corpus?: boolean
+          is_built?: boolean
           is_public?: boolean
           name?: string
           updated_at?: string
@@ -1126,49 +1234,56 @@ export type Database = {
         }
         Relationships: []
       }
-      rec_timeouts: {
+      rec_events: {
         Row: {
+          batch_id: string
+          bracket: number | null
+          card_ids: number[]
+          collection: string
           commander_ids: number[]
-          first_seen: string
-          fn: string
-          hits: number
+          components: Json | null
+          created_at: string
           id: number
-          identity_mask: number
-          last_seen: string
-          owned_only: boolean
+          kind: string
+          mode: string
+          position: number | null
           target_card_id: number | null
+          user_id: string | null
+          voter_key: string
         }
         Insert: {
+          batch_id: string
+          bracket?: number | null
+          card_ids: number[]
+          collection: string
           commander_ids?: number[]
-          first_seen?: string
-          fn: string
-          hits?: number
+          components?: Json | null
+          created_at?: string
           id?: never
-          identity_mask?: number
-          last_seen?: string
-          owned_only?: boolean
+          kind: string
+          mode: string
+          position?: number | null
           target_card_id?: number | null
+          user_id?: string | null
+          voter_key: string
         }
         Update: {
+          batch_id?: string
+          bracket?: number | null
+          card_ids?: number[]
+          collection?: string
           commander_ids?: number[]
-          first_seen?: string
-          fn?: string
-          hits?: number
+          components?: Json | null
+          created_at?: string
           id?: never
-          identity_mask?: number
-          last_seen?: string
-          owned_only?: boolean
+          kind?: string
+          mode?: string
+          position?: number | null
           target_card_id?: number | null
+          user_id?: string | null
+          voter_key?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "rec_timeouts_target_card_id_fkey"
-            columns: ["target_card_id"]
-            isOneToOne: false
-            referencedRelation: "cards"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       search_index_queue: {
         Row: {
@@ -1257,6 +1372,27 @@ export type Database = {
           kind?: string
           old_slug?: string
           target_id?: number
+        }
+        Relationships: []
+      }
+      spellbook_combo_details: {
+        Row: {
+          contextual_results: string[]
+          results: string[]
+          template_names: string[]
+          variant_id: string
+        }
+        Insert: {
+          contextual_results?: string[]
+          results?: string[]
+          template_names?: string[]
+          variant_id: string
+        }
+        Update: {
+          contextual_results?: string[]
+          results?: string[]
+          template_names?: string[]
+          variant_id?: string
         }
         Relationships: []
       }
@@ -1722,6 +1858,16 @@ export type Database = {
           total_count: number
         }[]
       }
+      admin_rec_accept_rates: {
+        Args: { p_days?: number; p_max_position?: number; p_mode?: string }
+        Returns: {
+          accepted: number
+          declined: number
+          mode: string
+          position: number
+          shown: number
+        }[]
+      }
       admin_set_display_name: {
         Args: { p_display_name: string; p_user_id: string }
         Returns: undefined
@@ -1738,6 +1884,7 @@ export type Database = {
         Args: { p_banned: boolean; p_user_id: string }
         Returns: undefined
       }
+      bracket_cards: { Args: never; Returns: Json }
       card_category: { Args: { p_type_line: string }; Returns: string }
       card_functional_tags: {
         Args: { p_card_id: number }
@@ -1880,10 +2027,6 @@ export type Database = {
         Args: { p_deck_id: string; p_name?: string }
         Returns: string
       }
-      edhrec_card_priors: {
-        Args: { p_card_ids: number[]; p_commander_ids: number[] }
-        Returns: Json
-      }
       get_commander_request: {
         Args: { p_card_id: number; p_client_key: string }
         Returns: Json
@@ -1898,22 +2041,13 @@ export type Database = {
         Returns: number
       }
       is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
-      log_rec_timeout: {
-        Args: {
-          p_commander_ids?: number[]
-          p_fn: string
-          p_identity_mask?: number
-          p_owned_only?: boolean
-          p_target_card_id?: number
-        }
-        Returns: undefined
-      }
+      my_card_availability: { Args: { p_deck_id?: string }; Returns: Json }
       my_collection_entries: { Args: never; Returns: Json }
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
       new_deck_code: { Args: never; Returns: string }
       precompute_substitutes: {
-        Args: { p_all: number; p_own: number; p_target: number }
+        Args: { p_depth: number; p_target: number }
         Returns: {
           card_id: number
           is_functional_twin: boolean
@@ -1922,65 +2056,23 @@ export type Database = {
       }
       prices_checked_at: { Args: never; Returns: string }
       rebuild_tag_closure: { Args: never; Returns: undefined }
-      rec_add_candidates:
-        | {
-            Args: {
-              p_allow_game_changers: boolean
-              p_alpha: number
-              p_deck_count: number
-              p_exclude: number[]
-              p_identity_mask: number
-              p_key_ids: number[]
-              p_limit?: number
-              p_owned?: number[]
-            }
-            Returns: {
-              baseline: number
-              card_id: number
-              decks_with: number
-            }[]
-          }
-        | {
-            Args: {
-              p_allow_game_changers: boolean
-              p_alpha: number
-              p_exclude: number[]
-              p_identity_mask: number
-              p_key_ids: number[]
-              p_key_weights: number[]
-              p_limit?: number
-              p_owned?: number[]
-            }
-            Returns: {
-              baseline: number
-              card_id: number
-              decks_with: number
-            }[]
-          }
-      rec_card_roles: {
-        Args: { p_card_ids: number[]; p_role_ids: string[] }
-        Returns: {
-          card_id: number
-          role_id: string
-        }[]
-      }
       rec_functional_tag_count: { Args: { p_card_id: number }; Returns: number }
-      rec_swap_candidates: {
+      record_rec_event: {
         Args: {
-          p_allow_game_changers: boolean
-          p_exclude: number[]
-          p_identity_mask: number
-          p_limit?: number
-          p_owned?: number[]
-          p_target: number
+          p_batch_id: string
+          p_bracket?: number
+          p_card_ids: number[]
+          p_collection?: string
+          p_commander_ids?: number[]
+          p_components?: Json
+          p_kind: string
+          p_mode: string
+          p_position?: number
+          p_target_card_id?: number
+          p_user_id?: string
+          p_visitor_key: string
         }
-        Returns: {
-          card_id: number
-          is_functional_twin: boolean
-          matches: Json
-          staple_score: number
-          tag_similarity: number
-        }[]
+        Returns: undefined
       }
       rename_deck: {
         Args: { p_deck_id: string; p_name: string }
@@ -2081,6 +2173,18 @@ export type Database = {
           position: number
         }[]
       }
+      serving_build_pool: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_basic_names: string[]
+          p_card_ids: number[]
+          p_commander_ids: number[]
+          p_exclude: number[]
+          p_limit?: number
+          p_owned?: number[]
+        }
+        Returns: Json
+      }
       serving_cards: {
         Args: { p_card_ids: number[]; p_commander_ids: number[] }
         Returns: Database["public"]["CompositeTypes"]["serving_card"][]
@@ -2104,6 +2208,40 @@ export type Database = {
         Returns: {
           card_id: number
           position: number
+        }[]
+      }
+      serving_commander_profile: {
+        Args: { p_commander_ids: number[] }
+        Returns: Json
+      }
+      serving_deck_affinity: {
+        Args: {
+          p_allow_game_changers?: boolean
+          p_card_ids: number[]
+          p_commander_ids: number[]
+          p_exclude?: number[]
+          p_neighbours?: number
+        }
+        Returns: Json
+      }
+      serving_deck_combos: {
+        Args: {
+          p_allow_game_changers?: boolean
+          p_card_ids: number[]
+          p_commander_ids: number[]
+          p_exclude?: number[]
+          p_limit?: number
+          p_near?: boolean
+        }
+        Returns: {
+          card: Database["public"]["CompositeTypes"]["serving_card"]
+          contextual_results: string[]
+          min_bracket: number
+          missing: number
+          pieces: number[]
+          results: string[]
+          template_names: string[]
+          variant_id: string
         }[]
       }
       serving_partner_pool: {
@@ -2144,6 +2282,10 @@ export type Database = {
         Args: { p_card_id: number; p_quantity: number }
         Returns: number
       }
+      set_deck_built: {
+        Args: { p_deck_id: string; p_is_built: boolean }
+        Returns: undefined
+      }
       set_deck_visibility: {
         Args: { p_deck_id: string; p_is_public: boolean }
         Returns: undefined
@@ -2182,6 +2324,8 @@ export type Database = {
         | "precompute_substitutes"
         | "precompute_roles"
         | "precompute_combos"
+        | "precompute_pairs"
+        | "precompute_global_pairs"
       sync_status:
         | "running"
         | "succeeded"
@@ -2223,6 +2367,10 @@ export type Database = {
         partner_decks_with: number | null
         partner_too_early: number | null
         role_ids: string[] | null
+        prior_rate: number | null
+        prior_decks: number | null
+        edhrec_floor: number | null
+        edhrec_decks: number | null
       }
     }
   }
@@ -2379,6 +2527,8 @@ export const Constants = {
         "precompute_substitutes",
         "precompute_roles",
         "precompute_combos",
+        "precompute_pairs",
+        "precompute_global_pairs",
       ],
       sync_status: [
         "running",

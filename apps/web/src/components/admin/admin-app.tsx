@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import { AdminLayout } from "./admin-layout";
 import { adminTheme } from "./theme";
 import { createAdminAuthProvider } from "./auth-provider";
+import { AcceptRateList } from "./accept-rates";
 import { adminDataProvider } from "./data-provider";
 import { SyncRunList, SyncRunShow } from "./sync-runs";
 import { TagEdit, TagList } from "./tags";
@@ -65,6 +66,8 @@ export default function AdminApp({ userId, email }: AdminAppProps) {
         />
         {/* The worker's run history, read-only. */}
         <Resource name="sync-runs" list={SyncRunList} show={SyncRunShow} options={{ label: "Sync runs" }} />
+        {/* How often suggestions shown in the deck tool are taken, per list and place (T065), read-only. */}
+        <Resource name="accept-rates" list={AcceptRateList} options={{ label: "Accept rate" }} />
       </Admin>
     </BrowserRouter>
   );
