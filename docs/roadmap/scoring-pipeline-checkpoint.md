@@ -36,7 +36,7 @@ branch is merged.
 | `a545362` | T060 | Bracket rules and the "complete a combo" group (contract v21) | CLAUDE.md "Combos", Bracket rules; `tasks.md` T060 |
 | `e4957c0` | T062 | Learned curve and land counts, EDHREC role and curve profiles, `curve` component (contract v22); all new switches off, none passed the gate | CLAUDE.md "The learned skeleton"; `tasks.md` T062 |
 | `93e43a6` | T064 | Card pairs and deck affinity (contract v23); `deck` weighs 0.1 in adds, recall@20 25.0% → 25.5% | CLAUDE.md "Card pairs and deck affinity"; `tasks.md` T064 |
-| T063 commit | T063 | Build a deck from a commander and a bracket (contract v24, migration `20261006001100`, `POST /api/recs/build`); build overlap 38.6% on the time split | CLAUDE.md "Builds"; `tasks.md` T063 |
+| `441efb1` | T063 | Build a deck from a commander and a bracket (contract v24, migration `20261006001100`, `POST /api/recs/build`); build overlap 38.6% on the time split | CLAUDE.md "Builds"; `tasks.md` T063 |
 
 Evaluation results for every task are in its `tasks.md` entry. The latest baseline on the time split (today's local
 settings, 2026-10-06): adds recall@20 25.5%, cuts precision@10 25.0%, collection recall 51.3%, builds 38.6% overlap.
