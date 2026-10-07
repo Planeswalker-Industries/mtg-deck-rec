@@ -1,4 +1,4 @@
-import type { CardDocument, CollectionSchema, CommanderCardDocument, TagDocument } from "./documents";
+import type { CardDocument, CollectionSchema, TagDocument } from "./documents";
 
 /**
  * Client for the search API (services/search-api), which is the only thing that talks to Typesense.
@@ -155,15 +155,6 @@ export class SearchClient {
   async allTags(): Promise<TagDocument[]> {
     const result = await this.request<{ tags: TagDocument[] }>("/v1/tags", { timeoutMs: Math.max(this.timeoutMs, 5_000) });
     return result.tags ?? [];
-  }
-
-  async commanderCardRates({ keyIds, cardIds }: { keyIds: readonly number[]; cardIds: readonly number[] }): Promise<CommanderCardDocument[]> {
-    if (keyIds.length === 0 || cardIds.length === 0) return [];
-    const result = await this.request<{ rates: CommanderCardDocument[] }>("/v1/commander-cards/rates", {
-      method: "POST",
-      body: JSON.stringify({ keyIds: [...keyIds], cardIds: [...cardIds] }),
-    });
-    return result.rates ?? [];
   }
 
   /** The cards a commander's decks play most, by shrunk inclusion — ids only; the caller scores them itself. */

@@ -1,4 +1,5 @@
 import type { CardSummary } from './cards';
+import type { ComboRef } from './recs';
 import type { Bracket, CardId, ColorIdentity, CommanderKeyId, DeckId, Finish, IsoDateTime } from './ids';
 
 export type DeckSection = 'commander' | 'main' | 'sideboard' | 'maybeboard' | 'companion';
@@ -75,12 +76,36 @@ export interface DeckIssue {
   message: string;
 }
 
+/** What the bracket estimate read from a deck (T060). */
+export interface BracketSignals {
+  gameChangerCount: number;
+  /** Mass land denial (Tagger's tag, planeswalkers left out): allowed from bracket 4. */
+  massLandDenialIds: CardId[];
+  /** Extra-turn cards (Tagger's tag, planeswalkers left out). */
+  extraTurnIds: CardId[];
+  /** The highest minimum bracket among the deck's complete combos; null with none. */
+  comboBracket: Bracket | null;
+  /** A complete combo takes infinite turns. */
+  extraTurnLoop: boolean;
+}
+
+/** A combo the deck holds every named piece of. Credit and link Commander Spellbook wherever it shows. */
+export interface DeckCombo extends ComboRef {
+  pieceIds: CardId[];
+  /** Pieces Spellbook names by template: not checked, so a combo with any doesn't count toward the bracket. */
+  alsoNeeded: string[];
+}
+
 export interface DeckAnalysis {
   deck: DeckInput;
   colorIdentity: ColorIdentity;
   commanderKey: CommanderKeyRef;
+  /** The lowest bracket the deck fits, within 2–4: 1 and 5 depend on intent. */
   estimatedBracket: Bracket;
+  bracketSignals: BracketSignals;
   gameChangerIds: CardId[];
+  /** The combos the deck holds, from Commander Spellbook. */
+  combos: DeckCombo[];
   issues: DeckIssue[];
   /** Present when issues contains MISSING_COMMANDER. */
   commanderCandidates?: CardSummary[];
@@ -124,6 +149,11 @@ export interface SavedDeckSummary {
    * choices still count toward play rates, and the control that sets it has to say so.
    */
   isPublic: boolean;
+  /**
+   * The player has put this deck together: its cards are taken, so suggestions for their other decks tag a card held
+   * here as a conflict. A list still being brewed holds nothing.
+   */
+  isBuilt: boolean;
   cardCount: number;
   /** The stored bracket, estimated or overridden, when one is known. */
   bracket?: Bracket;

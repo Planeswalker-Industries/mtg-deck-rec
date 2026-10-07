@@ -1,20 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BASELINE_CORPUS_WEIGHT,
-  commanderCorpusScore,
-  commanderShare,
-  baselineCorpusScore,
-  corpusComponent,
-  corpusConfidence,
-  decksSinceRelease,
-  neutralCorpusValue,
-  pickCorpusSources,
-  shrunkInclusion,
-  sourceDecksSinceRelease,
-  sourcesConfidence,
-  type CorpusKey,
-} from './corpus';
-import { blendScore, SWAP_WEIGHTS } from './swap';
+import { TEST_SCORING } from './test-config';
+import { commanderCorpusScore, commanderShare, baselineCorpusScore, corpusComponent, corpusConfidence, decksSinceRelease, neutralCorpusValue, pickCorpusSources, shrunkInclusion, sourceDecksSinceRelease, sourcesConfidence, type CorpusKey } from './corpus';
+import { blendScore } from './swap';
 
 const thresholds = { minDecks: 50, fullDecks: 100 };
 
@@ -123,11 +110,11 @@ describe('pickCorpusSources', () => {
 
 describe('commanderCorpusScore', () => {
   it('rises with synergy and inclusion and stays within 0..1', () => {
-    const neutral = commanderCorpusScore({ inclusion: 0.2, synergy: 0 });
-    expect(commanderCorpusScore({ inclusion: 0.2, synergy: 0.2 })).toBeGreaterThan(neutral);
-    expect(commanderCorpusScore({ inclusion: 0.6, synergy: 0 })).toBeGreaterThan(neutral);
-    expect(commanderCorpusScore({ inclusion: 2, synergy: 5 })).toBeLessThanOrEqual(1);
-    expect(commanderCorpusScore({ inclusion: -1, synergy: -5 })).toBeGreaterThanOrEqual(0);
+    const neutral = commanderCorpusScore({ inclusion: 0.2, synergy: 0 }, TEST_SCORING.corpus);
+    expect(commanderCorpusScore({ inclusion: 0.2, synergy: 0.2 }, TEST_SCORING.corpus)).toBeGreaterThan(neutral);
+    expect(commanderCorpusScore({ inclusion: 0.6, synergy: 0 }, TEST_SCORING.corpus)).toBeGreaterThan(neutral);
+    expect(commanderCorpusScore({ inclusion: 2, synergy: 5 }, TEST_SCORING.corpus)).toBeLessThanOrEqual(1);
+    expect(commanderCorpusScore({ inclusion: -1, synergy: -5 }, TEST_SCORING.corpus)).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -135,80 +122,35 @@ describe('corpusComponent', () => {
   const rate = { inclusion: 0.5, synergy: 0.4 };
 
   it('uses the baseline at half weight without enough commander decks', () => {
-    const c = corpusComponent({ commanderRate: rate, commanderDeckCount: 10, baseline: 0.25, baselineDeckCount: 5000 }, thresholds);
+    const c = corpusComponent({ commanderRate: rate, commanderDeckCount: 10, baseline: 0.25, baselineDeckCount: 5000 }, thresholds, TEST_SCORING.corpus);
     expect(c?.value).toBeCloseTo(0.5);
-    expect(c?.weightScale).toBe(BASELINE_CORPUS_WEIGHT);
+    expect(c?.weightScale).toBe(TEST_SCORING.corpus.baselineWeight);
   });
 
   it('uses the commander score at full weight with enough decks', () => {
-    const c = corpusComponent({ commanderRate: rate, commanderDeckCount: 100, baseline: 0.25, baselineDeckCount: 5000 }, thresholds);
-    expect(c?.value).toBeCloseTo(commanderCorpusScore(rate));
+    const c = corpusComponent({ commanderRate: rate, commanderDeckCount: 100, baseline: 0.25, baselineDeckCount: 5000 }, thresholds, TEST_SCORING.corpus);
+    expect(c?.value).toBeCloseTo(commanderCorpusScore(rate, TEST_SCORING.corpus));
     expect(c?.weightScale).toBe(1);
   });
 
   it('has no score when too few decks anywhere could have run the card, instead of a low one', () => {
     const newCard = { commanderRate: { inclusion: 0.02, synergy: -0.05 }, commanderDeckCount: 12, baseline: 0, baselineDeckCount: 30 };
-    expect(corpusComponent(newCard, thresholds)).toBeNull();
-    expect(corpusComponent({ ...newCard, commanderDeckCount: 80 }, thresholds)).not.toBeNull();
+    expect(corpusComponent(newCard, thresholds, TEST_SCORING.corpus)).toBeNull();
+    expect(corpusComponent({ ...newCard, commanderDeckCount: 80 }, thresholds, TEST_SCORING.corpus)).not.toBeNull();
   });
 
-  describe('the external prior', () => {
-    // EDHREC's published inclusion for this commander, standing in for decks of our own. The holdout test
-    // (spike:edhrec:prior) measured the colour baseline it replaces at 6% top-50 overlap against EDHREC's 80%.
-    const withPrior = { ...thresholds, externalPriorShare: 0.6 };
-    const priorRate = { inclusion: 0.8, synergy: 0.55 };
-
-    it('is off until app_config sets a share, so merging it changes no score', () => {
-      const off = corpusComponent(
-        { commanderRate: priorRate, commanderDeckCount: 0, baseline: 0.25, baselineDeckCount: 5000, hasExternalPrior: true },
-        thresholds,
-      );
-      const without = corpusComponent({ commanderRate: priorRate, commanderDeckCount: 0, baseline: 0.25, baselineDeckCount: 5000 }, thresholds);
-      expect(off?.value).toBeCloseTo(without?.value ?? NaN);
-      expect(off?.value).toBeCloseTo(baselineCorpusScore(0.25));
-    });
-
-    it('carries the commander score with no decks of our own, which the colour baseline cannot', () => {
-      const c = corpusComponent(
-        { commanderRate: priorRate, commanderDeckCount: 0, baseline: 0.25, baselineDeckCount: 5000, hasExternalPrior: true },
-        withPrior,
-      );
-      expect(c?.value).toBeCloseTo(0.6 * commanderCorpusScore(priorRate) + 0.4 * baselineCorpusScore(0.25));
-      expect(c?.value).toBeGreaterThan(baselineCorpusScore(0.25));
-    });
-
-    it('never outranks our own decks once there are enough of them', () => {
-      const ours = { inclusion: 0.3, synergy: 0.05 };
-      const atFull = corpusComponent(
-        { commanderRate: ours, commanderDeckCount: 100, baseline: 0.25, baselineDeckCount: 5000, hasExternalPrior: true },
-        withPrior,
-      );
-      // fullDecks reached: the share is 1 either way, so the prior changes nothing about the blend.
-      expect(atFull?.value).toBeCloseTo(commanderCorpusScore(ours));
-      expect(atFull?.weightScale).toBe(1);
-    });
-
-    it('is a floor on the share, not a cap: our own decks raise it past the prior', () => {
-      const mid = (hasExternalPrior: boolean) =>
-        corpusComponent({ commanderRate: priorRate, commanderDeckCount: 90, baseline: 0.25, baselineDeckCount: 5000, hasExternalPrior }, withPrior);
-      // 90 decks is share 0.8, already above the prior's 0.6, so the prior must not drag it back down.
-      expect(mid(true)?.value).toBeCloseTo(mid(false)?.value ?? NaN);
-    });
-
-    it('does not discard a card the source lists just because our corpus is too young for it', () => {
-      // The null result means "too new to judge". A card EDHREC publishes a rate for under this commander is one
-      // somebody plays, which is exactly the recent card the prior is most useful for.
-      const tooNew = { commanderRate: { inclusion: 0.4, synergy: 0.2 }, commanderDeckCount: 0, baseline: 0, baselineDeckCount: 30 };
-      expect(corpusComponent(tooNew, withPrior)).toBeNull();
-      expect(corpusComponent({ ...tooNew, hasExternalPrior: true }, withPrior)).not.toBeNull();
-    });
+  it("does not discard a card the commander's EDHREC page lists just because our corpus is too young for it", () => {
+    // The null result means "too new to judge". A card EDHREC lists under this commander is one somebody plays.
+    const tooNew = { commanderRate: { inclusion: 0.4, synergy: 0.2 }, commanderDeckCount: 0, baseline: 0, baselineDeckCount: 30 };
+    expect(corpusComponent(tooNew, thresholds, TEST_SCORING.corpus)).toBeNull();
+    expect(corpusComponent({ ...tooNew, hasExternalPrior: true }, thresholds, TEST_SCORING.corpus)).not.toBeNull();
   });
 
   // Real baselines from the Archidekt spike: Lightning Bolt 8.7% of red decks, Viridian Longbow 0.1% of all decks.
   it('lets play rates separate a staple from a rarely played card with the same tags', () => {
-    const weightsFor = (scale: number) => ({ ...SWAP_WEIGHTS.collection_less, corpus: SWAP_WEIGHTS.collection_less.corpus * scale });
+    const weightsFor = (scale: number) => ({ ...TEST_SCORING.weights.swap.collection_less, corpus: TEST_SCORING.weights.swap.collection_less.corpus * scale });
     const score = (baseline: number) => {
-      const corpus = corpusComponent({ commanderRate: null, commanderDeckCount: 0, baseline, baselineDeckCount: 9000 }, thresholds);
+      const corpus = corpusComponent({ commanderRate: null, commanderDeckCount: 0, baseline, baselineDeckCount: 9000 }, thresholds, TEST_SCORING.corpus);
       if (!corpus) throw new Error('expected a corpus score');
       return blendScore(
         { tag: 0.6, manaValue: 0.5, staple: 0.5, corpus: corpus.value, votes: null, role: null },
@@ -221,11 +163,11 @@ describe('corpusComponent', () => {
 
 describe('neutralCorpusValue', () => {
   it('scores a card too new to judge like the typical candidate beside it', () => {
-    expect(neutralCorpusValue([0.2, 0.9, 0.5])).toBe(0.5);
-    expect(neutralCorpusValue([0.2, 0.4, 0.6, 0.9])).toBeCloseTo(0.5);
+    expect(neutralCorpusValue([0.2, 0.9, 0.5], TEST_SCORING.corpus)).toBe(0.5);
+    expect(neutralCorpusValue([0.2, 0.4, 0.6, 0.9], TEST_SCORING.corpus)).toBeCloseTo(0.5);
   });
 
   it('falls back to the middle of the scale when nothing else is known', () => {
-    expect(neutralCorpusValue([])).toBe(0.5);
+    expect(neutralCorpusValue([], TEST_SCORING.corpus)).toBe(0.5);
   });
 });

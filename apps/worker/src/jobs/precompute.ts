@@ -1,20 +1,22 @@
 import { connect } from '../lib/db';
 import { precomputeBaseline, precomputeCommanders } from './precompute-commanders';
+import { precomputeGlobalPairs, precomputePairs } from './precompute-pairs';
 import { precomputeScores, scoreSettingsChanged } from './precompute-scores';
 import { precomputeSubstitutes } from './precompute-substitutes';
 import { precomputeCombos, precomputeRoles } from './precompute-tables';
 
 /** The precompute worker's parts (T055), in the order a run takes them. */
-export const PRECOMPUTE_PARTS = ['commanders', 'baseline', 'scores', 'substitutes', 'roles', 'combos'] as const;
+export const PRECOMPUTE_PARTS = ['commanders', 'baseline', 'scores', 'substitutes', 'roles', 'combos', 'pairs', 'global-pairs'] as const;
 export type PrecomputePart = (typeof PRECOMPUTE_PARTS)[number];
 
 /** What runs when no part is named: everything that skips itself while its inputs haven't moved. */
-const SELF_SKIPPING: readonly PrecomputePart[] = ['commanders', 'scores', 'substitutes', 'roles', 'combos'];
+const SELF_SKIPPING: readonly PrecomputePart[] = ['commanders', 'scores', 'substitutes', 'roles', 'combos', 'pairs'];
 
 /**
  * `cli precompute`. Without `--part`, the parts that skip themselves when their inputs haven't moved: the commanders
  * queued as dirty, scores if app_config.corpus changed, substitutes that are due, roles and combo pieces if their
- * inputs moved. `full` adds the nightly baseline and rebuilds every score, substitute list, role and combo piece.
+ * inputs moved, and the card pairs of keys whose stats moved. `full` adds the nightly baseline and the corpus's pairs
+ * and rebuilds every score, substitute list, role, combo piece and key's pairs.
  */
 export async function precompute({
   parts,
@@ -47,6 +49,12 @@ export async function precompute({
           break;
         case 'combos':
           await precomputeCombos(sql, { force: force || full });
+          break;
+        case 'pairs':
+          await precomputePairs(sql, { full, force });
+          break;
+        case 'global-pairs':
+          if ((await precomputeGlobalPairs(sql, { force: force || full })) === 'failed_sanity') return;
           break;
       }
     }

@@ -1,7 +1,8 @@
 # Unified scoring design
 
-Status: **design, revised 2026-10-05** after the owner's review. Nothing here is built yet; [`../tasks.md`](../tasks.md)
-tracks it as T053–T066.
+Status: **design, revised 2026-10-05** after the owner's review; **built 2026-10-06 on `feat/scoring-pipeline`** (PR #139)
+except where [`../tasks.md`](../tasks.md) (T053–T068) says otherwise. Two known gaps: cuts still rank by the
+hand-weighted cut score (`cut.ts`), not by m(c | D − c), and the land count has no EDHREC step (T068).
 
 **What it does.** One scoring engine serves every recommendation the app makes, across every data source: Archidekt
 decks, EDHREC statistics, Commander Spellbook combos, and our players' decks. It covers three modes:
@@ -306,13 +307,17 @@ One version bump per task that touches the contract:
 - `AddResult` and `SwapResult` gain `buyList` (suggestions with `valueScore` and price).
 - `OwnershipInput` carries quantities. `ownershipMode` defaults to `'only'` with a buy list.
 - A new `BuildApi.build({commanderIds, bracket, ownership, fill})` returns
-  `{deck, groups, combos, bracket, feasibility, fillCost?}`.
+  `{deck, groups, combos, bracket, feasibility, fillCost?}`. Built as `RecsApi.build` (contract v24, T063): it shares the
+  recommendation routes' transport and takes their `RecContext`.
 - `DeckAnalysis` gains `combos` (pieces, results, Spellbook link) and `bracketSignals`. Display per T045.
 
 ## Evaluation
 
 Built on `cli eval:holdout` (T058), over the collated `corpus.decks`. Reports go to `$MTG_DATA_DIR/reports` and the
 run's log.
+
+**Built 2026-10-06** (T058, `apps/worker/src/jobs/eval-holdout.ts`; settings in `app_config.scoring.eval`). The baseline
+and what each test does are in [`../tasks.md`](../tasks.md) (T058). The time split for the EDHREC prior comes with T061.
 
 - **Split** `corpus.decks` 90/10 **by deck** with a fixed seed (`app_config.scoring.evalSeed`), and build the stats from
   the 90% only.

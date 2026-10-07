@@ -1,10 +1,15 @@
+import type { CollectionCopies } from "@mtg/core/collection";
 import type { RecContext, SwapResult } from "@mtg/core/contract";
-import { ownedOnly } from "@mtg/core/scoring";
+import { bracketExclusions, mainDeckIds, ownedOnly, rankSwaps, type SwapPool } from "@mtg/core/scoring";
 import { cacheLife, cacheTag } from "next/cache";
 import { loadCardPage, type CardPageData } from "./card-page";
 import { loadCommanderPage, type CommanderPage } from "./commander-page";
 import { type FeaturedCommander, loadFeaturedCommanders } from "./featured";
-import { getSwapSuggestions, loadOwnedBoost, loadSwapPool, NotFoundError, rankSwaps, SHARED_SWAP_POOL, type SwapPool } from "./recs";
+import { loadBracketBasics } from "./brackets";
+import { availabilityFor, loadStandIns } from "./collection-availability";
+import { DEFAULT_SWAP_LIMIT, getSwapSuggestions, loadOwnedBoost, loadSwapPool, NotFoundError, SHARED_SWAP_POOL } from "./recs";
+import { loadScoringConfig } from "./scoring-config";
+import { loadDeckAffinity } from "./serving";
 import { createPublicClient, type PublicClient } from "./supabase";
 
 /**
@@ -53,24 +58,36 @@ export async function getCommanderPage(slug: string): Promise<CommanderPage | nu
   return loadCommanderPage(createPublicClient(), slug);
 }
 
+const cachedOpenPool = (_db: PublicClient, targetCardId: number, commanderIds: readonly number[], includeGameChangers: boolean) =>
+  sharedSwapPool(targetCardId, [...new Set<number>(commanderIds)].sort((a, b) => a - b), includeGameChangers);
+
 /**
- * Swap suggestions for the swap route. Collection-less requests share the cached pool and only rank it for this deck;
- * collection-aware requests depend on the user's cards and skip the cache. Kept apart from recs.ts so scripts can run
- * the recommendation code outside Next.js.
+ * Swap suggestions for the swap route. Collection-less requests share the cached pool and only rank it for this deck.
+ * 'only' mode reads the user's own pool uncached, with the cached one beside it for the buy list. Kept apart from
+ * recs.ts so scripts can run the recommendation code outside Next.js.
  */
 export async function getCachedSwapSuggestions(
   db: PublicClient,
-  { context, targetCardId, limit }: { context: RecContext; targetCardId: number; limit?: number },
+  { context, collection, targetCardId, limit }: { context: RecContext; collection: CollectionCopies | null; targetCardId: number; limit?: number },
 ): Promise<SwapResult> {
   // 'only' mode narrows the pool to the user's cards; 'first' ranks the same pool everyone gets, so it shares the cache.
-  if (ownedOnly(context)) return getSwapSuggestions(db, { context, targetCardId, limit });
-  const commanderIds = [...new Set<number>(context.deck.commanders)].sort((a, b) => a - b);
-  const [pool, ownedBoost] = await Promise.all([
-    sharedSwapPool(targetCardId, commanderIds, context.includeGameChangers),
+  if (collection && ownedOnly(context)) {
+    return getSwapSuggestions(db, { context, collection, targetCardId, ...(limit === undefined ? {} : { limit }), buyPool: cachedOpenPool });
+  }
+  // The twin groups behind availability are cached per instance, so this rarely costs a read; the stand-ins' rows go out
+  // with the rest, as on the uncached path, so an owned twin counts as owned here too.
+  const available = await availabilityFor(db, collection);
+  const [pool, ownedBoost, scoring, standIns, bracket, affinity] = await Promise.all([
+    cachedOpenPool(db, targetCardId, context.deck.commanders, context.includeGameChangers),
     loadOwnedBoost(db, context),
+    loadScoringConfig(),
+    loadStandIns(db, available),
+    loadBracketBasics(db),
+    loadDeckAffinity(db, mainDeckIds(context), context.deck.commanders),
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
-  return rankSwaps(pool, { context, limit, ownedBoost });
+  const excluded = bracketExclusions({ ...bracket, combos: [] }, context.bracket);
+  return rankSwaps(pool, { context, limit: limit ?? DEFAULT_SWAP_LIMIT, ownedBoost, scoring, availability: available, standIns, excluded, affinity });
 }
 
 /**

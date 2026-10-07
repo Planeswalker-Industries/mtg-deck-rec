@@ -36,10 +36,10 @@ interface Dirty {
 /** The decks of these commanders (or pairs), in id order, so the first copy of a cross-posted deck is the one counted. */
 async function* decksOf(sql: Sql, batch: readonly Dirty[]): AsyncGenerator<CorpusDeck> {
   const rows = await sql<
-    { source: string; source_deck_id: string; commander_card_ids: number[]; card_ids: number[]; month: string; content_hash: string }[]
+    { source: string; source_deck_id: string; commander_card_ids: number[]; card_ids: number[]; month: string; content_hash: string; basic_lands: number }[]
   >`
     select d.source, d.source_deck_id, d.commander_card_ids, d.card_ids, to_char(d.updated_month, 'YYYY-MM') as month,
-           encode(d.content_hash, 'hex') as content_hash
+           encode(d.content_hash, 'hex') as content_hash, d.basic_lands
     from unnest(${batch.map((b) => b.commander_1)}::int[], ${batch.map((b) => b.commander_2)}::int[]) as k (c1, c2)
     join corpus.decks d on d.commander_card_ids = (case when k.c2 = 0 then array[k.c1] else array[k.c1, k.c2] end)
     order by d.id
@@ -52,6 +52,7 @@ async function* decksOf(sql: Sql, batch: readonly Dirty[]): AsyncGenerator<Corpu
       cardIds: r.card_ids,
       month: r.month,
       contentHash: r.content_hash,
+      basicLands: r.basic_lands,
     };
   }
 }

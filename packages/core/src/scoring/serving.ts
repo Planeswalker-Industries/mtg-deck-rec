@@ -1,4 +1,5 @@
 import type { CorpusEvidence } from '../contract';
+import type { CorpusScoring } from './config';
 import {
   commanderCorpusScore,
   commanderShare,
@@ -22,35 +23,51 @@ export const IDENTITY_COUNT = 32;
 
 export interface ServingSettings extends CorpusThresholds, PoolSettings {
   shrinkAlpha: number;
+  /** κcap: the most decks the EDHREC prior counts as (0 turns it off). */
+  edhrecPriorCap: number;
+}
+
+/** A commander's (or pair's) EDHREC page: how many decks it describes and the lowest inclusion it lists. */
+export interface EdhrecPage {
+  deckCount: number;
+  /** The lowest inclusion the page lists: a card it leaves out is played less than this. */
+  floor: number;
+}
+
+/** A card the page lists: its inclusion there and the decks that could have run it. */
+export interface EdhrecListing {
+  rate: number;
+  potentialDecks: number;
+}
+
+/** What a card's commander inclusion is shrunk toward, and how many decks that counts as (T061). */
+export interface CardPrior {
+  target: number;
+  strength: number;
+  /** The page lists the card. */
+  listed: boolean;
 }
 
 /**
- * Used for any key app_config.corpus lacks; the web app and the precompute worker read the settings through
- * `servingSettings`, so both fall back to the same numbers. externalPriorShare 0 keeps the EDHREC prior off.
+ * The EDHREC prior for one card under one commander (scoring-design.md, "`corpus`"): toward the page's rate for a card it
+ * lists, with the strength of its potential decks; toward min(p0, floor) for a card it leaves out, with the strength of
+ * the page's decks; both capped at `edhrecPriorCap`, so our own decks take over as they grow. Null without a page or
+ * with the prior off, which leaves the shrink toward the baseline at alpha.
  */
-export const DEFAULT_SERVING_SETTINGS: Readonly<Required<ServingSettings>> = {
-  shrinkAlpha: 20,
-  minDecks: 50,
-  fullDecks: 100,
-  partnerPoolWeight: 0.25,
-  externalPriorShare: 0,
-};
-
-/** The scoring settings in app_config.corpus, each missing or malformed key replaced by its default. */
-export function servingSettings(value: unknown): Required<ServingSettings> {
-  const raw = (value ?? {}) as Record<string, unknown>;
-  const read = (key: keyof ServingSettings) => {
-    const v = raw[key];
-    return typeof v === 'number' && Number.isFinite(v) ? v : DEFAULT_SERVING_SETTINGS[key];
-  };
-  return {
-    shrinkAlpha: read('shrinkAlpha'),
-    minDecks: read('minDecks'),
-    fullDecks: read('fullDecks'),
-    partnerPoolWeight: read('partnerPoolWeight'),
-    externalPriorShare: read('externalPriorShare'),
-  };
+export function cardPrior(
+  page: EdhrecPage | null,
+  listing: EdhrecListing | null,
+  baselineRate: number,
+  settings: Pick<ServingSettings, 'edhrecPriorCap'>,
+): CardPrior | null {
+  if (!page || settings.edhrecPriorCap <= 0) return null;
+  if (listing) return { target: listing.rate, strength: Math.min(listing.potentialDecks, settings.edhrecPriorCap), listed: true };
+  return { target: Math.min(baselineRate, page.floor), strength: Math.min(page.deckCount, settings.edhrecPriorCap), listed: false };
 }
+
+/** A page's evidence for its commander as a whole, for deciding whether requests draw on the commander's own cards. */
+export const pageEvidence = (page: EdhrecPage | null, settings: Pick<ServingSettings, 'edhrecPriorCap'>): number =>
+  page && settings.edhrecPriorCap > 0 ? Math.min(page.deckCount, settings.edhrecPriorCap) : 0;
 
 /** One commander key's counts for one card: a `commander_card_stats` row. */
 export interface KeyCardCount {
@@ -80,7 +97,7 @@ export interface CommanderCardCounts {
   /** Decks that could have run it: sources whose colours allow it, updated since its release. What the request scores. */
   commanderDecks: number;
   /**
-   * The add pool's count, as `rec_add_candidates` made it: every deck of the sources whose colours allow the card, less
+   * The add pool's count, as the retired `rec_add_candidates` made it: every deck of the sources whose colours allow the card, less
    * the decks too early for it among the keys that ran it. It differs from `commanderDecks` for keys that never ran the
    * card, whose older decks it still counts. Kept as it was, so the pool holds the same cards (T055 parity).
    */
@@ -157,10 +174,16 @@ export function identityPoolDecks(sources: readonly CorpusSource[]): number[] {
   );
 }
 
-/** The add pool's order (`rec_add_candidates`): the commander-specific score over `poolDecks`. */
-export function addPoolScore(counts: Pick<CommanderCardCounts, 'decksWith' | 'poolDecks'>, baseline: number, alpha: number): number {
-  const inclusion = shrunkInclusion(counts.decksWith, counts.poolDecks, baseline, alpha);
-  return commanderCorpusScore({ inclusion, synergy: inclusion - baseline });
+/** The add pool's order (`pool_score`, as the retired `rec_add_candidates` ranked it): the commander-specific score over `poolDecks`. */
+export function addPoolScore(
+  counts: Pick<CommanderCardCounts, 'decksWith' | 'poolDecks'>,
+  baseline: number,
+  alpha: number,
+  scoring: CorpusScoring,
+  prior: CardPrior | null = null,
+): number {
+  const inclusion = shrunkInclusion(counts.decksWith, counts.poolDecks, prior?.target ?? baseline, prior?.strength ?? alpha);
+  return commanderCorpusScore({ inclusion, synergy: inclusion - baseline }, scoring);
 }
 
 /** Decks of every identity that allows the card, updated since its release: the baseline's count for a card no deck runs. */
@@ -187,39 +210,67 @@ export interface BaselineCounts {
 export interface ServedCardRates {
   baseline: number;
   baselineDeckCount: number;
+  /** The evidence: the commander's decks that could have run the card, plus the prior's strength. */
   commanderDeckCount: number;
   commanderRate: CommanderCardRate | null;
+  /** The commander's EDHREC page lists the card. */
+  hasExternalPrior: boolean;
+  /** Our own counts only: a score built mostly on EDHREC's numbers never shows them. */
   evidence: CorpusEvidence;
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
- * A card's rates for one commander from its counts and baseline: the commander's decks shrunk toward the baseline when
- * any could have run the card, the baseline alone otherwise. `pooled` marks evidence counted partly over borrowed decks.
+ * A card's rates for one commander from its counts and baseline: the commander's decks shrunk toward the prior (the
+ * EDHREC page's, `cardPrior`) or toward the baseline at alpha, the baseline alone when neither decks nor a page say
+ * anything. `pooled` marks evidence counted partly over borrowed decks.
  */
 export function servedCardRates(
   counts: Pick<CommanderCardCounts, 'decksWith' | 'commanderDecks'>,
   baseline: BaselineCounts,
   settings: ServingSettings,
   pooled: boolean,
+  prior: CardPrior | null = null,
 ): ServedCardRates {
   // corpusComponent's null case: no usable play rate from the commander's decks or from decks overall.
-  const isLimited = (commanderDecks: number) => commanderShare(commanderDecks, settings) === 0 && baseline.eligibleDecks < settings.minDecks;
-  if (counts.commanderDecks > 0) {
-    const inclusion = shrunkInclusion(counts.decksWith, counts.commanderDecks, baseline.rate, settings.shrinkAlpha);
+  const isLimited = (evidence: number) => commanderShare(evidence, settings) === 0 && baseline.eligibleDecks < settings.minDecks;
+  const evidenceDecks = counts.commanderDecks + (prior?.strength ?? 0);
+  if (counts.commanderDecks > 0 || prior) {
+    const inclusion = shrunkInclusion(counts.decksWith, counts.commanderDecks, prior?.target ?? baseline.rate, prior?.strength ?? settings.shrinkAlpha);
+    const commanderRate = { inclusion, synergy: inclusion - baseline.rate };
+    const listed = prior?.listed ?? false;
+    if (counts.commanderDecks === 0) {
+      // Only the prior speaks for the commander: the score uses it, the evidence shows the colours' numbers.
+      return {
+        baseline: baseline.rate,
+        baselineDeckCount: baseline.eligibleDecks,
+        commanderDeckCount: evidenceDecks,
+        commanderRate,
+        hasExternalPrior: listed,
+        evidence: {
+          scope: 'colors',
+          decksWith: baseline.decksWith,
+          commanderDeckCount: baseline.eligibleDecks,
+          inclusionRate: round3(baseline.rate),
+          synergy: 0,
+          limited: isLimited(evidenceDecks) && !listed,
+        },
+      };
+    }
     return {
       baseline: baseline.rate,
       baselineDeckCount: baseline.eligibleDecks,
-      commanderDeckCount: counts.commanderDecks,
-      commanderRate: { inclusion, synergy: inclusion - baseline.rate },
+      commanderDeckCount: evidenceDecks,
+      commanderRate,
+      hasExternalPrior: listed,
       evidence: {
         scope: 'commander',
         decksWith: Math.round(counts.decksWith),
         commanderDeckCount: Math.round(counts.commanderDecks),
         inclusionRate: round3(counts.decksWith / counts.commanderDecks),
         synergy: round3(inclusion - baseline.rate),
-        limited: isLimited(counts.commanderDecks),
+        limited: isLimited(evidenceDecks),
         ...(pooled ? { pooled: true } : {}),
       },
     };
@@ -229,6 +280,7 @@ export function servedCardRates(
     baselineDeckCount: baseline.eligibleDecks,
     commanderDeckCount: 0,
     commanderRate: null,
+    hasExternalPrior: false,
     evidence: {
       scope: 'colors',
       decksWith: baseline.decksWith,
@@ -241,14 +293,20 @@ export function servedCardRates(
 }
 
 /** The stored final corpus score: `corpusComponent` over the served rates (null: too few decks anywhere to judge). */
-export function servedCorpusScore(rates: ServedCardRates, settings: ServingSettings): { value: number; weightScale: number } | null {
+export function servedCorpusScore(
+  rates: ServedCardRates,
+  settings: ServingSettings,
+  scoring: CorpusScoring,
+): { value: number; weightScale: number } | null {
   return corpusComponent(
     {
       commanderRate: rates.commanderRate,
       commanderDeckCount: rates.commanderDeckCount,
       baseline: rates.baseline,
       baselineDeckCount: rates.baselineDeckCount,
+      hasExternalPrior: rates.hasExternalPrior,
     },
     settings,
+    scoring,
   );
 }

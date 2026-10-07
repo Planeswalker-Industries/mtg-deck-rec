@@ -1,6 +1,7 @@
 import type { CommanderCardFacts } from "@mtg/core/commander";
 import { maskToIdentity } from "@mtg/core/commander";
 import type { CardId, CardImages, CardSummary, Finish, OracleId } from "@mtg/core/contract";
+import type { RankCard } from "@mtg/core/scoring";
 import { cardRowFromDocument } from "@mtg/core/search";
 import { fromIndex } from "./search-index";
 import type { PublicClient } from "./supabase";
@@ -62,6 +63,11 @@ export function toCardSummary(row: CardRow, today = todayIso()): CardSummary {
         ? { usd: Number(row.reference_price_usd), finish: toFinish(row.reference_price_finish), asOf: row.prices_as_of, source: "scryfall" }
         : null,
   };
+}
+
+/** A card as the ranking in `@mtg/core/scoring` reads it. */
+export function rankCardOf(row: CardRow): RankCard {
+  return { summary: toCardSummary(row), colorIdentity: row.color_identity, legal: row.legal_commander === "legal", isBasicLand: row.is_basic_land };
 }
 
 export function toCommanderFacts(row: CardRow): CommanderCardFacts {

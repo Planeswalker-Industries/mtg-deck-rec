@@ -124,7 +124,7 @@ The recommendation direction is "Collection Fit" — cheaper alternatives are pr
 
 ### T008: Swap pool caching across serverless instances
 
-**Priority:** HIGH | **Area:** Backend / Performance | **Status:** Closes with T055's retirement PR (serving reads built 2026-10-06)
+**Priority:** HIGH | **Area:** Backend / Performance | **Status:** Done on `feat/scoring-pipeline` (2026-10-06): the per-request rec functions are removed (migration `20261006000200`); closes when that branch merges
 
 **Measured 2026-10-05 on hosted:** calls to `rec_add_candidates` and `rec_swap_candidates` average 0.8–1.0 s and peak at the 3 s `anon` timeout, and `rec_timeouts` gained a swap row on 2026-09-30. T055 replaces both functions with indexed reads of precomputed tables, which removes the query this ticket would cache. Build a cache here only if T055 slips.
 
@@ -490,7 +490,7 @@ Each source's data moves into its own schema, as the source published it (`archi
 
 ### T055: Precompute worker and the serving request path
 
-**Priority:** HIGH | **Area:** Worker / Backend | **Status:** Built 2026-10-06 (migrations `20261005000900`, `20261005001000`), one round per add, cut and swap, `app_config.recs.servingReads` off; waiting for release, the first precompute on hosted and the switch, then the retirement PR | **Blocked by:** T054
+**Priority:** HIGH | **Area:** Worker / Backend | **Status:** Live in production since 2026-10-07 (`servingReads` on after hosted parity); the old path leaves the code with PR #139 and the database with T067 | **Blocked by:** T054
 
 The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substitutes`, `card_roles`, `spellbook_combo_pieces`, and per-dirty-commander `commander_stats`) are built by the precompute worker, and the add, cut and swap paths become indexed reads, sent in one round, with scoring in `@mtg/core`. `rec_add_candidates`, `rec_swap_candidates`, `retry-timeout.ts` and `rec_timeouts` retire. On hosted, calls to the two functions average 0.8–1.0 s and peak at the 3 s timeout (2026-10-05). CLAUDE.md ("Precompute worker") has the rules.
 
@@ -502,11 +502,11 @@ The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substi
 
 **Acceptance criteria:**
 - [x] Parity: the same add and swap lists as before the switch (regression fixtures plus a parity script), locally
-- [ ] Parity on hosted (`serving-parity.ts` through the publishable key, reads only) before the switch
-- [ ] p95 add and swap latency on hosted recorded before and after (`serving-parity.ts --timing`)
+- [x] Parity on hosted (`serving-parity.ts` through the publishable key, reads only) before the switch (2026-10-07)
+- [x] p95 add and swap latency on hosted recorded before and after (adds 352/632 → 150/286 ms at p50/p95, 2026-10-07)
 - [x] Diff-only writes, sanity gates, and a schedule in `app_config.worker`
 - [x] One round per add, cut and swap on the serving path (`serving-parity.ts` counts them)
-- [ ] T008 closed; T040 closed as moot (the retirement PR)
+- [ ] T008 closed; T040 closed as moot (with T067)
 
 **On hosted (2026-10-06):** released through `20261005001000`; `collate` (79,759 decks), `aggregate:corpus` (2,818 commanders, 1.64M commander-card rows, 5.2M scores), substitutes (10.7M rows, 90 minutes) and roles built, and the search index rebuilt (1.68M documents). The first `aggregate:corpus` ran out of disk (hosted had 2 GB; now 8 GB, Small compute) and the next was cancelled by the default 2-minute statement timeout (fixed in PR #136). Hosted parity found every list identical except 5 swap lists from 2 targets, at positions 8 and 10: the stored substitutes (220 in the card's own colours plus 220 overall) missed candidates a multicolour deck should see. Migration `20261006000100` stores the first 220 for every colour identity that can hold the card instead. Hosted timing from this PC, p50 old → serving: adds 408 → 157 ms, swaps 433 → 135, cuts 201 → 92, the rater 418 → 87.
 
@@ -515,7 +515,7 @@ The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substi
 2. ~~`collate`, `aggregate:corpus`, `precompute --part substitutes,roles`.~~ Done 2026-10-06.
 3. Release `20261006000100`, then `cli:hosted precompute --part substitutes` (every list is rebuilt, about 90 minutes on hosted; about 0.55 GB more).
 4. Parity and timing on hosted (Claude, reads only), then set `app_config.recs.servingReads` to true.
-5. The old path's removal (`rec_add_candidates` both overloads, `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, `retry-timeout.ts`, `loadCardCorpus`'s old path and the switch) goes in with the scoring pipeline branch (T057–T065), more than a week after the switch.
+5. The old path's removal is built on `feat/scoring-pipeline` (in the code; the database keeps the functions until T067, so migrations can go out ahead of the code; originally migration `20261006000200`: `rec_add_candidates` both overloads, `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, the switch; in the app `loadCardCorpus`, the timeout recording, `serving-parity.ts` and the search API's `/v1/commander-cards/rates`). It merges with that branch (T057–T065), more than a week after the switch, which must be on first.
 
 ---
 
@@ -559,113 +559,196 @@ A revisit re-reads page 1, then reads on until `revisitNewDecks` (25) decks were
 
 ### T057: Scoring weights into `app_config.scoring`
 
-**Priority:** HIGH | **Area:** Backend / Scoring | **Status:** Not started
+**Priority:** HIGH | **Area:** Backend / Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, migration `20261006000300`)
 
 Move `ADD_WEIGHTS`, `SWAP_WEIGHTS` and the cut thresholds (`packages/core/src/scoring/`) into `app_config.scoring`, read by TypeScript. While `rec_swap_candidates` still exists it reads the same row instead of mirroring the weights (repeat `enable_nestloop = off`).
 
+**Built:** `app_config.scoring` (private) holds every weight and threshold; `@mtg/core/scoring` validates it and `app_config.corpus` and refuses a missing value. The app reads it with the secret key (`scoring-config.ts`), the worker and the swap pool's SQL read it directly. Ranking moved into `@mtg/core/scoring` `rank.ts` (`rankAdds`, `rankCuts`, `rankSwaps`) so the evaluation (T058) uses the same code. Checked: 784 outputs (cuts, adds in three modes, swaps in three modes, the rater, 25 commander pages, card pages) on 40 local corpus decks identical before and after; the scores pass rewrote 0 of 5.1M rows. On release the worker re-scores once (the stored settings gained the score shape) and rebuilds every substitute list once (their hash gained the weights); both write nothing.
+
 **Acceptance criteria:**
-- [ ] Weights read from `app_config.scoring`; no scoring constant left in code
-- [ ] Regression fixtures unchanged
+- [x] Weights read from `app_config.scoring`; no scoring constant left in code
+- [x] Regression fixtures unchanged
 
 ---
 
 ### T058: Offline evaluation
 
-**Priority:** HIGH | **Area:** Data / Scoring | **Status:** Not started | **Blocked by:** T054, T057
+**Priority:** HIGH | **Area:** Data / Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, migration `20261006000400`) | **Blocked by:** T054, T057
 
 `cli eval:holdout` over the collated `corpus.decks`: a 90/10 split by deck with a fixed seed (`app_config.scoring.evalSeed`), a time split for anything EDHREC touches, size buckets of 50 and up, 10–49 and under 10 decks, and the tests and bootstrap gate in [`roadmap/scoring-design.md`](roadmap/scoring-design.md), "Evaluation".
 
+**Built:** `apps/worker/src/jobs/eval-holdout.ts`, with the split, sampling, metrics, bootstrap and gate in `@mtg/core/scoring` `evaluate.ts` (tested) and its settings in `app_config.scoring.eval`. Adds hide 10 nonland cards and grade recall@20 over every category together; cuts plant 10 popular identity-legal cards from other commanders' decks and grade precision@10; collection mode owns the hidden cards plus 300 popular others. Simulated small commanders keep 0, 5, 10 or 20 of their training decks (commanders with 50 or more). Also reported: EDHREC agreement (our pool's top 50 against EDHREC's) and declared brackets against our estimate (none yet: the crawl records them from T056 on). About two minutes locally. The EDHREC time split is T061's: only the prior's test needs it.
+
+**Baseline (local, 2026-10-06, seed 20261006):** 7,518 held-out decks over 1,606 commanders. Adds recall@20 17.0% (95% interval 16.3–17.5%): 25.6% for commanders with 50+ training decks, 9.4% for 10–49, 9.1% under 10. Cuts precision@10 17.8%; collection-mode recall 31.0%; Sol Ring rate 21.5%; EDHREC agreement 53.8%. Simulated small commanders score 9.2% whether they keep 0 or 20 decks: below `minDecks` a commander's own decks don't count at all, which is the gap T061's prior is for.
+
+**Found:** adds weighted 0.9 play rates and 0.1 role gap (today 0.8 and 0.2) pass the gate: recall +0.28 points (interval +0.16 to +0.40), every bucket up, Sol Ring rate down 0.8 points. Not applied; a weight change is the owner's call once the remaining components are in.
+
 **Acceptance criteria:**
-- [ ] Baseline report for today's scoring
-- [ ] The gate is scripted: recall@20 up with a 95% bootstrap interval above zero (1,000 resamples over commanders), no bucket down by more than its half-width, Sol Ring rate within `solRingTolerance`, fixtures pass
+- [x] Baseline report for today's scoring
+- [x] The gate is scripted: recall@20 up with a 95% bootstrap interval above zero (1,000 resamples over commanders), no bucket down by more than its half-width, Sol Ring rate within `solRingTolerance`, fixtures pass (the fixtures run separately: `yarn workspace @mtg/web regress`)
 
 ---
 
 ### T059: Collection mode: availability, conflicts and the buy list
 
-**Priority:** HIGH | **Area:** Full stack / Contract | **Status:** Not started | **Blocked by:** T055, T057
+**Priority:** HIGH | **Area:** Full stack / Contract | **Status:** Data, scoring and contract built on `feat/scoring-pipeline` (2026-10-06, contract v20, migration `20261006000600`); the UI is shelved until the data work is done | **Blocked by:** T055, T057
 
 The priority mode. Owned only plus a separate "worth buying" list becomes the default (owner decision 2026-10-05, closes T037, reframes T007). Recommendations get quantities; an owned functional twin stands in for a card; `decks.is_built` marks decks that hold their cards, and cards in them are conflicts the player can swap out there. Every owned card in the identity is scored, which is lookups once T055 lands.
 
+**Built:** `availability` (`@mtg/core/collection`) and the ranking on it (`rankAdds`, `rankCuts`, `rankSwaps`, `buyList`), tested; `decks.is_built`, `set_deck_built`, `my_card_availability` and `collection-mode.sql`; `serving_add_pool` with a collection returns the colours' cards it holds as well as the commander's; the buy list's settings in `app_config.scoring.collection` (margin 0.05, price floor $0.25, 10 cards); contract v20 (`conflicts`, `buyList`, `OwnedInfo.standsInFor`, quantities and the open deck in `OwnershipInput`, `isBuilt`, `setDeckBuilt`) with the mocks; the deck tool sends the open deck with an account collection. A collection's pool is its 400 best cards in the commander's pool plus its 400 best in the colours' (PostgREST's row cap allows 1,000), not literally every owned card. Collection-mode recall on the time split: 49.5% (49.8% before; within the interval).
+
+**Shelved UI (owner decision 2026-10-06: UI waits until data delivery is ready):** the built control on the deck page, the buy list and conflict tags in the deck tool, a stand-in's "stands in for" line, browser collections sending quantities, and switching the deck tool's default from 'first' to 'only' (only once the buy list shows, or 'only' would hide every unowned card with nothing in their place).
+
 **Acceptance criteria:**
-- [ ] `available()` per the design (quantities, twins, built decks, basics), tested in `@mtg/core`
-- [ ] `decks.is_built` migration, SQL checks, and a control on the deck page
-- [ ] Contract bump: `conflict`, `buyList`, quantities in `OwnershipInput`, `'only'` default
-- [ ] The evaluation's collection-mode recall recorded
+- [x] `available()` per the design (quantities, twins, built decks, basics), tested in `@mtg/core`
+- [ ] `decks.is_built` migration, SQL checks, and a control on the deck page (the control is shelved UI)
+- [x] Contract bump: `conflicts`, `buyList`, quantities in `OwnershipInput`, `'only'` default (the contract's; the deck tool's waits for the UI)
+- [x] The evaluation's collection-mode recall recorded
 
 ---
 
 ### T060: Bracket rules and combos
 
-**Priority:** HIGH | **Area:** Core / Data / Contract | **Status:** Not started | **Blocked by:** T054 (combos collated), T055; display per T045
+**Priority:** HIGH | **Area:** Core / Data / Contract | **Status:** Data, scoring and contract built on `feat/scoring-pipeline` (2026-10-06, contract v21, migration `20261006000700`); display waits for T045 and the shelved UI | **Blocked by:** T054 (combos collated), T055; display per T045
 
 `estimateBracket` gains two-card combos (Spellbook's tag as a minimum bracket), mass land denial and chained extra turns, with tag UUIDs and limits in a new `app_config.brackets`. Game Changers and mass land denial are hard limits; combos and extra turns are flagged with a cut offered (`OVER_BRACKET_COMBO`, `OVER_BRACKET_EXTRA_TURNS`). No tutor limit (WotC, October 2025). Add results gain the "complete a combo" group, credited and linked to Spellbook. Continues T047.
 
+**Built:** the rules and the combo reads are in `../CLAUDE.md` ("Combos", "Bracket rules"); `bracketSignals`, `estimateBracket`, `cutBracketMarks`, the combo group and `comboResultWeight` are tested in `@mtg/core`; `bracket-rules.sql` checks the reads. Every combo applies, not only two-card ones: Spellbook's tag already says how strong a combo is, whatever its size. Only the cut reasons got labels in the web app; the combo group, `completesOverBracket`, `DeckAnalysis.combos` and `bracketSignals` have no UI yet.
+
 **Acceptance criteria:**
-- [ ] `app_config.brackets` with the owner's answers (2026-10-05): R combos flag in bracket 3; `mass-land-denial` and `extra-turn` tag UUIDs, planeswalkers excluded; `maxExtraTurnCards` 0 in bracket 1 and 2 in brackets 2–3
-- [ ] `BracketSignals`, cut reasons and the combo group, tested; `DeckAnalysis.combos` (contract bump), credited and linked
-- [ ] Estimator agreement with declared brackets reported (a check only)
+- [x] `app_config.brackets` with the owner's answers (2026-10-05): R combos flag in bracket 3; `mass-land-denial` and `extra-turn` tag UUIDs, planeswalkers excluded; `maxExtraTurnCards` 0 in bracket 1 and 2 in brackets 2–3
+- [x] `BracketSignals`, cut reasons and the combo group, tested; `DeckAnalysis.combos` (contract bump), credited and linked
+- [ ] Estimator agreement with declared brackets reported (a check only): wired into `eval:holdout`, but no crawled deck has a declared bracket yet, locally or on hosted (0 of 82,062 hosted decks on 2026-10-06); it reports once the crawl has stored some
 
 ---
 
 ### T061: EDHREC prior by sample size
 
-**Priority:** MEDIUM | **Area:** Scoring | **Status:** Not started | **Blocked by:** T055, T058
+**Priority:** MEDIUM | **Area:** Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, migration `20261006000500`); the cap is 100 | **Blocked by:** T055, T058
 
 Replace `externalPriorShare` with `edhrecPriorCap` and the sample-size update in [`roadmap/scoring-design.md`](roadmap/scoring-design.md) ("`corpus`"): shrink toward EDHREC's rate with a strength of its deck count up to `externalPriorCap`, toward `min(p0, floor)` for cards a page doesn't list, and toward p0 without a page. The cap starts at 200 and is set by the evaluation.
 
+**Built:** `cardPrior` and `servedCardRates` (`@mtg/core/scoring`, tested); the precompute worker scores with it and stores each listed card's rate and potential decks and each set's page floor and size; the request redoes the same arithmetic; `cli eval:holdout --time-split` holds out the 5,200 decks updated after the EDHREC snapshot. `externalPriorShare` and `edhrec_card_priors` are gone. Every single commander with a page is scored (1,790 with no decks of ours locally); a pair no key knows is not (see `card-graph-plan.md`). Locally 5.76M score rows (5.15M before).
+
+**Evaluation (time split, local):** adds recall@20 17.2% → 25.0%; commanders under 10 decks 6.0% → 18.7%, 10–49 decks 7.6% → 26.0%, 50+ 24.0% → 26.0%; cuts precision@10 19.4% → 25.0%; collection recall 34.0% → 49.8%; Sol Ring rate 21.8% → 8.9%; EDHREC agreement 45.6% → 75.8%. Caps of 50, 200, 400 and 1000 moved recall by 0.1 point at most; cut precision fell as the cap rose (25.8% at 50, 23.2% at 1000), so 100. EDHREC's numbers include older versions of some held-out decks, so the gain is an upper estimate; the next fresh `sync:edhrec` and a later time split will say how much.
+
 **Acceptance criteria:**
-- [ ] The formula in `@mtg/core/scoring` and the precompute worker, tested
-- [ ] The 10–49 and under-10 buckets rise; none falls
+- [x] The formula in `@mtg/core/scoring` and the precompute worker, tested
+- [x] The 10–49 and under-10 buckets rise; none falls
 
 ---
 
 ### T062: Learned skeleton: curve and land profiles
 
-**Priority:** MEDIUM | **Area:** Data / Scoring | **Status:** Not started | **Blocked by:** T055, T058
+**Priority:** MEDIUM | **Area:** Data / Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, contract v22, migration `20261006000800`); every new piece is off, none passed the gate | **Blocked by:** T055, T058
 
 `commander_stats` gains `curve_profile`, `land_count` and `basic_land_count` (learned per commander, so builds need no fixed minimum of basics); EDHREC supplies role and curve priors for thin commanders; the `curve` component joins adds and cuts, and its cut signal replaces the fixed "mana value 6 or more" rule.
 
+**Built:** see `../CLAUDE.md` ("The learned skeleton"). Contract v22 adds the `curve` ScoreComponent (weight 0 everywhere). Locally the commanders' curves sum to 63.7 nonland cards per deck (10th–90th percentile 62.1–65.2) and 35 lands, of which 18.6 basic.
+
+**Evaluation (time split, 2026-10-06; today's settings: adds recall@20 25.0%, cuts precision@10 25.0%):**
+- `curve` at 0.1 in adds (corpus 0.8, role 0.1): recall 23.8%, commanders with 50+ decks 26.0% → 24.0%. Fails. At 0.1 with corpus 0.75 and role 0.15: 23.6%. Fails. The curve stays a build input, not an add score.
+- `skeleton.curveCuts`: cuts precision 25.0% → 25.0%, nothing else moved. No gain, so it stays off.
+- `skeleton.edhrecPrior`: recall 25.0% → 24.8% (−0.16 points, interval −0.30 to −0.02), every bucket a little down. Fails.
+- The two together weren't run: each failed alone (a run stopped for low memory on the way).
+
 **Acceptance criteria:**
-- [ ] Profiles written per dirty commander, diff-only
-- [ ] `curve` passes the evaluation gate before it gets weight
+- [x] Profiles written per dirty commander, diff-only
+- [x] `curve` passes the evaluation gate before it gets weight (it didn't, so it has none)
 
 ---
 
 ### T063: Build a deck from a commander and a bracket
 
-**Priority:** MEDIUM | **Area:** Full stack / Contract | **Status:** Not started | **Blocked by:** T059, T060, T062
+**Priority:** MEDIUM | **Area:** Full stack / Contract | **Status:** Data, scoring, route and contract built on `feat/scoring-pipeline` (2026-10-06, contract v24, migration `20261006001100`); UI shelved | **Blocked by:** T059, T060, T062
 
 `BuildApi.build`: learned skeleton, greedy fill by the marginal-value function from available cards, lands by pip share, a feasibility report when the collection falls short, and an optional best-value fill with a running price total. A pure function in `@mtg/core`; the entry point is T050's picker.
 
+**Built:** see `../CLAUDE.md` ("Builds"). `buildDeck` (`@mtg/core/scoring`, tested), `serving_build_pool` (`build.sql`), `POST /api/recs/build` and `RecsApi.build` (contract v24; the design's `BuildApi.build`, put on `RecsApi` since it shares that transport), and the Build test in `cli eval:holdout`. Owner decisions (2026-10-06): builds rank by `weights.add` (the plans' one marginal-value function; a separate `weights.build` only if the curve helps builds but still fails adds); typical land and basic land counts by colour count; basics by pure pip share (a colour no spell asks for gets none); the quality floor stops only a build from a collection, so a build from every card fills all 99. Locally a build answers in about 0.5–0.8 s (the read about 220 ms, 1 MB).
+
+**Evaluation (time split, 2026-10-06):** a build for each held-out deck's commander and estimated bracket, every card available (1,420 commanders; adds unchanged at recall@20 25.5%):
+- Today's settings: a build holds 38.6% of a held-out deck's non-basic cards (interval 38.0–39.2%) and 84.1% of the commander's top EDHREC cards; it is off by 2.2 lands, 5.4 basic lands and 3.6 cards per tracked role on average (decks for one commander vary that much: the 10th–90th percentile of a key's basics spans about 6).
+- `curve` at 0.1 in `weights.add` (corpus 0.6): builds 38.4%, EDHREC 83.6%, lands, basics and roles unchanged; adds recall 25.5% → 24.1% (fails the gate). The curve doesn't help builds either, so builds keep `weights.add` and no `weights.build` is added.
+- The regression fixtures: the one standing miss (Talisman of Hierarchy, #5 in its group, as after T064).
+
+**Shelved UI (owner decision 2026-10-06):** the commander and bracket picker that starts a build (T050's picker on `/deck?start=build`, which today opens an empty deckbuilder), the built deck shown grouped like Add with each card's score and origin, the basics and land target, the feasibility report ("Your collection fills 68 of 99. Card advantage is 9 short") with the value-fill button and its running total and price date, "complete a combo" entries (credited to Commander Spellbook), the build's bracket estimate, and saving the result as a deck.
+
 **Acceptance criteria:**
-- [ ] Deterministic builds that never break a hard limit; tests
-- [ ] Build overlap and role and land error in the evaluation report
-- [ ] Contract bump and UI (picker, feasibility report, value fill)
+- [x] Deterministic builds that never break a hard limit; tests
+- [x] Build overlap and role and land error in the evaluation report
+- [ ] Contract bump and UI (picker, feasibility report, value fill): contract v24 done; the UI is shelved
 
 ---
 
 ### T064: Deck affinity from card pairs
 
-**Priority:** MEDIUM | **Area:** Data / Scoring | **Status:** Not started | **Blocked by:** T055, T058
+**Priority:** MEDIUM | **Area:** Data / Scoring | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, contract v23, migrations `20261006000900`–`001000`); the `deck` component weighs 0.1 in adds; hosted latency waits for the release | **Blocked by:** T055, T058
 
 Pair tables (`commander_card_pairs`, `card_pairs`) from the precompute worker, the `deck` component in adds, cuts, swaps and builds, `LOW_AFFINITY`, and the contract's `deck` component. Check the VPS has room for the weekly global recount (about 450 MB) beside Typesense first.
 
+**Built:** see `../CLAUDE.md` ("Card pairs and deck affinity"). The lift's shrinkage is the plan's P̂(B|A) made symmetric (α decks at the commoner card's rate); the first version shrank by α whole decks and kept only 66k pairs. Locally: 763k key pairs for 1,314 keys (median 388 a key, the largest 4,091; 94 MB) and 470k corpus pairs (79 MB, counted in 16 s), under the plan's 4.4M estimate because the corpus is smaller than it assumed. `serving_deck_affinity` answers in about 50–60 ms. The VPS has about 4.5 GB free for the 380 MB weekly count.
+
+**Evaluation (time split, 2026-10-06; today's settings: adds recall@20 25.0%, cuts precision@10 25.0%, collection recall 49.5%):**
+- `deck` at 0.1 in adds (corpus 0.8 → 0.7): recall 25.5% (+0.53 points, interval +0.30 to +0.80), 10–49 decks 26.0% → 26.4%, 50+ 26.0% → 26.6%, under 10 18.7% → 19.2%, collection recall 51.3%. Passes; adopted.
+- `deck` at 0.2: recall 25.0% (flat, fails), collection recall 53.5%, Sol Ring rate 8.9% → 5.0%.
+- `LOW_AFFINITY` cuts: precision 25.0% → 24.7%. Stays off.
+- Swaps keep the `deck` weight at 0: the evaluation doesn't grade swaps yet.
+- The regression fixtures: the one standing miss (Talisman of Hierarchy, #4 in its group since before this branch) is #5.
+
 **Acceptance criteria:**
-- [ ] Row counts within the plan's estimates
-- [ ] Recall@20 beats the T058 baseline; p95 add latency not worse on hosted
+- [x] Row counts within the plan's estimates
+- [ ] Recall@20 beats the T058 baseline (done: +0.53 points); p95 add latency not worse on hosted (after the release)
 
 ---
 
 ### T065: Live accept rate
 
-**Priority:** LOW | **Area:** Full stack | **Status:** Not started
+**Priority:** LOW | **Area:** Full stack | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, contract v25, migration `20261006001200`); builds record once build mode has a screen
 
 `rec_events`: one row per shown batch and per accept or decline, keyed by account or salted visitor hash like `swap_votes`, written through a rate-limited security-definer function, no API reads. `/privacy` gains a line. Can start at any time.
 
+**Built:** see `../CLAUDE.md` ("Live accept rate") and `../apps/web/AGENTS.md` ("Accept-rate events", the Accept rate admin resource). `record_rec_event` and `admin_rec_accept_rates` are checked by `rec-events.sql`; `ActionsApi.recordRecEvent` (contract v25) is a server action on the `events` rate-limit bucket (240 a minute). The deck tool records adds, cuts and swaps; an account's events are re-keyed on deletion like its votes. Owner decision (2026-10-06): shelved UI means custom components only, so the journey calls, the `/privacy` line and the admin list (plain columns) are built.
+
+**Shelved UI:** none for this ticket beyond build mode's own screen (T063), which records a built deck as mode `build` once it exists.
+
 **Acceptance criteria:**
-- [ ] Events recorded for add, cut, swap and build; admins see accept rate per mode and rank
-- [ ] `/privacy` updated (owner, 2026-10-05: a line explaining it, no opt-out, the same as swap votes)
+- [ ] Events recorded for add, cut, swap and build; admins see accept rate per mode and rank: add, cut, swap and the admin view done; build waits for build mode's screen
+- [x] `/privacy` updated (owner, 2026-10-05: a line explaining it, no opt-out, the same as swap votes)
+
+---
+
+### T067: Drop the retired rec functions
+
+**Priority:** MEDIUM | **Area:** Database | **Status:** Open; after PR #139's release is live | **Blocked by:** PR #139 released and a rollback to the previous build no longer wanted
+
+PR #139 stopped calling `rec_add_candidates` (both overloads), `rec_swap_candidates`, `rec_card_roles` and `log_rec_timeout`, but its migrations go out before its code, and until then production runs the previous build, which falls back to them when `app_config.recs` is missing. So `20261006000200` drops nothing (review, 2026-10-07). A new migration drops them with `rec_timeouts` and the `recs` row, and `supabase/tests/serving.sql` checks they're gone again. `docs/diagnostics/rec-timeout-triage.sql` goes with them. Closes T008 and T040.
+
+---
+
+### T068: Scoring pipeline review follow-ups (PR #139)
+
+**Priority:** HIGH | **Area:** Data / Ops / Scoring | **Status:** Open (review 2026-10-07)
+
+PR #139's review found these; the fixes in the PR itself are migration `20261007000100` and the commits after it. Left open:
+
+**For the pipeline to run on its own in production (the PR's goal):**
+- [ ] Deploy the VPS worker (T066): hosted's `worker_status` heartbeat last moved 2026-09-16, there is one hand-run collation, and nothing runs the precompute passes, collation, EDHREC or deck lookups on a schedule
+- [ ] Spellbook on hosted: set the repository variable `SPELLBOOK_SYNC_ENABLED` (hosted's `spellbook.*`, `corpus.spellbook_combos` and `spellbook_combo_pieces` are empty, so "complete a combo" and the combo bracket rules answer nothing), then `collate --only spellbook` and `precompute --part combos`
+- [ ] A first `sync:edhrec` on hosted (raw `edhrec.*` is empty; the prior reads the 2026-09-30 import until then), then the next evaluation on the time split with `--snapshot-month` set to the new fetch
+
+**Storage (8 GB disk, 3.4 GB used before the release; measured locally, projected at 6× the decks):**
+- [ ] Pairs that borrow from their partners hold 3.56M of 5.76M score rows (62%), and grow fastest: about 16M rows (2.4 GB) at 6× the decks, about 8.4 GB for the whole database. Store only a pair's own and EDHREC rows and combine the borrowed part per request from `partner_card_totals`, as a pair no key knows already is
+- [ ] `card_substitutes` is 1.15 GB (15.7M rows, about 510 per card): one row per card with id and similarity arrays would be about a tenth, and the depth (220) was set for parity with the retired path, which no longer binds; the evaluation doesn't grade swaps yet
+- [ ] `rec_events` grows with traffic and nothing purges it: a retention period (owner decision, and a `/privacy` line) and a worker purge
+- [ ] The global pair count's memory grows with the corpus (about 1.1 GB peak locally; a 1 GB counter alone at 6×): count in row blocks with a bounded top list per card, or raise `globalMinDecks` with the corpus; give the worker container a memory limit and a Node heap flag
+
+**Scoring and evaluation:**
+- [ ] Cuts rank by the hand-weighted cut score, not m(c | D − c) as `scoring-design.md` designs; either move them and gate it (cut precision@10), or record that cuts keep `scoreCuts`
+- [ ] The gate's bucket rule compares with the baseline's own interval, not the paired change, so a significant drop in a small bucket can pass; judge each bucket on its paired difference
+- [ ] The evaluation's holdout hash (FNV-1a over sequential ids) clusters the random split; the evaluation ranks every deck as bracket 3 without the bracket facts; cut precision counts only planted cards; collection recall and the buy list aren't gated; nothing compares its TypeScript copy of the precompute arithmetic with the stored tables
+- [ ] The global pair lift barely shrinks rare cards (a third of kept corpus pairs have under 10 decks) and isn't release-aware; record the deviations from `card-graph-plan.md` "Statistics"
+- [ ] Owned twins: copies a built deck holds are matched per card, not pooled across the twin group (`availability.ts`)
+- [ ] The per-key pair pass picks keys by `commander_stats.computed_at`, which moves only when a key's aggregates do and is stamped at transaction start; drive it from the keys the commander pass merged
 
 ---
 
@@ -681,7 +764,7 @@ The design is [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md), revise
 - **Fetching.** A one-off local script fetched every commander page from `json.edhrec.com` (2026-09-28). `sync:edhrec` (T054) replaces it, writing the raw `edhrec` schema; the VPS worker (T066) runs it weekly.
 - **Loading.** `import:edhrec` (retired 2026-10-05 with the stale saved pages it read) wrote the pages into `external_commanders` and `external_commander_card_stats` (now `corpus.edhrec_commanders` and `corpus.edhrec_commander_cards`) (migration `20260928000200_external_commander_stats.sql`). Loaded locally on 2026-09-28 and on hosted on 2026-09-30 (6,787 commanders, 1,791,474 card rows).
 - **Evaluation.** `spike:edhrec:prior` (retired 2026-10-05; T058 repeats it with a time split) was a holdout test. EDHREC beat the colour baseline as a prior at every deck count measured. `supabase/tests/edhrec-stats.sql` holds the SQL checks.
-- **Wired, switched off:** `edhrec_card_priors` (added as `external_card_priors` in migration `20261002000100`, PR #123; renamed by T053) feeds the prior with `app_config.corpus.externalPriorShare` at 0. T061 replaces the share with weighting by sample size.
+- **The prior:** `edhrec_card_priors` (added as `external_card_priors` in migration `20261002000100`, PR #123; renamed by T053) fed it per request with `app_config.corpus.externalPriorShare` at 0. T061 replaced both with weighting by sample size inside the stored scores (`edhrecPriorCap` 100).
 
 **Slice 10 (full-suite crawl) is built** in the Go search API, not the TS worker the plan names: a commander queue seeded from EDHREC, decks most viewed first, one page per commander on the first visit. Revisits re-read page 1 only (2026-10-03), so samples grow only from churn; T056 (built 2026-10-05) restores growth (25 new or changed decks per revisit, owner rule 2026-10-05). Deck lookups go through the crawl's queue, served by the VPS worker (T066, T009). It absorbs closed ticket T010.
 
@@ -791,7 +874,7 @@ Some `commander_keys` rows name two cards that aren't a legal partner pair (Arch
 
 ### T040: Drop the unused `rec_add_candidates(p_deck_count)` overload
 
-**Priority:** LOW | **Area:** Database | **Status:** Moot once T055 retires `rec_add_candidates`; do it only if T055 slips
+**Priority:** LOW | **Area:** Database | **Status:** Moot: both overloads are dropped on `feat/scoring-pipeline` (migration `20261006000200`); closes when that branch merges
 
 `rec_add_candidates` has two overloads. The app calls only the one taking `p_key_weights`; the older `p_deck_count` one was kept "until deployed apps stop calling it", and none does.
 

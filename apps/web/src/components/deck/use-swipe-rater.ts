@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CardId, CardSummary, CommanderKeyId, CutReason, RecContext, SwapSuggestion } from "@mtg/core/contract";
 import { getApis } from "@/lib/api/client";
+import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import { shuffled } from "@/lib/shuffle";
 
 /** A replacement the player swiped right on in the deck tool: it takes the target's place in the deck. */
@@ -97,6 +98,8 @@ export function useSwipeRater({
   const [declinedAtStart] = useState(() => new Set(declined.map((d) => `${d.targetId}:${d.replacementId}`)));
   const requested = useRef(new Set<number>(cache?.keys() ?? []));
   const sessionId = useRef<string | null>(null);
+  /** Deck tool: each card's replacements as recorded for the accept rate (T065), once per sitting. */
+  const batches = useRef(new Map<number, RecBatch>());
 
   // Cards to step over come off the list as their turn comes, rather than out of it: the list is dealt by position.
   // The rater also passes over cards that turn out to have no replacements: there's nothing to rate.
@@ -151,6 +154,14 @@ export function useSwipeRater({
   const candidates = first ? [first, ...offered.filter((s) => s !== first)] : offered;
   const candidate = candidates[candidateIndex] ?? null;
 
+  // The deck tool records a card's replacements the first time this sitting deals them (the rater has votes instead).
+  const dealtIds = candidates.map((c) => c.card.id).join(",");
+  useEffect(() => {
+    if (mode !== "deck" || !target || dealtIds === "" || batches.current.has(target.card.id)) return;
+    const ids = dealtIds.split(",").map((id) => Number(id) as CardId);
+    batches.current.set(target.card.id, recordShown("swap", ids, context, target.card.id));
+  }, [mode, target, dealtIds, context]);
+
   function nextTarget() {
     setCandidateIndex(0);
     setVoteError(null);
@@ -181,6 +192,8 @@ export function useSwipeRater({
         if (!r.ok) setVoteError(r.error.message);
       });
     onVote?.({ target: target.card, replacement: candidate.card, value });
+    const batch = mode === "deck" ? batches.current.get(target.card.id) : undefined;
+    if (batch) recordDecision(batch, candidate.card.id, value === 1, context, candidate.score);
 
     if (mode === "rater") {
       if (candidateIndex + 1 >= candidates.length) nextTarget();

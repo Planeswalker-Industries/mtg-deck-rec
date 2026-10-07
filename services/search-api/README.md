@@ -33,7 +33,6 @@ Everything else takes `Authorization: Bearer <token>`.
 | `GET /v1/cards/search` | read | the header search and the commander picker |
 | `GET /v1/pages/:kind/:slug` | read | the proxy's real-404 check on every card and commander page view |
 | `GET /v1/tags` | read | `fetchCardTags`, which needs every tag's label |
-| `POST /v1/commander-cards/rates` | read | the play-rate half of `loadCardCorpus` |
 | `GET /v1/commander-cards/top` | read | what a commander page ranks |
 | `GET/POST/DELETE /v1/admin/collections…` | admin | the worker's drain and `--rebuild` |
 | `GET/PUT /v1/admin/aliases/:name` | admin | the alias swap that makes a rebuild atomic |

@@ -6,8 +6,8 @@ export function POST(request: Request): Promise<Response> {
   return handleRecsRequest(
     request,
     addInputSchema,
-    (db, { context, limitPerCategory, excludeCardIds }) =>
-      getAddSuggestions(db, { context, limitPerCategory: capLimit(limitPerCategory, MAX_ADD_PER_CATEGORY), excludeCardIds }),
+    (db, { context, limitPerCategory, excludeCardIds }, collection) =>
+      getAddSuggestions(db, { context, collection, limitPerCategory: capLimit(limitPerCategory, MAX_ADD_PER_CATEGORY), excludeCardIds }),
     "Couldn't load suggestions. Try again in a moment.",
   );
 }

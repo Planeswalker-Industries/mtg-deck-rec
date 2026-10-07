@@ -81,7 +81,6 @@ func New(cfg config.Config, ts *typesense.Client, log *slog.Logger, crawls map[s
 	read.Get("/cards/search", s.cardsSearch)
 	read.Get("/pages/:kind/:slug", s.pageExists)
 	read.Get("/tags", s.allTags)
-	read.Post("/commander-cards/rates", s.commanderCardRates)
 	read.Get("/commander-cards/top", s.commanderCardsTop)
 
 	// The admin token alone. The read token is on Vercel, where a leak should not be able to drop a collection.

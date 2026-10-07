@@ -21,7 +21,7 @@ import type {
 } from './decks';
 import type { Result } from './errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
-import type { AddResult, CutResult, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
+import type { AddResult, BuildFill, BuildResult, CutResult, RecEvent, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
 
 /**
  * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut}
@@ -32,6 +32,11 @@ export interface RecsApi {
   /** `excludeCardIds`: cards the player has already passed on, left out like the deck's own cards (v17). */
   add(input: { context: RecContext; limitPerCategory?: number; excludeCardIds?: CardId[] }): Promise<Result<AddResult>>;
   cut(input: { context: RecContext; limit?: number }): Promise<Result<CutResult>>;
+  /**
+   * Build a deck (v24): the context's commanders and bracket, its collection (owned cards only), and its main cards as
+   * cards to keep (usually none). `fill` defaults to 'none'.
+   */
+  build(input: { context: RecContext; fill?: BuildFill }): Promise<Result<BuildResult>>;
 }
 
 /**
@@ -118,6 +123,8 @@ export interface ActionsApi {
   duplicateDeck(input: { deckId: DeckId; name?: string }): Promise<Result<{ deckId: DeckId }>>;
   /** Shows or hides the deck page. Never changes whether the deck feeds play rates. */
   setDeckVisibility(input: { deckId: DeckId; isPublic: boolean }): Promise<Result<null>>;
+  /** Marks the deck put together (its cards are taken) or not. Changes nothing about the deck itself. */
+  setDeckBuilt(input: { deckId: DeckId; isBuilt: boolean }): Promise<Result<null>>;
   deleteDeck(input: { deckId: DeckId }): Promise<Result<null>>;
   exportDeck(input: { deckId: DeckId; format: ExportFormat }): Promise<Result<{ filename: string; content: string }>>;
 
@@ -131,6 +138,8 @@ export interface ActionsApi {
     context?: VoteContext;
   }): Promise<Result<VoteSummary>>;
   setFavorite(input: FavoriteRef & { on: boolean }): Promise<Result<null>>;
+  /** Records a suggestion list shown, or a card from it taken or passed on (v25, the live accept rate). Works without an account. */
+  recordRecEvent(input: RecEvent): Promise<Result<null>>;
 
   /** Cards to rate replacements for with a commander or partner pair, given by card ids or by commander page slug (exactly one). */
   dealRaterCards(input: { commanderIds?: CardId[]; commanderSlug?: string }): Promise<Result<RaterDeal>>;

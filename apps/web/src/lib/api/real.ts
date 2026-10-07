@@ -9,6 +9,7 @@ import { dealRaterCardsAction } from "@/app/rate/actions";
 import {
   analyzeDeckAction,
   castVoteAction,
+  recordRecEventAction,
   getCommanderCoverageAction,
   getCommanderRequestAction,
   importDeckFromUrlAction,
@@ -22,6 +23,7 @@ import {
   openSavedDeckAction,
   renameDeckAction,
   saveDeckAction,
+  setDeckBuiltAction,
   setDeckVisibilityAction,
 } from "@/app/decks/actions";
 
@@ -53,6 +55,7 @@ export const realRecs: RecsApi = {
   swap: (input) => post("/api/recs/swap", input),
   add: (input) => post("/api/recs/add", input),
   cut: (input) => post("/api/recs/cut", input),
+  build: (input) => post("/api/recs/build", input),
 };
 
 export const realActions: ActionsApi = {
@@ -72,9 +75,11 @@ export const realActions: ActionsApi = {
   renameDeck: (input) => renameDeckAction(input),
   duplicateDeck: (input) => duplicateDeckAction(input),
   setDeckVisibility: (input) => setDeckVisibilityAction(input),
+  setDeckBuilt: (input) => setDeckBuiltAction(input),
   deleteDeck: (input) => deleteDeckAction(input),
   exportDeck: notYet,
   castVote: (input) => castVoteAction(input),
+  recordRecEvent: (input) => recordRecEventAction(input),
   setFavorite: notYet,
   adminSetTagDisabled: notYet,
   dealRaterCards: (input) => dealRaterCardsAction(input),
