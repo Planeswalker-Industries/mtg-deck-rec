@@ -21,7 +21,7 @@ import type {
 } from './decks';
 import type { Result } from './errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
-import type { AddResult, CutResult, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
+import type { AddResult, BuildFill, BuildResult, CutResult, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
 
 /**
  * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut}
@@ -32,6 +32,11 @@ export interface RecsApi {
   /** `excludeCardIds`: cards the player has already passed on, left out like the deck's own cards (v17). */
   add(input: { context: RecContext; limitPerCategory?: number; excludeCardIds?: CardId[] }): Promise<Result<AddResult>>;
   cut(input: { context: RecContext; limit?: number }): Promise<Result<CutResult>>;
+  /**
+   * Build a deck (v24): the context's commanders and bracket, its collection (owned cards only), and its main cards as
+   * cards to keep (usually none). `fill` defaults to 'none'.
+   */
+  build(input: { context: RecContext; fill?: BuildFill }): Promise<Result<BuildResult>>;
 }
 
 /**

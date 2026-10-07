@@ -3,6 +3,7 @@ import path from 'node:path';
 import { availability } from '@mtg/core/collection';
 import {
   bracketSignals,
+  defaultIncludeGameChangers,
   estimateBracket,
   maskToIdentity,
   parseBracketRules,
@@ -10,10 +11,12 @@ import {
   type BracketRules,
   type ComboFacts,
 } from '@mtg/core/commander';
-import type { CardId, CardSummary, OracleId, RecContext } from '@mtg/core/contract';
+import type { Bracket, CardId, CardSummary, OracleId, RecContext } from '@mtg/core/contract';
 import {
   ADD_POOL_SIZE,
   addPoolScore,
+  BASIC_LAND_NAMES,
+  buildDeck,
   bootstrapMean,
   cardPrior,
   commanderShare,
@@ -47,6 +50,7 @@ import {
   weightedSample,
   type AffinityInput,
   type BaselineCounts,
+  type BasicColour,
   type CardFacts,
   type CardPlayRates,
   type CorpusKey,
@@ -79,6 +83,8 @@ import { edhrecProfiles, loadEdhrecPages, type PageRows } from '../lib/serving';
  * - cuts: plant cards from other commanders' decks, ask for cuts, count how many planted cards are in the top k;
  * - collection mode: the player owns the hidden cards and a popular sample of others, adds limited to owned cards;
  * - small commanders, simulated: commanders with plenty of decks keep only a few of their training decks;
+ * - builds (T063): a deck built for each held-out deck's commander and estimated bracket, every card available,
+ *   against the held-out decks: the share of their cards it holds, and how far its lands, basics and roles are off;
  * - agreement with EDHREC's lists and with authors' declared brackets, reported only.
  *
  * With `--candidate <file.json>` (`{ "scoring": {...}, "corpus": {...} }`, merged over today's settings) it runs both
@@ -126,6 +132,8 @@ interface Data {
   /** 'YYYY-MM' of the EDHREC snapshot: decks updated after it can't be in EDHREC's numbers. */
   edhrecMonth: string | null;
   declaredBrackets: Map<string, number>;
+  /** Each basic land's row by colour, for builds. */
+  basics: Map<BasicColour, RankCard>;
 }
 
 /** The bracket rules, the cards they watch and every collated combo by card, for the estimator check (T060). */
@@ -278,6 +286,12 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
   );
 
   const declaredBrackets = new Map(declaredRows.map((r) => [`archidekt:${r.source_deck_id}`, r.declared_bracket]));
+  const basicByName = new Map(Object.entries(BASIC_LAND_NAMES).map(([colour, name]) => [name, colour as BasicColour]));
+  const basics = new Map<BasicColour, RankCard>();
+  for (const c of cards.values()) {
+    const colour = c.isBasicLand ? basicByName.get(c.summary.name) : undefined;
+    if (colour) basics.set(colour, c);
+  }
 
   const decks: EvalDeck[] = [];
   const firstSource = new Map<string, string>();
@@ -300,7 +314,7 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
       basicLands: deck.basicLands,
     });
   }
-  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets };
+  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets, basics };
 }
 
 /** Per-key counts from these decks, as `tallyDecks` makes them. */
@@ -414,9 +428,13 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
   const sums = new Map<number, RowSums>();
   const roleTotals: Record<string, number> = {};
   const curveTotals: Record<string, number> = {};
+  let landTotal = 0;
+  let basicTotal = 0;
   for (const source of picked.sources) {
     const a = training.aggregates.get(training.keyByIndex.get(source.id) ?? '');
     if (!a) continue;
+    landTotal += a.lands * source.weight;
+    basicTotal += a.basicLands * source.weight;
     for (const [role, n] of Object.entries(a.roleCounts)) roleTotals[role] = (roleTotals[role] ?? 0) + n * source.weight;
     for (const [bucket, n] of Object.entries(a.curveCounts)) curveTotals[bucket] = (curveTotals[bucket] ?? 0) + n * source.weight;
     for (const [card, dw] of a.cards) {
@@ -489,6 +507,8 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
       effectiveDeckCount: picked.effectiveDeckCount,
       roleProfile: perDeck(roleTotals),
       curveProfile: perDeck(curveTotals),
+      landCount: picked.effectiveDeckCount > 0 ? landTotal / picked.effectiveDeckCount : null,
+      basicLandCount: picked.effectiveDeckCount > 0 ? basicTotal / picked.effectiveDeckCount : null,
       prior:
         profiles && profilePage
           ? { roles: profiles.roles, curve: profiles.curve, evidence: pageEvidence(profilePage.page, settings.corpus) }
@@ -664,6 +684,92 @@ function gradeDeck(deck: EvalDeck, model: SetModel, training: Training, settings
   };
 }
 
+/** A build graded against one held-out deck (T063). */
+interface BuildGrade {
+  /** Share of the deck's non-basic cards the build holds. */
+  overlap: number;
+  /** Lands (basics included), basic lands, and cards per tracked role: how far the build is off the deck. */
+  landError: number;
+  basicError: number;
+  roleError: number;
+}
+
+interface Built {
+  nonbasic: Set<number>;
+  lands: number;
+  basics: number;
+  roles: Map<string, number>;
+}
+
+/**
+ * A deck built for a commander set and a bracket under one training, every card available, as the app builds one: the
+ * pool in pool order, the combos among its cards, the pairs and weights for them.
+ */
+function buildFor(commanderIds: readonly number[], bracket: Bracket, model: SetModel, settings: Settings, data: Data, brackets: BracketData): Built {
+  const commanders = new Set(commanderIds);
+  const poolIds = model.ordered.filter((id) => !commanders.has(id)).slice(0, ADD_POOL_SIZE);
+  const reachable = new Set([...poolIds, ...commanderIds]);
+  const combos = new Map<string, ComboFacts>();
+  for (const id of reachable) {
+    for (const c of brackets.combosByCard.get(id) ?? []) {
+      if (c.pieces.every((p) => reachable.has(p)) && c.commanderPieces.every((p) => commanders.has(p))) combos.set(c.variantId, c);
+    }
+  }
+  const cards = new Map<number, RankCard>();
+  for (const id of reachable) {
+    const card = data.cards.get(id);
+    if (card) cards.set(id, card);
+  }
+  for (const card of data.basics.values()) cards.set(card.summary.id as number, card);
+  const affinity = model.affinityFor(poolIds, 0, () => false);
+  const built = buildDeck({
+    context: {
+      deck: { commanders: commanderIds as CardId[], cards: [] },
+      bracket,
+      bracketSource: 'inferred',
+      includeGameChangers: defaultIncludeGameChangers(bracket),
+      ownership: null,
+    },
+    poolIds,
+    cards,
+    rates: new Map(poolIds.map((id) => [id, model.rates(id)])),
+    roles: data.roles,
+    corpus: model.corpus,
+    roleTargets: data.roleTargets,
+    roleTags: new Map(),
+    scoring: settings.scoring,
+    availability: null,
+    bracketFacts: { rules: brackets.rules, cards: brackets.cards, combos: [...combos.values()] },
+    affinity: affinity ? { lifts: affinity.lifts, weights: affinity.weights } : null,
+    basics: data.basics,
+  });
+  const nonbasic = built.groups.flatMap((g) => g.cards.map((c) => c.card.id as number));
+  const basics = built.basics.reduce((n, b) => n + b.quantity, 0);
+  return {
+    nonbasic: new Set(nonbasic),
+    lands: nonbasic.filter((id) => !data.nonland.has(id)).length + basics,
+    basics,
+    roles: roleCounts(nonbasic, data),
+  };
+}
+
+function roleCounts(cardIds: readonly number[], data: Data): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const id of cardIds) for (const role of data.roles.get(id) ?? []) counts.set(role, (counts.get(role) ?? 0) + 1);
+  return counts;
+}
+
+function gradeBuild(built: Built, deck: EvalDeck, data: Data): BuildGrade {
+  const deckRoles = roleCounts(deck.cardIds, data);
+  const roles = data.roleTargets.map((t) => t.roleId);
+  return {
+    overlap: deck.cardIds.length === 0 ? 0 : deck.cardIds.filter((id) => built.nonbasic.has(id)).length / deck.cardIds.length,
+    landError: Math.abs(built.lands - (deck.cardIds.filter((id) => !data.nonland.has(id)).length + deck.basicLands)),
+    basicError: Math.abs(built.basics - deck.basicLands),
+    roleError: mean(roles.map((r) => Math.abs((built.roles.get(r) ?? 0) - (deckRoles.get(r) ?? 0)))),
+  };
+}
+
 interface RunResult {
   /** Per commander key with at least one graded deck: mean add recall, cut precision, collection recall. */
   commanders: Map<string, { bucket: string; addRecall: number; cutPrecision: number; collectionRecall: number; decks: number }>;
@@ -673,9 +779,20 @@ interface RunResult {
   /** Simulated small commanders: mean add recall by training decks kept. */
   simulated: Map<number, number[]>;
   edhrecOverlap: number[];
+  /** Builds per commander key with a graded deck: mean grades over its held-out decks. */
+  builds: Map<string, BuildGrade>;
+  /** Share of EDHREC's top cards in the build, per commander with a page. */
+  buildEdhrecOverlap: number[];
 }
 
-function run(settings: Settings, data: Data, training: Training, trainingDecks: Map<string, EvalDeck[]>, heldOut: EvalDeck[]): RunResult {
+function run(
+  settings: Settings,
+  data: Data,
+  training: Training,
+  trainingDecks: Map<string, EvalDeck[]>,
+  heldOut: EvalDeck[],
+  brackets: BracketData,
+): RunResult {
   const e = settings.eval;
   const models = new Map<string, SetModel>();
   const modelFor = (key: string, commanderIds: readonly number[]) => {
@@ -751,7 +868,46 @@ function run(settings: Settings, data: Data, training: Training, trainingDecks: 
     if (top.length > 0) edhrecOverlap.push(top.filter((id) => ours.has(id)).length / top.length);
   }
 
-  return { commanders, decksGraded, addHits, stapleHits, simulated, edhrecOverlap };
+  // Builds (T063): one per commander and estimated bracket, graded against each held-out deck asking for it.
+  const built = new Map<string, Built>();
+  const buildGrades = new Map<string, BuildGrade[]>();
+  const firstBuild = new Map<string, Built>();
+  for (const deck of heldOut) {
+    const model = models.get(deck.key);
+    if (!model || !commanders.has(deck.key)) continue;
+    const bracket = estimateDeck(deck, data, brackets);
+    const memo = `${deck.key}:${bracket}`;
+    let b = built.get(memo);
+    if (!b) {
+      b = buildFor(deck.commanderIds, bracket, model, settings, data, brackets);
+      built.set(memo, b);
+    }
+    if (!firstBuild.has(deck.key)) firstBuild.set(deck.key, b);
+    buildGrades.set(deck.key, [...(buildGrades.get(deck.key) ?? []), gradeBuild(b, deck, data)]);
+  }
+  const builds = new Map(
+    [...buildGrades].map(([key, grades]) => [
+      key,
+      {
+        overlap: mean(grades.map((g) => g.overlap)),
+        landError: mean(grades.map((g) => g.landError)),
+        basicError: mean(grades.map((g) => g.basicError)),
+        roleError: mean(grades.map((g) => g.roleError)),
+      },
+    ]),
+  );
+  const buildEdhrecOverlap: number[] = [];
+  for (const [key, b] of firstBuild) {
+    const pageRows = data.pages.get(setKeyOf(key.split(':').map(Number)));
+    if (!pageRows) continue;
+    const top = [...pageRows.listings]
+      .sort((x, y) => y[1].rate - x[1].rate || x[0] - y[0])
+      .slice(0, e.edhrecTop)
+      .map(([id]) => id);
+    if (top.length > 0) buildEdhrecOverlap.push(top.filter((id) => b.nonbasic.has(id)).length / top.length);
+  }
+
+  return { commanders, decksGraded, addHits, stapleHits, simulated, edhrecOverlap, builds, buildEdhrecOverlap };
 }
 
 function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string, T[]> {
@@ -779,6 +935,7 @@ interface Summary {
   buckets: { bucket: string; commanders: number; addRecall: Interval }[];
   simulated: { decksKept: number; commanders: number; addRecall: number }[];
   edhrecOverlap: { commanders: number; mean: number };
+  build: { commanders: number; overlap: Interval; landError: number; basicError: number; roleError: number; edhrecOverlap: number };
 }
 
 function summarize(label: string, result: RunResult, order: readonly string[], e: EvalConfig): Summary {
@@ -815,6 +972,23 @@ function summarize(label: string, result: RunResult, order: readonly string[], e
     buckets: buckets.sort((a, b) => a.bucket.localeCompare(b.bucket)),
     simulated: [...result.simulated].map(([decksKept, recalls]) => ({ decksKept, commanders: recalls.length, addRecall: mean(recalls) })),
     edhrecOverlap: { commanders: result.edhrecOverlap.length, mean: mean(result.edhrecOverlap) },
+    build: summarizeBuilds(result, order, e),
+  };
+}
+
+function summarizeBuilds(result: RunResult, order: readonly string[], e: EvalConfig): Summary['build'] {
+  const grades = order.flatMap((k) => (result.builds.has(k) ? [result.builds.get(k)!] : []));
+  return {
+    commanders: grades.length,
+    overlap: bootstrapMean(
+      grades.map((g) => g.overlap),
+      e.bootstrapResamples,
+      e.seed,
+    ),
+    landError: mean(grades.map((g) => g.landError)),
+    basicError: mean(grades.map((g) => g.basicError)),
+    roleError: mean(grades.map((g) => g.roleError)),
+    edhrecOverlap: mean(result.buildEdhrecOverlap),
   };
 }
 
@@ -835,6 +1009,13 @@ function markdown(summaries: readonly Summary[], extras: string[]): string {
     lines.push('', '| Simulated: training decks kept | Commanders | Adds recall@k |', '|---|---|---|');
     for (const sim of s.simulated) lines.push(`| ${sim.decksKept} | ${sim.commanders} | ${pct(sim.addRecall)} |`);
     lines.push('', `EDHREC agreement: ${pct(s.edhrecOverlap.mean)} of EDHREC's top cards in our pool's top, over ${s.edhrecOverlap.commanders} commanders with a page.`, '');
+    const b = s.build;
+    lines.push(
+      `Builds (${b.commanders} commanders, every card available): ${interval(b.overlap)} of a held-out deck's cards in the build; ` +
+        `off by ${b.landError.toFixed(1)} lands, ${b.basicError.toFixed(1)} basic lands and ${b.roleError.toFixed(1)} cards per role on average; ` +
+        `${pct(b.edhrecOverlap)} of EDHREC's top cards in the build.`,
+      '',
+    );
   }
   return lines.join('\n');
 }
@@ -868,7 +1049,8 @@ export async function evalHoldout({ candidatePath, timeSplit = false }: { candid
     training.pairs = trainingPairs(train, trainingDecks, data, baseSettings.pairs);
     console.log(`eval:holdout: ${data.decks.length} decks, ${train.length} training, ${heldOut.length} held out.`);
 
-    const baseline = run(baseSettings, data, training, trainingDecks, heldOut);
+    const brackets = await loadBracketData(sql);
+    const baseline = run(baseSettings, data, training, trainingDecks, heldOut, brackets);
     const order = [...baseline.commanders.keys()].sort();
     const summaries = [summarize('Today\'s settings', baseline, order, e)];
     const extras: string[] = [
@@ -878,7 +1060,6 @@ export async function evalHoldout({ candidatePath, timeSplit = false }: { candid
 
     // Authors' declared brackets against our estimate: a check on the estimator only, never a score. Declared 1 and 5
     // can't match: the estimate stays within 2–4.
-    const brackets = await loadBracketData(sql);
     const agreement = new Map<string, number>();
     let declaredDecks = 0;
     let exact = 0;
@@ -906,7 +1087,7 @@ export async function evalHoldout({ candidatePath, timeSplit = false }: { candid
         corpus: parseCorpusSettings(merge(baseSettings.corpus, overrides.corpus)),
         scoring: parseScoringConfig(merge(baseSettings.scoring, overrides.scoring)),
       };
-      const candidate = run(candidateSettings, data, training, trainingDecks, heldOut);
+      const candidate = run(candidateSettings, data, training, trainingDecks, heldOut, brackets);
       const candidateSummary = summarize('Candidate', candidate, order, e);
       summaries.push(candidateSummary);
       const keys = order.filter((k) => candidate.commanders.has(k));

@@ -2095,6 +2095,18 @@ export type Database = {
           position: number
         }[]
       }
+      serving_build_pool: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_basic_names: string[]
+          p_card_ids: number[]
+          p_commander_ids: number[]
+          p_exclude: number[]
+          p_limit?: number
+          p_owned?: number[]
+        }
+        Returns: Json
+      }
       serving_cards: {
         Args: { p_card_ids: number[]; p_commander_ids: number[] }
         Returns: Database["public"]["CompositeTypes"]["serving_card"][]

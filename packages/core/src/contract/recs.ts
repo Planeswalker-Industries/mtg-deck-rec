@@ -1,5 +1,5 @@
 import type { CardSummary, TagRef } from './cards';
-import type { CommanderKeyRef, CorpusConfidence, DeckInput } from './decks';
+import type { BracketSignals, CommanderKeyRef, CorpusConfidence, DeckInput } from './decks';
 import type { Bracket, CardId, DeckId, IsoDateTime, TagId } from './ids';
 
 export type RecMode = 'collection_less' | 'collection_aware';
@@ -249,6 +249,67 @@ export interface AddResult {
   buyList?: BuyAddSuggestion[];
   /** "Complete a combo": its own group, best result first. Credited and linked to Commander Spellbook. */
   combos?: ComboSuggestion[];
+}
+
+/**
+ * What a build fills its open slots with once the collection runs out (T063). none: leave them open and say so in the
+ * feasibility report. value: fill them with unowned cards by score above the quality floor per dollar.
+ */
+export type BuildFill = 'none' | 'value';
+
+/** Where a card in a build came from: the cards the player kept, the build's own picks, or the value fill. */
+export type BuildOrigin = 'kept' | 'pick' | 'fill';
+
+/** A card in a build: scored as a card to add at the moment it was picked (kept cards against the rest of the build). */
+export interface BuildCard extends AddSuggestion {
+  origin: BuildOrigin;
+}
+
+/** Copies of one basic land in a build, split across the colours by the spells' mana symbols. */
+export interface BuildBasics {
+  card: CardSummary;
+  quantity: number;
+}
+
+/** What a build could not fill. Said plainly, so the player can choose the value fill. */
+export interface BuildFeasibility {
+  /** Cards the deck holds besides its commanders (99, or 98 with a partner). */
+  slots: number;
+  /** Slots filled from the collection (or from every card without one): kept cards, picks and basic lands. */
+  filled: number;
+  /** Slots the value fill filled with unowned cards. */
+  filledByValue: number;
+  /** Slots still open. */
+  open: number;
+  /** Roles the finished build is still short of against the commander's targets, most short first. */
+  roleShortfalls: { role: TagRef; short: number }[];
+}
+
+/** The value fill's running total: estimates, shown with their date. */
+export interface BuildCost {
+  usd: number;
+  cards: number;
+  asOf: IsoDateTime | null;
+}
+
+/** A deck built for a commander and a bracket (T063). */
+export interface BuildResult {
+  mode: RecMode;
+  commanderKey: CommanderKeyRef;
+  confidence: CorpusConfidence;
+  /** Every card but the basic lands, grouped like cards to add, best first in each group. */
+  groups: { category: CardCategory; cards: BuildCard[] }[];
+  basics: BuildBasics[];
+  /** The lands the build aimed for (the commander's decks, or a typical count for its colours), basics included. */
+  landTarget: number;
+  /** "Complete a combo": combos the build is one card short of that the bracket allows. Credited and linked. */
+  combos: ComboSuggestion[];
+  /** The finished build's estimate: never above the bracket asked for, since a build treats every bracket rule as a limit. */
+  estimatedBracket: Bracket;
+  bracketSignals: BracketSignals;
+  feasibility: BuildFeasibility;
+  /** With `fill: 'value'`: what the value fill's cards cost. */
+  fillCost?: BuildCost;
 }
 
 export type CutReason =

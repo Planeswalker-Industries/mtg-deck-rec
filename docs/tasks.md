@@ -660,14 +660,23 @@ Replace `externalPriorShare` with `edhrecPriorCap` and the sample-size update in
 
 ### T063: Build a deck from a commander and a bracket
 
-**Priority:** MEDIUM | **Area:** Full stack / Contract | **Status:** Not started | **Blocked by:** T059, T060, T062
+**Priority:** MEDIUM | **Area:** Full stack / Contract | **Status:** Data, scoring, route and contract built on `feat/scoring-pipeline` (2026-10-06, contract v24, migration `20261006001100`); UI shelved | **Blocked by:** T059, T060, T062
 
 `BuildApi.build`: learned skeleton, greedy fill by the marginal-value function from available cards, lands by pip share, a feasibility report when the collection falls short, and an optional best-value fill with a running price total. A pure function in `@mtg/core`; the entry point is T050's picker.
 
+**Built:** see `../CLAUDE.md` ("Builds"). `buildDeck` (`@mtg/core/scoring`, tested), `serving_build_pool` (`build.sql`), `POST /api/recs/build` and `RecsApi.build` (contract v24; the design's `BuildApi.build`, put on `RecsApi` since it shares that transport), and the Build test in `cli eval:holdout`. Owner decisions (2026-10-06): builds rank by `weights.add` (the plans' one marginal-value function; a separate `weights.build` only if the curve helps builds but still fails adds); typical land and basic land counts by colour count; basics by pure pip share (a colour no spell asks for gets none); the quality floor stops only a build from a collection, so a build from every card fills all 99. Locally a build answers in about 0.5–0.8 s (the read about 220 ms, 1 MB).
+
+**Evaluation (time split, 2026-10-06):** a build for each held-out deck's commander and estimated bracket, every card available (1,420 commanders; adds unchanged at recall@20 25.5%):
+- Today's settings: a build holds 38.6% of a held-out deck's non-basic cards (interval 38.0–39.2%) and 84.1% of the commander's top EDHREC cards; it is off by 2.2 lands, 5.4 basic lands and 3.6 cards per tracked role on average (decks for one commander vary that much: the 10th–90th percentile of a key's basics spans about 6).
+- `curve` at 0.1 in `weights.add` (corpus 0.6): builds 38.4%, EDHREC 83.6%, lands, basics and roles unchanged; adds recall 25.5% → 24.1% (fails the gate). The curve doesn't help builds either, so builds keep `weights.add` and no `weights.build` is added.
+- The regression fixtures: the one standing miss (Talisman of Hierarchy, #5 in its group, as after T064).
+
+**Shelved UI (owner decision 2026-10-06):** the commander and bracket picker that starts a build (T050's picker on `/deck?start=build`, which today opens an empty deckbuilder), the built deck shown grouped like Add with each card's score and origin, the basics and land target, the feasibility report ("Your collection fills 68 of 99. Card advantage is 9 short") with the value-fill button and its running total and price date, "complete a combo" entries (credited to Commander Spellbook), the build's bracket estimate, and saving the result as a deck.
+
 **Acceptance criteria:**
-- [ ] Deterministic builds that never break a hard limit; tests
-- [ ] Build overlap and role and land error in the evaluation report
-- [ ] Contract bump and UI (picker, feasibility report, value fill)
+- [x] Deterministic builds that never break a hard limit; tests
+- [x] Build overlap and role and land error in the evaluation report
+- [ ] Contract bump and UI (picker, feasibility report, value fill): contract v24 done; the UI is shelved
 
 ---
 

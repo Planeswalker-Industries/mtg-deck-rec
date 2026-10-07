@@ -46,6 +46,10 @@ export interface CommanderCorpus {
   curveProfile: Profile;
   /** EDHREC's role and curve profile for exactly these commanders, when they have a page (T062). */
   prior: ProfilePrior | null;
+  /** Lands per deck, basics included, the same way; null when no source deck says (T062, read by builds). */
+  landCount: number | null;
+  /** Basic lands per deck, the same way. */
+  basicLandCount: number | null;
   confidence: CorpusConfidence;
 }
 
@@ -102,7 +106,14 @@ export interface CommanderKeyRow {
   commander_1: number;
   commander_2: number | null;
   color_identity: number;
-  commander_stats: { deck_count: number; deck_months: unknown; role_profile: unknown; curve_profile: unknown } | null;
+  commander_stats: {
+    deck_count: number;
+    deck_months: unknown;
+    role_profile: unknown;
+    curve_profile: unknown;
+    land_count: number | null;
+    basic_land_count: number | null;
+  } | null;
 }
 
 /**
@@ -114,7 +125,7 @@ async function readCommanderKeys(db: PublicClient, ids: readonly number[]): Prom
   const idList = ids.join(",");
   const { data, error } = await db
     .from("commander_keys")
-    .select("id, slug, commander_1, commander_2, color_identity, commander_stats(deck_count, deck_months, role_profile, curve_profile)")
+    .select("id, slug, commander_1, commander_2, color_identity, commander_stats(deck_count, deck_months, role_profile, curve_profile, land_count, basic_land_count)")
     .or(`commander_1.in.(${idList}),commander_2.in.(${idList})`)
     .order("id");
   if (error) throw new Error(`Loading commander keys failed: ${error.message}`);
@@ -143,6 +154,8 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
     roleProfile: {},
     curveProfile: {},
     prior: null,
+    landCount: null,
+    basicLandCount: null,
     confidence: "none",
   };
   if (!available || keys.length === 0) return none;
@@ -172,6 +185,19 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
     return Object.fromEntries(Object.entries(totals).map(([key, total]) => [key, total / Math.max(picked.effectiveDeckCount, 1)]));
   };
   const roleProfile = weighted((s) => s?.role_profile);
+  // A per-deck count over the sources that have one, at their weights.
+  const average = (valueOf: (stats: NonNullable<CommanderKeyRow["commander_stats"]>) => number | null) => {
+    let total = 0;
+    let decks = 0;
+    for (const source of picked.sources) {
+      const stats = statsByKey.get(source.id);
+      const value = stats ? valueOf(stats) : null;
+      if (value === null) continue;
+      total += value * source.deckCount * source.weight;
+      decks += source.deckCount * source.weight;
+    }
+    return decks > 0 ? total / decks : null;
+  };
   return {
     available,
     settings,
@@ -186,6 +212,8 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
     roleProfile,
     curveProfile: weighted((s) => s?.curve_profile),
     prior: null,
+    landCount: average((s) => s.land_count),
+    basicLandCount: average((s) => s.basic_land_count),
     confidence: sourcesConfidence(picked, settings),
   };
 }

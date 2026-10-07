@@ -54,6 +54,7 @@ export const realRecs: RecsApi = {
   swap: (input) => post("/api/recs/swap", input),
   add: (input) => post("/api/recs/add", input),
   cut: (input) => post("/api/recs/cut", input),
+  build: (input) => post("/api/recs/build", input),
 };
 
 export const realActions: ActionsApi = {

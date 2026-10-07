@@ -94,5 +94,12 @@
  * cards, from card pairs), AddSuggestion and SwapSuggestion gain optional `pairedWith` (the deck cards it connects to
  * most) and CutReason gains LOW_AFFINITY. The component's weight is 0 and the cut reason off until the evaluation
  * passes them.
+ *
+ * v24 (2026-10-06): building a deck (T063). RecsApi.build takes a RecContext (its commanders, bracket and collection;
+ * its main cards are kept) and `fill` ('none' or 'value'), and returns BuildResult: the cards grouped like adds
+ * (BuildCard: an AddSuggestion with its origin, kept, pick or fill), the basic lands, the land target, "complete a
+ * combo" entries, the build's bracket estimate and signals, the feasibility report (slots filled from the collection,
+ * by the value fill, still open, roles still short) and, with the value fill, its cost. The design named it
+ * BuildApi.build; it sits on RecsApi because it shares the recommendation routes' transport. Additive.
  */
-export const CONTRACT_VERSION = 23;
+export const CONTRACT_VERSION = 24;

@@ -9,6 +9,8 @@ import { z } from 'zod';
 
 const share = z.number().min(0).max(1);
 const positive = z.number().positive();
+/** A colour identity holds 0 to 5 colours: one entry per count. */
+const COLOUR_COUNTS = 6;
 
 /** One weight per score component (`blendScore` renormalises over the components that have data). */
 const componentWeightsSchema = z.object({
@@ -102,6 +104,15 @@ export const scoringConfigSchema = z.object({
     lowAffinityCuts: z.boolean(),
     /** Cards the deck's strongest pairs point to, added to the add pool. */
     neighbours: z.int().min(0),
+  }),
+  /** Building a deck from a commander and a bracket (T063). Builds rank by `weights.add`, the one marginal-value function. */
+  build: z.object({
+    /** A build from a collection stops picking once the best card left scores under this; the value fill picks by score above it per dollar. */
+    qualityFloor: share,
+    /** Lands per deck by the commanders' colour count (index 0–5), for commanders whose own decks don't say yet. */
+    landCounts: z.array(positive).length(COLOUR_COUNTS),
+    /** Basic lands per deck by colour count (index 0–5: Wastes for colourless), likewise. */
+    basicLandCounts: z.array(z.number().min(0)).length(COLOUR_COUNTS),
   }),
   /** "Complete a combo" (T060): what a combo does decides its place, then the missing card's add score. */
   combos: z.object({

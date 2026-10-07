@@ -115,3 +115,52 @@ export function deckAffinity(
       .map(([id]) => id),
   };
 }
+
+/**
+ * Deck affinity for a deck that grows one card at a time (a build, T063): `add` a card as it joins the deck, then `of`
+ * gives every candidate's affinity exactly as `deckAffinity` would against the deck so far, without re-reading the
+ * whole deck for each candidate. Candidates are never in the deck.
+ */
+export interface AffinityTracker {
+  add(deckCard: number): void;
+  of(cardId: number): Affinity | null;
+}
+
+export function affinityTracker(lifts: PairLifts, weights: ReadonlyMap<number, DeckCardWeight>, settings: AffinitySettings): AffinityTracker {
+  const deck = new Set<number>();
+  const weighted = new Map<number, number>();
+  const links = new Map<number, [number, number][]>();
+  let total = 0;
+  return {
+    add(deckCard) {
+      if (deck.has(deckCard)) return;
+      deck.add(deckCard);
+      const weight = weights.get(deckCard);
+      if (!weight || weight.rate <= 0 || weight.rate >= 1) return;
+      const idf = Math.log(1 / weight.rate);
+      const share = weight.keyDecks / (weight.keyDecks + settings.backoffBeta);
+      total += idf;
+      const own = lifts.own.get(deckCard);
+      const global = lifts.global.get(deckCard);
+      for (const cardId of new Set([...(own?.keys() ?? []), ...(global?.keys() ?? [])])) {
+        const pmi = share * (own?.get(cardId) ?? 0) + (1 - share) * (global?.get(cardId) ?? 0);
+        if (pmi <= 0) continue;
+        weighted.set(cardId, (weighted.get(cardId) ?? 0) + idf * pmi);
+        let list = links.get(cardId);
+        if (!list) links.set(cardId, (list = []));
+        list.push([deckCard, idf * pmi]);
+      }
+    },
+    of(cardId) {
+      if (total === 0) return null;
+      const raw = (weighted.get(cardId) ?? 0) / total;
+      return {
+        value: raw / (raw + settings.halfValue),
+        pairedWith: [...(links.get(cardId) ?? [])]
+          .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+          .slice(0, PAIRED_WITH)
+          .map(([id]) => id),
+      };
+    },
+  };
+}

@@ -104,6 +104,8 @@ export const addInputSchema = z.object(
   request,
 );
 export const cutInputSchema = z.object({ context: recContextSchema, limit }, request);
+/** A build (v24): the context's main cards are cards to keep; `fill` says what fills slots the collection can't. */
+export const buildInputSchema = z.object({ context: recContextSchema, fill: z.enum(['none', 'value']).optional() }, request);
 
 export const parseDeckInputSchema = z.object(
   {

@@ -1,8 +1,9 @@
 import type { CollectionCopies } from "@mtg/core/collection";
-import type { AddResult, CommanderKeyId, CutResult, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
+import type { AddResult, BuildFill, BuildResult, CommanderKeyId, CutResult, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
 import {
   ADD_POOL_SIZE,
   bracketExclusions,
+  buildDeck,
   mainDeckIds,
   modeOf,
   ownedFirst,
@@ -20,7 +21,7 @@ import { availabilityFor, loadStandIns } from "./collection-availability";
 import { cachedConfig } from "./config-cache";
 import { commanderKeyCounts } from "./corpus";
 import { loadScoringConfig } from "./scoring-config";
-import { loadDeckAffinity, loadServedAdds, loadServedCuts, loadServedSwapPool } from "./serving";
+import { loadDeckAffinity, loadServedAdds, loadServedBuild, loadServedCuts, loadServedSwapPool } from "./serving";
 import type { PublicClient } from "./supabase";
 
 /**
@@ -257,4 +258,59 @@ export async function getAddSuggestions(
     limitPerCategory,
   });
   return { mode, commanderKey, confidence: corpus.confidence, groups, ...(buyList ? { buyList } : {}), ...(combos ? { combos } : {}) };
+}
+
+/**
+ * A deck built for the context's commanders and bracket (T063): from the collection's cards with one (owned only, and
+ * with `fill: 'value'` unowned cards by value for what it can't fill), from every card without one. The context's main
+ * cards are kept. Read in one round (`serving_build_pool`), built by `@mtg/core/scoring` `buildDeck`.
+ */
+export async function getBuild(
+  db: PublicClient,
+  { context, collection = null, fill = "none" }: { context: RecContext; collection?: CollectionCopies | null; fill?: BuildFill | undefined },
+): Promise<BuildResult> {
+  const available = await availabilityFor(db, collection);
+  const [served, standIns, roleTargets, roleTags, scoring, bracket] = await Promise.all([
+    loadServedBuild(db, {
+      commanderIds: context.deck.commanders,
+      keptIds: mainDeckIds(context),
+      allowGameChangers: context.includeGameChangers,
+      owned: available ? available.poolIds() : null,
+      limit: ADD_POOL_SIZE,
+    }),
+    loadStandIns(db, available),
+    loadRoleTargets(db),
+    loadRoleTags(db),
+    loadScoringConfig(),
+    loadBracketBasics(db),
+  ]);
+  const { corpus } = served;
+  const commanderKey: BuildResult["commanderKey"] = {
+    id: corpus.keyId as CommanderKeyId | null,
+    slug: corpus.slug,
+    commanders: context.deck.commanders.flatMap((id) => {
+      const row = served.commanderRows.get(id);
+      return row ? [toCardSummary(row)] : [];
+    }),
+    ...commanderKeyCounts(corpus),
+  };
+  const built = buildDeck({
+    context,
+    poolIds: served.poolIds,
+    fillIds: served.fillIds,
+    cards: rankCards(served.cards.rows),
+    rates: served.cards.rates,
+    roles: served.cards.roles,
+    corpus,
+    roleTargets,
+    roleTags,
+    scoring,
+    availability: available,
+    standIns,
+    bracketFacts: { ...bracket, combos: served.combos },
+    affinity: served.affinity,
+    basics: served.basics,
+    fill,
+  });
+  return { mode: modeOf(context), commanderKey, confidence: corpus.confidence, ...built };
 }

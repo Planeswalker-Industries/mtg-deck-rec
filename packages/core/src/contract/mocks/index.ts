@@ -17,6 +17,8 @@ import type { Bracket, CardId, CommanderKeyId, DeckId, TagId } from '../ids';
 import type {
   AddResult,
   AddSuggestion,
+  BuildCard,
+  BuildResult,
   CardCategory,
   CorpusEvidence,
   CostDelta,
@@ -67,6 +69,8 @@ const MOCK_SEVERE_SYNERGY_SCORE = 0.2;
 const MOCK_OWNED_FIRST_BOOST = 0.1;
 /** The buy list's settings, as `app_config.scoring.collection` starts them (a shorter list, for the mock catalog). */
 const MOCK_BUY_LIST = { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 5 };
+/** Lands a mock build aims for, about what Commander decks run (`app_config.scoring.build` holds the real counts). */
+const MOCK_BUILD_LANDS = 36;
 const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0 };
 const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'];
 
@@ -394,6 +398,73 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
               .slice(0, limitPerCategory),
           })),
           ...(only ? { buyList: buyList(unowned, (s) => best.get(s.category) ?? 0, MOCK_BUY_LIST) } : {}),
+        };
+        return delay(ok(result));
+      } catch (e) {
+        return delay(fail('VALIDATION', (e as Error).message));
+      }
+    },
+
+    async build({ context, fill = 'none' }) {
+      try {
+        const owned = ownedIds(context.ownership);
+        const commanders = context.deck.commanders.map(getCard);
+        const identity = unionIdentity(commanders);
+        const slots = 100 - commanders.length;
+        const kept = [...new Set(context.deck.cards.filter((e) => e.section === 'main').map((e) => e.cardId))].map(getCard).filter((c) => !isBasicLand(c));
+        const taken = new Set<number>([...context.deck.commanders, ...kept.map((c) => c.id)]);
+        const scored = (c: CardSummary, origin: BuildCard['origin']): BuildCard => {
+          const corpus = corpusFor(c.id);
+          return {
+            card: c,
+            category: categoryOf(c.typeLine),
+            corpus,
+            score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null, role: null }, 0),
+            fillsRoles: [],
+            owned: ownedInfo(owned, c.id),
+            origin,
+          };
+        };
+        // The mock catalog is small: every eligible card the collection supplies, best first, up to the nonland slots.
+        const candidates = mockCards
+          .filter((c) => !taken.has(c.id) && !isBasicLand(c) && withinIdentity(c, identity))
+          .filter((c) => context.includeGameChangers || !c.gameChanger)
+          .map((c) => scored(c, 'pick'))
+          .sort((a, b) => b.score.total - a.score.total || a.card.name.localeCompare(b.card.name));
+        const room = Math.max(0, slots - MOCK_BUILD_LANDS - kept.length);
+        const picks = candidates.filter((s) => !owned || owned.has(s.card.id)).slice(0, room);
+        const fills = owned && fill === 'value' ? candidates.filter((s) => !owned.has(s.card.id)).slice(0, room - picks.length) : [];
+        const cards = [...kept.map((c) => scored(c, 'kept')), ...picks, ...fills.map((s) => ({ ...s, origin: 'fill' as const }))];
+        const basicCards = mockCards.filter((c) => isBasicLand(c) && withinIdentity(c, identity));
+        const basicTotal = Math.min(MOCK_BUILD_LANDS, slots - cards.length);
+        const basics = basicCards.map((card, i) => ({
+          card,
+          quantity: Math.floor(basicTotal / basicCards.length) + (i < basicTotal % basicCards.length ? 1 : 0),
+        }));
+        const placed = cards.length + basics.reduce((n, b) => n + b.quantity, 0);
+        const gameChangerCount = [...commanders, ...cards.map((s) => s.card)].filter((c) => c.gameChanger).length;
+        const groups = new Map<CardCategory, BuildCard[]>();
+        for (const s of cards) groups.set(s.category, [...(groups.get(s.category) ?? []), s]);
+        const result: BuildResult = {
+          mode: modeOf(context),
+          commanderKey: commanderKeyRef(context.deck.commanders),
+          confidence: confidenceOf(context),
+          groups: [...groups].map(([category, list]) => ({ category, cards: list })),
+          basics: basics.filter((b) => b.quantity > 0),
+          landTarget: MOCK_BUILD_LANDS,
+          combos: [],
+          estimatedBracket: gameChangerCount === 0 ? 2 : gameChangerCount <= 3 ? 3 : 4,
+          bracketSignals: { gameChangerCount, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
+          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed, roleShortfalls: [] },
+          ...(owned && fill === 'value'
+            ? {
+                fillCost: {
+                  usd: round(fills.reduce((sum, s) => sum + (s.card.price?.usd ?? 0), 0)),
+                  cards: fills.length,
+                  asOf: fills.find((s) => s.card.price)?.card.price?.asOf ?? null,
+                },
+              }
+            : {}),
         };
         return delay(ok(result));
       } catch (e) {

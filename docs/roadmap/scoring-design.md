@@ -306,7 +306,8 @@ One version bump per task that touches the contract:
 - `AddResult` and `SwapResult` gain `buyList` (suggestions with `valueScore` and price).
 - `OwnershipInput` carries quantities. `ownershipMode` defaults to `'only'` with a buy list.
 - A new `BuildApi.build({commanderIds, bracket, ownership, fill})` returns
-  `{deck, groups, combos, bracket, feasibility, fillCost?}`.
+  `{deck, groups, combos, bracket, feasibility, fillCost?}`. Built as `RecsApi.build` (contract v24, T063): it shares the
+  recommendation routes' transport and takes their `RecContext`.
 - `DeckAnalysis` gains `combos` (pieces, results, Spellbook link) and `bracketSignals`. Display per T045.
 
 ## Evaluation

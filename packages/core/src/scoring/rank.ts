@@ -87,6 +87,10 @@ export interface RankCorpus {
   curveProfile: Profile;
   /** EDHREC's role and curve profile for these commanders, when they have a page (T062). */
   prior: ProfilePrior | null;
+  /** Lands per deck, basics included, across the commanders' decks at their weights (T062); absent or null when unknown. */
+  landCount?: number | null;
+  /** Basic lands per deck, the same way. */
+  basicLandCount?: number | null;
 }
 
 /** What deck affinity needs for one deck (T064): the pairs touching its cards and its cards' weights. */
@@ -153,7 +157,7 @@ const deckCurveOf = (ids: readonly number[], cards: ReadonlyMap<number, RankCard
   }));
 
 /** What a collection makes of a card in a suggestion. */
-interface Owning {
+export interface Owning {
   /** The card to show: the card itself, or an owned twin standing in for it. */
   summary: CardSummary;
   owned: OwnedInfo | null;
@@ -164,7 +168,7 @@ interface Owning {
 
 const unowned = (summary: CardSummary): Owning => ({ summary, owned: null, supplied: false });
 
-function owningOf(card: RankCard, availability: Availability | null, standIns: ReadonlyMap<number, RankCard>): Owning {
+export function owningOf(card: RankCard, availability: Availability | null, standIns: ReadonlyMap<number, RankCard>): Owning {
   if (!availability) return unowned(card.summary);
   const a = availability.of(card.summary.id, card.isBasicLand);
   if (a.status === 'unowned') return unowned(card.summary);
@@ -229,7 +233,7 @@ export function costDelta(target: CardSummary, replacement: CardSummary, owns: (
   return { usd: round2(replacementUsd - targetUsd), basis: 'buy_replacement_vs_buy_target', asOf };
 }
 
-const identityMaskOf = (ctx: RecContext, cards: ReadonlyMap<number, RankCard>) =>
+export const identityMaskOf = (ctx: RecContext, cards: ReadonlyMap<number, RankCard>) =>
   ctx.deck.commanders.reduce((mask, id) => mask | (cards.get(id)?.colorIdentity ?? 0), 0);
 
 /** Cuts for a deck: rule problems first, then the cards the commander's decks run least. */
@@ -503,7 +507,7 @@ export function rankAdds({
  * allows, one entry per missing card (its best combo), ordered by what the combo does and then by the missing card's
  * score as an add. In 'only' mode the collection has to supply the missing card.
  */
-function completeACombo(
+export function completeACombo(
   facts: DeckBracketFacts,
   bracket: RecContext['bracket'],
   excluded: ReadonlySet<number>,

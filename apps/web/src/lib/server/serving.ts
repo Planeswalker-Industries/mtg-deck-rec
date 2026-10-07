@@ -1,6 +1,7 @@
 import type { ComboFacts } from "@mtg/core/commander";
 import type { TagId, TagRef } from "@mtg/core/contract";
 import {
+  BASIC_LAND_NAMES,
   cardPrior,
   commanderCardCounts,
   commanderShare,
@@ -8,6 +9,8 @@ import {
   pmiIndex,
   servedCardRates,
   type AffinityInput,
+  type BasicColour,
+  type BuildAffinity,
   type RankCard,
   type SwapPool,
   type SwapPoolCandidate,
@@ -127,18 +130,22 @@ type ComboRow = Database["public"]["Functions"]["serving_deck_combos"]["Returns"
 /** How many combo rows a read asks for: under PostgREST's row cap, complete combos first. */
 const COMBO_ROW_LIMIT = 600;
 
+/** Combo rows as the bracket rules and the combo group read them. */
+const comboFactsOf = (rows: readonly Omit<ComboRow, "card">[]): ComboFacts[] =>
+  rows.map((r) => ({
+    variantId: r.variant_id,
+    pieces: r.pieces,
+    minBracket: r.min_bracket,
+    results: r.results,
+    contextualResults: r.contextual_results,
+    templateNames: r.template_names,
+    missing: r.missing ?? null,
+  }));
+
 /** The deck's combos as the bracket rules and the combo group read them, and the missing pieces' serving_cards. */
 function combosOf(rows: readonly ComboRow[]): { combos: ComboFacts[]; missingCards: ServingCard[] } {
   return {
-    combos: rows.map((r) => ({
-      variantId: r.variant_id,
-      pieces: r.pieces,
-      minBracket: r.min_bracket,
-      results: r.results,
-      contextualResults: r.contextual_results,
-      templateNames: r.template_names,
-      missing: r.missing ?? null,
-    })),
+    combos: comboFactsOf(rows),
     missingCards: rows.flatMap((r) => (r.missing !== null && r.card?.card_id ? [r.card] : [])),
   };
 }
@@ -321,6 +328,108 @@ export async function loadServedAdds(
     combos,
     deckCards: new Map([...deckRows].map(([id, row]) => [id, rankCardOf(row)])),
     affinity,
+  };
+}
+
+/** What a build reads (T063), in one round: `serving_build_pool`'s value and the commanders' corpus. */
+export interface ServedBuild {
+  corpus: CommanderCorpus;
+  commanderRows: Map<number, CardRow>;
+  /** The pool the build picks from (the collection's with one), best first. */
+  poolIds: number[];
+  /** Everyone's pool, for the value fill (with a collection only). */
+  fillIds: number[];
+  /** Rows for both pools, the kept cards, the combos' missing pieces and the basic lands. */
+  cards: ServedCards;
+  combos: ComboFacts[];
+  affinity: BuildAffinity;
+  basics: Map<BasicColour, RankCard>;
+}
+
+interface BuildPoolValue {
+  pool?: { part: "own" | "open"; pool: PoolKind; position: number; card: ServingCard }[];
+  own?: [number, number, number][];
+  global?: [number, number, number][];
+  cards?: [number, number, number][];
+  combos?: Omit<ComboRow, "card">[];
+  missing?: ServingCard[];
+  basics?: ServingCard[];
+}
+
+export async function loadServedBuild(
+  db: PublicClient,
+  input: {
+    commanderIds: readonly number[];
+    keptIds: readonly number[];
+    allowGameChangers: boolean;
+    owned: readonly number[] | null;
+    limit: number;
+  },
+): Promise<ServedBuild> {
+  const commanderIds = [...input.commanderIds];
+  const [buildResult, keptResult, corpus, identityMonths, checkedAt] = await Promise.all([
+    db.rpc("serving_build_pool", {
+      p_commander_ids: commanderIds,
+      p_card_ids: [...input.keptIds],
+      p_exclude: [...new Set([...commanderIds, ...input.keptIds])],
+      p_allow_game_changers: input.allowGameChangers,
+      p_basic_names: Object.values(BASIC_LAND_NAMES),
+      p_limit: input.limit,
+      ...(input.owned ? { p_owned: [...input.owned] } : {}),
+    }),
+    db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: [...commanderIds, ...input.keptIds] }),
+    loadCommanderCorpus(db, commanderIds),
+    loadIdentityMonths(db),
+    pricesCheckedAt(db),
+  ]);
+  if (buildResult.error) throw new Error(`Loading the build pool failed: ${buildResult.error.message}`);
+  if (keptResult.error) throw new Error(`Loading the deck's cards failed: ${keptResult.error.message}`);
+  const value = (buildResult.data ?? {}) as BuildPoolValue;
+
+  // The same pool choice as adds: the commander's pool, a pair's partners while their decks count, the colours' otherwise.
+  const useCommander = commanderShare(corpus.effectiveDeckCount, corpus.settings) > 0;
+  const rows = value.pool ?? [];
+  const order = (part: "own" | "open") => {
+    const mine = rows.filter((r) => r.part === part && r.card.card_id !== null);
+    const kinds = new Set(mine.map((r) => r.pool));
+    const chosen: PoolKind = kinds.has("commander") ? "commander" : kinds.has("partners") && useCommander ? "partners" : "baseline";
+    const of = (kind: PoolKind) =>
+      mine
+        .filter((r) => r.pool === kind)
+        .sort((a, b) => a.position - b.position)
+        .map((r) => r.card);
+    // A collection's pool keeps the colours' cards too, after the chosen pool's.
+    return input.owned && part === "own" && chosen !== "baseline" ? [...of(chosen), ...of("baseline")] : of(chosen);
+  };
+  const ownCards = order("own");
+  const openCards = input.owned ? order("open") : [];
+  const idsOf = (cards: readonly ServingCard[]) => [...new Set(cards.flatMap((c) => (c.card_id === null ? [] : [c.card_id])))];
+  const basicCards = value.basics ?? [];
+  const cards = servedCards(
+    [...ownCards, ...openCards, ...(value.missing ?? []), ...basicCards, ...asCards(keptResult.data)],
+    corpus,
+    identityMonths,
+    checkedAt,
+  );
+  const basicByName = new Map(Object.entries(BASIC_LAND_NAMES).map(([colour, name]) => [name, colour as BasicColour]));
+  const basics = new Map<BasicColour, RankCard>();
+  for (const c of basicCards) {
+    const colour = basicByName.get(c.name ?? "");
+    const row = c.card_id === null ? undefined : cards.rows.get(c.card_id);
+    if (colour && row) basics.set(colour, rankCardOf(row));
+  }
+  return {
+    corpus,
+    commanderRows: servedCards(asCards(keptResult.data).filter((c) => commanderIds.includes(c.card_id ?? 0)), corpus, identityMonths, checkedAt).rows,
+    poolIds: idsOf(ownCards),
+    fillIds: idsOf(openCards),
+    cards,
+    combos: comboFactsOf(value.combos ?? []),
+    affinity: {
+      lifts: { own: pmiIndex(value.own ?? []), global: pmiIndex(value.global ?? []) },
+      weights: new Map((value.cards ?? []).map(([card, rate, keyDecks]) => [card, { rate, keyDecks }])),
+    },
+    basics,
   };
 }
 

@@ -36,42 +36,16 @@ branch is merged.
 | `a545362` | T060 | Bracket rules and the "complete a combo" group (contract v21) | CLAUDE.md "Combos", Bracket rules; `tasks.md` T060 |
 | `e4957c0` | T062 | Learned curve and land counts, EDHREC role and curve profiles, `curve` component (contract v22); all new switches off, none passed the gate | CLAUDE.md "The learned skeleton"; `tasks.md` T062 |
 | `93e43a6` | T064 | Card pairs and deck affinity (contract v23); `deck` weighs 0.1 in adds, recall@20 25.0% → 25.5% | CLAUDE.md "Card pairs and deck affinity"; `tasks.md` T064 |
+| T063 commit | T063 | Build a deck from a commander and a bracket (contract v24, migration `20261006001100`, `POST /api/recs/build`); build overlap 38.6% on the time split | CLAUDE.md "Builds"; `tasks.md` T063 |
 
 Evaluation results for every task are in its `tasks.md` entry. The latest baseline on the time split (today's local
-settings, before `deck` got weight): adds recall@20 25.0%, cuts precision@10 25.0%, collection recall 49.5%.
+settings, 2026-10-06): adds recall@20 25.5%, cuts precision@10 25.0%, collection recall 51.3%, builds 38.6% overlap.
 
 ## Left to do
 
-### T063: build a deck from a commander and a bracket
+### T063: build a deck from a commander and a bracket (done)
 
-Ticket: `tasks.md` T063. Design: `scoring-design.md` "Mode C: build from a commander and a bracket" (the seven steps),
-"One marginal-value function" (m(c | D), and how a build is repeated adds), "Config and data this needs" (the T063
-row: `qualityFloor` 0.35, generic land and basic land counts by colours), "Contract changes" (`BuildApi.build`),
-"Evaluation" (the Build and EDHREC agreement rows). Data side: `card-graph-plan.md` "Card value scoring".
-
-What already exists for it:
-- **Skeleton inputs:** `commander_stats.curve_profile`, `land_count`, `basic_land_count` (T062; read through
-  `loadCommanderCorpus` as `curveProfile`, and the land counts still need adding to that read); EDHREC's role and curve
-  profiles per commander set (`serving_commander_profile`); role targets (`roleTargetsFor`); `curveTargets`,
-  `curveShortfall`, `scaledPrior` in `@mtg/core/scoring` `curve.ts`.
-- **Scoring pieces:** `rankAdds`' blend (`scoring.weights.add`: corpus 0.7, role 0.2, deck 0.1, curve 0), deck
-  affinity (`deckAffinity` in `affinity.ts`, pairs read by `serving_deck_affinity`), the add pool and its neighbours.
-- **Hard limits:** `gameChangerLimit`, `bracketExclusions` (mass land denial), `overBracket` and `isExtraTurnLoop` for
-  combos (`scoring/combos.ts`, `formats/commander/bracket.ts`); `serving_deck_combos` with `near` for the "complete a
-  combo" entries a build is one card short of.
-- **Availability:** `availability()` (`@mtg/core/collection`), the collection's pool (`serving_add_pool` with
-  `p_owned`), the open pool for the value fill, prices on `CardSummary.price`, `scoring.collection.priceFloorUsd`.
-- **Evaluation hooks:** `eval-holdout.ts` already builds a per-commander model (`setModel`: rates, pool order, curve,
-  role profile, EDHREC prior, pairs through `affinityFor`); the build test plugs in beside `gradeDeck`.
-
-Open decisions to make (or ask the owner):
-- **Build weights.** `curve` failed the gate as an add score (T062), but a build needs the curve. A separate
-  `scoring.weights.build` (or a curve weight only for builds), judged by the Build overlap test, is the likely answer.
-- **Generic land and basic land counts by colours** for commanders without decks: compute from the corpus (averages
-  of `land_count` and `basic_land_count` by colour count) into `app_config.scoring`.
-- **Basics by pip share:** needs `mana_cost` of the picked spells (`CardSummary.manaCost`).
-- **UI is shelved:** the commander picker (T050), the feasibility report and the value fill screens are listed in the
-  ticket, not built.
+Built and committed; see `tasks.md` T063 for the owner's decisions, the evaluation and the shelved UI list.
 
 ### T065: live accept rate
 
@@ -101,7 +75,7 @@ shelved UI.
    3. Hosted parity (`apps/web/scripts/serving-parity.ts` on `develop`'s code, before this branch removes it), then
       switch `servingReads` on in production. Hosted writes are the owner's (`CLAUDE.local.md`).
    4. Only then merge this branch, and release it to `main`.
-3. **After this branch's migrations reach hosted** (`20261006000200` to `20261006001000`, in order), rebuild the data
+3. **After this branch's migrations reach hosted** (`20261006000200` to `20261006001100`, in order), rebuild the data
    they add:
    - `cli:hosted aggregate:corpus --force`: the curve and land counts (T062).
    - `cli:hosted precompute --part scores --force`: the EDHREC prior's columns and profiles (T061, T062). It rewrites
@@ -109,10 +83,11 @@ shelved UI.
    - `cli:hosted precompute --part combos --force`: `spellbook_combo_details` (T060).
    - `cli:hosted precompute --part pairs --full` and `--part global-pairs`: the card pairs (T064).
    - Then the open check from T064: p95 add latency on hosted not worse than before.
+   - `20261006001100` (T063) only adds `app_config.scoring.build` and `serving_build_pool`; nothing to rebuild.
 
 ## Working notes for the next session
 
-- **Local database:** the branch's migrations from `20261006000500` on were applied to the running local database by
+- **Local database:** the branch's migrations from `20261006000500` on (`20261006001100` included) were applied to the running local database by
   hand, with their rows inserted into `supabase_migrations.schema_migrations`; the local data (scores with the prior,
   profiles, combo details, pairs) is built. Don't run `supabase db reset`: it would wipe the local corpus. Apply new
   migrations the same way (`docker exec -i supabase_db_mtg_deck_rec psql … < file`, then insert the version), and

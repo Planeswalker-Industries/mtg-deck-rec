@@ -26,6 +26,7 @@ export const TEST_SCORING: ScoringConfig = {
   },
   collection: { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 10 },
   skeleton: { edhrecPrior: false, curveCuts: false, curveOverloadRatio: 1.25, typicalNonlandCards: 64 },
+  build: { qualityFloor: 0.35, landCounts: [35, 35, 35, 35, 35, 36], basicLandCounts: [9, 26, 18, 13, 10, 11] },
   affinity: { backoffBeta: 50, halfValue: 0.1, lowAffinityScore: 0.2, lowAffinityCuts: false, neighbours: 100 },
   combos: {
     resultClasses: [
