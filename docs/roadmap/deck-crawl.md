@@ -7,7 +7,7 @@ Two sources share one engine. **Archidekt is active**; **Moxfield is built and s
 Cloudflare's hard WAF block to the app's honest User-Agent on a path its own robots.txt allows (probed 2026-09-22),
 and the guardrails say a wall is obeyed, not worked around.
 
-Built under T036 (closed 2026-09-28); rebuilt per commander on 2026-10-01. Open: the daily cron trigger (T042), a crawl database role (T043) and Moxfield access (T044). The aggregation that turns these decks into `commander_card_stats` is the follow-up milestone, and
+Built under T036 (closed 2026-09-28); rebuilt per commander on 2026-10-01. Open: a crawl database role (T043) and Moxfield access (T044). The aggregation that turns these decks into `commander_card_stats` is the follow-up milestone, and
 the wider design they feed is [`card-graph-plan.md`](card-graph-plan.md).
 
 ## Why it exists
@@ -414,12 +414,12 @@ update crawl.state set running_run_id = null, client_id = null, claimed_at = nul
 
 ## Not done yet
 
-- **The daily trigger (T042).** The Vercel cron has started runs only sometimes. The VPS worker (T066) starts each
-  source's run at `crawlHourUtc` unless one already started that day (UTC); the claim makes a second trigger harmless,
-  so the cron stays as a backup until two days of worker-started runs, then goes.
-- **Collation on hosted (T054).** `cli collate` resolves the raw decks into `corpus.decks` (the corpus rule:
-  commander legality, colour identity, 100 cards, every card known) and `aggregate:corpus` reads that; built, and run
-  by hand on hosted after release until the VPS worker (T066) schedules it. This stage stays the raw scrape.
+- **The worker's trigger (T066).** The Vercel cron has started a run in its hour every day since 2026-10-02 (T042,
+  closed). The VPS worker starts each source's run at `crawlHourUtc` unless one already started that day (UTC); the
+  claim makes a second trigger harmless, so the cron stays as a backup until two days of worker-started runs, then goes.
+- **Collation on a schedule (T066).** `cli collate` resolves the raw decks into `corpus.decks` (the corpus rule:
+  commander legality, colour identity, 100 cards, every card known) and the precompute worker reads that. It runs by
+  hand on hosted (last 2026-10-06) until the VPS worker schedules it. This stage stays the raw scrape.
 - **A database role that is not `service_role` (T043).** The VPS holds a key that bypasses RLS across the whole database,
   `auth` included, in the same process that serves public read endpoints. The `crawl_*` functions narrow what the
   crawl *does*, not what the key *could* do. A proper fix is a Postgres role granted execute on those functions and
