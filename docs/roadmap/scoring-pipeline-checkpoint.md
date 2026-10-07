@@ -57,16 +57,19 @@ what is left is the PR and the release below.
 
 1. **One PR into `develop`** (`gh pr create --base develop`, a short title of about 50 characters). CI applies every
    migration from scratch, builds with mocks and runs e2e.
-2. **Not before production serves from the precompute tables.** Hosted still has `app_config.recs.servingReads` off and
-   its migrations stop at `20261005001000` (checked 2026-10-06), so PR #137's migration (`20261006000100`) hasn't
-   reached hosted. The branch deletes the old request path (`20261006000200`), so the order is:
+2. **Not before production serves from the precompute tables: done 2026-10-07.** Steps 1–3 below are complete and
+   `servingReads` is on in production; hosted parity matched every gated list (report
+   `serving-parity-2026-10-07T04-04-28-402Z.json`). The branch deletes the old request path (`20261006000200`), so the
+   order was:
    1. Release `develop` (with #137) to `main`; confirm hosted applied `20261006000100` (the Supabase integration can
       come unlinked: `db-push.yml` is the fallback).
    2. Rebuild hosted substitutes: `yarn workspace @mtg/worker cli:hosted precompute --part substitutes` (about 90
       minutes; the new function's hash makes every list due).
    3. Hosted parity (`apps/web/scripts/serving-parity.ts` on `develop`'s code, before this branch removes it), then
       switch `servingReads` on in production. Hosted writes are the owner's (`CLAUDE.local.md`).
-   4. Only then merge this branch, and release it to `main`.
+   4. Only then merge this branch, and release it to `main` the same day: until hosted has the branch's migrations, the
+      VPS worker (Dokploy redeploys on every `develop` merge) and the `develop` preview run new code on the old schema.
+      Merge outside 04:00 and 10:00 UTC (the worker's baseline and crawl).
 3. **After this branch's migrations reach hosted** (`20261006000200` to `20261006001200`, in order), rebuild the data
    they add:
    - `cli:hosted aggregate:corpus --force`: the curve and land counts (T062).
