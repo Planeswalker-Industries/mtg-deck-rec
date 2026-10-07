@@ -1,21 +1,22 @@
-import type { Sql } from '../lib/db';
+import { reserve, type Sql } from '../lib/db';
 import { copyRows } from '../lib/serving';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
 /**
  * card_substitutes (T055): each card's substitutes, computed by precompute_substitutes (rec_swap_candidates'
- * similarity over every card) and written only where a list changed.
+ * similarity over every card, the first `substitutesDepth` inside every colour identity that can hold the card) and
+ * written only where a list changed.
  *
  * A card is rebuilt when it is new, when what its similarity rests on moved (its functional tags and their idf, its
- * colours, mana value and functional twin, the depths, the functional tag config: `tags_hash`), when a tag near its own
+ * colours, mana value and functional twin, the depth, the functional tag config: `tags_hash`), when a tag near its own
  * was switched on or off, and every `substitutesRebuildDays`, which is what catches a list that changed through its
  * candidates rather than through the card itself.
  */
 
 /** Cards whose lists are computed and merged together. */
 const BATCH_TARGETS = 64;
-/** The design's depths, when app_config.precompute has none (see the serving migration for why they are 220). */
-const DEFAULT_DEPTHS = { substitutesOwn: 220, substitutesAll: 220 };
+/** The depth when app_config.precompute has none: the shared swap pool's (migration 20261006000100 says why). */
+const DEFAULT_DEPTHS = { substitutesDepth: 220 };
 const DEFAULT_REBUILD_DAYS = 7;
 /**
  * A first batch where more than this share of the cards that had substitutes come back with none stops the run: that
@@ -28,8 +29,7 @@ const SUBSTITUTES_URI = 'postgres:public.card_tags';
 const MS_PER_DAY = 86_400_000;
 
 interface Depths {
-  substitutesOwn: number;
-  substitutesAll: number;
+  substitutesDepth: number;
 }
 
 async function loadDepths(sql: Sql): Promise<{ depths: Depths; rebuildDays: number }> {
@@ -62,7 +62,7 @@ async function currentHashes(sql: Sql, depths: Depths): Promise<Map<number, stri
       group by ct.card_id
     )
     select c.id as card_id,
-           md5(concat_ws('|', ${depths.substitutesOwn}::int, ${depths.substitutesAll}::int, (select hash from config),
+           md5(concat_ws('|', 'by-identity', ${depths.substitutesDepth}::int, (select hash from config),
                          c.color_identity, c.mana_value, c.equivalence_base_id, coalesce(g.tags, ''))) as tags_hash
     from public.cards c
     left join tagged g on g.card_id = c.id
@@ -166,7 +166,7 @@ export async function precomputeSubstitutes(
         batch.map((id) =>
           sql<{ card_id: number; tag_similarity: number; is_functional_twin: boolean }[]>`
             select card_id, tag_similarity, is_functional_twin
-            from public.precompute_substitutes(${id}, ${depths.substitutesOwn}, ${depths.substitutesAll})
+            from public.precompute_substitutes(${id}, ${depths.substitutesDepth})
           `.then((rows) => ({ id, rows })),
         ),
       );
@@ -185,7 +185,7 @@ export async function precomputeSubstitutes(
         }
       }
 
-      const db = await sql.reserve();
+      const db = await reserve(sql);
       try {
         await db`
           create temp table if not exists stg_substitutes (

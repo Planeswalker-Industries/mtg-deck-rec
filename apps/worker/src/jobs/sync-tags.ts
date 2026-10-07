@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { downloadBulk, getBulkIndex } from '../lib/bulk';
-import { connect } from '../lib/db';
+import { connect, reserve } from '../lib/db';
 import { readJsonl, type JsonlStats } from '../lib/jsonl';
 import { finishRun, heartbeat, startRun } from '../lib/sync-runs';
 
@@ -69,7 +69,7 @@ export async function syncTags({ force = false }: { force?: boolean } = {}): Pro
     runId = start.runId;
     const { filePath } = await downloadBulk(entry);
 
-    const db = await sql.reserve();
+    const db = await reserve(sql);
     try {
       await db`create temp table stg_tags (id uuid primary key, slug text not null, label text not null, description text, content_hash bytea not null)`;
       await db`create temp table stg_tag_edges (parent_id uuid not null, child_id uuid not null)`;

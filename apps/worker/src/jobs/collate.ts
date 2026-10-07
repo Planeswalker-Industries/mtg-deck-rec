@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { checkCorpusDeck, CORPUS_EXCLUSIONS, type CorpusExclusion } from '@mtg/core/commander';
 import { normalizeName, SPELLBOOK_BRACKET_TAGS } from '@mtg/core/parse';
 import { commanderFacts, loadCatalog, type CatalogCard } from '../lib/corpus';
-import { connect, type Sql } from '../lib/db';
+import { connect, reserve, type Sql } from '../lib/db';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
 /**
@@ -177,7 +177,7 @@ async function collateDecks(ctx: Context, runId: number, source: DeckSource, cat
   let read = 0;
   let included = 0;
 
-  const db = await sql.reserve();
+  const db = await reserve(sql);
   try {
     await db`
       create temp table stg_decks (
@@ -405,7 +405,7 @@ async function collateEdhrec(ctx: Context, fetchRunId: number) {
     return cardId === null ? [] : [{ name, card_id: cardId }];
   });
 
-  const db = await sql.reserve();
+  const db = await reserve(sql);
   try {
     await db`create temp table stg_pages (slug text primary key, commander_1 integer not null, commander_2 integer, deck_count integer not null, fetched_at timestamptz not null)`;
     await db`create temp table stg_names (name text primary key, card_id integer not null)`;
@@ -550,7 +550,7 @@ const RESULT_STATUSES = { standalone: 'S', contextual: 'C', hidden: 'H' } as con
 /** Spellbook's raw combos → corpus.spellbook_combos. Resolution is a join on oracle ids, so it all runs in SQL. */
 async function collateSpellbook(ctx: Context, fetchRunId: number) {
   const { sql } = ctx;
-  const db = await sql.reserve();
+  const db = await reserve(sql);
   try {
     await db`begin`;
     try {

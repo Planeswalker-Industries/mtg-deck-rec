@@ -508,11 +508,14 @@ The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substi
 - [x] One round per add, cut and swap on the serving path (`serving-parity.ts` counts them)
 - [ ] T008 closed; T040 closed as moot (the retirement PR)
 
+**On hosted (2026-10-06):** released through `20261005001000`; `collate` (79,759 decks), `aggregate:corpus` (2,818 commanders, 1.64M commander-card rows, 5.2M scores), substitutes (10.7M rows, 90 minutes) and roles built, and the search index rebuilt (1.68M documents). The first `aggregate:corpus` ran out of disk (hosted had 2 GB; now 8 GB, Small compute) and the next was cancelled by the default 2-minute statement timeout (fixed in PR #136). Hosted parity found every list identical except 5 swap lists from 2 targets, at positions 8 and 10: the stored substitutes (220 in the card's own colours plus 220 overall) missed candidates a multicolour deck should see. Migration `20261006000100` stores the first 220 for every colour identity that can hold the card instead. Hosted timing from this PC, p50 old → serving: adds 408 → 157 ms, swaps 433 → 135, cuts 201 → 92, the rater 418 → 87.
+
 **Release steps (owner):**
-1. Merge to `main`, run `db-push.yml`, and confirm `schema_migrations` reaches `20261005001000`.
-2. After T054's hosted steps (`collate`, then `aggregate:corpus`, which now ends with every score), redeploy the worker, whose first passes build the substitutes, roles and combo pieces, or run `cli:hosted precompute --part substitutes,roles,combos` from this PC (substitutes take about 20 minutes).
-3. Parity and timing on hosted (Claude, reads only), then set `app_config.recs.servingReads` to true.
-4. A week later: the retirement PR drops `rec_add_candidates` (both overloads), `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, `retry-timeout.ts`, `loadCardCorpus`'s old path and the switch.
+1. ~~Merge to `main`, run `db-push.yml`, confirm `schema_migrations` reaches `20261005001000`.~~ Done 2026-10-06.
+2. ~~`collate`, `aggregate:corpus`, `precompute --part substitutes,roles`.~~ Done 2026-10-06.
+3. Release `20261006000100`, then `cli:hosted precompute --part substitutes` (every list is rebuilt, about 90 minutes on hosted; about 0.55 GB more).
+4. Parity and timing on hosted (Claude, reads only), then set `app_config.recs.servingReads` to true.
+5. The old path's removal (`rec_add_candidates` both overloads, `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, `retry-timeout.ts`, `loadCardCorpus`'s old path and the switch) goes in with the scoring pipeline branch (T057–T065), more than a week after the switch.
 
 ---
 
