@@ -25,6 +25,7 @@ import {
   importDeckInputSchema,
   parseDeckInputSchema,
   parseInput,
+  recEventInputSchema,
   resolveCollectionRowsInputSchema,
 } from "@mtg/core/schemas";
 import {
@@ -41,6 +42,7 @@ import { checkRateLimit, type RateLimitBucket } from "@/lib/server/rate-limit";
 import { createAuthClient } from "@/lib/server/auth";
 import { createPublicClient, type PublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
+import { recordRecEvent, RecEventRefused } from "@/lib/server/rec-events";
 import { castSwapVote, VoteRefused, type VoteRefusal } from "@/lib/server/votes";
 
 const failure = (code: ApiError["code"], message: string): Result<never> => ({ ok: false, error: { code, message } });
@@ -215,6 +217,26 @@ export async function castVoteAction(input: Parameters<ActionsApi["castVote"]>[0
     return { ok: true, data: await castSwapVote(db, parsed.data, visitor) };
   } catch (err) {
     if (err instanceof VoteRefused) return voteRefusals[err.reason];
+    return unavailable(err);
+  }
+}
+
+/**
+ * Records a suggestion list shown, or a card from it taken or passed on, for the live accept rate (T065). Works signed
+ * out; the session client goes along so the database can key a signed-in player's events to the account.
+ */
+export async function recordRecEventAction(input: Parameters<ActionsApi["recordRecEvent"]>[0]): Promise<Result<null>> {
+  const parsed = parseInput(recEventInputSchema, input);
+  if (!parsed.ok) return parsed;
+  try {
+    const db = await createAuthClient();
+    const visitor = visitorKey(await headers());
+    const limited = await checkRateLimit(db, "events", visitor);
+    if (limited) return { ok: false, error: limited };
+    await recordRecEvent(db, parsed.data, visitor);
+    return { ok: true, data: null };
+  } catch (err) {
+    if (err instanceof RecEventRefused) return failure("VALIDATION", "That event isn't valid.");
     return unavailable(err);
   }
 }

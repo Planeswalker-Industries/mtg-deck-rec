@@ -11,6 +11,7 @@ export type RateLimitBucket =
   | "collection"
   | "auth"
   | "vote"
+  | "events"
   | "search"
   | "admin";
 

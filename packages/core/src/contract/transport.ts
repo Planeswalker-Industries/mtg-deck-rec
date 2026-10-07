@@ -21,7 +21,7 @@ import type {
 } from './decks';
 import type { Result } from './errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
-import type { AddResult, BuildFill, BuildResult, CutResult, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
+import type { AddResult, BuildFill, BuildResult, CutResult, RecEvent, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
 
 /**
  * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut}
@@ -138,6 +138,8 @@ export interface ActionsApi {
     context?: VoteContext;
   }): Promise<Result<VoteSummary>>;
   setFavorite(input: FavoriteRef & { on: boolean }): Promise<Result<null>>;
+  /** Records a suggestion list shown, or a card from it taken or passed on (v25, the live accept rate). Works without an account. */
+  recordRecEvent(input: RecEvent): Promise<Result<null>>;
 
   /** Cards to rate replacements for with a commander or partner pair, given by card ids or by commander page slug (exactly one). */
   dealRaterCards(input: { commanderIds?: CardId[]; commanderSlug?: string }): Promise<Result<RaterDeal>>;

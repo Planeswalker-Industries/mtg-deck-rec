@@ -1234,6 +1234,57 @@ export type Database = {
         }
         Relationships: []
       }
+      rec_events: {
+        Row: {
+          batch_id: string
+          bracket: number | null
+          card_ids: number[]
+          collection: string
+          commander_ids: number[]
+          components: Json | null
+          created_at: string
+          id: number
+          kind: string
+          mode: string
+          position: number | null
+          target_card_id: number | null
+          user_id: string | null
+          voter_key: string
+        }
+        Insert: {
+          batch_id: string
+          bracket?: number | null
+          card_ids: number[]
+          collection: string
+          commander_ids?: number[]
+          components?: Json | null
+          created_at?: string
+          id?: never
+          kind: string
+          mode: string
+          position?: number | null
+          target_card_id?: number | null
+          user_id?: string | null
+          voter_key: string
+        }
+        Update: {
+          batch_id?: string
+          bracket?: number | null
+          card_ids?: number[]
+          collection?: string
+          commander_ids?: number[]
+          components?: Json | null
+          created_at?: string
+          id?: never
+          kind?: string
+          mode?: string
+          position?: number | null
+          target_card_id?: number | null
+          user_id?: string | null
+          voter_key?: string
+        }
+        Relationships: []
+      }
       search_index_queue: {
         Row: {
           collection: string
@@ -1807,6 +1858,16 @@ export type Database = {
           total_count: number
         }[]
       }
+      admin_rec_accept_rates: {
+        Args: { p_days?: number; p_max_position?: number; p_mode?: string }
+        Returns: {
+          accepted: number
+          declined: number
+          mode: string
+          position: number
+          shown: number
+        }[]
+      }
       admin_set_display_name: {
         Args: { p_display_name: string; p_user_id: string }
         Returns: undefined
@@ -1996,6 +2057,22 @@ export type Database = {
       prices_checked_at: { Args: never; Returns: string }
       rebuild_tag_closure: { Args: never; Returns: undefined }
       rec_functional_tag_count: { Args: { p_card_id: number }; Returns: number }
+      record_rec_event: {
+        Args: {
+          p_batch_id: string
+          p_bracket?: number
+          p_card_ids: number[]
+          p_collection?: string
+          p_commander_ids?: number[]
+          p_components?: Json
+          p_kind: string
+          p_mode: string
+          p_position?: number
+          p_target_card_id?: number
+          p_visitor_key: string
+        }
+        Returns: undefined
+      }
       rename_deck: {
         Args: { p_deck_id: string; p_name: string }
         Returns: undefined

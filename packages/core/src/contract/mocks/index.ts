@@ -723,6 +723,11 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       return delay(ok(voteSummary(targetCardId, replacementCardId)));
     },
 
+    // Events only feed the accept rate, which the mocks don't keep.
+    async recordRecEvent() {
+      return delay(ok(null));
+    },
+
     async setFavorite({ kind, refId, on }) {
       const key = `${kind}:${refId}`;
       if (on) favorites.add(key);

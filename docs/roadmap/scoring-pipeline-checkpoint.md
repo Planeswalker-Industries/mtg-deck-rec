@@ -21,7 +21,7 @@ branch is merged.
   - **Keep the four project docs in step**, as each task so far has (CLAUDE.md, `apps/web/AGENTS.md`, `tasks.md`,
     `status.md`).
   - **Each contract change bumps `CONTRACT_VERSION`** with a changelog entry (`packages/core/src/contract/version.ts`;
-    this branch added v20–v23) and updates the mocks.
+    this branch added v20–v25) and updates the mocks.
 
 ## Done on the branch
 
@@ -37,6 +37,7 @@ branch is merged.
 | `e4957c0` | T062 | Learned curve and land counts, EDHREC role and curve profiles, `curve` component (contract v22); all new switches off, none passed the gate | CLAUDE.md "The learned skeleton"; `tasks.md` T062 |
 | `93e43a6` | T064 | Card pairs and deck affinity (contract v23); `deck` weighs 0.1 in adds, recall@20 25.0% → 25.5% | CLAUDE.md "Card pairs and deck affinity"; `tasks.md` T064 |
 | `441efb1` | T063 | Build a deck from a commander and a bracket (contract v24, migration `20261006001100`, `POST /api/recs/build`); build overlap 38.6% on the time split | CLAUDE.md "Builds"; `tasks.md` T063 |
+| T065 commit | T065 | Live accept rate: `rec_events`, `record_rec_event`, journey calls, the admin list, `/privacy` (contract v25, migration `20261006001200`) | CLAUDE.md "Live accept rate"; `tasks.md` T065 |
 
 Evaluation results for every task are in its `tasks.md` entry. The latest baseline on the time split (today's local
 settings, 2026-10-06): adds recall@20 25.5%, cuts precision@10 25.0%, collection recall 51.3%, builds 38.6% overlap.
@@ -47,19 +48,10 @@ settings, 2026-10-06): adds recall@20 25.5%, cuts precision@10 25.0%, collection
 
 Built and committed; see `tasks.md` T063 for the owner's decisions, the evaluation and the shelved UI list.
 
-### T065: live accept rate
+### T065: live accept rate (done)
 
-Ticket: `tasks.md` T065. Design: `scoring-design.md` "Evaluation" (the `rec_events` bullets: one row per shown batch and
-per accept or decline, keyed like `swap_votes`, written through a rate-limited security-definer function, RLS on, no
-API reads, `/privacy` line with no opt-out).
-
-What to reuse: `cast_swap_vote` and `swap_votes` (the keying by `auth.uid()` or the salted visitor hash), the `vote`
-rate-limit bucket pattern (`app_config.rate_limits`), the admin read pattern (`require_platform_admin()`, `/api/admin/*`,
-`components/admin/`).
-
-Open decisions: recording needs calls from the deck tool's journey (`use-deck-journey.ts`), which is plumbing rather
-than screens; the admin view and the `/privacy` line are UI and copy. Confirm with the owner how much of that counts as
-shelved UI.
+Built and committed; see `tasks.md` T065. Build events wait for build mode's screen. Every task in the sprint is done:
+what is left is the PR and the release below.
 
 ### Then: the PR and the release
 
@@ -75,7 +67,7 @@ shelved UI.
    3. Hosted parity (`apps/web/scripts/serving-parity.ts` on `develop`'s code, before this branch removes it), then
       switch `servingReads` on in production. Hosted writes are the owner's (`CLAUDE.local.md`).
    4. Only then merge this branch, and release it to `main`.
-3. **After this branch's migrations reach hosted** (`20261006000200` to `20261006001100`, in order), rebuild the data
+3. **After this branch's migrations reach hosted** (`20261006000200` to `20261006001200`, in order), rebuild the data
    they add:
    - `cli:hosted aggregate:corpus --force`: the curve and land counts (T062).
    - `cli:hosted precompute --part scores --force`: the EDHREC prior's columns and profiles (T061, T062). It rewrites
@@ -83,11 +75,12 @@ shelved UI.
    - `cli:hosted precompute --part combos --force`: `spellbook_combo_details` (T060).
    - `cli:hosted precompute --part pairs --full` and `--part global-pairs`: the card pairs (T064).
    - Then the open check from T064: p95 add latency on hosted not worse than before.
-   - `20261006001100` (T063) only adds `app_config.scoring.build` and `serving_build_pool`; nothing to rebuild.
+   - `20261006001100` (T063) and `20261006001200` (T065) only add settings, functions and the empty `rec_events`;
+     nothing to rebuild.
 
 ## Working notes for the next session
 
-- **Local database:** the branch's migrations from `20261006000500` on (`20261006001100` included) were applied to the running local database by
+- **Local database:** the branch's migrations from `20261006000500` on (`20261006001100` and `20261006001200` included) were applied to the running local database by
   hand, with their rows inserted into `supabase_migrations.schema_migrations`; the local data (scores with the prior,
   profiles, combo details, pairs) is built. Don't run `supabase db reset`: it would wipe the local corpus. Apply new
   migrations the same way (`docker exec -i supabase_db_mtg_deck_rec psql … < file`, then insert the version), and

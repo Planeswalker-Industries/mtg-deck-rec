@@ -9,6 +9,7 @@ import { dealRaterCardsAction } from "@/app/rate/actions";
 import {
   analyzeDeckAction,
   castVoteAction,
+  recordRecEventAction,
   getCommanderCoverageAction,
   getCommanderRequestAction,
   importDeckFromUrlAction,
@@ -78,6 +79,7 @@ export const realActions: ActionsApi = {
   deleteDeck: (input) => deleteDeckAction(input),
   exportDeck: notYet,
   castVote: (input) => castVoteAction(input),
+  recordRecEvent: (input) => recordRecEventAction(input),
   setFavorite: notYet,
   adminSetTagDisabled: notYet,
   dealRaterCards: (input) => dealRaterCardsAction(input),

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { DeckInput } from './decks';
 import type { ApiError, Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
-import type { RecContext, VoteContext } from './recs';
+import type { RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
 import type { CardTypeFilter } from './cards';
 import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
 
@@ -144,6 +144,34 @@ const voteContextSchema: InputSchema<VoteContext> = z.object(
   },
   { error: 'Invalid vote details.' },
 );
+
+/** The most cards one recorded list holds: a build's 99 and then some. */
+export const MAX_REC_EVENT_CARDS = 120;
+const SCORE_COMPONENTS = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'] as const satisfies readonly ScoreComponent[];
+
+export const recEventInputSchema: InputSchema<RecEvent> = z
+  .object(
+    {
+      kind: z.enum(['shown', 'accepted', 'declined'], { error: 'Invalid event.' }),
+      mode: z.enum(['add', 'cut', 'swap', 'build'], { error: 'Invalid event list.' }),
+      batchId: z.guid('Invalid event batch.'),
+      cardIds: z
+        .array(cardId('Invalid card.'))
+        .min(1, 'An event names at least one card.')
+        .max(MAX_REC_EVENT_CARDS, `An event names at most ${MAX_REC_EVENT_CARDS} cards.`),
+      position: z.int().min(0).max(MAX_REC_EVENT_CARDS - 1).optional(),
+      targetCardId: cardId('Invalid card being replaced.').optional(),
+      commanderIds: z.array(cardId('Invalid commander.')).max(2, 'A deck has at most two commanders.'),
+      bracket: z.literal([1, 2, 3, 4, 5], { error: 'Pick a bracket from 1 to 5.' }),
+      collection: z.enum(['none', 'only', 'first'], { error: 'Invalid collection setting.' }),
+      components: z.partialRecord(z.enum(SCORE_COMPONENTS), z.number().min(0).max(1).nullable()).optional(),
+    },
+    request,
+  )
+  .refine((e) => (e.kind === 'shown' ? e.position === undefined : e.position !== undefined && e.cardIds.length === 1), {
+    message: 'A list shown has no position; a decision names one card and its position.',
+    path: ['position'],
+  });
 
 export const castVoteInputSchema = z
   .object(

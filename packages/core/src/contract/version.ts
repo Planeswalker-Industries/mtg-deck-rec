@@ -101,5 +101,10 @@
  * combo" entries, the build's bracket estimate and signals, the feasibility report (slots filled from the collection,
  * by the value fill, still open, roles still short) and, with the value fill, its cost. The design named it
  * BuildApi.build; it sits on RecsApi because it shares the recommendation routes' transport. Additive.
+ *
+ * v25 (2026-10-06): the live accept rate (T065). ActionsApi.recordRecEvent records a suggestion list shown (RecEvent
+ * kind 'shown', its cards in order, under a client-generated batch id) and each card from it taken or passed on
+ * ('accepted', 'declined', with its position and score components), for adds, cuts, swaps and builds. Keyed per
+ * visitor like swap votes, never read back. Additive.
  */
-export const CONTRACT_VERSION = 24;
+export const CONTRACT_VERSION = 25;

@@ -92,6 +92,35 @@ export interface VoteSummary {
   myVote: -1 | 0 | 1 | null;
 }
 
+/** What happened to a suggestion list (T065): it was shown, or the player took or passed on one card from it. */
+export type RecEventKind = 'shown' | 'accepted' | 'declined';
+
+/** Which list: cards to add, cards to cut, replacements for a card, or a built deck. */
+export type RecEventMode = 'add' | 'cut' | 'swap' | 'build';
+
+/**
+ * One event for the live accept rate (T065), recorded per visitor like swap votes and never read back by the client.
+ * A list shown gets a client-generated batch id, and each decision on a card from it names that batch.
+ */
+export interface RecEvent {
+  kind: RecEventKind;
+  mode: RecEventMode;
+  /** Client-generated UUID, one per list shown. */
+  batchId: string;
+  /** shown: the list's cards in the order shown. accepted or declined: the one card. */
+  cardIds: CardId[];
+  /** accepted or declined: the card's place in the list, 0 first. */
+  position?: number;
+  /** swap: the card being replaced. */
+  targetCardId?: CardId;
+  commanderIds: CardId[];
+  bracket: Bracket;
+  /** The collection setting the list was made with. */
+  collection: 'none' | OwnershipMode;
+  /** accepted or declined: the card's score components as shown. */
+  components?: Partial<Record<ScoreComponent, number | null>>;
+}
+
 /** Where a vote was cast: the deck tool's swipe view, or the standalone card rater with no decklist. */
 export type VoteSource = 'deck' | 'rater';
 

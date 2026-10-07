@@ -11,6 +11,8 @@ import {
   parseDeckInputSchema,
   parseInput,
   recContextSchema,
+  recEventInputSchema,
+  buildInputSchema,
   saveCollectionBatchInputSchema,
   swapInputSchema,
 } from './schemas';
@@ -168,5 +170,37 @@ describe('saveCollectionBatchInputSchema', () => {
     const rows = Array.from({ length: MAX_COLLECTION_ROWS_PER_CALL + 1 }, (_, i) => row({ rowNo: i }));
     const r = parseInput(saveCollectionBatchInputSchema, batch({ rows }));
     expect(!r.ok && r.error.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+});
+
+describe('recEventInputSchema (T065)', () => {
+  const event = (overrides: Record<string, unknown> = {}) => ({
+    kind: 'shown',
+    mode: 'add',
+    batchId: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+    cardIds: [11, 12, 13],
+    commanderIds: [1],
+    bracket: 3,
+    collection: 'none',
+    ...overrides,
+  });
+
+  it('accepts a list shown and a decision on one of its cards', () => {
+    expect(parseInput(recEventInputSchema, event()).ok).toBe(true);
+    expect(parseInput(recEventInputSchema, event({ kind: 'accepted', cardIds: [12], position: 1, components: { corpus: 0.8, deck: null } })).ok).toBe(true);
+  });
+
+  it('refuses a decision without a position or with several cards, and a list with one', () => {
+    expect(parseInput(recEventInputSchema, event({ kind: 'declined', cardIds: [12] })).ok).toBe(false);
+    expect(parseInput(recEventInputSchema, event({ kind: 'accepted', position: 0 })).ok).toBe(false);
+    expect(parseInput(recEventInputSchema, event({ position: 0 })).ok).toBe(false);
+    expect(parseInput(recEventInputSchema, event({ components: { made_up: 1 }, kind: 'accepted', cardIds: [11], position: 0 })).ok).toBe(false);
+  });
+});
+
+describe('buildInputSchema (T063)', () => {
+  it('takes a context and an optional fill', () => {
+    expect(parseInput(buildInputSchema, { context: context(), fill: 'value' }).ok).toBe(true);
+    expect(parseInput(buildInputSchema, { context: context(), fill: 'everything' }).ok).toBe(false);
   });
 });

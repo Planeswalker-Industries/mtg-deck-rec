@@ -703,13 +703,17 @@ Pair tables (`commander_card_pairs`, `card_pairs`) from the precompute worker, t
 
 ### T065: Live accept rate
 
-**Priority:** LOW | **Area:** Full stack | **Status:** Not started
+**Priority:** LOW | **Area:** Full stack | **Status:** Built on `feat/scoring-pipeline` (2026-10-06, contract v25, migration `20261006001200`); builds record once build mode has a screen
 
 `rec_events`: one row per shown batch and per accept or decline, keyed by account or salted visitor hash like `swap_votes`, written through a rate-limited security-definer function, no API reads. `/privacy` gains a line. Can start at any time.
 
+**Built:** see `../CLAUDE.md` ("Live accept rate") and `../apps/web/AGENTS.md` ("Accept-rate events", the Accept rate admin resource). `record_rec_event` and `admin_rec_accept_rates` are checked by `rec-events.sql`; `ActionsApi.recordRecEvent` (contract v25) is a server action on the `events` rate-limit bucket (240 a minute). The deck tool records adds, cuts and swaps; an account's events are re-keyed on deletion like its votes. Owner decision (2026-10-06): shelved UI means custom components only, so the journey calls, the `/privacy` line and the admin list (plain columns) are built.
+
+**Shelved UI:** none for this ticket beyond build mode's own screen (T063), which records a built deck as mode `build` once it exists.
+
 **Acceptance criteria:**
-- [ ] Events recorded for add, cut, swap and build; admins see accept rate per mode and rank
-- [ ] `/privacy` updated (owner, 2026-10-05: a line explaining it, no opt-out, the same as swap votes)
+- [ ] Events recorded for add, cut, swap and build; admins see accept rate per mode and rank: add, cut, swap and the admin view done; build waits for build mode's screen
+- [x] `/privacy` updated (owner, 2026-10-05: a line explaining it, no opt-out, the same as swap votes)
 
 ---
 

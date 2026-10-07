@@ -80,6 +80,27 @@ export type AdminTagSort = (typeof ADMIN_TAG_SORTS)[number];
 /** Mirrors the limit `admin_set_tag_disabled` enforces. */
 export const MAX_TAG_REASON_CHARS = 200;
 
+/** The lists the accept rate covers (T065), as `rec_events.mode` holds them. */
+export const ADMIN_REC_MODES = ["add", "cut", "swap", "build"] as const;
+export type AdminRecMode = (typeof ADMIN_REC_MODES)[number];
+
+/** The windows the accept-rate page offers, in days. */
+export const ADMIN_ACCEPT_RATE_DAYS = [7, 30, 90] as const;
+
+/** One place in one kind of list: how often it was shown, taken and passed on (`admin_rec_accept_rates`). */
+export interface AdminAcceptRate {
+  /** `<mode>:<position>`, for React Admin. */
+  id: string;
+  mode: AdminRecMode;
+  /** 0 first. */
+  position: number;
+  shown: number;
+  accepted: number;
+  declined: number;
+  /** accepted / shown; null when nothing was shown there. */
+  acceptRate: number | null;
+}
+
 /** One run of a worker job, as the sync status page shows it. */
 export interface AdminSyncRun {
   id: number;

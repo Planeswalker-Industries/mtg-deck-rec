@@ -32,6 +32,7 @@ import {
 } from "@mtg/core/journey";
 import type { DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
+import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import type { Async, ContextChange } from "../use-deck-tool";
 import type { Candidates } from "../use-swipe-rater";
 
@@ -118,6 +119,9 @@ export function useDeckJourney({
   /** Bumped when the Replace targets are asked for again, so the swipe view starts over on the new list. */
   const [replaceVersion, setReplaceVersion] = useState(0);
   const addRequest = useRef(0);
+  /** The Add list as recorded for the accept rate (T065), and the Cut list with the cut result it came from. */
+  const addBatch = useRef<RecBatch | null>(null);
+  const cutBatch = useRef<{ from: CutResult; batch: RecBatch } | null>(null);
   const replaceRequest = useRef(0);
   const checkRequest = useRef(0);
 
@@ -174,7 +178,15 @@ export function useDeckJourney({
     const key = deckKey(deck);
     setAdd({ round, key, value: { status: "loading" } });
     const r = await getApis().recs.add({ context: { ...ctx, deck }, excludeCardIds: next.declinedAdds });
-    if (id === addRequest.current) setAdd({ round, key, value: toAsync(r) });
+    if (id !== addRequest.current) return;
+    setAdd({ round, key, value: toAsync(r) });
+    if (r.ok) {
+      const shown = r.data.groups
+        .flatMap((g) => g.suggestions)
+        .sort((a, b) => b.score.total - a.score.total)
+        .map((s) => s.card.id);
+      addBatch.current = recordShown("add", shown, { ...ctx, deck });
+    }
   }
 
   /**
@@ -309,8 +321,10 @@ export function useDeckJourney({
   function goTo(phase: JourneyPhase, ...before: JourneyAction[]) {
     // Choosing the step already on screen changes nothing, and must not throw away the list the player is part way through.
     if (before.length === 0 && state?.phase === phase) return;
+    const leaving = state?.phase;
     const next = apply(...before, { type: "goto", phase });
     if (!next) return;
+    if (leaving === "cut" && phase !== "cut") recordCuts(next);
     // The Add and Replace lists depend on everything chosen before them, so they are asked for on the way in, unless
     // the one on hand was made for the same deck: then the player picks up where they left off. A full deck has
     // nothing to add, so Add asks for nothing.
@@ -326,6 +340,22 @@ export function useDeckJourney({
   /** Recommended cuts not yet decided either way: dealt in the swipe view, pre-marked in the list. */
   const undecidedCuts = recommendedCuts.filter((s) => !isCut(s.card.id) && !isKept(s.card.id));
   const recommendedIds = new Set(recommendedCuts.map((s) => s.card.id as number));
+
+  /**
+   * The accept rate (T065): leaving Cut records the recommended cuts as shown, once per cut list, and each one cut or
+   * kept as the player left it. A decision changed on a later visit replaces the earlier one.
+   */
+  function recordCuts(next: JourneyState) {
+    if (cut.status !== "ready" || !context || recommendedCuts.length === 0) return;
+    if (cutBatch.current?.from !== cut.data) {
+      cutBatch.current = { from: cut.data, batch: recordShown("cut", recommendedCuts.map((s) => s.card.id), context) };
+    }
+    const { batch } = cutBatch.current;
+    for (const s of recommendedCuts) {
+      const isCutNow = next.cuts.some((c) => c.id === s.card.id);
+      if (isCutNow || next.kept.includes(s.card.id)) recordDecision(batch, s.card.id, isCutNow, context);
+    }
+  }
 
   /** List view: a card is marked when it is cut, or recommended and not kept. */
   const isMarkedForCut = (card: CardSummary) => isCut(card.id) || (recommendedIds.has(card.id) && !isKept(card.id));
@@ -366,8 +396,16 @@ export function useDeckJourney({
           .sort((a, b) => Number(landsShort && isLand(b.card)) - Number(landsShort && isLand(a.card)) || b.score.total - a.score.total)
       : [];
 
+  /** A card from the Add list taken or passed on, for the accept rate (T065). */
+  function recordAddDecision(card: CardSummary, accepted: boolean) {
+    const ctx = workingContext ?? context;
+    if (!addBatch.current || !ctx) return;
+    recordDecision(addBatch.current, card.id, accepted, ctx, addQueue.find((s) => s.card.id === card.id)?.score);
+  }
+
   /** Adding recomputes the list: the new card may fill the gap the next ones were suggested for. */
   function acceptAdd(card: CardSummary) {
+    recordAddDecision(card, true);
     const next = apply({ type: "add", card });
     if (next && openSlots(next) > 0) void loadAdds(next);
   }
@@ -377,6 +415,7 @@ export function useDeckJourney({
    * is asked for again without them, so the next best cards come up instead of an empty queue.
    */
   function passAdd(card: CardSummary) {
+    recordAddDecision(card, false);
     const next = apply({ type: "declineAdd", cardId: card.id });
     if (next && openSlots(next) > 0 && addQueue.every((s) => s.card.id === card.id)) void loadAdds(next);
   }
