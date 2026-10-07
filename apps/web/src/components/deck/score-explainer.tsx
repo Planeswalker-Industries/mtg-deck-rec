@@ -20,7 +20,7 @@ const LABELS: Record<ScoreComponent, { name: string; blurb: string }> = {
   deck: { name: "Goes with your cards", blurb: "Decks that run your cards run this one too" },
 };
 
-const ORDER: readonly ScoreComponent[] = ["tag", "corpus", "role", "manaValue", "staple", "votes"];
+const ORDER: readonly ScoreComponent[] = ["tag", "corpus", "deck", "role", "curve", "manaValue", "staple", "votes"];
 
 const percent = (n: number) => `${Math.round(n * 100)}%`;
 

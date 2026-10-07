@@ -1,19 +1,10 @@
--- The request path reads only the precompute worker's serving tables (T055). Retired here, after the switch
--- (`app_config.recs.servingReads`) has run on hosted for more than a week:
+-- The request path reads only the precompute worker's serving tables (T055), and nothing in this release calls the
+-- per-request rec functions any more. They are NOT dropped here: this release applies its migrations before its code
+-- goes live (the release steps in docs/tasks.md, T055), and until then production runs the previous build, which falls
+-- back to rec_add_candidates, rec_swap_candidates and rec_card_roles whenever app_config.recs is missing. Dropping them
+-- (with rec_timeouts, log_rec_timeout and the app_config.recs row) is a later migration, once this build is live and a
+-- rollback to the previous one is no longer wanted (tasks.md, T067).
 --
--- * rec_add_candidates (both overloads) and rec_swap_candidates: per-request scoring in SQL, which averaged 0.8-1.0 s
---   on hosted and peaked at the 3 s anon timeout (T008). serving_add_pool and serving_swap_candidates replaced them.
--- * rec_card_roles: card_roles holds what it answered.
--- * rec_timeouts and log_rec_timeout: the record of those functions running out of retries.
--- * The servingReads switch itself: there is one path now.
---
--- rec_functional_tag_count stays: a swap reads the target's tag count through it.
+-- The version stays so local databases that applied an earlier draft of this file keep a consistent history.
 
-drop function if exists public.rec_add_candidates(integer[], integer, real, smallint, integer[], boolean, integer[], integer);
-drop function if exists public.rec_add_candidates(integer[], real[], real, smallint, integer[], boolean, integer[], integer);
-drop function if exists public.rec_swap_candidates(integer, integer[], smallint, boolean, integer[], integer);
-drop function if exists public.rec_card_roles(integer[], uuid[]);
-drop function if exists public.log_rec_timeout(text, integer, integer[], smallint, boolean);
-drop table if exists public.rec_timeouts;
-
-delete from public.app_config where key = 'recs';
+select 1;

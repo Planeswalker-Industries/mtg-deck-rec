@@ -25,6 +25,17 @@ const NO_ELIGIBLE_COUNT = -1;
 const COPY_CHUNK_CHARS = 1 << 16;
 
 /** One key's commander_card_stats rows, as parallel arrays (a million and a half rows don't fit as objects). */
+/**
+ * JSON with every object's keys sorted, for comparing settings with what was stored: key order doesn't survive a round
+ * trip through jsonb, so a plain JSON.stringify of the two never matches.
+ */
+export const canonicalJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+
 export interface KeyRows {
   cardIds: Int32Array;
   decksWith: Int32Array;

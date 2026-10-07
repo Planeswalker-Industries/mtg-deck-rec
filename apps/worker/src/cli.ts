@@ -35,11 +35,12 @@ Commands:
                             commanders whose decks changed), baseline (the nightly baseline, then every score),
                             scores, substitutes, roles, combos. Default: every part, each only if its inputs moved
                             (--full: rebuild every substitute list and score; --force: past the sanity gates)
-  eval:holdout [--candidate file.json] [--time-split]
+  eval:holdout [--candidate file.json] [--time-split [--snapshot-month YYYY-MM]]
                             The offline evaluation (T058): grades adds, cuts and collection mode on held-out decks;
                             with a candidate ({"scoring": ..., "corpus": ...} over today's settings), runs both and
                             applies the gate; --time-split holds out the decks newer than the EDHREC snapshot
-                            (for anything EDHREC touches). Report in MTG_DATA_DIR/reports; reads only
+                            (for anything EDHREC touches; --snapshot-month pins that month, since every EDHREC
+                            fetch moves it). Exits 1 when the gate fails. Report in MTG_DATA_DIR/reports; reads only
   serve [--once]            The VPS worker: deck lookups, then the daily crawl, collation, stats rebuilds and EDHREC
                             fetches as app_config.worker schedules them (--once: one pass, no EDHREC fetch)`;
 
@@ -96,7 +97,12 @@ async function main(): Promise<void> {
     }
     case 'eval:holdout': {
       const candidatePath = flagValue(args, '--candidate');
-      await evalHoldout({ ...(candidatePath ? { candidatePath } : {}), timeSplit: args.includes('--time-split') });
+      const snapshotMonth = flagValue(args, '--snapshot-month');
+      await evalHoldout({
+        ...(candidatePath ? { candidatePath } : {}),
+        ...(snapshotMonth ? { snapshotMonth } : {}),
+        timeSplit: args.includes('--time-split'),
+      });
       return;
     }
     case 'serve':

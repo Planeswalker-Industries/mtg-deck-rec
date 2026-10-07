@@ -6,7 +6,7 @@ import { loadCardPage, type CardPageData } from "./card-page";
 import { loadCommanderPage, type CommanderPage } from "./commander-page";
 import { type FeaturedCommander, loadFeaturedCommanders } from "./featured";
 import { loadBracketBasics } from "./brackets";
-import { availabilityFor } from "./collection-availability";
+import { availabilityFor, loadStandIns } from "./collection-availability";
 import { DEFAULT_SWAP_LIMIT, getSwapSuggestions, loadOwnedBoost, loadSwapPool, NotFoundError, SHARED_SWAP_POOL } from "./recs";
 import { loadScoringConfig } from "./scoring-config";
 import { loadDeckAffinity } from "./serving";
@@ -74,17 +74,20 @@ export async function getCachedSwapSuggestions(
   if (collection && ownedOnly(context)) {
     return getSwapSuggestions(db, { context, collection, targetCardId, ...(limit === undefined ? {} : { limit }), buyPool: cachedOpenPool });
   }
-  const [pool, ownedBoost, scoring, available, bracket, affinity] = await Promise.all([
+  // The twin groups behind availability are cached per instance, so this rarely costs a read; the stand-ins' rows go out
+  // with the rest, as on the uncached path, so an owned twin counts as owned here too.
+  const available = await availabilityFor(db, collection);
+  const [pool, ownedBoost, scoring, standIns, bracket, affinity] = await Promise.all([
     cachedOpenPool(db, targetCardId, context.deck.commanders, context.includeGameChangers),
     loadOwnedBoost(db, context),
     loadScoringConfig(),
-    availabilityFor(db, collection),
+    loadStandIns(db, available),
     loadBracketBasics(db),
     loadDeckAffinity(db, mainDeckIds(context), context.deck.commanders),
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
   const excluded = bracketExclusions({ ...bracket, combos: [] }, context.bracket);
-  return rankSwaps(pool, { context, limit: limit ?? DEFAULT_SWAP_LIMIT, ownedBoost, scoring, availability: available, excluded, affinity });
+  return rankSwaps(pool, { context, limit: limit ?? DEFAULT_SWAP_LIMIT, ownedBoost, scoring, availability: available, standIns, excluded, affinity });
 }
 
 /**

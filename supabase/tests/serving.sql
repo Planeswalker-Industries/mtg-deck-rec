@@ -276,11 +276,6 @@ select chk('service_role reads combo pieces, commander sets and the precompute s
 reset role;
 
 -- === settings ===
-select chk('the per-request recommendation functions and their switch are gone',
-  to_regprocedure('public.rec_swap_candidates(integer,integer[],smallint,boolean,integer[],integer)') is null
-  and to_regprocedure('public.rec_add_candidates(integer[],real[],real,smallint,integer[],boolean,integer[],integer)') is null
-  and to_regclass('public.rec_timeouts') is null
-  and not exists (select 1 from public.app_config where key = 'recs'));
 select chk('the EDHREC prior is configured by its cap, and the old share and function are gone',
   (select value ? 'edhrecPriorCap' and not value ? 'externalPriorShare' from public.app_config where key = 'corpus')
   and to_regprocedure('public.edhrec_card_priors(integer[],integer[])') is null);

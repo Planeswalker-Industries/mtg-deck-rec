@@ -41,6 +41,7 @@ import { fetchShareLink } from "@/lib/server/share-import";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/server/rate-limit";
 import { createAuthClient } from "@/lib/server/auth";
 import { createPublicClient, type PublicClient } from "@/lib/server/supabase";
+import { createAdminClient } from "@/lib/server/supabase-admin";
 import { visitorKey } from "@/lib/server/visitor";
 import { recordRecEvent, RecEventRefused } from "@/lib/server/rec-events";
 import { castSwapVote, VoteRefused, type VoteRefusal } from "@/lib/server/votes";
@@ -223,7 +224,8 @@ export async function castVoteAction(input: Parameters<ActionsApi["castVote"]>[0
 
 /**
  * Records a suggestion list shown, or a card from it taken or passed on, for the live accept rate (T065). Works signed
- * out; the session client goes along so the database can key a signed-in player's events to the account.
+ * out. The event is written with the secret key, keyed to the account from the session or to the request's visitor
+ * key: the database takes events from the server only, so nobody can write them with keys of their own choosing.
  */
 export async function recordRecEventAction(input: Parameters<ActionsApi["recordRecEvent"]>[0]): Promise<Result<null>> {
   const parsed = parseInput(recEventInputSchema, input);
@@ -231,9 +233,9 @@ export async function recordRecEventAction(input: Parameters<ActionsApi["recordR
   try {
     const db = await createAuthClient();
     const visitor = visitorKey(await headers());
-    const limited = await checkRateLimit(db, "events", visitor);
+    const [limited, claims] = await Promise.all([checkRateLimit(db, "events", visitor), db.auth.getClaims()]);
     if (limited) return { ok: false, error: limited };
-    await recordRecEvent(db, parsed.data, visitor);
+    await recordRecEvent(createAdminClient(), parsed.data, visitor, claims.data?.claims?.sub ?? null);
     return { ok: true, data: null };
   } catch (err) {
     if (err instanceof RecEventRefused) return failure("VALIDATION", "That event isn't valid.");

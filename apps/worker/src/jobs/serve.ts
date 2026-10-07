@@ -118,6 +118,16 @@ async function duty(name: string, run: () => Promise<unknown>): Promise<void> {
   }
 }
 
+/** Whether a duty is due; a check that fails (a setting or table this database lacks yet) counts as not due. */
+async function due(name: string, check: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await check();
+  } catch (err) {
+    console.error(`worker: checking whether ${name} is due failed:`, err);
+    return false;
+  }
+}
+
 /**
  * The VPS worker's one long-running process (deploy/worker/, T066). Every `pollSeconds` it serves the deck lookups,
  * then runs whatever app_config.worker says is due:
@@ -129,7 +139,8 @@ async function duty(name: string, run: () => Promise<unknown>): Promise<void> {
  * - the nightly baseline at `baselineHourUtc`, which ends by re-scoring every commander;
  * - every score again whenever app_config.corpus changes;
  * - the card pairs (T064) of keys whose stats moved, after each collation, and the corpus's every `globalPairsEveryDays`;
- * - an EDHREC fetch every `edhrecEveryDays`, in the background, since it takes hours and lookups must not wait on it.
+ * - an EDHREC fetch every `edhrecEveryDays`, in the background, since it takes hours and lookups must not wait on it;
+ *   the corpus's card pairs run in the background too, since the count holds the loop for minutes.
  *
  * When something last ran is read from sync_runs and crawl.runs, so a restart neither repeats nor skips work. A stop
  * signal ends the loop after the duty in hand; an EDHREC fetch stopped halfway keeps the pages it wrote and is retried
@@ -147,6 +158,7 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
   // Long duties (a rebuild takes minutes) must not make the collector look offline.
   const heartbeat = setInterval(() => void checkIn(sql).catch(() => {}), HEARTBEAT_MS);
   let edhrec: Promise<void> | null = null;
+  let globalPairs: Promise<void> | null = null;
   let lastCollate = 0;
   let substitutesPending = false;
   console.log(`worker: serving${once ? ' one pass' : ''}`);
@@ -163,8 +175,8 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
         await duty('collation', () => collate());
         await duty('commander stats', () => precomputeCommanders(sql));
       }
-      if (await baselineDue(sql, schedule)) await duty('nightly baseline', () => precomputeBaseline(sql));
-      if (await scoreSettingsChanged(sql)) await duty('scores', () => precomputeScores({ sql }));
+      if (await due('the nightly baseline', () => baselineDue(sql, schedule))) await duty('nightly baseline', () => precomputeBaseline(sql));
+      if (await due('scores', () => scoreSettingsChanged(sql))) await duty('scores', () => precomputeScores({ sql }));
       if (collating || substitutesPending) {
         await duty('substitutes', async () => {
           substitutesPending = (await precomputeSubstitutes(sql, { budgetMs: SUBSTITUTES_BUDGET_MS })).remaining > 0;
@@ -175,8 +187,13 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
         await duty('combo pieces', () => precomputeCombos(sql));
         await duty('card pairs', () => precomputePairs(sql));
       }
-      if (await globalPairsDue(sql, schedule)) await duty('corpus card pairs', () => precomputeGlobalPairs(sql, { force: true }));
-      if (!edhrec && !once && (await edhrecDue(sql, schedule))) {
+      if (!globalPairs && (await due('corpus card pairs', () => globalPairsDue(sql, schedule)))) {
+        globalPairs = duty('corpus card pairs', () => precomputeGlobalPairs(sql, { rerun: true })).finally(() => {
+          globalPairs = null;
+        });
+        if (once) await globalPairs;
+      }
+      if (!edhrec && !once && (await due('the EDHREC fetch', () => edhrecDue(sql, schedule)))) {
         edhrec = duty('EDHREC fetch', () => syncEdhrec()).finally(() => {
           edhrec = null;
         });
@@ -185,6 +202,8 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
       await sleep(schedule.pollSeconds * MS_PER_SECOND);
     }
   } finally {
+    // The corpus's pair count finishes its transaction well inside the stop grace period; an EDHREC fetch keeps its pages.
+    if (globalPairs) await globalPairs;
     clearInterval(heartbeat);
     await sql.end({ timeout: 5 });
   }

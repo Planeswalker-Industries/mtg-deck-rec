@@ -7,10 +7,10 @@ import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-ru
  * the retired rec_swap_candidates scored, over every card; the first `substitutesDepth` inside every colour identity
  * that can hold the card) and written only where a list changed.
  *
- * A card is rebuilt when it is new, when what its similarity rests on moved (its functional tags and their idf, its
- * colours, mana value and functional twin, the depth, the functional tag config, the pool order's weights:
- * `tags_hash`), when a tag near its own was switched on or off, and every `substitutesRebuildDays`, which is what
- * catches a list that changed through its candidates rather than through the card itself.
+ * A card is rebuilt when it is new, when what its similarity rests on moved (its functional tags and their idf to two
+ * places, its colours, mana value and functional twin, the depth, the functional tag config, the pool order's
+ * weights: `tags_hash`), when a tag near its own was switched on or off, and every `substitutesRebuildDays`, which is
+ * what catches a list that changed through its candidates rather than through the card itself.
  */
 
 /** Cards whose lists are computed and merged together. */
@@ -27,6 +27,14 @@ const MAX_EMPTIED_SHARE = 0.5;
 const MIN_JUDGED_TARGETS = 20;
 const SUBSTITUTES_URI = 'postgres:public.card_tags';
 const MS_PER_DAY = 86_400_000;
+/**
+ * Decimals of each tag's idf that go into a card's hash. Every new card nudges every idf (the tag sync writes moves of
+ * 0.0001), so at four decimals a set release made every list due: hours of database time for lists that barely move.
+ * At two, a list is rebuilt when its tags' weight really moved; the weekly rebuild catches the rest.
+ */
+const IDF_HASH_DECIMALS = 2;
+/** Similarity moves smaller than this aren't written: the precompute worker's tolerance for stored scores. */
+const SIMILARITY_TOLERANCE = 0.001;
 
 interface Depths {
   substitutesDepth: number;
@@ -61,7 +69,7 @@ async function currentHashes(sql: Sql, depths: Depths): Promise<Map<number, stri
       where key = 'scoring'
     ),
     tagged as (
-      select ct.card_id, string_agg(ct.tag_id::text || ':' || round(t.idf::numeric, 4)::text, ',' order by ct.tag_id) as tags
+      select ct.card_id, string_agg(ct.tag_id::text || ':' || round(t.idf::numeric, ${IDF_HASH_DECIMALS})::text, ',' order by ct.tag_id) as tags
       from public.card_tags ct
       join public.functional_tags f on f.tag_id = ct.tag_id
       join public.tags t on t.id = ct.tag_id
@@ -219,18 +227,28 @@ export async function precomputeSubstitutes(
             )
             select count(*)::int as n from gone
           `;
-          const [written] = await db<{ n: number }[]>`
+          // Update what moved beyond the tolerance, then insert what is new: an upsert would lock and log every unchanged row too, and a few new
+          // cards nudge every idf, so every similarity moves a little.
+          const [updated] = await db<{ n: number }[]>`
             with changed as (
-              insert into public.card_substitutes as s (card_id, substitute_id, tag_similarity, is_functional_twin)
-              select card_id, substitute_id, tag_similarity, is_functional_twin from stg_substitutes
-              on conflict (card_id, substitute_id) do update set
-                tag_similarity = excluded.tag_similarity,
-                is_functional_twin = excluded.is_functional_twin
-              where (s.tag_similarity, s.is_functional_twin) is distinct from (excluded.tag_similarity, excluded.is_functional_twin)
+              update public.card_substitutes s set tag_similarity = n.tag_similarity, is_functional_twin = n.is_functional_twin
+              from stg_substitutes n
+              where n.card_id = s.card_id and n.substitute_id = s.substitute_id
+                and (s.is_functional_twin <> n.is_functional_twin or abs(s.tag_similarity - n.tag_similarity) >= ${SIMILARITY_TOLERANCE})
               returning 1
             )
             select count(*)::int as n from changed
           `;
+          const [inserted] = await db<{ n: number }[]>`
+            with added as (
+              insert into public.card_substitutes (card_id, substitute_id, tag_similarity, is_functional_twin)
+              select card_id, substitute_id, tag_similarity, is_functional_twin from stg_substitutes
+              on conflict (card_id, substitute_id) do nothing
+              returning 1
+            )
+            select count(*)::int as n from added
+          `;
+          const written = { n: (updated?.n ?? 0) + (inserted?.n ?? 0) };
           await db`
             insert into public.substitute_targets as s (card_id, tags_hash, built_at)
             select card_id, tags_hash, now() from stg_targets

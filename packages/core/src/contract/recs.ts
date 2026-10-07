@@ -333,7 +333,10 @@ export interface BuildResult {
   landTarget: number;
   /** "Complete a combo": combos the build is one card short of that the bracket allows. Credited and linked. */
   combos: ComboSuggestion[];
-  /** The finished build's estimate: never above the bracket asked for, since a build treats every bracket rule as a limit. */
+  /**
+   * The finished build's estimate. A build treats every bracket rule as a limit, so only kept cards (the deck it started
+   * from) can lift it above the bracket asked for; and estimates run 2–4, so bracket 1 reads as 2.
+   */
   estimatedBracket: Bracket;
   bracketSignals: BracketSignals;
   feasibility: BuildFeasibility;

@@ -434,7 +434,8 @@ export function rankAdds({
   const poolWithNeighbours = [...poolIds, ...(affinity?.neighbours ?? []).filter((id) => !inPool.has(id) && cards.has(id))];
   const scoredPool = poolWithNeighbours.filter((id) => !excluded.has(id)).map(corpusOf);
   const mainIds = mainDeckIds(context);
-  const affinityOf = (cardId: number) => (affinity ? deckAffinity(cardId, mainIds, affinity.lifts, affinity.weights, scoring.affinity) : null);
+  const deckIds = new Set<number>([...context.deck.commanders, ...mainIds]);
+  const affinityOf =(cardId: number) => (affinity ? deckAffinity(cardId, mainIds, affinity.lifts, affinity.weights, scoring.affinity) : null);
   // Cards too new for play data score like a typical candidate: not buried for being new, not promoted either.
   const neutralCorpus = neutralCorpusValue(
     scoredPool.flatMap((p) => (p.corpusScore ? [p.corpusScore.value] : [])),
@@ -453,6 +454,8 @@ export function rankAdds({
     if (!card) return [];
     const { gap, roleIds } = roleGap([...(roles.get(cardId) ?? [])], shortfalls);
     const owning = owningOf(card, availability, standIns);
+    // An owned twin the deck already holds can't stand in: the one copy is in use here.
+    if (deckIds.has(owning.summary.id)) return [];
     const deck = affinityOf(cardId);
     const suggestion: AddSuggestion = {
       card: owning.summary,
@@ -639,9 +642,11 @@ export function rankSwaps(
   // everyday weights and differs from a collection-less ranking only by the owned boost.
   const baseWeights = scoring.weights.swap[only ? 'collection_aware' : 'collection_less'];
 
-  const scored = candidates.map((c) => {
+  const scored = candidates.flatMap((c) => {
     const card = c.card.summary;
     const owning = owningOf(c.card, availability, standIns);
+    // An owned twin the deck already holds can't stand in: the one copy is in use here.
+    if (inDeck.has(owning.summary.id)) return [];
     const deck = affinity ? deckAffinity(c.cardId, deckWithoutTarget, affinity.lifts, affinity.weights, scoring.affinity) : null;
     const known = corpusScores.get(c.cardId);
     const corpusScore = known === null ? { value: neutralCorpus, weightScale: scoring.corpus.baselineWeight } : (known ?? null);
@@ -668,7 +673,7 @@ export function rankSwaps(
           corpusScore ? { ...baseWeights, corpus: baseWeights.corpus * corpusScore.weightScale } : baseWeights,
         ),
     };
-    return { suggestion, supplied: owning.supplied };
+    return [{ suggestion, supplied: owning.supplied }];
   });
   const listed = (only ? scored.filter((s) => s.supplied) : scored).map((s) => s.suggestion);
   const suggestions = onceEach(

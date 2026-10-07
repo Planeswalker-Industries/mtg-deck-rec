@@ -21,6 +21,7 @@ import {
 import { loadRoleCards } from '../lib/corpus';
 import { connect, reserve, type ReservedSql, type Sql } from '../lib/db';
 import {
+  canonicalJson,
   copyRows,
   edhrecProfiles,
   eligibleAt,
@@ -269,34 +270,45 @@ async function mergeChunk(db: ReservedSql, chunk: readonly CommanderSet[], input
       )
       select count(*)::int as n from gone
     `;
-    const [written] = await db<{ n: number }[]>`
+    // An update of the rows that moved, then an insert of the new ones: `insert … on conflict do update … where` locks
+    // and logs every conflicting row even when nothing changes, which on a full pass is every row in the table.
+    const [updated] = await db<{ n: number }[]>`
       with changed as (
-        insert into public.commander_card_scores as s
-          (commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale, prior_rate, prior_decks)
-        select commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale, prior_rate, prior_decks
-        from stg_scores
-        on conflict (commander_1, commander_2, card_id) do update set
-          decks_with = excluded.decks_with,
-          commander_decks = excluded.commander_decks,
-          pool_score = excluded.pool_score,
-          corpus_value = excluded.corpus_value,
-          weight_scale = excluded.weight_scale,
-          prior_rate = excluded.prior_rate,
-          prior_decks = excluded.prior_decks
-        where (s.prior_rate, s.prior_decks) is distinct from (excluded.prior_rate, excluded.prior_decks)
-           or abs(s.decks_with - excluded.decks_with) > ${COUNT_TOLERANCE}
-           or abs(s.commander_decks - excluded.commander_decks) > ${COUNT_TOLERANCE}
-           or abs(s.pool_score - excluded.pool_score) >= ${SCORE_TOLERANCE}
-           or (s.corpus_value is null) <> (excluded.corpus_value is null)
-           or abs(s.corpus_value - excluded.corpus_value) >= ${SCORE_TOLERANCE}
-           or (s.weight_scale is null) <> (excluded.weight_scale is null)
-           or abs(s.weight_scale - excluded.weight_scale) >= ${SCORE_TOLERANCE}
+        update public.commander_card_scores s set
+          decks_with = n.decks_with,
+          commander_decks = n.commander_decks,
+          pool_score = n.pool_score,
+          corpus_value = n.corpus_value,
+          weight_scale = n.weight_scale,
+          prior_rate = n.prior_rate,
+          prior_decks = n.prior_decks
+        from stg_scores n
+        where s.commander_1 = n.commander_1 and s.commander_2 = n.commander_2 and s.card_id = n.card_id
+          and ((s.prior_rate, s.prior_decks) is distinct from (n.prior_rate, n.prior_decks)
+            or abs(s.decks_with - n.decks_with) > ${COUNT_TOLERANCE}
+            or abs(s.commander_decks - n.commander_decks) > ${COUNT_TOLERANCE}
+            or abs(s.pool_score - n.pool_score) >= ${SCORE_TOLERANCE}
+            or (s.corpus_value is null) <> (n.corpus_value is null)
+            or abs(s.corpus_value - n.corpus_value) >= ${SCORE_TOLERANCE}
+            or (s.weight_scale is null) <> (n.weight_scale is null)
+            or abs(s.weight_scale - n.weight_scale) >= ${SCORE_TOLERANCE})
         returning 1
       )
       select count(*)::int as n from changed
     `;
+    const [inserted] = await db<{ n: number }[]>`
+      with added as (
+        insert into public.commander_card_scores
+          (commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale, prior_rate, prior_decks)
+        select commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale, prior_rate, prior_decks
+        from stg_scores
+        on conflict (commander_1, commander_2, card_id) do nothing
+        returning 1
+      )
+      select count(*)::int as n from added
+    `;
     await db`commit`;
-    return { staged, written: written?.n ?? 0, removed: removed?.n ?? 0 };
+    return { staged, written: (updated?.n ?? 0) + (inserted?.n ?? 0), removed: removed?.n ?? 0 };
   } catch (err) {
     await db`rollback`.catch(() => {});
     throw err;
@@ -342,18 +354,28 @@ async function mergePartnerTotals(
       )
       select count(*)::int as n from gone
     `;
-    const [written] = await db<{ n: number }[]>`
+    // Update what moved, then insert what is new: an upsert would lock and log every unchanged row too.
+    const [updated] = await db<{ n: number }[]>`
       with changed as (
-        insert into public.partner_card_totals as p (commander_id, card_id, decks_with, too_early)
-        select commander_id, card_id, decks_with, too_early from stg_totals
-        on conflict (commander_id, card_id) do update set decks_with = excluded.decks_with, too_early = excluded.too_early
-        where (p.decks_with, p.too_early) is distinct from (excluded.decks_with, excluded.too_early)
+        update public.partner_card_totals p set decks_with = n.decks_with, too_early = n.too_early
+        from stg_totals n
+        where n.commander_id = p.commander_id and n.card_id = p.card_id
+          and (p.decks_with, p.too_early) is distinct from (n.decks_with, n.too_early)
         returning 1
       )
       select count(*)::int as n from changed
     `;
+    const [inserted] = await db<{ n: number }[]>`
+      with added as (
+        insert into public.partner_card_totals (commander_id, card_id, decks_with, too_early)
+        select commander_id, card_id, decks_with, too_early from stg_totals
+        on conflict (commander_id, card_id) do nothing
+        returning 1
+      )
+      select count(*)::int as n from added
+    `;
     await db`commit`;
-    return { staged, written: written?.n ?? 0, removed: removed?.n ?? 0 };
+    return { staged, written: (updated?.n ?? 0) + (inserted?.n ?? 0), removed: removed?.n ?? 0 };
   } catch (err) {
     await db`rollback`.catch(() => {});
     throw err;
@@ -421,7 +443,15 @@ export async function precomputeScores({
     const inputs: Inputs = { settings, pages, profiles, scoring, keysByCommander, rowsByKey, baselines, facts, identityMonths };
 
     const rows = sets.reduce((sum, s) => sum + setSize(s, inputs), 0);
-    const previousRows = start.previousMetrics?.rows;
+    // Measured against the last full run: a partial pass after it records only its own commanders' rows.
+    const [lastFull] = full
+      ? await sql<{ rows: number | null }[]>`
+          select (metrics ->> 'rows')::bigint as rows from public.sync_runs
+          where job = 'precompute_scores' and status = 'succeeded' and (metrics ->> 'full')::int = 1
+          order by finished_at desc limit 1
+        `
+      : [];
+    const previousRows = lastFull?.rows === null || lastFull?.rows === undefined ? undefined : Number(lastFull.rows);
     const metrics: SyncMetrics = { full: full ? 1 : 0, commanders: sets.length, rows, partnerCommanders: partners.length };
     if (full && !force && previousRows !== undefined && previousRows > 0 && rows < previousRows * MIN_ROW_SHARE) {
       const error = `sanity gate: ${rows} score rows (previous full run ${previousRows})`;
@@ -506,9 +536,6 @@ export async function precomputeScores({
   }
 }
 
-/** Key order doesn't survive a round trip through jsonb, so settings are compared with their keys sorted. */
-const canonical = (value: unknown) =>
-  JSON.stringify(value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);
 
 /**
  * Whether app_config.corpus or the corpus score's shape (app_config.scoring.corpus) changed since the last full scores
@@ -521,7 +548,7 @@ export async function scoreSettingsChanged(sql: Sql): Promise<boolean> {
     sql<{ version: { settings?: unknown; scoring?: unknown } }[]>`select version from public.precompute_state where part = 'scores'`,
   ]);
   return (
-    canonical(state?.version.settings ?? null) !== canonical(settings) ||
-    canonical(state?.version.scoring ?? null) !== canonical(scoringConfig.corpus)
+    canonicalJson(state?.version.settings ?? null) !== canonicalJson(settings) ||
+    canonicalJson(state?.version.scoring ?? null) !== canonicalJson(scoringConfig.corpus)
   );
 }

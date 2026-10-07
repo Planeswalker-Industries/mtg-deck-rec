@@ -2069,6 +2069,7 @@ export type Database = {
           p_mode: string
           p_position?: number
           p_target_card_id?: number
+          p_user_id?: string
           p_visitor_key: string
         }
         Returns: undefined

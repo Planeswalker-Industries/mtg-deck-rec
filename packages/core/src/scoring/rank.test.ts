@@ -129,6 +129,26 @@ describe('rankAdds with a collection (T059)', () => {
     expect(lands[0]?.corpus?.inclusionRate).toBe(0.6);
   });
 
+  it('never offers the owned twin the deck already holds as a stand-in', () => {
+    // The deck runs the only Terramorphic Expanse; Evolving Wilds can't be offered as that same copy.
+    const adds = rankAdds({
+      context: context('first', [11]),
+      poolIds: [1, 2, 3, 4, 10],
+      cards,
+      rates: playRates,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: TEST_SCORING,
+      availability: availability({ owned: new Map([[11, 1]]), builtDecks: [] }, twins),
+      standIns: cards,
+      limitPerCategory: 10,
+    });
+    expect(adds.groups.flatMap((g) => g.suggestions.map((s) => s.card.name))).not.toContain('Terramorphic Expanse');
+  });
+
   it("keeps every card and no buy list in 'first' mode", () => {
     const { groups, buyList } = addsWith([[2, 1]], [], 'first');
     expect(groups.flatMap((g) => g.suggestions)).toHaveLength(6);

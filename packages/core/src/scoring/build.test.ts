@@ -238,6 +238,17 @@ describe('buildDeck', () => {
     expect(gameChangers.every((id) => ids4.has(id)) && ids4.has(2) && ids4.has(10) && ids4.has(11)).toBe(true);
   });
 
+  it('leaves out kept cards no deck under these commanders may hold', () => {
+    const red = card(400, 'Red Card', 'Instant', { identity: 4, colorIdentity: 'R' });
+    const banned = { ...card(401, 'Banned Card', 'Instant', { identity: WU }), legal: false };
+    const keptCards = new Map([...cards, [400, red], [401, banned]]);
+    const kept = context({ deck: { commanders: [COMMANDER as CardId], cards: [400, 401, 1].map((id) => ({ cardId: id as CardId, quantity: 1, section: 'main' as const })) } });
+    const ids = deckIds(buildDeck(input({ cards: keptCards, context: kept })));
+    expect(ids).toContain(1);
+    expect(ids).not.toContain(400);
+    expect(ids).not.toContain(401);
+  });
+
   it('lists the combos the build is one card short of that the bracket allows', () => {
     const facts = {
       rules,
@@ -263,6 +274,13 @@ describe('buildDeck', () => {
       expect(result.feasibility).toMatchObject({ slots: 99, filled: 30 + 5 + basicCount(result), filledByValue: 0, open: 33 });
       expect(basicCount(result)).toBe(31);
       expect(result.fillCost).toBeUndefined();
+    });
+
+    it('never shows one owned copy twice through a twin standing in', () => {
+      // Lands 200 and 201 are twins and the player owns one copy of 200: it can fill one slot, for either card.
+      const twinned = availability({ owned, builtDecks: [] }, new Map([[200, 200], [201, 200]]));
+      const result = buildDeck(input({ context: collection, availability: twinned, standIns: cards, poolIds: [...ownedPool, 201] }));
+      expect(deckIds(result).filter((id) => id === 200)).toHaveLength(1);
     });
 
     it('stops below the quality floor', () => {

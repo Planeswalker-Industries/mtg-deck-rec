@@ -24,6 +24,16 @@ const componentWeightsSchema = z.object({
   deck: share,
 });
 
+/** Whether a result class compiles, so a typo fails when the config loads rather than on the first request. */
+function isRegExp(source: string): boolean {
+  try {
+    new RegExp(source, 'i');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const scoringConfigSchema = z.object({
   weights: z.object({
     /** Cards to add (and commander pages): play rates and role gaps. */
@@ -117,7 +127,7 @@ export const scoringConfigSchema = z.object({
   /** "Complete a combo" (T060): what a combo does decides its place, then the missing card's add score. */
   combos: z.object({
     /** Result classes, first match wins: a case-insensitive regular expression over a standalone result, and its weight. */
-    resultClasses: z.array(z.object({ match: z.string(), weight: share })),
+    resultClasses: z.array(z.object({ match: z.string().refine(isRegExp, 'not a valid regular expression'), weight: share })),
     /** A standalone result no class matches. */
     standaloneWeight: share,
     /** A combo whose results only matter in context. */
@@ -148,6 +158,8 @@ export const evalConfigSchema = z.object({
   cutPrecisionAt: z.number().int().positive(),
   /** Resamples over commanders for the bootstrap intervals. */
   bootstrapResamples: z.number().int().positive(),
+  /** The gate refuses a verdict on fewer held-out commanders than this: a handful can pass on noise. */
+  minCommanders: z.number().int().positive(),
   /** A hit whose baseline rate is at least this is a generic staple (the "Sol Ring rate"). */
   stapleBaselineRate: share,
   /** The most the Sol Ring rate may rise before a change fails the gate. */

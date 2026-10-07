@@ -1,6 +1,6 @@
 import { globalPairs, keyPairs, parsePairSettings, type PairRow, type PairSettings } from '@mtg/core/scoring';
 import { reserve, type ReservedSql, type Sql } from '../lib/db';
-import { copyRows, loadCardFacts } from '../lib/serving';
+import { canonicalJson, copyRows, loadCardFacts } from '../lib/serving';
 import { finishRun, heartbeat, startRun } from '../lib/sync-runs';
 
 /**
@@ -16,6 +16,8 @@ const KEYS_PER_CHUNK = 100;
 const LIFT_TOLERANCE = 0.001;
 /** A global run may hold at most this many times the previous run's rows; more means a broken count. */
 const MAX_GROWTH = 2;
+/** A global run over fewer than this share of the previous run's decks is refused: the corpus lost decks, not the cards. */
+const MIN_DECK_SHARE = 0.8;
 const PAIR_COLUMNS = ['commander_1', 'commander_2', 'card_a', 'card_b', 'pair_decks', 'lift'];
 const PAIRS_URI = 'postgres:corpus.decks';
 
@@ -77,17 +79,27 @@ async function mergeKeyPairs(db: ReservedSql): Promise<{ written: number; remove
     )
     select count(*)::int as n from gone
   `;
-  const [written] = await db<{ n: number }[]>`
+  // Update what moved, then insert what is new: an upsert would lock and log every unchanged row too.
+  const [updated] = await db<{ n: number }[]>`
     with changed as (
-      insert into public.commander_card_pairs as p (commander_1, commander_2, card_a, card_b, pair_decks, lift)
-      select commander_1, commander_2, card_a, card_b, pair_decks, lift from stg_pairs
-      on conflict (commander_1, commander_2, card_a, card_b) do update set pair_decks = excluded.pair_decks, lift = excluded.lift
-      where p.pair_decks <> excluded.pair_decks or abs(p.lift - excluded.lift) > ${LIFT_TOLERANCE}
+      update public.commander_card_pairs p set pair_decks = s.pair_decks, lift = s.lift
+      from stg_pairs s
+      where s.commander_1 = p.commander_1 and s.commander_2 = p.commander_2 and s.card_a = p.card_a and s.card_b = p.card_b
+        and (p.pair_decks <> s.pair_decks or abs(p.lift - s.lift) > ${LIFT_TOLERANCE})
       returning 1
     )
     select count(*)::int as n from changed
   `;
-  return { written: written?.n ?? 0, removed: removed?.n ?? 0 };
+  const [inserted] = await db<{ n: number }[]>`
+    with added as (
+      insert into public.commander_card_pairs (commander_1, commander_2, card_a, card_b, pair_decks, lift)
+      select commander_1, commander_2, card_a, card_b, pair_decks, lift from stg_pairs
+      on conflict (commander_1, commander_2, card_a, card_b) do nothing
+      returning 1
+    )
+    select count(*)::int as n from added
+  `;
+  return { written: (updated?.n ?? 0) + (inserted?.n ?? 0), removed: removed?.n ?? 0 };
 }
 
 /**
@@ -105,7 +117,8 @@ export async function precomputePairs(sql: Sql, { full = false, force = false }:
     `,
   ]);
   const statsAt = keyRows.reduce((max, r) => (r.computed_at > max ? r.computed_at : max), new Date(0));
-  const settingsMoved = JSON.stringify(state?.version.settings) !== JSON.stringify(settings);
+  // Key order doesn't survive jsonb, so the stored settings are compared with their keys sorted.
+  const settingsMoved = canonicalJson(state?.version.settings) !== canonicalJson(settings);
   const everyKey = full || force || settingsMoved || !state?.version.statsAt;
   const since = everyKey ? null : new Date(state?.version.statsAt ?? 0);
   const keys = keyRows.filter((r) => since === null || r.computed_at > since).map((r) => ({ commander1: r.commander_1, commander2: r.commander_2 }));
@@ -178,12 +191,16 @@ export async function precomputePairs(sql: Sql, { full = false, force = false }:
 }
 
 /**
- * `card_pairs` over the whole corpus. Refuses a count holding more than MAX_GROWTH times the previous run's rows, or
- * none after a run that had some; `force` lets it through.
+ * `card_pairs` over the whole corpus. Refuses a corpus under MIN_DECK_SHARE of the previous run's decks, a count holding
+ * more than MAX_GROWTH times its rows, or none after a run that had some; `force` lets it through. `rerun` only runs it
+ * again over an unchanged corpus (the worker's weekly recount), gates and all.
  */
-export async function precomputeGlobalPairs(sql: Sql, { force = false }: { force?: boolean } = {}): Promise<'succeeded' | 'failed_sanity' | 'skipped'> {
+export async function precomputeGlobalPairs(
+  sql: Sql,
+  { force = false, rerun = false }: { force?: boolean; rerun?: boolean } = {},
+): Promise<'succeeded' | 'failed_sanity' | 'skipped'> {
   const [version] = await sql<{ at: Date | null; decks: number }[]>`select max(collated_at) as at, count(*)::int as decks from corpus.decks`;
-  const start = await startRun(sql, 'precompute_global_pairs', { uri: PAIRS_URI, updatedAt: (version?.at ?? new Date(0)).toISOString() }, force);
+  const start = await startRun(sql, 'precompute_global_pairs', { uri: PAIRS_URI, updatedAt: (version?.at ?? new Date(0)).toISOString() }, force || rerun);
   if (start.kind === 'skipped') return 'skipped';
   try {
     const [settings, facts, deckRows] = await Promise.all([
@@ -205,8 +222,10 @@ export async function precomputeGlobalPairs(sql: Sql, { force = false }: { force
       settings,
     );
     const previous = start.previousMetrics?.rows;
-    if (!force && previous !== undefined && (pairs.length > previous * MAX_GROWTH || (previous > 0 && pairs.length === 0))) {
-      const error = `sanity gate: ${pairs.length} pairs (previous run ${previous})`;
+    const previousDecks = start.previousMetrics?.decks;
+    const shrunk = previousDecks !== undefined && decks.length < previousDecks * MIN_DECK_SHARE;
+    if (!force && (shrunk || (previous !== undefined && (pairs.length > previous * MAX_GROWTH || (previous > 0 && pairs.length === 0))))) {
+      const error = `sanity gate: ${pairs.length} pairs from ${decks.length} decks (previous run ${previous ?? '?'} from ${previousDecks ?? '?'})`;
       await finishRun(sql, start.runId, 'failed_sanity', { rowsRead: pairs.length, metrics: { rows: pairs.length }, error });
       console.error(`precompute_global_pairs: ${error}. card_pairs unchanged; re-run with --force if this is expected.`);
       return 'failed_sanity';
@@ -230,18 +249,29 @@ export async function precomputeGlobalPairs(sql: Sql, { force = false }: { force
         )
         select count(*)::int as n from gone
       `;
-      const [changed] = await db<{ n: number }[]>`
+      // Update what moved, then insert what is new: an upsert would lock and log every unchanged row too.
+      await db`analyze stg_card_pairs`;
+      const [updated] = await db<{ n: number }[]>`
         with changed as (
-          insert into public.card_pairs as p (card_a, card_b, pair_decks, lift)
-          select card_a, card_b, pair_decks, lift from stg_card_pairs
-          on conflict (card_a, card_b) do update set pair_decks = excluded.pair_decks, lift = excluded.lift
-          where p.pair_decks <> excluded.pair_decks or abs(p.lift - excluded.lift) > ${LIFT_TOLERANCE}
+          update public.card_pairs p set pair_decks = s.pair_decks, lift = s.lift
+          from stg_card_pairs s
+          where s.card_a = p.card_a and s.card_b = p.card_b
+            and (p.pair_decks <> s.pair_decks or abs(p.lift - s.lift) > ${LIFT_TOLERANCE})
           returning 1
         )
         select count(*)::int as n from changed
       `;
+      const [inserted] = await db<{ n: number }[]>`
+        with added as (
+          insert into public.card_pairs (card_a, card_b, pair_decks, lift)
+          select card_a, card_b, pair_decks, lift from stg_card_pairs
+          on conflict (card_a, card_b) do nothing
+          returning 1
+        )
+        select count(*)::int as n from added
+      `;
       await db`commit`;
-      written = changed?.n ?? 0;
+      written = (updated?.n ?? 0) + (inserted?.n ?? 0);
       removed = gone?.n ?? 0;
     } catch (err) {
       await db`rollback`.catch(() => {});

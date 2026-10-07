@@ -29,7 +29,8 @@ export const bracketRulesSchema = z.object({
   massLandDenialTagIds: z.array(z.string()),
   extraTurnTagIds: z.array(z.string()),
   massLandDenialFromBracket: bracketNumber,
-  maxExtraTurnCards: z.record(z.string(), z.int().min(0)),
+  // Keyed by bracket number: a key that isn't one ("03", "3 ") would otherwise lift that bracket's limit unnoticed.
+  maxExtraTurnCards: z.partialRecord(z.enum(['1', '2', '3', '4', '5']), z.int().min(0)),
   extraTurnLoopResults: z.array(z.string()),
   extraTurnLoopFromBracket: bracketNumber,
 });
@@ -47,7 +48,7 @@ export const massLandDenialAllowed = (bracket: Bracket, rules: BracketRules): bo
 
 /** Extra-turn cards the bracket allows; no limit for a bracket the rules don't list. */
 export const extraTurnLimit = (bracket: Bracket, rules: BracketRules): number =>
-  rules.maxExtraTurnCards[String(bracket)] ?? Number.POSITIVE_INFINITY;
+  rules.maxExtraTurnCards[String(bracket) as keyof BracketRules['maxExtraTurnCards']] ?? Number.POSITIVE_INFINITY;
 
 /** The cards the bracket rules watch (`bracket_cards()`). */
 export interface BracketCards {

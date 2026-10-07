@@ -155,6 +155,8 @@ export interface GateInput {
   solRingTolerance: number;
   resamples: number;
   seed: number;
+  /** Fewer commanders than this fail the gate: too few to judge. */
+  minCommanders: number;
 }
 
 export interface GateResult {
@@ -173,6 +175,11 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 export function evaluateGate(input: GateInput): GateResult {
   const difference = bootstrapDifference(input.baselineRecall, input.candidateRecall, input.resamples, input.seed);
   const checks: GateResult['checks'] = [
+    {
+      name: 'enough commanders',
+      pass: input.baselineRecall.length >= input.minCommanders,
+      detail: `${input.baselineRecall.length} held-out commanders (at least ${input.minCommanders})`,
+    },
     {
       name: 'recall rises',
       pass: difference.low > 0,

@@ -490,7 +490,7 @@ Each source's data moves into its own schema, as the source published it (`archi
 
 ### T055: Precompute worker and the serving request path
 
-**Priority:** HIGH | **Area:** Worker / Backend | **Status:** Built 2026-10-06 (migrations `20261005000900`, `20261005001000`), one round per add, cut and swap, `app_config.recs.servingReads` off; waiting for release, the first precompute on hosted and the switch, then the retirement PR | **Blocked by:** T054
+**Priority:** HIGH | **Area:** Worker / Backend | **Status:** Live in production since 2026-10-07 (`servingReads` on after hosted parity); the old path leaves the code with PR #139 and the database with T067 | **Blocked by:** T054
 
 The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substitutes`, `card_roles`, `spellbook_combo_pieces`, and per-dirty-commander `commander_stats`) are built by the precompute worker, and the add, cut and swap paths become indexed reads, sent in one round, with scoring in `@mtg/core`. `rec_add_candidates`, `rec_swap_candidates`, `retry-timeout.ts` and `rec_timeouts` retire. On hosted, calls to the two functions average 0.8–1.0 s and peak at the 3 s timeout (2026-10-05). CLAUDE.md ("Precompute worker") has the rules.
 
@@ -502,11 +502,11 @@ The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substi
 
 **Acceptance criteria:**
 - [x] Parity: the same add and swap lists as before the switch (regression fixtures plus a parity script), locally
-- [ ] Parity on hosted (`serving-parity.ts` through the publishable key, reads only) before the switch
-- [ ] p95 add and swap latency on hosted recorded before and after (`serving-parity.ts --timing`)
+- [x] Parity on hosted (`serving-parity.ts` through the publishable key, reads only) before the switch (2026-10-07)
+- [x] p95 add and swap latency on hosted recorded before and after (adds 352/632 → 150/286 ms at p50/p95, 2026-10-07)
 - [x] Diff-only writes, sanity gates, and a schedule in `app_config.worker`
 - [x] One round per add, cut and swap on the serving path (`serving-parity.ts` counts them)
-- [ ] T008 closed; T040 closed as moot (the retirement PR)
+- [ ] T008 closed; T040 closed as moot (with T067)
 
 **On hosted (2026-10-06):** released through `20261005001000`; `collate` (79,759 decks), `aggregate:corpus` (2,818 commanders, 1.64M commander-card rows, 5.2M scores), substitutes (10.7M rows, 90 minutes) and roles built, and the search index rebuilt (1.68M documents). The first `aggregate:corpus` ran out of disk (hosted had 2 GB; now 8 GB, Small compute) and the next was cancelled by the default 2-minute statement timeout (fixed in PR #136). Hosted parity found every list identical except 5 swap lists from 2 targets, at positions 8 and 10: the stored substitutes (220 in the card's own colours plus 220 overall) missed candidates a multicolour deck should see. Migration `20261006000100` stores the first 220 for every colour identity that can hold the card instead. Hosted timing from this PC, p50 old → serving: adds 408 → 157 ms, swaps 433 → 135, cuts 201 → 92, the rater 418 → 87.
 
@@ -515,7 +515,7 @@ The serving tables (`commander_card_scores`, `partner_card_totals`, `card_substi
 2. ~~`collate`, `aggregate:corpus`, `precompute --part substitutes,roles`.~~ Done 2026-10-06.
 3. Release `20261006000100`, then `cli:hosted precompute --part substitutes` (every list is rebuilt, about 90 minutes on hosted; about 0.55 GB more).
 4. Parity and timing on hosted (Claude, reads only), then set `app_config.recs.servingReads` to true.
-5. The old path's removal is built on `feat/scoring-pipeline` (migration `20261006000200`: `rec_add_candidates` both overloads, `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, the switch; in the app `loadCardCorpus`, the timeout recording, `serving-parity.ts` and the search API's `/v1/commander-cards/rates`). It merges with that branch (T057–T065), more than a week after the switch, which must be on first.
+5. The old path's removal is built on `feat/scoring-pipeline` (in the code; the database keeps the functions until T067, so migrations can go out ahead of the code; originally migration `20261006000200`: `rec_add_candidates` both overloads, `rec_swap_candidates`, `rec_card_roles`, `rec_timeouts`, `log_rec_timeout`, the switch; in the app `loadCardCorpus`, the timeout recording, `serving-parity.ts` and the search API's `/v1/commander-cards/rates`). It merges with that branch (T057–T065), more than a week after the switch, which must be on first.
 
 ---
 
@@ -714,6 +714,41 @@ Pair tables (`commander_card_pairs`, `card_pairs`) from the precompute worker, t
 **Acceptance criteria:**
 - [ ] Events recorded for add, cut, swap and build; admins see accept rate per mode and rank: add, cut, swap and the admin view done; build waits for build mode's screen
 - [x] `/privacy` updated (owner, 2026-10-05: a line explaining it, no opt-out, the same as swap votes)
+
+---
+
+### T067: Drop the retired rec functions
+
+**Priority:** MEDIUM | **Area:** Database | **Status:** Open; after PR #139's release is live | **Blocked by:** PR #139 released and a rollback to the previous build no longer wanted
+
+PR #139 stopped calling `rec_add_candidates` (both overloads), `rec_swap_candidates`, `rec_card_roles` and `log_rec_timeout`, but its migrations go out before its code, and until then production runs the previous build, which falls back to them when `app_config.recs` is missing. So `20261006000200` drops nothing (review, 2026-10-07). A new migration drops them with `rec_timeouts` and the `recs` row, and `supabase/tests/serving.sql` checks they're gone again. `docs/diagnostics/rec-timeout-triage.sql` goes with them. Closes T008 and T040.
+
+---
+
+### T068: Scoring pipeline review follow-ups (PR #139)
+
+**Priority:** HIGH | **Area:** Data / Ops / Scoring | **Status:** Open (review 2026-10-07)
+
+PR #139's review found these; the fixes in the PR itself are migration `20261007000100` and the commits after it. Left open:
+
+**For the pipeline to run on its own in production (the PR's goal):**
+- [ ] Deploy the VPS worker (T066): hosted's `worker_status` heartbeat last moved 2026-09-16, there is one hand-run collation, and nothing runs the precompute passes, collation, EDHREC or deck lookups on a schedule
+- [ ] Spellbook on hosted: set the repository variable `SPELLBOOK_SYNC_ENABLED` (hosted's `spellbook.*`, `corpus.spellbook_combos` and `spellbook_combo_pieces` are empty, so "complete a combo" and the combo bracket rules answer nothing), then `collate --only spellbook` and `precompute --part combos`
+- [ ] A first `sync:edhrec` on hosted (raw `edhrec.*` is empty; the prior reads the 2026-09-30 import until then), then the next evaluation on the time split with `--snapshot-month` set to the new fetch
+
+**Storage (8 GB disk, 3.4 GB used before the release; measured locally, projected at 6× the decks):**
+- [ ] Pairs that borrow from their partners hold 3.56M of 5.76M score rows (62%), and grow fastest: about 16M rows (2.4 GB) at 6× the decks, about 8.4 GB for the whole database. Store only a pair's own and EDHREC rows and combine the borrowed part per request from `partner_card_totals`, as a pair no key knows already is
+- [ ] `card_substitutes` is 1.15 GB (15.7M rows, about 510 per card): one row per card with id and similarity arrays would be about a tenth, and the depth (220) was set for parity with the retired path, which no longer binds; the evaluation doesn't grade swaps yet
+- [ ] `rec_events` grows with traffic and nothing purges it: a retention period (owner decision, and a `/privacy` line) and a worker purge
+- [ ] The global pair count's memory grows with the corpus (about 1.1 GB peak locally; a 1 GB counter alone at 6×): count in row blocks with a bounded top list per card, or raise `globalMinDecks` with the corpus; give the worker container a memory limit and a Node heap flag
+
+**Scoring and evaluation:**
+- [ ] Cuts rank by the hand-weighted cut score, not m(c | D − c) as `scoring-design.md` designs; either move them and gate it (cut precision@10), or record that cuts keep `scoreCuts`
+- [ ] The gate's bucket rule compares with the baseline's own interval, not the paired change, so a significant drop in a small bucket can pass; judge each bucket on its paired difference
+- [ ] The evaluation's holdout hash (FNV-1a over sequential ids) clusters the random split; the evaluation ranks every deck as bracket 3 without the bracket facts; cut precision counts only planted cards; collection recall and the buy list aren't gated; nothing compares its TypeScript copy of the precompute arithmetic with the stored tables
+- [ ] The global pair lift barely shrinks rare cards (a third of kept corpus pairs have under 10 decks) and isn't release-aware; record the deviations from `card-graph-plan.md` "Statistics"
+- [ ] Owned twins: copies a built deck holds are matched per card, not pooled across the twin group (`availability.ts`)
+- [ ] The per-key pair pass picks keys by `commander_stats.computed_at`, which moves only when a key's aggregates do and is stamped at transaction start; drive it from the keys the commander pass merged
 
 ---
 

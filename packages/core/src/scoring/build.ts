@@ -296,22 +296,32 @@ export function buildDeck(input: BuildInput): BuildRanking {
     tracker?.add(id);
   };
 
-  // Kept cards first, in the order given; basic lands among them are left to the land step.
+  // Kept cards first, in the order given; basic lands among them are left to the land step. A kept card no Commander
+  // deck under these commanders may hold (not legal, outside their colours) stays out: the build is a legal 99.
   for (const id of mainDeckIds(context)) {
     const card = cards.get(id);
     if (!card || card.isBasicLand || commanderSet.has(id) || inDeck.has(id)) continue;
+    if (!card.legal || (card.colorIdentity & ~mask) !== 0) continue;
     take(id, 'kept');
     shown.add(id);
   }
 
-  /** Whether a card may join the deck now: the hard rules, and every bracket rule as a limit. */
+  /**
+   * Whether a card may join the deck now: the hard rules, and every bracket rule as a limit. An owned twin standing in
+   * is the card that goes in the deck, so it is checked too: one copy can't fill two slots, and a twin can't carry a
+   * rule its stand-in breaks.
+   */
   const allowed = (id: number) => {
     const card = cards.get(id);
-    if (!card || held(id) || shown.has(id) || card.isBasicLand || !card.legal || (card.colorIdentity & ~mask) !== 0) return false;
-    if (excluded.has(id)) return false;
-    if (isGameChanger(id) && gameChangers >= gcLimit) return false;
-    if (bracketFacts.cards.extraTurns.has(id) && extraTurns >= turnLimit) return false;
-    return !(combosByCard.get(id) ?? []).some((c) => overBracket(c, bracket, rules) && c.pieces.every((p) => p === id || held(p)));
+    if (!card || card.isBasicLand || !card.legal || (card.colorIdentity & ~mask) !== 0) return false;
+    const shownId = availability ? owningOf(card, availability, standIns).summary.id : id;
+    const ids = shownId === id ? [id] : [id, shownId];
+    return ids.every((x) => {
+      if (held(x) || shown.has(x) || excluded.has(x)) return false;
+      if (isGameChanger(x) && gameChangers >= gcLimit) return false;
+      if (bracketFacts.cards.extraTurns.has(x) && extraTurns >= turnLimit) return false;
+      return !(combosByCard.get(x) ?? []).some((c) => overBracket(c, bracket, rules) && c.pieces.every((p) => p === x || held(p)));
+    });
   };
   /** What the collection makes of a card: the card (or the twin standing in) when a copy is free. */
   const supplied = (id: number) => {

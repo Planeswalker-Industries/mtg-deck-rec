@@ -1020,7 +1020,11 @@ function markdown(summaries: readonly Summary[], extras: string[]): string {
   return lines.join('\n');
 }
 
-export async function evalHoldout({ candidatePath, timeSplit = false }: { candidatePath?: string; timeSplit?: boolean } = {}): Promise<void> {
+export async function evalHoldout({
+  candidatePath,
+  timeSplit = false,
+  snapshotMonth,
+}: { candidatePath?: string; timeSplit?: boolean; snapshotMonth?: string } = {}): Promise<void> {
   const sql = connect();
   const started = Date.now();
   try {
@@ -1038,9 +1042,14 @@ export async function evalHoldout({ candidatePath, timeSplit = false }: { candid
     };
     const e = baseSettings.eval;
     const data = await loadData(sql, config);
-    // The time split holds out every deck updated after the EDHREC snapshot; otherwise a seeded share.
-    const snapshot = data.edhrecMonth;
+    // The time split holds out every deck updated after the EDHREC snapshot; otherwise a seeded share. The snapshot's
+    // month is pinned with --snapshot-month: the live one moves with every EDHREC fetch, and after a fetch this month
+    // nothing is newer, so recorded runs couldn't be repeated.
+    if (snapshotMonth !== undefined && !/^\d{4}-\d{2}$/.test(snapshotMonth)) throw new Error('--snapshot-month takes YYYY-MM.');
+    const snapshot = snapshotMonth ?? data.edhrecMonth;
     if (timeSplit && !snapshot) throw new Error('--time-split needs an EDHREC snapshot (corpus.edhrec_commanders is empty).');
+    const split = timeSplit ? `time split: decks updated after ${snapshot}` : `seeded ${e.holdoutShare * 100}% split (seed ${e.seed})`;
+    console.log(`eval:holdout: ${split}`);
     const held = (d: EvalDeck) => (timeSplit ? d.month > (snapshot ?? '') : isHeldOut(d.id, e.seed, e.holdoutShare));
     const heldOut = data.decks.filter(held);
     const train = data.decks.filter((d) => !held(d));
@@ -1104,14 +1113,16 @@ export async function evalHoldout({ candidatePath, timeSplit = false }: { candid
         solRingTolerance: e.solRingTolerance,
         resamples: e.bootstrapResamples,
         seed: e.seed,
+        minCommanders: e.minCommanders,
       });
       gateLines = [
-        `## Gate: ${gate.pass ? 'PASS' : 'FAIL'}`,
+        `## Gate (${split}; the regression fixtures are the fourth check, run separately): ${gate.pass ? 'PASS' : 'FAIL'}`,
         '',
         ...gate.checks.map((c) => `- ${c.pass ? 'pass' : 'FAIL'}: ${c.name}: ${c.detail}`),
-        '- run separately: the regression fixtures (`yarn workspace @mtg/web regress`)',
+        '- not run here: the regression fixtures (`yarn workspace @mtg/web regress`); the gate passes only with them',
         '',
       ];
+      if (!gate.pass) process.exitCode = 1;
     }
 
     const report = markdown(summaries, extras) + (gateLines.length > 0 ? `\n${gateLines.join('\n')}` : '');

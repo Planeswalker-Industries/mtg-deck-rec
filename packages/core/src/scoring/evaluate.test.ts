@@ -79,8 +79,11 @@ describe('evaluation helpers', () => {
       solRingTolerance: 0.02,
       resamples: 500,
       seed: 4,
+      minCommanders: 50,
     };
     expect(evaluateGate(input).pass).toBe(true);
     expect(evaluateGate({ ...input, candidateStapleRate: 0.4 }).pass).toBe(false);
+    // Too few commanders to judge, however clear the gain looks.
+    expect(evaluateGate({ ...input, baselineRecall: baseline.slice(0, 5), candidateRecall: candidate.slice(0, 5) }).pass).toBe(false);
   });
 });

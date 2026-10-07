@@ -55,31 +55,34 @@ what is left is the PR and the release below.
 
 ### Then: the PR and the release
 
-1. **One PR into `develop`** (`gh pr create --base develop`, a short title of about 50 characters). CI applies every
-   migration from scratch, builds with mocks and runs e2e.
-2. **Not before production serves from the precompute tables: done 2026-10-07.** Steps 1–3 below are complete and
-   `servingReads` is on in production; hosted parity matched every gated list (report
-   `serving-parity-2026-10-07T04-04-28-402Z.json`). The branch deletes the old request path (`20261006000200`), so the
-   order was:
-   1. Release `develop` (with #137) to `main`; confirm hosted applied `20261006000100` (the Supabase integration can
-      come unlinked: `db-push.yml` is the fallback).
-   2. Rebuild hosted substitutes: `yarn workspace @mtg/worker cli:hosted precompute --part substitutes` (about 90
-      minutes; the new function's hash makes every list due).
-   3. Hosted parity (`apps/web/scripts/serving-parity.ts` on `develop`'s code, before this branch removes it), then
-      switch `servingReads` on in production. Hosted writes are the owner's (`CLAUDE.local.md`).
-   4. Only then merge this branch, and release it to `main` the same day: until hosted has the branch's migrations, the
-      VPS worker (Dokploy redeploys on every `develop` merge) and the `develop` preview run new code on the old schema.
-      Merge outside 04:00 and 10:00 UTC (the worker's baseline and crawl).
-3. **After this branch's migrations reach hosted** (`20261006000200` to `20261006001200`, in order), rebuild the data
-   they add:
-   - `cli:hosted aggregate:corpus --force`: the curve and land counts (T062).
-   - `cli:hosted precompute --part scores --force`: the EDHREC prior's columns and profiles (T061, T062). It rewrites
-     most score rows once; check disk afterwards.
-   - `cli:hosted precompute --part combos --force`: `spellbook_combo_details` (T060).
-   - `cli:hosted precompute --part pairs --full` and `--part global-pairs`: the card pairs (T064).
-   - Then the open check from T064: p95 add latency on hosted not worse than before.
-   - `20261006001100` (T063) and `20261006001200` (T065) only add settings, functions and the empty `rec_events`;
-     nothing to rebuild.
+PR #139 is open into `develop` and was reviewed on 2026-10-07; the review's fixes are on the branch (migration
+`20261007000100` and the commits after the review), and what it left open is T067 and T068 in `../tasks.md`.
+
+**The release order changed with the review: migrations first, then code.** `20261006000200` no longer drops the old
+rec functions, so the code on `main` keeps working on the new schema (every serving function keeps its arguments), while
+the new code needs the new functions from its first request. The old functions go later (T067).
+
+1. **Merge PR #139 into `develop`.** The `develop` preview then runs new code on hosted's old schema until step 2;
+   the daily syncs don't touch the new tables. The VPS worker isn't deployed (heartbeat last 2026-09-16), so nothing
+   on the VPS runs this code yet.
+2. **Apply the migrations to hosted from `develop`:** `gh workflow run db-push.yml --ref develop`, then confirm hosted
+   `supabase_migrations.schema_migrations` reaches `20261007000100`. Production keeps serving on `main`'s code.
+3. **Rebuild the data the migrations add** (owner, `cli:hosted`, one at a time, outside 04:00 and 10:00 UTC, checking
+   `pg_database_size` after each):
+   - `aggregate:corpus --force`: the curve and land counts (T062), then every score with the EDHREC prior's columns
+     (T061). Most score rows change once.
+   - `precompute --part pairs --full`, then `precompute --part global-pairs --full`: the card pairs (T064).
+   - `precompute --part substitutes`: every list is due once (the hash gained the pool weights and reads idf to two
+     places). About 90 minutes of database time with almost nothing written; run it off-peak.
+   - Combos wait for Spellbook (step 6).
+4. **Release `develop` to `main`** (a merge commit, never a squash). Vercel deploys the new code; the Supabase
+   integration finds the migrations already applied.
+5. **Check production:** p95 add latency against 150/286 ms at p50/p95, one `POST /api/recs/build`, a swap and a cut
+   from an account with a collection, and an accept-rate event in the admin Accept rate list.
+6. **Spellbook:** set the repository variable `SPELLBOOK_SYNC_ENABLED` to `true` and run "Daily syncs"
+   (`gh workflow run sync.yml`), then `cli:hosted collate --only spellbook` and `cli:hosted precompute --part combos`.
+7. **Afterwards:** deploy the VPS worker (T066, T068), a first `sync:edhrec` on hosted, and T067 once a rollback to
+   the previous build is no longer wanted.
 
 ## Working notes for the next session
 
