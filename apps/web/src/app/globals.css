@@ -42,6 +42,9 @@
   --color-cut: var(--cut);
   --color-add: var(--add);
   --color-replace: var(--replace);
+  --color-stat-ok: var(--stat-ok);
+  --color-stat-mild: var(--stat-mild);
+  --color-stat-urgent: var(--stat-urgent);
 
   /* Card-type ring: mid-chroma, near-equal lightness, deliberately duller than --cut/--add/--replace
      so the eight slices separate without competing with the primary or the job colors.
@@ -116,6 +119,11 @@
   --cut: #e08a7a;
   --add: #8cc49a;
   --replace: #c7a2da;
+
+  /* Deck stats levels (T045): the theme's own status colours, always with an icon and a word. */
+  --stat-ok: var(--add);
+  --stat-mild: var(--gc);
+  --stat-urgent: var(--cut);
 
   /* Card-type ring colors, in the DeckOverview legend order: land, creature, instant, sorcery,
      artifact, enchantment, planeswalker, battle. */
