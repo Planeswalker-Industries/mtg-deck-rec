@@ -57,7 +57,7 @@ docker exec -i supabase_db_mtg_deck_rec psql -U postgres -d postgres -q < supaba
 #   collator.sql             corpus.decks queues dirty commanders (a player's own delete included), corpus.spellbook_combos, collate_state, settings (needs the local catalog)
 #   vps-worker.sql           a requested commander comes first in the crawl's queue (and joins it), the worker's schedule (needs the local catalog)
 #   spellbook.sql            raw Spellbook combos: kept as published, constraints, no API role reads them
-#   serving.sql              the serving tables and reads: API access, the deck's filters in the old functions' order, the stored similarity (needs the local catalog)
+#   serving.sql              the serving tables and reads: API access, the deck's filters in the old functions' order, the stored similarity, typical_deck_profile (needs the local catalog)
 #   pairs.sql                card pairs and serving_deck_affinity: the pairs touching a deck, card weights, neighbours, no API access to the tables (needs the local catalog)
 #   rec-events.sql           record_rec_event: keying, checks, re-keying on account deletion; admin_rec_accept_rates (admins only)
 #   build.sql                serving_build_pool: the pools, pairs among their cards, combos, basic lands; app_config.scoring.build (needs the local catalog and corpus)

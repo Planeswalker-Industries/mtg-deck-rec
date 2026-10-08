@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AddResult,
   AddSuggestion,
@@ -10,6 +10,7 @@ import type {
   CutResult,
   CutSuggestion,
   DeckAnalysis,
+  DeckInput,
   RecContext,
   ResolvedLine,
 } from "@mtg/core/contract";
@@ -30,7 +31,7 @@ import {
   type JourneyPhase,
   type JourneyState,
 } from "@mtg/core/journey";
-import type { DeckEntry } from "@mtg/core/scoring";
+import { isFrontLand, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import type { Async, ContextChange } from "../use-deck-tool";
@@ -62,6 +63,23 @@ interface Round {
   check: BracketCheck | null;
 }
 
+/** What "Find …" in Deck stats narrowed Add to (T045). */
+export type AddFilter = { kind: "role"; roleId: string; label: string } | { kind: "lands" };
+
+/** Whether a card fits the filter: one of its tracked roles, or a land on its front face. */
+export const matchesAddFilter = (filter: AddFilter, card: CardSummary) =>
+  filter.kind === "lands" ? isFrontLand(card.typeLine) : (card.roles ?? []).includes(filter.roleId);
+
+const sameFilter = (a: AddFilter | null, b: AddFilter | null) =>
+  a === b || (a?.kind === "role" && b?.kind === "role" ? a.roleId === b.roleId : a?.kind === "lands" && b?.kind === "lands");
+
+/** The Add suggestions a filter leaves on show, in the order they were dealt. */
+const filtered = (suggestions: AddSuggestion[], filter: AddFilter | null) =>
+  filter ? suggestions.filter((s) => matchesAddFilter(filter, s.card)) : suggestions;
+
+/** No card ids: the over-bracket set before any add, kept as one value so its readers see a stable reference. */
+const NO_IDS: ReadonlySet<CardId> = new Set();
+
 const isLand = (card: CardSummary) => /\bLand\b/.test(card.typeLine.split(" // ")[0] ?? card.typeLine);
 
 /**
@@ -82,6 +100,13 @@ interface ListFor<T> {
 interface ReplaceList extends ListFor<CutResult> {
   candidates: Map<CardId, Candidates>;
 }
+
+/** A deck's main cards as entries, with the cards the round has seen; cards it hasn't are left out. */
+const entriesFor = (deck: DeckInput | null, cards: ReadonlyMap<CardId, CardSummary>): DeckEntry[] =>
+  (deck?.cards ?? []).flatMap((c) => {
+    const card = c.section === "main" ? cards.get(c.cardId) : undefined;
+    return card ? [{ card, quantity: c.quantity }] : [];
+  });
 
 const toAsync = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): Async<T> =>
   r.ok ? { status: "ready", data: r.data } : { status: "error", message: r.error.message };
@@ -129,11 +154,22 @@ export function useDeckJourney({
   /** Bumped when the Replace targets are asked for again, so the swipe view starts over on the new list. */
   const [replaceVersion, setReplaceVersion] = useState(0);
   const addRequest = useRef(0);
-  /** The Add list as recorded for the accept rate (T065), and the Cut list with the cut result it came from. */
-  const addBatch = useRef<RecBatch | null>(null);
+  /**
+   * The Add list as recorded for the accept rate (T065), with the filter it was shown under, and the Cut list with the
+   * cut result it came from. A filter shows a shorter list, so it is recorded as its own batch: a decision's position is
+   * its place in the list the player was looking at.
+   */
+  const addBatch = useRef<{ batch: RecBatch; filter: AddFilter | null } | null>(null);
+  /** An Add list asked for and not yet in: it is recorded on arrival, under the filter on screen then. */
+  const addPending = useRef(false);
   const cutBatch = useRef<{ from: CutResult; batch: RecBatch } | null>(null);
   const replaceRequest = useRef(0);
   const checkRequest = useRef(0);
+  /**
+   * Cards added this round whose suggestion would complete a combo above the bracket (T045): Deck stats counts them
+   * against the bracket while they are in the deck. Kept with the round it belongs to, so a new round starts empty.
+   */
+  const [overBracket, setOverBracket] = useState<{ round: number; ids: ReadonlySet<CardId> } | null>(null);
 
   // A new analysis starts a new round; the same deck read again keeps it, with the new reading (commander data after a
   // lookup). Adjusted during render rather than in an effect, so no frame shows the old round.
@@ -158,28 +194,48 @@ export function useDeckJourney({
   const add = current && addFor?.round === current.id ? addFor.value : idle;
   const replace = current && replaceFor?.round === current.id ? replaceFor.value : idle;
 
-  // Every card the round has seen, for names and images of cards that are not in the pasted list.
-  const cards = new Map<CardId, CardSummary>();
-  for (const { resolution } of lines) if (resolution.status === "resolved") cards.set(resolution.card.id, resolution.card);
-  for (const c of analysis?.commanderKey.commanders ?? []) cards.set(c.id, c);
-  if (state) {
-    for (const c of [...state.cuts, ...state.adds, ...state.swaps.flatMap((s) => [s.target, s.replacement])]) cards.set(c.id, c);
-  }
+  const overBracketIds = current && overBracket?.round === current.id ? overBracket.ids : NO_IDS;
 
-  const deck = state ? workingDeck(state) : null;
+  /** What a "Find …" action in Deck stats narrowed Add to. It lasts while Add is on screen: leaving the step, or a new round, clears it. */
+  const [addFilterSet, setAddFilterSet] = useState<AddFilter | null>(null);
+  if (addFilterSet !== null && state?.phase !== "add") setAddFilterSet(null);
+  const addFilter = state?.phase === "add" ? addFilterSet : null;
+  /** The filter as of the latest render, for an Add list that arrives after it. */
+  const addFilterRef = useRef(addFilter);
+  useEffect(() => {
+    addFilterRef.current = addFilter;
+  });
+
+  // Every card the round has seen, for names and images of cards that are not in the pasted list. Kept between renders
+  // while its inputs stand, so what is built on it (the deck as entries, which Deck stats re-tallies) keeps too.
+  const cards = useMemo(() => {
+    const seen = new Map<CardId, CardSummary>();
+    for (const { resolution } of lines) if (resolution.status === "resolved") seen.set(resolution.card.id, resolution.card);
+    for (const c of analysis?.commanderKey.commanders ?? []) seen.set(c.id, c);
+    if (state) {
+      for (const c of [...state.cuts, ...state.adds, ...state.swaps.flatMap((s) => [s.target, s.replacement])]) seen.set(c.id, c);
+    }
+    return seen;
+  }, [lines, analysis, state]);
+
+  const deck = useMemo(() => (state ? workingDeck(state) : null), [state]);
   const workingContext = context && deck ? { ...context, deck } : null;
 
-  const entriesOf = (d: typeof deck): DeckEntry[] =>
-    (d?.cards ?? []).flatMap((c) => {
-      const card = c.section === "main" ? cards.get(c.cardId) : undefined;
-      return card ? [{ card, quantity: c.quantity }] : [];
-    });
+  const entriesOf = (d: typeof deck): DeckEntry[] => entriesFor(d, cards);
   /** Copies of lands in a deck. */
   const lands = (d: typeof deck) => entriesOf(d).filter((e) => isLand(e.card)).reduce((n, e) => n + e.quantity, 0);
-  const commanders = (analysis?.deck.commanders ?? []).flatMap((id) => {
-    const card = cards.get(id);
-    return card ? [{ card, quantity: 1 }] : [];
-  });
+  const commanders = useMemo(
+    () =>
+      (analysis?.deck.commanders ?? []).flatMap((id) => {
+        const card = cards.get(id);
+        return card ? [{ card, quantity: 1 }] : [];
+      }),
+    [analysis, cards],
+  );
+  /** The deck as it stands, as entries, commanders first: one value per change, since Deck stats re-tallies on a new one. */
+  const after = useMemo(() => [...commanders, ...entriesFor(deck, cards)], [commanders, deck, cards]);
+  /** The round's starting deck the same way: Deck stats draws its round-start ticks from it. */
+  const before = useMemo(() => [...commanders, ...entriesFor(analysis?.deck ?? null, cards)], [commanders, analysis, cards]);
 
   /** Cards to add for the deck as `next` leaves it, leaving out the ones the player passed on this round. */
   async function loadAdds(next: JourneyState, ctx: RecContext | null = context): Promise<void> {
@@ -189,14 +245,17 @@ export function useDeckJourney({
     const deck = workingDeck(next);
     const key = deckKey(deck);
     setAdd({ round, key, value: { status: "loading" } });
+    addPending.current = true;
     const r = await getApis().recs.add({ context: { ...ctx, deck }, excludeCardIds: next.declinedAdds });
     if (id !== addRequest.current) return;
+    addPending.current = false;
     setAdd({ round, key, value: toAsync(r) });
     if (r.ok) {
-      // Recorded in the order the player sees it, so an accept's position is the place it was dealt from.
+      // Recorded in the order the player sees it, filter applied, so an accept's position is the place it was dealt from.
       const shortOfLands = analysis ? lands(deck) < lands(analysis.deck) : false;
-      const shown = addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands).map((s) => s.card.id);
-      addBatch.current = recordShown("add", shown, { ...ctx, deck });
+      const filter = addFilterRef.current;
+      const shown = filtered(addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands), filter).map((s) => s.card.id);
+      addBatch.current = { batch: recordShown("add", shown, { ...ctx, deck }), filter };
     }
   }
 
@@ -407,16 +466,44 @@ export function useDeckJourney({
         )
       : [];
 
+  /**
+   * Records the Add list on hand as shown under `filter`, unless it already was. Called when a filter is applied or
+   * cleared, and before a decision, in case the filter changed some other way (leaving Add clears it).
+   */
+  function recordAddList(filter: AddFilter | null) {
+    const ctx = workingContext ?? context;
+    if (!ctx || add.status !== "ready" || addPending.current) return;
+    if (addBatch.current && sameFilter(addBatch.current.filter, filter)) return;
+    addBatch.current = { batch: recordShown("add", filtered(addQueue, filter).map((s) => s.card.id), ctx), filter };
+  }
+
+  /**
+   * Narrows Add to a role or to lands, or (null) shows it all again. Called after the step opens: a list on its way is
+   * recorded under the filter when it arrives, and the list on hand is recorded again now, as the player sees it.
+   */
+  function setAddFilter(filter: AddFilter | null) {
+    addFilterRef.current = filter;
+    setAddFilterSet(filter);
+    if (latest.current?.state.phase === "add") recordAddList(filter);
+  }
+
   /** A card from the Add list taken or passed on, for the accept rate (T065). */
   function recordAddDecision(card: CardSummary, accepted: boolean) {
     const ctx = workingContext ?? context;
-    if (!addBatch.current || !ctx) return;
-    recordDecision(addBatch.current, card.id, accepted, ctx, addQueue.find((s) => s.card.id === card.id)?.score);
+    if (!ctx) return;
+    recordAddList(addFilter);
+    if (!addBatch.current) return;
+    recordDecision(addBatch.current.batch, card.id, accepted, ctx, addQueue.find((s) => s.card.id === card.id)?.score);
   }
 
   /** Adding recomputes the list: the new card may fill the gap the next ones were suggested for. */
   function acceptAdd(card: CardSummary) {
     recordAddDecision(card, true);
+    // An add that completes a combo above the bracket counts against it while it stays (Deck stats checks the deck).
+    const roundId = current?.id;
+    if (roundId !== undefined && addQueue.find((s) => s.card.id === card.id)?.completesOverBracket?.length) {
+      setOverBracket((prev) => ({ round: roundId, ids: new Set([...(prev?.round === roundId ? prev.ids : []), card.id]) }));
+    }
     const next = apply({ type: "add", card });
     if (next && openSlots(next) > 0) void loadAdds(next);
   }
@@ -490,11 +577,24 @@ export function useDeckJourney({
     workingContext,
     cards,
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
-    before: [...commanders, ...entriesOf(analysis?.deck ?? null)],
-    after: [...commanders, ...entriesOf(deck)],
+    before,
+    after,
+    /** Cards added this round that complete a combo above the bracket; Deck stats counts the ones still in the deck. */
+    overBracketIds,
     openSlots: state ? openSlots(state) : 0,
     cut: { recommended: recommendedCuts, undecided: undecidedCuts, slotsAfter: slotsAfterCuts, isMarked: isMarkedForCut, toggle: toggleCut, finish: finishCuts },
-    add: { state: add, queue: addQueue, landsShort, accept: acceptAdd, pass: passAdd, undo: undoAdd },
+    add: {
+      state: add,
+      queue: addQueue,
+      /** The queue as dealt: narrowed to the filter when one is set. */
+      shown: filtered(addQueue, addFilter),
+      filter: addFilter,
+      setFilter: setAddFilter,
+      landsShort,
+      accept: acceptAdd,
+      pass: passAdd,
+      undo: undoAdd,
+    },
     replace: {
       state: replace,
       targets: replaceTargets,

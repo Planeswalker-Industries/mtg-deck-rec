@@ -2359,6 +2359,7 @@ export type Database = {
         Args: { p_mode: string; p_source_app: string }
         Returns: number
       }
+      typical_deck_profile: { Args: never; Returns: Json }
     }
     Enums: {
       commander_request_status:

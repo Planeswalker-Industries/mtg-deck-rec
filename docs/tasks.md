@@ -8,6 +8,21 @@ Checked against the code and hosted on **2026-10-07**: `main` at PR #140 (the sc
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
+## UI order
+
+The order for the UI work (owner, 2026-10-08), most important first. The tickets below hold the detail.
+
+1. **T003** Report link destination: a launch gate, small once the destination is chosen.
+2. **T045** Deck analysis display: the concept that places T046, T048 and T069's combos and bracket signals. P1 built on `feat/deck-analysis-display`; next T071 (card types) and T072 (follow-ups).
+3. **T069, collection mode:** the buy list, conflict tags, "stands in for", the swap's `emptyReason`, the built control, then the deck tool's default to owned only (T037).
+4. **T050 with T069's build mode:** one commander picker for Add and for builds, then the build screen.
+5. **T069, combos and bracket signals**, placed per T045.
+6. **T048** Role counts against the commander's decks.
+7. **T046** Mana base analysis (catalog column and contract field first).
+8. **T038** Start a collection by hand.
+9. **T039, T034:** performance, when measurements call for it.
+10. **T049** Re-record the How it works clips, once the screens above settle.
+
 ---
 
 ## Pre-Launch Hard Gates
@@ -131,7 +146,7 @@ Server Actions run one at a time per page. Every swipe in the Replace phase fire
 
 ### T045: Design the deck analysis display
 
-**Priority:** MEDIUM | **Area:** Product / UX | **Status:** Not started
+**Priority:** MEDIUM | **Area:** Product / UX | **Status:** P1 built 2026-10-08 on `feat/deck-analysis-display`; owner sign-off on screenshots open. Design: [`roadmap/deck-stats.md`](roadmap/deck-stats.md) (a "Deck stats" footer on phones, a side rail on wide screens)
 
 First part of the deck analysis work (T046, T048, and the combos and bracket signals in T069), and it comes first: decide where and how the new numbers are shown before building any of them. Came out of a look at EDHcheck (edhcheck.com, 2026-09-28) with the sample Liesa deck. Its functions are solid (mana simulation, per-card cast rates, combo detection, bracket explorer), but the page is a wall of panels, invented composite scores and upsells. We want the useful numbers, shown only where they change what the player does next.
 
@@ -156,11 +171,54 @@ First part of the deck analysis work (T046, T048, and the combos and bracket sig
 
 ---
 
+### T071: Deck stats P2, card types
+
+**Priority:** MEDIUM | **Area:** Database / Worker / Frontend | **Status:** Not started; option A approved (owner, 2026-10-08) | **Blocked by:** T045 released
+
+Add card types (Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers) to Deck stats, taking `ok/total` from 8 to 14. Nothing stores how many of each type a commander's decks run today. Approved shape: one `type_profile` jsonb column on `commander_stats`, written by the existing per-commander pass beside `curve_profile` (same row, diff-only, about 0.3 MB), with typical types from the same deck-weighted average `typical_deck_profile()` already computes for the curve. No new table or job. [`roadmap/deck-stats.md`](roadmap/deck-stats.md) ("Contract and data", "Phases") has the design.
+
+**Files:**
+- `apps/worker/src/lib/key-stats.ts`: count types beside `curveCounts`
+- a new migration: the column, and `typical_deck_profile()` returning types too
+- `packages/core/src/scoring/stat-targets.ts`, `packages/core/src/journey/deck-tally.ts`: type targets and counts
+- `apps/web/src/components/deck/deck-stats/deck-stats-panel.tsx`: a Types group between Curve and Bracket
+
+**Acceptance criteria:**
+- [ ] `type_profile` written diff-only by the per-commander pass and filled on hosted by a full pass
+- [ ] Types targets on `StatTargets` (contract bump) and counted in the tally, front face only, an artifact creature counted as a creature as Add groups it
+- [ ] SQL check in `serving.sql`; tally tests extended
+- [ ] Screens re-checked at 390×844 (the sheet grows by six rows; the footer does not)
+
+---
+
+### T072: Deck stats follow-ups
+
+**Priority:** LOW | **Area:** Frontend | **Status:** Not started
+
+Left over from building Deck stats P1 (2026-10-08); none blocks release.
+
+- **Label for a pair with no decks of its own.** When every deck behind the targets is borrowed from the partners' other pairings, the label reads "Tymna & Thrasios decks (0) with partner decks". This is reachable in production (`minDecks` = `fullDecks` = 50: 200 borrowed decks at 0.25 make the share 1). Proposed: "Decks with Tymna or Thrasios" for a pair, "Thrasios decks with a partner" for one commander, kept only for an own count of 0.
+- **"Estimated" on the bracket row.** The row checks the chosen bracket against the deck's signals as cards move; owner to confirm the word or drop it.
+- **Small polish the reviews left:** the sheet's handle scrolls away with its content (make it sticky); the footer has no pointer capture, so a mouse drag that leaves it isn't seen; after a touch swipe the next Enter on the footer is swallowed once; "Pick cuts" does nothing while already in Cut; "Find …" in Cut counts the slots open now rather than after the pending cuts; an add that completed an over-bracket combo stays flagged after the bracket is raised.
+
+**Files:**
+- `packages/core/src/scoring/stat-targets.ts` (label)
+- `apps/web/src/components/deck/deck-stats/deck-stats-footer.tsx`, `deck-stats-panel.tsx`
+- `apps/web/src/components/deck/deck-tool.tsx` (`statAction`), `journey/use-deck-journey.ts` (`overBracketIds`)
+
+**Acceptance criteria:**
+- [ ] Owner picks the label wording and the bracket word; both changed
+- [ ] Each polish item fixed or struck with a reason
+
+---
+
 ### T046: Mana base analysis
 
 **Priority:** MEDIUM | **Area:** Core / Frontend | **Status:** Not started
 
 **Blocked by:** T045 (display)
+
+Placement: Deck stats ([`roadmap/deck-stats.md`](roadmap/deck-stats.md)).
 
 Tell the player whether their lands can cast their spells: coloured sources against Frank Karsten's thresholds for each card's pips and turn, a list of the cards least likely to be castable on curve (worst first), and a plain "N sources short on black". This is deterministic arithmetic with no AI. It also fills a gap in Add, which ranks lands by play rate rather than by what the mana base lacks.
 
@@ -188,6 +246,10 @@ Tell the player whether their lands can cast their spells: coloured sources agai
 **Priority:** MEDIUM | **Area:** Frontend / Core | **Status:** Not started
 
 **Blocked by:** T045 (display)
+
+Role counts now show in Deck stats (P1); what remains is P2 types.
+
+Placement: Deck stats ([`roadmap/deck-stats.md`](roadmap/deck-stats.md)).
 
 Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles next to what decks for this commander usually run ("12 ramp; Liesa decks average 10"). EDHcheck shows only generic percentages (ramp 8.8%, draw 19.1%); comparing against the commander's own decks is something only our corpus can do.
 
@@ -416,7 +478,7 @@ UI for what T059, T060, T063 and T065 built, gathered here when those closed. Sh
 
 - **Collection mode (T059):** the built control on the deck page (`set_deck_built`), the buy list and conflict tags in the deck tool, a stand-in's "stands in for" line, browser collections sending quantities, then the deck tool's default from 'first' to 'only' (only once the buy list shows, or 'only' hides every unowned card with nothing in their place; T037)
 - **Swap with nothing owned:** the swipe rater says "No replacements do the same job" for every empty list; the server already says why (`SwapResult.emptyReason`: `NOTHING_OWNED_FITS`, `NO_TAGS_ON_TARGET`, `NO_CANDIDATES`), and with a collection the buy list is where to send the player
-- **Bracket rules and combos (T060):** the "complete a combo" group, `completesOverBracket` on a suggestion, `DeckAnalysis.combos` and `bracketSignals` (placement per T045); credit and link Commander Spellbook wherever combos show
+- **Bracket rules and combos (T060):** the "complete a combo" group, `completesOverBracket` on a suggestion, `DeckAnalysis.combos` and `bracketSignals` (placement: Deck stats, [`roadmap/deck-stats.md`](roadmap/deck-stats.md)); credit and link Commander Spellbook wherever combos show
 - **Build mode (T063):** the commander and bracket picker that starts a build (T050's picker on `/deck?start=build`, which opens an empty deckbuilder today), the built deck grouped like Add with each card's score and origin, the basics and land target, the feasibility report ("Your collection fills 68 of 99. Card advantage is 9 short") with the value-fill button, its running total and price date, "complete a combo" entries, the build's bracket estimate, and saving the result as a deck
 - **Accept rate (T065):** a built deck records as mode `build` once build mode has a screen
 
@@ -584,7 +646,7 @@ Needs 2 human raters, 50 cases × 5 commanders, precision@5 + MRR. The `/rate` r
 Three e2e tests fail locally against the real catalog and corpus, on `develop` as well as `feat/kitchen-table-lane` (checked 2026-09-29):
 - `home.spec.ts` "pointing at a ring slice names it in the centre": hovering the top of the deck wheel never names the lands slice.
 - `deck-journey.spec.ts` "the Cut list crosses out recommended cuts…" (and on `develop` also the full walk and the Replace tap test): Chulane has no local corpus, so the commander-lookup sheet opens after `analyzeDeck` has already tried to dismiss it, and blocks the page.
-- `deck-tool.spec.ts` "a name search's next page continues the list" (seen 2026-10-06) fails without a search index: the first page comes from `search_cards` and a later one (any offset) from `search_cards_filtered`, which rank differently, so cards repeat across pages. The index ranks both the same way.
+- `deck-tool.spec.ts` "a name search's next page continues the list" (seen 2026-10-06) fails without a search index: the first page comes from `search_cards` and a later one (any offset) from `search_cards_filtered`, which rank differently, so cards repeat across pages. The index ranks both the same way. Players never meet it (checked 2026-10-08): since the deckbuilder redesign the search panel always sends `sort`, so its first page is a filtered search too and every page comes from one ranking. Only an API caller paging without `sort`, the test itself, sees the switch (`card-search.ts`: `offset > 0` makes a search filtered).
 
 **Files:**
 - `apps/web/e2e/home.spec.ts`, `apps/web/e2e/deck-journey.spec.ts`
@@ -593,7 +655,7 @@ Three e2e tests fail locally against the real catalog and corpus, on `develop` a
 **Acceptance criteria:**
 - [ ] `analyzeDeck` waits for either the recommendations or the lookup sheet before dismissing, as the page walk scripts do
 - [ ] The ring test hovers a point that is on a slice at the size the ring renders (or asserts through the slice element)
-- [ ] A later page of a name search ranks the way the first did when the search index is down
+- [ ] A later page of a name search ranks the way the first did when the search index is down: either the test pages with `sort=name_asc` as the deckbuilder does (one line, no app change; recommended), or any explicit `offset`, 0 included, makes a search filtered (one line in `card-search.ts`)
 - [ ] Both specs pass locally with `E2E_LOCAL_DATA=1` and in CI (mocks)
 
 ---

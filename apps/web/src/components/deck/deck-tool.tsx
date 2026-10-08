@@ -6,7 +6,7 @@ import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, List } from "lucide-react";
 import type { CardSummary, DeckAnalysis } from "@mtg/core/contract";
-import { decklistFor } from "@mtg/core/journey";
+import { decklistFor, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -24,13 +24,17 @@ import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
+import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
+import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
+import type { StatAction } from "./deck-stats/deck-stats-panel";
+import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
 import { CutPhase } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
-import { useDeckJourney, type DeckJourney } from "./journey/use-deck-journey";
+import { useDeckJourney, type AddFilter, type DeckJourney } from "./journey/use-deck-journey";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
@@ -107,6 +111,16 @@ function ViewToggle({ view, onChange }: { view: ReviewView; onChange: (view: Rev
   );
 }
 
+/**
+ * The Deck stats footer's height below lg (its bar, --deck-stats-dock-height in globals.css, plus the safe area), which
+ * the swipe cards and the sticky Next bars sit above (T045), and none from lg, where the readout is a rail. A class
+ * rather than an inline style, so the lg value can override it.
+ */
+const DECK_STATS_DOCK =
+  "[--deck-stats-dock:calc(var(--deck-stats-dock-height)_+_env(safe-area-inset-bottom))] lg:[--deck-stats-dock:0px]";
+/** From lg the round and the Deck stats rail sit side by side. */
+const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6";
+
 /** "upgrade" walks the deck through the journey; "edit" is the deckbuilder. */
 type ToolMode = "upgrade" | "edit";
 
@@ -168,6 +182,41 @@ export function DeckTool() {
   useEffect(() => {
     journeyRef.current = journey;
   });
+
+  // ── Deck stats (T045) ──────────────────────────────────────────────────────────────────────────────────────────
+  const deckStats = useDeckStats({
+    analysis,
+    entries: journey.after,
+    bracket: context?.bracket ?? null,
+    overBracketIds: journey.overBracketIds,
+    // The round's starting deck, so a deck lookup finishing mid-round (a new analysis of the same deck) keeps the ticks.
+    start: journey.before,
+  });
+  const openStep =
+    (phase: "cut" | "add", filter: AddFilter | null = null): StatAction["onSelect"] =>
+    () => {
+      // The step opens first, so the journey records the Add list under the filter as the player will see it.
+      journey.stepper.select(phase);
+      journey.add.setFilter(filter);
+    };
+  /** What an off stat offers: Cut when it's over its target, Add (narrowed to it) when it's short and slots are open. */
+  const statAction = (stat: StatLine): StatAction | null => {
+    if (stat.ok || !journey.state) return null;
+    if (stat.value > Math.round(stat.target)) {
+      return journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
+    }
+    if (journey.openSlots === 0 || !journey.stepper.canOpen("add")) return null;
+    if (stat.group === "roles") {
+      return {
+        label: `Find ${stat.label.toLowerCase()}`,
+        onSelect: openStep("add", { kind: "role", roleId: stat.key, label: stat.label }),
+      };
+    }
+    if (stat.key === "lands") return { label: "Find lands", onSelect: openStep("add", { kind: "lands" }) };
+    return null;
+  };
+  const bracketAction: StatAction | null = journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
+  const statsPanel = deckStats ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction } : null;
 
   /** Offers a deck lookup when the deck's commander has no play data, remembering which commanders it checked. */
   function checkLookup(checked: DeckAnalysis | null) {
@@ -594,40 +643,50 @@ export function DeckTool() {
           </div>
           {mode === "upgrade" ? (
             journey.state && (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <JourneyStepper phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
+              <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
+                <div className="flex min-w-0 flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <JourneyStepper phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
+                    </div>
+                    {journey.state.phase !== "review" && <ViewToggle view={view} onChange={changeView} />}
                   </div>
-                  {journey.state.phase !== "review" && <ViewToggle view={view} onChange={changeView} />}
-                </div>
-                {journey.state.phase === "cut" &&
-                  (journey.bracketCheck ? (
-                    // A bracket change part way through made cards must-cuts: the step's Next becomes a choice.
-                    <BracketCheckPanel
-                      check={journey.bracketCheck}
-                      onCutAndContinue={journey.cutAndContinue}
-                      onRevert={() => {
-                        const previous = journey.revertCheck();
-                        if (previous !== undefined) tool.restoreBracket(previous);
-                      }}
+                  {journey.state.phase === "cut" &&
+                    (journey.bracketCheck ? (
+                      // A bracket change part way through made cards must-cuts: the step's Next becomes a choice.
+                      <BracketCheckPanel
+                        check={journey.bracketCheck}
+                        onCutAndContinue={journey.cutAndContinue}
+                        onRevert={() => {
+                          const previous = journey.revertCheck();
+                          if (previous !== undefined) tool.restoreBracket(previous);
+                        }}
+                      />
+                    ) : (
+                      <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />
+                    ))}
+                  {journey.state.phase === "add" && (
+                    <AddPhase journey={journey} view={view} />
+                  )}
+                  {journey.state.phase === "replace" && (
+                    <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />
+                  )}
+                  {journey.state.phase === "review" && (
+                    <ReviewPhase
+                      journey={journey}
+                      busy={committing}
+                      stale={tool.stale}
+                      onSave={() => void commitJourney("save")}
+                      onReanalyze={() => void commitJourney("reanalyze")}
+                      onStartOver={() => void commitJourney("startOver")}
                     />
-                  ) : (
-                    <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />
-                  ))}
-                {journey.state.phase === "add" && <AddPhase journey={journey} view={view} />}
-                {journey.state.phase === "replace" && (
-                  <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />
-                )}
-                {journey.state.phase === "review" && (
-                  <ReviewPhase
-                    journey={journey}
-                    busy={committing}
-                    stale={tool.stale}
-                    onSave={() => void commitJourney("save")}
-                    onReanalyze={() => void commitJourney("reanalyze")}
-                    onStartOver={() => void commitJourney("startOver")}
-                  />
+                  )}
+                </div>
+                {statsPanel && (
+                  <>
+                    <DeckStatsRail className="hidden lg:flex" {...statsPanel} />
+                    <DeckStatsFooter className="lg:hidden" dock="lg" {...statsPanel} />
+                  </>
                 )}
               </div>
             )

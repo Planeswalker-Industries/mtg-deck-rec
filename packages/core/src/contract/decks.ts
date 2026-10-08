@@ -96,6 +96,34 @@ export interface DeckCombo extends ComboRef {
   alsoNeeded: string[];
 }
 
+/**
+ * The bracket rules' limits without the tag ids they were read with (T045): enough for the client to check a deck's
+ * signals as cards move. The same values as `app_config.brackets`.
+ */
+export interface BracketLimits {
+  massLandDenialFromBracket: Bracket;
+  maxExtraTurnCards: Partial<Record<'1' | '2' | '3' | '4' | '5', number>>;
+  extraTurnLoopResults: string[];
+  extraTurnLoopFromBracket: Bracket;
+}
+
+/** Whose numbers the targets are: the commander's decks alone, blended with typical decks, or typical decks only. */
+export type StatTargetSource = 'commander' | 'blended' | 'typical';
+
+/** What Deck stats measures a deck against (T045): the commander's averages blended toward typical decks. */
+export interface StatTargets {
+  source: StatTargetSource;
+  /** Who the targets describe, as shown: "Liesa decks (102)", "Typical decks". */
+  label: string;
+  lands: number;
+  basicLands: number;
+  /** The tracked roles (`deck_role_targets`), in their configured order. */
+  roles: { roleId: string; label: string; target: number }[];
+  /** Nonland cards per mana value, index = mana value, the last 7 and up. */
+  curve: number[];
+  bracketLimits: BracketLimits;
+}
+
 export interface DeckAnalysis {
   deck: DeckInput;
   colorIdentity: ColorIdentity;
@@ -106,6 +134,10 @@ export interface DeckAnalysis {
   gameChangerIds: CardId[];
   /** The combos the deck holds, from Commander Spellbook. */
   combos: DeckCombo[];
+  /** Deck stats' targets (T045); null without a commander, or when they couldn't be read (Deck stats then hides). */
+  statTargets: StatTargets | null;
+  /** The tracked role ids each of the deck's cards fills, commanders included (T045). Cards with none are absent. */
+  cardRoles: Record<number, string[]>;
   issues: DeckIssue[];
   /** Present when issues contains MISSING_COMMANDER. */
   commanderCandidates?: CardSummary[];
