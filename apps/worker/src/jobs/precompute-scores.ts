@@ -4,6 +4,7 @@ import {
   commanderShare,
   countsFromTotals,
   identityBaselineDecks,
+  isDerivedPair,
   pageEvidence,
   pickCorpusSources,
   scaledPrior,
@@ -32,6 +33,8 @@ import {
   loadIdentityMonths,
   loadKeyRows,
   loadKeys,
+  loadPairPoolDepth,
+  loadPoolCards,
   loadScoringConfig,
   loadServingSettings,
   type KeyRow,
@@ -64,8 +67,10 @@ const SCORE_COLUMNS = [
   'commander_1', 'commander_2', 'card_id', 'decks_with', 'commander_decks', 'pool_score', 'corpus_value', 'weight_scale', 'prior_rate', 'prior_decks',
 ];
 const SET_COLUMNS = [
-  'commander_1', 'commander_2', 'use_commander', 'has_sources', 'edhrec_floor', 'edhrec_decks', 'edhrec_role_profile', 'edhrec_curve_profile',
+  'commander_1', 'commander_2', 'use_commander', 'has_sources', 'derived', 'edhrec_floor', 'edhrec_decks', 'edhrec_role_profile', 'edhrec_curve_profile',
 ];
+const POOL_COLUMNS = ['commander_1', 'commander_2', 'card_id', 'pool_score'];
+const PRIOR_COLUMNS = ['commander_1', 'commander_2', 'card_id', 'prior_rate', 'prior_decks'];
 
 /**
  * Every commander (or pair) the serving tables score: each key, each commander of a pair on its own, and, with the
@@ -108,8 +113,18 @@ function partnerCommanders(keys: readonly KeyRow[], only: ReadonlySet<number> | 
   return [...ids].filter((id) => !only || only.has(id)).sort((a, b) => a - b);
 }
 
+/** A card the add pool may hold (live, legal, not a basic land), with what the pool orders and filters it by. */
+interface PoolCard {
+  name: string;
+  identity: number;
+}
+
 interface Inputs {
   settings: CorpusSettings;
+  /** app_config.precompute.pairPoolDepth: how much of a derived pair's pool is stored (0: no pair is derived). */
+  pairPoolDepth: number;
+  /** The cards a pool may hold, by id. */
+  poolCards: Map<number, PoolCard>;
   /** EDHREC's role and curve profiles by page (T062), as JSON text for the stage. */
   profiles: Map<string, { roles: string; curve: string }>;
   /** EDHREC pages by commander set, when the prior is on (empty otherwise). */
@@ -135,6 +150,13 @@ function pickSet(set: CommanderSet, inputs: Inputs): CorpusSources {
 const pageOf = (set: CommanderSet, inputs: Inputs) => inputs.pages.get(`${set.commander1}:${set.commander2}`) ?? null;
 
 /**
+ * A keyed pair that borrows its partners' other decks (under minDecks of its own) is derived (T070): a request works its
+ * counts out from the pair's own stats and its partners' totals, so only its pool order and EDHREC listings are stored.
+ */
+const isDerived = (set: CommanderSet, picked: CorpusSources, inputs: Inputs) =>
+  isDerivedPair(set.commander2 === 0 ? 1 : 2, picked, inputs.pairPoolDepth);
+
+/**
  * Which pool a commander set's requests draw on (commander_sets): adds use its own cards once its evidence (its decks,
  * plus its EDHREC page's capped strength) earns a share of the score; the rater and pages whenever anything counts.
  * The page's floor and size go with it, for the cards it has no row for.
@@ -147,6 +169,7 @@ const setFlags = (set: CommanderSet, picked: CorpusSources, inputs: Inputs) => {
     set.commander2,
     commanderShare(evidence, inputs.settings) > 0,
     picked.sources.length > 0 || pageEvidence(page?.page ?? null, inputs.settings) > 0,
+    isDerived(set, picked, inputs),
     page ? page.page.floor : null,
     page ? page.page.deckCount : null,
     inputs.profiles.get(`${set.commander1}:${set.commander2}`)?.roles ?? null,
@@ -217,6 +240,30 @@ function* scoreRows(set: CommanderSet, picked: CorpusSources, inputs: Inputs): G
   }
 }
 
+type PoolRow = [number, number, number, number];
+type PriorRow = [number, number, number, number, number];
+
+/**
+ * A derived pair's stored rows: the first `pairPoolDepth` cards by the pool's order among those a pool may hold in the
+ * pair's colours, and every card its EDHREC page lists.
+ */
+function derivedRows(set: CommanderSet, picked: CorpusSources, inputs: Inputs): { pool: PoolRow[]; priors: PriorRow[] } {
+  const identity = picked.own?.identity ?? 0;
+  const candidates: { cardId: number; poolScore: number; name: string }[] = [];
+  const priors: PriorRow[] = [];
+  for (const [c1, c2, cardId, , , poolScore, , , priorRate, priorDecks] of scoreRows(set, picked, inputs)) {
+    if (priorRate !== null && priorDecks !== null) priors.push([c1, c2, cardId, priorRate, priorDecks]);
+    const card = inputs.poolCards.get(cardId);
+    if (card && (card.identity & ~identity) === 0) candidates.push({ cardId, poolScore, name: card.name });
+  }
+  // serving_commander_pool's order: pool score, then name.
+  candidates.sort((a, b) => b.poolScore - a.poolScore || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return {
+    pool: candidates.slice(0, inputs.pairPoolDepth).map((c): PoolRow => [set.commander1, set.commander2, c.cardId, c.poolScore]),
+    priors,
+  };
+}
+
 /** How many rows a commander set will have: the cards its sources ran. */
 function setSize(set: CommanderSet, inputs: Inputs): number {
   const picked = pickSet(set, inputs);
@@ -231,30 +278,51 @@ function setSize(set: CommanderSet, inputs: Inputs): number {
  * Stages one chunk of commander sets and merges it: rows that moved are rewritten, rows that went are removed, and each
  * set's commander_sets flags are written where they changed.
  */
-async function mergeChunk(db: ReservedSql, chunk: readonly CommanderSet[], inputs: Inputs): Promise<{ staged: number; written: number; removed: number }> {
-  await db`truncate stg_scores, stg_sets`;
-  const picked = chunk.map((set) => ({ set, picked: pickSet(set, inputs) }));
+async function mergeChunk(
+  db: ReservedSql,
+  chunk: readonly CommanderSet[],
+  inputs: Inputs,
+): Promise<{ staged: number; written: number; removed: number; derived: number; poolRows: number; priorRows: number }> {
+  await db`truncate stg_scores, stg_sets, stg_pool, stg_priors`;
+  const picked = chunk.map((set) => {
+    const p = pickSet(set, inputs);
+    return { set, picked: p, derived: isDerived(set, p, inputs) };
+  });
   await copyRows(db, 'stg_sets', SET_COLUMNS, picked.map(({ set, picked: p }) => setFlags(set, p, inputs)));
+  // A derived pair stages its pool and listings instead of score rows (T070).
+  const pool: PoolRow[] = [];
+  const priors: PriorRow[] = [];
   const staged = await copyRows(db, 'stg_scores', SCORE_COLUMNS, (function* () {
-    for (const { set, picked: p } of picked) yield* scoreRows(set, p, inputs);
+    for (const { set, picked: p, derived } of picked) {
+      if (!derived) {
+        yield* scoreRows(set, p, inputs);
+        continue;
+      }
+      const rows = derivedRows(set, p, inputs);
+      pool.push(...rows.pool);
+      priors.push(...rows.priors);
+    }
   })());
+  await copyRows(db, 'stg_pool', POOL_COLUMNS, pool);
+  await copyRows(db, 'stg_priors', PRIOR_COLUMNS, priors);
   await db`begin`;
   try {
     await db`
       insert into public.commander_sets as s
-        (commander_1, commander_2, use_commander, has_sources, edhrec_floor, edhrec_decks, edhrec_role_profile, edhrec_curve_profile)
-      select commander_1, commander_2, use_commander, has_sources, edhrec_floor, edhrec_decks,
+        (commander_1, commander_2, use_commander, has_sources, derived, edhrec_floor, edhrec_decks, edhrec_role_profile, edhrec_curve_profile)
+      select commander_1, commander_2, use_commander, has_sources, derived, edhrec_floor, edhrec_decks,
              edhrec_role_profile::jsonb, edhrec_curve_profile::jsonb
       from stg_sets
       on conflict (commander_1, commander_2) do update set
         use_commander = excluded.use_commander,
         has_sources = excluded.has_sources,
+        derived = excluded.derived,
         edhrec_floor = excluded.edhrec_floor,
         edhrec_decks = excluded.edhrec_decks,
         edhrec_role_profile = excluded.edhrec_role_profile,
         edhrec_curve_profile = excluded.edhrec_curve_profile
-      where (s.use_commander, s.has_sources, s.edhrec_floor, s.edhrec_decks, s.edhrec_role_profile, s.edhrec_curve_profile)
-        is distinct from (excluded.use_commander, excluded.has_sources, excluded.edhrec_floor, excluded.edhrec_decks,
+      where (s.use_commander, s.has_sources, s.derived, s.edhrec_floor, s.edhrec_decks, s.edhrec_role_profile, s.edhrec_curve_profile)
+        is distinct from (excluded.use_commander, excluded.has_sources, excluded.derived, excluded.edhrec_floor, excluded.edhrec_decks,
                           excluded.edhrec_role_profile, excluded.edhrec_curve_profile)
     `;
     const [removed] = await db<{ n: number }[]>`
@@ -307,12 +375,95 @@ async function mergeChunk(db: ReservedSql, chunk: readonly CommanderSet[], input
       )
       select count(*)::int as n from added
     `;
+    const derived = await mergeDerived(db);
     await db`commit`;
-    return { staged, written: (updated?.n ?? 0) + (inserted?.n ?? 0), removed: removed?.n ?? 0 };
+    return {
+      staged,
+      written: (updated?.n ?? 0) + (inserted?.n ?? 0) + derived.written,
+      removed: (removed?.n ?? 0) + derived.removed,
+      derived: picked.filter((p) => p.derived).length,
+      poolRows: pool.length,
+      priorRows: priors.length,
+    };
   } catch (err) {
     await db`rollback`.catch(() => {});
     throw err;
   }
+}
+
+/**
+ * The chunk's derived pairs into commander_pair_pool and commander_card_priors, inside mergeChunk's transaction: rows of
+ * the chunk's sets that went are removed (a pair no longer derived loses them all), moved rows rewritten, new ones
+ * inserted.
+ */
+async function mergeDerived(db: ReservedSql): Promise<{ written: number; removed: number }> {
+  const [gonePool] = await db<{ n: number }[]>`
+    with gone as (
+      delete from public.commander_pair_pool s
+      using stg_sets t
+      where s.commander_1 = t.commander_1 and s.commander_2 = t.commander_2
+        and not exists (
+          select 1 from stg_pool n where n.commander_1 = s.commander_1 and n.commander_2 = s.commander_2 and n.card_id = s.card_id
+        )
+      returning 1
+    )
+    select count(*)::int as n from gone
+  `;
+  const [gonePriors] = await db<{ n: number }[]>`
+    with gone as (
+      delete from public.commander_card_priors s
+      using stg_sets t
+      where s.commander_1 = t.commander_1 and s.commander_2 = t.commander_2
+        and not exists (
+          select 1 from stg_priors n where n.commander_1 = s.commander_1 and n.commander_2 = s.commander_2 and n.card_id = s.card_id
+        )
+      returning 1
+    )
+    select count(*)::int as n from gone
+  `;
+  // Update what moved, then insert what is new, as for the scores.
+  const [updatedPool] = await db<{ n: number }[]>`
+    with changed as (
+      update public.commander_pair_pool s set pool_score = n.pool_score
+      from stg_pool n
+      where s.commander_1 = n.commander_1 and s.commander_2 = n.commander_2 and s.card_id = n.card_id
+        and abs(s.pool_score - n.pool_score) >= ${SCORE_TOLERANCE}
+      returning 1
+    )
+    select count(*)::int as n from changed
+  `;
+  const [insertedPool] = await db<{ n: number }[]>`
+    with added as (
+      insert into public.commander_pair_pool (commander_1, commander_2, card_id, pool_score)
+      select commander_1, commander_2, card_id, pool_score from stg_pool
+      on conflict (commander_1, commander_2, card_id) do nothing
+      returning 1
+    )
+    select count(*)::int as n from added
+  `;
+  const [updatedPriors] = await db<{ n: number }[]>`
+    with changed as (
+      update public.commander_card_priors s set prior_rate = n.prior_rate, prior_decks = n.prior_decks
+      from stg_priors n
+      where s.commander_1 = n.commander_1 and s.commander_2 = n.commander_2 and s.card_id = n.card_id
+        and (s.prior_rate, s.prior_decks) is distinct from (n.prior_rate, n.prior_decks)
+      returning 1
+    )
+    select count(*)::int as n from changed
+  `;
+  const [insertedPriors] = await db<{ n: number }[]>`
+    with added as (
+      insert into public.commander_card_priors (commander_1, commander_2, card_id, prior_rate, prior_decks)
+      select commander_1, commander_2, card_id, prior_rate, prior_decks from stg_priors
+      on conflict (commander_1, commander_2, card_id) do nothing
+      returning 1
+    )
+    select count(*)::int as n from added
+  `;
+  return {
+    written: (updatedPool?.n ?? 0) + (insertedPool?.n ?? 0) + (updatedPriors?.n ?? 0) + (insertedPriors?.n ?? 0),
+    removed: (gonePool?.n ?? 0) + (gonePriors?.n ?? 0),
+  };
 }
 
 /** partner_card_totals for these commanders: every key each leads or shares, at full weight. */
@@ -407,7 +558,7 @@ export async function precomputeScores({
     if (start.kind === 'skipped') return { status: 'succeeded', rows: 0 };
     runId = start.runId;
 
-    const [settings, scoringConfig, keys, baselines, facts, identityMonths, allPages] = await Promise.all([
+    const [settings, scoringConfig, keys, baselines, facts, identityMonths, allPages, pairPoolDepth, poolCards] = await Promise.all([
       loadServingSettings(sql),
       loadScoringConfig(sql),
       loadKeys(sql),
@@ -415,6 +566,8 @@ export async function precomputeScores({
       loadCardFacts(sql),
       loadIdentityMonths(sql),
       loadEdhrecPages(sql),
+      loadPairPoolDepth(sql),
+      loadPoolCards(sql),
     ]);
     // EDHREC's role and curve profiles for every page that counts (T062).
     const [rolesByCard, shapes] = settings.edhrecPriorCap > 0 ? await Promise.all([loadRoleCards(sql), loadCardShapes(sql)]) : [new Map(), new Map()];
@@ -440,7 +593,9 @@ export async function precomputeScores({
         return [key, { roles: JSON.stringify(p.roles), curve: JSON.stringify(p.curve) }] as const;
       }),
     );
-    const inputs: Inputs = { settings, pages, profiles, scoring, keysByCommander, rowsByKey, baselines, facts, identityMonths };
+    const inputs: Inputs = {
+      settings, pairPoolDepth, poolCards, pages, profiles, scoring, keysByCommander, rowsByKey, baselines, facts, identityMonths,
+    };
 
     const rows = sets.reduce((sum, s) => sum + setSize(s, inputs), 0);
     // Measured against the last full run: a partial pass after it records only its own commanders' rows.
@@ -475,17 +630,36 @@ export async function precomputeScores({
       `;
       await db`
         create temp table if not exists stg_sets (
-          commander_1 integer not null, commander_2 integer not null, use_commander boolean, has_sources boolean,
+          commander_1 integer not null, commander_2 integer not null, use_commander boolean, has_sources boolean, derived boolean,
           edhrec_floor real, edhrec_decks integer, edhrec_role_profile text, edhrec_curve_profile text
         )
       `;
+      await db`
+        create temp table if not exists stg_pool (
+          commander_1 integer not null, commander_2 integer not null, card_id integer not null, pool_score double precision not null
+        )
+      `;
+      await db`
+        create temp table if not exists stg_priors (
+          commander_1 integer not null, commander_2 integer not null, card_id integer not null, prior_rate real not null, prior_decks integer not null
+        )
+      `;
+      let derived = 0;
+      let poolRows = 0;
+      let priorRows = 0;
       for (let i = 0; i < sets.length; i += SETS_PER_CHUNK) {
         const result = await mergeChunk(db, sets.slice(i, i + SETS_PER_CHUNK), inputs);
         staged += result.staged;
         written += result.written;
         removed += result.removed;
+        derived += result.derived;
+        poolRows += result.poolRows;
+        priorRows += result.priorRows;
         await heartbeat(sql, runId, staged);
       }
+      metrics.derivedPairs = derived;
+      metrics.pairPoolRows = poolRows;
+      metrics.pairPriorRows = priorRows;
       if (full) {
         // Commanders with no decks left anywhere have no set any more: their rows go.
         await db`truncate stg_sets`;
@@ -499,6 +673,23 @@ export async function precomputeScores({
           select count(*)::int as n from gone
         `;
         removed += gone?.n ?? 0;
+        const [gonePool] = await db<{ n: number }[]>`
+          with gone as (
+            delete from public.commander_pair_pool s
+            where not exists (select 1 from stg_sets t where t.commander_1 = s.commander_1 and t.commander_2 = s.commander_2)
+            returning 1
+          )
+          select count(*)::int as n from gone
+        `;
+        const [gonePriors] = await db<{ n: number }[]>`
+          with gone as (
+            delete from public.commander_card_priors s
+            where not exists (select 1 from stg_sets t where t.commander_1 = s.commander_1 and t.commander_2 = s.commander_2)
+            returning 1
+          )
+          select count(*)::int as n from gone
+        `;
+        removed += (gonePool?.n ?? 0) + (gonePriors?.n ?? 0);
         await db`
           delete from public.commander_sets s
           where not exists (select 1 from stg_sets t where t.commander_1 = s.commander_1 and t.commander_2 = s.commander_2)
@@ -516,13 +707,14 @@ export async function precomputeScores({
     metrics.rowsRemoved = removed;
     if (full) {
       await sql`
-        insert into public.precompute_state (part, version) values ('scores', ${sql.json({ settings, scoring })})
+        insert into public.precompute_state (part, version) values ('scores', ${sql.json({ settings, scoring, pairPoolDepth })})
         on conflict (part) do update set version = excluded.version, updated_at = now()
       `;
     }
     await finishRun(sql, runId, 'succeeded', { rowsRead: staged, rowsChanged: written + removed, metrics });
     console.log(
       `precompute_scores: ${sets.length} commanders, ${staged} rows (${written} written, ${removed} removed); ` +
+        `${metrics.derivedPairs ?? 0} derived pairs (${metrics.pairPoolRows ?? 0} pool rows, ${metrics.pairPriorRows ?? 0} listings); ` +
         `partner totals for ${partners.length} commanders`,
     );
     return { status: 'succeeded', rows: staged };
@@ -542,13 +734,18 @@ export async function precomputeScores({
  * run, which means every score is stale.
  */
 export async function scoreSettingsChanged(sql: Sql): Promise<boolean> {
-  const [settings, scoringConfig, [state]] = await Promise.all([
+  const [settings, scoringConfig, pairPoolDepth, [state]] = await Promise.all([
     loadServingSettings(sql),
     loadScoringConfig(sql),
-    sql<{ version: { settings?: unknown; scoring?: unknown } }[]>`select version from public.precompute_state where part = 'scores'`,
+    loadPairPoolDepth(sql),
+    sql<{ version: { settings?: unknown; scoring?: unknown; pairPoolDepth?: unknown } }[]>`
+      select version from public.precompute_state where part = 'scores'
+    `,
   ]);
   return (
     canonicalJson(state?.version.settings ?? null) !== canonicalJson(settings) ||
-    canonicalJson(state?.version.scoring ?? null) !== canonicalJson(scoringConfig.corpus)
+    canonicalJson(state?.version.scoring ?? null) !== canonicalJson(scoringConfig.corpus) ||
+    // Before T070 the state had no depth: derivation was off.
+    (state?.version.pairPoolDepth ?? 0) !== pairPoolDepth
   );
 }
