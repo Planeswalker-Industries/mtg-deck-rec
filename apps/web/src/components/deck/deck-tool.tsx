@@ -28,13 +28,13 @@ import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
 import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
-import { AddPhase, type AddFilter } from "./journey/add-phase";
+import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
 import { CutPhase } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
-import { useDeckJourney, type DeckJourney } from "./journey/use-deck-journey";
+import { useDeckJourney, type AddFilter, type DeckJourney } from "./journey/use-deck-journey";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
@@ -180,9 +180,6 @@ export function DeckTool() {
   });
 
   // ── Deck stats (T045) ──────────────────────────────────────────────────────────────────────────────────────────
-  /** What a "Find …" action narrowed Add to. It lasts while Add is on screen: leaving the step, or a new round, clears it. */
-  const [addFilter, setAddFilter] = useState<AddFilter | null>(null);
-  if (addFilter !== null && journey.state?.phase !== "add") setAddFilter(null);
   const deckStats = useDeckStats({
     analysis,
     entries: journey.after,
@@ -192,8 +189,9 @@ export function DeckTool() {
   const openStep =
     (phase: "cut" | "add", filter: AddFilter | null = null): StatAction["onSelect"] =>
     () => {
-      setAddFilter(filter);
+      // The step opens first, so the journey records the Add list under the filter as the player will see it.
       journey.stepper.select(phase);
+      journey.add.setFilter(filter);
     };
   /** What an off stat offers: Cut when it's over its target, Add (narrowed to it) when it's short and slots are open. */
   const statAction = (stat: StatLine): StatAction | null => {
@@ -667,7 +665,7 @@ export function DeckTool() {
                       <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />
                     ))}
                   {journey.state.phase === "add" && (
-                    <AddPhase journey={journey} view={view} filter={addFilter} onClearFilter={() => setAddFilter(null)} />
+                    <AddPhase journey={journey} view={view} />
                   )}
                   {journey.state.phase === "replace" && (
                     <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />

@@ -2,10 +2,11 @@
 
 import { useRef, useState, type ComponentProps } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { LevelBadge } from "./level";
-import { DeckStatsPanel } from "./deck-stats-panel";
+import { DeckStatsPanel, type StatAction } from "./deck-stats-panel";
 
 /** A drag this far up the footer opens the sheet; shorter is a tap. */
 const SWIPE_OPEN_PX = 24;
@@ -23,6 +24,22 @@ type PanelProps = ComponentProps<typeof DeckStatsPanel>;
 export function DeckStatsFooter({ className, ...panel }: PanelProps & { className?: string }) {
   const { report } = panel;
   const [open, setOpen] = useState(false);
+  // An action opens a step under the sheet, so the sheet closes first; left open it would hide what the action did.
+  const closing = (action: StatAction | null | undefined): StatAction | null =>
+    action
+      ? {
+          ...action,
+          onSelect: () => {
+            setOpen(false);
+            action.onSelect();
+          },
+        }
+      : null;
+  const { actionFor } = panel;
+  const actions = {
+    actionFor: actionFor && ((stat: StatLine) => closing(actionFor(stat))),
+    bracketAction: closing(panel.bracketAction),
+  };
   const startY = useRef<number | null>(null);
   const swiped = useRef(false);
 
@@ -93,7 +110,7 @@ export function DeckStatsFooter({ className, ...panel }: PanelProps & { classNam
             </span>
           </button>
           <div className="pt-2">
-            <DeckStatsPanel {...panel} />
+            <DeckStatsPanel {...panel} {...actions} />
           </div>
         </SheetContent>
       </Sheet>

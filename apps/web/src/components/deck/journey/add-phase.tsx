@@ -1,7 +1,6 @@
 "use client";
 
 import type { AddSuggestion, CardSummary } from "@mtg/core/contract";
-import { isFrontLand } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
@@ -16,12 +15,6 @@ import type { DeckJourney } from "./use-deck-journey";
 
 /** How many suggestions the list view shows at once; the rest follow as these are added or skipped. */
 const LIST_SUGGESTIONS = 18;
-
-/** What "Find …" in Deck stats narrowed Add to. */
-export type AddFilter = { kind: "role"; roleId: string; label: string } | { kind: "lands" };
-
-const matches = (filter: AddFilter, card: CardSummary) =>
-  filter.kind === "lands" ? isFrontLand(card.typeLine) : (card.roles ?? []).includes(filter.roleId);
 
 /** Why a suggestion is here, in one or two short lines. */
 function Why({ suggestion }: { suggestion: AddSuggestion }) {
@@ -43,27 +36,17 @@ function Why({ suggestion }: { suggestion: AddSuggestion }) {
  * card just added may fill the gap the next ones were suggested for. Skipping just moves on. The player can stop with
  * slots still open; Review then says the deck is short.
  *
- * Deck stats can narrow the list to one role or to lands (`filter`); "Show all" puts the whole list back.
+ * Deck stats can narrow the list to one role or to lands (the journey's `add.filter`); "Show all" puts the whole list back.
  */
-export function AddPhase({
-  journey,
-  view,
-  filter,
-  onClearFilter,
-}: {
-  journey: DeckJourney;
-  view: "swipe" | "list";
-  filter: AddFilter | null;
-  onClearFilter: () => void;
-}) {
-  const { state: addState, queue, landsShort, accept, pass, undo } = journey.add;
+export function AddPhase({ journey, view }: { journey: DeckJourney; view: "swipe" | "list" }) {
+  const { state: addState, queue, shown, filter, setFilter, landsShort, accept, pass, undo } = journey.add;
+  const onClearFilter = () => setFilter(null);
   const adds = journey.state?.adds ?? [];
   const open = journey.openSlots;
   // Filled slots plus open ones: the room this round's additions have to fill.
   const slots = open + adds.length;
   const toReplace = () => journey.goTo("replace");
   const asOf = queue.find((s) => s.card.price)?.card.price?.asOf;
-  const shown = filter ? queue.filter((s) => matches(filter, s.card)) : queue;
   const filterName = filter ? (filter.kind === "lands" ? "lands" : filter.label.toLowerCase()) : null;
 
   const intro = (

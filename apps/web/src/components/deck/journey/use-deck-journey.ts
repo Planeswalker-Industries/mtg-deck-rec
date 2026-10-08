@@ -31,7 +31,7 @@ import {
   type JourneyPhase,
   type JourneyState,
 } from "@mtg/core/journey";
-import type { DeckEntry } from "@mtg/core/scoring";
+import { isFrontLand, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import type { Async, ContextChange } from "../use-deck-tool";
@@ -62,6 +62,20 @@ interface Round {
   state: JourneyState;
   check: BracketCheck | null;
 }
+
+/** What "Find …" in Deck stats narrowed Add to (T045). */
+export type AddFilter = { kind: "role"; roleId: string; label: string } | { kind: "lands" };
+
+/** Whether a card fits the filter: one of its tracked roles, or a land on its front face. */
+export const matchesAddFilter = (filter: AddFilter, card: CardSummary) =>
+  filter.kind === "lands" ? isFrontLand(card.typeLine) : (card.roles ?? []).includes(filter.roleId);
+
+const sameFilter = (a: AddFilter | null, b: AddFilter | null) =>
+  a === b || (a?.kind === "role" && b?.kind === "role" ? a.roleId === b.roleId : a?.kind === "lands" && b?.kind === "lands");
+
+/** The Add suggestions a filter leaves on show, in the order they were dealt. */
+const filtered = (suggestions: AddSuggestion[], filter: AddFilter | null) =>
+  filter ? suggestions.filter((s) => matchesAddFilter(filter, s.card)) : suggestions;
 
 /** No card ids: the over-bracket set before any add, kept as one value so its readers see a stable reference. */
 const NO_IDS: ReadonlySet<CardId> = new Set();
@@ -140,8 +154,14 @@ export function useDeckJourney({
   /** Bumped when the Replace targets are asked for again, so the swipe view starts over on the new list. */
   const [replaceVersion, setReplaceVersion] = useState(0);
   const addRequest = useRef(0);
-  /** The Add list as recorded for the accept rate (T065), and the Cut list with the cut result it came from. */
-  const addBatch = useRef<RecBatch | null>(null);
+  /**
+   * The Add list as recorded for the accept rate (T065), with the filter it was shown under, and the Cut list with the
+   * cut result it came from. A filter shows a shorter list, so it is recorded as its own batch: a decision's position is
+   * its place in the list the player was looking at.
+   */
+  const addBatch = useRef<{ batch: RecBatch; filter: AddFilter | null } | null>(null);
+  /** An Add list asked for and not yet in: it is recorded on arrival, under the filter on screen then. */
+  const addPending = useRef(false);
   const cutBatch = useRef<{ from: CutResult; batch: RecBatch } | null>(null);
   const replaceRequest = useRef(0);
   const checkRequest = useRef(0);
@@ -175,6 +195,16 @@ export function useDeckJourney({
   const replace = current && replaceFor?.round === current.id ? replaceFor.value : idle;
 
   const overBracketIds = current && overBracket?.round === current.id ? overBracket.ids : NO_IDS;
+
+  /** What a "Find …" action in Deck stats narrowed Add to. It lasts while Add is on screen: leaving the step, or a new round, clears it. */
+  const [addFilterSet, setAddFilterSet] = useState<AddFilter | null>(null);
+  if (addFilterSet !== null && state?.phase !== "add") setAddFilterSet(null);
+  const addFilter = state?.phase === "add" ? addFilterSet : null;
+  /** The filter as of the latest render, for an Add list that arrives after it. */
+  const addFilterRef = useRef(addFilter);
+  useEffect(() => {
+    addFilterRef.current = addFilter;
+  });
 
   // Every card the round has seen, for names and images of cards that are not in the pasted list. Kept between renders
   // while its inputs stand, so what is built on it (the deck as entries, which Deck stats re-tallies) keeps too.
@@ -213,14 +243,17 @@ export function useDeckJourney({
     const deck = workingDeck(next);
     const key = deckKey(deck);
     setAdd({ round, key, value: { status: "loading" } });
+    addPending.current = true;
     const r = await getApis().recs.add({ context: { ...ctx, deck }, excludeCardIds: next.declinedAdds });
     if (id !== addRequest.current) return;
+    addPending.current = false;
     setAdd({ round, key, value: toAsync(r) });
     if (r.ok) {
-      // Recorded in the order the player sees it, so an accept's position is the place it was dealt from.
+      // Recorded in the order the player sees it, filter applied, so an accept's position is the place it was dealt from.
       const shortOfLands = analysis ? lands(deck) < lands(analysis.deck) : false;
-      const shown = addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands).map((s) => s.card.id);
-      addBatch.current = recordShown("add", shown, { ...ctx, deck });
+      const filter = addFilterRef.current;
+      const shown = filtered(addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands), filter).map((s) => s.card.id);
+      addBatch.current = { batch: recordShown("add", shown, { ...ctx, deck }), filter };
     }
   }
 
@@ -431,11 +464,34 @@ export function useDeckJourney({
         )
       : [];
 
+  /**
+   * Records the Add list on hand as shown under `filter`, unless it already was. Called when a filter is applied or
+   * cleared, and before a decision, in case the filter changed some other way (leaving Add clears it).
+   */
+  function recordAddList(filter: AddFilter | null) {
+    const ctx = workingContext ?? context;
+    if (!ctx || add.status !== "ready" || addPending.current) return;
+    if (addBatch.current && sameFilter(addBatch.current.filter, filter)) return;
+    addBatch.current = { batch: recordShown("add", filtered(addQueue, filter).map((s) => s.card.id), ctx), filter };
+  }
+
+  /**
+   * Narrows Add to a role or to lands, or (null) shows it all again. Called after the step opens: a list on its way is
+   * recorded under the filter when it arrives, and the list on hand is recorded again now, as the player sees it.
+   */
+  function setAddFilter(filter: AddFilter | null) {
+    addFilterRef.current = filter;
+    setAddFilterSet(filter);
+    if (latest.current?.state.phase === "add") recordAddList(filter);
+  }
+
   /** A card from the Add list taken or passed on, for the accept rate (T065). */
   function recordAddDecision(card: CardSummary, accepted: boolean) {
     const ctx = workingContext ?? context;
-    if (!addBatch.current || !ctx) return;
-    recordDecision(addBatch.current, card.id, accepted, ctx, addQueue.find((s) => s.card.id === card.id)?.score);
+    if (!ctx) return;
+    recordAddList(addFilter);
+    if (!addBatch.current) return;
+    recordDecision(addBatch.current.batch, card.id, accepted, ctx, addQueue.find((s) => s.card.id === card.id)?.score);
   }
 
   /** Adding recomputes the list: the new card may fill the gap the next ones were suggested for. */
@@ -525,7 +581,18 @@ export function useDeckJourney({
     overBracketIds,
     openSlots: state ? openSlots(state) : 0,
     cut: { recommended: recommendedCuts, undecided: undecidedCuts, slotsAfter: slotsAfterCuts, isMarked: isMarkedForCut, toggle: toggleCut, finish: finishCuts },
-    add: { state: add, queue: addQueue, landsShort, accept: acceptAdd, pass: passAdd, undo: undoAdd },
+    add: {
+      state: add,
+      queue: addQueue,
+      /** The queue as dealt: narrowed to the filter when one is set. */
+      shown: filtered(addQueue, addFilter),
+      filter: addFilter,
+      setFilter: setAddFilter,
+      landsShort,
+      accept: acceptAdd,
+      pass: passAdd,
+      undo: undoAdd,
+    },
     replace: {
       state: replace,
       targets: replaceTargets,
