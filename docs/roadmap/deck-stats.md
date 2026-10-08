@@ -38,7 +38,7 @@ The server blends each target between the commander's own average and a typical 
 
 - **Typical roles:** `app_config.deck_role_targets`.
 - **Typical lands and basic lands:** `app_config.scoring.build.landCounts` and `basicLandCounts`, by the deck's colour count.
-- **Typical curve and types:** the deck-weighted average of every `commander_stats` row, computed on read and cached under the `corpus` tag. No table holds it.
+- **Typical curve and types:** the deck-weighted average of every `commander_stats` row, computed on read by `typical_deck_profile()` (one SQL function, one jsonb value: PostgREST's row cap would cut a plain select of the ~2,700 rows) and cached per server instance like the other settings. No table holds it.
 - **Never EDHREC.** `commander_sets` holds EDHREC role and curve profiles, but a target made from them would display EDHREC's numbers. Call `roleTargetsFor` without the EDHREC prior.
 - **The label says whose numbers they are:** "Liesa decks (102)" when the commander's own decks carry the whole target (`commanderShare` 1, source `commander`), "Liesa decks (30), filled out with typical decks" in between (`blended`), "Typical decks" when they have too few to count (`commanderShare` 0, `typical`). Partner pooling applies as it does for play rates.
 
@@ -123,7 +123,7 @@ The client keeps a **tally** and changes it by each card that moves; it never re
 - The mocks gain both.
 
 **Database:**
-- P1 needs no change.
+- P1 adds one function, `typical_deck_profile()`, and no table or column.
 - P2 adds one column, `commander_stats.type_profile` (jsonb, average cards per deck by type), written by `apps/worker/src/lib/key-stats.ts` beside `curve_profile`, in the same row write and diff-only. It adds about 0.3 MB to a 3.9 MB table; the next full pass fills it. Typical types come from the same weighted average on read.
 
 ## Phases
