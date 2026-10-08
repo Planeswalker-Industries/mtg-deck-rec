@@ -8,6 +8,7 @@ import {
   shrunkInclusion,
   type CommanderCardRate,
   type CorpusSource,
+  type CorpusSources,
   type CorpusThresholds,
   type PoolSettings,
 } from './corpus';
@@ -132,6 +133,27 @@ export function partnerRowSums(totals: readonly (RowSums | undefined)[], weight:
     tooEarly += weight * t.tooEarly;
   }
   return { decksWith, tooEarly };
+}
+
+/**
+ * Whether a commander set is a derived pair (T070): a pair with a key of its own that borrows its partners' other decks,
+ * which happens below `minDecks` (`pickCorpusSources`). The precompute worker stores only the first `pairPoolDepth`
+ * cards of its add pool (0 turns derivation off), and a request works its counts out with `derivedPairRowSums`.
+ */
+export const isDerivedPair = (commanderCount: number, picked: Pick<CorpusSources, 'own' | 'borrowedDeckCount'>, pairPoolDepth: number): boolean =>
+  pairPoolDepth > 0 && commanderCount === 2 && picked.own !== null && picked.borrowedDeckCount > 0;
+
+/**
+ * A keyed pair with fewer than `minDecks` decks of its own (a derived pair): its own key at full weight and every other
+ * key of either partner at `partnerPoolWeight` (`pickCorpusSources`). Each partner's `partner_card_totals` already holds
+ * the pair's own key, so the borrowed keys are the two totals less the own key twice.
+ */
+export function derivedPairRowSums(own: RowSums, partnerTotals: readonly (RowSums | undefined)[], weight: number): RowSums {
+  const partners = partnerRowSums(partnerTotals, 1);
+  return {
+    decksWith: own.decksWith + weight * (partners.decksWith - 2 * own.decksWith),
+    tooEarly: own.tooEarly + weight * (partners.tooEarly - 2 * own.tooEarly),
+  };
 }
 
 /**

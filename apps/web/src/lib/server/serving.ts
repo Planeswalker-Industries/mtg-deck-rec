@@ -5,13 +5,16 @@ import {
   cardPrior,
   commanderCardCounts,
   commanderShare,
+  derivedPairRowSums,
   identityBaselineDecks,
+  partnerRowSums,
   pmiIndex,
   servedCardRates,
   type AffinityInput,
   type BasicColour,
   type BuildAffinity,
   type RankCard,
+  type RowSums,
   type SwapPool,
   type SwapPoolCandidate,
 } from "@mtg/core/scoring";
@@ -28,6 +31,12 @@ import type { PublicClient } from "./supabase";
  */
 
 type ServingCard = Database["public"]["CompositeTypes"]["serving_card"];
+
+/**
+ * PostgREST's row cap (`[api] max_rows`, 1000 locally and hosted). A deck's card roles page by it: an analysis takes
+ * up to MAX_DECK_ENTRIES (400) cards at up to four tracked roles each, which can pass it.
+ */
+const CARD_ROLE_PAGE_ROWS = 1000;
 
 /** One tag match as serving_swap_candidates returns it, by tag id. */
 interface RawMatch {
@@ -71,10 +80,20 @@ function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
   );
 }
 
+/** The row sums behind a card with no stored counts: a derived pair's (T070), or a pair no key knows. */
+function unstoredRowSums(card: ServingCard, weight: number): RowSums {
+  const partners = { decksWith: card.partner_decks_with ?? 0, tooEarly: card.partner_too_early ?? 0 };
+  if (card.own_decks_with !== null && card.own_too_early !== null) {
+    return derivedPairRowSums({ decksWith: card.own_decks_with, tooEarly: card.own_too_early }, [partners], weight);
+  }
+  return partnerRowSums([partners], weight);
+}
+
 /**
- * A card's play rates under these commanders: its stored counts where a source deck ran it, a pair's partner totals at
- * their weight, or counts from the commander's deck months where nothing ran it; shrunk toward the commander's EDHREC
- * page when it has one (T061) and the live baseline otherwise.
+ * A card's play rates under these commanders: its stored counts where a source deck ran it; for a derived pair its own
+ * key's counts and its partners' totals, or for a pair no key knows its partners' totals at their weight; counts from
+ * the commander's deck months where nothing ran it. Shrunk toward the commander's EDHREC page when it has one (T061)
+ * and the live baseline otherwise.
  */
 function cardCorpusOf(card: ServingCard, corpus: CommanderCorpus, identityMonths: ReadonlyMap<number, Record<string, number>>): CardCorpus {
   const facts = { identity: card.color_identity ?? 0, releaseMonth: card.release_month };
@@ -84,14 +103,10 @@ function cardCorpusOf(card: ServingCard, corpus: CommanderCorpus, identityMonths
     // Cards no deck runs have no baseline row; count the decks that could have run them from the identity histograms.
     eligibleDecks: card.baseline_eligible_decks ?? identityBaselineDecks(identityMonths, facts),
   };
-  const weight = corpus.settings.partnerPoolWeight;
   const counts =
     card.decks_with !== null && card.commander_decks !== null
       ? { decksWith: card.decks_with, commanderDecks: card.commander_decks }
-      : commanderCardCounts(corpus.sources, facts, {
-          decksWith: weight * (card.partner_decks_with ?? 0),
-          tooEarly: weight * (card.partner_too_early ?? 0),
-        });
+      : commanderCardCounts(corpus.sources, facts, unstoredRowSums(card, corpus.settings.partnerPoolWeight));
   const page = card.edhrec_decks !== null && card.edhrec_floor !== null ? { deckCount: card.edhrec_decks, floor: card.edhrec_floor } : null;
   const listing = card.prior_rate !== null && card.prior_decks !== null ? { rate: card.prior_rate, potentialDecks: card.prior_decks } : null;
   const prior = cardPrior(page, listing, baseline.rate, corpus.settings);
@@ -534,6 +549,7 @@ export async function loadServedSwapPool(
             return [{ targetTag, candidateTag, via: m.viaTagId ? (tags.get(m.viaTagId) ?? null) : null, distance: m.distance }];
           }),
           rates: cards.rates.get(cardId) ?? null,
+          roles: cards.roles.get(cardId) ?? [],
         },
       ];
     }),
@@ -594,4 +610,24 @@ export async function loadServedCards(
   ]);
   if (cardsResult.error) throw new Error(`Loading cards failed: ${cardsResult.error.message}`);
   return servedCards(asCards(cardsResult.data), corpus, identityMonths, checkedAt);
+}
+
+/** The tracked role ids of some cards, for Deck stats and the roles a suggestion carries (T045). */
+export async function loadCardRoles(db: PublicClient, cardIds: readonly number[]): Promise<Map<number, string[]>> {
+  const roles = new Map<number, string[]>();
+  if (cardIds.length === 0) return roles;
+  const ids = [...new Set(cardIds)];
+  // Nearly always one page: a 100-card deck holds about a hundred rows.
+  for (let from = 0; ; from += CARD_ROLE_PAGE_ROWS) {
+    const { data, error } = await db
+      .from("card_roles")
+      .select("card_id, role_id")
+      .in("card_id", ids)
+      .order("card_id")
+      .order("role_id")
+      .range(from, from + CARD_ROLE_PAGE_ROWS - 1);
+    if (error) throw new Error(`Loading card roles failed: ${error.message}`);
+    for (const row of data) roles.set(row.card_id, [...(roles.get(row.card_id) ?? []), row.role_id]);
+    if (data.length < CARD_ROLE_PAGE_ROWS) return roles;
+  }
 }

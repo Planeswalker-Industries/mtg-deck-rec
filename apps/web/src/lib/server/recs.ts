@@ -1,5 +1,5 @@
 import type { CollectionCopies } from "@mtg/core/collection";
-import type { AddResult, BuildFill, BuildResult, CommanderKeyId, CutResult, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
+import type { AddResult, BuildFill, BuildResult, CardSummary, CommanderKeyId, CutResult, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
 import {
   ADD_POOL_SIZE,
   bracketExclusions,
@@ -93,6 +93,21 @@ export function loadRoleTags(db: PublicClient): Promise<Map<string, TagRef>> {
   );
 }
 
+/** Suggestion cards carry their tracked roles, so Deck stats can count a card the moment it is taken (T045). */
+const withRoles = <T extends { card: CardSummary }>(items: readonly T[], roles: ReadonlyMap<number, readonly string[]>): T[] =>
+  items.map((item) => ({ ...item, card: { ...item.card, roles: [...(roles.get(item.card.id) ?? [])] } }));
+
+/** A swap result with each suggestion's roles, taken from the pools' candidates (the serving read already holds them). */
+export function swapWithRoles(result: SwapResult, ...pools: readonly (SwapPool | null)[]): SwapResult {
+  const roles = new Map<number, readonly string[]>();
+  for (const pool of pools) for (const c of pool?.candidates ?? []) if (!roles.has(c.cardId)) roles.set(c.cardId, c.roles ?? []);
+  return {
+    ...result,
+    suggestions: withRoles(result.suggestions, roles),
+    ...(result.buyList ? { buyList: withRoles(result.buyList, roles) } : {}),
+  };
+}
+
 const rankCards = (rows: ReadonlyMap<number, CardRow>): Map<number, RankCard> => new Map([...rows].map(([id, row]) => [id, rankCardOf(row)]));
 
 /** Loads replacement candidates for a card under a commander (or pair). Null when the card isn't in the catalog. */
@@ -157,7 +172,11 @@ export async function getSwapSuggestions(
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
   const excluded = bracketExclusions({ ...bracket, combos: [] }, context.bracket);
-  return rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open, excluded, affinity });
+  return swapWithRoles(
+    rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open, excluded, affinity }),
+    pool,
+    open,
+  );
 }
 
 export async function getCutSuggestions(
@@ -239,12 +258,13 @@ export async function getAddSuggestions(
   const mode = modeOf(context);
   if (!corpus.available) return { mode, commanderKey, confidence: "none", groups: [] };
 
+  const roles = new Map([...served.deckRoles, ...served.pool.roles]);
   const { groups, buyList, combos } = rankAdds({
     context,
     poolIds: served.poolIds,
     cards: rankCards(served.pool.rows),
     rates: served.pool.rates,
-    roles: new Map([...served.deckRoles, ...served.pool.roles]),
+    roles,
     corpus,
     roleTargets,
     roleTags,
@@ -257,7 +277,14 @@ export async function getAddSuggestions(
     affinity: served.affinity,
     limitPerCategory,
   });
-  return { mode, commanderKey, confidence: corpus.confidence, groups, ...(buyList ? { buyList } : {}), ...(combos ? { combos } : {}) };
+  return {
+    mode,
+    commanderKey,
+    confidence: corpus.confidence,
+    groups: groups.map((g) => ({ ...g, suggestions: withRoles(g.suggestions, roles) })),
+    ...(buyList ? { buyList: withRoles(buyList, roles) } : {}),
+    ...(combos ? { combos: withRoles(combos, roles) } : {}),
+  };
 }
 
 /**
@@ -312,5 +339,12 @@ export async function getBuild(
     basics: served.basics,
     fill,
   });
-  return { mode: modeOf(context), commanderKey, confidence: corpus.confidence, ...built };
+  return {
+    mode: modeOf(context),
+    commanderKey,
+    confidence: corpus.confidence,
+    ...built,
+    groups: built.groups.map((g) => ({ ...g, cards: withRoles(g.cards, served.cards.roles) })),
+    combos: withRoles(built.combos, served.cards.roles),
+  };
 }

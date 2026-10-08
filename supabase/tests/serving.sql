@@ -53,6 +53,9 @@ select least(:thrasios, :tymna) as c1, greatest(:thrasios, :tymna) as c2 \gset
 delete from public.commander_sets where commander_1 = :c1 and commander_2 = :c2;
 insert into public.commander_sets (commander_1, commander_2, use_commander, has_sources) values (:c1, :c2, true, true);
 delete from public.commander_card_scores where commander_1 = :c1 and commander_2 = :c2;
+-- The pair may be derived on this database (T070): a stored set has no pool rows there.
+delete from public.commander_pair_pool where commander_1 = :c1 and commander_2 = :c2;
+delete from public.commander_card_priors where commander_1 = :c1 and commander_2 = :c2;
 insert into public.commander_card_scores (commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale)
 values (:c1, :c2, :plain, 10, 20, 0.9, 0.8, 1),
        (:c1, :c2, :blue1, 5, 20, 0.7, 0.6, 1),
@@ -156,6 +159,56 @@ update public.cards set deleted_at = now() where id = :blue2;
 select chk('soft-deleted cards are left out',
   (select count(*) = 0 from public.serving_cards(array[:c1, :c2], array[:blue2])));
 update public.cards set deleted_at = null where id = :blue2;
+select chk('a stored set''s cards carry no own counts',
+  (select own_decks_with is null and own_too_early is null from public.serving_cards(array[:c1, :c2], array[:plain])));
+
+-- === a derived pair (T070) ===
+-- A keyed pair under minDecks: 7 decks of its own, 3 of them running `plain`, 5 updated since it came out. Its pool order
+-- and listings are stored; its counts come from its own key and the partners' totals (40 for `plain`, 1 for `blue1`).
+insert into public.commander_keys (commander_1, commander_2, color_identity, slug)
+select :c1, :c2, 23, 'serving-test-derived-pair'
+where not exists (select 1 from public.commander_keys where commander_1 = :c1 and commander_2 = :c2);
+select id as pair_key from public.commander_keys where commander_1 = :c1 and commander_2 = :c2 \gset
+delete from public.commander_stats where commander_key_id = :pair_key;
+insert into public.commander_stats (commander_key_id, deck_count, source_counts, bracket_counts) values (:pair_key, 7, '{}', '{}');
+delete from public.commander_card_stats where commander_key_id = :pair_key;
+insert into public.commander_card_stats (commander_key_id, card_id, decks_with, inclusion_shrunk, synergy, eligible_decks)
+values (:pair_key, :plain, 3, 0.4, 0.1, 5);
+update public.commander_sets set derived = true where commander_1 = :c1 and commander_2 = :c2;
+delete from public.commander_card_scores where commander_1 = :c1 and commander_2 = :c2;
+delete from public.commander_pair_pool where commander_1 = :c1 and commander_2 = :c2;
+delete from public.commander_card_priors where commander_1 = :c1 and commander_2 = :c2;
+insert into public.commander_pair_pool (commander_1, commander_2, card_id, pool_score)
+values (:c1, :c2, :plain, 0.9), (:c1, :c2, :blue1, 0.7), (:c1, :c2, :changer, 0.8), (:c1, :c2, :red, 0.95);
+insert into public.commander_card_priors (commander_1, commander_2, card_id, prior_rate, prior_decks)
+values (:c1, :c2, :blue2, 0.5, 300);
+update public.commander_sets set use_commander = true where commander_1 = :c1 and commander_2 = :c2;
+
+select chk('a derived pair draws on its stored pool, best first, in its colours',
+  (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], '{}', true, null, 10))
+    = array[:plain, :changer, :blue1]
+  and (select bool_and(pool = 'commander') from public.serving_add_pool(array[:c1, :c2], '{}', true, null, 10)));
+select chk('with the deck''s filters applied to it',
+  (select array_agg((card).card_id order by "position") from public.serving_add_pool(array[:c1, :c2], array[:plain], false, null, 10))
+    = array[:blue1]);
+select chk('its cards carry its own key''s counts and both partners'' totals, and no stored counts',
+  (select decks_with is null and commander_decks is null and own_decks_with = 3 and own_too_early = 2 and partner_decks_with = 40
+     from public.serving_cards(array[:c1, :c2], array[:plain])));
+select chk('a card its own key never ran counts 0 of its own',
+  (select own_decks_with = 0 and own_too_early = 0 and partner_decks_with = 1 from public.serving_cards(array[:c1, :c2], array[:blue1])));
+select chk('its EDHREC listings come from commander_card_priors, for any card',
+  (select prior_rate = 0.5::real and prior_decks = 300 and edhrec_decks = 1200 from public.serving_cards(array[:c1, :c2], array[:blue2]))
+  and (select prior_rate is null from public.serving_cards(array[:c1, :c2], array[:plain])));
+-- Back to the stored set the checks below read.
+update public.commander_sets set derived = false where commander_1 = :c1 and commander_2 = :c2;
+delete from public.commander_pair_pool where commander_1 = :c1 and commander_2 = :c2;
+delete from public.commander_card_priors where commander_1 = :c1 and commander_2 = :c2;
+insert into public.commander_card_scores (commander_1, commander_2, card_id, decks_with, commander_decks, pool_score, corpus_value, weight_scale)
+values (:c1, :c2, :plain, 10, 20, 0.9, 0.8, 1),
+       (:c1, :c2, :blue1, 5, 20, 0.7, 0.6, 1),
+       (:c1, :c2, :red, 5, 20, 0.95, 0.6, 1),
+       (:c1, :c2, :changer, 5, 20, 0.8, 0.6, 1),
+       (:c1, :c2, :banned, 5, 20, 0.99, 0.6, 1);
 
 -- === substitutes ===
 delete from public.card_substitutes where card_id = :blue1;
@@ -258,6 +311,8 @@ select must_fail('anon cannot run the baseline pool on its own',
 select must_fail('anon cannot run the partner pool on its own',
   format('select count(*) from public.serving_partner_pool(%s, %s, 23::smallint, ''{}'', true, null, 1)', :c1, :c2), 'permission denied');
 select must_fail('anon cannot write scores', 'delete from public.commander_card_scores', 'permission denied');
+select must_fail('anon cannot read a derived pair''s pool (T070)', 'select count(*) from public.commander_pair_pool', 'permission denied');
+select must_fail('anon cannot read a derived pair''s EDHREC listings', 'select count(*) from public.commander_card_priors', 'permission denied');
 select must_fail('anon cannot write substitutes', 'delete from public.card_substitutes', 'permission denied');
 select must_fail('anon cannot read combo pieces before T060 opens them', 'select count(*) from public.spellbook_combo_pieces', 'permission denied');
 select must_fail('anon cannot read the precompute state', 'select count(*) from public.precompute_state', 'permission denied');
@@ -289,6 +344,32 @@ reset role;
 select chk('the substitute depth is configured and private',
   (select (value ->> 'substitutesDepth')::int > 0 and not value ? 'substitutesOwn' and not is_public
      from public.app_config where key = 'precompute'));
+
+-- typical_deck_profile (T045): readable by anon, and each bucket is the deck-weighted average of the keys' curves.
+set local role anon;
+do $$
+declare
+  v jsonb := public.typical_deck_profile();
+begin
+  if not (v ? 'decks' and v ? 'curve') then
+    raise exception 'typical_deck_profile: expected decks and curve, got %', v;
+  end if;
+end $$;
+reset role;
+do $$
+declare
+  v jsonb := public.typical_deck_profile();
+  expected numeric;
+begin
+  select round(sum((s.curve_profile ->> '3')::numeric * s.deck_count) / nullif(sum(s.deck_count), 0), 2)
+    into expected
+  from public.commander_stats s
+  where s.curve_profile <> '{}'::jsonb and s.deck_count > 0 and s.curve_profile ? '3';
+  -- Keys without bucket 3 add decks but no cards, so the function's value is at most the expected one over keys with it.
+  if expected is not null and (v -> 'curve' ->> '3')::numeric > expected then
+    raise exception 'typical_deck_profile: bucket 3 is % but cannot exceed %', v -> 'curve' ->> '3', expected;
+  end if;
+end $$;
 
 select name, case when ok then 'PASS' else 'FAIL' end as result, detail from t order by ctid;
 select count(*) filter (where not ok) as failures, count(*) as total from t;

@@ -211,6 +211,26 @@ export async function loadCardFacts(sql: Sql): Promise<Map<number, CardFacts>> {
   return new Map(rows.map((r) => [r.id, { identity: r.color_identity, releaseMonth: r.release_month }]));
 }
 
+/**
+ * app_config.precompute.pairPoolDepth: how many of a derived pair's pool cards are stored (T070). Absent or 0 means no
+ * pair is derived, which is also how the worker behaves against a database the migration hasn't reached.
+ */
+export async function loadPairPoolDepth(sql: Sql): Promise<number> {
+  const [row] = await sql<{ depth: number | null }[]>`
+    select (value ->> 'pairPoolDepth')::integer as depth from public.app_config where key = 'precompute'
+  `;
+  return Math.max(row?.depth ?? 0, 0);
+}
+
+/** The cards an add pool may hold, under the filters every pool read applies (cards_rec_pool): name and colours by id. */
+export async function loadPoolCards(sql: Sql): Promise<Map<number, { name: string; identity: number }>> {
+  const rows = await sql<{ id: number; name: string; color_identity: number }[]>`
+    select c.id, c.name, c.color_identity from public.cards c
+    where c.deleted_at is null and c.legal_commander = 'legal' and not c.is_basic_land
+  `;
+  return new Map(rows.map((r) => [r.id, { name: r.name, identity: r.color_identity }]));
+}
+
 /** corpus_identity_stats: decks per month for each colour identity. */
 export async function loadIdentityMonths(sql: Sql): Promise<Map<number, Record<string, number>>> {
   const rows = await sql<{ color_identity: number; deck_months: Record<string, number> }[]>`

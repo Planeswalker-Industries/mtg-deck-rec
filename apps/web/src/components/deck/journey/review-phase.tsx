@@ -2,7 +2,7 @@
 
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary } from "@mtg/core/contract";
-import { CURVE_TOP_MANA_VALUE, deckDiff, deckSize, deckStats, type DeckStats } from "@mtg/core/journey";
+import { deckDiff, deckSize, deckStats, type DeckStats } from "@mtg/core/journey";
 import type { DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -14,48 +14,7 @@ import type { DeckJourney } from "./use-deck-journey";
 /** Average mana value is shown to one decimal: finer than that is noise at deck scale. */
 const MANA_VALUE_DECIMALS = 1;
 
-/**
- * The mana curve as bars, one per mana value, the last collecting everything at CURVE_TOP_MANA_VALUE and above. One
- * series per chart (before and after are separate charts on the same scale), so the heading names it and there's no
- * legend. Each bar carries its count as a tooltip, and a table carries the same numbers for screen readers.
- */
-function Curve({ curve, max, label, tone }: { curve: number[]; max: number; label: string; tone: "before" | "after" }) {
-  const barLabel = (i: number) => (i === CURVE_TOP_MANA_VALUE ? `${i}+` : String(i));
-  return (
-    <figure className="flex flex-col gap-1">
-      <div aria-hidden className="flex h-20 items-end gap-0.5 border-b border-seam">
-        {curve.map((count, i) => (
-          <div key={i} className="group relative flex h-full flex-1 items-end justify-center" title={`Mana value ${barLabel(i)}: ${count}`}>
-            <div
-              className={cn("w-full rounded-t-[4px]", tone === "after" ? "bg-foreground/80" : "bg-muted-foreground/45")}
-              style={{ height: max > 0 ? `${(count / max) * 100}%` : 0 }}
-            />
-          </div>
-        ))}
-      </div>
-      <div aria-hidden className="flex gap-0.5 text-center text-xs text-muted-foreground font-mono">
-        {curve.map((_, i) => (
-          <span key={i} className="flex-1">
-            {barLabel(i)}
-          </span>
-        ))}
-      </div>
-      <table className="sr-only">
-        <caption>{label} mana curve</caption>
-        <tbody>
-          {curve.map((count, i) => (
-            <tr key={i}>
-              <th scope="row">Mana value {barLabel(i)}</th>
-              <td>{count}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </figure>
-  );
-}
-
-function StatsColumn({ title, stats, size, curveMax, tone }: { title: string; stats: DeckStats; size: number; curveMax: number; tone: "before" | "after" }) {
+function StatsColumn({ title, stats, size }: { title: string; stats: DeckStats; size: number }) {
   const rows: [string, string][] = [
     ["Cards", String(size)],
     ["Lands", String(stats.lands)],
@@ -71,15 +30,6 @@ function StatsColumn({ title, stats, size, curveMax, tone }: { title: string; st
           <div key={k} className="contents">
             <dt className="text-muted-foreground">{k}</dt>
             <dd className={cn("text-right font-mono", k === "Cards" && size !== COMMANDER_DECK_SIZE && "text-cut")}>{v}</dd>
-          </div>
-        ))}
-      </dl>
-      <Curve curve={stats.curve} max={curveMax} label={title} tone={tone} />
-      <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-xs">
-        {stats.types.map((t) => (
-          <div key={t.label} className="contents">
-            <dt className="text-muted-foreground">{t.label}</dt>
-            <dd className="text-right font-mono">{t.count}</dd>
           </div>
         ))}
       </dl>
@@ -117,7 +67,6 @@ export function ReviewPhase({
 
   const before = deckStats(journey.before);
   const after = deckStats(journey.after);
-  const curveMax = Math.max(...before.curve, ...after.curve);
   const beforeSize = deckSize(state.base);
   const afterSize = deckSize(deck);
   const diff = deckDiff(state.base, deck);
@@ -172,8 +121,8 @@ export function ReviewPhase({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <StatsColumn title="Before" stats={before} size={beforeSize} curveMax={curveMax} tone="before" />
-        <StatsColumn title="After" stats={after} size={afterSize} curveMax={curveMax} tone="after" />
+        <StatsColumn title="Before" stats={before} size={beforeSize} />
+        <StatsColumn title="After" stats={after} size={afterSize} />
       </div>
       {asOf && <p className="-mt-2 text-xs text-muted-foreground">Prices are Scryfall estimates from {formatAsOf(asOf)}.</p>}
 

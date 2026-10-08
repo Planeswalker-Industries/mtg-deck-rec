@@ -1,7 +1,7 @@
 # Unified scoring design
 
-Status: **design, revised 2026-10-05** after the owner's review; **built 2026-10-06 on `feat/scoring-pipeline`** (PR #139)
-except where [`../tasks.md`](../tasks.md) (T053–T068) says otherwise. Two known gaps: cuts still rank by the
+Status: **design, revised 2026-10-05** after the owner's review; **built and released 2026-10-07** (PR #139, released in #140)
+except where [`../tasks.md`](../tasks.md) (T066–T069) says otherwise. Two known gaps: cuts still rank by the
 hand-weighted cut score (`cut.ts`), not by m(c | D − c), and the land count has no EDHREC step (T068).
 
 **What it does.** One scoring engine serves every recommendation the app makes, across every data source: Archidekt

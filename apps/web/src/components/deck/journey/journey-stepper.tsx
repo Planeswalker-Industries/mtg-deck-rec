@@ -91,7 +91,10 @@ export function PhaseIntro({ title, children, brief }: { title: string; children
   );
 }
 
-/** A bar that stays at the bottom of the screen while a list scrolls, with the step's Next. */
+/**
+ * A bar that stays at the bottom of the screen while a list scrolls, with the step's Next: above the Deck stats footer
+ * where that docks (--deck-stats-dock).
+ */
 export function NextBar({
   label,
   onNext,
@@ -105,7 +108,7 @@ export function NextBar({
   children?: ReactNode;
 }) {
   return (
-    <div className="sticky bottom-0 z-20 -mx-4 flex items-center justify-between gap-3 border-t border-seam bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border">
+    <div className="sticky bottom-[var(--deck-stats-dock,0px)] z-20 -mx-4 flex items-center justify-between gap-3 border-t border-seam bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border">
       <span className="text-sm text-muted-foreground font-mono">{children}</span>
       <Button type="button" onClick={onNext} disabled={disabled}>
         {label}

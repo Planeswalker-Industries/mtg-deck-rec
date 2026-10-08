@@ -42,6 +42,9 @@
   --color-cut: var(--cut);
   --color-add: var(--add);
   --color-replace: var(--replace);
+  --color-stat-ok: var(--stat-ok);
+  --color-stat-mild: var(--stat-mild);
+  --color-stat-urgent: var(--stat-urgent);
 
   /* Card-type ring: mid-chroma, near-equal lightness, deliberately duller than --cut/--add/--replace
      so the eight slices separate without competing with the primary or the job colors.
@@ -116,6 +119,11 @@
   --cut: #e08a7a;
   --add: #8cc49a;
   --replace: #c7a2da;
+
+  /* Deck stats levels (T045): the theme's own status colours, always with an icon and a word. */
+  --stat-ok: var(--add);
+  --stat-mild: var(--gc);
+  --stat-urgent: var(--cut);
 
   /* Card-type ring colors, in the DeckOverview legend order: land, creature, instant, sorcery,
      artifact, enchantment, planeswalker, battle. */
@@ -218,6 +226,27 @@
   --page-column: calc(50vw + 36rem);
   /* feTurbulence noise at 4% opacity, tiled. */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 0.9  0 0 0 0 0.8  0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* The Deck stats footer (T045) docks at the foot of the window below lg in the deck tool's Upgrade round and below xl
+   in the Deckbuilder (its data-deck-stats-dock names which). The page reserves its height below everything, the site
+   footer included, so nothing ends behind it. --deck-stats-dock-height is the bar's height without the safe area; the
+   deck tool and Deckbuilder also set --deck-stats-dock (height plus safe area, 0 where the rail shows) for the swipe
+   cards, the sticky Next bars and the Deckbuilder's scrolling halves. The widths are Tailwind's lg and xl. */
+:root {
+  --deck-stats-dock-height: 3.5rem;
+}
+
+@media (width < 64rem) {
+  body:has([data-deck-stats-dock="lg"]) {
+    padding-bottom: calc(var(--deck-stats-dock-height) + env(safe-area-inset-bottom));
+  }
+}
+
+@media (width < 80rem) {
+  body:has([data-deck-stats-dock="xl"]) {
+    padding-bottom: calc(var(--deck-stats-dock-height) + env(safe-area-inset-bottom));
+  }
 }
 
 @utility page-column {

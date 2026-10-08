@@ -337,6 +337,11 @@ tag similarity while the player waits.
 - **A pair no key knows is exact.** `partner_card_totals` holds each partner-capable commander's counts over all its
   keys at full weight; the pair's sums are the two partners' totals at `partnerPoolWeight`, which is what
   `pickCorpusSources` does, rather than an approximation from each partner's own rows.
+- **Pairs under `minDecks` are derived (T070, 2026-10-08).** Scoring a keyed pair that borrows stored every card its
+  partners' other decks ran, so each partner's decks were copied once per pairing (3.4M of 5.76M rows locally). Such a
+  pair now stores only its pool order (`commander_pair_pool`, the first 650 eligible cards) and its EDHREC listings
+  (`commander_card_priors`); the request derives its counts from its own key's `commander_card_stats` and both
+  partners' `partner_card_totals` (`derivedPairRowSums`), so the rankings are those of the stored rows.
 - **The add pool keeps `rec_add_candidates`' order** (`pool_score`), so the lists match; ordering it by the stored final
   corpus score is a scoring change for T058.
 - **The EDHREC prior is on (T061, 2026-10-06), with EDHREC-only rows for single commanders.** Every single commander

@@ -106,5 +106,9 @@
  * kind 'shown', its cards in order, under a client-generated batch id) and each card from it taken or passed on
  * ('accepted', 'declined', with its position and score components), for adds, cuts, swaps and builds. Keyed per
  * visitor like swap votes, never read back. Additive.
+ *
+ * v26 (2026-10-08): deck stats (T045). DeckAnalysis gains `statTargets` (StatTargets: lands, basic lands, role and
+ * curve targets blended toward typical decks, who they describe, and the bracket limits) and `cardRoles` (the tracked
+ * roles of the deck's cards); CardSummary gains optional `roles`, set on suggestion cards. Additive for readers.
  */
-export const CONTRACT_VERSION = 25;
+export const CONTRACT_VERSION = 26;
