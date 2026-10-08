@@ -1,8 +1,11 @@
 "use client";
 
 import type { AddSuggestion, CardSummary } from "@mtg/core/contract";
+import { isFrontLand } from "@mtg/core/scoring";
+import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
+import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
 import { OwnedBadge } from "../card-label";
 import { PanelError, PanelLoading } from "../panel-state";
@@ -13,6 +16,12 @@ import type { DeckJourney } from "./use-deck-journey";
 
 /** How many suggestions the list view shows at once; the rest follow as these are added or skipped. */
 const LIST_SUGGESTIONS = 18;
+
+/** What "Find …" in Deck stats narrowed Add to. */
+export type AddFilter = { kind: "role"; roleId: string; label: string } | { kind: "lands" };
+
+const matches = (filter: AddFilter, card: CardSummary) =>
+  filter.kind === "lands" ? isFrontLand(card.typeLine) : (card.roles ?? []).includes(filter.roleId);
 
 /** Why a suggestion is here, in one or two short lines. */
 function Why({ suggestion }: { suggestion: AddSuggestion }) {
@@ -33,8 +42,20 @@ function Why({ suggestion }: { suggestion: AddSuggestion }) {
  * Add: fill the slots the cuts opened. Suggestions come best first; adding one asks for the list again, because the
  * card just added may fill the gap the next ones were suggested for. Skipping just moves on. The player can stop with
  * slots still open; Review then says the deck is short.
+ *
+ * Deck stats can narrow the list to one role or to lands (`filter`); "Show all" puts the whole list back.
  */
-export function AddPhase({ journey, view }: { journey: DeckJourney; view: "swipe" | "list" }) {
+export function AddPhase({
+  journey,
+  view,
+  filter,
+  onClearFilter,
+}: {
+  journey: DeckJourney;
+  view: "swipe" | "list";
+  filter: AddFilter | null;
+  onClearFilter: () => void;
+}) {
   const { state: addState, queue, landsShort, accept, pass, undo } = journey.add;
   const adds = journey.state?.adds ?? [];
   const open = journey.openSlots;
@@ -42,6 +63,8 @@ export function AddPhase({ journey, view }: { journey: DeckJourney; view: "swipe
   const slots = open + adds.length;
   const toReplace = () => journey.goTo("replace");
   const asOf = queue.find((s) => s.card.price)?.card.price?.asOf;
+  const shown = filter ? queue.filter((s) => matches(filter, s.card)) : queue;
+  const filterName = filter ? (filter.kind === "lands" ? "lands" : filter.label.toLowerCase()) : null;
 
   const intro = (
     <PhaseIntro
@@ -53,7 +76,6 @@ export function AddPhase({ journey, view }: { journey: DeckJourney; view: "swipe
         : `${open} of ${slots} slot${slots === 1 ? "" : "s"} open. Cards decks like yours run and this one doesn't, best first${landsShort ? ", lands first while the mana base is short" : ""}. Each card you add changes what's suggested next.`}
     </PhaseIntro>
   );
-
 
   const body = (() => {
     if (open === 0) {
@@ -76,6 +98,15 @@ export function AddPhase({ journey, view }: { journey: DeckJourney; view: "swipe
         </SwipeDone>
       );
     }
+    if (shown.length === 0) {
+      return (
+        <SwipeDone message={`No ${filterName} in the suggestions right now.`}>
+          <Button type="button" size="lg" onClick={onClearFilter}>
+            Show all
+          </Button>
+        </SwipeDone>
+      );
+    }
 
     if (view === "list") {
       return (
@@ -83,12 +114,12 @@ export function AddPhase({ journey, view }: { journey: DeckJourney; view: "swipe
           zoomable
           label="Cards to add"
           onSelect={(card: CardSummary) => accept(card)}
-          items={queue.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, caption: <Why suggestion={s} /> }))}
+          items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, caption: <Why suggestion={s} /> }))}
         />
       );
     }
 
-    const next = queue[0]!;
+    const next = shown[0]!;
     return (
       <SingleSwipe
         card={next.card}
@@ -113,6 +144,14 @@ export function AddPhase({ journey, view }: { journey: DeckJourney; view: "swipe
   return (
     <div className="flex flex-col gap-4">
       {intro}
+      {filter && open > 0 && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          Showing {filterName} only.
+          <button type="button" className={cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer")} onClick={onClearFilter}>
+            Show all
+          </button>
+        </p>
+      )}
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}
       {asOf && open > 0 && <p className="text-xs text-muted-foreground">Prices are Scryfall estimates from {formatAsOf(asOf)}.</p>}

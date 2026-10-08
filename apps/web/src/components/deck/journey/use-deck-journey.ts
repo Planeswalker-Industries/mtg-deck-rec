@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AddResult,
   AddSuggestion,
@@ -10,6 +10,7 @@ import type {
   CutResult,
   CutSuggestion,
   DeckAnalysis,
+  DeckInput,
   RecContext,
   ResolvedLine,
 } from "@mtg/core/contract";
@@ -62,6 +63,9 @@ interface Round {
   check: BracketCheck | null;
 }
 
+/** No card ids: the over-bracket set before any add, kept as one value so its readers see a stable reference. */
+const NO_IDS: ReadonlySet<CardId> = new Set();
+
 const isLand = (card: CardSummary) => /\bLand\b/.test(card.typeLine.split(" // ")[0] ?? card.typeLine);
 
 /**
@@ -82,6 +86,13 @@ interface ListFor<T> {
 interface ReplaceList extends ListFor<CutResult> {
   candidates: Map<CardId, Candidates>;
 }
+
+/** A deck's main cards as entries, with the cards the round has seen; cards it hasn't are left out. */
+const entriesFor = (deck: DeckInput | null, cards: ReadonlyMap<CardId, CardSummary>): DeckEntry[] =>
+  (deck?.cards ?? []).flatMap((c) => {
+    const card = c.section === "main" ? cards.get(c.cardId) : undefined;
+    return card ? [{ card, quantity: c.quantity }] : [];
+  });
 
 const toAsync = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): Async<T> =>
   r.ok ? { status: "ready", data: r.data } : { status: "error", message: r.error.message };
@@ -134,6 +145,11 @@ export function useDeckJourney({
   const cutBatch = useRef<{ from: CutResult; batch: RecBatch } | null>(null);
   const replaceRequest = useRef(0);
   const checkRequest = useRef(0);
+  /**
+   * Cards added this round whose suggestion would complete a combo above the bracket (T045): Deck stats counts them
+   * against the bracket while they are in the deck. Kept with the round it belongs to, so a new round starts empty.
+   */
+  const [overBracket, setOverBracket] = useState<{ round: number; ids: ReadonlySet<CardId> } | null>(null);
 
   // A new analysis starts a new round; the same deck read again keeps it, with the new reading (commander data after a
   // lookup). Adjusted during render rather than in an effect, so no frame shows the old round.
@@ -158,28 +174,36 @@ export function useDeckJourney({
   const add = current && addFor?.round === current.id ? addFor.value : idle;
   const replace = current && replaceFor?.round === current.id ? replaceFor.value : idle;
 
-  // Every card the round has seen, for names and images of cards that are not in the pasted list.
-  const cards = new Map<CardId, CardSummary>();
-  for (const { resolution } of lines) if (resolution.status === "resolved") cards.set(resolution.card.id, resolution.card);
-  for (const c of analysis?.commanderKey.commanders ?? []) cards.set(c.id, c);
-  if (state) {
-    for (const c of [...state.cuts, ...state.adds, ...state.swaps.flatMap((s) => [s.target, s.replacement])]) cards.set(c.id, c);
-  }
+  const overBracketIds = current && overBracket?.round === current.id ? overBracket.ids : NO_IDS;
 
-  const deck = state ? workingDeck(state) : null;
+  // Every card the round has seen, for names and images of cards that are not in the pasted list. Kept between renders
+  // while its inputs stand, so what is built on it (the deck as entries, which Deck stats re-tallies) keeps too.
+  const cards = useMemo(() => {
+    const seen = new Map<CardId, CardSummary>();
+    for (const { resolution } of lines) if (resolution.status === "resolved") seen.set(resolution.card.id, resolution.card);
+    for (const c of analysis?.commanderKey.commanders ?? []) seen.set(c.id, c);
+    if (state) {
+      for (const c of [...state.cuts, ...state.adds, ...state.swaps.flatMap((s) => [s.target, s.replacement])]) seen.set(c.id, c);
+    }
+    return seen;
+  }, [lines, analysis, state]);
+
+  const deck = useMemo(() => (state ? workingDeck(state) : null), [state]);
   const workingContext = context && deck ? { ...context, deck } : null;
 
-  const entriesOf = (d: typeof deck): DeckEntry[] =>
-    (d?.cards ?? []).flatMap((c) => {
-      const card = c.section === "main" ? cards.get(c.cardId) : undefined;
-      return card ? [{ card, quantity: c.quantity }] : [];
-    });
+  const entriesOf = (d: typeof deck): DeckEntry[] => entriesFor(d, cards);
   /** Copies of lands in a deck. */
   const lands = (d: typeof deck) => entriesOf(d).filter((e) => isLand(e.card)).reduce((n, e) => n + e.quantity, 0);
-  const commanders = (analysis?.deck.commanders ?? []).flatMap((id) => {
-    const card = cards.get(id);
-    return card ? [{ card, quantity: 1 }] : [];
-  });
+  const commanders = useMemo(
+    () =>
+      (analysis?.deck.commanders ?? []).flatMap((id) => {
+        const card = cards.get(id);
+        return card ? [{ card, quantity: 1 }] : [];
+      }),
+    [analysis, cards],
+  );
+  /** The deck as it stands, as entries, commanders first: one value per change, since Deck stats re-tallies on a new one. */
+  const after = useMemo(() => [...commanders, ...entriesFor(deck, cards)], [commanders, deck, cards]);
 
   /** Cards to add for the deck as `next` leaves it, leaving out the ones the player passed on this round. */
   async function loadAdds(next: JourneyState, ctx: RecContext | null = context): Promise<void> {
@@ -417,6 +441,11 @@ export function useDeckJourney({
   /** Adding recomputes the list: the new card may fill the gap the next ones were suggested for. */
   function acceptAdd(card: CardSummary) {
     recordAddDecision(card, true);
+    // An add that completes a combo above the bracket counts against it while it stays (Deck stats checks the deck).
+    const roundId = current?.id;
+    if (roundId !== undefined && addQueue.find((s) => s.card.id === card.id)?.completesOverBracket?.length) {
+      setOverBracket((prev) => ({ round: roundId, ids: new Set([...(prev?.round === roundId ? prev.ids : []), card.id]) }));
+    }
     const next = apply({ type: "add", card });
     if (next && openSlots(next) > 0) void loadAdds(next);
   }
@@ -491,7 +520,9 @@ export function useDeckJourney({
     cards,
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
     before: [...commanders, ...entriesOf(analysis?.deck ?? null)],
-    after: [...commanders, ...entriesOf(deck)],
+    after,
+    /** Cards added this round that complete a combo above the bracket; Deck stats counts the ones still in the deck. */
+    overBracketIds,
     openSlots: state ? openSlots(state) : 0,
     cut: { recommended: recommendedCuts, undecided: undecidedCuts, slotsAfter: slotsAfterCuts, isMarked: isMarkedForCut, toggle: toggleCut, finish: finishCuts },
     add: { state: add, queue: addQueue, landsShort, accept: acceptAdd, pass: passAdd, undo: undoAdd },

@@ -92,7 +92,7 @@ export function SingleSwipe({
         <SideButton kind="pass" icon={passIcon} label={passLabel} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
         {/* Keyed by card: reusing the card that just flew off would leave it off-screen and still marked as leaving. */}
         <SwipeCard key={card.id} ref={handle} onDrag={setDrag} canSwipe={canSwipe} onSwipe={swiped}>
-          <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100lvh_-_31.25rem)*0.72),17rem)] max-w-full">
+          <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100lvh_-_31.25rem_-_var(--deck-stats-dock,0px))*0.72),17rem)] max-w-full">
             <ZoomableCard card={card}>
               <CardImage card={card} variant="large" alt={card.name} sizes="272px" eager />
             </ZoomableCard>
