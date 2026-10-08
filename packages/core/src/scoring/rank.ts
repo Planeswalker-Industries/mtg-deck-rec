@@ -554,6 +554,8 @@ export interface SwapPoolCandidate {
   functionalTwin: boolean;
   matchedTags: TagMatch[];
   rates: CardPlayRates | null;
+  /** The candidate's tracked role ids, for the roles its suggestion card carries (T045). */
+  roles?: readonly string[];
 }
 
 /** Everything a swap needs that doesn't depend on the rest of the deck, so it can be shared across decks and cached. */

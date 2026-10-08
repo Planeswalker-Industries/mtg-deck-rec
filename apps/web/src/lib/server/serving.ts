@@ -543,6 +543,7 @@ export async function loadServedSwapPool(
             return [{ targetTag, candidateTag, via: m.viaTagId ? (tags.get(m.viaTagId) ?? null) : null, distance: m.distance }];
           }),
           rates: cards.rates.get(cardId) ?? null,
+          roles: cards.roles.get(cardId) ?? [],
         },
       ];
     }),

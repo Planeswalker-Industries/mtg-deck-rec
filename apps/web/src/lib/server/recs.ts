@@ -21,7 +21,7 @@ import { availabilityFor, loadStandIns } from "./collection-availability";
 import { cachedConfig } from "./config-cache";
 import { commanderKeyCounts } from "./corpus";
 import { loadScoringConfig } from "./scoring-config";
-import { loadCardRoles, loadDeckAffinity, loadServedAdds, loadServedBuild, loadServedCuts, loadServedSwapPool } from "./serving";
+import { loadDeckAffinity, loadServedAdds, loadServedBuild, loadServedCuts, loadServedSwapPool } from "./serving";
 import type { PublicClient } from "./supabase";
 
 /**
@@ -97,10 +97,10 @@ export function loadRoleTags(db: PublicClient): Promise<Map<string, TagRef>> {
 const withRoles = <T extends { card: CardSummary }>(items: readonly T[], roles: ReadonlyMap<number, readonly string[]>): T[] =>
   items.map((item) => ({ ...item, card: { ...item.card, roles: [...(roles.get(item.card.id) ?? [])] } }));
 
-/** A swap result with each suggestion's roles: one small read after the ranking, since the pool carries none. */
-export async function swapWithRoles(db: PublicClient, result: SwapResult): Promise<SwapResult> {
-  const listed = [...result.suggestions, ...(result.buyList ?? [])];
-  const roles = await loadCardRoles(db, listed.map((s) => s.card.id));
+/** A swap result with each suggestion's roles, taken from the pools' candidates (the serving read already holds them). */
+export function swapWithRoles(result: SwapResult, ...pools: readonly (SwapPool | null)[]): SwapResult {
+  const roles = new Map<number, readonly string[]>();
+  for (const pool of pools) for (const c of pool?.candidates ?? []) if (!roles.has(c.cardId)) roles.set(c.cardId, c.roles ?? []);
   return {
     ...result,
     suggestions: withRoles(result.suggestions, roles),
@@ -172,7 +172,11 @@ export async function getSwapSuggestions(
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
   const excluded = bracketExclusions({ ...bracket, combos: [] }, context.bracket);
-  return swapWithRoles(db, rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open, excluded, affinity }));
+  return swapWithRoles(
+    rankSwaps(pool, { context, limit, ownedBoost, scoring, availability: available, standIns, buyPool: open, excluded, affinity }),
+    pool,
+    open,
+  );
 }
 
 export async function getCutSuggestions(

@@ -87,7 +87,10 @@ export async function getCachedSwapSuggestions(
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
   const excluded = bracketExclusions({ ...bracket, combos: [] }, context.bracket);
-  return swapWithRoles(db, rankSwaps(pool, { context, limit: limit ?? DEFAULT_SWAP_LIMIT, ownedBoost, scoring, availability: available, standIns, excluded, affinity }));
+  return swapWithRoles(
+    rankSwaps(pool, { context, limit: limit ?? DEFAULT_SWAP_LIMIT, ownedBoost, scoring, availability: available, standIns, excluded, affinity }),
+    pool,
+  );
 }
 
 /**
