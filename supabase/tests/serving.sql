@@ -345,6 +345,32 @@ select chk('the substitute depth is configured and private',
   (select (value ->> 'substitutesDepth')::int > 0 and not value ? 'substitutesOwn' and not is_public
      from public.app_config where key = 'precompute'));
 
+-- typical_deck_profile (T045): readable by anon, and each bucket is the deck-weighted average of the keys' curves.
+set local role anon;
+do $$
+declare
+  v jsonb := public.typical_deck_profile();
+begin
+  if not (v ? 'decks' and v ? 'curve') then
+    raise exception 'typical_deck_profile: expected decks and curve, got %', v;
+  end if;
+end $$;
+reset role;
+do $$
+declare
+  v jsonb := public.typical_deck_profile();
+  expected numeric;
+begin
+  select round(sum((s.curve_profile ->> '3')::numeric * s.deck_count) / nullif(sum(s.deck_count), 0), 2)
+    into expected
+  from public.commander_stats s
+  where s.curve_profile <> '{}'::jsonb and s.deck_count > 0 and s.curve_profile ? '3';
+  -- Keys without bucket 3 add decks but no cards, so the function's value is at most the expected one over keys with it.
+  if expected is not null and (v -> 'curve' ->> '3')::numeric > expected then
+    raise exception 'typical_deck_profile: bucket 3 is % but cannot exceed %', v -> 'curve' ->> '3', expected;
+  end if;
+end $$;
+
 select name, case when ok then 'PASS' else 'FAIL' end as result, detail from t order by ctid;
 select count(*) filter (where not ok) as failures, count(*) as total from t;
 
