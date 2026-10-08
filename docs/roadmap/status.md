@@ -44,7 +44,7 @@ Where the project stands, and why things are the way they are.
 | 2026-10-06 | #135, #138 | v19 | Data layers (T053), Spellbook's raw tables, the collator (T054), the VPS worker (T066), crawl growth (T056), the precompute worker and serving reads (T055), substitutes per colour identity |
 | 2026-10-07 | #140 | v19 → v25 | The scoring pipeline (PR #139, T057–T065) with its review fixes |
 
-The Kitchen Table lane (PR #115) is the current design direction (walnut surfaces, one sleeve-blue accent, Bricolage Grotesque, the 12–60 px type scale, 44 px phone touch targets, one look per kind of control; journey steps shown as Cut, Add, Swap, Done). The spec is the UI section of `apps/web/AGENTS.md`. Left over: the How it works recordings (T049), starting from one commander (T050), local e2e failures (T051).
+The Kitchen Table lane (PR #115) is the current design direction (walnut surfaces, one sleeve-blue accent, Bricolage Grotesque, the 12–60 px type scale, 44 px phone touch targets, one look per kind of control; journey steps shown as Cut, Add, Swap, Done). The spec is the UI section of `apps/web/AGENTS.md`. Deck stats (T045) shows lands, roles, curve and bracket against the commander's decks, docked on phones and a rail on wide screens. Left over: the How it works recordings (T049), starting from one commander (T050), local e2e failures (T051).
 
 ## Data pipeline and scoring (released 2026-10-07)
 

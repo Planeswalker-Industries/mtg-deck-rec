@@ -146,7 +146,7 @@ Server Actions run one at a time per page. Every swipe in the Replace phase fire
 
 ### T045: Design the deck analysis display
 
-**Priority:** MEDIUM | **Area:** Product / UX | **Status:** Design agreed 2026-10-08: [`roadmap/deck-stats.md`](roadmap/deck-stats.md) (a "Deck stats" footer on phones, a side rail on wide screens); POC next
+**Priority:** MEDIUM | **Area:** Product / UX | **Status:** P1 built 2026-10-08 on `feat/deck-analysis-display`; owner sign-off on screenshots open. Design: [`roadmap/deck-stats.md`](roadmap/deck-stats.md) (a "Deck stats" footer on phones, a side rail on wide screens)
 
 First part of the deck analysis work (T046, T048, and the combos and bracket signals in T069), and it comes first: decide where and how the new numbers are shown before building any of them. Came out of a look at EDHcheck (edhcheck.com, 2026-09-28) with the sample Liesa deck. Its functions are solid (mana simulation, per-card cast rates, combo detection, bracket explorer), but the page is a wall of panels, invented composite scores and upsells. We want the useful numbers, shown only where they change what the player does next.
 
@@ -177,6 +177,8 @@ First part of the deck analysis work (T046, T048, and the combos and bracket sig
 
 **Blocked by:** T045 (display)
 
+Placement: Deck stats ([`roadmap/deck-stats.md`](roadmap/deck-stats.md)).
+
 Tell the player whether their lands can cast their spells: coloured sources against Frank Karsten's thresholds for each card's pips and turn, a list of the cards least likely to be castable on curve (worst first), and a plain "N sources short on black". This is deterministic arithmetic with no AI. It also fills a gap in Add, which ranks lands by play rate rather than by what the mana base lacks.
 
 **Files:**
@@ -203,6 +205,10 @@ Tell the player whether their lands can cast their spells: coloured sources agai
 **Priority:** MEDIUM | **Area:** Frontend / Core | **Status:** Not started
 
 **Blocked by:** T045 (display)
+
+Role counts now show in Deck stats (P1); what remains is P2 types.
+
+Placement: Deck stats ([`roadmap/deck-stats.md`](roadmap/deck-stats.md)).
 
 Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles next to what decks for this commander usually run ("12 ramp; Liesa decks average 10"). EDHcheck shows only generic percentages (ramp 8.8%, draw 19.1%); comparing against the commander's own decks is something only our corpus can do.
 
@@ -431,7 +437,7 @@ UI for what T059, T060, T063 and T065 built, gathered here when those closed. Sh
 
 - **Collection mode (T059):** the built control on the deck page (`set_deck_built`), the buy list and conflict tags in the deck tool, a stand-in's "stands in for" line, browser collections sending quantities, then the deck tool's default from 'first' to 'only' (only once the buy list shows, or 'only' hides every unowned card with nothing in their place; T037)
 - **Swap with nothing owned:** the swipe rater says "No replacements do the same job" for every empty list; the server already says why (`SwapResult.emptyReason`: `NOTHING_OWNED_FITS`, `NO_TAGS_ON_TARGET`, `NO_CANDIDATES`), and with a collection the buy list is where to send the player
-- **Bracket rules and combos (T060):** the "complete a combo" group, `completesOverBracket` on a suggestion, `DeckAnalysis.combos` and `bracketSignals` (placement per T045); credit and link Commander Spellbook wherever combos show
+- **Bracket rules and combos (T060):** the "complete a combo" group, `completesOverBracket` on a suggestion, `DeckAnalysis.combos` and `bracketSignals` (placement: Deck stats, [`roadmap/deck-stats.md`](roadmap/deck-stats.md)); credit and link Commander Spellbook wherever combos show
 - **Build mode (T063):** the commander and bracket picker that starts a build (T050's picker on `/deck?start=build`, which opens an empty deckbuilder today), the built deck grouped like Add with each card's score and origin, the basics and land target, the feasibility report ("Your collection fills 68 of 99. Card advantage is 9 short") with the value-fill button, its running total and price date, "complete a combo" entries, the build's bracket estimate, and saving the result as a deck
 - **Accept rate (T065):** a built deck records as mode `build` once build mode has a screen
 
