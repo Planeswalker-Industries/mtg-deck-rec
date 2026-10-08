@@ -12,10 +12,14 @@ const rules: BracketRules = {
   extraTurnLoopFromBracket: 4,
 };
 
-const corpus = (decks: number, over: Partial<RankCorpus> = {}): RankCorpus => ({
+type StatCorpus = RankCorpus & { ownDeckCount: number; borrowedDeckCount: number };
+
+const corpus = (decks: number, over: Partial<StatCorpus> = {}): StatCorpus => ({
   // Only the thresholds matter here: share 0 under 20 decks, rising to 1 at 100.
   settings: { minDecks: 20, fullDecks: 100 } as RankCorpus['settings'],
   confidence: 'full',
+  ownDeckCount: decks,
+  borrowedDeckCount: 0,
   effectiveDeckCount: decks,
   roleProfile: { ramp: 12 },
   curveProfile: { '1': 9, '2': 19, '3': 15 },
@@ -25,7 +29,7 @@ const corpus = (decks: number, over: Partial<RankCorpus> = {}): RankCorpus => ({
   ...over,
 });
 
-const input = (c: RankCorpus | null) => ({
+const input = (c: StatCorpus | null) => ({
   corpus: c,
   genericRoles: [{ roleId: 'ramp', label: 'Ramp', target: 10 }],
   typicalCurve: { '0': 0.1, '1': 8, '2': 12, '3': 11, '4': 8, '5': 6, '6': 3, '7': 2 },
@@ -59,6 +63,16 @@ describe('statTargetsFor', () => {
     expect(t.label).toBe('Liesa decks (60), filled out with typical decks');
     expect(t.lands).toBe(34.5);
     expect(t.roles[0]!.target).toBe(11);
+  });
+  it('names own decks only, and says when partner decks were borrowed', () => {
+    // 40 own decks and 80 borrowed at 0.25: 60 effective, share 0.5.
+    const pooled = corpus(60, { ownDeckCount: 40, borrowedDeckCount: 80 });
+    const t = statTargetsFor({ ...input(pooled), commanderLabel: 'Tymna & Thrasios' });
+    expect(t.source).toBe('blended');
+    expect(t.label).toBe('Tymna & Thrasios decks (40) with partner decks, filled out with typical decks');
+    expect(t.lands).toBe(34.5); // the blend still reads the effective count
+    const full = statTargetsFor({ ...input(corpus(120, { ownDeckCount: 70, borrowedDeckCount: 200 })), commanderLabel: 'Tymna & Thrasios' });
+    expect(full.label).toBe('Tymna & Thrasios decks (70) with partner decks');
   });
   it('never reads the EDHREC prior', () => {
     expect(statTargetsFor(input(corpus(102))).roles[0]!.target).not.toBe(99);

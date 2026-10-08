@@ -112,10 +112,14 @@ function ViewToggle({ view, onChange }: { view: ReviewView; onChange: (view: Rev
 }
 
 /**
- * The Deck stats footer's height on phones, which the swipe cards size around (T045), and none from lg, where the
- * readout is a rail. A class rather than an inline style, so the lg value can override it.
+ * The Deck stats footer's height below lg (its bar, --deck-stats-dock-height in globals.css, plus the safe area), which
+ * the swipe cards and the sticky Next bars sit above (T045), and none from lg, where the readout is a rail. A class
+ * rather than an inline style, so the lg value can override it.
  */
-const DECK_STATS_DOCK = "[--deck-stats-dock:calc(3.5rem_+_env(safe-area-inset-bottom))] lg:[--deck-stats-dock:0px]";
+const DECK_STATS_DOCK =
+  "[--deck-stats-dock:calc(var(--deck-stats-dock-height)_+_env(safe-area-inset-bottom))] lg:[--deck-stats-dock:0px]";
+/** From lg the round and the Deck stats rail sit side by side. */
+const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6";
 
 /** "upgrade" walks the deck through the journey; "edit" is the deckbuilder. */
 type ToolMode = "upgrade" | "edit";
@@ -185,6 +189,8 @@ export function DeckTool() {
     entries: journey.after,
     bracket: context?.bracket ?? null,
     overBracketIds: journey.overBracketIds,
+    // The round's starting deck, so a deck lookup finishing mid-round (a new analysis of the same deck) keeps the ticks.
+    start: journey.before,
   });
   const openStep =
     (phase: "cut" | "add", filter: AddFilter | null = null): StatAction["onSelect"] =>
@@ -637,12 +643,7 @@ export function DeckTool() {
           </div>
           {mode === "upgrade" ? (
             journey.state && (
-              <div
-                className={cn(
-                  DECK_STATS_DOCK,
-                  "max-lg:pb-[var(--deck-stats-dock)] lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6",
-                )}
-              >
+              <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
                 <div className="flex min-w-0 flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
@@ -684,7 +685,7 @@ export function DeckTool() {
                 {statsPanel && (
                   <>
                     <DeckStatsRail className="hidden lg:flex" {...statsPanel} />
-                    <DeckStatsFooter className="lg:hidden" {...statsPanel} />
+                    <DeckStatsFooter className="lg:hidden" dock="lg" {...statsPanel} />
                   </>
                 )}
               </div>

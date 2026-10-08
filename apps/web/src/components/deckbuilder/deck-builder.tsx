@@ -21,15 +21,24 @@ const MANA_VALUE_DECIMALS = 1;
 
 const WUBRG = "WUBRG";
 
-/** The docked footer's height; the builder pads its bottom by this plus the safe area below `xl` so nothing hides behind it. */
-const STATS_FOOTER_PAD = "max-xl:pb-[calc(3.5rem+env(safe-area-inset-bottom))]";
+/**
+ * The Deck stats footer's height below `xl` (its bar, --deck-stats-dock-height in globals.css, plus the safe area), and
+ * none from `xl`, where the readout is a rail. The page itself reserves the footer's room (globals.css); this is for the
+ * halves below.
+ */
+const DECK_STATS_DOCK =
+  "[--deck-stats-dock:calc(var(--deck-stats-dock-height)_+_env(safe-area-inset-bottom))] xl:[--deck-stats-dock:0px]";
 
 /**
  * From `lg`, each half scrolls on its own inside the window, below the deck tool's sticky deck bar when there is one
- * (--deck-bar-height, set by DeckBar), so the search stays in reach however long the decklist is.
+ * (--deck-bar-height, set by DeckBar) and above the Deck stats footer while it docks (--deck-stats-dock), so the search
+ * stays in reach however long the decklist is.
  */
 const HALF_SCROLL =
-  "lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] lg:overflow-y-auto lg:overscroll-contain";
+  "lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:max-h-[calc(100dvh-var(--deck-bar-height,0px)-var(--deck-stats-dock,0px)-2rem)] lg:overflow-y-auto lg:overscroll-contain";
+
+/** From `xl` the Deck stats rail is a third column beside the halves. */
+const WITH_STATS_RAIL = "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_18rem]";
 
 /** Within a type, cheapest first, then by name, the order a hand of the deck would be sorted in. */
 const byCost = (entries: readonly DeckEntry[]) =>
@@ -74,7 +83,7 @@ export function DeckBuilder({
   const swapTarget = builder.swap ? (builder.cards.get(builder.swap.targetCardId) ?? null) : null;
 
   return (
-    <div className={cn("flex flex-col gap-4", statsReport && STATS_FOOTER_PAD)}>
+    <div className={cn("flex flex-col gap-4", statsReport && DECK_STATS_DOCK)}>
       <dl className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border border-seam bg-sleeve px-4 py-3 text-sm">
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Cards</dt>
@@ -128,7 +137,7 @@ export function DeckBuilder({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_18rem]">
+      <div className={cn("grid grid-cols-1 items-start gap-6 lg:grid-cols-2", statsReport && WITH_STATS_RAIL)}>
         {/* Unlabelled: the panel inside is the "Add cards" region, and one landmark per job is enough. */}
         <aside className={cn(HALF_SCROLL, "min-w-0", tab === "deck" && "hidden lg:block")}>
           <CardSearchPanel builder={builder} colorIdentity={identity} collection={collection} />
@@ -174,7 +183,7 @@ export function DeckBuilder({
         {statsReport && <DeckStatsRail className="hidden xl:flex" report={statsReport} cards={builder.cards} />}
       </div>
 
-      {statsReport && <DeckStatsFooter className="xl:hidden" report={statsReport} cards={builder.cards} />}
+      {statsReport && <DeckStatsFooter className="xl:hidden" dock="xl" report={statsReport} cards={builder.cards} />}
 
       <SwapSheet
         swap={builder.swap}

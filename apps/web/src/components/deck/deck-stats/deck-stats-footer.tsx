@@ -17,11 +17,13 @@ type PanelProps = ComponentProps<typeof DeckStatsPanel>;
 
 /**
  * Phones and tablets: a docked bar at the foot of the screen with the deck's level, opening the full readout as a
- * sheet. The host reserves its height (--deck-stats-dock) so the swipe cards size around it.
+ * sheet. `dock` is the width from which the host shows a rail instead: below it the page reserves the bar's height
+ * (globals.css, `data-deck-stats-dock`), and the host sets --deck-stats-dock so the swipe cards and sticky bars sit
+ * above it.
  *
  * The sheet has one close control: its handle row (tap, or swipe down). SheetContent's own corner button is off.
  */
-export function DeckStatsFooter({ className, ...panel }: PanelProps & { className?: string }) {
+export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { className?: string; dock: "lg" | "xl" }) {
   const { report } = panel;
   const [open, setOpen] = useState(false);
   // An action opens a step under the sheet, so the sheet closes first; left open it would hide what the action did.
@@ -46,6 +48,7 @@ export function DeckStatsFooter({ className, ...panel }: PanelProps & { classNam
   return (
     <>
       <div
+        data-deck-stats-dock={dock}
         className={cn(
           "fixed inset-x-0 bottom-0 z-40 border-t border-seam bg-sleeve pb-[env(safe-area-inset-bottom)]",
           className,
@@ -54,7 +57,8 @@ export function DeckStatsFooter({ className, ...panel }: PanelProps & { classNam
         <button
           type="button"
           aria-expanded={open}
-          aria-controls="deck-stats-sheet"
+          // The sheet is only in the document while open, so the reference is too.
+          aria-controls={open ? "deck-stats-sheet" : undefined}
           className="page-column flex min-h-12 w-full cursor-pointer touch-none items-center justify-between gap-3 px-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
           onPointerDown={(e) => {
             startY.current = e.clientY;

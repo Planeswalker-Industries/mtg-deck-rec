@@ -170,14 +170,43 @@ describe('gradeDeck', () => {
 });
 
 describe('tallyCache', () => {
+  const ramp = (report: ReturnType<ReturnType<typeof tallyCache>['report']>) => report.stats.find((s) => s.key === RAMP);
+
   it('builds once per base and keeps the round-start values', () => {
     const cache = tallyCache();
     const base = {};
     const a = card({ roles: [RAMP] });
-    const first = cache.report(base, [{ card: a, quantity: 1 }], [], targets, bracket());
-    const after = cache.report(base, [], [], targets, bracket());
-    expect(first.stats.find((s) => s.key === RAMP)?.value).toBe(1);
-    expect(after.stats.find((s) => s.key === RAMP)?.value).toBe(0);
-    expect(after.stats.find((s) => s.key === RAMP)?.start).toBe(1);
+    const start = [{ card: a, quantity: 1 }];
+    const first = cache.report(base, start, [], targets, bracket(), start);
+    const after = cache.report(base, [], [], targets, bracket(), start);
+    expect(ramp(first)?.value).toBe(1);
+    expect(ramp(after)?.value).toBe(0);
+    expect(ramp(after)?.start).toBe(1);
+  });
+
+  it('keeps the round-start values when the base changes mid-round with the same start', () => {
+    const cache = tallyCache();
+    const a = card({ roles: [RAMP], manaValue: 3 });
+    const start = [{ card: a, quantity: 1 }];
+    cache.report({}, start, [], targets, bracket(), start);
+    cache.report({}, [], [], targets, bracket(), start); // a new analysis of the same deck, after the card was cut
+    const later = cache.report({}, [], [], targets, bracket(), start);
+    expect(ramp(later)?.value).toBe(0);
+    expect(ramp(later)?.start).toBe(1);
+    expect(later.curve.bars[3]?.value).toBe(0);
+    expect(later.curve.bars[3]?.start).toBe(1);
+  });
+
+  it('shows no ticks without a start, on a new base or after a change', () => {
+    const cache = tallyCache();
+    const base = {};
+    const a = card({ roles: [RAMP] });
+    cache.report({}, [{ card: a, quantity: 1 }], [], targets, bracket());
+    const rebased = cache.report(base, [{ card: a, quantity: 1 }], [], targets, bracket());
+    expect(ramp(rebased)?.start).toBe(ramp(rebased)?.value);
+    const moved = cache.report(base, [], [], targets, bracket());
+    expect(ramp(moved)?.value).toBe(0);
+    expect(ramp(moved)?.start).toBe(0);
+    expect(moved.curve.bars.every((b) => b.start === b.value)).toBe(true);
   });
 });

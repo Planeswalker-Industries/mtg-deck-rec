@@ -234,6 +234,8 @@ export function useDeckJourney({
   );
   /** The deck as it stands, as entries, commanders first: one value per change, since Deck stats re-tallies on a new one. */
   const after = useMemo(() => [...commanders, ...entriesFor(deck, cards)], [commanders, deck, cards]);
+  /** The round's starting deck the same way: Deck stats draws its round-start ticks from it. */
+  const before = useMemo(() => [...commanders, ...entriesFor(analysis?.deck ?? null, cards)], [commanders, analysis, cards]);
 
   /** Cards to add for the deck as `next` leaves it, leaving out the ones the player passed on this round. */
   async function loadAdds(next: JourneyState, ctx: RecContext | null = context): Promise<void> {
@@ -575,7 +577,7 @@ export function useDeckJourney({
     workingContext,
     cards,
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
-    before: [...commanders, ...entriesOf(analysis?.deck ?? null)],
+    before,
     after,
     /** Cards added this round that complete a combo above the bracket; Deck stats counts the ones still in the deck. */
     overBracketIds,

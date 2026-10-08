@@ -9,6 +9,10 @@ import { StatBar } from "./stat-bar";
 
 /** Percent of a curve column's height a value can take. */
 const FULL_COLUMN_PCT = 100;
+/** Room above the tallest bar or tick, so a tick at the curve's maximum stays inside the box (as StatBar's track). */
+const COLUMN_HEADROOM = 1.15;
+
+const columnPct = (n: number, scale: number) => `${Math.max(0, Math.min(FULL_COLUMN_PCT, (n / scale) * FULL_COLUMN_PCT))}%`;
 
 export interface StatAction {
   label: string;
@@ -70,11 +74,14 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 /** The last curve bar holds that mana value and up. */
 const barLabel = (manaValue: number, last: boolean) => (last ? `${manaValue}+` : String(manaValue));
 
-/** Curve bars as small columns: the deck's count with the target as a tick, mana value under each. */
+/**
+ * Curve bars as small columns: the deck's count with the target as a tick, a fainter, narrower tick where the bar stood
+ * when the round started, mana value under each.
+ */
 function CurveRows({ report }: { report: DeckStatsReport }) {
   const bars = report.curve.bars;
   const lastIndex = bars.length - 1;
-  const max = Math.max(1, ...bars.flatMap((b) => [b.value, b.target]));
+  const scale = Math.max(1, ...bars.flatMap((b) => [b.value, b.target, b.start])) * COLUMN_HEADROOM;
   const off = bars.filter((b) => !b.ok).map((b) => barLabel(b.manaValue, b.manaValue === lastIndex));
   return (
     <div className="flex flex-col gap-1.5">
@@ -90,12 +97,12 @@ function CurveRows({ report }: { report: DeckStatsReport }) {
           <div key={b.manaValue} className="relative flex h-full flex-1 items-end">
             <div
               className={cn("w-full rounded-t-sm", b.ok ? "bg-stat-ok/80" : "bg-stat-mild/80")}
-              style={{ height: `${(b.value / max) * FULL_COLUMN_PCT}%` }}
+              style={{ height: columnPct(b.value, scale) }}
             />
-            <div
-              className="absolute inset-x-0 h-0.5 bg-foreground/70"
-              style={{ bottom: `${(b.target / max) * FULL_COLUMN_PCT}%` }}
-            />
+            <div className="absolute inset-x-0 h-0.5 bg-foreground/70" style={{ bottom: columnPct(b.target, scale) }} />
+            {b.start !== b.value && (
+              <div className="absolute inset-x-1 h-0.5 bg-muted-foreground/60" style={{ bottom: columnPct(b.start, scale) }} />
+            )}
           </div>
         ))}
       </div>
@@ -114,6 +121,7 @@ function CurveRows({ report }: { report: DeckStatsReport }) {
               <th scope="row">Mana value {barLabel(b.manaValue, i === lastIndex)}</th>
               <td>
                 {b.value} of {Math.round(b.target)}
+                {b.start !== b.value && ` (was ${b.start})`}
               </td>
             </tr>
           ))}

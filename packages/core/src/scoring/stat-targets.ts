@@ -7,8 +7,11 @@ import type { Profile } from './curve';
 import { roleTargetsFor, type RankCorpus } from './rank';
 
 export interface StatTargetsInput {
-  /** The commander's corpus; null when the corpus has nothing for them. */
-  corpus: RankCorpus | null;
+  /**
+   * The commander's corpus; null when the corpus has nothing for them. The share reads its effective deck count (own
+   * plus borrowed partner decks at their weight); the label names its own decks and says when partners' were borrowed.
+   */
+  corpus: (RankCorpus & { ownDeckCount: number; borrowedDeckCount: number }) | null;
   genericRoles: readonly RoleTarget[];
   /** `typical_deck_profile()`'s curve. */
   typicalCurve: Profile;
@@ -35,13 +38,9 @@ export function statTargetsFor(input: StatTargetsInput): StatTargets {
   const blend = (own: number | null | undefined, typical: number) =>
     own === null || own === undefined || share === 0 ? round1(typical) : round1(share * own + (1 - share) * typical);
   const source = share >= 1 ? 'commander' : share > 0 ? 'blended' : 'typical';
-  const decks = Math.round(corpus?.effectiveDeckCount ?? 0);
-  const label =
-    source === 'commander'
-      ? `${input.commanderLabel} decks (${decks})`
-      : source === 'blended'
-        ? `${input.commanderLabel} decks (${decks}), filled out with typical decks`
-        : 'Typical decks';
+  const borrowed = corpus !== null && corpus.borrowedDeckCount > 0 ? ' with partner decks' : '';
+  const named = `${input.commanderLabel} decks (${corpus?.ownDeckCount ?? 0})${borrowed}`;
+  const label = source === 'commander' ? named : source === 'blended' ? `${named}, filled out with typical decks` : 'Typical decks';
   const ownCurve = corpus && Object.keys(corpus.curveProfile).length > 0 ? corpus.curveProfile : null;
   const { massLandDenialFromBracket, maxExtraTurnCards, extraTurnLoopResults, extraTurnLoopFromBracket } = input.bracketRules;
   return {

@@ -25,7 +25,7 @@ The Bracket group also lists the deck's complete combos (`DeckAnalysis.combos`: 
 
 - **A stat is OK** when its value is within 20% of the target **or** within 1 card of it, whichever is wider. The 1-card floor stops small targets from always failing: a Planeswalker target of 0.4 makes 0 a 100% miss, and the mana value 0 bar's target is 0.08.
 - **Curve is one stat**, OK when every bar is within that tolerance. Counted bar by bar, its eight bars would outweigh every other stat.
-- **Bracket** is OK when the deck's estimated bracket is at or under the chosen one.
+- **Bracket** is OK when the deck fits the chosen bracket under every rule (`fitsBracket`: Game Changers, mass land denial, extra turns, an extra-turn loop and its complete combos) and no card added this round completes a combo above it.
 - **The overall state** comes from the share of OK stats, shown as `ok/total`:
   - every stat OK: **OK**, a check, green
   - half or more OK: **Mild**, a warning sign, gold
@@ -40,7 +40,7 @@ The server blends each target between the commander's own average and a typical 
 - **Typical lands and basic lands:** `app_config.scoring.build.landCounts` and `basicLandCounts`, by the deck's colour count.
 - **Typical curve and types:** the deck-weighted average of every `commander_stats` row, computed on read by `typical_deck_profile()` (one SQL function, one jsonb value: PostgREST's row cap would cut a plain select of the ~2,700 rows) and cached per server instance like the other settings. No table holds it.
 - **Never EDHREC.** `commander_sets` holds EDHREC role and curve profiles, but a target made from them would display EDHREC's numbers. Call `roleTargetsFor` without the EDHREC prior.
-- **The label says whose numbers they are:** "Liesa decks (102)" when the commander's own decks carry the whole target (`commanderShare` 1, source `commander`), "Liesa decks (30), filled out with typical decks" in between (`blended`), "Typical decks" when they have too few to count (`commanderShare` 0, `typical`). Partner pooling applies as it does for play rates.
+- **The label says whose numbers they are:** "Liesa decks (102)" when the commander's own decks carry the whole target (`commanderShare` 1, source `commander`), "Liesa decks (30), filled out with typical decks" in between (`blended`), "Typical decks" when they have too few to count (`commanderShare` 0, `typical`). The count is the commander's own decks. Partner pooling applies to the share as it does for play rates (borrowed decks at their weight), and when decks were borrowed the label says so: "Tymna & Thrasios decks (12) with partner decks".
 
 ## Where it lives
 
@@ -82,7 +82,7 @@ Bracket
 - Groups always come in the same order (Mana, Roles, Curve, Types, Colour sources, Bracket), so the panel reads the same every time.
 - Each row: the state icon, the name, a horizontal bar, and `value / target` in DM Mono. The bar shades the target's tolerance band; the value's fill is green when OK and gold when not. An off stat says how far off in words: "6 short", "3 over". Icons and words carry the meaning, never colour alone.
 - **Before and after:** in the journey, each bar has a faint tick where the deck stood at the start of the round, so the change shows without a second panel.
-- **Done** keeps its before and after columns for Cards, Average mana value, Game Changers and Price. The curve and card types leave those columns: Deck stats shows them, with the round-start ticks.
+- **Done** keeps its before and after columns for Cards, Lands, Average mana value, Game Changers and Price. The curve and card types leave those columns: Deck stats shows them, with the round-start ticks.
 
 ### Actions (deck tool only)
 
@@ -118,7 +118,7 @@ The client keeps a **tally** and changes it by each card that moves; it never re
 ## Contract and data
 
 **Contract v26:**
-- `DeckAnalysis.statTargets`: `source` (`commander`, `blended`, `typical`), `deckCount`, `label`, and the blended targets for lands, basic lands, each role (tag id, label, target), the curve (eight values) and, from P2, the types.
+- `DeckAnalysis.statTargets`: `source` (`commander`, `blended`, `typical`), `label`, and the blended targets for lands, basic lands, each role (tag id, label, target), the curve (eight values) and, from P2, the types.
 - `CardSummary.roles?: string[]`: the tracked role tag ids a card fills. `serving_card` already returns them; analysis loads them for the deck's own cards. Without it, roles can't be counted as cards come and go.
 - The mocks gain both.
 

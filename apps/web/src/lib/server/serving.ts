@@ -32,6 +32,12 @@ import type { PublicClient } from "./supabase";
 
 type ServingCard = Database["public"]["CompositeTypes"]["serving_card"];
 
+/**
+ * PostgREST's row cap (`[api] max_rows`, 1000 locally and hosted). A deck's card roles page by it: an analysis takes
+ * up to MAX_DECK_ENTRIES (400) cards at up to four tracked roles each, which can pass it.
+ */
+const CARD_ROLE_PAGE_ROWS = 1000;
+
 /** One tag match as serving_swap_candidates returns it, by tag id. */
 interface RawMatch {
   targetTagId: string;
@@ -610,8 +616,18 @@ export async function loadServedCards(
 export async function loadCardRoles(db: PublicClient, cardIds: readonly number[]): Promise<Map<number, string[]>> {
   const roles = new Map<number, string[]>();
   if (cardIds.length === 0) return roles;
-  const { data, error } = await db.from("card_roles").select("card_id, role_id").in("card_id", [...new Set(cardIds)]);
-  if (error) throw new Error(`Loading card roles failed: ${error.message}`);
-  for (const row of data ?? []) roles.set(row.card_id, [...(roles.get(row.card_id) ?? []), row.role_id]);
-  return roles;
+  const ids = [...new Set(cardIds)];
+  // Nearly always one page: a 100-card deck holds about a hundred rows.
+  for (let from = 0; ; from += CARD_ROLE_PAGE_ROWS) {
+    const { data, error } = await db
+      .from("card_roles")
+      .select("card_id, role_id")
+      .in("card_id", ids)
+      .order("card_id")
+      .order("role_id")
+      .range(from, from + CARD_ROLE_PAGE_ROWS - 1);
+    if (error) throw new Error(`Loading card roles failed: ${error.message}`);
+    for (const row of data) roles.set(row.card_id, [...(roles.get(row.card_id) ?? []), row.role_id]);
+    if (data.length < CARD_ROLE_PAGE_ROWS) return roles;
+  }
 }

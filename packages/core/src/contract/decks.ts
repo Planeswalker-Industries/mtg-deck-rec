@@ -134,7 +134,7 @@ export interface DeckAnalysis {
   gameChangerIds: CardId[];
   /** The combos the deck holds, from Commander Spellbook. */
   combos: DeckCombo[];
-  /** Deck stats' targets (T045); null without a commander. */
+  /** Deck stats' targets (T045); null without a commander, or when they couldn't be read (Deck stats then hides). */
   statTargets: StatTargets | null;
   /** The tracked role ids each of the deck's cards fills, commanders included (T045). Cards with none are absent. */
   cardRoles: Record<number, string[]>;

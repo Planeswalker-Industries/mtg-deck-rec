@@ -208,22 +208,31 @@ export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: Brack
 
 /**
  * One tally per base (the analysis object): a new base is counted in full once, and every later call only applies
- * what moved. The round-start tally is kept for the ticks on the bars.
+ * what moved. `start` is the deck the round started from, counted on a new base for the ticks on the bars; it is never
+ * taken from `main`, since a base can change mid-round (a finished deck lookup re-reads the same deck). Without it the
+ * start is the tally itself, so no ticks show (the Deckbuilder has no rounds).
  */
 export function tallyCache() {
   let base: object | null = null;
   let tally: DeckTally | null = null;
   let start: DeckTally | null = null;
   return {
-    report(nextBase: object, main: readonly TallyEntry[], commanders: readonly TallyCard[], targets: StatTargets, bracket: BracketInput): DeckStatsReport {
-      if (nextBase !== base || !tally || !start) {
+    report(
+      nextBase: object,
+      main: readonly TallyEntry[],
+      commanders: readonly TallyCard[],
+      targets: StatTargets,
+      bracket: BracketInput,
+      startEntries?: readonly TallyEntry[],
+    ): DeckStatsReport {
+      if (nextBase !== base || !tally) {
         base = nextBase;
         tally = buildTally(main, commanders);
-        start = buildTally(main, commanders);
+        start = startEntries ? buildTally(startEntries, commanders) : null;
       } else {
         syncTally(tally, main);
       }
-      return gradeDeck(tally, targets, bracket, start);
+      return gradeDeck(tally, targets, bracket, start ?? tally);
     },
   };
 }

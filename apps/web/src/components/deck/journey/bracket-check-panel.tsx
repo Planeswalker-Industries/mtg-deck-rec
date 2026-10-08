@@ -57,7 +57,7 @@ export function BracketCheckPanel({
           caption: <span className="font-semibold text-cut">{cutReasonShortLabel[reason]}</span>,
         }))}
       />
-      <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-end gap-2 border-t border-seam bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border">
+      <div className="sticky bottom-[var(--deck-stats-dock,0px)] z-20 -mx-4 flex flex-wrap items-center justify-end gap-2 border-t border-seam bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border">
         <Button type="button" variant="outline" onClick={onRevert}>
           Revert
         </Button>
