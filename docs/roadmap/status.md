@@ -1,4 +1,4 @@
-# Status (2026-10-07)
+# Status (2026-10-08)
 
 Where the project stands, and why things are the way they are.
 
@@ -56,7 +56,7 @@ Designed 2026-10-05 after the owner's review of PRs #127 and #128: [`card-graph-
 - **Every weight change goes through the offline evaluation** (`cli eval:holdout`, the four-part gate). Its known weaknesses are listed in T068.
 - **The review before release (2026-10-07)** fixed owned-twin bugs in collection mode and builds, made accept-rate events server-only, clamped what anonymous reads may ask for, stopped diff-only merges from locking every unchanged row, fixed a pairs recount that ran every 30 minutes, and pinned the evaluation's time split (migration `20261007000100`). The release went migrations first, then code, so `main`'s old code kept working in between.
 - **Latency after release:** one round still, but the new reads made adds about 90 ms slower at p50 (212 → 306 ms, the previous and new builds interleaved), cuts 65 ms and swaps 31 ms. Card pairs cost most of it; the fixes are listed in T068.
-- **Storage:** within budget today (4.16 GB of 8), not at the plan's full crawl: projected about 8.4 GB at six times today's decks, mostly score rows for commander pairs that borrow their partners' decks. The redesign is in T068.
+- **Storage:** within budget today (4.16 GB of 8), not at the plan's full crawl: projected about 8.4 GB at six times today's decks, mostly score rows for commander pairs that borrow their partners' decks. Those pairs are now derived per request from stored facts (T070, built 2026-10-08, not released): locally the score table went from 5.76M rows to 2.37M with identical rankings, which should free about 0.75 GB on hosted once vacuumed.
 - **UI** for collection mode, combos and builds was shelved during the sprint (owner, 2026-10-06) and is T069.
 
 ## Search index (Typesense behind a Go API)

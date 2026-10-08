@@ -25,6 +25,7 @@ import {
   evaluateGate,
   globalPairs,
   identityBaselineDecks,
+  isDerivedPair,
   isHeldOut,
   keyPairs,
   pageEvidence,
@@ -71,7 +72,7 @@ import { DATA_DIR } from '../lib/config';
 import { loadCatalog, loadCorpusConfig, loadCorpusDecks, resolveDeck, type CatalogCard, type CorpusConfig } from '../lib/corpus';
 import { connect, type Sql } from '../lib/db';
 import { globalStatRows, identityMonths, tallyShape, type KeyAggregate } from '../lib/key-stats';
-import { edhrecProfiles, loadEdhrecPages, type PageRows } from '../lib/serving';
+import { edhrecProfiles, loadEdhrecPages, loadPairPoolDepth, type PageRows } from '../lib/serving';
 
 /**
  * `cli eval:holdout` (T058; docs/roadmap/scoring-design.md, "Evaluation"). Holds out a seeded share of the collated
@@ -194,6 +195,8 @@ interface Settings {
   config: CorpusConfig;
   scoring: ScoringConfig;
   eval: EvalConfig;
+  /** app_config.precompute.pairPoolDepth: a derived pair's pool stops there, as the stored one does (T070). */
+  pairPoolDepth: number;
 }
 
 /** Play rates rebuilt from a set of training decks: per key, and the baseline over all of them. */
@@ -478,6 +481,8 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
   };
 
   const useCommander = commanderShare(picked.effectiveDeckCount + pageEvidence(page, settings.corpus), settings.corpus) > 0;
+  // A derived pair's stored pool stops at pairPoolDepth eligible cards (T070): what a collection holds below that isn't seen.
+  const depth = isDerivedPair(ids.length, picked, settings.pairPoolDepth) ? settings.pairPoolDepth : undefined;
   const ordered = useCommander
     ? [...sums.keys()]
         .filter((id) => eligibleCandidate(data.cards.get(id), mask))
@@ -493,6 +498,7 @@ function setModel(commanderIds: readonly number[], training: Training, settings:
         }))
         .sort((a, b) => b.score - a.score || (data.catalog.get(a.id)?.name ?? '').localeCompare(data.catalog.get(b.id)?.name ?? ''))
         .map((e) => e.id)
+        .slice(0, depth)
     : baselineOrder(training, mask, data);
 
   const perDeck = (totals: Record<string, number>) =>
@@ -1029,9 +1035,10 @@ export async function evalHoldout({
   const started = Date.now();
   try {
     const config = await loadCorpusConfig(sql);
-    const [[scoringRow], [pairsRow]] = await Promise.all([
+    const [[scoringRow], [pairsRow], pairPoolDepth] = await Promise.all([
       sql<{ value: Record<string, unknown> }[]>`select value from public.app_config where key = 'scoring'`,
       sql<{ value: unknown }[]>`select value from public.app_config where key = 'pairs'`,
+      loadPairPoolDepth(sql),
     ]);
     const baseSettings: Settings = {
       pairs: parsePairSettings(pairsRow?.value),
@@ -1039,6 +1046,7 @@ export async function evalHoldout({
       config,
       scoring: parseScoringConfig(scoringRow?.value),
       eval: parseEvalConfig(scoringRow?.value.eval),
+      pairPoolDepth,
     };
     const e = baseSettings.eval;
     const data = await loadData(sql, config);

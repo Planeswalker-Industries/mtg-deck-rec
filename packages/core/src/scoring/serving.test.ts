@@ -5,8 +5,10 @@ import {
   addPoolScore,
   cardPrior,
   commanderCardCounts,
+  derivedPairRowSums,
   identityBaselineDecks,
   identityPoolDecks,
+  isDerivedPair,
   keyRowSums,
   partnerRowSums,
   servedCardRates,
@@ -169,6 +171,68 @@ describe('partnerRowSums', () => {
     const combined = partnerRowSums([totalsFor(10), totalsFor(20)], settings.partnerPoolWeight);
     expect(combined.decksWith).toBeCloseTo(direct.decksWith, 12);
     expect(combined.tooEarly).toBeCloseTo(direct.tooEarly, 12);
+  });
+});
+
+describe('derivedPairRowSums', () => {
+  // Partners 10 and 20 share key 4 (their own, under minDecks); 10 also leads keys 1 and 2, 20 leads key 3.
+  const keys = [
+    key(1, 10, null, W, { '2025-01': 30, '2026-02': 20 }),
+    key(2, 10, 30, W | B, { '2026-01': 9 }),
+    key(3, 20, null, U, { '2024-12': 14 }),
+    key(4, 10, 20, W | U, { '2025-06': 3, '2026-03': 4 }),
+  ];
+  const ownKeyOf = (deckCount: number) => keys.map((k) => (k.id === 4 ? { ...k, deckCount, deckMonths: deckCount ? k.deckMonths : {} } : k));
+  // The partner_card_totals rows: every key either commander leads or shares, at full weight.
+  const totalsFor = (all: readonly CorpusKey[], commander: number, rows: readonly KeyCardCount[]) =>
+    keyRowSums(
+      all.filter((k) => k.commander1 === commander || k.commander2 === commander).map((k) => ({ ...k, weight: 1, borrowed: false })),
+      rows,
+    );
+  const ownOf = (all: readonly CorpusKey[], rows: readonly KeyCardCount[]) =>
+    keyRowSums(all.filter((k) => k.id === 4).map((k) => ({ ...k, weight: 1, borrowed: false })), rows);
+
+  const cases: [string, KeyCardCount[]][] = [
+    ['a card every key ran', [
+      { keyId: 1, decksWith: 12, eligibleDecks: 20 },
+      { keyId: 2, decksWith: 3, eligibleDecks: 9 },
+      { keyId: 3, decksWith: 5, eligibleDecks: 14 },
+      { keyId: 4, decksWith: 2, eligibleDecks: 4 },
+    ]],
+    ['a card the pair never ran', [
+      { keyId: 1, decksWith: 12, eligibleDecks: 50 },
+      { keyId: 3, decksWith: 5, eligibleDecks: 14 },
+    ]],
+    ['a card only one partner ran', [{ keyId: 3, decksWith: 7, eligibleDecks: 10 }]],
+    ['a card only the pair ran, newer than some of its decks', [{ keyId: 4, decksWith: 1, eligibleDecks: 4 }]],
+  ];
+
+  it.each(cases)('matches summing the sources pickCorpusSources picks: %s', (_, rows) => {
+    const picked = pickCorpusSources([10, 20], keys, settings);
+    expect(picked.own?.id).toBe(4);
+    const direct = keyRowSums(picked.sources, rows);
+    const derived = derivedPairRowSums(ownOf(keys, rows), [totalsFor(keys, 10, rows), totalsFor(keys, 20, rows)], settings.partnerPoolWeight);
+    expect(derived.decksWith).toBeCloseTo(direct.decksWith, 12);
+    expect(derived.tooEarly).toBeCloseTo(direct.tooEarly, 12);
+  });
+
+  it('applies to a keyed pair that borrows, while a pool depth is set', () => {
+    expect(isDerivedPair(2, pickCorpusSources([10, 20], keys, settings), 650)).toBe(true);
+    expect(isDerivedPair(2, pickCorpusSources([10, 20], keys, settings), 0)).toBe(false);
+    // No key of its own (a pair no key knows), or enough decks of its own to stand alone.
+    expect(isDerivedPair(2, pickCorpusSources([10, 20], ownKeyOf(0), settings), 650)).toBe(false);
+    expect(isDerivedPair(2, pickCorpusSources([10, 20], ownKeyOf(settings.minDecks), settings), 650)).toBe(false);
+    expect(isDerivedPair(1, pickCorpusSources([10], keys, settings), 650)).toBe(false);
+  });
+
+  it('reduces to partnerRowSums when the pair has no decks of its own', () => {
+    const all = ownKeyOf(0);
+    const rows = cases[1]?.[1] ?? [];
+    const partners = [totalsFor(all, 10, rows), totalsFor(all, 20, rows)];
+    expect(derivedPairRowSums({ decksWith: 0, tooEarly: 0 }, partners, settings.partnerPoolWeight)).toEqual(
+      partnerRowSums(partners, settings.partnerPoolWeight),
+    );
+    expect(keyRowSums(pickCorpusSources([10, 20], all, settings).sources, rows)).toEqual(partnerRowSums(partners, settings.partnerPoolWeight));
   });
 });
 

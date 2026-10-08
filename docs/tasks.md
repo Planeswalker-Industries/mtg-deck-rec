@@ -341,7 +341,7 @@ Editing by hand (contract v15) works only on a collection that already exists. W
 
 ## Data Layers and Scoring
 
-One pipeline in layers, then one scoring engine on top: [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md) (data) and [`roadmap/scoring-design.md`](roadmap/scoring-design.md) (scoring). T053–T065 are built and released (PR #140, 2026-10-07; closed below). What is open: the worker that runs the pipeline on a schedule (T066), dropping the retired functions (T067), the review's follow-ups (T068) and the UI the sprint shelved (T069).
+One pipeline in layers, then one scoring engine on top: [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md) (data) and [`roadmap/scoring-design.md`](roadmap/scoring-design.md) (scoring). T053–T065 are built and released (PR #140, 2026-10-07; closed below). What is open: the worker that runs the pipeline on a schedule (T066), dropping the retired functions (T067), the review's follow-ups (T068), the UI the sprint shelved (T069) and derived commander pairs (T070).
 
 ### T066: VPS worker
 
@@ -393,7 +393,7 @@ PR #139's review found these; the fixes in the PR itself are migration `20261007
 - [ ] Send an add only the pairs that point at its pool and neighbours, and each card's row once; or cache each card's corpus pairs for days, as `card-graph-plan.md` planned
 
 **Storage (8 GB disk, 3.4 GB used before the release; measured locally, projected at 6× the decks):**
-- [ ] Pairs that borrow from their partners hold 3.56M of 5.76M score rows (62%), and grow fastest: about 16M rows (2.4 GB) at 6× the decks, about 8.4 GB for the whole database. Store only a pair's own and EDHREC rows and combine the borrowed part per request from `partner_card_totals`, as a pair no key knows already is
+- [x] Pairs that borrow from their partners hold 3.56M of 5.76M score rows (62%), and grow fastest: about 16M rows (2.4 GB) at 6× the decks, about 8.4 GB for the whole database. Built as derived pairs (T070, 2026-10-08)
 - [ ] `card_substitutes` is 1.15 GB (15.7M rows, about 510 per card): one row per card with id and similarity arrays would be about a tenth, and the depth (220) was set for parity with the retired path, which no longer binds; the evaluation doesn't grade swaps yet
 - [ ] `rec_events` grows with traffic and nothing purges it: a retention period (owner decision, and a `/privacy` line) and a worker purge
 - [ ] The global pair count's memory grows with the corpus (about 1.1 GB peak locally; a 1 GB counter alone at 6×): count in row blocks with a bounded top list per card, or raise `globalMinDecks` with the corpus; give the worker container a memory limit and a Node heap flag
@@ -423,6 +423,22 @@ UI for what T059, T060, T063 and T065 built, gathered here when those closed. Sh
 **Acceptance criteria:**
 - [ ] Each group above has a screen, checked at 390×844 within the swipe budget
 - [ ] The deck tool defaults to owned only once the buy list shows (T037)
+
+---
+
+### T070: Derived commander pairs
+
+**Priority:** HIGH | **Area:** Database / Worker | **Status:** Built 2026-10-08 (branch `feat/derived-pairs`), not released
+
+A commander pair is a query context, not a dataset (owner, 2026-10-07). A keyed pair with fewer than `minDecks` decks of its own borrows every other key of either partner, and `commander_card_scores` held a row for every card those keys ran: on hosted, 1,060 such pairs held 3.54M of 5.77M rows (61%; Vial Smasher + Bruse Tarl, 1 deck, 5,216 rows), each partner's decks copied once per pairing and rewritten whenever they changed. Now such a pair stores only its pool order (the first `pairPoolDepth`, 650, eligible cards) and its EDHREC listings, and a request derives its counts from the pair's own `commander_card_stats` row and both partners' `partner_card_totals`. Owner decisions (2026-10-07): `card_pairs` stays pruned (every observed pair would be about 33M rows, 2.4 GB); single commanders under 50 decks stay stored; the worker keeps the pool order (hybrid); under 1 s with no compute upgrade. CLAUDE.md ("Precompute worker", "Derived pairs") has the rules.
+
+**Verified locally (2026-10-08):** 1,023 pairs derived; `commander_card_scores` 5.76M → 2.37M rows, 810 → 333 MB after `vacuum full`, plus 97 MB for the pool and listings (430 MB in all). For 50 derived pairs and 6 stored controls, adds, cuts, swaps, builds and every card's rates matched the stored path exactly; the 500-card commander-page pool reordered 234 card pairs whose pool scores differ by under 0.001 (max 0.00088), which the old rows held stale within the worker's write tolerance. The add pool for Vial Smasher + Bruse Tarl reads in about 12 ms, the same as a stored pair. SQL checks pass (`serving.sql` has a derived-pair section). `eval:holdout` (seeded split) reads the same with derivation on and off: adds recall@20 26.0%, cuts precision@10 26.7%, collection recall 51.2% (the stored depth never binds there).
+
+**Acceptance criteria:**
+- [ ] Release: migration `20261008000100` to hosted first (`db-push.yml` if the integration lags), with the web code that reads it, then the worker. The worker derives pairs once `app_config.precompute.pairPoolDepth` is set (the migration sets it), at its next scores pass that covers them; `cli:hosted precompute --part scores --force` flips them all at once
+- [ ] On hosted after the flip: `vacuum full public.commander_card_scores` at a quiet time (it locks the add path, T041), and record the sizes in `status.md`; autovacuum alone reuses the space but never shrinks the file
+- [ ] Hosted parity on a few derived pairs (adds, cuts, swaps) before and after the flip
+- [ ] Follow-up: cache the most requested derived pairs' counts if their reads ever show in latency
 
 ---
 

@@ -608,6 +608,38 @@ export type Database = {
           },
         ]
       }
+      commander_card_priors: {
+        Row: {
+          card_id: number
+          commander_1: number
+          commander_2: number
+          prior_decks: number
+          prior_rate: number
+        }
+        Insert: {
+          card_id: number
+          commander_1: number
+          commander_2: number
+          prior_decks: number
+          prior_rate: number
+        }
+        Update: {
+          card_id?: number
+          commander_1?: number
+          commander_2?: number
+          prior_decks?: number
+          prior_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_card_priors_commander_1_fkey"
+            columns: ["commander_1"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commander_card_scores: {
         Row: {
           card_id: number
@@ -739,6 +771,35 @@ export type Database = {
           },
         ]
       }
+      commander_pair_pool: {
+        Row: {
+          card_id: number
+          commander_1: number
+          commander_2: number
+          pool_score: number
+        }
+        Insert: {
+          card_id: number
+          commander_1: number
+          commander_2: number
+          pool_score: number
+        }
+        Update: {
+          card_id?: number
+          commander_1?: number
+          commander_2?: number
+          pool_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commander_pair_pool_commander_1_fkey"
+            columns: ["commander_1"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commander_requests: {
         Row: {
           client_key: string | null
@@ -799,6 +860,7 @@ export type Database = {
         Row: {
           commander_1: number
           commander_2: number
+          derived: boolean
           edhrec_curve_profile: Json | null
           edhrec_decks: number | null
           edhrec_floor: number | null
@@ -809,6 +871,7 @@ export type Database = {
         Insert: {
           commander_1: number
           commander_2?: number
+          derived?: boolean
           edhrec_curve_profile?: Json | null
           edhrec_decks?: number | null
           edhrec_floor?: number | null
@@ -819,6 +882,7 @@ export type Database = {
         Update: {
           commander_1?: number
           commander_2?: number
+          derived?: boolean
           edhrec_curve_profile?: Json | null
           edhrec_decks?: number | null
           edhrec_floor?: number | null
@@ -2371,6 +2435,8 @@ export type Database = {
         prior_decks: number | null
         edhrec_floor: number | null
         edhrec_decks: number | null
+        own_decks_with: number | null
+        own_too_early: number | null
       }
     }
   }

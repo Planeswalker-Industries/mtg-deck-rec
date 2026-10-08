@@ -5,13 +5,16 @@ import {
   cardPrior,
   commanderCardCounts,
   commanderShare,
+  derivedPairRowSums,
   identityBaselineDecks,
+  partnerRowSums,
   pmiIndex,
   servedCardRates,
   type AffinityInput,
   type BasicColour,
   type BuildAffinity,
   type RankCard,
+  type RowSums,
   type SwapPool,
   type SwapPoolCandidate,
 } from "@mtg/core/scoring";
@@ -71,10 +74,20 @@ function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
   );
 }
 
+/** The row sums behind a card with no stored counts: a derived pair's (T070), or a pair no key knows. */
+function unstoredRowSums(card: ServingCard, weight: number): RowSums {
+  const partners = { decksWith: card.partner_decks_with ?? 0, tooEarly: card.partner_too_early ?? 0 };
+  if (card.own_decks_with !== null && card.own_too_early !== null) {
+    return derivedPairRowSums({ decksWith: card.own_decks_with, tooEarly: card.own_too_early }, [partners], weight);
+  }
+  return partnerRowSums([partners], weight);
+}
+
 /**
- * A card's play rates under these commanders: its stored counts where a source deck ran it, a pair's partner totals at
- * their weight, or counts from the commander's deck months where nothing ran it; shrunk toward the commander's EDHREC
- * page when it has one (T061) and the live baseline otherwise.
+ * A card's play rates under these commanders: its stored counts where a source deck ran it; for a derived pair its own
+ * key's counts and its partners' totals, or for a pair no key knows its partners' totals at their weight; counts from
+ * the commander's deck months where nothing ran it. Shrunk toward the commander's EDHREC page when it has one (T061)
+ * and the live baseline otherwise.
  */
 function cardCorpusOf(card: ServingCard, corpus: CommanderCorpus, identityMonths: ReadonlyMap<number, Record<string, number>>): CardCorpus {
   const facts = { identity: card.color_identity ?? 0, releaseMonth: card.release_month };
@@ -84,14 +97,10 @@ function cardCorpusOf(card: ServingCard, corpus: CommanderCorpus, identityMonths
     // Cards no deck runs have no baseline row; count the decks that could have run them from the identity histograms.
     eligibleDecks: card.baseline_eligible_decks ?? identityBaselineDecks(identityMonths, facts),
   };
-  const weight = corpus.settings.partnerPoolWeight;
   const counts =
     card.decks_with !== null && card.commander_decks !== null
       ? { decksWith: card.decks_with, commanderDecks: card.commander_decks }
-      : commanderCardCounts(corpus.sources, facts, {
-          decksWith: weight * (card.partner_decks_with ?? 0),
-          tooEarly: weight * (card.partner_too_early ?? 0),
-        });
+      : commanderCardCounts(corpus.sources, facts, unstoredRowSums(card, corpus.settings.partnerPoolWeight));
   const page = card.edhrec_decks !== null && card.edhrec_floor !== null ? { deckCount: card.edhrec_decks, floor: card.edhrec_floor } : null;
   const listing = card.prior_rate !== null && card.prior_decks !== null ? { rate: card.prior_rate, potentialDecks: card.prior_decks } : null;
   const prior = cardPrior(page, listing, baseline.rate, corpus.settings);
