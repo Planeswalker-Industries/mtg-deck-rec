@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { deckStats, isBasicLand } from "@mtg/core/journey";
 import type { DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { groupHeading } from "@/components/deck/deck-group-id";
+import { DeckStatsFooter } from "@/components/deck/deck-stats/deck-stats-footer";
+import { DeckStatsRail } from "@/components/deck/deck-stats/deck-stats-rail";
+import { useDeckStats } from "@/components/deck/deck-stats/use-deck-stats";
 import { SwapSheet } from "@/components/deck/swap-sheet";
 import { formatAsOf, formatUsd } from "@/lib/format";
 import { CardSearchPanel, type BuilderCollection } from "./card-search-panel";
@@ -17,6 +20,9 @@ import type { DeckBuilderState } from "./use-deck-builder";
 const MANA_VALUE_DECIMALS = 1;
 
 const WUBRG = "WUBRG";
+
+/** The docked footer's height; the builder pads its bottom by this plus the safe area below `xl` so nothing hides behind it. */
+const STATS_FOOTER_PAD = "max-xl:pb-[calc(3.5rem+env(safe-area-inset-bottom))]";
 
 /**
  * From `lg`, each half scrolls on its own inside the window, below the deck tool's sticky deck bar when there is one
@@ -56,10 +62,19 @@ export function DeckBuilder({
   const stats = deckStats([...builder.commanders.map((card) => ({ card, quantity: 1 })), ...builder.main]);
   const identity = builder.commanders.length === 0 ? undefined : [...WUBRG].filter((c) => builder.commanders.some((cmd) => cmd.colorIdentity.includes(c))).join("");
   const issues = analysis?.issues ?? [];
+  // builder.main is rebuilt every render, and the stats hook re-syncs on a new array: keep one array per content.
+  const mainKey = builder.main.map((e) => `${e.card.id}:${e.quantity}`).join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mainKey is builder.main's content
+  const entries = useMemo(() => builder.main, [mainKey]);
+  const statsReport = useDeckStats({
+    analysis,
+    entries,
+    bracket: swapContext?.bracket ?? analysis?.estimatedBracket ?? null,
+  });
   const swapTarget = builder.swap ? (builder.cards.get(builder.swap.targetCardId) ?? null) : null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn("flex flex-col gap-4", statsReport && STATS_FOOTER_PAD)}>
       <dl className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border border-seam bg-sleeve px-4 py-3 text-sm">
         <div className="flex gap-1.5">
           <dt className="text-muted-foreground">Cards</dt>
@@ -113,7 +128,7 @@ export function DeckBuilder({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_18rem]">
         {/* Unlabelled: the panel inside is the "Add cards" region, and one landmark per job is enough. */}
         <aside className={cn(HALF_SCROLL, "min-w-0", tab === "deck" && "hidden lg:block")}>
           <CardSearchPanel builder={builder} colorIdentity={identity} collection={collection} />
@@ -156,7 +171,10 @@ export function DeckBuilder({
             </section>
           ))}
         </section>
+        {statsReport && <DeckStatsRail className="hidden xl:flex" report={statsReport} cards={builder.cards} />}
       </div>
+
+      {statsReport && <DeckStatsFooter className="xl:hidden" report={statsReport} cards={builder.cards} />}
 
       <SwapSheet
         swap={builder.swap}
