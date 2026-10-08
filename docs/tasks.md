@@ -4,7 +4,7 @@ Open work items, grouped by priority. Each ticket is self-contained — enough c
 
 > **Keep the four project docs in step.** This file is the queue. [`roadmap/status.md`](roadmap/status.md) is the narrative (current state and why), [`../CLAUDE.md`](../CLAUDE.md) holds repo-wide rules, and [`../apps/web/AGENTS.md`](../apps/web/AGENTS.md) holds web-app detail. Any change to this file is checked against those three in the same edit. When they disagree, the code wins and every doc gets corrected.
 
-Checked against the code and hosted on **2026-10-07**: `main` at PR #140 (the scoring pipeline release), contract v25, hosted migrations at `20261007000100`.
+Checked against the code and hosted on **2026-10-08**: `main` at PR #144 (the derived-pairs and Deck stats release), contract v26, hosted migrations at `20261008000200`.
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -13,7 +13,7 @@ Ticket ids are stable and never reused: a closed ticket leaves a gap rather than
 The order for the UI work (owner, 2026-10-08), most important first. The tickets below hold the detail.
 
 1. **T003** Report link destination: a launch gate, small once the destination is chosen.
-2. **T045** Deck analysis display: the concept that places T046, T048 and T069's combos and bracket signals. P1 built on `feat/deck-analysis-display`; next T071 (card types) and T072 (follow-ups).
+2. **T045** Deck analysis display: the concept that places T046, T048 and T069's combos and bracket signals. P1 released 2026-10-08 (PR #143); next T071 (card types) and T072 (follow-ups).
 3. **T069, collection mode:** the buy list, conflict tags, "stands in for", the swap's `emptyReason`, the built control, then the deck tool's default to owned only (T037).
 4. **T050 with T069's build mode:** one commander picker for Add and for builds, then the build screen.
 5. **T069, combos and bracket signals**, placed per T045.
@@ -146,7 +146,7 @@ Server Actions run one at a time per page. Every swipe in the Replace phase fire
 
 ### T045: Design the deck analysis display
 
-**Priority:** MEDIUM | **Area:** Product / UX | **Status:** P1 built 2026-10-08 on `feat/deck-analysis-display`; owner sign-off on screenshots open. Design: [`roadmap/deck-stats.md`](roadmap/deck-stats.md) (a "Deck stats" footer on phones, a side rail on wide screens)
+**Priority:** MEDIUM | **Area:** Product / UX | **Status:** P1 released 2026-10-08 (PR #143, contract v26); owner sign-off on screenshots open. Design: [`roadmap/deck-stats.md`](roadmap/deck-stats.md) (a "Deck stats" footer on phones, a side rail on wide screens)
 
 First part of the deck analysis work (T046, T048, and the combos and bracket signals in T069), and it comes first: decide where and how the new numbers are shown before building any of them. Came out of a look at EDHcheck (edhcheck.com, 2026-09-28) with the sample Liesa deck. Its functions are solid (mana simulation, per-card cast rates, combo detection, bracket explorer), but the page is a wall of panels, invented composite scores and upsells. We want the useful numbers, shown only where they change what the player does next.
 
@@ -173,7 +173,7 @@ First part of the deck analysis work (T046, T048, and the combos and bracket sig
 
 ### T071: Deck stats P2, card types
 
-**Priority:** MEDIUM | **Area:** Database / Worker / Frontend | **Status:** Not started; option A approved (owner, 2026-10-08) | **Blocked by:** T045 released
+**Priority:** MEDIUM | **Area:** Database / Worker / Frontend | **Status:** Not started; option A approved (owner, 2026-10-08); T045 released 2026-10-08
 
 Add card types (Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers) to Deck stats, taking `ok/total` from 8 to 14. Nothing stores how many of each type a commander's decks run today. Approved shape: one `type_profile` jsonb column on `commander_stats`, written by the existing per-commander pass beside `curve_profile` (same row, diff-only, about 0.3 MB), with typical types from the same deck-weighted average `typical_deck_profile()` already computes for the curve. No new table or job. [`roadmap/deck-stats.md`](roadmap/deck-stats.md) ("Contract and data", "Phases") has the design.
 
@@ -403,7 +403,7 @@ Editing by hand (contract v15) works only on a collection that already exists. W
 
 ## Data Layers and Scoring
 
-One pipeline in layers, then one scoring engine on top: [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md) (data) and [`roadmap/scoring-design.md`](roadmap/scoring-design.md) (scoring). T053–T065 are built and released (PR #140, 2026-10-07; closed below). What is open: the worker that runs the pipeline on a schedule (T066), dropping the retired functions (T067), the review's follow-ups (T068), the UI the sprint shelved (T069) and derived commander pairs (T070).
+One pipeline in layers, then one scoring engine on top: [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md) (data) and [`roadmap/scoring-design.md`](roadmap/scoring-design.md) (scoring). T053–T065 are built and released (PR #140, 2026-10-07; closed below), and derived commander pairs (T070) released 2026-10-08 (PR #142). What is open: the worker that runs the pipeline on a schedule (T066), dropping the retired functions (T067) and the review's follow-ups (T068), and the UI the sprint shelved (T069).
 
 ### T066: VPS worker
 
@@ -455,7 +455,7 @@ PR #139's review found these; the fixes in the PR itself are migration `20261007
 - [ ] Send an add only the pairs that point at its pool and neighbours, and each card's row once; or cache each card's corpus pairs for days, as `card-graph-plan.md` planned
 
 **Storage (8 GB disk, 3.4 GB used before the release; measured locally, projected at 6× the decks):**
-- [x] Pairs that borrow from their partners hold 3.56M of 5.76M score rows (62%), and grow fastest: about 16M rows (2.4 GB) at 6× the decks, about 8.4 GB for the whole database. Built as derived pairs (T070, 2026-10-08)
+- [x] Pairs that borrow from their partners hold 3.56M of 5.76M score rows (62%), and grow fastest: about 16M rows (2.4 GB) at 6× the decks, about 8.4 GB for the whole database. Built and released as derived pairs (T070, 2026-10-08)
 - [ ] `card_substitutes` is 1.15 GB (15.7M rows, about 510 per card): one row per card with id and similarity arrays would be about a tenth, and the depth (220) was set for parity with the retired path, which no longer binds; the evaluation doesn't grade swaps yet
 - [ ] `rec_events` grows with traffic and nothing purges it: a retention period (owner decision, and a `/privacy` line) and a worker purge
 - [ ] The global pair count's memory grows with the corpus (about 1.1 GB peak locally; a 1 GB counter alone at 6×): count in row blocks with a bounded top list per card, or raise `globalMinDecks` with the corpus; give the worker container a memory limit and a Node heap flag
@@ -490,15 +490,17 @@ UI for what T059, T060, T063 and T065 built, gathered here when those closed. Sh
 
 ### T070: Derived commander pairs
 
-**Priority:** HIGH | **Area:** Database / Worker | **Status:** Built 2026-10-08 (branch `feat/derived-pairs`), not released
+**Priority:** HIGH | **Area:** Database / Worker | **Status:** Released 2026-10-08 (PR #142); live on hosted
 
 A commander pair is a query context, not a dataset (owner, 2026-10-07). A keyed pair with fewer than `minDecks` decks of its own borrows every other key of either partner, and `commander_card_scores` held a row for every card those keys ran: on hosted, 1,060 such pairs held 3.54M of 5.77M rows (61%; Vial Smasher + Bruse Tarl, 1 deck, 5,216 rows), each partner's decks copied once per pairing and rewritten whenever they changed. Now such a pair stores only its pool order (the first `pairPoolDepth`, 650, eligible cards) and its EDHREC listings, and a request derives its counts from the pair's own `commander_card_stats` row and both partners' `partner_card_totals`. Owner decisions (2026-10-07): `card_pairs` stays pruned (every observed pair would be about 33M rows, 2.4 GB); single commanders under 50 decks stay stored; the worker keeps the pool order (hybrid); under 1 s with no compute upgrade. CLAUDE.md ("Precompute worker", "Derived pairs") has the rules.
 
 **Verified locally (2026-10-08):** 1,023 pairs derived; `commander_card_scores` 5.76M → 2.37M rows, 810 → 333 MB after `vacuum full`, plus 97 MB for the pool and listings (430 MB in all). For 50 derived pairs and 6 stored controls, adds, cuts, swaps, builds and every card's rates matched the stored path exactly; the 500-card commander-page pool reordered 234 card pairs whose pool scores differ by under 0.001 (max 0.00088), which the old rows held stale within the worker's write tolerance. The add pool for Vial Smasher + Bruse Tarl reads in about 12 ms, the same as a stored pair. SQL checks pass (`serving.sql` has a derived-pair section). `eval:holdout` (seeded split) reads the same with derivation on and off: adds recall@20 26.0%, cuts precision@10 26.7%, collection recall 51.2% (the stored depth never binds there).
 
+**Released on hosted (2026-10-08):** 1,056 pairs derived; the scores pass staged 2.28M rows (3.53M removed), `commander_card_scores` 1.41 GB → 321 MB on `vacuum full`, database 4,202 MB → 3,111 MB. Migration `20261008000100` reached hosted with `db-push.yml`; the flip was by hand (`cli:hosted precompute --part scores --force`) because the VPS worker (T066) is not deployed.
+
 **Acceptance criteria:**
-- [ ] Release: migration `20261008000100` to hosted first (`db-push.yml` if the integration lags), with the web code that reads it, then the worker. The worker derives pairs once `app_config.precompute.pairPoolDepth` is set (the migration sets it), at its next scores pass that covers them; `cli:hosted precompute --part scores --force` flips them all at once
-- [ ] On hosted after the flip: `vacuum full public.commander_card_scores` at a quiet time (it locks the add path, T041), and record the sizes in `status.md`; autovacuum alone reuses the space but never shrinks the file
+- [x] Release: migration `20261008000100` to hosted (`db-push.yml`) with the web code that reads it. With the VPS worker (T066) undeployed, the flip was by hand: `cli:hosted precompute --part scores --force` derived every pair at once, since the migration set `app_config.precompute.pairPoolDepth`
+- [x] On hosted after the flip: `vacuum full public.commander_card_scores` at a quiet time (2026-10-08), 1.41 GB → 321 MB; the sizes are recorded in `status.md`
 - [ ] Hosted parity on a few derived pairs (adds, cuts, swaps) before and after the flip
 - [ ] Follow-up: cache the most requested derived pairs' counts if their reads ever show in latency
 
@@ -577,14 +579,14 @@ Some `commander_keys` rows name two cards that aren't a legal partner pair (Arch
 
 ### T041: Reclaim dead space on hosted
 
-**Priority:** LOW | **Area:** Database | **Status:** Not started
+**Priority:** LOW | **Area:** Database | **Status:** Started: `commander_card_scores` vacuumed 2026-10-08 (T070); `printings` and `search_index_queue` remain
 
-Read 2026-10-07: `printings` is 166 MB on hosted against 56 MB locally (English-only since 2026-09-21 deleted about 425k rows, and daily price updates add more), and `search_index_queue` holds 199 MB with no rows. `commander_card_scores` grew from 799 MB to 1.41 GB when the release rewrote every score once; autovacuum lets Postgres reuse that space but never shrinks the file. Hosted was 4.16 GB of 8 GB after the release.
+Read 2026-10-07: `printings` is 166 MB on hosted against 56 MB locally (English-only since 2026-09-21 deleted about 425k rows, and daily price updates add more), and `search_index_queue` holds 199 MB with no rows. `commander_card_scores` grew from 799 MB to 1.41 GB when the release rewrote every score once; its `vacuum full` ran 2026-10-08 as part of T070 (1.41 GB → 321 MB), taking hosted from 4.16 GB to 3.11 GB.
 
 **Acceptance criteria:**
 - [ ] `vacuum full` on `printings` and `search_index_queue` on hosted as superuser (a human, not the read-only role), at a quiet time: it locks the table
-- [ ] `commander_card_scores` only if disk gets tight: its `vacuum full` locks the add path while it runs
-- [ ] Record the before and after sizes in `status.md`
+- [x] `commander_card_scores` vacuumed 2026-10-08 with T070 (1.41 GB → 321 MB)
+- [ ] Record the before and after sizes in `status.md` (the scores entry is recorded)
 
 ---
 
