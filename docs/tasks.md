@@ -8,6 +8,21 @@ Checked against the code and hosted on **2026-10-07**: `main` at PR #140 (the sc
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
+## UI order
+
+The order for the UI work (owner, 2026-10-08), most important first. The tickets below hold the detail.
+
+1. **T003** Report link destination: a launch gate, small once the destination is chosen.
+2. **T045** Deck analysis display: the concept that places T046, T048 and T069's combos and bracket signals. In progress on `feat/deck-analysis-display`.
+3. **T069, collection mode:** the buy list, conflict tags, "stands in for", the swap's `emptyReason`, the built control, then the deck tool's default to owned only (T037).
+4. **T050 with T069's build mode:** one commander picker for Add and for builds, then the build screen.
+5. **T069, combos and bracket signals**, placed per T045.
+6. **T048** Role counts against the commander's decks.
+7. **T046** Mana base analysis (catalog column and contract field first).
+8. **T038** Start a collection by hand.
+9. **T039, T034:** performance, when measurements call for it.
+10. **T049** Re-record the How it works clips, once the screens above settle.
+
 ---
 
 ## Pre-Launch Hard Gates
@@ -131,7 +146,7 @@ Server Actions run one at a time per page. Every swipe in the Replace phase fire
 
 ### T045: Design the deck analysis display
 
-**Priority:** MEDIUM | **Area:** Product / UX | **Status:** Not started
+**Priority:** MEDIUM | **Area:** Product / UX | **Status:** Design agreed 2026-10-08: [`roadmap/deck-stats.md`](roadmap/deck-stats.md) (a "Deck stats" footer on phones, a side rail on wide screens); POC next
 
 First part of the deck analysis work (T046, T048, and the combos and bracket signals in T069), and it comes first: decide where and how the new numbers are shown before building any of them. Came out of a look at EDHcheck (edhcheck.com, 2026-09-28) with the sample Liesa deck. Its functions are solid (mana simulation, per-card cast rates, combo detection, bracket explorer), but the page is a wall of panels, invented composite scores and upsells. We want the useful numbers, shown only where they change what the player does next.
 
