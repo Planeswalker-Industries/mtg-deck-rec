@@ -604,3 +604,13 @@ export async function loadServedCards(
   if (cardsResult.error) throw new Error(`Loading cards failed: ${cardsResult.error.message}`);
   return servedCards(asCards(cardsResult.data), corpus, identityMonths, checkedAt);
 }
+
+/** The tracked role ids of some cards, for Deck stats and the roles a suggestion carries (T045). */
+export async function loadCardRoles(db: PublicClient, cardIds: readonly number[]): Promise<Map<number, string[]>> {
+  const roles = new Map<number, string[]>();
+  if (cardIds.length === 0) return roles;
+  const { data, error } = await db.from("card_roles").select("card_id, role_id").in("card_id", [...new Set(cardIds)]);
+  if (error) throw new Error(`Loading card roles failed: ${error.message}`);
+  for (const row of data ?? []) roles.set(row.card_id, [...(roles.get(row.card_id) ?? []), row.role_id]);
+  return roles;
+}

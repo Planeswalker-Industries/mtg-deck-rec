@@ -7,7 +7,7 @@ import { loadCommanderPage, type CommanderPage } from "./commander-page";
 import { type FeaturedCommander, loadFeaturedCommanders } from "./featured";
 import { loadBracketBasics } from "./brackets";
 import { availabilityFor, loadStandIns } from "./collection-availability";
-import { DEFAULT_SWAP_LIMIT, getSwapSuggestions, loadOwnedBoost, loadSwapPool, NotFoundError, SHARED_SWAP_POOL } from "./recs";
+import { DEFAULT_SWAP_LIMIT, getSwapSuggestions, loadOwnedBoost, loadSwapPool, NotFoundError, SHARED_SWAP_POOL, swapWithRoles } from "./recs";
 import { loadScoringConfig } from "./scoring-config";
 import { loadDeckAffinity } from "./serving";
 import { createPublicClient, type PublicClient } from "./supabase";
@@ -87,7 +87,7 @@ export async function getCachedSwapSuggestions(
   ]);
   if (!pool) throw new NotFoundError(`Card ${targetCardId} is not in the catalog.`);
   const excluded = bracketExclusions({ ...bracket, combos: [] }, context.bracket);
-  return rankSwaps(pool, { context, limit: limit ?? DEFAULT_SWAP_LIMIT, ownedBoost, scoring, availability: available, standIns, excluded, affinity });
+  return swapWithRoles(db, rankSwaps(pool, { context, limit: limit ?? DEFAULT_SWAP_LIMIT, ownedBoost, scoring, availability: available, standIns, excluded, affinity }));
 }
 
 /**

@@ -20,9 +20,11 @@ import type {
   ResolveVia,
 } from "@mtg/core/contract";
 import { normalizeName, parseDecklist } from "@mtg/core/parse";
+import { statTargetsFor } from "@mtg/core/scoring";
 import { loadBracketBasics } from "./brackets";
 import { fetchCardsById, toCardSummary, toCommanderFacts, type CardRow } from "./cards";
 import { commanderKeyCounts, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
+import { loadStatInputs, type StatInputs } from "./deck-stats";
 import { loadDeckCombos } from "./serving";
 import type { PublicClient } from "./supabase";
 
@@ -102,8 +104,12 @@ export async function resolveDecklist(db: PublicClient, text: string): Promise<P
 
   if (!resolved.every((l) => l.resolution.status === "resolved")) return { lines: resolved, analysis: null };
   const deck = deckFromLines(resolved);
-  const [corpus, bracket] = await Promise.all([loadCommanderCorpus(db, deck.commanders), loadDeckBracket(db, deck)]);
-  return { lines: resolved, analysis: analyzeDeck(deck, cards, bracket, today, corpus) };
+  const [corpus, bracket, stats] = await Promise.all([
+    loadCommanderCorpus(db, deck.commanders),
+    loadDeckBracket(db, deck),
+    loadStatInputs(db, [...deck.commanders, ...deck.cards.map((c) => c.cardId)]),
+  ]);
+  return { lines: resolved, analysis: analyzeDeck(deck, cards, bracket, today, corpus, stats) };
 }
 
 /** What the bracket estimate reads beyond the cards (T060): the rules, the cards they watch, the deck's combos. */
@@ -126,6 +132,7 @@ export function analyzeDeck(
   bracket: DeckBracket,
   today = new Date().toISOString().slice(0, 10),
   corpus: CommanderCorpus | null = null,
+  stats: StatInputs | null = null,
 ): DeckAnalysis {
   const row = (id: number) => {
     const found = cards.get(id);
@@ -140,6 +147,8 @@ export function analyzeDeck(
   const gameChangerIds = deckCardIds.filter((id) => row(id).game_changer);
   const signals = bracketSignals(deckCardIds, (id) => row(id).game_changer, bracket.cards, bracket.combos, bracket.rules);
   const estimatedBracket = estimateBracket(signals, bracket.rules);
+  const commanderLabel = commanderRows.map((r) => r.name.split(",")[0]!.trim()).join(" & ");
+  const colourCount = maskToIdentity(deckIdentityMask(commanders)).length;
 
   const analysis: DeckAnalysis = {
     deck,
@@ -154,8 +163,19 @@ export function analyzeDeck(
     bracketSignals: signals,
     gameChangerIds,
     combos: bracket.combos.filter((c) => c.missing === null).map(deckCombo),
-    statTargets: null,
-    cardRoles: {},
+    statTargets:
+      stats && commanderRows.length > 0
+        ? statTargetsFor({
+            corpus,
+            genericRoles: stats.genericRoles,
+            typicalCurve: stats.typicalCurve,
+            build: stats.build,
+            colourCount,
+            bracketRules: bracket.rules,
+            commanderLabel,
+          })
+        : null,
+    cardRoles: stats ? Object.fromEntries(stats.cardRoles) : {},
     issues: validateCommanderDeck(commanders, entries, estimatedBracket),
   };
   if (commanders.length === 0) {
@@ -169,10 +189,12 @@ export function analyzeDeck(
 
 /** Loads the cards for a deck the client already resolved, then analyzes it. */
 export async function analyzeDeckById(db: PublicClient, deck: DeckInput): Promise<DeckAnalysis> {
-  const [cards, corpus, bracket] = await Promise.all([
-    fetchCardsById(db, [...deck.commanders, ...deck.cards.map((c) => c.cardId)]),
+  const cardIds = [...deck.commanders, ...deck.cards.map((c) => c.cardId)];
+  const [cards, corpus, bracket, stats] = await Promise.all([
+    fetchCardsById(db, cardIds),
     loadCommanderCorpus(db, deck.commanders),
     loadDeckBracket(db, deck),
+    loadStatInputs(db, cardIds),
   ]);
-  return analyzeDeck(deck, cards, bracket, undefined, corpus);
+  return analyzeDeck(deck, cards, bracket, undefined, corpus, stats);
 }
