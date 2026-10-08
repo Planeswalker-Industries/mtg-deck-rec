@@ -13,16 +13,16 @@ Where the project stands, and why things are the way they are.
 | 2 — Deck tool | Built, then reworked as the deck journey | k6 load targets not measured (T013) |
 | 3 — Accounts and collections | Built | Open: import SQL tests (T015), 10k-row timing (T027), starting a collection by hand (T038) |
 | 4 — Votes, saved decks, export | Partly built | Saved decks and export done. Votes recorded, not scored (T006). Favorites not started (T017) |
-| 5 — Data pipeline and scoring | Released 2026-10-07 | Running by hand until the VPS worker is deployed (T066); follow-ups T067–T069 |
+| 5 — Data pipeline and scoring | Released 2026-10-08 | Scoring pipeline #140, derived pairs #142, Deck stats #143. Running by hand until the VPS worker is deployed (T066); follow-ups T067–T069, T071–T072 |
 
 ## Live setup
 
 - **Site:** https://mtg-app-psi.vercel.app, Vercel project `mtg-app` (root `apps/web`, functions in `cle1`)
-- **Database:** Supabase Pro, `us-east-2`, 8 GB disk, Small compute (2 GB RAM). 4.16 GB used after the 2026-10-07 release; reclaimable dead space is T041.
-- **Contract version:** v25 on `main` and `develop`.
-- **Migrations on hosted:** all applied up to `20261007000100` (2026-10-07, `db-push.yml` from `develop`, ahead of the code). The Supabase GitHub integration has failed to apply migrations since 2026-09-30, so `db-push.yml` is the way in.
+- **Database:** Supabase Pro, `us-east-2`, 8 GB disk, Small compute (2 GB RAM). 3.11 GB used after the 2026-10-08 release (`vacuum full` on `commander_card_scores`, T070); reclaimable dead space is T041.
+- **Contract version:** v26 on `main` and `develop`.
+- **Migrations on hosted:** all applied up to `20261008000200` (2026-10-08, `db-push.yml` from `main`; the GitHub integration failed again, since 2026-09-30). `db-push.yml` remains the way in.
 - **Scryfall data:** 34,658 live cards; printings are English only.
-- **Corpus on hosted:** 79,759 collated decks over 2,818 commander keys (collated and aggregated by hand on 2026-10-06/07). 5.82M score rows for 4,672 commander sets, EDHREC-only commanders included; 800,624 per-commander card pairs and 485,386 corpus-wide.
+- **Corpus on hosted:** 79,759 collated decks over 2,818 commander keys (collated and aggregated by hand on 2026-10-06/07). 2.28M score rows for 4,672 commander sets, EDHREC-only commanders included, with 1,056 pairs derived per request (T070: 686k pool rows, 304k listings); 800,624 per-commander card pairs and 485,386 corpus-wide.
 - **EDHREC statistics:** the 2026-09-30 import (6,787 commanders) in `corpus.edhrec_*`; raw `edhrec.*` is empty until the first hosted `sync:edhrec` (T068). The prior is on (cap 100).
 - **Commander Spellbook combos:** not on hosted: the repo variable `SPELLBOOK_SYNC_ENABLED` isn't set, so "complete a combo" and the combo bracket rules answer nothing in production yet (T068).
 - **Search index:** live on the VPS behind the search API, read by Vercel; the daily drain works.
@@ -43,6 +43,7 @@ Where the project stands, and why things are the way they are.
 | 2026-10-03 | #124, #126 | v19 | The crawl at 1 s with adaptive backoff and a queue ordered by need; crawled decks stored by card id |
 | 2026-10-06 | #135, #138 | v19 | Data layers (T053), Spellbook's raw tables, the collator (T054), the VPS worker (T066), crawl growth (T056), the precompute worker and serving reads (T055), substitutes per colour identity |
 | 2026-10-07 | #140 | v19 → v25 | The scoring pipeline (PR #139, T057–T065) with its review fixes |
+| 2026-10-08 | #141–#144 | v25 → v26 | Derived commander pairs (T070); Deck stats readout (T045, contract v26) with `typical_deck_profile()` |
 
 The Kitchen Table lane (PR #115) is the current design direction (walnut surfaces, one sleeve-blue accent, Bricolage Grotesque, the 12–60 px type scale, 44 px phone touch targets, one look per kind of control; journey steps shown as Cut, Add, Swap, Done). The spec is the UI section of `apps/web/AGENTS.md`. Deck stats (T045) shows lands, roles, curve and bracket against the commander's decks, docked on phones and a rail on wide screens. Left over: the How it works recordings (T049), starting from one commander (T050), local e2e failures (T051).
 
@@ -56,7 +57,7 @@ Designed 2026-10-05 after the owner's review of PRs #127 and #128: [`card-graph-
 - **Every weight change goes through the offline evaluation** (`cli eval:holdout`, the four-part gate). Its known weaknesses are listed in T068.
 - **The review before release (2026-10-07)** fixed owned-twin bugs in collection mode and builds, made accept-rate events server-only, clamped what anonymous reads may ask for, stopped diff-only merges from locking every unchanged row, fixed a pairs recount that ran every 30 minutes, and pinned the evaluation's time split (migration `20261007000100`). The release went migrations first, then code, so `main`'s old code kept working in between.
 - **Latency after release:** one round still, but the new reads made adds about 90 ms slower at p50 (212 → 306 ms, the previous and new builds interleaved), cuts 65 ms and swaps 31 ms. Card pairs cost most of it; the fixes are listed in T068.
-- **Storage:** within budget today (4.16 GB of 8), not at the plan's full crawl: projected about 8.4 GB at six times today's decks, mostly score rows for commander pairs that borrow their partners' decks. Those pairs are now derived per request from stored facts (T070, built 2026-10-08, not released): locally the score table went from 5.76M rows to 2.37M with identical rankings, which should free about 0.75 GB on hosted once vacuumed.
+- **Storage:** within budget (3.11 GB of 8 after the 2026-10-08 release), not at the plan's full crawl: projected about 8.4 GB at six times today's decks before the fix, mostly score rows for commander pairs that borrowed their partners' decks. Those pairs are derived per request from stored facts (T070, released 2026-10-08): hosted's `commander_card_scores` went from 1.41 GB to 321 MB on `vacuum full`, about 1.1 GB freed, with rankings identical to the stored path locally.
 - **UI** for collection mode, combos and builds was shelved during the sprint (owner, 2026-10-06) and is T069.
 
 ## Search index (Typesense behind a Go API)
