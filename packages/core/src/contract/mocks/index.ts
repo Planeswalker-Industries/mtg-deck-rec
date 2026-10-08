@@ -11,6 +11,7 @@ import type {
   ParsedLine,
   ResolvedLine,
   SavedDeckSummary,
+  StatTargets,
 } from '../decks';
 import type { ApiError, Result } from '../errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, TagId } from '../ids';
@@ -60,6 +61,36 @@ export interface MockApis {
   catalog: CatalogApi;
   data: DataApi;
 }
+
+/** Deck stats' roles in the mock app: ids are made up; labels match `deck_role_targets`. */
+const MOCK_ROLES = [
+  { roleId: 'mock-ramp', label: 'Ramp', target: 10 },
+  { roleId: 'mock-card-advantage', label: 'Card advantage', target: 10 },
+  { roleId: 'mock-removal', label: 'Removal', target: 9 },
+  { roleId: 'mock-protection', label: 'Protection', target: 5 },
+];
+/** Sample cards that count as ramp in the mock app. */
+const MOCK_RAMP_NAMES = new Set(['Sol Ring', 'Arcane Signet', 'Cultivate', "Kodama's Reach", 'Rampant Growth', 'Command Tower']);
+
+const MOCK_STAT_TARGETS: StatTargets = {
+  source: 'typical',
+  label: 'Typical decks',
+  lands: 36,
+  basicLands: 20,
+  roles: MOCK_ROLES,
+  curve: [0, 9, 13, 12, 8, 6, 3, 2],
+  bracketLimits: {
+    massLandDenialFromBracket: 4,
+    maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 },
+    extraTurnLoopResults: ['Infinite turns'],
+    extraTurnLoopFromBracket: 4,
+  },
+};
+
+const mockCardRoles = (cards: readonly { id: number; name: string }[]): Record<number, string[]> =>
+  Object.fromEntries(cards.filter((c) => MOCK_RAMP_NAMES.has(c.name)).map((c) => [c.id, ['mock-ramp']]));
+/** A suggestion's card with the roles the server would have sent. */
+const withMockRoles = (card: CardSummary): CardSummary => ({ ...card, roles: MOCK_RAMP_NAMES.has(card.name) ? ['mock-ramp'] : [] });
 
 const MOCK_DECK_COUNT = 1204;
 const MOCK_ACCOUNT_OWNED = new Set<number>([2, 3, 5, 9, 12, 16, 17]);
@@ -273,6 +304,8 @@ const analyze = (deck: DeckInput): DeckAnalysis => {
     },
     gameChangerIds,
     combos: [],
+    statTargets: commanders.length > 0 ? MOCK_STAT_TARGETS : null,
+    cardRoles: mockCardRoles(all),
     issues,
   };
   if (commanders.length === 0) analysis.commanderCandidates = all.filter(isCommanderEligible);
@@ -320,7 +353,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             const corpus = corpusFor(c.id);
             const votesFor = voteSummary(target.id, c.id);
             return {
-              card: c,
+              card: withMockRoles(c),
               functionalTwin: false,
               matchedTags,
               corpus,
@@ -376,7 +409,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           const corpus = corpusFor(c.id);
           const category = categoryOf(c.typeLine);
           const suggestion: AddSuggestion = {
-            card: c,
+            card: withMockRoles(c),
             category,
             corpus,
             score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null, role: null }, 0),

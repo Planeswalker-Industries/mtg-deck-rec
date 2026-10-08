@@ -154,6 +154,8 @@ export function analyzeDeck(
     bracketSignals: signals,
     gameChangerIds,
     combos: bracket.combos.filter((c) => c.missing === null).map(deckCombo),
+    statTargets: null,
+    cardRoles: {},
     issues: validateCommanderDeck(commanders, entries, estimatedBracket),
   };
   if (commanders.length === 0) {

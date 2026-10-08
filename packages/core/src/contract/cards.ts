@@ -48,6 +48,11 @@ export interface CardSummary {
   /** Scryfall rules keywords (Deathtouch, Menace). Empty for most cards. Not Tagger tags: those come from cardTags. */
   keywords: string[];
   price: PriceEstimate | null;
+  /**
+   * The tracked role ids (`deck_role_targets`) the card fills, where the server had them (suggestions, T045). Absent
+   * means unknown, not none: the deck's own cards' roles are on `DeckAnalysis.cardRoles`.
+   */
+  roles?: string[];
 }
 
 /**
