@@ -31,8 +31,8 @@ const isSignedIn = (source: CollectionSource) =>
  * Saves the analysed deck to the signed-in user's account. Saving is deliberately explicit: a new deck is public,
  * so a throwaway paste must never become a page on its own.
  *
- * Before the save, the deck is checked against the player's collection: cards it uses more copies of than they own are
- * listed, with the choice to add them to the collection as the deck is saved. A signed-out player is sent to sign in
+ * When the player has a collection, cards the deck uses more copies of than they own are listed before saving, with
+ * a separate choice to add them to the collection. A signed-out player is sent to sign in
  * with the deck (and any copies they chose to add) kept for them, and the tool finishes the save when they come back.
  *
  * Once it has been saved the tool goes on editing that deck, so this hands the deck over through `onSaved` and has
@@ -113,12 +113,16 @@ export function SaveDeckButton({
     else setError(result.error.message);
   }
 
-  /** Checks the deck against the collection: asks about the cards it lacks, or saves straight away. */
+  /** Checks an existing collection for missing cards, or saves straight away. */
   async function submit(deckName: string) {
     setBusy(true);
     setError(null);
     const fresh = beforeSave ? await beforeSave() : null;
     const deck = (fresh ?? analysis).deck;
+    if (collection.kind === "none") {
+      await finish(deckName, deck, [], new Map());
+      return;
+    }
     const shortfall = collectionShortfall(deck, await collectionCounts(collection));
     if (shortfall.length === 0) {
       await finish(deckName, deck, [], new Map());
@@ -141,6 +145,7 @@ export function SaveDeckButton({
   const listed = confirm
     ? [...confirm.shortfall].sort((a, b) => (confirm.names.get(a.cardId) ?? "").localeCompare(confirm.names.get(b.cardId) ?? ""))
     : [];
+  const missingCards = confirm?.shortfall.reduce((total, { missing }) => total + missing, 0) ?? 0;
 
   return (
     <>
@@ -182,8 +187,10 @@ export function SaveDeckButton({
           className="mx-auto max-h-[92dvh] w-full max-w-xl gap-0 overflow-y-auto rounded-t-2xl border-seam bg-sleeve px-4 pt-5 pb-6"
         >
           <SheetHeader className="p-0 pr-8">
-            <SheetTitle className="font-heading text-xl font-semibold tracking-tight">Add these to your collection?</SheetTitle>
-            <SheetDescription>The following cards are not currently in your collection:</SheetDescription>
+            <SheetTitle className="font-heading text-xl font-semibold tracking-tight">
+              {missingCards} {missingCards === 1 ? "card isn't" : "cards aren't"} in your collection
+            </SheetTitle>
+            <SheetDescription>The deck saves either way. Your collection only changes if you say you own these.</SheetDescription>
           </SheetHeader>
           <ul className="mt-3 columns-2 gap-4 text-sm">
             {listed.map(({ cardId, missing }) => (
@@ -194,7 +201,7 @@ export function SaveDeckButton({
           </ul>
           {!signedIn && (
             <p className="mt-3 text-sm text-muted-foreground">
-              Next you&apos;ll sign in, with Google or your email, and your deck and collection are saved to the new account.
+              Next you&apos;ll sign in, with Google or your email, to save your deck.
             </p>
           )}
           {error && (
@@ -205,18 +212,18 @@ export function SaveDeckButton({
           <SheetFooter className="mt-4 flex-row flex-wrap justify-end gap-2 p-0">
             <Button
               type="button"
-              variant="outline"
               disabled={busy}
               onClick={() => confirm && void finish(confirm.name, confirm.deck, [], confirm.names)}
             >
-              Save without adding
+              {busy ? "Saving…" : "Save deck"}
             </Button>
             <Button
               type="button"
+              variant="outline"
               disabled={busy}
               onClick={() => confirm && void finish(confirm.name, confirm.deck, confirm.shortfall, confirm.names)}
             >
-              {busy ? "Saving…" : "Add & Save"}
+              I own these — add them and save
             </Button>
           </SheetFooter>
         </SheetContent>

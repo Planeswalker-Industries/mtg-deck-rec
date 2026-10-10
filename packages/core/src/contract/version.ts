@@ -110,5 +110,8 @@
  * v26 (2026-10-08): deck stats (T045). DeckAnalysis gains `statTargets` (StatTargets: lands, basic lands, role and
  * curve targets blended toward typical decks, who they describe, and the bracket limits) and `cardRoles` (the tracked
  * roles of the deck's cards); CardSummary gains optional `roles`, set on suggestion cards. Additive for readers.
+ *
+ * v27 (2026-10-09): ActionsApi.getDeckCoverage is a private, uncached inventory read with required ownership,
+ * returning quantity allocation and metadata for target and allocated source cards. Additive; release needs both teams' approval.
  */
-export const CONTRACT_VERSION = 26;
+export const CONTRACT_VERSION = 27;

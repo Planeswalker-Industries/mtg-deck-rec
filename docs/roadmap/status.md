@@ -14,12 +14,13 @@ Where the project stands, and why things are the way they are.
 | 3 — Accounts and collections | Built | Open: import SQL tests (T015), 10k-row timing (T027), starting a collection by hand (T038) |
 | 4 — Votes, saved decks, export | Partly built | Saved decks and export done. Votes recorded, not scored (T006). Favorites not started (T017) |
 | 5 — Data pipeline and scoring | Released 2026-10-08 | Scoring pipeline #140, derived pairs #142, Deck stats #143. Running by hand until the VPS worker is deployed (T066); follow-ups T067–T069, T071–T072 |
+| 6 — UI overhaul, collection first | Phase A implemented locally; gate failed/incomplete, 2026-10-09 (not released) | Core tests, lint, typecheck and build pass; coverage e2e corrections and authenticated/viewport verification remain. Tasks and evidence in [`../ui-overhaul/STATE.md`](../ui-overhaul/STATE.md) |
 
 ## Live setup
 
 - **Site:** https://mtg-app-psi.vercel.app, Vercel project `mtg-app` (root `apps/web`, functions in `cle1`)
 - **Database:** Supabase Pro, `us-east-2`, 8 GB disk, Small compute (2 GB RAM). 3.11 GB used after the 2026-10-08 release (`vacuum full` on `commander_card_scores`, T070); reclaimable dead space is T041.
-- **Contract version:** v26 on `main` and `develop`.
+- **Contract version:** v26 on `main` and `develop`; local UI overhaul proposes additive v27 (coverage action), unreleased and awaiting frontend/backend approval before merge.
 - **Migrations on hosted:** all applied up to `20261008000200` (2026-10-08, `db-push.yml` from `main`; the GitHub integration failed again, since 2026-09-30). `db-push.yml` remains the way in.
 - **Scryfall data:** 34,658 live cards; printings are English only.
 - **Corpus on hosted:** 79,759 collated decks over 2,818 commander keys (collated and aggregated by hand on 2026-10-06/07). 2.28M score rows for 4,672 commander sets, EDHREC-only commanders included, with 1,056 pairs derived per request (T070: 686k pool rows, 304k listings); 800,624 per-commander card pairs and 485,386 corpus-wide.
@@ -49,7 +50,7 @@ The Kitchen Table lane (PR #115) is the current design direction (walnut surface
 
 ## Data pipeline and scoring (released 2026-10-07)
 
-Designed 2026-10-05 after the owner's review of PRs #127 and #128: [`card-graph-plan.md`](card-graph-plan.md) (data), [`scoring-design.md`](scoring-design.md) (scoring). CLAUDE.md ("Data pipeline") holds the rules.
+Designed 2026-10-05 after the owner's review of PRs #127 and #128: [`card-graph-plan.md`](card-graph-plan.md) (data), [`scoring-design.md`](scoring-design.md) (scoring). [`docs/reference/data-pipeline.md`](../reference/data-pipeline.md) ("Data pipeline") holds the rules.
 
 - **Layers.** Each source keeps its data in its own schema as published (`archidekt`, `edhrec`, `spellbook`); the crawler's machinery is `crawl`; the collator resolves everything into `corpus` with one deck rule; the precompute worker builds the serving tables the app reads.
 - **Requests read precomputed tables in one round** and rank in TypeScript (`@mtg/core/scoring` `rank.ts`). The per-request SQL scoring (0.8–1.0 s on average, peaks at the 3 s timeout) left the request path when `servingReads` went on (2026-10-07); its functions leave the database with T067.

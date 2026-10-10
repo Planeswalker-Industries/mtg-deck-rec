@@ -42,8 +42,10 @@ async function inStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore)
   const db = await openDatabase();
   try {
     return await new Promise<T>((resolve, reject) => {
-      const request = run(db.transaction(STORE, mode).objectStore(STORE));
-      request.onsuccess = () => resolve(request.result);
+      const transaction = db.transaction(STORE, mode);
+      const request = run(transaction.objectStore(STORE));
+      transaction.oncomplete = () => resolve(request.result);
+      transaction.onabort = () => reject(transaction.error);
       request.onerror = () => reject(request.error);
     });
   } finally {
@@ -80,12 +82,19 @@ export async function loadCollection(): Promise<StoredCollection | null> {
   }
 }
 
-/** Replaces the saved collection. Throws when the browser won't store it (private browsing can block IndexedDB). */
+/** Saves an import, renewing its expiry. Merge retains printing rows; consumers fold their per-card quantities. */
 export async function saveCollection(
   collection: Pick<StoredCollection, "catalogEpoch" | "rows" | "unmatched" | "unmatchedCount">,
+  mode: "replace" | "merge" = "replace",
 ): Promise<StoredCollection> {
+  const previous = mode === "merge" ? await loadCollection() : null;
   const now = Date.now();
-  const stored: StoredCollection = { version: 1, importedAt: now, expiresAt: now + TTL_MS, ...collection };
+  const stored: StoredCollection = {
+    version: 1, importedAt: now, expiresAt: now + TTL_MS, ...collection,
+    rows: [...(previous?.rows ?? []), ...collection.rows],
+    unmatched: [...(previous?.unmatched ?? []), ...collection.unmatched].slice(0, MAX_UNMATCHED_KEPT),
+    unmatchedCount: (previous?.unmatchedCount ?? 0) + collection.unmatchedCount,
+  };
   await inStore("readwrite", (store) => store.put(stored, KEY));
   return stored;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CollectionTotals } from "@mtg/core/contract";
 import { getAccountCollectionAction } from "@/app/collection/actions";
 import { loadCollection, type StoredCollection } from "@/lib/collection-store";
@@ -33,23 +33,33 @@ async function loadSource(): Promise<CollectionSource> {
 /** The visitor's collection, loaded on mount and again whenever it changes elsewhere on the page. */
 export function useCollectionSource() {
   const [source, setSource] = useState<CollectionSource>({ kind: "loading" });
+  const [refreshing, setRefreshing] = useState(true);
+  const mounted = useRef(true);
+  const generation = useRef(0);
 
-  useEffect(() => {
-    let active = true;
-    let latest = 0;
-    const load = () => {
-      const id = ++latest;
-      void loadSource().then((next) => {
-        if (active && id === latest) setSource(next);
-      });
-    };
-    load();
-    window.addEventListener(CHANGED_EVENT, load);
-    return () => {
-      active = false;
-      window.removeEventListener(CHANGED_EVENT, load);
-    };
+  /** Re-read the owner of inventory without temporarily changing the collection used by recommendations. */
+  const refresh = useCallback(async () => {
+    if (!mounted.current) return;
+    const id = ++generation.current;
+    setRefreshing(true);
+    try {
+      const next = await loadSource();
+      if (mounted.current && id === generation.current) setSource(next);
+    } finally {
+      if (mounted.current && id === generation.current) setRefreshing(false);
+    }
   }, []);
 
-  return { source, setSource };
+  useEffect(() => {
+    mounted.current = true;
+    void refresh();
+    const onChange = () => { void refresh(); };
+    window.addEventListener(CHANGED_EVENT, onChange);
+    return () => {
+      mounted.current = false;
+      window.removeEventListener(CHANGED_EVENT, onChange);
+    };
+  }, [refresh]);
+
+  return { source, setSource, refresh, refreshing };
 }

@@ -326,7 +326,7 @@ tag similarity while the player waits.
 - **Parity first.** The switch must reproduce today's add and swap lists (regression fixtures plus a parity script),
   so speed and scoring changes ship separately.
 
-**Built 2026-10-06** (T055; CLAUDE.md "Precompute worker" has the rules). Where it differs from the plan above:
+**Built 2026-10-06** (T055; `docs/reference/data-pipeline.md` "Precompute worker" has the rules). Where it differs from the plan above:
 
 - **Substitutes are stored per colour identity**, not as the top 50 in the card's own colours plus the top 50 overall.
   For every colour identity that can hold the card, the list keeps the first 220 candidates in `rec_swap_candidates`'

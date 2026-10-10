@@ -1,6 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mailpit, signIn } from "./mailpit";
 
+/** Real local catalog and account actions can take half a minute to finish. */
+const SYNC_WAIT_MS = 30_000;
+/** The race includes sign-in and two real account imports, so allow three minutes. */
+const SYNC_TEST_TIMEOUT_MS = 180_000;
+/** Distinct totals identify stale browser rows versus the committed replacement. */
+const STALE_BROWSER_COPIES = 3;
+/** Two replacement copies make the stale merge's addition observable. */
+const REPLACEMENT_COPIES = 2;
+
 /** Whether this browser still holds a collection in IndexedDB. */
 const hasBrowserCopy = (page: Page) =>
   page.evaluate(
@@ -56,6 +65,7 @@ test("a collection imported before signing in moves to the account and drives ow
   await page.keyboard.press("Escape");
 
   await page.goto("/collection/import");
+  await page.getByRole("radio", { name: "Replace my collection", exact: true }).check();
   await page.getByLabel("Replace with a new export").fill("2 Arcane Signet\n1 Definitely Not A Real Card");
   await page.getByRole("button", { name: "Replace collection" }).click();
   await expect(summary.getByText("1 line didn't match a card")).toBeVisible({ timeout: 30_000 });
@@ -88,4 +98,56 @@ test("edits an account collection by hand, and the edits stay", async ({ page, r
   await expect(artifacts.getByText("Arcane Signet")).toBeVisible({ timeout: 30_000 });
   await expect(artifacts.getByText("Sol Ring")).toBeVisible();
   await expect(artifacts.getByText("×2")).toHaveCount(0);
+});
+
+test("an old browser sync cannot restore rows after an explicit account replacement", async ({ page, context, request }) => {
+  test.skip(!mailpit, "needs the local mail catcher (E2E_MAILPIT_URL)");
+  test.setTimeout(SYNC_TEST_TIMEOUT_MS);
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill(`${STALE_BROWSER_COPIES} Sol Ring`);
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: SYNC_WAIT_MS });
+
+  let releaseSync!: () => void;
+  let markHeld!: () => void;
+  const release = new Promise<void>((resolve) => { releaseSync = resolve; });
+  const held = new Promise<void>((resolve) => { markHeld = resolve; });
+  let intercepted = false;
+  // Hold the real merge before it reaches the local server, not a mocked successful write.
+  await page.route("**/*", async (route) => {
+    const actionRequest = route.request();
+    const body = actionRequest.postData() ?? "";
+    if (!intercepted && actionRequest.headers()["next-action"] && body.includes('"mode":"merge"') && body.includes(`"quantity":${STALE_BROWSER_COPIES}`)) {
+      intercepted = true;
+      markHeld();
+      await release;
+    }
+    await route.continue();
+  });
+
+  try {
+    await signIn(page, request, `e2e-replace-sync-${Date.now()}@example.com`, "/collection/import");
+    await expect.poll(() => intercepted, { timeout: SYNC_WAIT_MS }).toBe(true);
+    await held;
+    // A second tab lets the replacement commit while the first tab's action is held.
+    const replacement = await context.newPage();
+    await replacement.goto("/collection/import?next=%2Fdeck");
+    await replacement.getByRole("radio", { name: "Replace my collection", exact: true }).check();
+    await replacement.getByLabel("Replace with a new export").fill(`${REPLACEMENT_COPIES} Arcane Signet`);
+    await replacement.getByRole("button", { name: "Replace collection", exact: true }).click();
+    const replacementSummary = replacement.getByRole("region", { name: "Saved collection" });
+    await expect(replacementSummary.getByText("Replaced your collection", { exact: true })).toBeVisible({ timeout: SYNC_WAIT_MS });
+    await expect(replacementSummary.locator("dd").nth(1)).toHaveText(String(REPLACEMENT_COPIES));
+    expect(await hasBrowserCopy(replacement)).toBe(false);
+
+    releaseSync();
+    await expect(page.getByRole("region", { name: "Saved collection" }).getByText(/Saved to your account/)).toBeVisible({ timeout: SYNC_WAIT_MS });
+    await replacement.reload();
+    await expect(replacementSummary.locator("dd").nth(1)).toHaveText(String(REPLACEMENT_COPIES), { timeout: SYNC_WAIT_MS });
+    await replacement.goto("/collection");
+    await expect(replacement.getByRole("list", { name: "Artifacts" }).getByText("Arcane Signet")).toBeVisible({ timeout: SYNC_WAIT_MS });
+    await expect(replacement.getByText("Sol Ring", { exact: true })).toBeHidden();
+  } finally {
+    releaseSync();
+  }
 });

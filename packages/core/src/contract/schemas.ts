@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { DeckInput } from './decks';
 import type { ApiError, Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
-import type { RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
+import type { OwnershipInput, RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
 import type { CardTypeFilter } from './cards';
 import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
 
@@ -50,7 +50,7 @@ export const deckInputSchema: InputSchema<DeckInput> = z.object(
   { error: "That deck isn't valid." },
 );
 
-const ownershipSchema = z.discriminatedUnion(
+const ownershipSchema: InputSchema<OwnershipInput> = z.discriminatedUnion(
   'kind',
   [
     z
@@ -120,6 +120,8 @@ export const importDeckInputSchema = z.object(
   request,
 );
 export const analyzeDeckInputSchema = z.object({ deck: deckInputSchema }, request);
+/** Coverage requires a collection, unlike recommendations' nullable ownership. */
+export const deckCoverageInputSchema = z.object({ deck: deckInputSchema, ownership: ownershipSchema }, request);
 export const commanderInputSchema = z.object({ commanderId: cardId("That commander isn't valid.") }, request);
 export const commanderRequestInputSchema = z.object(
   { requestId: z.string({ error: "That deck lookup isn't valid." }).regex(/^\d{1,15}$/, "That deck lookup isn't valid.") },

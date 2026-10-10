@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { displayName } from "@/lib/cards";
-import { DECK_BAR_HEIGHT_VAR, TEXT_LINK } from "@/lib/constants";
+import { DECK_BAR_HEIGHT_VAR, PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { bracketLabel, collectionModeLabel } from "@/lib/labels";
 import { ColorIdentity } from "./color-identity";
 import { DeckIssuesChip } from "./resolution-issues";
@@ -112,11 +112,13 @@ export function DeckBar({
   deckName,
   onRename,
   cardCount,
+  coverage,
   onBracketChange,
   collectionMode,
   onCollectionModeChange,
   onEditDecklist,
   saveSlot,
+  collectionImportHref = "/collection/import?next=/deck",
 }: {
   analysis: DeckAnalysis;
   context: RecContext;
@@ -125,6 +127,8 @@ export function DeckBar({
   /** Renames the deck; resolves to an error message, or null when it worked. */
   onRename: (name: string) => Promise<string | null>;
   cardCount: number;
+  /** Upgrade's current deck coverage; replaces the count on the existing second line. */
+  coverage?: ReactNode;
   onBracketChange: (bracket: Bracket) => void;
   /** null when there's no saved collection; the bar then links to the collection import. */
   collectionMode: CollectionMode | null;
@@ -136,8 +140,11 @@ export function DeckBar({
    * and this (Save deck) takes the collection select's place, which moves into the builder's search panel.
    */
   saveSlot?: ReactNode;
+  /** Return to the initiating deck after a successful collection import. */
+  collectionImportHref?: Route;
 }) {
   const building = saveSlot !== undefined;
+  const phoneCoverage = !building && coverage !== undefined;
   const commanders = analysis.commanderKey.commanders;
   const art = commanders[0]?.images?.front.artCrop;
   const bar = useRef<HTMLDivElement>(null);
@@ -160,7 +167,7 @@ export function DeckBar({
   const { slug, deckCount } = analysis.commanderKey;
   const commanderPage = slug && deckCount > 0 ? (`/commander/${slug}` as Route) : null;
   const artImage = art ? (
-    <Image src={art} alt="" width={96} height={70} unoptimized className="h-12 w-16 shrink-0 rounded-md object-cover ring-1 ring-seam" />
+    <Image src={art} alt="" width={96} height={70} unoptimized className={cn("h-12 w-16 shrink-0 rounded-md object-cover ring-1 ring-seam", phoneCoverage && "max-sm:h-7")} />
   ) : null;
 
   return (
@@ -175,12 +182,12 @@ export function DeckBar({
           href={commanderPage}
           aria-label={`${commanderName}: commander page`}
           title={`${commanderName}: commander page`}
-          className="row-span-2 rounded-md transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className={cn("row-span-2 rounded-md transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", phoneCoverage && `${PHONE_HIT_AREA} max-sm:row-span-1`)}
         >
           {artImage}
         </Link>
       ) : (
-        <span className="row-span-2">{artImage}</span>
+        <span className={cn("row-span-2", phoneCoverage && "max-sm:row-span-1")}>{artImage}</span>
       )}
       {/* The deck's issues sit beside the name as a chip, on every screen; in the Deckbuilder the colours come first. */}
       <div className="flex min-w-0 items-center gap-2">
@@ -202,11 +209,12 @@ export function DeckBar({
           ))}
         </SelectContent>
       </Select>
-      <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+      {/* Coverage uses the space below the art on phones, without adding a third line. */}
+      <p className={cn("flex min-w-0 items-center gap-2 text-xs text-muted-foreground", phoneCoverage && "max-sm:col-span-2")}>
         {!building && (
           <>
-            <ColorIdentity identity={analysis.colorIdentity} />
-            <span className="font-mono">{cardCount} cards</span>
+            <ColorIdentity identity={analysis.colorIdentity} className={phoneCoverage ? "max-sm:min-w-0" : undefined} />
+            {coverage ?? <span className="font-mono">{cardCount} cards</span>}
           </>
         )}
         {onEditDecklist && (
@@ -218,7 +226,7 @@ export function DeckBar({
       {building ? (
         <div className="justify-self-end">{saveSlot}</div>
       ) : collectionMode === null ? (
-        <Link href="/collection/import" className={cn(TEXT_LINK, "justify-self-end text-xs font-semibold")}>
+        <Link href={collectionImportHref} className={cn(TEXT_LINK, "justify-self-end text-xs font-semibold")}>
           Add collection
         </Link>
       ) : (

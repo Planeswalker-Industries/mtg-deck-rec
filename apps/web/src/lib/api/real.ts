@@ -11,6 +11,7 @@ import {
   castVoteAction,
   recordRecEventAction,
   getCommanderCoverageAction,
+  getDeckCoverageAction,
   getCommanderRequestAction,
   importDeckFromUrlAction,
   parseDeckAction,
@@ -61,6 +62,7 @@ export const realRecs: RecsApi = {
 export const realActions: ActionsApi = {
   parseDeck: (input) => parseDeckAction(input),
   analyzeDeck: (input) => analyzeDeckAction(input),
+  getDeckCoverage: (input) => getDeckCoverageAction(input),
   importDeckFromUrl: (input) => importDeckFromUrlAction(input),
   getCommanderCoverage: (input) => getCommanderCoverageAction(input),
   requestCommanderDecks: (input) => requestCommanderDecksAction(input),

@@ -1,5 +1,98 @@
 import { expect, test } from "@playwright/test";
 
+/** Collection parsing and catalog loading may take this long in the production mock build. */
+const COLLECTION_WAIT_MS = 30_000;
+/** A new browser collection keeps the usual seven-day lifetime. */
+const COLLECTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+test("starts an empty browser collection by name without storing an empty collection", async ({ page }) => {
+  await page.goto("/collection");
+  await page.getByRole("button", { name: "Add cards by name" }).click();
+  await expect(page.getByRole("searchbox", { name: "Card to add" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "No collection yet" })).toBeVisible();
+  await page.getByRole("button", { name: "Add cards by name" }).click();
+  await page.getByRole("searchbox", { name: "Card to add" }).fill("Sol Ring");
+  await page.getByRole("button", { name: "Add Sol Ring", exact: true }).click({ timeout: COLLECTION_WAIT_MS });
+  await expect(page.getByRole("list", { name: "Artifacts" }).getByText("Sol Ring")).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+  await expect(page.getByText("1 different cards, 1 copies.", { exact: false })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("list", { name: "Artifacts" }).getByText("Sol Ring")).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+  const lifetime = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("mtg-deck-rec", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise<number>((resolve, reject) => {
+        const request = db.transaction("collection").objectStore("collection").get("current");
+        request.onsuccess = () => resolve(request.result.expiresAt - request.result.importedAt);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { db.close(); }
+  });
+  expect(lifetime).toBe(COLLECTION_TTL_MS);
+  await page.goto("/deck");
+  await expect(page.getByText(/Your collection is loaded/)).toBeVisible();
+});
+
+test("adds imports by default, preserves unmatched lines, and replaces only when chosen", async ({ page }) => {
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill("2 Sol Ring\n1 Old Unknown Card");
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  const summary = page.getByRole("region", { name: "Saved collection" });
+  await expect(summary).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+  await expect(page.getByRole("radio", { name: "Add to my collection", exact: true })).toBeChecked();
+  await page.getByLabel("Add a new export").fill("3 Sol Ring\n1 Arcane Signet\n1 New Unknown Card");
+  await page.getByRole("button", { name: "Add to collection", exact: true }).click();
+  await expect(summary.getByText("Added 4 cards", { exact: true })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+  await expect(summary.getByText("6", { exact: true })).toBeVisible();
+  await summary.getByText("2 lines didn't match a card").click();
+  await expect(summary.getByText(/Old Unknown Card/)).toBeVisible();
+  await expect(summary.getByText(/New Unknown Card/)).toBeVisible();
+  await summary.getByRole("link", { name: "Browse your collection" }).click();
+  await expect(page.getByRole("list", { name: "Artifacts" }).getByText("×5")).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+  await page.goto("/collection/import?next=%2Fdeck%3Fdeck%3Dknown-code");
+  await expect(page.getByRole("link", { name: "Back to your deck" })).toBeHidden();
+  await page.getByRole("radio", { name: "Replace my collection", exact: true }).check();
+  await page.getByLabel("Replace with a new export").fill("1 Chulane, Teller of Tales");
+  await page.getByRole("button", { name: "Replace collection", exact: true }).click();
+  await expect(summary.getByText("Replaced your collection", { exact: true })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+  await expect(summary.getByRole("link", { name: "Back to your deck" })).toHaveAttribute("href", "/deck?deck=known-code");
+  await expect(summary.getByText(/didn't match a card/)).toBeHidden();
+  await summary.getByRole("link", { name: "Browse your collection" }).click();
+  await expect(page.getByRole("list", { name: "Legendary creatures" }).getByText("Chulane, Teller of Tales")).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+  await expect(page.getByRole("list", { name: "Artifacts" })).toBeHidden();
+});
+
+test("returns to the initiating deck only after a successful import and rejects unsafe next", async ({ page }) => {
+  await page.goto("/deck");
+  const firstLink = page.getByRole("link", { name: "Import your collection first" });
+  await expect(firstLink).toHaveAttribute("href", "/collection/import?next=%2Fdeck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck", exact: true }).click();
+  const barLink = page.getByRole("link", { name: "Add collection", exact: true });
+  await expect(barLink).toHaveAttribute("href", "/collection/import?next=%2Fdeck", { timeout: COLLECTION_WAIT_MS });
+  await barLink.click();
+  await page.getByLabel("Collection export").fill("1 Sol Ring");
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  const back = page.getByRole("link", { name: "Back to your deck" });
+  await expect(back).toHaveAttribute("href", "/deck", { timeout: COLLECTION_WAIT_MS });
+  await back.click();
+  await expect(page).toHaveURL(/\/deck$/);
+  await page.goto("/collection/import?next=https%3A%2F%2Fevil.example");
+  await expect(back).toBeHidden();
+  await page.getByLabel("Add a new export").fill("1 Definitely Not A Real Card");
+  await page.getByRole("button", { name: "Add to collection", exact: true }).click();
+  await expect(page.getByText(/None of those lines matched/)).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+  await expect(back).toBeHidden();
+  await expect(page.getByRole("region", { name: "Saved collection" }).getByText("1", { exact: true })).toHaveCount(2);
+  await page.getByLabel("Add a new export").fill("1 Arcane Signet");
+  await page.getByRole("button", { name: "Add to collection", exact: true }).click();
+  await expect(back).toHaveAttribute("href", "/deck", { timeout: COLLECTION_WAIT_MS });
+});
+
 test("imports a collection and limits suggestions to owned cards", async ({ page }) => {
   await page.goto("/collection/import");
   await page.getByLabel("Collection export").fill("1 Sol Ring\n1 Definitely Not A Real Card");

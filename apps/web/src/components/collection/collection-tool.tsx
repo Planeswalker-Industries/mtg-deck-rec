@@ -3,6 +3,8 @@
 import { useMemo, useRef, useState } from "react";
 import { cn } from "cn";
 import Link from "next/link";
+import type { Route } from "next";
+import { useSearchParams } from "next/navigation";
 import type { CollectionTotals, ResolvedCollectionRow, UnresolvedCollectionRow } from "@mtg/core/contract";
 import { appendCsvPage, collectionLink } from "@mtg/core/parse";
 import { importCollectionFromLinkAction } from "@/app/collection/actions";
@@ -13,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Textarea } from "@/components/ui/textarea";
 import { getApis } from "@/lib/api/client";
+import { safeNextPath } from "@/lib/safe-path";
 import { COLLECTION_MAX_IMPORT_ROWS, TEXT_LINK } from "@/lib/constants";
 import {
   clearCollection,
@@ -53,6 +56,7 @@ interface Problem {
 const LINK = cn(TEXT_LINK, "font-semibold");
 
 export function CollectionTool() {
+  const next = useSearchParams().get("next");
   const { source, setSource } = useCollectionSource();
   const parse = useCollectionParser();
   const [text, setText] = useState("");
@@ -64,6 +68,8 @@ export function CollectionTool() {
   const [problem, setProblem] = useState<Problem | null>(null);
   /** Lines that didn't match in the last import to the account, which doesn't keep them. */
   const [accountUnmatched, setAccountUnmatched] = useState<Unmatched | null>(null);
+  const [mode, setMode] = useState<"merge" | "replace">("merge");
+  const [success, setSuccess] = useState<string | null>(null);
   const importRun = useRef(0);
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
   const hasCollection = source.kind === "browser" || source.kind === "account";
@@ -74,6 +80,7 @@ export function CollectionTool() {
     const id = ++importRun.current;
     const current = () => id === importRun.current;
     setProblem(null);
+    setSuccess(null);
     // A lone link is fetched first; what comes back is CSV and takes the same path as an uploaded file.
     let exported = text;
     if (collectionLink(text)) {
@@ -127,8 +134,10 @@ export function CollectionTool() {
     if (!current()) return;
     setProgress(null);
     if (saved) {
+      setSuccess(hasCollection ? mode === "merge" ? `Added ${count(resolved.reduce((n, row) => n + row.quantity, 0))} cards` : "Replaced your collection" : "Imported your collection");
       setText("");
       setFileName(null);
+      notifyCollectionChanged();
     }
   }
 
@@ -156,10 +165,8 @@ export function CollectionTool() {
     return csv;
   }
 
-  /** Replaces the account's collection with the import. Returns whether it saved. */
+  /** Commits the selected account import; failed staging leaves both existing copies alone. */
   async function saveToAccount(rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
-    // The import replaces the account's collection, so a browser copy still waiting to move there is out of date.
-    await clearCollection();
     let importId: string | null = null;
     let totals: CollectionTotals | null = null;
     setProgress({ label: "Saving to your account", done: 0, total: rows.length });
@@ -167,20 +174,21 @@ export function CollectionTool() {
       const result = await getApis().actions.saveCollectionBatch({
         importId,
         sourceApp: "text",
-        mode: "replace",
+        mode: hasCollection ? mode : "replace",
         rows: rows.slice(start, start + ROWS_PER_CALL),
         final: start + ROWS_PER_CALL >= rows.length,
       });
       if (!current()) return false;
       if (!result.ok) {
         importFailed(result.error.message);
-        notifyCollectionChanged();
         return false;
       }
       importId = result.data.importId;
       totals = result.data.totals;
       setProgress({ label: "Saving to your account", done: Math.min(start + ROWS_PER_CALL, rows.length), total: rows.length });
     }
+    // Only a committed replacement supersedes a browser copy still waiting to move to the account.
+    if (!hasCollection || mode === "replace") await clearCollection();
     setAccountUnmatched(unmatched);
     setSource(totals ? { kind: "account", totals } : { kind: "none", signedIn: true });
     return true;
@@ -188,7 +196,7 @@ export function CollectionTool() {
 
   async function saveToBrowser(catalogEpoch: string, rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
     try {
-      const stored = await saveCollection({ catalogEpoch, rows, unmatched: unmatched.lines, unmatchedCount: unmatched.count });
+      const stored = await saveCollection({ catalogEpoch, rows, unmatched: unmatched.lines, unmatchedCount: unmatched.count }, hasCollection ? mode : "replace");
       if (!current()) return false;
       setSource({ kind: "browser", signedIn: false, collection: stored });
       return true;
@@ -203,6 +211,7 @@ export function CollectionTool() {
     setProgress(null);
     setProblem(null);
     setAccountUnmatched(null);
+    setSuccess(null);
     if (source.kind === "account") {
       const result = await getApis().actions.deleteCollection();
       if (!result.ok) return setProblem({ title: "Couldn't clear the collection", message: result.error.message });
@@ -251,6 +260,8 @@ export function CollectionTool() {
           }
           unmatched={{ lines: source.collection.unmatched, count: source.collection.unmatchedCount }}
           onClear={() => void clear()}
+          success={success}
+          next={next}
         />
       )}
       {source.kind === "account" && (
@@ -259,6 +270,8 @@ export function CollectionTool() {
           note={`Saved to your account. Updated ${day(Date.parse(source.totals.updatedAt))}.`}
           unmatched={accountUnmatched}
           onClear={() => void clear()}
+          success={success}
+          next={next}
         />
       )}
 
@@ -270,7 +283,7 @@ export function CollectionTool() {
         }}
       >
         <Label htmlFor={textHidden ? undefined : "collection-text"} className="font-semibold">
-          {hasCollection ? "Replace with a new export" : "Collection export"}
+          {hasCollection ? mode === "merge" ? "Add a new export" : "Replace with a new export" : "Collection export"}
         </Label>
         {fileName !== null ? (
           <LoadedFile
@@ -337,9 +350,22 @@ export function CollectionTool() {
             <AlertDescription>{problem.message}</AlertDescription>
           </Alert>
         )}
+        {hasCollection && (
+          <fieldset disabled={importing} className="flex flex-col gap-2">
+            <legend className="mb-2 text-sm font-semibold">How to import</legend>
+            <label className="flex min-h-11 items-center gap-2">
+              <input type="radio" name="import-mode" value="merge" checked={mode === "merge"} onChange={() => setMode("merge")} className="accent-primary" />
+              Add to my collection
+            </label>
+            <label className="flex min-h-11 items-center gap-2">
+              <input type="radio" name="import-mode" value="replace" checked={mode === "replace"} onChange={() => setMode("replace")} className="accent-primary" />
+              Replace my collection
+            </label>
+          </fieldset>
+        )}
         <div>
-          <Button type="submit" size="lg" disabled={!text.trim() || importing || source.kind === "loading"}>
-            {importing ? "Importing…" : isLink ? "Import from link" : hasCollection ? "Replace collection" : "Import collection"}
+          <Button type="submit" size="lg" variant="outline" disabled={!text.trim() || importing || source.kind === "loading"}>
+            {importing ? "Importing…" : hasCollection ? mode === "merge" ? "Add to collection" : "Replace collection" : isLink ? "Import from link" : "Import collection"}
           </Button>
         </div>
       </form>
@@ -352,17 +378,22 @@ function CollectionSummary({
   note,
   unmatched,
   onClear,
+  success,
+  next,
 }: {
   totals: Pick<CollectionTotals, "uniqueCards" | "totalQuantity">;
   note: string;
   unmatched: Unmatched | null;
   onClear: () => void;
+  success: string | null;
+  next: string | null;
 }) {
   return (
     <section aria-labelledby="collection-summary" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4">
       <h2 id="collection-summary" className="sr-only">
         Saved collection
       </h2>
+      {success && <p role="status" className="font-semibold">{success}</p>}
       <dl className="grid grid-cols-2 gap-3">
         <div>
           <dt className="text-sm text-muted-foreground">Different cards</dt>
@@ -380,8 +411,8 @@ function CollectionSummary({
             {count(unmatched.count)} line{unmatched.count === 1 ? "" : "s"} didn&apos;t match a card
           </summary>
           <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">
-            {unmatched.lines.slice(0, UNMATCHED_SHOWN).map((line) => (
-              <li key={line.rowNo}>
+            {unmatched.lines.slice(0, UNMATCHED_SHOWN).map((line, index) => (
+              <li key={`${line.rowNo}-${index}`}>
                 Line {line.rowNo}: {line.name ?? "no card name"}
               </li>
             ))}
@@ -392,7 +423,10 @@ function CollectionSummary({
         </details>
       )}
       <div className="flex flex-wrap gap-2">
-        <Link href="/collection" className={buttonVariants({ size: "lg" })}>
+        {success && next !== null && (
+          <Link href={safeNextPath(next, "/deck") as Route} className={buttonVariants({ size: "lg" })}>Back to your deck</Link>
+        )}
+        <Link href="/collection" className={buttonVariants({ size: "lg", variant: success && next !== null ? "outline" : "default" })}>
           Browse your collection
         </Link>
         <Link href="/deck" className={buttonVariants({ size: "lg", variant: "outline" })}>

@@ -34,7 +34,12 @@ spikes/**/data/
 docs/plan_files/
 
 # local-only: agent config, personal agent notes, outreach drafts (CLAUDE.md and docs/roadmap are shared)
+.opencode/
+/opencode.json
+/opencode.jsonc
+/scripts/agent/
 .claude/
+/docs/development/workflow.md
 CLAUDE.local.md
 docs/outreach/
 

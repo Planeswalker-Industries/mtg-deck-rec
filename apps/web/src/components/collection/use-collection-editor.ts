@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { CardSummary } from "@mtg/core/contract";
 import { setCardQuantity } from "@mtg/core/collection";
 import { getApis } from "@/lib/api/client";
-import { loadCollection, updateCollectionRows } from "@/lib/collection-store";
+import { loadCollection, saveCollection, updateCollectionRows } from "@/lib/collection-store";
+import { notifyCollectionChanged } from "./use-collection-source";
 import type { CollectionViewItem } from "./use-collection-view";
 
 /**
@@ -20,7 +21,7 @@ const WRITE_DEBOUNCE_MS = 500;
  * back to the count it had before and says why. An account collection is written through the server; a browser one
  * is rewritten in IndexedDB, by the same rule the server follows (@mtg/core/collection setCardQuantity).
  */
-export function useCollectionEditor(initial: CollectionViewItem[], where: "browser" | "account") {
+export function useCollectionEditor(initial: CollectionViewItem[], where: "browser" | "account", starting = false) {
   const [items, setItems] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(0);
@@ -30,18 +31,35 @@ export function useCollectionEditor(initial: CollectionViewItem[], where: "brows
   const waitingWrites = useRef(new Map<number, { card: CardSummary; quantity: number }>());
   /** The count each card had when its first unsaved change was made, to go back to if the write fails. */
   const before = useRef(new Map<number, CollectionViewItem | null>());
+  const canCreate = useRef(starting);
+  const created = useRef(false);
+  const activeWrites = useRef(0);
+  // Serial writes keep two first cards from overwriting each other's browser rows.
+  const writes = useRef(Promise.resolve());
 
   async function write(card: CardSummary, quantity: number) {
+    activeWrites.current++;
     setSaving((n) => n + 1);
+    const previousWrite = writes.current;
+    let release!: () => void;
+    writes.current = new Promise<void>((resolve) => { release = resolve; });
+    await previousWrite;
     try {
       if (where === "account") {
         const r = await getApis().actions.setCollectionCardQuantity({ cardId: card.id, quantity });
         if (!r.ok) throw new Error(r.error.message);
       } else {
         const stored = await loadCollection();
-        if (!stored) throw new Error("This browser's collection has expired. Import it again.");
-        await updateCollectionRows(stored, setCardQuantity(stored.rows, card.id, quantity));
+        if (stored) {
+          await updateCollectionRows(stored, setCardQuantity(stored.rows, card.id, quantity));
+        } else if (canCreate.current && quantity > 0) {
+          await saveCollection({ catalogEpoch: "", rows: setCardQuantity([], card.id, quantity), unmatched: [], unmatchedCount: 0 });
+        } else {
+          throw new Error("This browser's collection has expired. Import it again.");
+        }
       }
+      canCreate.current = false;
+      if (starting) created.current = true;
       before.current.delete(card.id);
     } catch (err) {
       const previous = before.current.get(card.id);
@@ -52,7 +70,14 @@ export function useCollectionEditor(initial: CollectionViewItem[], where: "brows
       });
       setError(`${card.name}: ${err instanceof Error ? err.message : "couldn't be saved."}`);
     } finally {
+      release();
       setSaving((n) => n - 1);
+      activeWrites.current--;
+      // Refreshing unmounts the empty-state editor; every timer and write must settle first.
+      if (created.current && activeWrites.current === 0 && waitingWrites.current.size === 0) {
+        created.current = false;
+        notifyCollectionChanged();
+      }
     }
   }
 
@@ -86,6 +111,7 @@ export function useCollectionEditor(initial: CollectionViewItem[], where: "brows
     () => () => {
       for (const timer of timers.current.values()) clearTimeout(timer);
       for (const { card, quantity } of waitingWrites.current.values()) void write(card, quantity);
+      waitingWrites.current.clear();
     },
     // write only reads refs and the collection's location, which never changes for this view.
     // eslint-disable-next-line react-hooks/exhaustive-deps

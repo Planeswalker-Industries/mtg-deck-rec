@@ -3,6 +3,7 @@ import type { CardDetail, CardSummary, TagRef, CardSearchInput } from './cards';
 import type { CommanderCoverage, CommanderRequest } from './commander-requests';
 import type {
   CollectionCardsResult,
+  DeckCoverageResult,
   CollectionEntry,
   CollectionRowInput,
   CollectionTotals,
@@ -22,6 +23,7 @@ import type {
 import type { Result } from './errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
 import type { AddResult, BuildFill, BuildResult, CutResult, RecEvent, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
+import type { OwnershipInput } from './recs';
 
 /**
  * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut}
@@ -75,6 +77,8 @@ export interface ActionsApi {
   importDeckFromUrl(input: { url: string }): Promise<Result<ImportDeckUrlResult>>;
   /** Re-run after the user resolves ambiguous lines or picks a commander. */
   analyzeDeck(input: { deck: DeckInput }): Promise<Result<DeckAnalysis>>;
+  /** Private inventory read, independent of recommendations; ownership is required. */
+  getDeckCoverage(input: { deck: DeckInput; ownership: OwnershipInput }): Promise<Result<DeckCoverageResult>>;
 
   /** Deck data lookups for commanders with too few decks. Checking coverage never starts a lookup. */
   getCommanderCoverage(input: { commanderId: CardId }): Promise<Result<CommanderCoverage>>;

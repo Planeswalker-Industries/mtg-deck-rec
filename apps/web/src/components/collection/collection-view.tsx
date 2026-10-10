@@ -74,22 +74,40 @@ export function CollectionView() {
         </>
       )}
       {view.status === "none" && (
-        <>
-          <Heading />
-          <div className="flex max-w-prose flex-col items-start gap-3 rounded-lg border border-seam bg-sleeve p-5">
-            <h2 className="font-heading text-xl font-semibold tracking-tight">No collection yet</h2>
-            <p className="text-muted-foreground">
-              Import an export from ManaBox, Moxfield, Archidekt or TCGplayer to browse your cards here, and let the deck tool suggest only
-              cards you own.
-            </p>
-            <Link href="/collection/import" className={buttonVariants({ size: "lg" })}>
-              Import your collection
-            </Link>
-          </div>
-        </>
+        <EmptyView signedIn={view.signedIn} />
       )}
       {view.status === "ready" && <ReadyView items={view.items} sets={view.sets} where={view.where} />}
     </div>
+  );
+}
+
+function EmptyView({ signedIn }: { signedIn: boolean }) {
+  const [adding, setAdding] = useState(false);
+  const editor = useCollectionEditor([], signedIn ? "account" : "browser", true);
+  return (
+    <>
+      <Heading />
+      <div className="flex max-w-prose flex-col items-start gap-3 rounded-lg border border-seam bg-sleeve p-5">
+        <h2 className="font-heading text-xl font-semibold tracking-tight">No collection yet</h2>
+        <p className="text-muted-foreground">Start with a few cards by name, or import an export from ManaBox, Moxfield, Archidekt or TCGplayer.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="lg" variant="outline" aria-expanded={adding} onClick={() => setAdding(true)}>
+            Add cards by name
+          </Button>
+          <Link href="/collection/import" className={buttonVariants({ size: "lg", variant: "outline" })}>
+            Import your collection
+          </Link>
+        </div>
+      </div>
+      {adding && (
+        <>
+          <p role={editor.error ? "alert" : "status"} className={editor.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
+            {editor.error ?? (editor.saving ? "Saving…" : "Your collection starts when you add your first card.")}
+          </p>
+          <AddToCollection editor={editor} />
+        </>
+      )}
+    </>
   );
 }
 

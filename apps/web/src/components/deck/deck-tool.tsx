@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { DeckBar } from "./deck-bar";
+import { DeckCoverage } from "./deck-coverage";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
@@ -39,6 +40,7 @@ import { useCollectionSource } from "@/components/collection/use-collection-sour
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
+import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
 import { DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
 import { getApis } from "@/lib/api/client";
@@ -137,7 +139,7 @@ export function DeckTool() {
   const buildStart = searchParams.get(DECK_START_PARAM) === DECK_START_BUILD;
   // ?resume=save finishes a save a signed-out player started, now that they have signed in.
   const resumeSave = searchParams.get(RESUME_PARAM) === RESUME_SAVE;
-  const { source } = useCollectionSource();
+  const { source, refresh: refreshCollection, refreshing: collectionRefreshing } = useCollectionSource();
   const collectionLoaded = source.kind !== "loading";
   /**
    * The journey as of the latest render. The tool is created first (the journey is built on its analysis) but tells
@@ -148,6 +150,9 @@ export function DeckTool() {
     onContextChange: (ctx, change) => journeyRef.current?.reload(ctx, change) ?? Promise.resolve(),
   });
   const lookup = useCommanderLookup(tool.refreshRecommendations);
+  const collectionDeckCode = tool.openDeck?.code ?? openCode;
+  const collectionReturnPath = collectionDeckCode ? `/deck?deck=${encodeURIComponent(collectionDeckCode)}` : "/deck";
+  const collectionImportHref = `/collection/import?next=${encodeURIComponent(collectionReturnPath)}` as Route;
   /** The commanders the deck lookup offer was last checked for; a deckbuilder edit that changes them checks again. */
   const lookupCheckedFor = useRef<string | null>(null);
   const deckGroups = useDeckGroups(tool.lines);
@@ -179,6 +184,15 @@ export function DeckTool() {
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
   const { analysis, context } = tool;
   const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut });
+  const coverageEnabled = mode === "upgrade" && !tool.stale;
+  const coverage = useDeckCoverage(journey.deck, source, tool.openDeck?.deckId, coverageEnabled && !collectionRefreshing);
+  const hasWorkingDeck = journey.deck !== null;
+  useEffect(() => {
+    if (!coverageEnabled || !hasWorkingDeck) return;
+    const onFocus = () => { void refreshCollection(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [coverageEnabled, hasWorkingDeck, refreshCollection]);
   useEffect(() => {
     journeyRef.current = journey;
   });
@@ -464,7 +478,7 @@ export function DeckTool() {
             {source.kind === "none" && (
               <p className="mt-2 max-w-prose text-sm text-muted-foreground">
                 Building from cards you own?{" "}
-                <Link href="/collection/import" className={cn(TEXT_LINK, "font-semibold")}>
+                <Link href={collectionImportHref} className={cn(TEXT_LINK, "font-semibold")}>
                   Import your collection first
                 </Link>
                 , and suggestions will put your cards ahead of the rest.
@@ -582,11 +596,17 @@ export function DeckTool() {
       {analysis && context && (
         <section aria-label="Recommendations" className="flex flex-col gap-2">
           <DeckBar
+            collectionImportHref={collectionImportHref}
             analysis={analysis}
             context={context}
             deckName={tool.openDeck?.name ?? tool.deckName ?? suggestedDeckName(analysis)}
             onRename={tool.renameDeck}
             cardCount={cardCount}
+            coverage={coverageEnabled && journey.deck && (source.kind === "browser" || source.kind === "account")
+              ? collectionRefreshing
+                ? <span role="status" className="whitespace-nowrap">Checking collection…</span>
+                : coverage ? <DeckCoverage status={coverage} retry={() => void refreshCollection()} /> : undefined
+              : undefined}
             onBracketChange={tool.changeBracket}
             collectionMode={tool.collectionMode}
             onCollectionModeChange={tool.changeCollectionMode}

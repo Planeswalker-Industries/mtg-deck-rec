@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
 import { describeCostDelta } from "@/lib/format";
-import { cutReasonShortLabel } from "@/lib/labels";
+import { cutReasonShortLabel, emptySwapMessage } from "@/lib/labels";
 import { CardBack } from "./card-back";
 import { PanelError } from "./panel-state";
 import { ShuffleDeck } from "./shuffle-deck";
@@ -408,7 +408,11 @@ export function SwipeRater({
       ) : !candidate ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <p className="max-w-xs text-sm">
-            {rater.candidateCount === 0 ? `No replacements do the same job as ${targetName}.` : `That's every replacement for ${targetName}.`}
+            {loaded.suggestions.length === 0
+              ? emptySwapMessage[rater.emptyReason ?? "NO_CANDIDATES"]
+              : rater.candidateCount === 0
+                ? `No other replacements for ${targetName}.`
+                : `That's every replacement for ${targetName}.`}
           </p>
           <Button type="button" onClick={rater.keep}>
             {inRater ? "Skip" : "Keep"} {targetName}
