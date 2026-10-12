@@ -345,7 +345,8 @@ test("explains why a replacement was suggested, and the shares add up", async ({
 
 test("offers to start from a collection when there isn't one", async ({ page }) => {
   await page.goto("/deck");
-  const link = page.getByRole("link", { name: "Import your collection first" });
+  await page.getByRole("radio", { name: /Cards I own/ }).click();
+  const link = page.getByRole("link", { name: "Upload your collection" });
   await expect(link).toBeVisible({ timeout: 30_000 });
   await link.click();
   // The import returns to the deck afterwards (`?next=/deck`).

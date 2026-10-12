@@ -77,13 +77,14 @@ export function FileDrop({
           void take(e.dataTransfer.files[0]);
         }}
         className={cn(
-          "rounded-xl border border-dashed p-6 text-center transition-colors",
+          // Phones don't drag files: there it is a compact row with the picker.
+          "rounded-xl border border-dashed p-6 text-center transition-colors max-sm:p-3",
           over ? "border-primary bg-primary/5" : "border-seam",
           disabled && "opacity-60",
         )}
       >
-        <Upload aria-hidden className="mx-auto size-5 text-muted-foreground" />
-        <p className="mt-2 text-sm">
+        <Upload aria-hidden className="mx-auto size-5 text-muted-foreground max-sm:hidden" />
+        <p className="mt-2 text-sm max-sm:mt-0">
           {/* The label is the control: a bare button would need its own click handler to reach the hidden input. */}
           <label
             htmlFor={inputId}
@@ -95,7 +96,7 @@ export function FileDrop({
           >
             Choose a file
           </label>{" "}
-          <span className="text-muted-foreground">or drag one here</span>
+          <span className="text-muted-foreground max-sm:hidden">or drag one here</span>
         </p>
         <p className="mt-1 text-xs text-muted-foreground">{note}</p>
         <input

@@ -5,6 +5,14 @@ import { Button, buttonVariants } from "@/components/ui/button";
 
 /** What the nudge says at each step that earns one: where owning the cards changes what the player sees. */
 const COPY = {
+  cut: {
+    title: "Keep the cards you own",
+    body: "Import your collection and Cut marks the cards you don't own, so the deck you end with is one you can sleeve up.",
+  },
+  add: {
+    title: "Add cards you already own",
+    body: "These come from every card in print. Import your collection and Add deals the cards you own instead of ones to buy.",
+  },
   replace: {
     title: "Swap in cards you already own",
     body: "Swap looks through every card in print. Import your collection and it puts the cards you own first.",

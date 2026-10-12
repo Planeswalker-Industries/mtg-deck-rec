@@ -1,4 +1,8 @@
-import type { DeckGroup } from "@mtg/core/scoring";
+import type { DeckEntry, DeckGroup } from "@mtg/core/scoring";
+
+/** Within a type, cheapest first, then by name, the order a hand of the deck would be sorted in. */
+export const byCost = (entries: readonly DeckEntry[]) =>
+  [...entries].sort((a, b) => a.card.manaValue - b.card.manaValue || a.card.name.localeCompare(b.card.name));
 
 /** Tagger labels are lowercase ("spot removal"); a heading reads better capitalised. */
 export const groupHeading = (label: string) => label.charAt(0).toUpperCase() + label.slice(1);

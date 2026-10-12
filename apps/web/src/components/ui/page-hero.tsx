@@ -41,14 +41,17 @@ export function PageHero({
         <div className="flex max-w-xl flex-col gap-4">
           <h1 id={id} className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             {heading}
-            <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
+            <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85 max-sm:text-xl">
               {aside}
             </span>
           </h1>
           <div className="flex flex-col gap-3 text-foreground/80">{intro}</div>
           <ArtCredit vista={vista} className="hidden text-xs text-muted-foreground lg:block" />
         </div>
-        <div className="rounded-panel border border-seam bg-sleeve/90 p-4 backdrop-blur-sm sm:p-5">{children}</div>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-panel border border-seam bg-sleeve/90 p-4 backdrop-blur-sm sm:p-5">{children}</div>
+          <ArtCredit vista={vista} className="text-xs text-muted-foreground lg:hidden" />
+        </div>
       </div>
     </section>
   );

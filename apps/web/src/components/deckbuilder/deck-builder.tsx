@@ -4,9 +4,8 @@ import { useMemo, useState } from "react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { deckStats, isBasicLand } from "@mtg/core/journey";
-import type { DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
-import { groupHeading } from "@/components/deck/deck-group-id";
+import { byCost, groupHeading } from "@/components/deck/deck-group-id";
 import { DeckStatsFooter } from "@/components/deck/deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "@/components/deck/deck-stats/deck-stats-rail";
 import { useDeckStats } from "@/components/deck/deck-stats/use-deck-stats";
@@ -39,10 +38,6 @@ const HALF_SCROLL =
 
 /** From `xl` the Deck stats rail is a third column beside the halves. */
 const WITH_STATS_RAIL = "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_18rem]";
-
-/** Within a type, cheapest first, then by name, the order a hand of the deck would be sorted in. */
-const byCost = (entries: readonly DeckEntry[]) =>
-  [...entries].sort((a, b) => a.card.manaValue - b.card.manaValue || a.card.name.localeCompare(b.card.name));
 
 /**
  * The deckbuilder: a search to add cards on the left and the deck as a list of strips on the right, by type and then

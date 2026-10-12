@@ -34,7 +34,8 @@ test("starts an empty browser collection by name without storing an empty collec
   });
   expect(lifetime).toBe(COLLECTION_TTL_MS);
   await page.goto("/deck");
-  await expect(page.getByText(/Your collection is loaded/)).toBeVisible();
+  // With a collection, the paste screen starts on upgrading with the cards it holds.
+  await expect(page.getByRole("radio", { name: /Cards I own/ })).toHaveAttribute("aria-checked", "true");
 });
 
 test("adds imports by default, preserves unmatched lines, and replaces only when chosen", async ({ page }) => {
@@ -68,8 +69,10 @@ test("adds imports by default, preserves unmatched lines, and replaces only when
 
 test("returns to the initiating deck only after a successful import and rejects unsafe next", async ({ page }) => {
   await page.goto("/deck");
-  const firstLink = page.getByRole("link", { name: "Import your collection first" });
+  await page.getByRole("radio", { name: /Cards I own/ }).click();
+  const firstLink = page.getByRole("link", { name: "Upload your collection" });
   await expect(firstLink).toHaveAttribute("href", "/collection/import?next=%2Fdeck");
+  await page.getByRole("radio", { name: /Best cards online/ }).click();
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck", exact: true }).click();
   const barLink = page.getByRole("link", { name: "Add collection", exact: true });

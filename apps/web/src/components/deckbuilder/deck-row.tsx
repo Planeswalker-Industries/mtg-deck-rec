@@ -17,6 +17,9 @@ const PREVIEW_WIDTH_PX = 244;
 const PREVIEW_HEIGHT_PX = Math.round((PREVIEW_WIDTH_PX * 680) / 488);
 /** Space between the row and the floating card, and between the card and the window edge. */
 const PREVIEW_GAP_PX = 12;
+/** The row's name-plate area, pressable either way (enlarge, or select). */
+const PLATE_AREA = "relative flex h-full min-w-0 items-center gap-2 pr-2 pl-3";
+
 /** A pointer passing over the list shouldn't flicker a card up for every row it crosses. */
 const PREVIEW_DELAY_MS = 120;
 
@@ -56,9 +59,10 @@ function RowButton({ label, onClick, tone, children }: { label: string; onClick:
 }
 
 /**
- * One card in the decklist, as a strip: the name and its cost over the card's art, which fades in from the right, and
- * what can be done to it at the end. Pointing at the row (or focusing it) floats the whole card beside it; pressing
- * it enlarges the card.
+ * One card in the decklist, as a strip (the name plate): the name and its cost over the card's art, which fades in from
+ * the right, and what can be done to it at the end. Pointing at the row (or focusing it) floats the whole card beside
+ * it; pressing it enlarges the card, or selects it where the row is a choice (`onSelect`). Without actions it is a
+ * read-only plate, as in Done's decklist. `mark` edges it in the job's colour: a card cut (struck through) or added.
  */
 export function DeckRow({
   card,
@@ -67,13 +71,22 @@ export function DeckRow({
   onRemove,
   onQuantity,
   onReplace,
+  mark,
+  onSelect,
+  selected = false,
+  className,
 }: {
   card: CardSummary;
   quantity: number;
   commander?: boolean;
-  onRemove: () => void;
+  onRemove?: (() => void) | undefined;
   onQuantity?: ((quantity: number) => void) | undefined;
   onReplace?: (() => void) | undefined;
+  mark?: "cut" | "add" | undefined;
+  onSelect?: (() => void) | undefined;
+  selected?: boolean;
+  /** Placement from the list it sits in, e.g. a grid column. */
+  className?: string | undefined;
 }) {
   const name = displayName(card);
   const art = card.images?.front.artCrop;
@@ -107,10 +120,39 @@ export function DeckRow({
   }, [preview]);
   useEffect(() => clearTimer, []);
 
+  const plate = (
+    <>
+      {art && (
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-3/5 [mask-image:linear-gradient(to_right,transparent,black_55%)]">
+          <Image src={art} alt="" fill unoptimized sizes="240px" className="object-cover object-[center_30%]" />
+        </span>
+      )}
+      <span className="relative flex min-w-0 items-center gap-2 [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">
+        {quantity > 1 && <span className="shrink-0 font-mono text-sm tabular-nums">{quantity}×</span>}
+        <span className={cn("truncate text-sm font-semibold", mark === "cut" && "line-through decoration-cut decoration-2")}>{name}</span>
+        {commander && <Crown aria-label="Commander" className="size-4 shrink-0 text-foreground/80" />}
+        <ManaCost cost={card.manaCost} className="text-sm" />
+        {card.gameChanger && (
+          <span title="Game Changer" className="shrink-0 rounded-sm bg-gc-bg px-1 font-mono text-xs text-gc">
+            GC<span className="sr-only"> (Game Changer)</span>
+          </span>
+        )}
+      </span>
+    </>
+  );
+  const hasActions = Boolean(onQuantity || onReplace || onRemove);
+
   return (
     <li
       ref={row}
-      className="group/row relative grid h-12 grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-seam bg-sleeve"
+      className={cn(
+        "group/row relative grid h-12 overflow-hidden rounded-lg border bg-sleeve",
+        hasActions ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1",
+        selected ? "border-primary ring-1 ring-primary" : "border-seam",
+        mark === "cut" && "border-l-4 border-l-cut",
+        mark === "add" && "border-l-4 border-l-add",
+        className,
+      )}
       onPointerEnter={(e) => e.pointerType === "mouse" && show(PREVIEW_DELAY_MS)}
       onPointerLeave={hide}
       onPointerDown={hide}
@@ -118,52 +160,52 @@ export function DeckRow({
       onFocus={(e) => e.target.matches(":focus-visible") && show(0)}
       onBlur={hide}
     >
-      <ZoomableCard
-        card={card}
-        hover={false}
-        // A row doesn't lift under the pointer like a loose card: the floating preview is its hover.
-        className="relative flex h-full min-w-0 items-center gap-2 pr-2 pl-3 [@media(hover:hover)]:hover:translate-y-0"
-      >
-        {art && (
-          <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-3/5 [mask-image:linear-gradient(to_right,transparent,black_55%)]">
-            <Image src={art} alt="" fill unoptimized sizes="240px" className="object-cover object-[center_30%]" />
-          </span>
-        )}
-        <span className="relative flex min-w-0 items-center gap-2 [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">
-          {quantity > 1 && <span className="shrink-0 font-mono text-sm tabular-nums">{quantity}×</span>}
-          <span className="truncate text-sm font-semibold">{name}</span>
-          {commander && <Crown aria-label="Commander" className="size-4 shrink-0 text-foreground/80" />}
-          <ManaCost cost={card.manaCost} className="text-sm" />
-          {card.gameChanger && (
-            <span title="Game Changer" className="shrink-0 rounded-sm bg-gc-bg px-1 font-mono text-xs text-gc">
-              GC<span className="sr-only"> (Game Changer)</span>
-            </span>
+      {onSelect ? (
+        <button
+          type="button"
+          aria-pressed={selected}
+          onClick={onSelect}
+          className={cn(PLATE_AREA, "text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary")}
+        >
+          {plate}
+        </button>
+      ) : (
+        <ZoomableCard
+          card={card}
+          hover={false}
+          // A row doesn't lift under the pointer like a loose card: the floating preview is its hover.
+          className={cn(PLATE_AREA, "[@media(hover:hover)]:hover:translate-y-0")}
+        >
+          {plate}
+        </ZoomableCard>
+      )}
+      {hasActions && (
+        <div className="flex items-center gap-0.5 border-l border-seam bg-sleeve px-1">
+          {onQuantity && (
+            <>
+              <RowButton label={`One fewer ${name}`} onClick={() => onQuantity(quantity - 1)}>
+                <Minus aria-hidden className="size-4" />
+              </RowButton>
+              <span className="min-w-6 text-center font-mono text-sm" aria-label={`${quantity} copies`}>
+                {quantity}
+              </span>
+              <RowButton label={`One more ${name}`} onClick={() => onQuantity(quantity + 1)}>
+                <Plus aria-hidden className="size-4" />
+              </RowButton>
+            </>
           )}
-        </span>
-      </ZoomableCard>
-      <div className="flex items-center gap-0.5 border-l border-seam bg-sleeve px-1">
-        {onQuantity && (
-          <>
-            <RowButton label={`One fewer ${name}`} onClick={() => onQuantity(quantity - 1)}>
-              <Minus aria-hidden className="size-4" />
+          {onReplace && (
+            <RowButton label={`Replace ${name}`} onClick={onReplace}>
+              <Repeat2 aria-hidden className="size-4" />
             </RowButton>
-            <span className="min-w-6 text-center font-mono text-sm" aria-label={`${quantity} copies`}>
-              {quantity}
-            </span>
-            <RowButton label={`One more ${name}`} onClick={() => onQuantity(quantity + 1)}>
-              <Plus aria-hidden className="size-4" />
+          )}
+          {onRemove && (
+            <RowButton label={`Remove ${name}`} onClick={onRemove} tone="cut">
+              <Trash2 aria-hidden className="size-4" />
             </RowButton>
-          </>
-        )}
-        {onReplace && (
-          <RowButton label={`Replace ${name}`} onClick={onReplace}>
-            <Repeat2 aria-hidden className="size-4" />
-          </RowButton>
-        )}
-        <RowButton label={`Remove ${name}`} onClick={onRemove} tone="cut">
-          <Trash2 aria-hidden className="size-4" />
-        </RowButton>
-      </div>
+          )}
+        </div>
+      )}
       {preview &&
         createPortal(
           <div
