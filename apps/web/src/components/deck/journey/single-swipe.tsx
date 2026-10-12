@@ -84,7 +84,7 @@ export function SingleSwipe({
   });
 
   return (
-    <section aria-label={label} className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col">
+    <section aria-label={label} className="playmat mx-auto flex w-full max-w-md scroll-mt-44 flex-col">
       <p className="text-sm text-muted-foreground font-mono">
         Card {position} of {total}
       </p>
@@ -92,7 +92,7 @@ export function SingleSwipe({
         <SideButton kind="pass" icon={passIcon} label={passLabel} pull={Math.max(0, -drag)} disabled={false} onClick={() => act(-1)} />
         {/* Keyed by card: reusing the card that just flew off would leave it off-screen and still marked as leaving. */}
         <SwipeCard key={card.id} ref={handle} onDrag={setDrag} canSwipe={canSwipe} onSwipe={swiped}>
-          <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100lvh_-_31.25rem_-_var(--deck-stats-dock,0px))*0.72),17rem)] max-w-full">
+          <DrawnCard play={drawing} delay={0} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(8rem,calc((100lvh_-_32.75rem_-_var(--deck-stats-dock,0px))*0.72),17rem)] max-w-full">
             <ZoomableCard card={card}>
               <CardImage card={card} variant="large" alt={card.name} sizes="272px" eager />
             </ZoomableCard>

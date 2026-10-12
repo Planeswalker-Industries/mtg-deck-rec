@@ -56,3 +56,6 @@ export const HERO_VISTA: Vista = PLAINS_BASE;
 
 /** Behind the closing panel beside Popular Decks. */
 export const CLOSING_VISTA: Vista = PLAINS_SPIRE;
+
+/** Behind the deck tool's opening screens (paste a list, pick a commander): the middle of the hero's tower, as warm. */
+export const TOOL_VISTA: Vista = PLAINS_MIDDLE;

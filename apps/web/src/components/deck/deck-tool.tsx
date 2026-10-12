@@ -24,6 +24,7 @@ import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/c
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
+import { ToolHero } from "./tool-hero";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
@@ -53,6 +54,9 @@ Deck
 1 Sol Ring
 1 Arcane Signet
 …`;
+
+/** Tall enough to show a commander, the deck heading and a few cards of the placeholder before it scrolls. */
+const DECKLIST_ROWS = 9;
 
 /**
  * A segmented control: one of a few options, pressed state on the chosen one. Used for the tool's mode (upgrade or
@@ -437,60 +441,62 @@ export function DeckTool() {
         <OpenDeckBar deck={tool.openDeck} onClose={tool.closeSavedDeck} />
       )}
       {showPicker ? (
-        <section aria-labelledby="deck-build-heading" className="flex flex-col gap-4">
-          <div>
-            <h1 id="deck-build-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
-              Build a deck
-            </h1>
-            <p className="mt-2 max-w-prose text-muted-foreground">
+        <ToolHero
+          id="deck-build-heading"
+          heading="Build a deck"
+          aside="Start from the commander. We'll fill in the rest."
+          intro={
+            <p>
               Pick your commander, then add cards in the deckbuilder. Have a list already?{" "}
               <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
                 Paste a decklist
               </Link>
               .
             </p>
-          </div>
+          }
+        >
           {tool.parse.status === "loading" ? (
             <ShuffleDeck label="Setting up your deck" />
           ) : (
-            <div className="max-w-xl">
-              <CommanderPicker autoFocus onPick={(card) => void buildFrom(card)} />
-            </div>
+            <CommanderPicker autoFocus onPick={(card) => void buildFrom(card)} />
           )}
-        </section>
+        </ToolHero>
       ) : showInput ? (
-        <section aria-labelledby="deck-input-heading" className="flex flex-col gap-4">
-          <div>
-            <h1 id="deck-input-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
-              Upgrade a deck
-            </h1>
-            <p className="mt-2 max-w-prose text-muted-foreground">
-              Paste your Commander decklist, or a link to a public Archidekt deck, to see cards to cut, cards to add, and
-              replacements that do the same job.
-            </p>
-            {tool.showsRestoredDeck && (
-              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-                Your last decklist is back in the box. Analyze it to pick up where you left off, or clear it to start a new
-                one.
+        <ToolHero
+          id="deck-input-heading"
+          heading="Upgrade a deck"
+          aside="Hand me the list. We'll go through it together."
+          intro={
+            <>
+              <p>
+                Paste your Commander decklist, or a link to a public Archidekt deck. We&apos;ll go through it one card at a
+                time: what to cut, what to add, and replacements that do the same job.
               </p>
-            )}
-            {/* Two ways in: a deck first, or a collection first so suggestions can lean on cards already owned. */}
-            {source.kind === "none" && (
-              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-                Building from cards you own?{" "}
-                <Link href={collectionImportHref} className={cn(TEXT_LINK, "font-semibold")}>
-                  Import your collection first
-                </Link>
-                , and suggestions will put your cards ahead of the rest.
-              </p>
-            )}
-            {(source.kind === "browser" || source.kind === "account") && (
-              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-                Your collection is loaded: suggestions put cards you own first. Change that under My collection once the deck
-                is analyzed.
-              </p>
-            )}
-          </div>
+              {tool.showsRestoredDeck && (
+                <p className="text-sm text-muted-foreground">
+                  Your last decklist is back in the box. Analyze it to pick up where you left off, or clear it to start a
+                  new one.
+                </p>
+              )}
+              {/* Two ways in: a deck first, or a collection first so suggestions can lean on cards already owned. */}
+              {source.kind === "none" && (
+                <p className="text-sm text-muted-foreground">
+                  Building from cards you own?{" "}
+                  <Link href={collectionImportHref} className={cn(TEXT_LINK, "font-semibold")}>
+                    Import your collection first
+                  </Link>
+                  , and suggestions will put your cards ahead of the rest.
+                </p>
+              )}
+              {(source.kind === "browser" || source.kind === "account") && (
+                <p className="text-sm text-muted-foreground">
+                  Your collection is loaded: suggestions put cards you own first. Change that under My collection once the
+                  deck is analyzed.
+                </p>
+              )}
+            </>
+          }
+        >
           <form
             className="flex flex-col gap-3"
             onSubmit={(e) => {
@@ -498,9 +504,22 @@ export function DeckTool() {
               void analyze();
             }}
           >
-            <Label htmlFor="decklist" className="sr-only">
+            <Label htmlFor={textHidden ? undefined : "decklist"} className="font-semibold">
               Decklist
             </Label>
+            {!textHidden && (
+              <Textarea
+                id="decklist"
+                rows={DECKLIST_ROWS}
+                value={tool.text}
+                onChange={(e) => tool.setText(e.target.value)}
+                placeholder={PLACEHOLDER}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                className={cn(IMPORT_TEXT_BOX, "bg-background/60")}
+              />
+            )}
             {fileInBox ? (
               <LoadedFile
                 name={fileInBox.name}
@@ -526,21 +545,13 @@ export function DeckTool() {
                 }}
               />
             )}
-            {!textHidden && (
-              <Textarea
-                id="decklist"
-                rows={8}
-                value={tool.text}
-                onChange={(e) => tool.setText(e.target.value)}
-                placeholder={PLACEHOLDER}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                className={IMPORT_TEXT_BOX}
-              />
-            )}
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" size="lg" disabled={!tool.text.trim() || tool.parse.status === "loading"}>
+              <Button
+                type="submit"
+                size="lg"
+                className="lit"
+                disabled={!tool.text.trim() || tool.parse.status === "loading"}
+              >
                 {tool.parse.status === "loading" ? "Reading decklist…" : "Analyze deck"}
               </Button>
               <Button type="button" size="lg" variant="outline" onClick={tool.loadSample}>
@@ -564,7 +575,7 @@ export function DeckTool() {
             </div>
           </form>
           {!analysis && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
-        </section>
+        </ToolHero>
       ) : null}
       {resuming && signedIn && (
         <p role="status" className="text-sm text-muted-foreground">

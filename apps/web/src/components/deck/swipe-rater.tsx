@@ -358,7 +358,7 @@ export function SwipeRater({
     <section
       ref={viewRef}
       aria-label={inRater ? "Rate replacements" : "Swipe through cards to replace"}
-      className="mx-auto flex w-full max-w-md scroll-mt-44 flex-col"
+      className="playmat mx-auto flex w-full max-w-md scroll-mt-44 flex-col"
     >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground font-mono">
@@ -376,7 +376,7 @@ export function SwipeRater({
             not dvh: dvh grows as a phone's address bar hides on scroll, and the cards grew with it. */}
         <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
           <TagPills labels={targetJobs.filter((_, i) => i % 2 === 0)} label={`What ${targetName} does`} align="end" />
-          <DrawnCard play={drawing} delay={0} fromY={DRAW.targetFromY} className="w-[clamp(4.5rem,calc((100lvh_-_var(--swipe-chrome,35rem))*0.32),11rem)]">
+          <DrawnCard play={drawing} delay={0} fromY={DRAW.targetFromY} className="w-[clamp(4.5rem,calc((100lvh_-_var(--swipe-chrome,36.5rem))*0.32),11rem)]">
             <ZoomableCard card={target.card}>
               <CardImage card={target.card} alt={`${inRater ? "Card being replaced" : "In your deck"}: ${target.card.name}`} sizes="176px" eager className={inRater ? undefined : "opacity-80 saturate-50"} />
             </ZoomableCard>
@@ -395,7 +395,7 @@ export function SwipeRater({
       {!loaded ? (
         <div role="status" aria-label="Finding replacements" className="grid grid-cols-[3.5rem_1fr_3.5rem] items-center gap-2">
           <span />
-          <Skeleton className="mx-auto aspect-[488/680] w-[clamp(7rem,calc((100lvh_-_var(--swipe-chrome,35rem))*0.72),16rem)] max-w-full rounded-[4.75%/3.4%] bg-seam" />
+          <Skeleton className="mx-auto aspect-[488/680] w-[clamp(7rem,calc((100lvh_-_var(--swipe-chrome,36.5rem))*0.72),16rem)] max-w-full rounded-[4.75%/3.4%] bg-seam" />
           <span />
         </div>
       ) : loaded.status === "error" ? (
@@ -425,7 +425,7 @@ export function SwipeRater({
             {/* Keyed by the pair: the rater's next card can open on the same replacement, and reusing the card that
                 just flew off would leave it off-screen and still marked as leaving. */}
             <SwipeCard key={`${target.card.id}:${candidate.card.id}`} ref={card} onDrag={setDrag} canSwipe={canSwipe} onSwipe={swiped}>
-              <DrawnCard play={drawing} delay={DRAW.replacementDelaySeconds} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(7rem,calc((100lvh_-_var(--swipe-chrome,35rem))*0.72),16rem)] max-w-full">
+              <DrawnCard play={drawing} delay={DRAW.replacementDelaySeconds} fromY={DRAW.replacementFromY} className="mx-auto w-[clamp(7rem,calc((100lvh_-_var(--swipe-chrome,36.5rem))*0.72),16rem)] max-w-full">
                 <ZoomableCard card={candidate.card}>
                   <CardImage card={candidate.card} variant="large" alt={`Replacement: ${candidate.card.name}`} sizes="256px" eager className="shadow-[0_0_0_2px_var(--color-primary)]" />
                 </ZoomableCard>
