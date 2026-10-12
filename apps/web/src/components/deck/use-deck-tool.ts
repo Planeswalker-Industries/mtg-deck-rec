@@ -57,6 +57,8 @@ export interface ImportedFrom {
 export interface SubmitOutcome {
   parsed: boolean;
   analysis: DeckAnalysis | null;
+  /** The decklist's lines as read, on a parse that succeeded. */
+  lines?: ResolvedLine[];
 }
 
 /**
@@ -395,7 +397,7 @@ export function useDeckTool(
       suggestedWith.current = null;
       setCut({ status: "idle" });
     }
-    return { parsed: true, analysis: r.data.analysis };
+    return { parsed: true, analysis: r.data.analysis, lines: r.data.lines };
   }
 
   /**

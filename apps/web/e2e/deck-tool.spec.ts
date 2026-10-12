@@ -415,3 +415,22 @@ test("builds a deck for a picked commander, then goes through it card by card", 
   await built.getByRole("button", { name: "Go through it card by card" }).click();
   await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 90_000 });
 });
+
+test("fits a pasted list to the collection: owned cards stay, the rest comes from the collection", async ({ page }) => {
+  test.skip(!process.env.E2E_LOCAL_DATA, "matching a collection needs the synced catalog (E2E_LOCAL_DATA)");
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill("1 Liesa, Forgotten Archangel\n1 Arcane Signet\n1 Swords to Plowshares");
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Fit it to my collection" }).click();
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: 90_000 });
+  await expect(built.getByText(/^Kept \d+ of the list's \d+ cards\./)).toBeVisible();
+  // Sol Ring is in the sample list but not the collection, so it goes out.
+  await expect(built.getByRole("list", { name: "Cards from the list you don't own" }).getByText("Sol Ring", { exact: true })).toBeVisible();
+  await built.getByRole("button", { name: "Back to the list" }).click();
+  await expect(page.getByLabel("Decklist")).toBeVisible();
+});

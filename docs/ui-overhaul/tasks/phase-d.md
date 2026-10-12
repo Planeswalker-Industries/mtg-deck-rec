@@ -62,7 +62,7 @@ Specify: the build screen for `recs.build` (`BuildResult`: groups with origin an
 
 ### UI-045: Adapt an online list
 
-**Status:** draft | **Phase:** D | **Depends on:** ARCH-002, UI-041
+**Status:** done 2026-10-12: Q-04 answered with `recs.build` keeping the list's owned cards and basics; `BuildView` shows the list's cards out and the collection's in | **Phase:** D | **Depends on:** ARCH-002, UI-041
 
 ## Gate
 

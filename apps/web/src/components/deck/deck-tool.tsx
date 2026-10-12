@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, List } from "lucide-react";
-import type { DeckAnalysis } from "@mtg/core/contract";
+import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
 import type { StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
@@ -34,7 +34,7 @@ import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
-import { CollectionNudge } from "./journey/collection-nudge";
+import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
 import { CutPhase } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
@@ -46,7 +46,8 @@ import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
 import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
-import { BUILD_DECK_HREF, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
+import { BUILD_DECK_HREF, BUILD_DEFAULT_BRACKET, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
+import { collectionCounts } from "@/lib/deck-collection";
 import { getApis } from "@/lib/api/client";
 import { RESUME_PARAM, RESUME_SAVE, takePendingSave } from "@/lib/pending-save";
 
@@ -57,6 +58,9 @@ Deck
 1 Sol Ring
 1 Arcane Signet
 …`;
+
+/** Basic lands' type lines start so ("Basic Land", "Basic Snow Land"): a fitted list keeps them, as every player owns them (D-04). */
+const BASIC_TYPE_PREFIX = "Basic ";
 
 /** Tall enough to show a commander, the deck heading and a few cards of the placeholder before it scrolls. */
 const DECKLIST_ROWS = 9;
@@ -410,13 +414,36 @@ export function DeckTool() {
     if (deckBuild.state.status !== "ready") return;
     editorHandle.current?.discard();
     if (tool.openDeck) tool.closeSavedDeck();
-    const bracket = deckBuild.state.bracket;
+    const bracket = deckBuild.state.request.bracket;
     const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null }, { recs: next === "upgrade" });
     if (!outcome.parsed) return;
     deckBuild.reset();
     setEditing(false);
     setMode(next);
     checkLookup(outcome.analysis);
+  }
+
+  /**
+   * Fits a list to the collection (goal 1, D-03): the list fixes the commander and the bracket, its owned cards (and its
+   * basic lands, assumed owned, D-04) are kept, and the build fills the rest from the collection. `text` is a list other
+   * than the box's (Done's result); the box's list is read first either way, for its cards.
+   */
+  async function fitToCollection(text?: string) {
+    const outcome = await tool.submit(text === undefined ? undefined : { text, bracketOverride: tool.bracketOverride, importedFrom: null }, { recs: false });
+    if (!outcome.parsed || !outcome.analysis || !outcome.lines) return;
+    const commanders = outcome.analysis.commanderKey.commanders;
+    if (commanders.length === 0) return;
+    const owned = await collectionCounts(source);
+    const cards = new Map<CardId, CardSummary>();
+    for (const { resolution } of outcome.lines) if (resolution.status === "resolved") cards.set(resolution.card.id, resolution.card);
+    const entries = outcome.analysis.deck.cards.filter((c) => c.section === "main");
+    const kept = entries.flatMap((entry) => {
+      const basic = cards.get(entry.cardId)?.typeLine.startsWith(BASIC_TYPE_PREFIX) ?? false;
+      const quantity = basic ? entry.quantity : Math.min(entry.quantity, owned.get(entry.cardId) ?? 0);
+      return quantity > 0 ? [{ ...entry, quantity }] : [];
+    });
+    setEditing(false);
+    void deckBuild.build({ commanders, bracket: tool.bracketOverride ?? outcome.analysis.estimatedBracket, kept, list: { entries, cards } });
   }
 
   /**
@@ -450,66 +477,68 @@ export function DeckTool() {
       {tool.openDeck && (
         <OpenDeckBar deck={tool.openDeck} onClose={tool.closeSavedDeck} />
       )}
-      {showPicker ? (
-        deckBuild.state.status !== "idle" ? (
-          <BuildView
-            state={deckBuild.state}
-            collectionImportHref={buildImportHref}
-            onBracket={(bracket) => {
-              if (deckBuild.state.status !== "idle") void deckBuild.build(deckBuild.state.commander, bracket);
-            }}
-            onUpgrade={(text) => void openBuilt(text, "upgrade")}
-            onEdit={(text) => void openBuilt(text, "edit")}
-            onPickAnother={deckBuild.reset}
-          />
-        ) : (
-          <ToolHero
-            id="deck-build-heading"
-            heading="Build a deck"
-            aside={tool.ownedOnly ? "Pick a commander. Your cards do the rest." : "Pick a commander. We'll deal you a deck."}
-            intro={
-              <>
-                <p>
-                  {tool.ownedOnly
-                    ? "Pick a commander and we'll build a deck for it from your collection, then you can go through it card by card."
-                    : "Pick a commander and we'll build a deck for it, then you can go through it card by card."}{" "}
-                  Have a list already?{" "}
-                  <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
-                    Paste a decklist
-                  </Link>
-                  .
+      {deckBuild.state.status !== "idle" ? (
+        <BuildView
+          state={deckBuild.state}
+          collectionImportHref={buildImportHref}
+          onBracket={(bracket) => {
+            if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
+          }}
+          onUpgrade={(text) => void openBuilt(text, "upgrade")}
+          onEdit={(text) => void openBuilt(text, "edit")}
+          onPickAnother={() => {
+            // Back from a fitted list goes to the list; back from a build goes to the commander picker.
+            if (deckBuild.state.status !== "idle" && deckBuild.state.request.list) setEditing(true);
+            deckBuild.reset();
+          }}
+        />
+      ) : showPicker ? (
+        <ToolHero
+          id="deck-build-heading"
+          heading="Build a deck"
+          aside={tool.ownedOnly ? "Pick a commander. Your cards do the rest." : "Pick a commander. We'll deal you a deck."}
+          intro={
+            <>
+              <p>
+                {tool.ownedOnly
+                  ? "Pick a commander and we'll build a deck for it from your collection, then you can go through it card by card."
+                  : "Pick a commander and we'll build a deck for it, then you can go through it card by card."}{" "}
+                Have a list already?{" "}
+                <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
+                  Paste a decklist
+                </Link>
+                .
+              </p>
+              {source.kind === "none" && (
+                <p className="text-sm text-muted-foreground">
+                  <Link href={buildImportHref} className={cn(TEXT_LINK, "font-semibold")}>
+                    Import your collection
+                  </Link>{" "}
+                  to pick from commanders you own and build from your cards.
                 </p>
-                {source.kind === "none" && (
-                  <p className="text-sm text-muted-foreground">
-                    <Link href={buildImportHref} className={cn(TEXT_LINK, "font-semibold")}>
-                      Import your collection
-                    </Link>{" "}
-                    to pick from commanders you own and build from your cards.
-                  </p>
-                )}
-              </>
-            }
-          >
-            <div className="flex flex-col gap-3">
-              {tool.ownedOnly && (
-                <Segmented
-                  label="Which commanders to list"
-                  options={[
-                    { value: "owned", label: "From my collection" },
-                    { value: "any", label: "Any commander" },
-                  ]}
-                  value={pickFrom}
-                  onChange={setPickFrom}
-                />
               )}
-              <CommanderPicker
-                autoFocus
-                ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
-                onPick={(card) => void deckBuild.build(card)}
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            {tool.ownedOnly && (
+              <Segmented
+                label="Which commanders to list"
+                options={[
+                  { value: "owned", label: "From my collection" },
+                  { value: "any", label: "Any commander" },
+                ]}
+                value={pickFrom}
+                onChange={setPickFrom}
               />
-            </div>
-          </ToolHero>
-        )
+            )}
+            <CommanderPicker
+              autoFocus
+              ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
+              onPick={(card) => void deckBuild.build({ commanders: [card], bracket: BUILD_DEFAULT_BRACKET })}
+            />
+          </div>
+        </ToolHero>
       ) : showInput ? (
         <ToolHero
           id="deck-input-heading"
@@ -539,8 +568,8 @@ export function DeckTool() {
               )}
               {(source.kind === "browser" || source.kind === "account") && (
                 <p className="text-sm text-muted-foreground">
-                  Your collection is loaded: suggestions put cards you own first. Change that under My collection once the
-                  deck is analyzed.
+                  Your collection is loaded: suggestions put cards you own first. Or fit the list to it: keep the cards you
+                  own and build the rest from your collection.
                 </p>
               )}
             </>
@@ -603,6 +632,17 @@ export function DeckTool() {
               >
                 {tool.parse.status === "loading" ? "Reading decklist…" : "Analyze deck"}
               </Button>
+              {tool.ownedOnly && (
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="outline"
+                  disabled={!tool.text.trim() || tool.parse.status === "loading"}
+                  onClick={() => void fitToCollection()}
+                >
+                  Fit it to my collection
+                </Button>
+              )}
               <Button type="button" size="lg" variant="outline" onClick={tool.loadSample}>
                 Use sample deck
               </Button>
@@ -653,7 +693,7 @@ export function DeckTool() {
         issuesInDeckBar={Boolean(analysis && context)}
       />
 
-      {analysis && context && (
+      {analysis && context && deckBuild.state.status === "idle" && (
         <section aria-label="Recommendations" className="flex flex-col gap-2">
           <DeckBar
             collectionImportHref={collectionImportHref}
@@ -764,7 +804,17 @@ export function DeckTool() {
                       onReanalyze={() => void commitJourney("reanalyze")}
                       onStartOver={() => void commitJourney("startOver")}
                     >
-                      {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}
+                      {source.kind === "none" ? (
+                        <CollectionNudge href={collectionImportHref} step="review" />
+                      ) : tool.ownedOnly ? (
+                        <CollectionFitOffer
+                          disabled={committing || tool.stale}
+                          onFit={() => {
+                            const text = journey.resultText();
+                            if (text !== null) void fitToCollection(text);
+                          }}
+                        />
+                      ) : null}
                     </ReviewPhase>
                   )}
                 </div>
