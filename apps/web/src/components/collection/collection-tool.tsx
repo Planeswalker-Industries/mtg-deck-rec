@@ -17,6 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { getApis } from "@/lib/api/client";
 import { withCollectionWrite } from "@/lib/collection-lock";
 import { safeNextPath } from "@/lib/safe-path";
+import { COLLECTION_VISTA } from "@/lib/landing-art";
+import { PageHero } from "@/components/ui/page-hero";
 import { COLLECTION_MAX_IMPORT_ROWS, TEXT_LINK } from "@/lib/constants";
 import {
   clearCollection,
@@ -242,54 +244,58 @@ export function CollectionTool() {
   const isLink = collectionLink(text) !== null;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <div>
-        <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Import your collection</h1>
-        <p className="mt-2 max-w-prose text-muted-foreground">
-          Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, or paste a link to a public Archidekt collection, and the deck tool can suggest only cards you own.
-          {source.kind !== "loading" &&
-            (signedIn ? (
-              " It's saved to your account."
-            ) : (
-              <>
-                {" "}
-                It stays in this browser for 7 days.{" "}
-                <Link href="/sign-in?next=/collection/import" className={LINK}>
-                  Sign in
-                </Link>{" "}
-                to save it to your account instead.
-              </>
-            ))}
-        </p>
-      </div>
-
-      {source.kind === "browser" && (
-        <CollectionSummary
-          totals={collectionTotals(source.collection)}
-          note={
-            !source.signedIn
-              ? `Imported ${day(source.collection.importedAt)}. Saved in this browser until ${day(source.collection.expiresAt)}.`
-              : source.moveFailed
-                ? "Couldn't move it to your account yet. It stays in this browser, and the next visit tries again."
-                : "Moving it to your account…"
-          }
-          unmatched={{ lines: source.collection.unmatched, count: source.collection.unmatchedCount }}
-          onClear={() => void clear()}
-          success={success}
-          next={next}
-        />
-      )}
-      {source.kind === "account" && (
-        <CollectionSummary
-          totals={source.totals}
-          note={`Saved to your account. Updated ${day(Date.parse(source.totals.updatedAt))}.${source.pending ? ` ${pendingNote(source.pending)}` : ""}`}
-          unmatched={accountUnmatched}
-          onClear={() => void clear()}
-          success={success}
-          next={next}
-        />
-      )}
-
+    <PageHero
+      id="collection-import-heading"
+      heading="Import your collection"
+      aside="Bring the binder. We'll sort it."
+      vista={COLLECTION_VISTA}
+      intro={
+        <>
+          <p>
+            Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, or paste a link to a public Archidekt collection, and the deck tool can suggest only cards you own.
+            {source.kind !== "loading" &&
+              (signedIn ? (
+                " It's saved to your account."
+              ) : (
+                <>
+                  {" "}
+                  It stays in this browser for 7 days.{" "}
+                  <Link href="/sign-in?next=/collection/import" className={LINK}>
+                    Sign in
+                  </Link>{" "}
+                  to save it to your account instead.
+                </>
+              ))}
+          </p>
+          {source.kind === "browser" && (
+            <CollectionSummary
+              totals={collectionTotals(source.collection)}
+              note={
+                !source.signedIn
+                  ? `Imported ${day(source.collection.importedAt)}. Saved in this browser until ${day(source.collection.expiresAt)}.`
+                  : source.moveFailed
+                    ? "Couldn't move it to your account yet. It stays in this browser, and the next visit tries again."
+                    : "Moving it to your account…"
+              }
+              unmatched={{ lines: source.collection.unmatched, count: source.collection.unmatchedCount }}
+              onClear={() => void clear()}
+              success={success}
+              next={next}
+            />
+          )}
+          {source.kind === "account" && (
+            <CollectionSummary
+              totals={source.totals}
+              note={`Saved to your account. Updated ${day(Date.parse(source.totals.updatedAt))}.${source.pending ? ` ${pendingNote(source.pending)}` : ""}`}
+              unmatched={accountUnmatched}
+              onClear={() => void clear()}
+              success={success}
+              next={next}
+            />
+          )}
+        </>
+      }
+    >
       <form
         className="flex flex-col gap-3"
         onSubmit={(e) => {
@@ -384,7 +390,7 @@ export function CollectionTool() {
           </Button>
         </div>
       </form>
-    </div>
+    </PageHero>
   );
 }
 

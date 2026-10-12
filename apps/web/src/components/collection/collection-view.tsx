@@ -23,6 +23,8 @@ import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { COLOR_NAMES, MANA_SYMBOL_URL } from "@/components/deck/color-identity";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PageHero } from "@/components/ui/page-hero";
+import { COLLECTION_VISTA } from "@/lib/landing-art";
 import { Input } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -86,19 +88,33 @@ function EmptyView({ signedIn }: { signedIn: boolean }) {
   const editor = useCollectionEditor([], signedIn ? "account" : "browser", true);
   return (
     <>
-      <Heading />
-      <div className="flex max-w-prose flex-col items-start gap-3 rounded-lg border border-seam bg-sleeve p-5">
-        <h2 className="font-heading text-xl font-semibold tracking-tight">No collection yet</h2>
-        <p className="text-muted-foreground">Start with a few cards by name, or import an export from ManaBox, Moxfield, Archidekt or TCGplayer.</p>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" size="lg" variant="outline" aria-expanded={adding} onClick={() => setAdding(true)}>
-            Add cards by name
-          </Button>
-          <Link href="/collection/import" className={buttonVariants({ size: "lg", variant: "outline" })}>
-            Import your collection
-          </Link>
+      <PageHero
+        id="collection-heading"
+        heading="My collection"
+        aside="Start with what's on the table."
+        vista={COLLECTION_VISTA}
+        intro={
+          <p>
+            With your cards here, the deck tool builds decks from them, fits lists you find online to them, and puts the
+            cards you own first. It stays in this browser until you sign in.
+          </p>
+        }
+      >
+        <div className="flex flex-col items-start gap-3">
+          <h2 className="font-heading text-xl font-semibold tracking-tight">No collection yet</h2>
+          <p className="text-muted-foreground">
+            Start with a few cards by name, or import an export from ManaBox, Moxfield, Archidekt or TCGplayer.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/collection/import" className={buttonVariants({ size: "lg", className: "lit" })}>
+              Import your collection
+            </Link>
+            <Button type="button" size="lg" variant="outline" aria-expanded={adding} onClick={() => setAdding(true)}>
+              Add cards by name
+            </Button>
+          </div>
         </div>
-      </div>
+      </PageHero>
       {adding && (
         <>
           <p role={editor.error ? "alert" : "status"} className={editor.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>

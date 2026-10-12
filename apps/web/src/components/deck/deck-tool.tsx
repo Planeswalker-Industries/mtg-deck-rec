@@ -24,7 +24,7 @@ import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/c
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
-import { ToolHero } from "./tool-hero";
+import { PageHero } from "@/components/ui/page-hero";
 import { BuildView } from "./build/build-view";
 import { useDeckBuild } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
@@ -511,7 +511,7 @@ export function DeckTool() {
           }}
         />
       ) : showPicker ? (
-        <ToolHero
+        <PageHero
           id="deck-build-heading"
           heading="Build a deck"
           aside={tool.ownedOnly ? "Pick a commander. Your cards do the rest." : "Pick a commander. We'll deal you a deck."}
@@ -556,9 +556,9 @@ export function DeckTool() {
               onPick={(card) => void deckBuild.build({ commanders: [card], bracket: BUILD_DEFAULT_BRACKET })}
             />
           </div>
-        </ToolHero>
+        </PageHero>
       ) : showInput ? (
-        <ToolHero
+        <PageHero
           id="deck-input-heading"
           heading="Upgrade a deck"
           aside="Hand me the list. We'll go through it together."
@@ -682,7 +682,7 @@ export function DeckTool() {
             </div>
           </form>
           {!analysis && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
-        </ToolHero>
+        </PageHero>
       ) : null}
       {resuming && signedIn && (
         <p role="status" className="text-sm text-muted-foreground">

@@ -23,7 +23,7 @@ Paste-and-swipe needs no collection and stays the first-visit entry (D-11). The 
 | 4 | Build from an owned commander, then copy or download the deck | 2 | done 2026-10-12 (UI-040; a first build screen; Continue anyway and Swap commander stay parked, they need a contract change) | UI-040, UI-041 (`tasks/phase-d.md`), UI-050 (`tasks/phase-e.md`) |
 | 5 | Fit an online list to the collection (the build, seeded by the pasted list) | 1 | done 2026-10-12 (UI-045, Q-04 answered: `recs.build` keeping the list's owned cards) | UI-045 in `tasks/phase-d.md`, D-03 |
 | 6 | Cut toward a weak area: the player names an area, Cut ranks cards for it | 4 | done 2026-10-12 ("Make room for…", `roomCuts`) | new |
-| 7 | Restyle the remaining pages (collection, saved decks, the rest) | all | next | `DESIGN-SYSTEM.md` |
+| 7 | Restyle the remaining pages (collection, saved decks, the rest) | all | done 2026-10-12 (`PageHero` on the collection's opening screens, import, sign-in and rating; card and commander pages already had art headers) | `DESIGN-SYSTEM.md` |
 
 `RecsApi.build` (contract v24, `getBuild`) already exists end to end and nothing in the UI calls it yet; items 4 and 5 are mostly UI.
 
