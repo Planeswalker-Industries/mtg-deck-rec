@@ -36,6 +36,7 @@ import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
 import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
 import { CutPhase } from "./journey/cut-phase";
+import type { RoomFocus } from "./journey/make-room";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
@@ -169,6 +170,13 @@ export function DeckTool() {
   const deckBuild = useDeckBuild(tool.ownedOnly);
   /** With a collection, the build start lists owned commanders unless the player asks for any. */
   const [pickFrom, setPickFrom] = useState<"owned" | "any">("owned");
+  /** The role the player is making room for in Cut (goal 4); a new deck starts without one. */
+  const [roomFor, setRoomFor] = useState<RoomFocus | null>(null);
+  const [roomRound, setRoomRound] = useState(tool.round);
+  if (roomRound !== tool.round) {
+    setRoomRound(tool.round);
+    setRoomFor(null);
+  }
   /** The commanders the deck lookup offer was last checked for; a deckbuilder edit that changes them checks again. */
   const lookupCheckedFor = useRef<string | null>(null);
   const deckGroups = useDeckGroups(tool.lines);
@@ -234,6 +242,16 @@ export function DeckTool() {
     if (stat.ok || !journey.state) return null;
     if (stat.value > Math.round(stat.target)) {
       return journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
+    }
+    // A full deck short of a role makes room for it first: Cut offers cards that don't fill it (goal 4).
+    if (journey.openSlots === 0 && stat.group === "roles" && journey.stepper.canOpen("cut")) {
+      return {
+        label: `Make room for ${stat.label.toLowerCase()}`,
+        onSelect: () => {
+          journey.stepper.select("cut");
+          setRoomFor({ roleId: stat.key, label: stat.label });
+        },
+      };
     }
     if (journey.openSlots === 0 || !journey.stepper.canOpen("add")) return null;
     if (stat.group === "roles") {
@@ -783,7 +801,26 @@ export function DeckTool() {
                         }}
                       />
                     ) : (
-                      <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />
+                      <CutPhase
+                        journey={journey}
+                        cutState={tool.cut}
+                        view={view}
+                        deckGroups={deckGroups}
+                        room={
+                          deckStats && analysis
+                            ? {
+                                focus: roomFor,
+                                setFocus: setRoomFor,
+                                roles: deckStats.stats.filter((s) => s.group === "roles"),
+                                cardRoles: analysis.cardRoles,
+                                onFind: (focus) => {
+                                  setRoomFor(null);
+                                  openStep("add", { kind: "role", roleId: focus.roleId, label: focus.label })();
+                                },
+                              }
+                            : undefined
+                        }
+                      />
                     ))}
                   {journey.state.phase === "add" && (
                     <AddPhase journey={journey} view={view} />

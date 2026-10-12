@@ -434,3 +434,19 @@ test("fits a pasted list to the collection: owned cards stay, the rest comes fro
   await built.getByRole("button", { name: "Back to the list" }).click();
   await expect(page.getByLabel("Decklist")).toBeVisible();
 });
+
+test("makes room for a role: cuts cards that don't fill it, then finds that role", async ({ page }) => {
+  test.skip(!process.env.E2E_LOCAL_DATA, "Deck stats' role targets need the synced corpus (E2E_LOCAL_DATA)");
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  const picker = page.getByRole("combobox", { name: "Make room for" });
+  await picker.click({ timeout: 60_000 });
+  await page.getByRole("option", { name: /Card advantage/ }).click();
+  const sitting = page.getByRole("region", { name: "Cards to cut to make room for card advantage" });
+  await expect(sitting).toBeVisible();
+  await sitting.getByRole("button", { name: /^Cut / }).click();
+  await page.getByRole("button", { name: /find card advantage/i }).first().click();
+  await expect(page.getByText("Showing card advantage only.")).toBeVisible({ timeout: 60_000 });
+});
