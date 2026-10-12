@@ -5,8 +5,8 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, List } from "lucide-react";
-import type { CardSummary, DeckAnalysis } from "@mtg/core/contract";
-import { decklistFor, type StatLine } from "@mtg/core/journey";
+import type { DeckAnalysis } from "@mtg/core/contract";
+import type { StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,8 @@ import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
 import { ToolHero } from "./tool-hero";
+import { BuildView } from "./build/build-view";
+import { useDeckBuild } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
@@ -44,7 +46,7 @@ import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
 import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
-import { DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
+import { BUILD_DECK_HREF, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
 import { getApis } from "@/lib/api/client";
 import { RESUME_PARAM, RESUME_SAVE, takePendingSave } from "@/lib/pending-save";
 
@@ -137,7 +139,7 @@ const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join("
 export function DeckTool() {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
   // ?commander=<slug> opens a featured deck from the landing page carousel.
-  // ?start=build starts a deck from a commander picked by name, in the Deckbuilder.
+  // ?start=build builds a deck for a commander picked by name (from the collection when there is one).
   const searchParams = useSearchParams();
   const openCode = searchParams.get("deck");
   const commanderSlug = searchParams.get("commander");
@@ -158,6 +160,11 @@ export function DeckTool() {
   const collectionDeckCode = tool.openDeck?.code ?? openCode;
   const collectionReturnPath = collectionDeckCode ? `/deck?deck=${encodeURIComponent(collectionDeckCode)}` : "/deck";
   const collectionImportHref = `/collection/import?next=${encodeURIComponent(collectionReturnPath)}` as Route;
+  /** The build start's own import link returns to the commander picker. */
+  const buildImportHref = `/collection/import?next=${encodeURIComponent(BUILD_DECK_HREF)}` as Route;
+  const deckBuild = useDeckBuild(tool.ownedOnly);
+  /** With a collection, the build start lists owned commanders unless the player asks for any. */
+  const [pickFrom, setPickFrom] = useState<"owned" | "any">("owned");
   /** The commanders the deck lookup offer was last checked for; a deckbuilder edit that changes them checks again. */
   const lookupCheckedFor = useRef<string | null>(null);
   const deckGroups = useDeckGroups(tool.lines);
@@ -396,17 +403,19 @@ export function DeckTool() {
   }
 
   /**
-   * Starts a deck from one commander and opens it in the Deckbuilder. It is a new deck, so an open account deck is let
-   * go first rather than overwritten, and the cuts wait for Upgrade: a one-card deck has nothing to cut.
+   * Takes a built deck into the tool: Upgrade goes through it card by card, the Deckbuilder edits it. It is a new deck,
+   * so an open account deck is let go first rather than overwritten.
    */
-  async function buildFrom(commander: CardSummary) {
+  async function openBuilt(text: string, next: ToolMode) {
+    if (deckBuild.state.status !== "ready") return;
     editorHandle.current?.discard();
     if (tool.openDeck) tool.closeSavedDeck();
-    const text = decklistFor({ commanders: [commander.id], cards: [] }, () => commander.name);
-    const outcome = await tool.submit({ text, bracketOverride: null, importedFrom: null }, { recs: false });
+    const bracket = deckBuild.state.bracket;
+    const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null }, { recs: next === "upgrade" });
     if (!outcome.parsed) return;
+    deckBuild.reset();
     setEditing(false);
-    setMode("edit");
+    setMode(next);
     checkLookup(outcome.analysis);
   }
 
@@ -442,26 +451,65 @@ export function DeckTool() {
         <OpenDeckBar deck={tool.openDeck} onClose={tool.closeSavedDeck} />
       )}
       {showPicker ? (
-        <ToolHero
-          id="deck-build-heading"
-          heading="Build a deck"
-          aside="Start from the commander. We'll fill in the rest."
-          intro={
-            <p>
-              Pick your commander, then add cards in the deckbuilder. Have a list already?{" "}
-              <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
-                Paste a decklist
-              </Link>
-              .
-            </p>
-          }
-        >
-          {tool.parse.status === "loading" ? (
-            <ShuffleDeck label="Setting up your deck" />
-          ) : (
-            <CommanderPicker autoFocus onPick={(card) => void buildFrom(card)} />
-          )}
-        </ToolHero>
+        deckBuild.state.status !== "idle" ? (
+          <BuildView
+            state={deckBuild.state}
+            collectionImportHref={buildImportHref}
+            onBracket={(bracket) => {
+              if (deckBuild.state.status !== "idle") void deckBuild.build(deckBuild.state.commander, bracket);
+            }}
+            onUpgrade={(text) => void openBuilt(text, "upgrade")}
+            onEdit={(text) => void openBuilt(text, "edit")}
+            onPickAnother={deckBuild.reset}
+          />
+        ) : (
+          <ToolHero
+            id="deck-build-heading"
+            heading="Build a deck"
+            aside={tool.ownedOnly ? "Pick a commander. Your cards do the rest." : "Pick a commander. We'll deal you a deck."}
+            intro={
+              <>
+                <p>
+                  {tool.ownedOnly
+                    ? "Pick a commander and we'll build a deck for it from your collection, then you can go through it card by card."
+                    : "Pick a commander and we'll build a deck for it, then you can go through it card by card."}{" "}
+                  Have a list already?{" "}
+                  <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
+                    Paste a decklist
+                  </Link>
+                  .
+                </p>
+                {source.kind === "none" && (
+                  <p className="text-sm text-muted-foreground">
+                    <Link href={buildImportHref} className={cn(TEXT_LINK, "font-semibold")}>
+                      Import your collection
+                    </Link>{" "}
+                    to pick from commanders you own and build from your cards.
+                  </p>
+                )}
+              </>
+            }
+          >
+            <div className="flex flex-col gap-3">
+              {tool.ownedOnly && (
+                <Segmented
+                  label="Which commanders to list"
+                  options={[
+                    { value: "owned", label: "From my collection" },
+                    { value: "any", label: "Any commander" },
+                  ]}
+                  value={pickFrom}
+                  onChange={setPickFrom}
+                />
+              )}
+              <CommanderPicker
+                autoFocus
+                ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
+                onPick={(card) => void deckBuild.build(card)}
+              />
+            </div>
+          </ToolHero>
+        )
       ) : showInput ? (
         <ToolHero
           id="deck-input-heading"

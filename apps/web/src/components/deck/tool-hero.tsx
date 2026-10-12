@@ -8,6 +8,7 @@ import { TOOL_VISTA } from "@/lib/landing-art";
  * washed down behind the copy, the heading with the buddy's line under it, and the form on an oak panel beside it
  * (below it on phones). Full-bleed like the hero; as the page's first block, `-mt-4` meets the header's rule under the
  * layout's top padding, and as its last, `-mb-10` meets the footer's rule (cancelling the layout's bottom padding).
+ * On wide screens it is at least 70% of the window tall, so a short form doesn't leave bare table under the art.
  */
 export function ToolHero({
   id,
@@ -29,7 +30,7 @@ export function ToolHero({
   return (
     <section
       aria-labelledby={id}
-      className="relative isolate mx-[calc(50%-50vw)] w-[100vw] overflow-hidden border-b border-seam first:-mt-4 last:-mb-10 last:border-b-0"
+      className="relative isolate mx-[calc(50%-50vw)] w-[100vw] overflow-hidden border-b border-seam first:-mt-4 last:-mb-10 last:border-b-0 lg:min-h-[70svh]"
     >
       <ArtBackdrop src={TOOL_VISTA.src} wash="left" sizes="100vw" position={TOOL_VISTA.position} priority />
       <div className="page-column grid items-start gap-6 pt-6 pb-8 md:py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)] lg:gap-12 lg:py-16">

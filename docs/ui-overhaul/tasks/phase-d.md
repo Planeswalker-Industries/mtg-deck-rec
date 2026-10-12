@@ -6,7 +6,7 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 
 ### UI-040: Pick a commander you own
 
-**Status:** ready | **Phase:** D
+**Status:** done (2026-10-12) | **Phase:** D
 **Depends on:** none | **Existing tickets:** T050
 
 `/deck?start=build` searches every commander. With a collection, it should start from the ones the player owns.
@@ -46,7 +46,7 @@ Specify: the build screen for `recs.build` (`BuildResult`: groups with origin an
 
 ### UI-041: Build screen
 
-**Status:** draft | **Phase:** D | **Depends on:** ARCH-003, UI-040
+**Status:** first version done 2026-10-12 without ARCH-003: `BuildView` over `recs.build` with `fill: 'none'` (cards, basics, feasibility, open-slot placeholder, bracket rebuild, into Upgrade or the Deckbuilder, copy and download). Still open: the Q-01 rule, saving a build directly, accept-rate events for mode `build` | **Phase:** D | **Depends on:** ARCH-003, UI-040
 
 ### UI-042: Continue anyway
 

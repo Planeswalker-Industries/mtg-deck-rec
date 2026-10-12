@@ -9,6 +9,7 @@ import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
+import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf, formatUsd } from "@/lib/format";
 import { PhaseIntro } from "./journey-stepper";
 import type { DeckJourney } from "./use-deck-journey";
@@ -37,23 +38,6 @@ function StatsColumn({ title, stats, size }: { title: string; stats: DeckStats; 
       </dl>
     </section>
   );
-}
-
-/** A download's file name from the deck's commanders: letters, digits, spaces and dashes only. */
-function deckFileName(commanders: (string | undefined)[]): string {
-  const name = commanders.filter(Boolean).join(" and ").replace(/[^\p{L}\p{N} -]+/gu, "").replace(/\s+/g, " ").trim();
-  return `${name || "decklist"}.txt`;
-}
-
-/** Saves text as a file, in the browser: an unsaved deck has no export route to link to. */
-function downloadText(text: string | null, fileName: string) {
-  if (text === null) return;
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 /**

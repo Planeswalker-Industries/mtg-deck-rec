@@ -13,12 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { displayName } from "@/lib/cards";
 import { DECK_BAR_HEIGHT_VAR, PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
-import { bracketLabel, collectionModeLabel } from "@/lib/labels";
+import { BRACKETS, bracketLabel, collectionModeLabel } from "@/lib/labels";
 import { ColorIdentity } from "./color-identity";
 import { DeckIssuesChip } from "./resolution-issues";
 import type { CollectionMode } from "./use-deck-tool";
 
-const BRACKETS: Bracket[] = [1, 2, 3, 4, 5];
 const COLLECTION_MODES: CollectionMode[] = ["first", "only", "off"];
 
 /**

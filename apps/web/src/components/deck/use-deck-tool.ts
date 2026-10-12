@@ -582,6 +582,8 @@ export function useDeckTool(
     restoreBracket,
     /** null when there's no collection to apply. */
     collectionMode: hasCollection ? collectionMode : null,
+    /** The collection as a build or an owned-only search takes it; null without one. */
+    ownedOnly: ownershipFor("only")?.ownership ?? null,
     changeCollectionMode,
     cut,
     ensureCuts,

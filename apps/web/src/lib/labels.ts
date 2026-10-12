@@ -64,6 +64,9 @@ export const collectionModeLabel: Record<"off" | "first" | "only", string> = {
   off: "Ignore it",
 };
 
+/** Every bracket, lowest first, for the bracket choices. */
+export const BRACKETS: readonly Bracket[] = [1, 2, 3, 4, 5];
+
 export const bracketLabel: Record<Bracket, string> = {
   1: "1 Exhibition",
   2: "2 Core",

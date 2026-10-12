@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
-import type { CardSummary } from "@mtg/core/contract";
+import type { CardSummary, OwnershipInput } from "@mtg/core/contract";
 import { cn } from "cn";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { Input } from "@/components/ui/input";
@@ -16,8 +16,17 @@ const SEARCH_DELAY_MS = 180;
 /**
  * Finds a commander by name as the player types: a combobox with arrow keys and Enter, each result shown with its art.
  * `autoFocus` puts the cursor in the box on mount, for a page where picking a commander is the only thing to do.
+ * `ownedOnly` limits the results to commanders the collection holds.
  */
-export function CommanderPicker({ onPick, autoFocus = false }: { onPick: (card: CardSummary) => void; autoFocus?: boolean }) {
+export function CommanderPicker({
+  onPick,
+  autoFocus = false,
+  ownedOnly,
+}: {
+  onPick: (card: CardSummary) => void;
+  autoFocus?: boolean;
+  ownedOnly?: OwnershipInput | undefined;
+}) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -44,7 +53,7 @@ export function CommanderPicker({ onPick, autoFocus = false }: { onPick: (card: 
     setStatus("searching");
     timer.current = window.setTimeout(() => {
       void getApis()
-        .catalog.searchCards({ q, commanderEligible: true, limit: 8 })
+        .catalog.searchCards({ q, commanderEligible: true, limit: 8, ...(ownedOnly ? { ownedOnly } : {}) })
         .then((r) => {
           if (current !== request.current) return;
           if (r.ok) {
@@ -60,11 +69,22 @@ export function CommanderPicker({ onPick, autoFocus = false }: { onPick: (card: 
     }, SEARCH_DELAY_MS);
   }
 
+  // A change between owned and every commander searches the same name again.
+  const ownedKey = ownedOnly ? ownedOnly.kind : "any";
+  const searchedWith = useRef(ownedKey);
+  useEffect(() => {
+    if (searchedWith.current === ownedKey) return;
+    searchedWith.current = ownedKey;
+    search(query);
+    // Only the ownership change triggers this; `search` reads the latest query itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownedKey]);
+
   const listId = `${id}-results`;
   const open = results.length > 0;
   const hint =
     status === "searching"
-      ? "Searchingâ€¦"
+      ? "Searching…"
       : status === "error"
         ? error
         : query.trim().length >= 2 && results.length === 0

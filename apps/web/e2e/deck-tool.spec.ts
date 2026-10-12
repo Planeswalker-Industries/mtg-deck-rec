@@ -401,3 +401,17 @@ test("the deckbuilder's deck cards line up their buttons", async ({ page }) => {
   const grids = deckList.getByRole("list");
   for (let i = 0; i < (await grids.count()); i++) await expectButtonsAligned(grids.nth(i), /^Remove /);
 });
+
+test("builds a deck for a picked commander, then goes through it card by card", async ({ page }) => {
+  await page.goto("/deck?start=build");
+  // Chulane is the mock catalog's one commander, and a popular one in the real catalog.
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: 30_000 });
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: 90_000 });
+  // Without a collection the build draws on every card, and says how to build from owned cards instead.
+  await expect(built.getByText(/picked from every card in print/)).toBeVisible();
+  await expect(built.getByRole("link", { name: "Import your collection" })).toBeVisible();
+  await built.getByRole("button", { name: "Go through it card by card" }).click();
+  await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 90_000 });
+});
