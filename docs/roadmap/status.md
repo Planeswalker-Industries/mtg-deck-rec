@@ -14,7 +14,7 @@ Where the project stands, and why things are the way they are.
 | 3 — Accounts and collections | Built | Open: import SQL tests (T015), 10k-row timing (T027), starting a collection by hand (T038) |
 | 4 — Votes, saved decks, export | Partly built | Saved decks and export done. Votes recorded, not scored (T006). Favorites not started (T017) |
 | 5 — Data pipeline and scoring | Released 2026-10-08 | Scoring pipeline #140, derived pairs #142, Deck stats #143. Running by hand until the VPS worker is deployed (T066); follow-ups T067–T069, T071–T072 |
-| 6 — UI overhaul, collection first | Phase A implemented locally; gate failed/incomplete, 2026-10-09 (not released) | Core tests, lint, typecheck and build pass; coverage e2e corrections and authenticated/viewport verification remain. Tasks and evidence in [`../ui-overhaul/STATE.md`](../ui-overhaul/STATE.md) |
+| 6 — UI overhaul, collection first | Phase A gate passed 2026-10-10 (not released); reworked 2026-10-12 into one list around four collection goals, buy side shelved | Active list, done and parked work in [`../ui-overhaul/STATE.md`](../ui-overhaul/STATE.md) |
 
 ## Live setup
 

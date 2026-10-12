@@ -6,7 +6,7 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 
 ### UI-040: Pick a commander you own
 
-**Status:** ready | **Owner:** implementer | **Phase:** D
+**Status:** ready | **Phase:** D
 **Depends on:** none | **Existing tickets:** T050
 
 `/deck?start=build` searches every commander. With a collection, it should start from the ones the player owns.
@@ -40,7 +40,7 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 
 ### ARCH-003: Build screen and the three choices
 
-**Status:** draft | **Owner:** architect | **Phase:** D | **Resolves:** Q-01, Q-02
+**Status:** draft | **Phase:** D | **Resolves:** Q-01, Q-02
 
 Specify: the build screen for `recs.build` (`BuildResult`: groups with origin and score, basics, land target, feasibility, combos, bracket estimate); the "can't reasonably make" rule (Q-01, settings in `app_config.scoring.build`); Continue anyway (a new fill mode that ignores `build.qualityFloor`: core `build.ts` with tests, contract bump, and whether `eval:holdout`'s build overlap must not fall); Swap commander (Q-02: ranking method, its cost, where it runs); Add singles (`fill: 'value'`, unknown prices per D-05); saving a build; accept-rate events for mode `build` (T065). Split into ready tasks UI-041–UI-044.
 

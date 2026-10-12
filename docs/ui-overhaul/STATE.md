@@ -1,63 +1,55 @@
 # UI overhaul state
 
-Current UI overhaul status and next action. Tasks and gates: [`tasks/phase-a.md`](tasks/phase-a.md) … [`tasks/phase-f.md`](tasks/phase-f.md). Only the lead edits this file.
+Current UI overhaul status and next action. Reworked 2026-10-12 around the four goals below: one short list, worked top to bottom, one item at a time. The phase files in [`tasks/`](tasks/) stay as reference for specs and evidence; their order no longer applies.
 
-## Next action
+## The four goals
 
-1. **Phase B:** implement a UI-021 correction batch for the reproduced stale-sync replacement race and hidden account inventory during pending/failed sync; evidence/repro in `tasks/phase-b.md` (2026-10-10).
-2. Coordinate browser sync with explicit imports across tabs; keep failures recoverable and summary/return inventory truthful. No schema/contract change without owner approval.
-3. Make the retained account regression pass without weakening inventory assertions; add pending/failure coverage, verify returned deck quantities/reload and actual saved-deck originating links (UI-022).
-4. UI-020 is done; UI-021 blocked; UI-022 review; UI-023/024 draft. Current `.next` is real-data. Recheck screenshots after corrections; no phase gate, account-deletion tests, hosted operations or commits.
+Everything here serves one of these, all with the player's own collection:
 
-## Status
+1. **Fit an online list:** replace the cards of a decklist from the internet with owned cards that do the same job.
+2. **Build from an owned commander:** pick a commander the player owns and build a deck for it from the collection.
+3. **Sift for replacements:** recreate going through your cards to find solid replacements for what the deck already does (the swipe tool).
+4. **Cut toward a weak area:** recreate deciding which cards to cut to shore up an area the deck lacks.
 
-| Task | Phase | Status | Depends on |
-|---|---|---|---|
-| UI-001 Save never changes the collection | A | done | — |
-| UI-002 Swap says why it's empty | A | done | — |
-| UI-003 Honest cut and swap reasons | A | done | — |
-| ARCH-001 Whole-deck coverage | A | done | — |
-| UI-010 Coverage function | A | done | ARCH-001 |
-| UI-013 Coverage API | A | done | UI-010 |
-| UI-011 Coverage in the deck tool | A | done | UI-010, UI-013 |
-| UI-012 Mark a deck built | A | done | — |
-| UI-020 Start a collection by hand | B | done | — |
-| UI-021 Add to or replace | B | blocked | SQL passed; reproduced browser-sync race and hidden account inventory |
-| UI-022 Return after import | B | review | after UI-021 (same file) |
-| UI-023 Export instructions | B | draft | Q-05 |
-| UI-024 Fix unmatched lines | B | draft | UI-021 |
-| UI-030 Buy list in Add | C | ready | — |
-| UI-031 Buy list in Swap | C | draft | UI-002, UI-030 |
-| UI-032 Owned only by default | C | draft | UI-030, UI-031 |
-| ARCH-002 Every unowned card handled | C | draft | — |
-| UI-040 Pick an owned commander | D | ready | — |
-| ARCH-003 Build screen and choices | D | draft | — |
-| UI-041 – UI-045 | D | draft | ARCH-002, ARCH-003 |
-| UI-050 Copy and download from Done | E | ready | — |
-| UI-051 – UI-053 | E | draft | UI-010, ARCH-002 |
-| UI-060 Collection in the nav | F | ready | — |
-| UI-061 Honest homepage | F | ready | — |
-| UI-062 Swipe button labels | F | ready | — |
-| UI-063 Deck stats wording | F | ready | — |
-| UI-064 Re-record How it works | F | draft | phases C–E |
-| UI-090 Visibility transport failure rollback | F (follow-up) | draft | after A |
+Paste-and-swipe needs no collection and stays the first-visit entry (D-11). The journey suggests uploading a collection where it would help.
 
-## Phases
+## Active list
 
-| Phase | Status |
+| # | Item | Goal | Status | Specs |
+|---|---|---|---|---|
+| 1 | Close out the import race: a stale browser sync never replaces a newer import; account inventory stays visible while a sync is pending or failed | all | next | UI-021 in `tasks/phase-b.md` |
+| 2 | Restyle the paste-and-swipe deck tool to match the homepage | 3 | — | `DESIGN-SYSTEM.md` |
+| 3 | Collection prompts in the journey; Collection in the main nav | 1, 2 | — | UI-060 in `tasks/phase-f.md` |
+| 4 | Build from an owned commander, then copy or download the deck | 2 | — | UI-040, UI-041 (`tasks/phase-d.md`), UI-050 (`tasks/phase-e.md`) |
+| 5 | Fit an online list to the collection (the build, seeded by the pasted list) | 1 | — | UI-045 in `tasks/phase-d.md`, D-03 |
+| 6 | Cut toward a weak area: the player names an area, Cut ranks cards for it | 4 | — | new |
+| 7 | Restyle the remaining pages (collection, saved decks, the rest) | all | — | `DESIGN-SYSTEM.md` |
+
+`RecsApi.build` (contract v24, `getBuild`) already exists end to end and nothing in the UI calls it yet; items 4 and 5 are mostly UI.
+
+## Done
+
+| Task | Note |
 |---|---|
-| A | gate passed 2026-10-10 (evidence: `tasks/phase-a.md`, "Gate evidence"); colour-icon overlap accepted |
-| B | in progress — UI-020 done; visual/account verification 2026-10-10 found UI-021 sync blockers (2 account tests pass, 1 regression fails); no gate run |
-| C | not started |
-| D | not started |
-| E | not started |
-| F | not started |
+| UI-001 Save never changes the collection | Phase A gate passed 2026-10-10 |
+| UI-002 Swap says why it's empty | Phase A |
+| UI-003 Honest cut and swap reasons | Phase A |
+| ARCH-001, UI-010, UI-013, UI-011 Whole-deck coverage | Phase A; contract v27 still needs frontend and backend approval before a release PR |
+| UI-012 Mark a deck built | Phase A |
+| UI-020 Start a collection by hand | Phase B |
+
+## Parked
+
+Not deleted; picked up only once items 1–7 are done or the owner asks.
+
+- **Buy side (D-12):** UI-030, UI-031, the buy part of D-05 "Add singles" (UI-043), UI-052. Anything buy-side renders as a placeholder.
+- **Collection setup extras:** UI-022 (return after import; in review), UI-023 (export instructions, Q-05), UI-024 (fix unmatched lines).
+- **Defaults and finish extras:** UI-032 (owned only by default), ARCH-002, UI-051, UI-053.
+- **Polish:** UI-061 – UI-064, UI-090.
+- **Scoring tuning:** no further recommendation-quality work unless one of the goals shows bad results.
 
 ## Notes
 
-- Owner approved history cleanup and repush (2026-10-10) after recalling the original branch. Clean snapshot `813d40d` replaces the nine original branch commits on the original `develop` base (`355ba35`). Its full tracked tree matches the pre-rewrite checkpoint; pipeline paths are absent from its reachable history, and all 12 local pipeline files retained identical hashes. Original history is preserved only in local backup ref `refs/local-backups/ui-overhaul-before-pipeline-cleanup`; never push that ref. Removing the remote branch does not guarantee GitHub erases previously published objects. No runtime tests were rerun; the known Phase B regression remains.
-- The entire agent pipeline remains local-only: configurations, commands, prompts, orchestration scripts and workflow playbook are ignored and untracked. Shared rules, UI requirements and test evidence remain tracked, with direct phase-check commands. Only this state record changes after the verified snapshot, before the owner-requested push; no PR or deployment is authorized.
-- Phase A completion was owner-requested (2026-10-10). Phase B's SQL prerequisite was approved for implementation/local checks and commit (owner: "yes and commit", 2026-10-10). Owner subsequently requested the Phase B UI/test/evidence checkpoint, retaining the known failing sync regression. These changes are preserved in the clean snapshot; local tooling remains ignored. No phase B gate run yet.
-- Owner clarification (2026-10-10): coverage text overlapping colour icons is acceptable because it is not the focus. That overlap is not a gate blocker or required fix. The separate error/Retry collision with the collection selector was corrected and verified in the third gate attempt.
-- Contract v27 (UI-013) still needs approval from both frontend and backend before a release PR.
-- Pre-restructure per-task history remains available locally through the backup: `git show 97c884a:docs/ui-overhaul/PROGRESS.md` (not part of the cleaned branch history).
+- Owner refocus 2026-10-12: the four goals, buy list shelved, paste-and-swipe stays the entry. Owner asked for items 1–7 to be implemented with check-ins only for clarification.
+- Owner clarification (2026-10-10): coverage text overlapping colour icons is acceptable.
+- Schema and contract changes are presented to the owner before they are built.

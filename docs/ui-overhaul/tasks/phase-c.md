@@ -6,7 +6,7 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 
 ### UI-030: The buy list in Add
 
-**Status:** ready | **Owner:** implementer | **Phase:** C
+**Status:** ready | **Phase:** C
 **Depends on:** none | **Existing tickets:** T069, T037
 
 In owned only mode the server returns `AddResult.buyList` (unowned cards clearly better than what the collection offers), and nothing shows it (§5, D-07).
@@ -43,19 +43,19 @@ In owned only mode the server returns `AddResult.buyList` (unowned cards clearly
 
 ### UI-031: The buy list when nothing owned fits a swap
 
-**Status:** draft | **Owner:** implementer | **Phase:** C | **Depends on:** UI-002, UI-030
+**Status:** draft | **Phase:** C | **Depends on:** UI-002, UI-030
 
 When `emptyReason` is `NOTHING_OWNED_FITS` and `SwapResult.buyList` has cards, the rater's empty state offers "See N cards worth buying" using `BuyList`; picking one swaps it in. Spec after UI-030 lands, reusing its component.
 
 ### UI-032: Owned only by default
 
-**Status:** draft | **Owner:** implementer | **Phase:** C | **Depends on:** UI-030, UI-031 | **Existing tickets:** T037
+**Status:** draft | **Phase:** C | **Depends on:** UI-030, UI-031 | **Existing tickets:** T037
 
 `readCollectionMode` (`web/components/deck/use-deck-tool.ts`) defaults to `"only"`; the deck tool's "Your collection is loaded" line says so; AGENTS.md "Collections" and T037/T069 in `docs/tasks.md` updated. Ready once the buy lists show.
 
 ### ARCH-002: Every unowned card gets handled
 
-**Status:** draft | **Owner:** architect | **Phase:** C | **Resolves:** Q-04
+**Status:** draft | **Phase:** C | **Resolves:** Q-04
 
 In owned only mode an unowned card reaches Swap only if the cut scorer already lists it for play reasons (`packages/core/src/scoring/rank.ts` `rankCuts`, the `limit` slice). Decide how the "improve my deck" round handles every unowned nonbasic card, and how journey 2 (adapt) works per D-03: most likely `recs.build` with the list's owned cards kept (`buildDeck` keeps the context's main cards) and a before/after diff. Consider request counts, the evaluation gate (does anything change ranking?), and contract impact. Output: UI-045 and any round change made `ready`.
 

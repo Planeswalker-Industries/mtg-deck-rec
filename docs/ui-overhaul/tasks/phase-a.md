@@ -9,19 +9,19 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 ### UI-001: Saving a deck never changes the collection
 
 - **Outcome:** done. Saving a deck never changes the collection.
-- **Files:** apps/web/src/components/decks/save-deck-button.tsx, apps/web/e2e/saved-decks.spec.ts, apps/web/AGENTS.md, docs/ui-overhaul/PROGRESS.md
+- **Files:** apps/web/src/components/decks/save-deck-button.tsx, apps/web/e2e/saved-decks.spec.ts, apps/web/AGENTS.md
 - **Evidence:** 2026-10-09 done; diff meets criteria after singular/plural dialog selector correction. Four-doc consistency checked; only AGENTS.md carries save-flow detail. Browser verification deferred to gate.
 
 ### UI-002: Swap says why there are no replacements
 
 - **Outcome:** done. Swap says why there are no replacements.
-- **Files:** apps/web/src/components/deck/use-swipe-rater.ts, apps/web/src/components/deck/swipe-rater.tsx, docs/ui-overhaul/PROGRESS.md
+- **Files:** apps/web/src/components/deck/use-swipe-rater.ts, apps/web/src/components/deck/swipe-rater.tsx
 - **Evidence:** 2026-10-09 done; server-empty versus client-exhausted states distinguished; shared imported Candidates type propagates without journey edits. Rater skip logic unchanged. Targeted lint/typecheck evidence accepted.
 
 ### UI-003: Cut and Swap give honest reasons
 
 - **Outcome:** done. Cut and Swap give honest reasons.
-- **Files:** apps/web/src/components/deck/journey/cut-phase.tsx, apps/web/src/components/deck/journey/replace-phase.tsx, docs/ui-overhaul/PROGRESS.md
+- **Files:** apps/web/src/components/deck/journey/cut-phase.tsx, apps/web/src/components/deck/journey/replace-phase.tsx
 - **Evidence:** 2026-10-09 done; each file selects reasons once, reserving the last slot for NOT_OWNED. Approved intro copy matches; brief and empty copy unchanged. Targeted lint/typecheck pass.
 
 ### ARCH-001: Whole-deck coverage
@@ -33,18 +33,18 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 ### UI-010: Coverage function and tests
 
 - **Outcome:** done. Coverage function and tests.
-- **Files:** packages/core/src/collection/coverage.ts, packages/core/src/collection/coverage.test.ts, packages/core/src/collection/index.ts, docs/ui-overhaul/PROGRESS.md
+- **Files:** packages/core/src/collection/coverage.ts, packages/core/src/collection/coverage.test.ts, packages/core/src/collection/index.ts
 - **Evidence:** 2026-10-09 done; reviewed both new files with no-index diffs and barrel export. Allocation order and capped pools follow ARCH-001, immutable inputs and quantity invariants tested. 45 collection tests and core typecheck pass; no scoring edits.
 
 ### UI-013: Coverage contract and server bridge
 
 - **Outcome:** done. Coverage contract and server bridge.
-- **Files:** packages/core/src/contract/collection.ts, packages/core/src/contract/transport.ts, packages/core/src/contract/version.ts, packages/core/src/contract/schemas.ts, packages/core/src/contract/schemas.test.ts, packages/core/src/contract/mocks/index.ts, packages/core/src/contract/mocks/mocks.test.ts, apps/web/src/app/deck/actions.ts, apps/web/src/lib/api/real.ts, apps/web/src/lib/server/deck-coverage.ts, apps/web/AGENTS.md, docs/ui-overhaul/PROGRESS.md
-- **Evidence:** 2026-10-09 done. Independent reviewer passed account-inventory isolation (session client, auth.uid-scoped SQL, no private cache). Corrected mock commander double count and removed ignored abort option from the new action; corrected mock tests and both typechecks pass. No hosted operations. Runtime auth isolation remains a local gate check, not proven by static review.
+- **Files:** packages/core/src/contract/collection.ts, packages/core/src/contract/transport.ts, packages/core/src/contract/version.ts, packages/core/src/contract/schemas.ts, packages/core/src/contract/schemas.test.ts, packages/core/src/contract/mocks/index.ts, packages/core/src/contract/mocks/mocks.test.ts, apps/web/src/app/deck/actions.ts, apps/web/src/lib/api/real.ts, apps/web/src/lib/server/deck-coverage.ts, apps/web/AGENTS.md
+- **Evidence:** 2026-10-09 done. Review passed account-inventory isolation (session client, auth.uid-scoped SQL, no private cache). Corrected mock commander double count and removed ignored abort option from the new action; corrected mock tests and both typechecks pass. No hosted operations. Runtime auth isolation remains a local gate check, not proven by static review.
 
 ### UI-011: Show coverage in the deck tool
 
-**Status:** done | **Owner:** implementer | **Phase:** A
+**Status:** done | **Phase:** A
 **Depends on:** UI-010, UI-013 | **Existing tickets:** T069
 
 Show the current Upgrade deck's coverage without adding a third deck-bar line. A compact available count opens a quantity-aware sheet; unavailable data must never masquerade as zero missing cards.
@@ -88,16 +88,16 @@ Show the current Upgrade deck's coverage without adding a third deck-bar line. A
 
 **Stop and report if:** working deck is not available from the journey hook, source changes cannot be observed without altering collection state ownership, or the phone layout requires a third line/new global dimensions.
 
-**Gate correction (2026-10-09):** new e2e fails at the ambiguous `^Cut ` locator and at a reload immediately after an optimistic quantity edit. Correct only `apps/web/e2e/deck-coverage.spec.ts`: exact `Cut Lightning Bolt`; confirm IndexedDB quantity persistence before navigation/reload with bounded polling (not sleeps), including both quantity-edit sites. Targeted lint/typecheck, then architect reruns gate e2e. If waiting for persistence exposes an actual collection-editor defect, stop and report separately; do not widen this task. Remaining UI assertions are still unverified.
+**Gate correction (2026-10-09):** new e2e fails at the ambiguous `^Cut ` locator and at a reload immediately after an optimistic quantity edit. Correct only `apps/web/e2e/deck-coverage.spec.ts`: exact `Cut Lightning Bolt`; confirm IndexedDB quantity persistence before navigation/reload with bounded polling (not sleeps), including both quantity-edit sites. Targeted lint/typecheck, then rerun the gate e2e. If waiting for persistence exposes an actual collection-editor defect, stop and report separately; do not widen this task. Remaining UI assertions are still unverified.
 
 **Gate retry (2026-10-10):** test corrections accepted and automated/local authenticated checks pass. Visual review found overlapping phone deck-bar colours/coverage text and error/Retry colliding with the collection select. UI-011 is not done; the scoped layout correction followed; evidence is under "Gate evidence" below. The prior persistence concern is resolved, not an app defect.
 
-**Gate accepted (2026-10-10, third attempt):** UI-011 done. Scoped two-row phone layout correction separates error/Retry from collection and edit controls; colour-icon overlap remains owner-accepted. Mock gate, new both-width real-action non-overlap tests, local authenticated suite and supplemental local checks pass. Lead reviewed stable ready/loading/error, sheet and swipe screenshots. Commands, counts and artifact locations are under "Gate evidence" below.
+**Gate accepted (2026-10-10, third attempt):** UI-011 done. Scoped two-row phone layout correction separates error/Retry from collection and edit controls; colour-icon overlap remains owner-accepted. Mock gate, new both-width real-action non-overlap tests, local authenticated suite and supplemental local checks pass. Stable ready/loading/error, sheet and swipe screenshots reviewed. Commands, counts and artifact locations are under "Gate evidence" below.
 
 ### UI-012: Mark a saved deck as built
 
 - **Outcome:** done. Mark a saved deck as built.
-- **Files:** apps/web/src/components/decks/deck-built.tsx, apps/web/src/app/decks/[commander]/[code]/page.tsx, apps/web/src/lib/server/deck-page.ts, apps/web/e2e/saved-decks.spec.ts, apps/web/AGENTS.md, docs/ui-overhaul/PROGRESS.md
+- **Files:** apps/web/src/components/decks/deck-built.tsx, apps/web/src/app/decks/[commander]/[code]/page.tsx, apps/web/src/lib/server/deck-page.ts, apps/web/e2e/saved-decks.spec.ts, apps/web/AGENTS.md
 - **Evidence:** 2026-10-09 done after correction: rejected transport calls also revert with visible error; owner controls stack on phone and sit beside each other from sm. Existing auth/write action reused, page owner guard intact; lint/typecheck pass. Analogous old visibility-toggle rejection gap recorded as UI-090, not changed here.
 
 ## Gate
@@ -123,7 +123,7 @@ yarn workspace @mtg/web e2e deck-coverage.spec.ts --grep "real coverage error" -
 
 ## Gate evidence
 
-Evidence files were moved from a system-temp artifact directory to `$MTG_DATA_DIR/screens/phase-a/` and the check script to `$MTG_DATA_DIR/tools/` on 2026-10-10; the paths below are the new ones.
+Evidence files are in `$MTG_DATA_DIR/screens/phase-a/` and the check script in `$MTG_DATA_DIR/tools/`.
 
 ### 2026-10-09, first attempt
 
@@ -138,11 +138,11 @@ Evidence files were moved from a system-temp artifact directory to `$MTG_DATA_DI
 ### 2026-10-10, second attempt
 
 - **Test correction accepted:** only `apps/web/e2e/deck-coverage.spec.ts` changed in application/test code. Exact cut/card locators, readonly IndexedDB polling before both departures, explicit remembered-deck resume, desktop swipe checks before the card leaves the queue, and bounding-box checks for both phone swipe controls above the stats dock. Both real hand edits persist; the earlier failures were test races/flow errors, not a collection-editor defect.
-- **Final lead-run automated gate passed:** `yarn workspace @mtg/core vitest run src/collection src/contract/mocks/mocks.test.ts src/contract/schemas.test.ts --reporter=dot` (7 files, 86 tests); `yarn workspace @mtg/web typecheck`; `yarn workspace @mtg/web lint`; `NEXT_PUBLIC_USE_MOCKS=1` production build; `yarn workspace @mtg/web e2e saved-decks.spec.ts deck-journey.spec.ts deck-coverage.spec.ts --reporter=dot` (9 passed, 9 auth-dependent skips); `git diff --check`.
+- **Final automated gate passed:** `yarn workspace @mtg/core vitest run src/collection src/contract/mocks/mocks.test.ts src/contract/schemas.test.ts --reporter=dot` (7 files, 86 tests); `yarn workspace @mtg/web typecheck`; `yarn workspace @mtg/web lint`; `NEXT_PUBLIC_USE_MOCKS=1` production build; `yarn workspace @mtg/web e2e saved-decks.spec.ts deck-journey.spec.ts deck-coverage.spec.ts --reporter=dot` (9 passed, 9 auth-dependent skips); `git diff --check`.
 - **Local authenticated suite passed separately:** fresh `NEXT_PUBLIC_USE_MOCKS=0` build, `E2E_MAILPIT_URL=http://127.0.0.1:56324`, `E2E_LOCAL_DATA=1`; `yarn workspace @mtg/web e2e saved-decks.spec.ts account-collection.spec.ts --reporter=dot` (11 passed, no skips). Includes explicit add and owned-only swap with nothing eligible, plus existing saved-deck access checks.
 - **Supplemental real-data Chrome/Playwright checks passed:** save without creating a collection; shortfall Save deck leaves the one-copy Sol Ring inventory unchanged; explicit add produces the four expected one-copy entries; built toggle persists across reload; targeted transport rejection rolls it back with a visible error and leaves storage unchanged; another saved deck reports four conflicts naming the built deck. At both widths, Enter/Space open the coverage sheet, Escape returns focus, held coverage reads show loading without stale counts, aborted reads show error without stale counts, and keyboard Retry recovers. Loading/error injection used real server actions (mock APIs are in-memory).
 - Supplemental script/evidence live outside the repo: `$MTG_DATA_DIR/tools/phase-a-local-check.mjs`; results in `$MTG_DATA_DIR/screens/phase-a/`: `phase-a-1791637270480-results.json`, and matching `phase-a-1791637270480-*.png`. Run with `node "$env:MTG_DATA_DIR/tools/phase-a-local-check.mjs"` **after a real-data rebuild**; it owns local port 3301 and closes its server/browser. After script review and correction of a request-observation race with polling, the checks ran successfully. Test accounts/decks remain local; none were deleted.
-- **Visual gate FAIL despite passing assertions:** lead reviewed stable screenshots (animations disabled, reduced motion). At 390px, the deck bar's colour symbols collide with the ready count and loading/error labels; the error/Retry group runs under the collection select. See `phase-a-1791637270480-390-{success,loading,error}.png`; the corresponding 1440px states are readable. Document-overflow and role/visibility assertions do not catch sibling overlap. Coverage sheets at both widths are readable and show card images/conflict names; earlier translucent sheet captures were mid-animation, not a sheet defect.
+- **Visual gate FAIL despite passing assertions:** stable screenshots reviewed (animations disabled, reduced motion). At 390px, the deck bar's colour symbols collide with the ready count and loading/error labels; the error/Retry group runs under the collection select. See `phase-a-1791637270480-390-{success,loading,error}.png`; the corresponding 1440px states are readable. Document-overflow and role/visibility assertions do not catch sibling overlap. Coverage sheets at both widths are readable and show card images/conflict names; earlier translucent sheet captures were mid-animation, not a sheet defect.
 - No production edits, contract/schema/scoring changes, commits, pushes, PRs, migrations, hosted operations or account-deletion tests. UI-011 remains in review; Phase B has not started.
 
 ### 2026-10-10, third attempt (passed)
@@ -150,7 +150,7 @@ Evidence files were moved from a system-temp artifact directory to `$MTG_DATA_DI
 - **UI-011 accepted:** implementation reviewed with `git diff --stat` and targeted diffs. Only `deck-bar.tsx`, `deck-coverage.tsx` and `e2e/deck-coverage.spec.ts` changed in application/test code. On phones with coverage, compact commander art stays in the first row and coverage spans the space beneath it; error text does not shrink and Retry reserves its phone target width. Two rows, unchanged ready/error bar height, original copy and existing global dimensions are preserved. No collection-editor change.
 - **Mock gate passed in order:** `yarn workspace @mtg/core vitest run src/collection src/contract/mocks/mocks.test.ts src/contract/schemas.test.ts --reporter=dot` (7 files, 86 tests); `yarn workspace @mtg/web typecheck`; `yarn workspace @mtg/web lint`; fresh `NEXT_PUBLIC_USE_MOCKS=1` build; `yarn workspace @mtg/web e2e saved-decks.spec.ts deck-journey.spec.ts deck-coverage.spec.ts --reporter=dot` (9 passed, 11 skips: 9 authenticated and 2 real-action tests, run separately below). Quantity persistence, live round/undo, same-/cross-tab focus refresh and keyboard/swipe checks still pass. `git diff --check` passed.
 - **New real-action regressions passed twice:** after a fresh `NEXT_PUBLIC_USE_MOCKS=0` build, `E2E_LOCAL_DATA=1 yarn workspace @mtg/web e2e deck-coverage.spec.ts --grep 'real coverage error' --reporter=dot` (2 passed, no skips). At 390×844 and 1440×900, targeted coverage server actions are held then aborted; loading/error hide stale counts and keyboard Retry recovers. The complete error/Retry group's bounding box must not intersect any other deck-bar button/link (including collection, bracket and edit); colour icons are deliberately excluded. Tests also assert two rows, no clipped error, Retry's 44px phone hit area and both swipe controls above the dock/viewport edge. No production test seam or behavior change.
-- **Visual gate passed:** lead inspected stable ready/loading/error, sheet and swipe screenshots at both widths. Error/Retry is clear of interactive neighbors; the remaining phone error/colour-icon overlap is explicitly accepted by the owner. Sheets show readable quantity rows and card images. Final regression screenshots are retained outside the repo under `$MTG_DATA_DIR/screens/phase-a/phase-a-ui011-e2e/deck-coverage-real-coverag-{6c4ca-t-overlap-controls-at-390px,193c0--overlap-controls-at-1440px}/{ready,loading,error,sheet,swipe-controls}.png`.
+- **Visual gate passed:** inspected stable ready/loading/error, sheet and swipe screenshots at both widths. Error/Retry is clear of interactive neighbors; the remaining phone error/colour-icon overlap is explicitly accepted by the owner. Sheets show readable quantity rows and card images. Final regression screenshots are retained outside the repo under `$MTG_DATA_DIR/screens/phase-a/phase-a-ui011-e2e/deck-coverage-real-coverag-{6c4ca-t-overlap-controls-at-390px,193c0--overlap-controls-at-1440px}/{ready,loading,error,sheet,swipe-controls}.png`.
 - **Local authenticated suite rerun passed:** with `E2E_MAILPIT_URL=http://127.0.0.1:56324`, `E2E_LOCAL_DATA=1` and the fresh real build, `yarn workspace @mtg/web e2e saved-decks.spec.ts account-collection.spec.ts --reporter=dot` (11 passed, no skips). Includes explicit add, owned-only swap with nothing eligible and saved-deck access checks.
-- **Supplemental local checks rerun passed:** `node $MTG_DATA_DIR/tools/phase-a-local-check.mjs` (12 scenarios): saving without a collection, shortfall save leaves inventory unchanged, explicit add, built persistence and transport-rejection rollback, another saved deck's four named conflicts, both-width sheet keyboard/focus and loading/error/Retry. Lead also inspected the authenticated error/conflict-sheet screenshots. Report: `$MTG_DATA_DIR/screens/phase-a/phase-a-1791639062886-results.json`; matching PNGs share that prefix. Server/browser closed normally; local accounts/decks were not deleted.
+- **Supplemental local checks rerun passed:** `node $MTG_DATA_DIR/tools/phase-a-local-check.mjs` (12 scenarios): saving without a collection, shortfall save leaves inventory unchanged, explicit add, built persistence and transport-rejection rollback, another saved deck's four named conflicts, both-width sheet keyboard/focus and loading/error/Retry. The authenticated error/conflict-sheet screenshots were also inspected. Report: `$MTG_DATA_DIR/screens/phase-a/phase-a-1791639062886-results.json`; matching PNGs share that prefix. Server/browser closed normally; local accounts/decks were not deleted.
 - No contract/schema/scoring/security changes, migrations, hosted operations, commits, pushes or PRs. Phase B has not started. Existing contract v27 release approvals remain outstanding, separate from this local phase gate.

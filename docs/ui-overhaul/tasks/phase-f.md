@@ -6,7 +6,7 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 
 ### UI-060: Collection in the main navigation
 
-**Status:** ready | **Owner:** implementer | **Phase:** F
+**Status:** ready | **Phase:** F
 **Depends on:** none | **Existing tickets:** none
 
 Collections work signed out (in the browser), yet the nav hides "Your collection" from signed-out players and gives "Rate cards" a top-level slot.
@@ -39,7 +39,7 @@ Collections work signed out (in the browser), yet the nav hides "Your collection
 
 ### UI-061: Homepage tells the truth
 
-**Status:** ready | **Owner:** implementer | **Phase:** F
+**Status:** ready | **Phase:** F
 **Depends on:** none | **Existing tickets:** none
 
 The homepage promises more than the app does (D-10), and the "new commander" situation sends players to the paste box.
@@ -81,7 +81,7 @@ The homepage promises more than the app does (D-10), and the "new commander" sit
 
 ### UI-062: Labels under the swipe buttons
 
-**Status:** ready | **Owner:** implementer | **Phase:** F
+**Status:** ready | **Phase:** F
 **Depends on:** none | **Existing tickets:** none
 
 The ✓ / ✕ / ✂ buttons are icon-only; on phones the instructions are screen-reader only (§3).
@@ -114,7 +114,7 @@ The ✓ / ✕ / ✂ buttons are icon-only; on phones the instructions are screen
 
 ### UI-063: Deck stats in plain words
 
-**Status:** ready | **Owner:** implementer | **Phase:** F
+**Status:** ready | **Phase:** F
 **Depends on:** none | **Existing tickets:** T072 (level word)
 
 "Mild 6/8" doesn't say what to do (§7).

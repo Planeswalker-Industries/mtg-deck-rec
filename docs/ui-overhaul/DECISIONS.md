@@ -18,6 +18,11 @@ Product decisions for the UI overhaul. Each is settled unless the owner reopens 
 - **D-09 Low play rate is not "wrong".** A card is called a problem only for a rule (legality, colours, bracket). Low play rate reads as "rarely played with this commander", never as working against the deck.
 - **D-10 No claims the product can't keep.** No "make any commander compete", "no singles necessary" or "strongest decks". Promise what is true: decks from your cards, purchases only if you want them.
 
+## Settled (owner, 2026-10-12)
+
+- **D-11 Paste-and-swipe is the front door.** A first-time visitor with a decklist pastes it and goes straight to the swipe tool; asking for a collection first is too much friction. The journey suggests uploading a collection, in a prompt or two, where it lets the player build from their own cards.
+- **D-12 The buy side is shelved.** No buy-list work (UI-030, UI-031, the buy part of D-05 "Add singles", UI-052). Wherever a screen would offer purchases, it shows a placeholder.
+
 ## Architecture decisions (2026-10-09)
 
 ### ARCH-001 / Q-03 — Whole-deck coverage
@@ -28,13 +33,13 @@ Product decisions for the UI overhaul. Each is settled unless the owner reopens 
 - **Wire result:** `DeckCoverageResult` contains the allocation result as `coverage` and `cards: CardSummary[]` for the deck targets and sources actually used as stand-ins/conflicts. Unknown/deleted target or allocated source metadata fails the read; never silently drop it or call it owned. `basicLandIds` is derived from catalog `is_basic_land`, never supplied by the browser. Ordinary and snow basics already identified by the catalog retain the existing basic-land assumption; no new scoring rule.
 - **Refresh against the live deck.** Upgrade uses `journey.deck` (working deck), not the original analysis; every applied cut/add/swap/undo changes its request key. Browser quantities come from `ownedCounts(rows)`, ids sorted with aligned quantities, for both coverage and existing recommendation input. Account requests include the open saved deck id so its own built cards are excluded. Coverage refreshes on collection source replacement (including quantity-only changes), deck-id changes, window focus and explicit retry. Superseded answers are discarded. Clear/hide old counts as soon as their deck/source key no longer matches; failures say unavailable, never zero missing. The first slice shows coverage in Upgrade only: the inline builder has uncommitted edits and must not display stale analysis coverage. Builder and saved-page coverage are follow-ups, not false live claims.
 - **Display:** compact second-line trigger `X/Y available` (X = owned + standIn + basic); its accessible name and the sheet spell out all six totals. Do not call assumed basics or twins exact owned copies. Sheet sections use §1's labels, quantities and images; conflicts name the holding decks, twins say `Owned as <name>`, basics say they are assumed. No automatic collection write or readiness/legality claim. Hide zero-count sections. The compact trigger replaces the existing card-count text, not a third bar line; counts and details are available in the sheet.
-- **Bounded sequencing:** UI-010 is the pure allocator; UI-013 is the contract/server/mock bridge; UI-011 is the client display. UI-011's spec is complete now, but under the workflow it becomes `ready` only when UI-010 and UI-013 are `done`. This supersedes the initial next-action shorthand asking to mark a dependent task ready before its prerequisites run.
+- **Bounded sequencing:** UI-010 is the pure allocator; UI-013 is the contract/server/mock bridge; UI-011 is the client display. UI-011's spec is complete now, but it becomes `ready` only when UI-010 and UI-013 are `done`.
 
 ## Open questions
 
 | Id | Question | Blocks | Who |
 |---|---|---|---|
-| Q-01 | What counts as a deck the collection "can't reasonably make"? Proposed: more than N open slots after the build, or any role in `deck_role_targets` short by more than M, with N and M in `app_config.scoring.build`. | ARCH-003 | architect proposes, owner approves |
-| Q-02 | How to rank "commanders your collection supports better": run a build per owned commander (expensive), or a SQL score over each commander's stored pool against owned cards? | ARCH-003 | architect |
-| Q-04 | Adapt flow: `recs.build` keeping the list's owned cards, or a missing-card step with owned swaps per card? D-03 favours the build. | ARCH-002 | architect |
+| Q-01 | What counts as a deck the collection "can't reasonably make"? Proposed: more than N open slots after the build, or any role in `deck_role_targets` short by more than M, with N and M in `app_config.scoring.build`. | ARCH-003 | Claude proposes, owner approves |
+| Q-02 | How to rank "commanders your collection supports better": run a build per owned commander (expensive), or a SQL score over each commander's stored pool against owned cards? | ARCH-003 | Claude |
+| Q-04 | Adapt flow: `recs.build` keeping the list's owned cards, or a missing-card step with owned swaps per card? D-03 favours the build. | ARCH-002 | Claude |
 | Q-05 | Export instructions for ManaBox, Moxfield, Archidekt and TCGplayer must match each app today; who verifies the steps? | UI-023 | owner |

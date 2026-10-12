@@ -6,7 +6,7 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 
 ### UI-050: Copy or download the deck from Done
 
-**Status:** ready | **Owner:** implementer | **Phase:** E
+**Status:** ready | **Phase:** E
 **Depends on:** none | **Existing tickets:** none
 
 Only saved decks can be copied or downloaded, so an anonymous player ends a round with no way to take the list to the table.
@@ -52,7 +52,7 @@ Done's price row becomes the cost of the not-owned cards (unknown prices counted
 
 ### UI-053: Bulk review with undo
 
-**Status:** draft | **Owner:** architect to spec | **Phase:** E | **Depends on:** ARCH-002
+**Status:** draft | **Phase:** E | **Depends on:** ARCH-002
 
 Per D-08 and §4, when a step has more than about a dozen decisions, open in list view with select-all and per-card undo.
 
