@@ -6,7 +6,7 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 
 ### UI-060: Collection in the main navigation
 
-**Status:** ready | **Phase:** F
+**Status:** done (2026-10-12: order Upgrade a deck, My collection, My decks, since paste-and-swipe is the front door, D-11; "Upgrade a deck" kept to match the page heading) | **Phase:** F
 **Depends on:** none | **Existing tickets:** none
 
 Collections work signed out (in the browser), yet the nav hides "Your collection" from signed-out players and gives "Rate cards" a top-level slot.

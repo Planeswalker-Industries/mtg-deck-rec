@@ -1,12 +1,14 @@
 "use client";
 
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
+import type { ReactNode } from "react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff, deckSize, deckStats, type DeckStats } from "@mtg/core/journey";
 import type { DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
+import { CopyDecklistButton } from "@/components/decks/deck-export";
 import { formatAsOf, formatUsd } from "@/lib/format";
 import { PhaseIntro } from "./journey-stepper";
 import type { DeckJourney } from "./use-deck-journey";
@@ -37,6 +39,23 @@ function StatsColumn({ title, stats, size }: { title: string; stats: DeckStats; 
   );
 }
 
+/** A download's file name from the deck's commanders: letters, digits, spaces and dashes only. */
+function deckFileName(commanders: (string | undefined)[]): string {
+  const name = commanders.filter(Boolean).join(" and ").replace(/[^\p{L}\p{N} -]+/gu, "").replace(/\s+/g, " ").trim();
+  return `${name || "decklist"}.txt`;
+}
+
+/** Saves text as a file, in the browser: an unsaved deck has no export route to link to. */
+function downloadText(text: string | null, fileName: string) {
+  if (text === null) return;
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 /**
  * Review: the deck before and after, and what changed. From here the player saves the result, runs it through the
  * journey again, or starts over from the deck they first brought.
@@ -48,6 +67,7 @@ export function ReviewPhase({
   onSave,
   onReanalyze,
   onStartOver,
+  children,
 }: {
   journey: DeckJourney;
   /** A commit is under way (re-parsing the result); the actions wait. */
@@ -60,6 +80,8 @@ export function ReviewPhase({
   onSave: () => void;
   onReanalyze: () => void;
   onStartOver: () => void;
+  /** Shown under the actions, e.g. the offer to import a collection. */
+  children?: ReactNode;
 }) {
   const state = journey.state;
   const deck = journey.deck;
@@ -110,6 +132,16 @@ export function ReviewPhase({
         <Button type="button" size="lg" variant="outline" onClick={onReanalyze} disabled={busy || stale}>
           Re-analyze
         </Button>
+        <CopyDecklistButton text={journey.resultText} size="lg" disabled={busy || stale} />
+        <Button
+          type="button"
+          size="lg"
+          variant="outline"
+          disabled={busy || stale}
+          onClick={() => downloadText(journey.resultText(), deckFileName(deck.commanders.map((id) => journey.cards.get(id)?.name)))}
+        >
+          Download text
+        </Button>
         <Button type="button" size="lg" variant="ghost" onClick={onStartOver} disabled={busy}>
           Start over
         </Button>
@@ -119,6 +151,7 @@ export function ReviewPhase({
           The decklist has changed since this deck was analyzed. Analyze it to save or re-analyze from here.
         </p>
       )}
+      {children}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <StatsColumn title="Before" stats={before} size={beforeSize} />

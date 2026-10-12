@@ -6,7 +6,7 @@ All paths are from the repo root; `web/` means `apps/web/src/`. Every validation
 
 ### UI-050: Copy or download the deck from Done
 
-**Status:** ready | **Phase:** E
+**Status:** done (2026-10-12) | **Phase:** E
 **Depends on:** none | **Existing tickets:** none
 
 Only saved decks can be copied or downloaded, so an anonymous player ends a round with no way to take the list to the table.

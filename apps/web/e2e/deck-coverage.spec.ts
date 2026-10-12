@@ -298,7 +298,7 @@ test("browser quantities and a live round update the two-line summary and the ke
 
   await recs.getByRole("button", { name: "Show as a list" }).click();
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
-  const bolt = recs.getByRole("region", { name: "Your deck" }).getByRole("button", { name: "Lightning Bolt Off-color", exact: true });
+  const bolt = recs.getByRole("region", { name: "Your deck" }).getByRole("button", { name: /^Lightning Bolt Off-color(,|$)/ });
   await expect(bolt).toHaveAttribute("aria-pressed", "true", { timeout: 60_000 });
   await steps.getByRole("button", { name: "Add" }).click();
   await expect(trigger).toHaveText("3/8 available", { timeout: 60_000 });

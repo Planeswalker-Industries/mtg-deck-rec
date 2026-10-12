@@ -32,6 +32,7 @@ import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
+import { CollectionNudge } from "./journey/collection-nudge";
 import { CutPhase } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
@@ -702,6 +703,10 @@ export function DeckTool() {
                   {journey.state.phase === "replace" && (
                     <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />
                   )}
+                  {/* Players who came with only a list are offered their collection where it changes what they see. */}
+                  {source.kind === "none" && journey.state.phase === "replace" && (
+                    <CollectionNudge href={collectionImportHref} step="replace" />
+                  )}
                   {journey.state.phase === "review" && (
                     <ReviewPhase
                       journey={journey}
@@ -710,7 +715,9 @@ export function DeckTool() {
                       onSave={() => void commitJourney("save")}
                       onReanalyze={() => void commitJourney("reanalyze")}
                       onStartOver={() => void commitJourney("startOver")}
-                    />
+                    >
+                      {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}
+                    </ReviewPhase>
                   )}
                 </div>
                 {statsPanel && (

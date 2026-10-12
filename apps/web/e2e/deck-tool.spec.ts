@@ -348,7 +348,8 @@ test("offers to start from a collection when there isn't one", async ({ page }) 
   const link = page.getByRole("link", { name: "Import your collection first" });
   await expect(link).toBeVisible({ timeout: 30_000 });
   await link.click();
-  await page.waitForURL(/\/collection\/import$/);
+  // The import returns to the deck afterwards (`?next=/deck`).
+  await page.waitForURL(/\/collection\/import(\?|$)/);
 });
 
 test("a name search's next page continues the list rather than repeating it", async ({ request }) => {
