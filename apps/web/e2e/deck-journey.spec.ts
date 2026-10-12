@@ -69,7 +69,7 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
 
   // Review: the numbers before and after, the changes, and the decklist.
   await expect(recs.getByRole("region", { name: "Before and after" })).toBeVisible();
-  await expect(recs.getByRole("list", { name: "Changes this round" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
+  await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Decklist" })).toBeVisible();
 
   // Start over goes back to the deck as it was pasted, at Cut.

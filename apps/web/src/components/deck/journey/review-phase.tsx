@@ -1,26 +1,22 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff, deckStats, type DeckStatsReport } from "@mtg/core/journey";
 import { groupDeck, type DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
-import { CardImage } from "@/components/cards/card-image";
-import { ZoomableCard } from "@/components/cards/card-zoom";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
 import { DeckRow } from "@/components/deckbuilder/deck-row";
 import { Button } from "@/components/ui/button";
 import { deckFileName, downloadText } from "@/lib/deck-download";
-import { formatAsOf, formatUsd } from "@/lib/format";
+import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
 import type { DeckJourney } from "./use-deck-journey";
 
 /** Average mana value is shown to one decimal: finer than that is noise at deck scale. */
 const MANA_VALUE_DECIMALS = 1;
-/** The preview's cards: two side by side, so about half a phone's width each, and a fixed column on wide screens. */
-const PREVIEW_SIZES = "(min-width: 1024px) 140px, 45vw";
 
 /** One number before and after the round, and whether the change moved it toward where it should be. */
 interface Tile {
@@ -41,6 +37,8 @@ function judge(before: number, after: number, target: number | null): Pick<Tile,
   return { verdict: Math.abs(after - target) < Math.abs(before - target) ? "better" : "worse", direction };
 }
 
+const wholeUsd = (usd: number) => `$${Math.round(usd).toLocaleString("en-US")}`;
+
 const verdictText = (verdict: Tile["verdict"]) => (verdict === "better" ? "text-add" : verdict === "worse" ? "text-cut" : "text-muted-foreground");
 
 function TileView({ tile }: { tile: Tile }) {
@@ -54,7 +52,7 @@ function TileView({ tile }: { tile: Tile }) {
       )}
     >
       <span className="text-xs text-muted-foreground">{tile.label}</span>
-      <span className="flex items-center gap-1.5 font-mono text-lg tabular-nums">
+      <span className="flex flex-wrap items-center gap-x-1.5 font-mono text-lg tabular-nums">
         {tile.verdict !== "same" && (
           <>
             <span className="text-muted-foreground">{tile.before}</span>
@@ -97,37 +95,11 @@ function changesOf(journey: DeckJourney): Change[] {
   ];
 }
 
-/** The chosen change, large: the card that went and the card that came, side by side. Pressing one enlarges it. */
-function ChangePreview({ change }: { change: Change }) {
-  const side = (entry: NonNullable<Change["out"]>, mark: "cut" | "add") => (
-    <figure className="flex min-w-0 flex-1 flex-col gap-1.5">
-      <figcaption className={cn("text-xs font-semibold", mark === "cut" ? "text-cut" : "text-add")}>{mark === "cut" ? "Out" : "In"}</figcaption>
-      <ZoomableCard card={entry.card}>
-        <CardImage
-          card={entry.card}
-          variant="normal"
-          alt={entry.card.name}
-          sizes={PREVIEW_SIZES}
-          className={cn("ring-2", mark === "cut" ? "ring-cut saturate-50" : "ring-add")}
-        />
-      </ZoomableCard>
-    </figure>
-  );
-  // A cut or an add alone shows its one card, at the same size as a pair's.
-  return (
-    <div aria-live="polite" className="flex gap-3">
-      {change.out && side(change.out, "cut")}
-      {change.into && side(change.into, "add")}
-      {!(change.out && change.into) && <div aria-hidden className="flex-1" />}
-    </div>
-  );
-}
-
 /**
  * Done: the round's result, shown rather than told. The numbers that moved (before → after, green when they moved
- * toward the commander's targets, red when away), every change as a pair of name plates with a large preview of the
- * chosen one, and the finished decklist laid out by type on the plates the deck editor uses. From here the player
- * saves, copies or downloads the result, runs it through the journey again, or starts over.
+ * toward the commander's targets, red when away), every change as name plates, Out beside In, and the finished
+ * decklist laid out by type on the plates the deck editor uses. From here the player saves, copies or downloads the
+ * result, runs it through the journey again, or starts over.
  */
 export function ReviewPhase({
   journey,
@@ -155,7 +127,6 @@ export function ReviewPhase({
   /** Shown after the changes, e.g. the offer to import a collection. */
   children?: ReactNode;
 }) {
-  const [selected, setSelected] = useState(0);
   const state = journey.state;
   const deck = journey.deck;
   if (!state || !deck) return null;
@@ -164,8 +135,8 @@ export function ReviewPhase({
   const after = deckStats(journey.after);
   const asOf = after.priceAsOf ?? before.priceAsOf;
   const changes = changesOf(journey);
-  const chosenIndex = Math.min(selected, changes.length - 1);
-  const chosen = changes[chosenIndex];
+  const outs = changes.flatMap((c) => (c.out ? [c.out] : []));
+  const ins = changes.flatMap((c) => (c.into ? [c.into] : []));
   const addedIds = new Set(deckDiff(state.base, deck).added.map((c) => c.cardId));
   const rounded = (n: number) => Number(n.toFixed(MANA_VALUE_DECIMALS));
 
@@ -186,8 +157,9 @@ export function ReviewPhase({
     },
     {
       label: "Estimated price",
-      before: formatUsd(before.priceUsd),
-      after: formatUsd(after.priceUsd),
+      // Whole dollars: a tile has room for two prices and an arrow, and cents are noise on an estimate.
+      before: wholeUsd(before.priceUsd),
+      after: wholeUsd(after.priceUsd),
       ...judge(Math.round(before.priceUsd), Math.round(after.priceUsd), null),
       ...(asOf ? { note: `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` } : {}),
     },
@@ -242,49 +214,32 @@ export function ReviewPhase({
         </ul>
       </section>
 
-      {chosen && (
+      {changes.length > 0 && (
         <section aria-labelledby="review-changes" className="flex flex-col gap-3">
           <h3 id="review-changes" className="font-heading text-xl leading-none font-semibold">
             Changes <span className="font-mono text-base font-normal text-muted-foreground">{changes.length}</span>
           </h3>
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-            {/* Phones see the chosen change first, then the list to choose from; wide screens keep it beside the list. */}
-            <div className="lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:order-last">
-              <ChangePreview change={chosen} />
-            </div>
-            <ul aria-label="Changes this round" className="flex flex-col gap-2">
-              {changes.map((change, index) => (
-                <li key={change.key}>
-                  {/* A swap reads out → in; a cut or an add alone is one plate in its own column. */}
-                  <ul className="grid grid-cols-1 items-center gap-1.5 sm:grid-cols-[minmax(0,1fr)_1rem_minmax(0,1fr)]">
-                    {change.out && (
-                      <DeckRow
-                        card={change.out.card}
-                        quantity={change.out.quantity}
-                        mark="cut"
-                        selected={index === chosenIndex}
-                        onSelect={() => setSelected(index)}
-                      />
-                    )}
-                    {change.out && change.into && (
-                      <li aria-hidden className="hidden justify-center text-muted-foreground sm:flex">
-                        <ArrowRight className="size-4" />
-                      </li>
-                    )}
-                    {change.into && (
-                      <DeckRow
-                        card={change.into.card}
-                        quantity={change.into.quantity}
-                        mark="add"
-                        selected={index === chosenIndex}
-                        onSelect={() => setSelected(index)}
-                        className={cn(!change.out && "sm:col-start-3")}
-                      />
-                    )}
-                  </ul>
-                </li>
-              ))}
-            </ul>
+          {/*
+            Out beside In. Swaps come first in both columns, so each sits on one row; the cuts and adds alone follow.
+            Each plate floats its card on hover and enlarges it when pressed.
+          */}
+          <div className="grid grid-cols-2 items-start gap-x-3">
+            <section aria-label="Out" className="flex flex-col gap-1.5">
+              <h4 aria-hidden className="text-xs font-semibold text-cut">Out</h4>
+              <ul className="flex flex-col gap-1.5">
+                {outs.map(({ card, quantity }) => (
+                  <DeckRow key={card.id} card={card} quantity={quantity} mark="cut" />
+                ))}
+              </ul>
+            </section>
+            <section aria-label="In" className="flex flex-col gap-1.5">
+              <h4 aria-hidden className="text-xs font-semibold text-add">In</h4>
+              <ul aria-label="Cards put in" className="flex flex-col gap-1.5">
+                {ins.map(({ card, quantity }) => (
+                  <DeckRow key={card.id} card={card} quantity={quantity} mark="add" />
+                ))}
+              </ul>
+            </section>
           </div>
         </section>
       )}
