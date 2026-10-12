@@ -17,8 +17,8 @@ Paste-and-swipe needs no collection and stays the first-visit entry (D-11). The 
 
 | # | Item | Goal | Status | Specs |
 |---|---|---|---|---|
-| 1 | Close out the import race: a stale browser sync never replaces a newer import; account inventory stays visible while a sync is pending or failed | all | next | UI-021 in `tasks/phase-b.md` |
-| 2 | Restyle the paste-and-swipe deck tool to match the homepage | 3 | — | `DESIGN-SYSTEM.md` |
+| 1 | Close out the import race: a stale browser sync never replaces a newer import; account inventory stays visible while a sync is pending or failed | all | done 2026-10-12 | UI-021 in `tasks/phase-b.md` |
+| 2 | Restyle the paste-and-swipe deck tool to match the homepage | 3 | next | `DESIGN-SYSTEM.md` |
 | 3 | Collection prompts in the journey; Collection in the main nav | 1, 2 | — | UI-060 in `tasks/phase-f.md` |
 | 4 | Build from an owned commander, then copy or download the deck | 2 | — | UI-040, UI-041 (`tasks/phase-d.md`), UI-050 (`tasks/phase-e.md`) |
 | 5 | Fit an online list to the collection (the build, seeded by the pasted list) | 1 | — | UI-045 in `tasks/phase-d.md`, D-03 |

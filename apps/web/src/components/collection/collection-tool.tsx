@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Textarea } from "@/components/ui/textarea";
 import { getApis } from "@/lib/api/client";
+import { withCollectionWrite } from "@/lib/collection-lock";
 import { safeNextPath } from "@/lib/safe-path";
 import { COLLECTION_MAX_IMPORT_ROWS, TEXT_LINK } from "@/lib/constants";
 import {
@@ -24,7 +25,7 @@ import {
   saveCollection,
   type UnmatchedLine,
 } from "@/lib/collection-store";
-import { notifyCollectionChanged, useCollectionSource } from "./use-collection-source";
+import { notifyCollectionChanged, useCollectionSource, type PendingMove } from "./use-collection-source";
 import { useCollectionParser } from "./use-collection-parser";
 
 /** The server accepts at most this many rows per call (it chunks matching internally under PostgREST's row cap). */
@@ -165,8 +166,20 @@ export function CollectionTool() {
     return csv;
   }
 
-  /** Commits the selected account import; failed staging leaves both existing copies alone. */
-  async function saveToAccount(rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
+  /**
+   * Commits the selected account import; failed staging leaves both existing copies alone. Queued behind any other
+   * collection write in this browser (another tab's import, or a browser collection still moving to the account), so a
+   * replacement can't be undone by an older upload landing after it.
+   */
+  function saveToAccount(rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
+    return withCollectionWrite(
+      () => commitToAccount(rows, unmatched, current),
+      () => setProgress({ label: "Waiting for another upload of your collection to finish", done: 0, total: 0 }),
+    );
+  }
+
+  async function commitToAccount(rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
+    if (!current()) return false;
     let importId: string | null = null;
     let totals: CollectionTotals | null = null;
     setProgress({ label: "Saving to your account", done: 0, total: rows.length });
@@ -213,7 +226,7 @@ export function CollectionTool() {
     setAccountUnmatched(null);
     setSuccess(null);
     if (source.kind === "account") {
-      const result = await getApis().actions.deleteCollection();
+      const result = await withCollectionWrite(() => getApis().actions.deleteCollection());
       if (!result.ok) return setProblem({ title: "Couldn't clear the collection", message: result.error.message });
       setSource({ kind: "none", signedIn: true });
       return;
@@ -254,9 +267,11 @@ export function CollectionTool() {
         <CollectionSummary
           totals={collectionTotals(source.collection)}
           note={
-            source.signedIn
-              ? "Moving it to your account…"
-              : `Imported ${day(source.collection.importedAt)}. Saved in this browser until ${day(source.collection.expiresAt)}.`
+            !source.signedIn
+              ? `Imported ${day(source.collection.importedAt)}. Saved in this browser until ${day(source.collection.expiresAt)}.`
+              : source.moveFailed
+                ? "Couldn't move it to your account yet. It stays in this browser, and the next visit tries again."
+                : "Moving it to your account…"
           }
           unmatched={{ lines: source.collection.unmatched, count: source.collection.unmatchedCount }}
           onClear={() => void clear()}
@@ -267,7 +282,7 @@ export function CollectionTool() {
       {source.kind === "account" && (
         <CollectionSummary
           totals={source.totals}
-          note={`Saved to your account. Updated ${day(Date.parse(source.totals.updatedAt))}.`}
+          note={`Saved to your account. Updated ${day(Date.parse(source.totals.updatedAt))}.${source.pending ? ` ${pendingNote(source.pending)}` : ""}`}
           unmatched={accountUnmatched}
           onClear={() => void clear()}
           success={success}
@@ -371,6 +386,14 @@ export function CollectionTool() {
       </form>
     </div>
   );
+}
+
+/** What the account summary says about a browser collection that hasn't reached the account yet. */
+function pendingNote({ totals, failed }: PendingMove): string {
+  const cards = `${count(totals.totalQuantity)} ${totals.totalQuantity === 1 ? "card" : "cards"} imported in this browser`;
+  return failed
+    ? `${cards} couldn't move into it yet and aren't counted here; the next visit tries again.`
+    : `${cards} ${totals.totalQuantity === 1 ? "is" : "are"} still moving into it and aren't counted here yet.`;
 }
 
 function CollectionSummary({

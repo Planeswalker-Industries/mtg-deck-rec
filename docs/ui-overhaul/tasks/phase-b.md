@@ -47,7 +47,7 @@ A player with a handful of cards can't start a collection without making a file.
 
 ### UI-021: Import adds to the collection or replaces it
 
-**Status:** blocked | **Phase:** B
+**Status:** done | **Phase:** B
 **Depends on:** none | **Existing tickets:** none
 
 Every import replaces the collection today. A player importing a new binder or a recent haul should be able to add it.
@@ -203,3 +203,10 @@ The `e2e/collection.spec.ts` filter deliberately excludes `account-collection.sp
 - **Visual review:** 34 exact-size viewport screenshots (not kept) covered browser/account empty-search and populated-hand views, account add/replace control views, and successful-return summaries at **390×844 and 1440×900**, plus failed-sync and post-race phone summaries. Card art loaded with copyright areas unobscured; reviewed controls/text fit without collisions. Phone mode controls require ordinary vertical scrolling and were reviewed in scrolled captures. Verification measured no horizontal overflow. The misleading sync totals are behavior blockers, not a layout pass. Existing singular-count grammar (“1 different cards, 1 copies”) is a minor copy follow-up, not introduced by this pass.
 - **Next / limits:** UI-021 is blocked on a coordinated sync/import correction; UI-022 stays review. Retain inventory assertions when adapting the race harness to a fix that serializes operations. Add durable pending/failure coverage, verify deck per-card quantities through return/reload, and verify actual saved-deck originating links; neither a loaded-collection indicator nor an Owned first control proves those quantities. Any newly required schema/contract change needs owner approval first. UI-023/024 stay draft. No gate, schema change, hosted operation, account-deletion test, commit or push this pass.
 - **Subsequent owner request:** “commit then remind me of the phases” authorizes a Phase B UI/test/evidence checkpoint commit, including the known failing regression. This is not phase completion or permission to push/deploy.
+
+### 2026-10-12 — UI-021 race fix
+
+- **Fix:** every collection write from the browser (the sign-in move, explicit imports, clearing, adding a deck's missing cards) runs under one cross-tab Web Lock (`withCollectionWrite`, `apps/web/src/lib/collection-lock.ts`). A replacement queued behind a held move waits and says "Waiting for another upload of your collection to finish", then commits after the move, so the replaced cards stay gone. No schema or contract change.
+- **Hidden inventory:** with cards already in the account, the account stays the source while a browser copy waits to move (`pending`); the summary says how many browser cards aren't counted yet, or that the move failed and the next visit retries. With an empty account a failed move now says so instead of "Moving it to your account…".
+- **Checks:** `yarn workspace @mtg/web typecheck`, lint on the changed files, a real-data production build, then `E2E_LOCAL_DATA=1 E2E_MAILPIT_URL=http://127.0.0.1:56324 yarn workspace @mtg/web e2e account-collection.spec.ts`: **4 passed**. The race regression now asserts the waiting state, then the replacement's 2 copies after release and after a reload of the first tab (inventory assertions kept). A new test covers a failed move: the note, the kept browser copy, and the retry on reload.
+
