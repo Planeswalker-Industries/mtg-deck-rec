@@ -345,10 +345,12 @@ test("explains why a replacement was suggested, and the shares add up", async ({
 
 test("offers to start from a collection when there isn't one", async ({ page }) => {
   await page.goto("/deck");
-  const link = page.getByRole("link", { name: "Import your collection first" });
+  await page.getByRole("radio", { name: /Cards I own/ }).click();
+  const link = page.getByRole("link", { name: "Upload your collection" });
   await expect(link).toBeVisible({ timeout: 30_000 });
   await link.click();
-  await page.waitForURL(/\/collection\/import$/);
+  // The import returns to the deck afterwards (`?next=/deck`).
+  await page.waitForURL(/\/collection\/import(\?|$)/);
 });
 
 test("a name search's next page continues the list rather than repeating it", async ({ request }) => {
@@ -399,4 +401,53 @@ test("the deckbuilder's deck cards line up their buttons", async ({ page }) => {
   // Every group in the deck, commanders included.
   const grids = deckList.getByRole("list");
   for (let i = 0; i < (await grids.count()); i++) await expectButtonsAligned(grids.nth(i), /^Remove /);
+});
+
+test("builds a deck for a picked commander, then goes through it card by card", async ({ page }) => {
+  await page.goto("/deck?start=build");
+  // Chulane is the mock catalog's one commander, and a popular one in the real catalog.
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: 30_000 });
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: 90_000 });
+  // Without a collection the build draws on every card, and says how to build from owned cards instead.
+  await expect(built.getByText(/picked from every card in print/)).toBeVisible();
+  await expect(built.getByRole("link", { name: "Import your collection" })).toBeVisible();
+  await built.getByRole("button", { name: "Go through it card by card" }).click();
+  await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 90_000 });
+});
+
+test("fits a pasted list to the collection: owned cards stay, the rest comes from the collection", async ({ page }) => {
+  test.skip(!process.env.E2E_LOCAL_DATA, "matching a collection needs the synced catalog (E2E_LOCAL_DATA)");
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill("1 Liesa, Forgotten Archangel\n1 Arcane Signet\n1 Swords to Plowshares");
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Fit it to my collection" }).click();
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: 90_000 });
+  await expect(built.getByText(/^Kept \d+ of the list's \d+ cards\./)).toBeVisible();
+  // Sol Ring is in the sample list but not the collection, so it goes out.
+  await expect(built.getByRole("list", { name: "Cards from the list you don't own" }).getByText("Sol Ring", { exact: true })).toBeVisible();
+  await built.getByRole("button", { name: "Back to the list" }).click();
+  await expect(page.getByLabel("Decklist")).toBeVisible();
+});
+
+test("makes room for a role: cuts cards that don't fill it, then finds that role", async ({ page }) => {
+  test.skip(!process.env.E2E_LOCAL_DATA, "Deck stats' role targets need the synced corpus (E2E_LOCAL_DATA)");
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  const picker = page.getByRole("combobox", { name: "Make room for" });
+  await picker.click({ timeout: 60_000 });
+  await page.getByRole("option", { name: /Card advantage/ }).click();
+  const sitting = page.getByRole("region", { name: "Cards to cut to make room for card advantage" });
+  await expect(sitting).toBeVisible();
+  await sitting.getByRole("button", { name: /^Cut / }).click();
+  await page.getByRole("button", { name: /find card advantage/i }).first().click();
+  await expect(page.getByText("Showing card advantage only.")).toBeVisible({ timeout: 60_000 });
 });

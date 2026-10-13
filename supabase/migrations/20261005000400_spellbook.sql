@@ -1,7 +1,7 @@
 -- Commander Spellbook's combos, raw: what its published daily export (json.commanderspellbook.com/variants.json.gz)
 -- says, in its own identifiers (Scryfall oracle ids, its own feature ids), written only by `sync:spellbook`. Nothing
 -- here depends on our card catalog, so a load never waits for `sync:catalog`; the collator (T054) resolves combos into
--- corpus.spellbook_combos, and only collated rows feed scoring. docs/roadmap/card-graph-plan.md, "Data layers".
+-- corpus.spellbook_combos, and only collated rows feed scoring.
 --
 -- Not stored: step descriptions and prerequisites (about 50 MB of prose a day, which a link to the combo's page
 -- covers), prices (ours come from Scryfall), images, other formats' legality, and salt.

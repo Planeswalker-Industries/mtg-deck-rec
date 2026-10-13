@@ -9,6 +9,7 @@ import type {
   CommanderCoverage,
   CommanderRequest,
   DeckAnalysis,
+  DeckCoverageResult,
   DeckInput,
   ImportDeckUrlResult,
   ParseDeckResult,
@@ -22,6 +23,7 @@ import {
   castVoteInputSchema,
   commanderInputSchema,
   commanderRequestInputSchema,
+  deckCoverageInputSchema,
   importDeckInputSchema,
   parseDeckInputSchema,
   parseInput,
@@ -40,6 +42,9 @@ import { analyzeDeckById, resolveDecklist } from "@/lib/server/deck";
 import { fetchShareLink } from "@/lib/server/share-import";
 import { checkRateLimit, type RateLimitBucket } from "@/lib/server/rate-limit";
 import { createAuthClient } from "@/lib/server/auth";
+import { accountCollectionCopies } from "@/lib/server/account-collection";
+import { sessionCopies } from "@mtg/core/collection";
+import { CoverageCardNotFound, loadDeckCoverage } from "@/lib/server/deck-coverage";
 import { createPublicClient, type PublicClient } from "@/lib/server/supabase";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { visitorKey } from "@/lib/server/visitor";
@@ -134,6 +139,27 @@ export async function analyzeDeckAction(input: { deck: DeckInput }): Promise<Res
     if (limited) return limited;
     return { ok: true, data: await analyzeDeckById(db, parsed.data.deck) };
   } catch (err) {
+    return unavailable(err);
+  }
+}
+
+/** Private, uncached coverage of the working deck; account copies come only from the visitor's authenticated session. */
+export async function getDeckCoverageAction(input: Parameters<ActionsApi["getDeckCoverage"]>[0]): Promise<Result<DeckCoverageResult>> {
+  const parsed = parseInput(deckCoverageInputSchema, input);
+  if (!parsed.ok) return parsed;
+  try {
+    const { db, limited } = await begin("collection");
+    if (limited) return limited;
+    const { deck, ownership } = parsed.data;
+    if (ownership.kind === "account") {
+      const auth = await createAuthClient();
+      const { data, error } = await auth.auth.getUser();
+      if (error || !data.user) return failure("UNAUTHENTICATED", "Sign in to use your saved collection.");
+      return { ok: true, data: await loadDeckCoverage(db, deck, accountCollectionCopies(auth, ownership.deckId)) };
+    }
+    return { ok: true, data: await loadDeckCoverage(db, deck, sessionCopies(ownership)!) };
+  } catch (err) {
+    if (err instanceof CoverageCardNotFound) return failure("NOT_FOUND", err.message);
     return unavailable(err);
   }
 }

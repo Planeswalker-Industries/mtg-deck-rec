@@ -74,7 +74,18 @@ export function JourneyStepper({
  * the phase, each card carries its own reasons and ✓ and ✕ say what the gestures do, so the heading and `brief` (a
  * line of what to do) are for screen readers only: on a phone every line above the cards costs card height.
  */
-export function PhaseIntro({ title, children, brief }: { title: string; children: ReactNode; brief?: ReactNode }) {
+export function PhaseIntro({
+  title,
+  children,
+  brief,
+  aside,
+}: {
+  title: string;
+  children: ReactNode;
+  brief?: ReactNode;
+  /** The buddy's line under the heading, in `font-drama`, where the phase earns one. */
+  aside?: string;
+}) {
   if (brief !== undefined) {
     return (
       <div className="sr-only">
@@ -85,7 +96,10 @@ export function PhaseIntro({ title, children, brief }: { title: string; children
   }
   return (
     <div>
-      <h2 className="font-heading text-2xl leading-none font-semibold tracking-tight">{title}</h2>
+      <h2 className="font-heading text-2xl leading-none font-semibold tracking-tight">
+        {title}
+        {aside && <span className="mt-1.5 block font-drama text-xl font-normal tracking-normal italic text-foreground/85">{aside}</span>}
+      </h2>
       <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">{children}</p>
     </div>
   );

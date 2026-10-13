@@ -19,10 +19,10 @@ import type {
   SwapResult,
 } from "@mtg/core/contract";
 import { deckDiff } from "@mtg/core/journey";
+import { ownedCounts } from "@mtg/core/collection";
 import { mockDecklistText } from "@mtg/core/mocks";
 import type { CollectionSource } from "@/components/collection/use-collection-source";
 import { getApis } from "@/lib/api/client";
-import { ownedCardIds } from "@/lib/collection-store";
 import { displayName } from "@/lib/cards";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 import { clearSavedDeck, loadSavedDeck, saveDeck, updateSavedDeck, type SavedDeck } from "@/lib/saved-deck";
@@ -57,6 +57,8 @@ export interface ImportedFrom {
 export interface SubmitOutcome {
   parsed: boolean;
   analysis: DeckAnalysis | null;
+  /** The decklist's lines as read, on a parse that succeeded. */
+  lines?: ResolvedLine[];
 }
 
 /**
@@ -133,8 +135,8 @@ function collectionKey(collection: CollectionUse | null): string {
   if (!collection) return "off";
   const { ownership, mode } = collection;
   return ownership.kind === "session"
-    ? `session:${ownership.catalogEpoch}:${ownership.ownedCardIds.length}:${mode}`
-    : `${ownership.kind}:${mode}`;
+    ? `session:${ownership.catalogEpoch}:${ownership.ownedCardIds.map((id, i) => `${id}x${ownership.quantities?.[i] ?? 1}`).join(",")}:${mode}`
+    : `${ownership.kind}:${ownership.deckId ?? ""}:${mode}`;
 }
 
 /** What a collection does to suggestions: nothing, owned cards first, or owned cards only. */
@@ -231,17 +233,21 @@ export function useDeckTool(
 
   const [collectionMode, setCollectionMode] = useState<CollectionMode>(readCollectionMode);
   const browserCollection = source.kind === "browser" ? source.collection : null;
-  const ownedIds = useMemo(() => (browserCollection ? ownedCardIds(browserCollection) : null), [browserCollection]);
+  const browserCopies = useMemo(() => {
+    if (!browserCollection) return null;
+    const copies = [...ownedCounts(browserCollection.rows)].sort(([a], [b]) => a - b);
+    return { ids: copies.map(([id]) => id), quantities: copies.map(([, quantity]) => quantity) };
+  }, [browserCollection]);
   const hasCollection = source.kind === "browser" || source.kind === "account";
   /**
    * A collection mode needs a collection; without one the choice is kept but not applied. A browser collection sends
-   * its card ids; an account collection is read on the server, with the open deck named so the copies it holds count
+    * its card ids and aligned quantities; an account collection is read on the server, with the open deck named so the copies it holds count
    * as its own rather than as a conflict.
    */
   const ownershipFor = (mode: CollectionMode): CollectionUse | null => {
     if (mode === "off") return null;
-    if (browserCollection && ownedIds) {
-      return { ownership: { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: ownedIds }, mode };
+    if (browserCollection && browserCopies) {
+      return { ownership: { kind: "session", catalogEpoch: browserCollection.catalogEpoch, ownedCardIds: browserCopies.ids, quantities: browserCopies.quantities }, mode };
     }
     if (source.kind !== "account") return null;
     return { ownership: { kind: "account", ...(openDeck ? { deckId: openDeck.deckId } : {}) }, mode };
@@ -391,7 +397,7 @@ export function useDeckTool(
       suggestedWith.current = null;
       setCut({ status: "idle" });
     }
-    return { parsed: true, analysis: r.data.analysis };
+    return { parsed: true, analysis: r.data.analysis, lines: r.data.lines };
   }
 
   /**
@@ -578,6 +584,8 @@ export function useDeckTool(
     restoreBracket,
     /** null when there's no collection to apply. */
     collectionMode: hasCollection ? collectionMode : null,
+    /** The collection as a build or an owned-only search takes it; null without one. */
+    ownedOnly: ownershipFor("only")?.ownership ?? null,
     changeCollectionMode,
     cut,
     ensureCuts,

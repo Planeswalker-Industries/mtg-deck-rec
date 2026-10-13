@@ -109,3 +109,4 @@ export function majorSetsNewestFirst(sets: readonly CardSet[]): CardSet[] {
 export * from './edit';
 export * from './shortfall';
 export * from './availability';
+export * from './coverage';

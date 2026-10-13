@@ -4,8 +4,7 @@ The only thing in this project that talks to Typesense. The web app reads throug
 and Typesense itself is reachable only on the private Docker network beside it.
 
 It also runs the **daily deck crawls** — a long-running job needs a host that is not a serverless function, and this
-is the one the project already has on a machine with an outbound address. See
-[`docs/roadmap/deck-crawl.md`](../../docs/roadmap/deck-crawl.md).
+is the one the project already has on a machine with an outbound address.
 
 Why it exists:
 

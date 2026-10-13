@@ -1,5 +1,6 @@
 import type { CardSummary } from './cards';
 import type { CardId, Finish, IsoDateTime, PrintingId } from './ids';
+import type { DeckCoverage } from '../collection/coverage';
 
 export type SourceApp = 'manabox' | 'moxfield' | 'tcgplayer' | 'generic_csv' | 'generic_json' | 'text';
 
@@ -85,4 +86,10 @@ export interface CollectionCardsResult {
   cards: CollectionCardDetail[];
   /** The sets asked for that the catalog knows. */
   sets: CardSet[];
+}
+
+/** Private, uncached inventory allocation for the deck and the cards actually used to fill it. */
+export interface DeckCoverageResult {
+  coverage: DeckCoverage;
+  cards: CardSummary[];
 }

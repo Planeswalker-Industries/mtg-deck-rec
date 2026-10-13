@@ -1,4 +1,4 @@
--- Live accept rate (T065; docs/roadmap/scoring-design.md, "Evaluation"): what suggestions the deck tool showed, and
+-- Live accept rate (T065): what suggestions the deck tool showed, and
 -- which the player took or passed on, recorded per visitor the way swap votes are. /privacy says so; there is no opt-out
 -- (owner, 2026-10-05). Nothing reads the events for scoring: admins read accept rates by mode and position.
 --

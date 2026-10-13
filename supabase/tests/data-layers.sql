@@ -1,4 +1,4 @@
--- Exercises the data layers (docs/roadmap/card-graph-plan.md, "Data layers"): the raw, crawl and corpus schemas are
+-- Exercises the data layers: the raw, crawl and corpus schemas are
 -- private, a deck id names one deck across every deck source, crawl.decks shows each deck under its own source, and
 -- the collated corpus.decks keeps a player's deck only while the deck exists. Runs in a transaction and rolls back, so
 -- it leaves nothing behind. Needs the local catalog.

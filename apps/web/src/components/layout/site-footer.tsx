@@ -23,7 +23,10 @@ export function SiteFooter() {
           . Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast.
           ©Wizards of the Coast LLC.
         </p>
-        <p>
+        <p className="flex flex-wrap gap-x-4 gap-y-1">
+          <Link href="/rate" className={TEXT_LINK}>
+            Help rate card swaps
+          </Link>
           <Link href="/privacy" className={TEXT_LINK}>
             Privacy policy
           </Link>

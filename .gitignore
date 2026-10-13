@@ -33,7 +33,10 @@ spikes/**/data/
 # personal collection/deck exports used to test imports; third-party data stays out of the public repo
 docs/plan_files/
 
-# local-only: agent config, personal agent notes, outreach drafts (CLAUDE.md and docs/roadmap are shared)
+# UI concept images and mockups stay local
+docs/ui_concepts/
+
+# local-only: agent config, personal notes, outreach drafts
 .claude/
 CLAUDE.local.md
 docs/outreach/

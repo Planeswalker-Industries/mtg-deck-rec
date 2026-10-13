@@ -22,7 +22,7 @@
 # Nothing here is a source of truth. Losing the volume costs one `sync:typesense --rebuild` and nothing else, which
 # is also why there is no backup story: restoring from Postgres is faster and always correct.
 #
-# Full context in docs/roadmap/typesense-plan.md; the runbook is docs/roadmap/typesense-ops.md.
+# The runbook is deploy/README.md.
 
 name: mtg-typesense
 

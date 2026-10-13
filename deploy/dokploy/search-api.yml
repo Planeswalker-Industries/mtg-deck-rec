@@ -11,7 +11,7 @@
 #   SEARCH_API_TOKEN         the web app's read token   (Vercel)
 #   SEARCH_API_ADMIN_TOKEN   the worker's write token   (GitHub Actions, apps/worker/.env.hosted)
 #
-# Three more turn the deck crawls on, all or nothing (see docs/roadmap/deck-crawl.md):
+# Three more turn the deck crawls on, all or nothing:
 #   SUPABASE_URL               https://<ref>.supabase.co
 #   SUPABASE_SERVICE_ROLE_KEY  the service-role key — VPS only, never Vercel
 #   SEARCH_API_CRON_TOKEN      the token the web app's cron route sends; same value on Vercel

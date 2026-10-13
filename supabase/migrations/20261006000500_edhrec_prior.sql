@@ -1,4 +1,4 @@
--- The EDHREC prior by sample size (T061; docs/roadmap/scoring-design.md, "`corpus`"). A commander's inclusion of a card is
+-- The EDHREC prior by sample size (T061). A commander's inclusion of a card is
 -- shrunk toward EDHREC's rate for it when the commander's page lists it, with the strength of the page's potential
 -- decks for the card, or toward min(p0, the page's lowest listed rate) when it doesn't, with the strength of the page's
 -- decks; both capped at app_config.corpus.edhrecPriorCap, so our own decks take over as they grow. Without a page the

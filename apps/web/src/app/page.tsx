@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { ClipboardPaste, Library } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { ArtBackdrop } from "@/components/ui/art-backdrop";
+import { ArtCredit } from "@/components/ui/art-credit";
 import { Band } from "@/components/ui/band";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,8 +14,7 @@ import { HeroFan } from "@/components/home/hero-fan";
 import { HowItWorks } from "@/components/home/how-it-works";
 import { Situations } from "@/components/home/situations";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
-import { CLOSING_VISTA, HERO_VISTA, type Vista } from "@/lib/landing-art";
-import { TEXT_LINK } from "@/lib/constants";
+import { CLOSING_VISTA, HERO_VISTA } from "@/lib/landing-art";
 
 /** Hero buttons: tall enough for a wrapped label on phones, the usual 48 px single line from sm up. */
 const HERO_BUTTON =
@@ -28,18 +28,6 @@ const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
  * page column (`--page-column`, globals.css) once the window is wider than it. So the art always meets the window edge.
  */
 const CLOSING_ART_RIGHT = "calc(min(0px, (var(--page-column) - 100vw) / 2) - 1rem)";
-
-function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
-  return (
-    <p className={className ?? "text-xs text-muted-foreground"}>
-      Art from{" "}
-      <Link href={`/card/${vista.cardSlug}`} className={TEXT_LINK}>
-        {vista.cardName}
-      </Link>{" "}
-      by {vista.artist}
-    </p>
-  );
-}
 
 async function FeaturedCommandersSection() {
   const commanders = await getFeaturedCommanders();

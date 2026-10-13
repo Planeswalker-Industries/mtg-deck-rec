@@ -1,4 +1,4 @@
--- Data layers (T053; docs/roadmap/card-graph-plan.md, "Data layers").
+-- Data layers (T053).
 --
 -- Every source keeps its data in a schema of its own, as the source published it. The crawler's machinery gets a
 -- schema of its own. `corpus` becomes the collated layer: written by the collator (T054), resolved to our card ids,

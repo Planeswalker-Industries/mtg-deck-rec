@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { CollectionTool } from "@/components/collection/collection-tool";
 
 export const metadata: Metadata = {
@@ -9,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function CollectionImportPage() {
-  return <CollectionTool />;
+  return <Suspense fallback={<p role="status">Loading collection import…</p>}><CollectionTool /></Suspense>;
 }

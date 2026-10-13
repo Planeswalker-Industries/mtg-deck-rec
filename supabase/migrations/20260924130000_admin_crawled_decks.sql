@@ -5,8 +5,8 @@
 -- a caller who has already proved they are a platform admin, exactly like the rest of the admin surface, and every
 -- one of them opens with require_platform_admin() so a stray grant cannot become a leak.
 --
--- Why it exists: the crawl's health was diagnosable only from pg_stat_statements and a container log (see
--- docs/roadmap/deck-crawl.md). Deck counts and run rows say whether it ran; only the cards say whether the adapter
+-- Why it exists: the crawl's health was diagnosable only from pg_stat_statements and a container log.
+-- Deck counts and run rows say whether it ran; only the cards say whether the adapter
 -- parsed what it fetched, which is the failure a crawl cannot detect about itself.
 
 -- One row: where each source is and what it has. Everything the header of an operations page needs, in one call

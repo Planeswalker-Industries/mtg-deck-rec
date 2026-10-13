@@ -1,5 +1,5 @@
 -- The collator (T054): `cli collate` resolves every raw source into corpus with one set of rules, so the aggregates and
--- the precompute worker read one place. docs/roadmap/card-graph-plan.md, "Collator (T054)".
+-- the precompute worker read one place.
 --
 -- * corpus.spellbook_combos: Commander Spellbook's combos resolved to our cards, the collated half of PR #127.
 -- * corpus.collate_state: how far each source's last collation got, written in the same transaction as its rows, so a

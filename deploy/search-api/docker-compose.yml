@@ -26,7 +26,7 @@
 #     Traefik cannot use a loopback port: it discovers containers by label and connects to them container to
 #     container, so it needs the shared network and the router labels below.
 #
-# Full context in docs/roadmap/typesense-plan.md; the runbook is docs/roadmap/typesense-ops.md; the service itself
+# The runbook is deploy/README.md; the service itself
 # is documented in services/search-api/README.md.
 
 name: mtg-search-api

@@ -256,6 +256,18 @@
   padding-inline: 1rem;
 }
 
+@utility playmat {
+  /*
+   * The patch of table where a card is dealt: an oak panel like every other, edged by a seam. Its padding (0.75rem each
+   * side) is counted in the swipe hosts' chrome (--swipe-chrome, SingleSwipe's card width), so phones keep ✓ and ✕ on
+   * screen.
+   */
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--seam);
+  padding: 0.75rem;
+  background: var(--sleeve);
+}
+
 @utility lit {
   /* A worn edge along the top of a control, like the lip of a card box. No drop shadow: only cards in hand cast one. */
   box-shadow: inset 0 1px 0 color-mix(in oklch, var(--foreground) 22%, transparent);

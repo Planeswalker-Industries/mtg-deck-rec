@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CardId, CardSummary, CommanderKeyId, CutReason, RecContext, SwapSuggestion } from "@mtg/core/contract";
+import type { CardId, CardSummary, CommanderKeyId, CutReason, RecContext, SwapResult, SwapSuggestion } from "@mtg/core/contract";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import { shuffled } from "@/lib/shuffle";
@@ -32,7 +32,7 @@ export interface SwipeVote {
 }
 
 /** A card's replacements as fetched: ready, or why they couldn't be. */
-export type Candidates = { status: "ready"; suggestions: SwapSuggestion[] } | { status: "error"; message: string };
+export type Candidates = { status: "ready"; suggestions: SwapSuggestion[]; emptyReason: SwapResult["emptyReason"] } | { status: "error"; message: string };
 
 /** Replacement lists load for the current card and the next one, so the next card is ready when it comes up. */
 const PRELOAD = 2;
@@ -129,7 +129,7 @@ export function useSwipeRater({
         .recs.swap({ context, targetCardId: card.id })
         .then((r) => {
           const next: Candidates = r.ok
-            ? { status: "ready", suggestions: mode === "rater" ? shuffled(r.data.suggestions.slice(0, RATER_CANDIDATES)) : r.data.suggestions }
+            ? { status: "ready", suggestions: mode === "rater" ? shuffled(r.data.suggestions.slice(0, RATER_CANDIDATES)) : r.data.suggestions, emptyReason: r.data.emptyReason }
             : { status: "error", message: r.error.message };
           // A failure isn't kept: the next sitting asks again.
           if (next.status === "ready") cache?.set(card.id, next);
@@ -211,6 +211,7 @@ export function useSwipeRater({
     target,
     /** undefined while the replacements are loading. */
     loaded,
+    emptyReason: loaded?.status === "ready" && loaded.suggestions.length === 0 ? loaded.emptyReason ?? null : null,
     candidate,
     candidateIndex,
     candidateCount: candidates.length,

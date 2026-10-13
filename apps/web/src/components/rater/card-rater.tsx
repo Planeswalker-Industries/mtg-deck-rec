@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { getApis } from "@/lib/api/client";
 import { displayName } from "@/lib/cards";
 import { shuffled } from "@/lib/shuffle";
+import { PageHero } from "@/components/ui/page-hero";
 import { CommanderPicker } from "./commander-picker";
 
 /** Cards per round; "Keep rating" deals another round from the same commander's cards. */
@@ -24,6 +25,11 @@ type DealInput = Parameters<ActionsApi["dealRaterCards"]>[0];
  * The standalone card rater: pick a commander, then rate replacements for cards its decks play, one swipe at a time.
  * Opens straight onto a commander when the page has one (a link from a commander page).
  */
+/** The page heading while rating: the screen belongs to the cards. */
+function RateHeading() {
+  return <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Rate replacements</h1>;
+}
+
 export function CardRater({ initialCommanderSlug }: { initialCommanderSlug: string | null }) {
   const [deal, setDeal] = useState<Deal>({ status: "idle" });
   const [round, setRound] = useState<{ n: number; cards: CardSummary[] }>({ n: 0, cards: [] });
@@ -98,11 +104,35 @@ export function CardRater({ initialCommanderSlug }: { initialCommanderSlug: stri
     void startDeal({ commanderSlug: initialCommanderSlug });
   });
 
-  if (deal.status === "idle") return <CommanderPicker onPick={(card) => void startDeal({ commanderIds: [card.id] })} />;
-  if (deal.status === "loading") return <ShuffleDeck label="Dealing cards" />;
+  if (deal.status === "idle") {
+    return (
+      <PageHero
+        id="rate-heading"
+        heading="Rate replacements"
+        aside="Would you make this swap?"
+        intro={
+          <p>
+            Pick a commander to see cards its decks play and replacements that do the same job. Swipe right when a
+            replacement is a good fit, left when it isn&apos;t. Your votes help everyone&apos;s suggestions.
+          </p>
+        }
+      >
+        <CommanderPicker onPick={(card) => void startDeal({ commanderIds: [card.id] })} />
+      </PageHero>
+    );
+  }
+  if (deal.status === "loading") {
+    return (
+      <>
+        <RateHeading />
+        <ShuffleDeck label="Dealing cards" />
+      </>
+    );
+  }
   if (deal.status === "error") {
     return (
       <div className="flex flex-col items-start gap-3">
+        <RateHeading />
         <PanelError message={deal.message} />
         <Button type="button" variant="outline" onClick={pickAnother}>
           Pick a commander
@@ -118,6 +148,7 @@ export function CardRater({ initialCommanderSlug }: { initialCommanderSlug: stri
 
   return (
     <div className="flex flex-col gap-4">
+      <RateHeading />
       <div className="flex items-center justify-between gap-3 rounded-lg border border-seam bg-sleeve px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           {art && <Image src={art} alt="" width={64} height={46} unoptimized className="h-11 w-16 shrink-0 rounded-md object-cover ring-1 ring-seam" />}

@@ -1,4 +1,4 @@
--- The learned skeleton (T062; docs/roadmap/scoring-design.md, "`curve`" and "`role`").
+-- The learned skeleton (T062).
 --
 -- * commander_stats gains curve_profile (nonland cards per deck at each mana value, '0' to '7', the last for 7 and
 --   up), land_count and basic_land_count (per deck), written with the rest of a commander's stats, diff-only. Builds
