@@ -60,3 +60,9 @@ test("pointing at a ring slice names it in the centre", async ({ page }) => {
     await expect(ring).toContainText("lands", { timeout: 1_000 });
   }).toPass({ timeout: 10_000 });
 });
+
+test("the Commander starting point opens the commander picker", async ({ page }) => {
+  await page.goto("/");
+  const commander = page.getByRole("link", { name: /pulled a cool new Commander!.*Add your commander/ });
+  await expect(commander).toHaveAttribute("href", "/deck?start=build");
+});

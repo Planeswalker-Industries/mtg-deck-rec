@@ -1,4 +1,4 @@
--- Collection mode (T059; docs/roadmap/scoring-design.md, "Availability" and "Mode A").
+-- Collection mode (T059).
 --
 -- * decks.is_built: the player has put the deck together, so its cards are taken. Suggestions for their other decks
 --   tag a card whose every copy sits in a built deck as a conflict. A list still being brewed holds nothing. Set only

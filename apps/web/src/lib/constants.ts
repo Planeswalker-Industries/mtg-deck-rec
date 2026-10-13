@@ -17,12 +17,15 @@ export const COLLECTION_MAX_IMPORT_ROWS = 50_000;
 export const DECK_BAR_HEIGHT_VAR = "--deck-bar-height";
 
 /**
- * `/deck?start=build` opens the deck tool on a commander picker instead of the decklist box; the picked commander
- * lands in the Deckbuilder. The links that start a deck from nothing ("Build a deck") use it.
+ * `/deck?start=build` opens the deck tool on a commander picker instead of the decklist box; the picked commander gets
+ * a built deck (`BuildView`). The links that start a deck from nothing ("Build a deck") use it.
  */
 export const DECK_START_PARAM = "start";
 export const DECK_START_BUILD = "build";
 export const BUILD_DECK_HREF = `/deck?${DECK_START_PARAM}=${DECK_START_BUILD}`;
+
+/** The bracket a build starts at until the player picks another: 3, Upgraded, where most decks at a casual table sit. */
+export const BUILD_DEFAULT_BRACKET = 3;
 
 /**
  * A touch target of at least 44 px on phones, drawn by an invisible pseudo-element centred on the control, so compact

@@ -4,17 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
-import { GalleryHorizontalEnd, List } from "lucide-react";
-import type { CardSummary, DeckAnalysis } from "@mtg/core/contract";
-import { decklistFor, type StatLine } from "@mtg/core/journey";
+import { GalleryHorizontalEnd, Library, List } from "lucide-react";
+import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
+import type { StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { DeckBar } from "./deck-bar";
+import { DeckCoverage } from "./deck-coverage";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
@@ -23,6 +24,10 @@ import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/c
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
 import { ShuffleDeck } from "./shuffle-deck";
+import { PageHero } from "@/components/ui/page-hero";
+import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
+import { BuildView } from "./build/build-view";
+import { useDeckBuild } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
@@ -30,7 +35,9 @@ import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
+import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
 import { CutPhase } from "./journey/cut-phase";
+import type { RoomFocus } from "./journey/make-room";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
@@ -39,8 +46,10 @@ import { useCollectionSource } from "@/components/collection/use-collection-sour
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
+import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
-import { DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
+import { BUILD_DECK_HREF, BUILD_DEFAULT_BRACKET, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
+import { collectionCounts } from "@/lib/deck-collection";
 import { getApis } from "@/lib/api/client";
 import { RESUME_PARAM, RESUME_SAVE, takePendingSave } from "@/lib/pending-save";
 
@@ -51,6 +60,12 @@ Deck
 1 Sol Ring
 1 Arcane Signet
 …`;
+
+/** Basic lands' type lines start so ("Basic Land", "Basic Snow Land"): a fitted list keeps them, as every player owns them. */
+const BASIC_TYPE_PREFIX = "Basic ";
+
+/** Tall enough to show a commander, the deck heading and a few cards of the placeholder before it scrolls. */
+const DECKLIST_ROWS = 9;
 
 /**
  * A segmented control: one of a few options, pressed state on the chosen one. Used for the tool's mode (upgrade or
@@ -130,14 +145,14 @@ const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join("
 export function DeckTool() {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
   // ?commander=<slug> opens a featured deck from the landing page carousel.
-  // ?start=build starts a deck from a commander picked by name, in the Deckbuilder.
+  // ?start=build builds a deck for a commander picked by name (from the collection when there is one).
   const searchParams = useSearchParams();
   const openCode = searchParams.get("deck");
   const commanderSlug = searchParams.get("commander");
   const buildStart = searchParams.get(DECK_START_PARAM) === DECK_START_BUILD;
   // ?resume=save finishes a save a signed-out player started, now that they have signed in.
   const resumeSave = searchParams.get(RESUME_PARAM) === RESUME_SAVE;
-  const { source } = useCollectionSource();
+  const { source, refresh: refreshCollection, refreshing: collectionRefreshing } = useCollectionSource();
   const collectionLoaded = source.kind !== "loading";
   /**
    * The journey as of the latest render. The tool is created first (the journey is built on its analysis) but tells
@@ -148,6 +163,31 @@ export function DeckTool() {
     onContextChange: (ctx, change) => journeyRef.current?.reload(ctx, change) ?? Promise.resolve(),
   });
   const lookup = useCommanderLookup(tool.refreshRecommendations);
+  const collectionDeckCode = tool.openDeck?.code ?? openCode;
+  const collectionReturnPath = collectionDeckCode ? `/deck?deck=${encodeURIComponent(collectionDeckCode)}` : "/deck";
+  const collectionImportHref = `/collection/import?next=${encodeURIComponent(collectionReturnPath)}` as Route;
+  /** The build start's own import link returns to the commander picker. */
+  const buildImportHref = `/collection/import?next=${encodeURIComponent(BUILD_DECK_HREF)}` as Route;
+  const deckBuild = useDeckBuild(tool.ownedOnly);
+  /** With a collection, the build start lists owned commanders unless the player asks for any. */
+  const [pickFrom, setPickFrom] = useState<"owned" | "any">("owned");
+  /** The paste screen's choice while there is no collection; with one, the collection setting is the choice. */
+  const [pathWithoutCollection, setPathWithoutCollection] = useState<UpgradePath>("online");
+  const upgradePath: UpgradePath =
+    tool.collectionMode === null ? pathWithoutCollection : tool.collectionMode === "off" ? "online" : "owned";
+  /** "Best cards online" sets the collection aside; "Cards I own" applies it, as owned only coming from aside. */
+  function choosePath(path: UpgradePath) {
+    if (tool.collectionMode === null) return setPathWithoutCollection(path);
+    if (path === "online") tool.changeCollectionMode("off");
+    else if (tool.collectionMode === "off") tool.changeCollectionMode("only");
+  }
+  /** The role the player is making room for in Cut; a new deck starts without one. */
+  const [roomFor, setRoomFor] = useState<RoomFocus | null>(null);
+  const [roomRound, setRoomRound] = useState(tool.round);
+  if (roomRound !== tool.round) {
+    setRoomRound(tool.round);
+    setRoomFor(null);
+  }
   /** The commanders the deck lookup offer was last checked for; a deckbuilder edit that changes them checks again. */
   const lookupCheckedFor = useRef<string | null>(null);
   const deckGroups = useDeckGroups(tool.lines);
@@ -179,6 +219,15 @@ export function DeckTool() {
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
   const { analysis, context } = tool;
   const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut });
+  const coverageEnabled = mode === "upgrade" && !tool.stale;
+  const coverage = useDeckCoverage(journey.deck, source, tool.openDeck?.deckId, coverageEnabled && !collectionRefreshing);
+  const hasWorkingDeck = journey.deck !== null;
+  useEffect(() => {
+    if (!coverageEnabled || !hasWorkingDeck) return;
+    const onFocus = () => { void refreshCollection(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [coverageEnabled, hasWorkingDeck, refreshCollection]);
   useEffect(() => {
     journeyRef.current = journey;
   });
@@ -204,6 +253,16 @@ export function DeckTool() {
     if (stat.ok || !journey.state) return null;
     if (stat.value > Math.round(stat.target)) {
       return journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
+    }
+    // A full deck short of a role makes room for it first: Cut offers cards that don't fill it.
+    if (journey.openSlots === 0 && stat.group === "roles" && journey.stepper.canOpen("cut")) {
+      return {
+        label: `Make room for ${stat.label.toLowerCase()}`,
+        onSelect: () => {
+          journey.stepper.select("cut");
+          setRoomFor({ roleId: stat.key, label: stat.label });
+        },
+      };
     }
     if (journey.openSlots === 0 || !journey.stepper.canOpen("add")) return null;
     if (stat.group === "roles") {
@@ -377,18 +436,43 @@ export function DeckTool() {
   }
 
   /**
-   * Starts a deck from one commander and opens it in the Deckbuilder. It is a new deck, so an open account deck is let
-   * go first rather than overwritten, and the cuts wait for Upgrade: a one-card deck has nothing to cut.
+   * Takes a built deck into the tool: Upgrade goes through it card by card, the Deckbuilder edits it. It is a new deck,
+   * so an open account deck is let go first rather than overwritten.
    */
-  async function buildFrom(commander: CardSummary) {
+  async function openBuilt(text: string, next: ToolMode) {
+    if (deckBuild.state.status !== "ready") return;
     editorHandle.current?.discard();
     if (tool.openDeck) tool.closeSavedDeck();
-    const text = decklistFor({ commanders: [commander.id], cards: [] }, () => commander.name);
-    const outcome = await tool.submit({ text, bracketOverride: null, importedFrom: null }, { recs: false });
+    const bracket = deckBuild.state.request.bracket;
+    const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null }, { recs: next === "upgrade" });
     if (!outcome.parsed) return;
+    deckBuild.reset();
     setEditing(false);
-    setMode("edit");
+    setMode(next);
     checkLookup(outcome.analysis);
+  }
+
+  /**
+   * Fits a list to the collection: the list fixes the commander and the bracket, its owned cards (and its
+   * basic lands, assumed owned) are kept, and the build fills the rest from the collection. `text` is a list other
+   * than the box's (Done's result); the box's list is read first either way, for its cards.
+   */
+  async function fitToCollection(text?: string) {
+    const outcome = await tool.submit(text === undefined ? undefined : { text, bracketOverride: tool.bracketOverride, importedFrom: null }, { recs: false });
+    if (!outcome.parsed || !outcome.analysis || !outcome.lines) return;
+    const commanders = outcome.analysis.commanderKey.commanders;
+    if (commanders.length === 0) return;
+    const owned = await collectionCounts(source);
+    const cards = new Map<CardId, CardSummary>();
+    for (const { resolution } of outcome.lines) if (resolution.status === "resolved") cards.set(resolution.card.id, resolution.card);
+    const entries = outcome.analysis.deck.cards.filter((c) => c.section === "main");
+    const kept = entries.flatMap((entry) => {
+      const basic = cards.get(entry.cardId)?.typeLine.startsWith(BASIC_TYPE_PREFIX) ?? false;
+      const quantity = basic ? entry.quantity : Math.min(entry.quantity, owned.get(entry.cardId) ?? 0);
+      return quantity > 0 ? [{ ...entry, quantity }] : [];
+    });
+    setEditing(false);
+    void deckBuild.build({ commanders, bracket: tool.bracketOverride ?? outcome.analysis.estimatedBracket, kept, list: { entries, cards } });
   }
 
   /**
@@ -422,135 +506,192 @@ export function DeckTool() {
       {tool.openDeck && (
         <OpenDeckBar deck={tool.openDeck} onClose={tool.closeSavedDeck} />
       )}
-      {showPicker ? (
-        <section aria-labelledby="deck-build-heading" className="flex flex-col gap-4">
-          <div>
-            <h1 id="deck-build-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
-              Build a deck
-            </h1>
-            <p className="mt-2 max-w-prose text-muted-foreground">
-              Pick your commander, then add cards in the deckbuilder. Have a list already?{" "}
-              <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
-                Paste a decklist
-              </Link>
-              .
-            </p>
-          </div>
-          {tool.parse.status === "loading" ? (
-            <ShuffleDeck label="Setting up your deck" />
-          ) : (
-            <div className="max-w-xl">
-              <CommanderPicker autoFocus onPick={(card) => void buildFrom(card)} />
-            </div>
-          )}
-        </section>
-      ) : showInput ? (
-        <section aria-labelledby="deck-input-heading" className="flex flex-col gap-4">
-          <div>
-            <h1 id="deck-input-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
-              Upgrade a deck
-            </h1>
-            <p className="mt-2 max-w-prose text-muted-foreground">
-              Paste your Commander decklist, or a link to a public Archidekt deck, to see cards to cut, cards to add, and
-              replacements that do the same job.
-            </p>
-            {tool.showsRestoredDeck && (
-              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-                Your last decklist is back in the box. Analyze it to pick up where you left off, or clear it to start a new
-                one.
-              </p>
-            )}
-            {/* Two ways in: a deck first, or a collection first so suggestions can lean on cards already owned. */}
-            {source.kind === "none" && (
-              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-                Building from cards you own?{" "}
-                <Link href="/collection/import" className={cn(TEXT_LINK, "font-semibold")}>
-                  Import your collection first
+      {deckBuild.state.status !== "idle" ? (
+        <BuildView
+          state={deckBuild.state}
+          collectionImportHref={buildImportHref}
+          onBracket={(bracket) => {
+            if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
+          }}
+          onUpgrade={(text) => void openBuilt(text, "upgrade")}
+          onEdit={(text) => void openBuilt(text, "edit")}
+          onPickAnother={() => {
+            // Back from a fitted list goes to the list; back from a build goes to the commander picker.
+            if (deckBuild.state.status !== "idle" && deckBuild.state.request.list) setEditing(true);
+            deckBuild.reset();
+          }}
+        />
+      ) : showPicker ? (
+        <PageHero
+          id="deck-build-heading"
+          heading="Build a deck"
+          aside={tool.ownedOnly ? "Pick a commander. Your cards do the rest." : "Pick a commander. We'll deal you a deck."}
+          intro={
+            <>
+              <p>
+                {tool.ownedOnly
+                  ? "Pick a commander and we'll build a deck for it from your collection, then you can go through it card by card."
+                  : "Pick a commander and we'll build a deck for it, then you can go through it card by card."}{" "}
+                Have a list already?{" "}
+                <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
+                  Paste a decklist
                 </Link>
-                , and suggestions will put your cards ahead of the rest.
+                .
               </p>
+              {source.kind === "none" && (
+                <p className="text-sm text-muted-foreground">
+                  <Link href={buildImportHref} className={cn(TEXT_LINK, "font-semibold")}>
+                    Import your collection
+                  </Link>{" "}
+                  to pick from commanders you own and build from your cards.
+                </p>
+              )}
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            {tool.ownedOnly && (
+              <Segmented
+                label="Which commanders to list"
+                options={[
+                  { value: "owned", label: "From my collection" },
+                  { value: "any", label: "Any commander" },
+                ]}
+                value={pickFrom}
+                onChange={setPickFrom}
+              />
             )}
-            {(source.kind === "browser" || source.kind === "account") && (
-              <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-                Your collection is loaded: suggestions put cards you own first. Change that under My collection once the deck
-                is analyzed.
-              </p>
-            )}
+            <CommanderPicker
+              autoFocus
+              ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
+              onPick={(card) => void deckBuild.build({ commanders: [card], bracket: BUILD_DEFAULT_BRACKET })}
+            />
           </div>
-          <form
-            className="flex flex-col gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void analyze();
-            }}
-          >
-            <Label htmlFor="decklist" className="sr-only">
-              Decklist
-            </Label>
-            {fileInBox ? (
-              <LoadedFile
-                name={fileInBox.name}
-                lines={lineCount(fileInBox.text)}
-                textShown={fileTextShown}
-                onToggleText={() => setFileTextShown((shown) => !shown)}
-                onRemove={() => {
-                  tool.setText("");
-                  setDeckFile(null);
-                }}
-                disabled={tool.parse.status === "loading"}
-              />
-            ) : (
-              // A CSV deck export collapses to quantity and name: a deck is oracle-level, so the printing is noise.
-              <FileDrop
-                note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer. A CSV is reduced to quantities and card names."
-                disabled={tool.parse.status === "loading"}
-                onFile={(contents, name) => {
-                  const text = decklistFromFile(contents);
-                  tool.setText(text);
-                  setDeckFile({ name, text });
-                  setFileTextShown(false);
-                }}
-              />
-            )}
-            {!textHidden && (
-              <Textarea
-                id="decklist"
-                rows={8}
-                value={tool.text}
-                onChange={(e) => tool.setText(e.target.value)}
-                placeholder={PLACEHOLDER}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                className={IMPORT_TEXT_BOX}
-              />
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" size="lg" disabled={!tool.text.trim() || tool.parse.status === "loading"}>
-                {tool.parse.status === "loading" ? "Reading decklist…" : "Analyze deck"}
-              </Button>
-              <Button type="button" size="lg" variant="outline" onClick={tool.loadSample}>
-                Use sample deck
-              </Button>
-              {tool.text && (
-                <Button
-                  type="button"
-                  size="lg"
-                  variant="ghost"
-                  onClick={clearAll}
-                >
-                  Clear
-                </Button>
+        </PageHero>
+      ) : showInput ? (
+        <PageHero
+          id="deck-input-heading"
+          heading="Upgrade a deck"
+          aside="From the best cards online, or with cards you already own."
+          intro={
+            <>
+              {/* Phones go straight to the choice and the box: the heading says enough there. */}
+              <p className="max-sm:hidden">
+                Paste a Commander decklist or a link to a public Archidekt deck. We&apos;ll go through it a card at a
+                time: what to cut, what to add, and replacements that do the same job.
+              </p>
+              {tool.showsRestoredDeck && (
+                <p className="text-sm text-muted-foreground">
+                  Your last decklist is back in the box. Analyze it to pick up where you left off, or clear it to start a
+                  new one.
+                </p>
               )}
-              {analysis && (
-                <Button type="button" size="lg" variant="ghost" onClick={() => setEditing(false)}>
-                  Cancel
-                </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <UpgradePathPicker value={upgradePath} onChange={choosePath} hasCollection={tool.collectionMode !== null} />
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (upgradePath === "owned" && tool.collectionMode === null) return;
+                void analyze();
+              }}
+            >
+              <Label htmlFor={textHidden ? undefined : "decklist"} className="font-semibold">
+                Decklist
+              </Label>
+              {!textHidden && (
+                <Textarea
+                  id="decklist"
+                  rows={DECKLIST_ROWS}
+                  value={tool.text}
+                  onChange={(e) => tool.setText(e.target.value)}
+                  placeholder={PLACEHOLDER}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  // Phones get a shorter box, so the choice, the box and Analyze share one screen.
+                  className={cn(IMPORT_TEXT_BOX, "bg-background/60 max-sm:min-h-0 max-sm:h-36")}
+                />
               )}
-            </div>
-          </form>
-          {!analysis && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
-        </section>
+              {fileInBox ? (
+                <LoadedFile
+                  name={fileInBox.name}
+                  lines={lineCount(fileInBox.text)}
+                  textShown={fileTextShown}
+                  onToggleText={() => setFileTextShown((shown) => !shown)}
+                  onRemove={() => {
+                    tool.setText("");
+                    setDeckFile(null);
+                  }}
+                  disabled={tool.parse.status === "loading"}
+                />
+              ) : (
+                // A CSV deck export collapses to quantity and name: a deck is oracle-level, so the printing is noise.
+                <FileDrop
+                  note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer."
+                  disabled={tool.parse.status === "loading"}
+                  onFile={(contents, name) => {
+                    const text = decklistFromFile(contents);
+                    tool.setText(text);
+                    setDeckFile({ name, text });
+                    setFileTextShown(false);
+                  }}
+                />
+              )}
+              {upgradePath === "owned" && tool.collectionMode === null && (
+                <p className="text-sm text-muted-foreground">
+                  Your list waits here while you upload your collection, then we upgrade it with cards you own.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {upgradePath === "owned" && tool.collectionMode === null ? (
+                  <Link href={collectionImportHref} className={buttonVariants({ size: "lg", className: "lit gap-2" })}>
+                    <Library aria-hidden className="size-4" />
+                    Upload your collection
+                  </Link>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="lit"
+                    disabled={!tool.text.trim() || tool.parse.status === "loading"}
+                  >
+                    {/* The chosen tile says which path; the action is the same name either way. */}
+                    {tool.parse.status === "loading" ? "Reading decklist…" : "Analyze deck"}
+                  </Button>
+                )}
+                {upgradePath === "owned" && tool.ownedOnly && (
+                  <Button
+                    type="button"
+                    size="lg"
+                    variant="outline"
+                    disabled={!tool.text.trim() || tool.parse.status === "loading"}
+                    onClick={() => void fitToCollection()}
+                  >
+                    Fit it to my collection
+                  </Button>
+                )}
+                <Button type="button" size="lg" variant="outline" onClick={tool.loadSample}>
+                  Use sample deck
+                </Button>
+                {tool.text && (
+                  <Button type="button" size="lg" variant="ghost" onClick={clearAll}>
+                    Clear
+                  </Button>
+                )}
+                {analysis && (
+                  <Button type="button" size="lg" variant="ghost" onClick={() => setEditing(false)}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </form>
+            {!analysis && tool.parse.status === "loading" && <ShuffleDeck label="Reading your decklist" />}
+          </div>
+        </PageHero>
       ) : null}
       {resuming && signedIn && (
         <p role="status" className="text-sm text-muted-foreground">
@@ -579,14 +720,20 @@ export function DeckTool() {
         issuesInDeckBar={Boolean(analysis && context)}
       />
 
-      {analysis && context && (
+      {analysis && context && deckBuild.state.status === "idle" && (
         <section aria-label="Recommendations" className="flex flex-col gap-2">
           <DeckBar
+            collectionImportHref={collectionImportHref}
             analysis={analysis}
             context={context}
             deckName={tool.openDeck?.name ?? tool.deckName ?? suggestedDeckName(analysis)}
             onRename={tool.renameDeck}
             cardCount={cardCount}
+            coverage={coverageEnabled && journey.deck && (source.kind === "browser" || source.kind === "account")
+              ? collectionRefreshing
+                ? <span role="status" className="whitespace-nowrap">Checking collection…</span>
+                : coverage ? <DeckCoverage status={coverage} retry={() => void refreshCollection()} /> : undefined
+              : undefined}
             onBracketChange={tool.changeBracket}
             collectionMode={tool.collectionMode}
             onCollectionModeChange={tool.changeCollectionMode}
@@ -663,7 +810,26 @@ export function DeckTool() {
                         }}
                       />
                     ) : (
-                      <CutPhase journey={journey} cutState={tool.cut} view={view} deckGroups={deckGroups} />
+                      <CutPhase
+                        journey={journey}
+                        cutState={tool.cut}
+                        view={view}
+                        deckGroups={deckGroups}
+                        room={
+                          deckStats && analysis
+                            ? {
+                                focus: roomFor,
+                                setFocus: setRoomFor,
+                                roles: deckStats.stats.filter((s) => s.group === "roles"),
+                                cardRoles: analysis.cardRoles,
+                                onFind: (focus) => {
+                                  setRoomFor(null);
+                                  openStep("add", { kind: "role", roleId: focus.roleId, label: focus.label })();
+                                },
+                              }
+                            : undefined
+                        }
+                      />
                     ))}
                   {journey.state.phase === "add" && (
                     <AddPhase journey={journey} view={view} />
@@ -671,15 +837,32 @@ export function DeckTool() {
                   {journey.state.phase === "replace" && (
                     <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />
                   )}
+                  {/* Players who came with only a list are offered their collection at every step (Done has its own). */}
+                  {source.kind === "none" && journey.state.phase !== "review" && (
+                    <CollectionNudge href={collectionImportHref} step={journey.state.phase} />
+                  )}
                   {journey.state.phase === "review" && (
                     <ReviewPhase
                       journey={journey}
+                      report={deckStats}
                       busy={committing}
                       stale={tool.stale}
                       onSave={() => void commitJourney("save")}
                       onReanalyze={() => void commitJourney("reanalyze")}
                       onStartOver={() => void commitJourney("startOver")}
-                    />
+                    >
+                      {source.kind === "none" ? (
+                        <CollectionNudge href={collectionImportHref} step="review" />
+                      ) : tool.ownedOnly ? (
+                        <CollectionFitOffer
+                          disabled={committing || tool.stale}
+                          onFit={() => {
+                            const text = journey.resultText();
+                            if (text !== null) void fitToCollection(text);
+                          }}
+                        />
+                      ) : null}
+                    </ReviewPhase>
                   )}
                 </div>
                 {statsPanel && (

@@ -50,7 +50,7 @@ export interface CardPrior {
 }
 
 /**
- * The EDHREC prior for one card under one commander (scoring-design.md, "`corpus`"): toward the page's rate for a card it
+ * The EDHREC prior for one card under one commander: toward the page's rate for a card it
  * lists, with the strength of its potential decks; toward min(p0, floor) for a card it leaves out, with the strength of
  * the page's decks; both capped at `edhrecPriorCap`, so our own decks take over as they grow. Null without a page or
  * with the prior off, which leaves the shrink toward the baseline at alpha.

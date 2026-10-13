@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { CardId, CardSummary, CommanderKeyId } from "@mtg/core/contract";
+import type { CardId, CardSummary, CommanderKeyId, CutReason } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
@@ -17,12 +17,19 @@ import type { DeckJourney } from "./use-deck-journey";
 
 /** Reasons under a card in the list. */
 const MAX_REASONS = 2;
+
+function shownReasons(reasons: readonly CutReason[]): CutReason[] {
+  const notOwned = reasons.includes("NOT_OWNED");
+  const others = reasons.filter((reason) => reason !== "NOT_OWNED").slice(0, notOwned ? MAX_REASONS - 1 : MAX_REASONS);
+  return notOwned ? [...others, "NOT_OWNED"] : others;
+}
+
 /**
  * Everything on a phone's screen above and around the swipe sitting's two cards: the deck bar, the mode row, the
- * stepper and the sitting's own text, plus the Deck stats footer where the host docks one. The cards share what's
+ * stepper and the sitting's own text and play mat, plus the Deck stats footer where the host docks one. The cards share what's
  * left, so ✓ and ✕ stay on screen without scrolling. Read by the card sizes in `SwipeRater` through --swipe-chrome.
  */
-const SWIPE_CHROME = { "--swipe-chrome": "calc(36.75rem + var(--deck-stats-dock, 0px))" } as CSSProperties;
+const SWIPE_CHROME = { "--swipe-chrome": "calc(38.25rem + var(--deck-stats-dock, 0px))" } as CSSProperties;
 
 /**
  * Replace: the deck is looked at again as it now stands, and its weaker fits are dealt with a replacement each, like
@@ -185,11 +192,7 @@ export function ReplacePhase({
                   <span className="font-semibold text-replace">Swapping for {displayName(swap.replacement)}</span>
                 ) : (
                   <span className="text-muted-foreground">
-                    {s.reasons
-                      .filter((r) => r !== "NOT_OWNED")
-                      .slice(0, MAX_REASONS)
-                      .map((r) => cutReasonShortLabel[r])
-                      .join(", ")}
+                    {shownReasons(s.reasons).map((reason) => cutReasonShortLabel[reason]).join(", ")}
                   </span>
                 ),
               };

@@ -1,4 +1,4 @@
--- Build a deck from a commander and a bracket (T063; docs/roadmap/scoring-design.md, "Mode C").
+-- Build a deck from a commander and a bracket (T063).
 --
 -- * app_config.scoring.build: the quality floor a build from a collection stops at, and the typical land and basic land
 --   counts by colour count (0 to 5) for commanders whose own decks don't say yet: the local corpus's averages over

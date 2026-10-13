@@ -3,13 +3,14 @@
 import { useEffect, useRef } from "react";
 import { getApis } from "@/lib/api/client";
 import { clearCollection, loadCollection } from "@/lib/collection-store";
-import { notifyCollectionChanged } from "./use-collection-source";
+import { withCollectionWrite } from "@/lib/collection-lock";
+import { setBrowserMoveFailed } from "./use-collection-source";
 
 /** The server saves at most this many rows per call. */
 const ROWS_PER_CALL = 2_000;
-const LOCK_NAME = "mtg-deck-rec:collection-move";
 
 async function moveToAccount() {
+  // Read inside the lock: a replacement committed in another tab first has already removed the browser copy.
   const local = await loadCollection();
   if (!local || local.rows.length === 0) return;
 
@@ -22,18 +23,22 @@ async function moveToAccount() {
       rows: local.rows.slice(start, start + ROWS_PER_CALL),
       final: start + ROWS_PER_CALL >= local.rows.length,
     });
-    if (!result.ok) return;
+    if (!result.ok) {
+      setBrowserMoveFailed(true);
+      return;
+    }
     importId = result.data.importId;
   }
   await clearCollection();
-  notifyCollectionChanged();
+  setBrowserMoveFailed(false);
 }
 
 /**
  * Mounted for signed-in visitors. A collection imported in this browser before signing in moves to the account right
  * away (merged with anything already saved there), and the browser copy is removed. The account only changes when the
- * whole upload commits, so a failed attempt leaves both copies as they were and the next page load tries again. A
- * browser lock stops two open tabs from moving the same collection twice.
+ * whole upload commits, so a failed attempt leaves both copies as they were and the next page load tries again. The
+ * collection write lock (`withCollectionWrite`) queues the move behind any import in another tab, and a second tab's
+ * move finds the browser copy already gone.
  */
 export function AccountCollectionSync() {
   const started = useRef(false);
@@ -41,13 +46,7 @@ export function AccountCollectionSync() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    if ("locks" in navigator) {
-      void navigator.locks.request(LOCK_NAME, { ifAvailable: true }, async (lock) => {
-        if (lock) await moveToAccount();
-      });
-    } else {
-      void moveToAccount();
-    }
+    void withCollectionWrite(moveToAccount).catch(() => setBrowserMoveFailed(true));
   }, []);
 
   return null;

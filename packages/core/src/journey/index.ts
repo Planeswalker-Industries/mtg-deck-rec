@@ -3,3 +3,4 @@ export * from './deck-stats';
 export * from './builder';
 export * from './bracket-check';
 export * from './deck-tally';
+export * from './room';

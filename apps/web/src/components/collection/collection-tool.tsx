@@ -3,6 +3,8 @@
 import { useMemo, useRef, useState } from "react";
 import { cn } from "cn";
 import Link from "next/link";
+import type { Route } from "next";
+import { useSearchParams } from "next/navigation";
 import type { CollectionTotals, ResolvedCollectionRow, UnresolvedCollectionRow } from "@mtg/core/contract";
 import { appendCsvPage, collectionLink } from "@mtg/core/parse";
 import { importCollectionFromLinkAction } from "@/app/collection/actions";
@@ -13,6 +15,10 @@ import { Label } from "@/components/ui/label";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Textarea } from "@/components/ui/textarea";
 import { getApis } from "@/lib/api/client";
+import { withCollectionWrite } from "@/lib/collection-lock";
+import { safeNextPath } from "@/lib/safe-path";
+import { COLLECTION_VISTA } from "@/lib/landing-art";
+import { PageHero } from "@/components/ui/page-hero";
 import { COLLECTION_MAX_IMPORT_ROWS, TEXT_LINK } from "@/lib/constants";
 import {
   clearCollection,
@@ -21,7 +27,7 @@ import {
   saveCollection,
   type UnmatchedLine,
 } from "@/lib/collection-store";
-import { notifyCollectionChanged, useCollectionSource } from "./use-collection-source";
+import { notifyCollectionChanged, useCollectionSource, type PendingMove } from "./use-collection-source";
 import { useCollectionParser } from "./use-collection-parser";
 
 /** The server accepts at most this many rows per call (it chunks matching internally under PostgREST's row cap). */
@@ -53,6 +59,7 @@ interface Problem {
 const LINK = cn(TEXT_LINK, "font-semibold");
 
 export function CollectionTool() {
+  const next = useSearchParams().get("next");
   const { source, setSource } = useCollectionSource();
   const parse = useCollectionParser();
   const [text, setText] = useState("");
@@ -64,6 +71,8 @@ export function CollectionTool() {
   const [problem, setProblem] = useState<Problem | null>(null);
   /** Lines that didn't match in the last import to the account, which doesn't keep them. */
   const [accountUnmatched, setAccountUnmatched] = useState<Unmatched | null>(null);
+  const [mode, setMode] = useState<"merge" | "replace">("merge");
+  const [success, setSuccess] = useState<string | null>(null);
   const importRun = useRef(0);
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
   const hasCollection = source.kind === "browser" || source.kind === "account";
@@ -74,6 +83,7 @@ export function CollectionTool() {
     const id = ++importRun.current;
     const current = () => id === importRun.current;
     setProblem(null);
+    setSuccess(null);
     // A lone link is fetched first; what comes back is CSV and takes the same path as an uploaded file.
     let exported = text;
     if (collectionLink(text)) {
@@ -127,8 +137,10 @@ export function CollectionTool() {
     if (!current()) return;
     setProgress(null);
     if (saved) {
+      setSuccess(hasCollection ? mode === "merge" ? `Added ${count(resolved.reduce((n, row) => n + row.quantity, 0))} cards` : "Replaced your collection" : "Imported your collection");
       setText("");
       setFileName(null);
+      notifyCollectionChanged();
     }
   }
 
@@ -156,10 +168,20 @@ export function CollectionTool() {
     return csv;
   }
 
-  /** Replaces the account's collection with the import. Returns whether it saved. */
-  async function saveToAccount(rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
-    // The import replaces the account's collection, so a browser copy still waiting to move there is out of date.
-    await clearCollection();
+  /**
+   * Commits the selected account import; failed staging leaves both existing copies alone. Queued behind any other
+   * collection write in this browser (another tab's import, or a browser collection still moving to the account), so a
+   * replacement can't be undone by an older upload landing after it.
+   */
+  function saveToAccount(rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
+    return withCollectionWrite(
+      () => commitToAccount(rows, unmatched, current),
+      () => setProgress({ label: "Waiting for another upload of your collection to finish", done: 0, total: 0 }),
+    );
+  }
+
+  async function commitToAccount(rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
+    if (!current()) return false;
     let importId: string | null = null;
     let totals: CollectionTotals | null = null;
     setProgress({ label: "Saving to your account", done: 0, total: rows.length });
@@ -167,20 +189,21 @@ export function CollectionTool() {
       const result = await getApis().actions.saveCollectionBatch({
         importId,
         sourceApp: "text",
-        mode: "replace",
+        mode: hasCollection ? mode : "replace",
         rows: rows.slice(start, start + ROWS_PER_CALL),
         final: start + ROWS_PER_CALL >= rows.length,
       });
       if (!current()) return false;
       if (!result.ok) {
         importFailed(result.error.message);
-        notifyCollectionChanged();
         return false;
       }
       importId = result.data.importId;
       totals = result.data.totals;
       setProgress({ label: "Saving to your account", done: Math.min(start + ROWS_PER_CALL, rows.length), total: rows.length });
     }
+    // Only a committed replacement supersedes a browser copy still waiting to move to the account.
+    if (!hasCollection || mode === "replace") await clearCollection();
     setAccountUnmatched(unmatched);
     setSource(totals ? { kind: "account", totals } : { kind: "none", signedIn: true });
     return true;
@@ -188,7 +211,7 @@ export function CollectionTool() {
 
   async function saveToBrowser(catalogEpoch: string, rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
     try {
-      const stored = await saveCollection({ catalogEpoch, rows, unmatched: unmatched.lines, unmatchedCount: unmatched.count });
+      const stored = await saveCollection({ catalogEpoch, rows, unmatched: unmatched.lines, unmatchedCount: unmatched.count }, hasCollection ? mode : "replace");
       if (!current()) return false;
       setSource({ kind: "browser", signedIn: false, collection: stored });
       return true;
@@ -203,8 +226,9 @@ export function CollectionTool() {
     setProgress(null);
     setProblem(null);
     setAccountUnmatched(null);
+    setSuccess(null);
     if (source.kind === "account") {
-      const result = await getApis().actions.deleteCollection();
+      const result = await withCollectionWrite(() => getApis().actions.deleteCollection());
       if (!result.ok) return setProblem({ title: "Couldn't clear the collection", message: result.error.message });
       setSource({ kind: "none", signedIn: true });
       return;
@@ -220,48 +244,58 @@ export function CollectionTool() {
   const isLink = collectionLink(text) !== null;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <div>
-        <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Import your collection</h1>
-        <p className="mt-2 max-w-prose text-muted-foreground">
-          Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, or paste a link to a public Archidekt collection, and the deck tool can suggest only cards you own.
-          {source.kind !== "loading" &&
-            (signedIn ? (
-              " It's saved to your account."
-            ) : (
-              <>
-                {" "}
-                It stays in this browser for 7 days.{" "}
-                <Link href="/sign-in?next=/collection/import" className={LINK}>
-                  Sign in
-                </Link>{" "}
-                to save it to your account instead.
-              </>
-            ))}
-        </p>
-      </div>
-
-      {source.kind === "browser" && (
-        <CollectionSummary
-          totals={collectionTotals(source.collection)}
-          note={
-            source.signedIn
-              ? "Moving it to your account…"
-              : `Imported ${day(source.collection.importedAt)}. Saved in this browser until ${day(source.collection.expiresAt)}.`
-          }
-          unmatched={{ lines: source.collection.unmatched, count: source.collection.unmatchedCount }}
-          onClear={() => void clear()}
-        />
-      )}
-      {source.kind === "account" && (
-        <CollectionSummary
-          totals={source.totals}
-          note={`Saved to your account. Updated ${day(Date.parse(source.totals.updatedAt))}.`}
-          unmatched={accountUnmatched}
-          onClear={() => void clear()}
-        />
-      )}
-
+    <PageHero
+      id="collection-import-heading"
+      heading="Import your collection"
+      aside="Bring the binder. We'll sort it."
+      vista={COLLECTION_VISTA}
+      intro={
+        <>
+          <p>
+            Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, or paste a link to a public Archidekt collection, and the deck tool can suggest only cards you own.
+            {source.kind !== "loading" &&
+              (signedIn ? (
+                " It's saved to your account."
+              ) : (
+                <>
+                  {" "}
+                  It stays in this browser for 7 days.{" "}
+                  <Link href="/sign-in?next=/collection/import" className={LINK}>
+                    Sign in
+                  </Link>{" "}
+                  to save it to your account instead.
+                </>
+              ))}
+          </p>
+          {source.kind === "browser" && (
+            <CollectionSummary
+              totals={collectionTotals(source.collection)}
+              note={
+                !source.signedIn
+                  ? `Imported ${day(source.collection.importedAt)}. Saved in this browser until ${day(source.collection.expiresAt)}.`
+                  : source.moveFailed
+                    ? "Couldn't move it to your account yet. It stays in this browser, and the next visit tries again."
+                    : "Moving it to your account…"
+              }
+              unmatched={{ lines: source.collection.unmatched, count: source.collection.unmatchedCount }}
+              onClear={() => void clear()}
+              success={success}
+              next={next}
+            />
+          )}
+          {source.kind === "account" && (
+            <CollectionSummary
+              totals={source.totals}
+              note={`Saved to your account. Updated ${day(Date.parse(source.totals.updatedAt))}.${source.pending ? ` ${pendingNote(source.pending)}` : ""}`}
+              unmatched={accountUnmatched}
+              onClear={() => void clear()}
+              success={success}
+              next={next}
+            />
+          )}
+        </>
+      }
+    >
       <form
         className="flex flex-col gap-3"
         onSubmit={(e) => {
@@ -270,7 +304,7 @@ export function CollectionTool() {
         }}
       >
         <Label htmlFor={textHidden ? undefined : "collection-text"} className="font-semibold">
-          {hasCollection ? "Replace with a new export" : "Collection export"}
+          {hasCollection ? mode === "merge" ? "Add a new export" : "Replace with a new export" : "Collection export"}
         </Label>
         {fileName !== null ? (
           <LoadedFile
@@ -337,14 +371,35 @@ export function CollectionTool() {
             <AlertDescription>{problem.message}</AlertDescription>
           </Alert>
         )}
+        {hasCollection && (
+          <fieldset disabled={importing} className="flex flex-col gap-2">
+            <legend className="mb-2 text-sm font-semibold">How to import</legend>
+            <label className="flex min-h-11 items-center gap-2">
+              <input type="radio" name="import-mode" value="merge" checked={mode === "merge"} onChange={() => setMode("merge")} className="accent-primary" />
+              Add to my collection
+            </label>
+            <label className="flex min-h-11 items-center gap-2">
+              <input type="radio" name="import-mode" value="replace" checked={mode === "replace"} onChange={() => setMode("replace")} className="accent-primary" />
+              Replace my collection
+            </label>
+          </fieldset>
+        )}
         <div>
-          <Button type="submit" size="lg" disabled={!text.trim() || importing || source.kind === "loading"}>
-            {importing ? "Importing…" : isLink ? "Import from link" : hasCollection ? "Replace collection" : "Import collection"}
+          <Button type="submit" size="lg" variant="outline" disabled={!text.trim() || importing || source.kind === "loading"}>
+            {importing ? "Importing…" : hasCollection ? mode === "merge" ? "Add to collection" : "Replace collection" : isLink ? "Import from link" : "Import collection"}
           </Button>
         </div>
       </form>
-    </div>
+    </PageHero>
   );
+}
+
+/** What the account summary says about a browser collection that hasn't reached the account yet. */
+function pendingNote({ totals, failed }: PendingMove): string {
+  const cards = `${count(totals.totalQuantity)} ${totals.totalQuantity === 1 ? "card" : "cards"} imported in this browser`;
+  return failed
+    ? `${cards} couldn't move into it yet and aren't counted here; the next visit tries again.`
+    : `${cards} ${totals.totalQuantity === 1 ? "is" : "are"} still moving into it and aren't counted here yet.`;
 }
 
 function CollectionSummary({
@@ -352,17 +407,22 @@ function CollectionSummary({
   note,
   unmatched,
   onClear,
+  success,
+  next,
 }: {
   totals: Pick<CollectionTotals, "uniqueCards" | "totalQuantity">;
   note: string;
   unmatched: Unmatched | null;
   onClear: () => void;
+  success: string | null;
+  next: string | null;
 }) {
   return (
     <section aria-labelledby="collection-summary" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4">
       <h2 id="collection-summary" className="sr-only">
         Saved collection
       </h2>
+      {success && <p role="status" className="font-semibold">{success}</p>}
       <dl className="grid grid-cols-2 gap-3">
         <div>
           <dt className="text-sm text-muted-foreground">Different cards</dt>
@@ -380,8 +440,8 @@ function CollectionSummary({
             {count(unmatched.count)} line{unmatched.count === 1 ? "" : "s"} didn&apos;t match a card
           </summary>
           <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">
-            {unmatched.lines.slice(0, UNMATCHED_SHOWN).map((line) => (
-              <li key={line.rowNo}>
+            {unmatched.lines.slice(0, UNMATCHED_SHOWN).map((line, index) => (
+              <li key={`${line.rowNo}-${index}`}>
                 Line {line.rowNo}: {line.name ?? "no card name"}
               </li>
             ))}
@@ -392,7 +452,10 @@ function CollectionSummary({
         </details>
       )}
       <div className="flex flex-wrap gap-2">
-        <Link href="/collection" className={buttonVariants({ size: "lg" })}>
+        {success && next !== null && (
+          <Link href={safeNextPath(next, "/deck") as Route} className={buttonVariants({ size: "lg" })}>Back to your deck</Link>
+        )}
+        <Link href="/collection" className={buttonVariants({ size: "lg", variant: success && next !== null ? "outline" : "default" })}>
           Browse your collection
         </Link>
         <Link href="/deck" className={buttonVariants({ size: "lg", variant: "outline" })}>

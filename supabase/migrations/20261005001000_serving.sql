@@ -1,5 +1,5 @@
--- The precompute worker's serving tables and the reads the request path makes of them (T055,
--- docs/roadmap/card-graph-plan.md "Precompute worker"). A recommendation request reads indexed rows and does small
+-- The precompute worker's serving tables and the reads the request path makes of them (T055).
+-- A recommendation request reads indexed rows and does small
 -- per-deck sums; nothing recomputes play rates or tag similarity while the player waits. The precompute worker
 -- (`cli precompute`, scheduled by `cli serve`) is the only writer of every table here.
 --
@@ -167,7 +167,7 @@ create index if not exists decks_commanders on corpus.decks (commander_card_ids)
 insert into public.app_config (key, value, is_public) values ('recs', '{"servingReads": false}'::jsonb, true)
 on conflict (key) do nothing;
 
--- substitutesOwn / substitutesAll: how deep each card's lists go. The design's 50 + 50 (card-graph-plan.md) changed 11%
+-- substitutesOwn / substitutesAll: how deep each card's lists go. A first 50 + 50 changed 11%
 -- of 240 swap lists sampled on 2026-10-06 (the replacement shown came from deeper in today's pool); 220 + 220, the
 -- depth of today's shared swap pool, changed none.
 insert into public.app_config (key, value) values ('precompute', '{"substitutesOwn": 220, "substitutesAll": 220}'::jsonb)

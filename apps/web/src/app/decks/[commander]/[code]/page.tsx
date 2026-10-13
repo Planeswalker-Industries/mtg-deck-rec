@@ -7,6 +7,7 @@ import { decklistText } from "@mtg/core/parse";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { DeckExport } from "@/components/decks/deck-export";
 import { DeckOriginal } from "@/components/decks/deck-original";
+import { DeckBuilt } from "@/components/decks/deck-built";
 import { DeckVisibility } from "@/components/decks/deck-visibility";
 import { buttonVariants } from "@/components/ui/button";
 import { ColorIdentity } from "@/components/deck/color-identity";
@@ -101,7 +102,12 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
         <DeckExport text={decklistText(deckExportEntries(deck))} commanderSlug={deck.commanderSlug} code={deck.code} />
       </header>
 
-      {deck.isOwner && <DeckVisibility deckId={deck.id} isPublic={deck.isPublic} />}
+      {deck.isOwner && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <DeckVisibility deckId={deck.id} isPublic={deck.isPublic} />
+          <DeckBuilt deckId={deck.id} isBuilt={deck.isBuilt} />
+        </div>
+      )}
 
       {/* A stranger sees the comparison only while there is one; the owner also sees that a restored deck matches. */}
       {deck.original && (deck.isOwner || deck.original.out.length + deck.original.in.length > 0) && (

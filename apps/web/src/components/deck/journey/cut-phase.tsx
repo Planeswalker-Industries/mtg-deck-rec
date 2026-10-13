@@ -2,6 +2,7 @@
 
 import { Check, Scissors } from "lucide-react";
 import type { CardSummary, CutReason, CutResult } from "@mtg/core/contract";
+import type { StatLine } from "@mtg/core/journey";
 import { Button } from "@/components/ui/button";
 import { cutReasonLabel, cutReasonShortLabel } from "@/lib/labels";
 import { DeckGroupsPanel } from "../deck-groups-panel";
@@ -10,22 +11,25 @@ import { ShuffleDeck } from "../shuffle-deck";
 import type { DeckGroups } from "../use-deck-groups";
 import type { Async } from "../use-deck-tool";
 import { NextBar, PhaseIntro } from "./journey-stepper";
+import { MakeRoomCut, MakeRoomPicker, type RoomFocus } from "./make-room";
 import { SingleSwipe, SwipeDone } from "./single-swipe";
 import type { DeckJourney } from "./use-deck-journey";
 
-/** Reasons shown under a card. NOT_OWNED is left out: it is about the collection, not the card working against the deck. */
+/** Reasons shown under a card, with collection ownership last when present. */
 const MAX_REASONS = 2;
 
+function shownReasons(reasons: readonly CutReason[]): CutReason[] {
+  const notOwned = reasons.includes("NOT_OWNED");
+  const others = reasons.filter((reason) => reason !== "NOT_OWNED").slice(0, notOwned ? MAX_REASONS - 1 : MAX_REASONS);
+  return notOwned ? [...others, "NOT_OWNED"] : others;
+}
+
 function reasonText(reasons: readonly CutReason[]): string {
-  return reasons
-    .filter((r) => r !== "NOT_OWNED")
-    .slice(0, MAX_REASONS)
-    .map((r) => cutReasonLabel[r])
-    .join(". ");
+  return shownReasons(reasons).map((reason) => cutReasonLabel[reason]).join(". ");
 }
 
 /**
- * Cut: the cards that work against the deck. Swiping deals them one at a time (✅ cut, ❌ keep). The list shows the whole
+ * Cut: recommended cuts. Swiping deals them one at a time (✅ cut, ❌ keep). The list shows the whole
  * deck with them crossed out; tapping any card marks or unmarks it, so the player can cut cards of their own too.
  */
 export function CutPhase({
@@ -33,11 +37,20 @@ export function CutPhase({
   cutState,
   view,
   deckGroups,
+  room,
 }: {
   journey: DeckJourney;
   cutState: Async<CutResult>;
   view: "swipe" | "list";
   deckGroups: DeckGroups;
+  /** Making room for a role the deck lacks; absent where Deck stats has no targets. */
+  room?: {
+    focus: RoomFocus | null;
+    setFocus: (focus: RoomFocus | null) => void;
+    roles: readonly StatLine[];
+    cardRoles: Readonly<Record<number, readonly string[]>>;
+    onFind: (focus: RoomFocus) => void;
+  };
 }) {
   const { recommended, undecided, slotsAfter, isMarked, toggle, finish } = journey.cut;
   const cutCount = journey.state?.cuts.length ?? 0;
@@ -45,6 +58,25 @@ export function CutPhase({
 
   if (cutState.status === "loading" || cutState.status === "idle") return <ShuffleDeck label="Finding cards that work against this deck" />;
   if (cutState.status === "error") return <PanelError message={cutState.message} />;
+
+  const picker = room ? <MakeRoomPicker roles={room.roles} focus={room.focus} onChange={room.setFocus} /> : null;
+  if (room?.focus) {
+    const focus = room.focus;
+    return (
+      <MakeRoomCut
+        // A new focus starts over: what was kept for one role may be just the card to cut for another.
+        key={focus.roleId}
+        journey={journey}
+        cutState={cutState}
+        cardRoles={room.cardRoles}
+        roles={room.roles}
+        focus={focus}
+        view={view}
+        onFind={() => room.onFind(focus)}
+        picker={picker}
+      />
+    );
+  }
 
   const reasonsFor = new Map(recommended.map((s) => [s.card.id as number, s.reasons]));
 
@@ -56,8 +88,9 @@ export function CutPhase({
         <PhaseIntro title="Cut">
           {recommended.length === 0
             ? "Nothing in this deck works against it. Tap any card you want gone anyway."
-            : "Crossed-out cards work against this deck: they break a rule or this commander's decks all but never run them. Tap a card to keep it, or tap any other card to cut it too."}
+            : "Crossed-out cards break a rule or are rarely played with this commander. Tap a card to keep it, or tap any other card to cut it too."}
         </PhaseIntro>
+        {picker}
         <DeckGroupsPanel
           deckGroups={deckGroups}
           selectedCardId={null}
@@ -70,11 +103,7 @@ export function CutPhase({
             const reasons = reasonsFor.get(card.id);
             return reasons ? (
               <span className="font-semibold text-cut">
-                {reasons
-                  .filter((r) => r !== "NOT_OWNED")
-                  .slice(0, MAX_REASONS)
-                  .map((r) => cutReasonShortLabel[r])
-                  .join(", ")}
+                {shownReasons(reasons).map((reason) => cutReasonShortLabel[reason]).join(", ")}
               </span>
             ) : undefined;
           }}
@@ -90,8 +119,7 @@ export function CutPhase({
   return (
     <div className="flex flex-col gap-4">
       <PhaseIntro title="Cut" brief="Swipe right to cut, left to keep.">
-        Cards that work against this deck: they break a rule, or this commander&apos;s decks all but never run them. Swipe
-        right to cut, left to keep.
+        Cards that break a rule or are rarely played with this commander. Swipe right to cut, left to keep.
       </PhaseIntro>
       {next ? (
         <SingleSwipe
@@ -127,7 +155,8 @@ export function CutPhase({
           </Button>
         </SwipeDone>
       )}
+      {/* Below the sitting, so it costs the swipe view no height. */}
+      {picker}
     </div>
   );
 }
-

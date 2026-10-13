@@ -72,7 +72,7 @@ create table public.search_index_queue (
 create index search_index_queue_seq_idx on public.search_index_queue (seq);
 
 comment on table public.search_index_queue is
-  'Documents the search index needs to be told about. Drained by the worker (cli sync:typesense); see docs/roadmap/typesense-plan.md.';
+  'Documents the search index needs to be told about. Drained by the worker (cli sync:typesense).';
 
 -- Nothing outside the worker has any business reading or writing this: RLS on with no policies, and no grants to the
 -- API roles. Same stance as public.rec_timeouts.

@@ -1,7 +1,7 @@
 import type { DeckConflict, OwnershipInput } from '../contract';
 
 /**
- * What a player's collection can put into a deck (docs/roadmap/scoring-design.md, "Availability", T059):
+ * What a player's collection can put into a deck (T059):
  *
  *   available(card) = owned copies of the card and its functional twins − copies held by the player's other built decks
  *   basic lands     = always available

@@ -9,18 +9,21 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle, SheetTri
 import { TEXT_LINK } from "@/lib/constants";
 
 interface NavItem {
-  href: "/deck" | "/rate" | "/decks" | "/collection";
+  href: "/deck" | "/decks" | "/collection";
   label: string;
   /** One line under the label in the phone menu, where there is room to say what the page is for. */
   hint: string;
   accountOnly: boolean;
 }
 
+/**
+ * The deck tool first (pasting a list needs nothing else), then the collection, which works signed out too (it lives
+ * in the browser until an account takes it). Rating swaps moved to the footer.
+ */
 const NAV_ITEMS: readonly NavItem[] = [
   { href: "/deck", label: "Upgrade a deck", hint: "Cards to cut, add and swap", accountOnly: false },
-  { href: "/rate", label: "Rate cards", hint: "Vote on swaps other players suggest", accountOnly: false },
-  { href: "/decks", label: "Your decks", hint: "The decks you have saved", accountOnly: true },
-  { href: "/collection", label: "Your collection", hint: "The cards you own", accountOnly: true },
+  { href: "/collection", label: "My collection", hint: "The cards you own", accountOnly: false },
+  { href: "/decks", label: "My decks", hint: "The decks you have saved", accountOnly: true },
 ];
 
 // Quiet until you reach for them: the accent belongs on the one action that matters. The page you are on
@@ -55,7 +58,7 @@ function InlineLinksAtPath({ items }: { items: readonly NavItem[] }) {
 /**
  * The header's links. Wide screens get them inline (`order-1`, beside the logo in `SiteHeader`'s flat row); below `lg`
  * they fold into a menu that drops from the top, so the account control (`children`, `order-3`) never gets pushed off
- * a phone screen. Decks and collection only show when signed in.
+ * a phone screen. Saved decks only show when signed in.
  */
 export function MainNav({ signedIn, children }: { signedIn: boolean; children: ReactNode }) {
   const items = NAV_ITEMS.filter((item) => signedIn || !item.accountOnly);

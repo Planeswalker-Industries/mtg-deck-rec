@@ -15,9 +15,9 @@
 --   * Revisits start only once every commander has had its first visit: the queue hands out never-visited commanders
 --     first, then the least recently visited.
 --
--- The queue doubles as the verification log the owner asked for: a commander Archidekt has no decks for under its
+-- The queue doubles as a verification log: a commander Archidekt has no decks for under its
 -- name (or its front face) is left at outcome 'not_found', and one whose listings are all led by other commanders at
--- 'no_led_decks'. See docs/roadmap/deck-crawl.md for the query.
+-- 'no_led_decks'.
 
 create table corpus.crawl_commanders (
   source text not null check (source in ('moxfield', 'archidekt')),

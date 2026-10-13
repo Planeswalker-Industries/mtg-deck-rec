@@ -1,7 +1,7 @@
 /**
  * EDHREC commander pages (GET https://json.edhrec.com/pages/commanders/:slug.json) reduced to the numbers the app keeps:
  * how many decks the page covers and, per card, how many of them run it. EDHREC publishes aggregates, not decklists,
- * so this is a statistics source and never a deck source (docs/roadmap/card-graph-plan.md, "External statistics").
+ * so this is a statistics source and never a deck source.
  *
  * Deliberately left out: `salt` and `rank` (popularity scores the app does not use, like Scryfall's edhrec_rank),
  * prices, images, articles and the page's presentation panels.

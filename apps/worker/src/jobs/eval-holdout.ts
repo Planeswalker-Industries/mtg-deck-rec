@@ -75,7 +75,7 @@ import { globalStatRows, identityMonths, tallyShape, type KeyAggregate } from '.
 import { edhrecProfiles, loadEdhrecPages, loadPairPoolDepth, type PageRows } from '../lib/serving';
 
 /**
- * `cli eval:holdout` (T058; docs/roadmap/scoring-design.md, "Evaluation"). Holds out a seeded share of the collated
+ * `cli eval:holdout` (T058). Holds out a seeded share of the collated
  * decks, rebuilds every play rate from the rest in memory, and grades the app's own ranking (`@mtg/core/scoring`
  * `rankAdds`, `rankCuts`) on the held-out decks:
  *

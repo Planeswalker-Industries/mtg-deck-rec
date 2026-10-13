@@ -42,6 +42,8 @@ import { buyList } from '../../scoring/rank';
 import { cardTypes } from '../../scoring/add';
 import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
 import { cardQuantity, setCardQuantity } from '../../collection/edit';
+import { deckCoverage, sessionCopies, type CollectionCopies } from '../../collection';
+import { deckCoverageInputSchema, parseInput } from '../schemas';
 import {
   frontFaceName,
   MOCK_AS_OF,
@@ -566,6 +568,34 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     [...lookups.entries()].find(([id, l]) => l.commanderId === commanderId && lookupProgress(id).status !== 'done')?.[0];
 
   const actions: ActionsApi = {
+    async getDeckCoverage(input) {
+      const parsed = parseInput(deckCoverageInputSchema, input);
+      if (!parsed.ok) return delay(parsed);
+      const { deck, ownership } = parsed.data;
+      const collection: CollectionCopies = ownership.kind === 'session'
+        ? sessionCopies(ownership)!
+        : {
+            // The same editable rows getMyCollectionEntries reads; account coverage must reflect quantity edits.
+            owned: collectionRows.reduce((owned, row) => owned.set(row.cardId, (owned.get(row.cardId) ?? 0) + row.quantity), new Map<number, number>()),
+            builtDecks: [...decks].filter(([id, saved]) => saved.isBuilt && id !== ownership.deckId).map(([id, saved]) => {
+              const copies = new Map<number, number>();
+              const commanderIds = new Set(saved.deck.commanders);
+              for (const cardId of commanderIds) copies.set(cardId, 1);
+              for (const entry of saved.deck.cards) {
+                if (entry.section === 'commander' && commanderIds.has(entry.cardId)) continue;
+                copies.set(entry.cardId, (copies.get(entry.cardId) ?? 0) + entry.quantity);
+              }
+              return { deck: { deckId: id as DeckId, code: deckCode(id), name: saved.name }, copies };
+            }),
+          };
+      const targets = [...new Set([...deck.commanders, ...deck.cards.filter((entry) => entry.section === 'main').map((entry) => entry.cardId)])];
+      if (targets.some((id) => !byId.has(id))) return delay(fail('NOT_FOUND', "One of those cards isn't in the catalog anymore."));
+      // The fixture catalog has no rules-identical twins; use its basic-land classification, not caller input.
+      const basics = new Set(targets.filter((id) => isBasicLand(getCard(id))));
+      const coverage = deckCoverage(deck, collection, new Map(), basics);
+      return delay(ok({ coverage, cards: targets.sort((a, b) => a - b).map(getCard) }));
+    },
+
     async getCommanderCoverage({ commanderId }) {
       if (!byId.has(commanderId)) return delay(fail('NOT_FOUND', 'Unknown commander.'));
       const active = activeLookupFor(commanderId);

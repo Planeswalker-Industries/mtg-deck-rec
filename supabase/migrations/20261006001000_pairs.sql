@@ -1,4 +1,4 @@
--- Card pairs and deck affinity (T064; docs/roadmap/card-graph-plan.md, "Statistics" and "Deck affinity").
+-- Card pairs and deck affinity (T064).
 --
 -- * commander_card_pairs: per commander key, the pairs of cards its decks run together more than chance would have
 --   them (card_a < card_b), with the decks running both and the lift, shrunk toward 1. Written by the precompute

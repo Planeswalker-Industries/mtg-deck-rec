@@ -30,7 +30,7 @@ function classesOf(settings: ScoringConfig['combos']) {
 }
 
 /**
- * How much a combo's results are worth (scoring-design.md, "Combos"): its best standalone result by the first class
+ * How much a combo's results are worth: its best standalone result by the first class
  * that matches ("Win the game" over infinite mana, damage or turns over the rest), a contextual result below those.
  */
 export function comboResultWeight(combo: Pick<ComboFacts, 'results' | 'contextualResults'>, settings: ScoringConfig['combos']): number {

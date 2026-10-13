@@ -6,7 +6,7 @@ import { connect, reserve, type Sql } from '../lib/db';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
 /**
- * The collator (T054): every raw source → corpus, with one set of rules. docs/roadmap/card-graph-plan.md, "Collator".
+ * The collator (T054): every raw source → corpus, with one set of rules.
  *
  * - Decks (Archidekt and Moxfield raw, players' saved decks) → corpus.decks, when they pass the corpus rule
  *   (`checkCorpusDeck`). Cards are looked up in SQL; the rule runs here.

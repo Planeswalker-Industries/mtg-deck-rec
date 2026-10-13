@@ -68,7 +68,7 @@ grant all on public.commander_keys, public.commander_stats, public.card_global_s
 grant usage, select on sequence public.commander_keys_id_seq to service_role;
 
 -- Shrinkage strength and corpus confidence thresholds (minDecks: below it, no corpus signal; fullDecks: full weight).
--- Starting values from the plan, to be replaced by the bootstrap stability measurement.
+-- Starting values, to be replaced by the bootstrap stability measurement.
 insert into public.app_config (key, value, is_public)
 values ('corpus', '{"shrinkAlpha": 20, "minDecks": 50, "fullDecks": 300, "maxUnresolvedCards": 3}'::jsonb, true)
 on conflict (key) do update set value = excluded.value, updated_at = now();

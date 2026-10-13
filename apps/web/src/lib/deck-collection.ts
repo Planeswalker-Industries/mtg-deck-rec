@@ -2,6 +2,7 @@ import type { CardId } from "@mtg/core/contract";
 import { ownedCounts, shortfallRows, withShortfallAdded, type CollectionShortfall } from "@mtg/core/collection";
 import { notifyCollectionChanged, type CollectionSource } from "@/components/collection/use-collection-source";
 import { getApis } from "@/lib/api/client";
+import { withCollectionWrite } from "@/lib/collection-lock";
 import { loadCollection, saveCollection, updateCollectionRows } from "@/lib/collection-store";
 
 /** Copies per card in the visitor's collection, wherever it lives; empty when there is none (or it can't be read). */
@@ -25,6 +26,16 @@ export async function addShortfallToCollection(
   names: ReadonlyMap<CardId, string>,
 ): Promise<void> {
   if (shortfall.length === 0) return;
+  await withCollectionWrite(() => writeShortfall(source, signedIn, shortfall, names));
+  notifyCollectionChanged();
+}
+
+async function writeShortfall(
+  source: CollectionSource,
+  signedIn: boolean,
+  shortfall: readonly CollectionShortfall[],
+  names: ReadonlyMap<CardId, string>,
+): Promise<void> {
   const stored = source.kind === "browser" ? await loadCollection() : null;
   if (stored) {
     await updateCollectionRows(stored, withShortfallAdded(stored.rows, shortfall));
@@ -46,5 +57,4 @@ export async function addShortfallToCollection(
     if (!r.ok) throw new Error(r.error.message);
     await saveCollection({ catalogEpoch: r.data.catalogEpoch, rows: r.data.resolved, unmatched: [], unmatchedCount: r.data.unresolved.length });
   }
-  notifyCollectionChanged();
 }

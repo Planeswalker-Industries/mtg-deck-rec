@@ -1,7 +1,7 @@
 -- The EDHREC prior, readable by the app without exposing the table it comes from.
 --
 -- `external_commanders` and `external_commander_card_stats` are revoked from `anon` and `authenticated` on purpose
--- (20260928000200): they are a third party's aggregates, and card-graph-plan's slice 11 says their numbers inform
+-- (20260928000200): they are a third party's aggregates, whose numbers inform
 -- scoring and are never displayed. That stays true. This is a security-definer function in `public` that answers the
 -- one question scoring asks - "what does EDHREC say these cards' inclusion is under exactly these commanders?" - the
 -- same pattern as `card_functional_tags` standing in front of the `functional_tags` view.

@@ -4,6 +4,8 @@ import {
   MAX_COLLECTION_ROWS_PER_CALL,
   MAX_DECK_ENTRIES,
   MAX_DECKLIST_CHARS,
+  MAX_OWNED_CARDS,
+  MAX_CARD_COPIES,
   MAX_VOTE_CANDIDATES_SHOWN,
   addInputSchema,
   castVoteInputSchema,
@@ -13,6 +15,7 @@ import {
   recContextSchema,
   recEventInputSchema,
   buildInputSchema,
+  deckCoverageInputSchema,
   saveCollectionBatchInputSchema,
   swapInputSchema,
 } from './schemas';
@@ -63,6 +66,39 @@ describe('recContextSchema', () => {
   it('keeps too many copies a validation error', () => {
     const r = parseInput(recContextSchema, context({ deck: { commanders: [1], cards: [{ cardId: 2, quantity: 999, section: 'main' }] } }));
     expect(!r.ok && r.error.code).toBe('VALIDATION');
+  });
+});
+
+describe('deckCoverageInputSchema', () => {
+  const deck = { commanders: [1], cards: [{ cardId: 2, quantity: 2, section: 'main' }] };
+  const ownership = { kind: 'session', catalogEpoch: 'e1', ownedCardIds: [2, 3], quantities: [2, 4] };
+
+  it('requires ownership and accepts aligned session quantities or an account deck id', () => {
+    const session = parseInput(deckCoverageInputSchema, { deck, ownership });
+    expect(session.ok && session.data.ownership).toEqual(ownership);
+    expect(parseInput(deckCoverageInputSchema, { deck, ownership: { kind: 'account', deckId: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b' } }).ok).toBe(true);
+    for (const missing of [undefined, null]) {
+      const result = parseInput(deckCoverageInputSchema, { deck, ownership: missing });
+      expect(!result.ok && result.error.code).toBe('VALIDATION');
+    }
+  });
+
+  it('rejects malformed quantities, misalignment and invalid deck entries without changing existing limits', () => {
+    for (const quantities of [[1], [0, 2], [1.5, 2], [MAX_CARD_COPIES + 1, 2]]) {
+      const result = parseInput(deckCoverageInputSchema, { deck, ownership: { ...ownership, quantities } });
+      expect(!result.ok && result.error.code).toBe('VALIDATION');
+    }
+    expect(parseInput(deckCoverageInputSchema, { deck: { ...deck, cards: [{ cardId: 2, quantity: 0, section: 'main' }] }, ownership }).ok).toBe(false);
+    expect(parseInput(deckCoverageInputSchema, { deck, ownership: { kind: 'account', deckId: 'not-a-uuid' } }).ok).toBe(false);
+  });
+
+  it('keeps the deck and collection array bounds', () => {
+    const tooManyCards = Array.from({ length: MAX_DECK_ENTRIES + 1 }, (_, i) => ({ cardId: i + 1, quantity: 1, section: 'main' }));
+    const deckResult = parseInput(deckCoverageInputSchema, { deck: { ...deck, cards: tooManyCards }, ownership });
+    expect(!deckResult.ok && deckResult.error.code).toBe('PAYLOAD_TOO_LARGE');
+    const ids = Array.from({ length: MAX_OWNED_CARDS + 1 }, (_, i) => i + 1);
+    const collectionResult = parseInput(deckCoverageInputSchema, { deck, ownership: { ...ownership, ownedCardIds: ids } });
+    expect(!collectionResult.ok && collectionResult.error.code).toBe('PAYLOAD_TOO_LARGE');
   });
 });
 

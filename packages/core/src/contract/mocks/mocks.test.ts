@@ -48,6 +48,87 @@ describe('mock commander deck lookups', () => {
   });
 });
 
+describe('mock deck coverage', () => {
+  it('allocates browser quantities once, counts only main cards and commanders, and returns target metadata', async () => {
+    const apis = createMockApis({ latencyMs: 0 });
+    const commander = idOf('Chulane, Teller of Tales');
+    const ring = idOf('Sol Ring');
+    const deck = {
+      commanders: [commander],
+      cards: [
+        { cardId: commander, quantity: 1, section: 'commander' as const },
+        { cardId: ring, quantity: 2, section: 'main' as const },
+        { cardId: ring, quantity: 1, section: 'main' as const },
+        { cardId: ring, quantity: 4, section: 'sideboard' as const },
+      ],
+    };
+    const result = await apis.actions.getDeckCoverage({
+      deck,
+      ownership: { kind: 'session', catalogEpoch: 'mock-1', ownedCardIds: [ring, commander], quantities: [2, 1] },
+    });
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.data.coverage).toMatchObject({ total: 4, owned: 3, standIn: 0, conflict: 0, missing: 1 });
+    expect(result.data.coverage.cards.find((card) => card.cardId === ring)?.allocations).toEqual([
+      { status: 'owned', quantity: 2 }, { status: 'missing', quantity: 1 },
+    ]);
+    expect(result.data.cards.map((card) => card.id)).toEqual([commander, ring].sort((a, b) => a - b));
+  });
+
+  it('reads editable account quantities and excludes the current built deck from conflicts', async () => {
+    const apis = createMockApis({ latencyMs: 0 });
+    const ring = idOf('Sol Ring');
+    const deckId = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b' as import('../ids').DeckId;
+    const deck = { commanders: [], cards: [{ cardId: ring, quantity: 2, section: 'main' as const }] };
+    await apis.actions.setCollectionCardQuantity({ cardId: ring, quantity: 2 });
+    const entries = await apis.actions.getMyCollectionEntries();
+    expect(entries.ok && entries.data.find((entry) => entry.cardId === ring)?.quantity).toBe(2);
+    await apis.actions.saveDeck({ deckId, name: 'Held deck', deck: { ...deck, cards: [{ cardId: ring, quantity: 1, section: 'main' }] }, isPublic: false });
+    await apis.actions.setDeckBuilt({ deckId, isBuilt: true });
+
+    const held = await apis.actions.getDeckCoverage({ deck, ownership: { kind: 'account' } });
+    if (!held.ok) throw new Error(held.error.message);
+    expect(held.data.coverage).toMatchObject({ total: 2, owned: 1, conflict: 1, missing: 0 });
+    expect(held.data.coverage.cards[0]?.allocations).toEqual([
+      { status: 'owned', quantity: 1 },
+      { status: 'conflict', quantity: 1, sourceCardId: ring, decks: [{ deckId, code: expect.any(String), name: 'Held deck' }] },
+    ]);
+    const current = await apis.actions.getDeckCoverage({ deck, ownership: { kind: 'account', deckId } });
+    expect(current.ok && current.data.coverage).toMatchObject({ owned: 2, conflict: 0, missing: 0 });
+    await apis.actions.setCollectionCardQuantity({ cardId: ring, quantity: 1 });
+    const changed = await apis.actions.getDeckCoverage({ deck, ownership: { kind: 'account', deckId } });
+    expect(changed.ok && changed.data.coverage).toMatchObject({ owned: 1, missing: 1 });
+  });
+
+  it('counts a built commander once when also listed in its commander section', async () => {
+    const apis = createMockApis({ latencyMs: 0 });
+    const commander = idOf('Chulane, Teller of Tales');
+    const deckId = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b' as import('../ids').DeckId;
+    const deck = { commanders: [commander], cards: [{ cardId: commander, quantity: 1, section: 'commander' as const }] };
+    await apis.actions.setCollectionCardQuantity({ cardId: commander, quantity: 2 });
+    await apis.actions.saveDeck({ deckId, name: 'Built commander', deck, isPublic: false });
+    await apis.actions.setDeckBuilt({ deckId, isBuilt: true });
+
+    const coverage = await apis.actions.getDeckCoverage({ deck, ownership: { kind: 'account' } });
+    if (!coverage.ok) throw new Error(coverage.error.message);
+    expect(coverage.data.coverage).toMatchObject({ total: 1, owned: 1, conflict: 0, missing: 0 });
+    expect(coverage.data.coverage.cards[0]?.allocations).toEqual([{ status: 'owned', quantity: 1 }]);
+  });
+
+  it('returns validation or not-found Results', async () => {
+    const apis = createMockApis({ latencyMs: 0 });
+    const deck = { commanders: [], cards: [{ cardId: idOf('Sol Ring'), quantity: 1, section: 'main' as const }] };
+    const ownership = { kind: 'session' as const, catalogEpoch: 'mock-1', ownedCardIds: [] };
+    const invalid = await apis.actions.getDeckCoverage({ deck, ownership: undefined } as unknown as Parameters<typeof apis.actions.getDeckCoverage>[0]);
+    expect(!invalid.ok && invalid.error.code).toBe('VALIDATION');
+    const badCard = await apis.actions.getDeckCoverage({ deck: { ...deck, cards: [{ cardId: 0 as CardId, quantity: 1, section: 'main' }] }, ownership });
+    expect(!badCard.ok && badCard.error.code).toBe('VALIDATION');
+    // Outside the fixture catalog; the read must not silently drop an unknown target.
+    const UNKNOWN_FIXTURE_CARD_ID = 999999 as CardId;
+    const unknown = await apis.actions.getDeckCoverage({ deck: { ...deck, cards: [{ cardId: UNKNOWN_FIXTURE_CARD_ID, quantity: 1, section: 'main' }] }, ownership });
+    expect(!unknown.ok && unknown.error.code).toBe('NOT_FOUND');
+  });
+});
+
 describe('mock parseDeck', () => {
   it('resolves the sample deck and analyzes it', async () => {
     const { analysis } = await setup();

@@ -1,7 +1,7 @@
 import type { ScoringConfig } from './config';
 
 /**
- * Deck affinity (T064; docs/roadmap/card-graph-plan.md, "Deck affinity"): how strongly a card connects to the cards
+ * Deck affinity (T064): how strongly a card connects to the cards
  * already in this deck, from the pair tables.
  *
  *   pmi(A, c)  = w·ln(lift_K) + (1 − w)·ln(lift_global)     w = n_A,K / (n_A,K + β): thin commanders lean on the corpus

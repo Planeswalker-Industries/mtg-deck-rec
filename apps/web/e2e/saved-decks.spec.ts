@@ -6,11 +6,12 @@ const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved 
 
 /**
  * Saving a deck opens it in its deckbuilder, at the address it keeps from then on, with nothing left to write. A new
- * account owns none of the deck's cards, so the save first asks about adding them to the collection; these checks
- * save without.
+ * account has no collection, so saving goes straight through; an existing collection may prompt about missing cards.
  */
 async function expectEditor(page: Page) {
-  await page.getByRole("button", { name: "Save without adding" }).click({ timeout: 30_000 });
+  const prompt = page.getByRole("dialog", { name: /\d+ (?:card isn't|cards aren't) in your collection/ });
+  await expect(prompt.or(page.getByText("All changes saved"))).toBeVisible({ timeout: 30_000 });
+  if (await prompt.isVisible()) await prompt.getByRole("button", { name: "Save deck", exact: true }).click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
   await expect(page.getByText("All changes saved")).toBeVisible({ timeout: 30_000 });
 }
@@ -95,6 +96,9 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   // The deck's cards are on the page, grouped by type.
   await expect(page.getByRole("heading", { name: "Lands" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Creatures" })).toBeVisible();
+  const builtSwitch = page.getByRole("switch", { name: "I've built this deck" });
+  await expect(builtSwitch).toBeVisible();
+  await expect(builtSwitch).not.toBeChecked();
 
   // A new deck is public, so a signed-out visitor can read it.
   const stranger = await browser.newContext();
@@ -102,6 +106,7 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   const asPublic = await strangerPage.goto(url);
   expect(asPublic?.status()).toBe(200);
   await expect(strangerPage.getByRole("link", { name: "Report it" })).toBeVisible();
+  await expect(strangerPage.getByRole("switch", { name: "I've built this deck" })).toHaveCount(0);
   // Anyone who can see the page can download it, with the commander on its own board.
   const exportUrl = `${url}/export?format=csv`;
   const publicCsv = await stranger.request.get(exportUrl);
@@ -113,7 +118,7 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   expect(csv).toContain("Sol Ring");
 
   // Hiding it takes the page away from everyone else.
-  await page.getByRole("switch").click();
+  await page.getByRole("switch", { name: "Anyone with the link can see this deck" }).click();
   await expect(page.getByText("Only you can see this deck")).toBeVisible({ timeout: 30_000 });
   const asPrivate = await strangerPage.goto(url);
   expect(asPrivate?.status()).toBe(404);
@@ -251,9 +256,15 @@ test("signed out, the deckbuilder asks you to sign in", async ({ page }) => {
   expect(new URL(page.url()).searchParams.get("next")).toBe("/decks/some-commander/abcdefgh1234/edit");
 });
 
-test("saving asks to add the cards the collection lacks, and Add & Save adds them", async ({ page, request }) => {
+test("saving asks to add the cards the collection lacks, and explicit add adds them", async ({ page, request }) => {
   const email = `owned-${Date.now()}@test.invalid`;
   await signIn(page, request, email, "/decks");
+
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill("1 Arcane Signet");
+  await page.getByRole("button", { name: "Import collection" }).click();
+  const summary = page.getByRole("region", { name: "Saved collection" });
+  await expect(summary.getByText(/Saved to your account/)).toBeVisible({ timeout: 30_000 });
 
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
@@ -263,9 +274,9 @@ test("saving asks to add the cards the collection lacks, and Add & Save adds the
   await page.getByRole("button", { name: "Save deck" }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  const prompt = page.getByRole("dialog", { name: "Add these to your collection?" });
+  const prompt = page.getByRole("dialog", { name: /\d+ (?:card isn't|cards aren't) in your collection/ });
   await expect(prompt.getByText("Sol Ring")).toBeVisible({ timeout: 30_000 });
-  await prompt.getByRole("button", { name: "Add & Save" }).click();
+  await prompt.getByRole("button", { name: "I own these — add them and save" }).click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
 
   // The new account now owns the deck's cards.

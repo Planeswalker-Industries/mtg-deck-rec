@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Card pairs (T064; docs/roadmap/card-graph-plan.md, "Statistics"): which cards decks run together, per commander key
+ * Card pairs (T064): which cards decks run together, per commander key
  * and over the whole corpus. Counted in memory by the precompute worker and the evaluation alike, from these pure
  * functions.
  *
@@ -12,7 +12,7 @@ import { z } from 'zod';
  *   prior    = α · max(n_a, n_b) / n            α decks' worth of "no association", at the commoner card's rate
  *   lift     = (n_ab + prior) / (expected + prior)          pmi = ln(lift)
  *
- * which is the plan's P̂(B|A) = (n_ab + α·p̂(B)) / (n_a + α) over p̂(B), read from the rarer card toward the commoner,
+ * which is P̂(B|A) = (n_ab + α·p̂(B)) / (n_a + α) over p̂(B), read from the rarer card toward the commoner,
  * made symmetric so one row serves both directions.
  *
  * Only positive associations are kept: support at least max(minSupport, minShare·decks), lift above `liftFloor`, and
