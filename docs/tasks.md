@@ -13,13 +13,11 @@ The order for the UI work (owner, 2026-10-08), most important first. The tickets
 1. **T003** Report link destination: a launch gate, small once the destination is chosen.
 2. **T045** Deck analysis display: the concept that places T046, T048 and T069's combos and bracket signals. P1 released 2026-10-08 (PR #143); next T071 (card types) and T072 (follow-ups).
 3. **T069, collection mode:** the buy list, conflict tags, "stands in for", the swap's `emptyReason`, the built control, then the deck tool's default to owned only (T037).
-4. **T050 with T069's build mode:** one commander picker for Add and for builds, then the build screen.
-5. **T069, combos and bracket signals**, placed per T045.
-6. **T048** Role counts against the commander's decks.
-7. **T046** Mana base analysis (catalog column and contract field first).
-8. **T038** Start a collection by hand.
-9. **T039, T034:** performance, when measurements call for it.
-10. **T049** Re-record the How it works clips, once the screens above settle.
+4. **T069, combos and bracket signals**, placed per T045.
+5. **T048** Role counts against the commander's decks.
+6. **T046** Mana base analysis (catalog column and contract field first).
+7. **T039, T034:** performance, when measurements call for it.
+8. **T049** Re-record the How it works clips, once the screens above settle.
 
 ---
 
@@ -144,7 +142,7 @@ Server Actions run one at a time per page. Every swipe in the Replace phase fire
 
 ### T045: Design the deck analysis display
 
-**Priority:** MEDIUM | **Area:** Product / UX | **Status:** P1 released 2026-10-08 (PR #143, contract v26); owner sign-off on screenshots open. Design: [`roadmap/deck-stats.md`](roadmap/deck-stats.md) (a "Deck stats" footer on phones, a side rail on wide screens)
+**Priority:** MEDIUM | **Area:** Product / UX | **Status:** P1 released 2026-10-08 (PR #143, contract v26); owner sign-off on screenshots open. A "Deck stats" footer on phones, a side rail on wide screens.
 
 First part of the deck analysis work (T046, T048, and the combos and bracket signals in T069), and it comes first: decide where and how the new numbers are shown before building any of them. Came out of a look at EDHcheck (edhcheck.com, 2026-09-28) with the sample Liesa deck. Its functions are solid (mana simulation, per-card cast rates, combo detection, bracket explorer), but the page is a wall of panels, invented composite scores and upsells. We want the useful numbers, shown only where they change what the player does next.
 
@@ -173,7 +171,7 @@ First part of the deck analysis work (T046, T048, and the combos and bracket sig
 
 **Priority:** MEDIUM | **Area:** Database / Worker / Frontend | **Status:** Not started; option A approved (owner, 2026-10-08); T045 released 2026-10-08
 
-Add card types (Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers) to Deck stats, taking `ok/total` from 8 to 14. Nothing stores how many of each type a commander's decks run today. Approved shape: one `type_profile` jsonb column on `commander_stats`, written by the existing per-commander pass beside `curve_profile` (same row, diff-only, about 0.3 MB), with typical types from the same deck-weighted average `typical_deck_profile()` already computes for the curve. No new table or job. [`roadmap/deck-stats.md`](roadmap/deck-stats.md) ("Contract and data", "Phases") has the design.
+Add card types (Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers) to Deck stats, taking `ok/total` from 8 to 14. Nothing stores how many of each type a commander's decks run today. Approved shape: one `type_profile` jsonb column on `commander_stats`, written by the existing per-commander pass beside `curve_profile` (same row, diff-only, about 0.3 MB), with typical types from the same deck-weighted average `typical_deck_profile()` already computes for the curve. No new table or job.
 
 **Files:**
 - `apps/worker/src/lib/key-stats.ts`: count types beside `curveCounts`
@@ -216,7 +214,7 @@ Left over from building Deck stats P1 (2026-10-08); none blocks release.
 
 **Blocked by:** T045 (display)
 
-Placement: Deck stats ([`roadmap/deck-stats.md`](roadmap/deck-stats.md)).
+Placement: Deck stats.
 
 Tell the player whether their lands can cast their spells: coloured sources against Frank Karsten's thresholds for each card's pips and turn, a list of the cards least likely to be castable on curve (worst first), and a plain "N sources short on black". This is deterministic arithmetic with no AI. It also fills a gap in Add, which ranks lands by play rate rather than by what the mana base lacks.
 
@@ -247,7 +245,7 @@ Tell the player whether their lands can cast their spells: coloured sources agai
 
 Role counts now show in Deck stats (P1); what remains is P2 types.
 
-Placement: Deck stats ([`roadmap/deck-stats.md`](roadmap/deck-stats.md)).
+Placement: Deck stats.
 
 Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles next to what decks for this commander usually run ("12 ramp; Liesa decks average 10"). EDHcheck shows only generic percentages (ramp 8.8%, draw 19.1%); comparing against the commander's own decks is something only our corpus can do.
 
@@ -264,27 +262,6 @@ Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles n
 - [ ] Display per T045, before and after in Review
 - [ ] Wording distinguishes commander data from generic targets
 - [ ] Tests for the counting, which mirrors `card_roles`
-
----
-
-### T050: Start a deck from one commander
-
-**Priority:** MEDIUM | **Area:** Frontend / Product | **Status:** Not started
-
-The home page's "Sound familiar?" ribbon offers "+ Commander" for a player who just pulled a legend. It links to `/deck` for now, where they have to paste the commander as a one-line list; Add then fills the open slots. There is no way to pick a commander by name.
-
-**Files:**
-- `apps/web/src/components/home/situations.tsx` — the "+ Commander" link (`href: "/deck"`)
-- `apps/web/src/components/deck/deck-tool.tsx` — the decklist box and Analyze
-- `apps/web/src/components/search/site-search.tsx` — the existing card and commander search
-
-**Context:** A one-card deck already works: Add fills `openSlots` (room below 100 cards), so the gap is only the way in. Pick a commander, and the tool opens with that commander analyzed and Add ready. `/deck?start=build` already does this for the Deckbuilder (`buildFrom` in `deck-tool.tsx`); this task is the same start landing in Upgrade's Add. The commander's own page (`/commander/[slug]`) could offer the same.
-
-**Acceptance criteria:**
-- [ ] A commander picker (search by name, commander-legal only) that opens `/deck` with that commander analyzed
-- [ ] "+ Commander" in the ribbon points to it
-- [ ] Works on a phone at 390×844 without leaving the swipe budget
-- [ ] e2e: pick a commander, land in Add with open slots
 
 ---
 
@@ -357,7 +334,7 @@ Recommendation: 1 first, 2 when a real collection needs it, 3 only if 2 isn't en
 
 **Priority:** LOW | **Area:** Scoring | **Status:** Ruled 2026-10-05: owned only plus a buy list becomes the default. The data and contract shipped (contract v20); the deck tool keeps owned first until the buy list has a screen (T069)
 
-**Ruling (2026-10-05):** the collection is a filter, as decided on 2026-09-18. The default becomes owned only, with a separate "worth buying" list ([`roadmap/scoring-design.md`](roadmap/scoring-design.md), Mode A). Owned first stays shipped until T059 lands, and stays available afterwards only if the evaluation or live data shows players want it; tuning its boost waits until then.
+**Ruling (2026-10-05):** the collection is a filter, as decided on 2026-09-18. The default becomes owned only, with a separate "worth buying" list. Owned first stays shipped until T059 lands, and stays available afterwards only if the evaluation or live data shows players want it; tuning its boost waits until then.
 
 "Owned first" (contract v13) sorts owned cards as if they scored `app_config.ownership.firstBoost` (0.1) higher. On Liesa the top eight creatures to add span 0.78–0.87, so 0.1 puts almost any owned card ahead of nearly every top suggestion. That may be stronger than players want: an owned filler card can outrank a clearly better unowned one.
 
@@ -373,35 +350,16 @@ Either the 2026-09-22 work superseded the 2026-09-18 decision without it being r
 - `apps/web/src/lib/server/recs.ts` — where the setting is read
 
 **Acceptance criteria:**
-- [x] Owner rules on the conflict with T007's 2026-09-18 decision (2026-10-05); the ruling is recorded here, in T007 and in `scoring-design.md`
+- [x] Owner rules on the conflict with T007's 2026-09-18 decision (2026-10-05); the ruling is recorded here and in T007
 - [ ] Measure how far down owned cards are pulled up across several commanders and real collections
 - [ ] Pick a value (or a rule, e.g. a boost that shrinks with the score gap) and record why
 - [ ] Change it in `app_config` with a migration that updates only that key
 
 ---
 
-### T038: Start a collection by hand
-
-**Priority:** LOW | **Area:** Frontend / Collections | **Status:** Not started
-
-Editing by hand (contract v15) works only on a collection that already exists. With none, `/collection` shows "No collection yet" and links to `/collection/import`. A player with a handful of cards has no way in except making a file or a paste.
-
-**Files:**
-- `apps/web/src/components/collection/collection-view.tsx` — the empty state
-- `apps/web/src/components/collection/collection-edit.tsx`, `use-collection-editor.ts` — the edit mode and its writes
-- `packages/core/src/collection/` — `setCardQuantity` for a browser collection
-
-**Acceptance criteria:**
-- [ ] The empty state offers "Add cards by hand" beside the import
-- [ ] Signed in: the first added card creates the account collection through `set_collection_card_quantity` (check it accepts an account with no rows)
-- [ ] Signed out: the first added card creates a browser collection with the usual 7-day expiry
-- [ ] e2e covers starting from empty
-
----
-
 ## Data Layers and Scoring
 
-One pipeline in layers, then one scoring engine on top: [`roadmap/card-graph-plan.md`](roadmap/card-graph-plan.md) (data) and [`roadmap/scoring-design.md`](roadmap/scoring-design.md) (scoring). T053–T065 are built and released (PR #140, 2026-10-07; closed below), and derived commander pairs (T070) released 2026-10-08 (PR #142). What is open: the worker that runs the pipeline on a schedule (T066), dropping the retired functions (T067) and the review's follow-ups (T068), and the UI the sprint shelved (T069).
+One pipeline in layers, then one scoring engine on top. T053–T065 are built and released (PR #140, 2026-10-07; closed below), and derived commander pairs (T070) released 2026-10-08 (PR #142). What is open: the worker that runs the pipeline on a schedule (T066), dropping the retired functions (T067) and the review's follow-ups (T068), and the UI the sprint shelved (T069).
 
 ### T066: VPS worker
 
@@ -450,7 +408,7 @@ PR #139's review found these; the fixes in the PR itself are migration `20261007
 **Latency (release check, 2026-10-07, same deck, the previous and new builds interleaved):** adds 212/243 → 306/400 ms at p50/p95, cuts 123/209 → 188/288, swaps 252/286 → 283/326. The new per-request reads cost it, card pairs most (`serving_deck_affinity`: 174 ms and 253 KB for an add, 132 ms and 114 KB with no neighbours, timed from this PC):
 - [ ] Skip the card-pairs read where it can't change the result: cuts while `affinity.lowAffinityCuts` is off, swaps while their `deck` weight is 0
 - [ ] Skip `serving_commander_profile` while `skeleton.edhrecPrior` is off
-- [ ] Send an add only the pairs that point at its pool and neighbours, and each card's row once; or cache each card's corpus pairs for days, as `card-graph-plan.md` planned
+- [ ] Send an add only the pairs that point at its pool and neighbours, and each card's row once; or cache each card's corpus pairs for days
 
 **Storage (8 GB disk, 3.4 GB used before the release; measured locally, projected at 6× the decks):**
 - [x] Pairs that borrow from their partners hold 3.56M of 5.76M score rows (62%), and grow fastest: about 16M rows (2.4 GB) at 6× the decks, about 8.4 GB for the whole database. Built and released as derived pairs (T070, 2026-10-08)
@@ -459,10 +417,10 @@ PR #139's review found these; the fixes in the PR itself are migration `20261007
 - [ ] The global pair count's memory grows with the corpus (about 1.1 GB peak locally; a 1 GB counter alone at 6×): count in row blocks with a bounded top list per card, or raise `globalMinDecks` with the corpus; give the worker container a memory limit and a Node heap flag
 
 **Scoring and evaluation:**
-- [ ] Cuts rank by the hand-weighted cut score, not m(c | D − c) as `scoring-design.md` designs; either move them and gate it (cut precision@10), or record that cuts keep `scoreCuts`
+- [ ] Cuts rank by the hand-weighted cut score, not m(c | D − c); either move them and gate it (cut precision@10), or record that cuts keep `scoreCuts`
 - [ ] The gate's bucket rule compares with the baseline's own interval, not the paired change, so a significant drop in a small bucket can pass; judge each bucket on its paired difference
 - [ ] The evaluation's holdout hash (FNV-1a over sequential ids) clusters the random split; the evaluation ranks every deck as bracket 3 without the bracket facts; cut precision counts only planted cards; collection recall and the buy list aren't gated; nothing compares its TypeScript copy of the precompute arithmetic with the stored tables
-- [ ] The global pair lift barely shrinks rare cards (a third of kept corpus pairs have under 10 decks) and isn't release-aware; record the deviations from `card-graph-plan.md` "Statistics"
+- [ ] The global pair lift barely shrinks rare cards (a third of kept corpus pairs have under 10 decks) and isn't release-aware; record why it deviates
 - [ ] Owned twins: copies a built deck holds are matched per card, not pooled across the twin group (`availability.ts`)
 - [ ] The per-key pair pass picks keys by `commander_stats.computed_at`, which moves only when a key's aggregates do and is stamped at transaction start; drive it from the keys the commander pass merged
 
@@ -474,10 +432,10 @@ PR #139's review found these; the fixes in the PR itself are migration `20261007
 
 UI for what T059, T060, T063 and T065 built, gathered here when those closed. Shelved UI means custom components; plumbing, copy lines and plain admin lists were allowed and are built.
 
-- **Collection mode (T059):** the built control and whole-deck coverage (conflicts, stand-ins, browser quantities) are built, not released. Buy lists are shelved (owner, 2026-10-12; buy side shows placeholders). Remaining features: per-suggestion ownership labels, builder/saved-page coverage and the deck tool's default from 'first' to 'only' (T037, parked). Active status: [`ui-overhaul/STATE.md`](ui-overhaul/STATE.md).
+- **Collection mode (T059):** the built control and whole-deck coverage (conflicts, stand-ins, browser quantities) are built, not released. Buy lists are shelved (owner, 2026-10-12; buy side shows placeholders). Remaining features: per-suggestion ownership labels, builder/saved-page coverage and the deck tool's default from 'first' to 'only' (T037, parked).
 - **Swap with nothing owned:** the swipe rater says "No replacements do the same job" for every empty list; the server already says why (`SwapResult.emptyReason`: `NOTHING_OWNED_FITS`, `NO_TAGS_ON_TARGET`, `NO_CANDIDATES`), and with a collection the buy list is where to send the player
-- **Bracket rules and combos (T060):** the "complete a combo" group, `completesOverBracket` on a suggestion, `DeckAnalysis.combos` and `bracketSignals` (placement: Deck stats, [`roadmap/deck-stats.md`](roadmap/deck-stats.md)); credit and link Commander Spellbook wherever combos show
-- **Build mode (T063):** the commander and bracket picker that starts a build (T050's picker on `/deck?start=build`, which opens an empty deckbuilder today), the built deck grouped like Add with each card's score and origin, the basics and land target, the feasibility report ("Your collection fills 68 of 99. Card advantage is 9 short") with the value-fill button, its running total and price date, "complete a combo" entries, the build's bracket estimate, and saving the result as a deck
+- **Bracket rules and combos (T060):** the "complete a combo" group, `completesOverBracket` on a suggestion, `DeckAnalysis.combos` and `bracketSignals` (placement: Deck stats); credit and link Commander Spellbook wherever combos show
+- **Build mode (T063):** built: the commander picker on `/deck?start=build` (owned commanders first), the built deck by category, the basics to gather, the feasibility report, a bracket rebuild, fitting a pasted list to the collection, copy and download (T050). Open: each card's score and origin, "complete a combo" entries, the build's bracket estimate, saving a build directly, and build accept-rate events. The value fill waits with the buy side
 - **Accept rate (T065):** a built deck records as mode `build` once build mode has a screen
 
 **Acceptance criteria:**
@@ -515,13 +473,13 @@ The VPS container holds `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS across t
 **Files:**
 - `services/search-api/internal/config/config.go` — `SupabaseServiceKey`
 - `supabase/migrations/20260922000300_deck_crawl_corpus.sql` — the `crawl_*` functions and their grants
-- `deploy/README.md`, `roadmap/deck-crawl.md` — the secrets tables
+- `deploy/README.md` — the secrets tables
 
 **Acceptance criteria:**
 - [ ] A Postgres role granted execute on the `crawl_*` functions and nothing else
 - [ ] A JWT minted for that role (Supabase's secret keys all map to `service_role`), placed on the VPS in place of the service-role key
 - [ ] `TestLiveStoreRoundTrip` passes with the new role, and a direct table read with it is refused
-- [ ] The secrets tables in `deploy/README.md` and `deck-crawl.md` updated
+- [ ] The secrets table in `deploy/README.md` updated
 
 ---
 
@@ -774,6 +732,8 @@ One line each, kept so the gaps in the numbering have a reason. Do not reuse the
 - **T060** Bracket rules and combos — closed 2026-10-07: released (contract v21); estimator agreement and Spellbook on hosted are T068, the UI T069.
 - **T061** EDHREC prior by sample size — closed 2026-10-07: on in production (cap 100); adds recall@20 17.2% → 25.0% on the time split.
 - **T062** Learned skeleton — closed 2026-10-07: curve and land counts learned and used by builds; the curve as an add score, curve-based cuts and the EDHREC profile prior failed the gate and ship switched off.
+- **T038** Start a collection by hand — closed 2026-10-12: the empty collection offers adding cards by name; the first card creates the browser or account collection.
+- **T050** Start a deck from one commander — closed 2026-10-12: `/deck?start=build` picks a commander (owned ones first with a collection) and builds a deck for it.
 - **T063** Build a deck from a commander and a bracket — closed 2026-10-07: `POST /api/recs/build` live (contract v24); 38.6% overlap with held-out decks. UI is T069.
 - **T064** Deck affinity from card pairs — closed 2026-10-07: pairs built on hosted (800,624 per commander, 485,386 corpus-wide); `deck` weighs 0.1 in adds. Latency follow-ups are T068.
 - **T065** Live accept rate — closed 2026-10-07: `rec_events` live, written by the server only; build events wait for build mode's screen (T069).
