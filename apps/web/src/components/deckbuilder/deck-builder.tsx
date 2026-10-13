@@ -12,7 +12,7 @@ import { useDeckStats } from "@/components/deck/deck-stats/use-deck-stats";
 import { SwapSheet } from "@/components/deck/swap-sheet";
 import { formatAsOf, formatUsd } from "@/lib/format";
 import { CardSearchPanel, type BuilderCollection } from "./card-search-panel";
-import { DeckRow } from "./deck-row";
+import { CardPlate } from "@/components/cards/card-plate";
 import type { DeckBuilderState } from "./use-deck-builder";
 
 /** Average mana value to one decimal: finer than that is noise at deck scale. */
@@ -150,7 +150,7 @@ export function DeckBuilder({
             ) : (
               <ul aria-label="Commanders" className="flex flex-col gap-1.5">
                 {builder.commanders.map((card) => (
-                  <DeckRow key={card.id} card={card} quantity={1} commander onRemove={() => builder.remove(card)} />
+                  <CardPlate key={card.id} card={card} quantity={1} commander onRemove={() => builder.remove(card)} />
                 ))}
               </ul>
             )}
@@ -162,7 +162,7 @@ export function DeckBuilder({
               </h2>
               <ul aria-label={groupHeading(group.label)} className="flex flex-col gap-1.5">
                 {byCost(group.entries).map(({ card, quantity }) => (
-                  <DeckRow
+                  <CardPlate
                     key={card.id}
                     card={card}
                     quantity={quantity}

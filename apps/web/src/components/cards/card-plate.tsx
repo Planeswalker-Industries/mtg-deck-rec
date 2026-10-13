@@ -17,7 +17,7 @@ const PREVIEW_WIDTH_PX = 244;
 const PREVIEW_HEIGHT_PX = Math.round((PREVIEW_WIDTH_PX * 680) / 488);
 /** Space between the row and the floating card, and between the card and the window edge. */
 const PREVIEW_GAP_PX = 12;
-/** The row's name-plate area, pressable either way (enlarge, or select). */
+/** The plate's pressable area, either way (enlarge, or select). */
 const PLATE_AREA = "relative flex h-full min-w-0 items-center gap-2 pr-2 pl-3";
 
 /** A pointer passing over the list shouldn't flicker a card up for every row it crosses. */
@@ -59,12 +59,13 @@ function RowButton({ label, onClick, tone, children }: { label: string; onClick:
 }
 
 /**
- * One card in the decklist, as a strip (the name plate): the name and its cost over the card's art, which fades in from
- * the right, and what can be done to it at the end. Pointing at the row (or focusing it) floats the whole card beside
- * it; pressing it enlarges the card, or selects it where the row is a choice (`onSelect`). Without actions it is a
- * read-only plate, as in Done's decklist. `mark` edges it in the job's colour: a card cut (struck through) or added.
+ * A card plate: one card as a strip, in the deckbuilder's decklist and on Done. The name and its cost sit over the
+ * card's art, which fades in from the right, and what can be done to it sits at the end. Pointing at the plate (or
+ * focusing it) floats the whole card beside it; pressing it enlarges the card, or selects it where the plate is a choice
+ * (`onSelect`). Without actions it is read-only, as on Done. `mark` edges it in the job's colour: a card cut (struck
+ * through) or added.
  */
-export function DeckRow({
+export function CardPlate({
   card,
   quantity,
   commander = false,

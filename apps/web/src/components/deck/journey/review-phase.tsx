@@ -8,7 +8,7 @@ import { deckDiff, deckStats, type DeckStatsReport } from "@mtg/core/journey";
 import { groupDeck, type DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
-import { DeckRow } from "@/components/deckbuilder/deck-row";
+import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
@@ -97,7 +97,7 @@ function changesOf(journey: DeckJourney): Change[] {
 
 /**
  * Done: the round's result, shown rather than told. The numbers that moved (before → after, green when they moved
- * toward the commander's targets, red when away), every change as name plates, Out beside In, and the finished
+ * toward the commander's targets, red when away), every change as card plates, Out beside In, and the finished
  * decklist laid out by type on the plates the deck editor uses. From here the player saves, copies or downloads the
  * result, runs it through the journey again, or starts over.
  */
@@ -173,7 +173,7 @@ export function ReviewPhase({
   );
   const plates = (entries: readonly DeckEntry[], commander = false) =>
     byCost(entries).map(({ card, quantity }) => (
-      <DeckRow key={card.id} card={card} quantity={quantity} commander={commander} mark={addedIds.has(card.id) ? "add" : undefined} />
+      <CardPlate key={card.id} card={card} quantity={quantity} commander={commander} mark={addedIds.has(card.id) ? "add" : undefined} />
     ));
 
   return (
@@ -228,7 +228,7 @@ export function ReviewPhase({
               <h4 aria-hidden className="text-xs font-semibold text-cut">Out</h4>
               <ul className="flex flex-col gap-1.5">
                 {outs.map(({ card, quantity }) => (
-                  <DeckRow key={card.id} card={card} quantity={quantity} mark="cut" />
+                  <CardPlate key={card.id} card={card} quantity={quantity} mark="cut" />
                 ))}
               </ul>
             </section>
@@ -236,7 +236,7 @@ export function ReviewPhase({
               <h4 aria-hidden className="text-xs font-semibold text-add">In</h4>
               <ul aria-label="Cards put in" className="flex flex-col gap-1.5">
                 {ins.map(({ card, quantity }) => (
-                  <DeckRow key={card.id} card={card} quantity={quantity} mark="add" />
+                  <CardPlate key={card.id} card={card} quantity={quantity} mark="add" />
                 ))}
               </ul>
             </section>

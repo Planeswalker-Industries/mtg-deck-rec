@@ -51,6 +51,6 @@ Not deleted; picked up only once items 1–7 are done or the owner asks.
 ## Notes
 
 - Owner refocus 2026-10-12: the four goals, buy list shelved, paste-and-swipe stays the entry. Owner asked for items 1–7 to be implemented with check-ins only for clarification.
-- Owner review 2026-10-12: the play mat reads as a stray colour, so it is a plain oak panel; the paste screen offers two paths and a phone layout; the collection prompt shows on every step; Done shows the result (before → after, changes with a preview, the decklist on name plates) instead of describing it.
+- Owner review 2026-10-12: the play mat reads as a stray colour, so it is a plain oak panel; the paste screen offers two paths and a phone layout; the collection prompt shows on every step; Done shows the result (before → after, changes with a preview, the decklist on card plates) instead of describing it.
 - Owner clarification (2026-10-10): coverage text overlapping colour icons is acceptable.
 - Schema and contract changes are presented to the owner before they are built.
