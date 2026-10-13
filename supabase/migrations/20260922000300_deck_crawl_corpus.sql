@@ -2,8 +2,8 @@
 --
 -- The Go API on the VPS (services/search-api) scrapes each source on a daily trigger from the web app and writes
 -- decklists here. Moxfield is built but blocked (Cloudflare WAF, 2026-09-22); Archidekt is active. This schema is
--- private on purpose: third-party decklists never reach the API roles (same stance as the card-graph plan's `corpus`
--- schema), and no app read path touches it yet. Aggregating these decks into the popularity metrics is the follow-up
+-- private on purpose: third-party decklists never reach the API roles (the same stance as
+-- `corpus`), and no app read path touches it yet. Aggregating these decks into the popularity metrics is the follow-up
 -- milestone, which is why the rows live at oracle level (commanders + cards as oracle ids with quantities) with
 -- change detection by content hash.
 --

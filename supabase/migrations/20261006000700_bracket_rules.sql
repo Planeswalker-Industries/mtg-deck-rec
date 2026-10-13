@@ -1,4 +1,4 @@
--- Bracket rules and combos (T060; docs/roadmap/scoring-design.md, "Bracket rules" and "Combos").
+-- Bracket rules and combos (T060).
 --
 -- * app_config.brackets (public): the Tagger tags that mark mass land denial and extra turns (planeswalkers left out:
 --   their land denial or extra turn is an ultimate), the bracket mass land denial is allowed from, the extra-turn cards

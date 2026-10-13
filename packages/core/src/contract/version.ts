@@ -99,8 +99,8 @@
  * its main cards are kept) and `fill` ('none' or 'value'), and returns BuildResult: the cards grouped like adds
  * (BuildCard: an AddSuggestion with its origin, kept, pick or fill), the basic lands, the land target, "complete a
  * combo" entries, the build's bracket estimate and signals, the feasibility report (slots filled from the collection,
- * by the value fill, still open, roles still short) and, with the value fill, its cost. The design named it
- * BuildApi.build; it sits on RecsApi because it shares the recommendation routes' transport. Additive.
+ * by the value fill, still open, roles still short) and, with the value fill, its cost. It sits on
+ * RecsApi because it shares the recommendation routes' transport. Additive.
  *
  * v25 (2026-10-06): the live accept rate (T065). ActionsApi.recordRecEvent records a suggestion list shown (RecEvent
  * kind 'shown', its cards in order, under a client-generated batch id) and each card from it taken or passed on

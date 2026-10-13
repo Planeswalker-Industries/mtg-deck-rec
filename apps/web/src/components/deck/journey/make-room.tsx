@@ -22,7 +22,7 @@ export interface RoomFocus {
 const NO_FOCUS = "none";
 
 /**
- * "Make room for…": the player names an area the deck lacks, and Cut offers cards to cut for it (goal 4). The roles are
+ * "Make room for…": the player names an area the deck lacks, and Cut offers cards to cut for it. The roles are
  * Deck stats' tracked roles, each with its count against the target.
  */
 export function MakeRoomPicker({

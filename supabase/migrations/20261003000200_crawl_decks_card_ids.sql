@@ -4,7 +4,7 @@
 -- `cards` on oracle_id through a text/uuid cast, and casting the indexed side (`cards.oracle_id::text = ...`) hides
 -- cards_oracle_id_key: crawl_seed_commanders read the whole cards heap and sorted it to disk on every run. Cold, that
 -- outran PostgREST's 8 s statement_timeout, so hosted run 8 (2026-10-03) failed on its first step and the queue was
--- never seeded. card-graph-plan.md always had decks as card ids; this brings the crawl table in line.
+-- never seeded. Decks elsewhere are card ids; this brings the crawl table in line.
 --
 -- Now `commander_card_ids` is int[] (sorted) and `cards` is {card id: quantity}. The lookup happens once, on write, in
 -- crawl_upsert_decks; reads join cards by primary key or not at all (the seed's held count needs no join). The crawler

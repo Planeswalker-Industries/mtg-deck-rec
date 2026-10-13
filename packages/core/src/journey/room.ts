@@ -35,7 +35,7 @@ export function roomNeeded(roles: readonly RoomRole[], focusRoleId: string): num
 }
 
 /**
- * The cards to offer as cuts when the player wants room for a role (goal 4: cut to shore up an area the deck lacks).
+ * The cards to offer as cuts when the player wants room for a role.
  * Never a land, and never a card that fills that role. Ranked without weights, in two tiers:
  * 1. cards on the cut list, strongest cut first (the server's own ranking);
  * 2. cards whose every tracked role is over its target (the deck has more of that than it needs), dearest first.

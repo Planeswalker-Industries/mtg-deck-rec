@@ -87,7 +87,7 @@ function FitChanges({ request, result }: { request: BuildRequest; result: BuildR
 }
 
 /**
- * A deck built for one commander (goal 2): what the build picked, grouped like the deck tool's lists, the basic lands
+ * A deck built for one commander: what the build picked, grouped like the deck tool's lists, the basic lands
  * to gather, and what it couldn't fill. From here the player goes through it card by card (Upgrade), edits it in the
  * Deckbuilder, or takes it away as text. Buying cards for the open slots is shelved: a placeholder says so.
  * A pasted list fitted to the collection also shows what went out of the list and what came in.

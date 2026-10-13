@@ -49,7 +49,7 @@ export function CollectionNudge({ href, step }: { href: Route; step: keyof typeo
 }
 
 /**
- * Done's offer for a player who has a collection: fit the round's deck to it (goal 1), keeping the cards they own and
+ * Done's offer for a player who has a collection: fit the round's deck to it, keeping the cards they own and
  * building the rest from the collection.
  */
 export function CollectionFitOffer({ onFit, disabled = false }: { onFit: () => void; disabled?: boolean }) {

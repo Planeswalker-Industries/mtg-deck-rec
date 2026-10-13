@@ -1,8 +1,7 @@
 -- Published statistics from other sites (EDHREC first), loaded by `import:edhrec` from commander pages saved by a
 -- local crawl script. A statistics source, never a deck source: EDHREC's numbers come from the same Archidekt and
 -- Moxfield decks we crawl, so they are kept apart from our own deck counts and never added to them.
--- docs/roadmap/card-graph-plan.md ("External statistics") says how they are meant to be used: a prior for commanders
--- with too few decks of our own, and a benchmark. Nothing reads them yet.
+-- They are meant as a prior for commanders with too few decks of our own, and as a benchmark. Nothing reads them yet.
 --
 -- Commanders are keyed by their own cards rather than by commander_keys: that table holds the commanders our corpus
 -- has decks for (and commander pages are served from it), while EDHREC covers every commander it has seen.

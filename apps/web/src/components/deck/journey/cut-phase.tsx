@@ -43,7 +43,7 @@ export function CutPhase({
   cutState: Async<CutResult>;
   view: "swipe" | "list";
   deckGroups: DeckGroups;
-  /** Making room for a role the deck lacks (goal 4); absent where Deck stats has no targets. */
+  /** Making room for a role the deck lacks; absent where Deck stats has no targets. */
   room?: {
     focus: RoomFocus | null;
     setFocus: (focus: RoomFocus | null) => void;

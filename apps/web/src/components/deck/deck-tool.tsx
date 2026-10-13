@@ -181,7 +181,7 @@ export function DeckTool() {
     if (path === "online") tool.changeCollectionMode("off");
     else if (tool.collectionMode === "off") tool.changeCollectionMode("only");
   }
-  /** The role the player is making room for in Cut (goal 4); a new deck starts without one. */
+  /** The role the player is making room for in Cut; a new deck starts without one. */
   const [roomFor, setRoomFor] = useState<RoomFocus | null>(null);
   const [roomRound, setRoomRound] = useState(tool.round);
   if (roomRound !== tool.round) {
@@ -254,7 +254,7 @@ export function DeckTool() {
     if (stat.value > Math.round(stat.target)) {
       return journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
     }
-    // A full deck short of a role makes room for it first: Cut offers cards that don't fill it (goal 4).
+    // A full deck short of a role makes room for it first: Cut offers cards that don't fill it.
     if (journey.openSlots === 0 && stat.group === "roles" && journey.stepper.canOpen("cut")) {
       return {
         label: `Make room for ${stat.label.toLowerCase()}`,

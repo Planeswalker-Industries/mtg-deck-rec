@@ -1,4 +1,4 @@
--- The offline evaluation's settings (T058; docs/roadmap/scoring-design.md, "Evaluation"), in app_config.scoring.eval:
+-- The offline evaluation's settings (T058), in app_config.scoring.eval:
 -- the holdout split, what each test hides or plants, and the gate. `cli eval:holdout` is the only reader.
 --
 -- seed fixes the split, the hidden cards and every bootstrap resample. stapleBaselineRate decides which hits count as
