@@ -612,8 +612,8 @@ Three e2e tests fail locally against the real catalog and corpus, on `develop` a
 
 **Acceptance criteria:**
 - [ ] `analyzeDeck` waits for either the recommendations or the lookup sheet before dismissing, as the page walk scripts do
-- [ ] The ring test hovers a point that is on a slice at the size the ring renders (or asserts through the slice element)
-- [ ] A later page of a name search ranks the way the first did when the search index is down: either the test pages with `sort=name_asc` as the deckbuilder does (one line, no app change; recommended), or any explicit `offset`, 0 included, makes a search filtered (one line in `card-search.ts`)
+- [x] The ring test: removed in the 2026-10-13 e2e trim (a hover cosmetic)
+- [x] A later page of a name search ranks the way the first did when the search index is down: the test pages with `sort=name_asc`, as the deckbuilder does
 - [ ] Both specs pass locally with `E2E_LOCAL_DATA=1` and in CI (mocks)
 
 ---

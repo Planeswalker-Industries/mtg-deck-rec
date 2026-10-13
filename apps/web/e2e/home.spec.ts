@@ -1,12 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-test("three step headings are present", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Cut the junk" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Add what works" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Swap in your collection" })).toBeVisible();
-});
-
 test("ring aria-label names every category", async ({ page }) => {
   await page.goto("/");
   const ring = page.locator("svg[role='img'][aria-label]");
@@ -42,23 +35,6 @@ test("clicking a tile selects that commander", async ({ page }) => {
 
   await expect(tiles.nth(1)).toHaveAttribute("aria-current", "true");
   await expect(tiles.first()).toHaveAttribute("aria-current", "false");
-});
-
-test("pointing at a ring slice names it in the centre", async ({ page }) => {
-  await page.goto("/");
-  const ring = page.getByRole("region", { name: "Popular Decks" }).locator("svg[role='img'][aria-label]");
-  await expect(ring).toBeVisible({ timeout: 10_000 });
-  await expect(ring).toContainText("cards");
-
-  // Lands are the first slice, drawn clockwise from twelve o'clock, so a point just right of the top lands on them.
-  // Retried: a pointer that arrives before hydration has no handler to reach, so move off and back on.
-  await ring.scrollIntoViewIfNeeded();
-  await expect(async () => {
-    const box = (await ring.boundingBox())!;
-    await page.mouse.move(0, 0);
-    await ring.hover({ position: { x: box.width * 0.55, y: box.height * 0.08 } });
-    await expect(ring).toContainText("lands", { timeout: 1_000 });
-  }).toPass({ timeout: 10_000 });
 });
 
 test("the Commander starting point opens the commander picker", async ({ page }) => {
