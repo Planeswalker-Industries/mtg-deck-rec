@@ -7,7 +7,7 @@ import { getApis } from "@/lib/api/client";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 
 /**
- * What to build: the commanders and the bracket, and, when fitting a pasted list to the collection (D-03), the list
+ * What to build: the commanders and the bracket, and, when fitting a pasted list to the collection, the list
  * itself (to show what changed) and the cards of it the collection holds, which the build keeps.
  */
 export interface BuildRequest {
@@ -53,7 +53,7 @@ export function buildDecklist(result: BuildResult): string {
 
 /**
  * Builds a deck for a commander (`RecsApi.build`): from the collection's cards when there is one, from every card
- * when there isn't. Open slots stay open (`fill: 'none'`): the buy side is shelved (D-12). A newer build drops the
+ * when there isn't. Open slots stay open (`fill: 'none'`): the buy side is shelved. A newer build drops the
  * answer of an older one.
  */
 export function useDeckBuild(ownership: OwnershipInput | null) {

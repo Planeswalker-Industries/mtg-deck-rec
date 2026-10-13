@@ -2,7 +2,7 @@ import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
 import { commanderShare, type CorpusThresholds } from './corpus';
 
 /**
- * The learned skeleton (T062; scoring-design.md, "`curve`"): how many nonland cards a commander's decks run at each
+ * The learned skeleton (T062): how many nonland cards a commander's decks run at each
  * mana value, how many lands and basic lands, and the shortfall a card's mana value fills against that curve.
  */
 

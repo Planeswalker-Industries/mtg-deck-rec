@@ -61,7 +61,7 @@ Deck
 1 Arcane Signet
 …`;
 
-/** Basic lands' type lines start so ("Basic Land", "Basic Snow Land"): a fitted list keeps them, as every player owns them (D-04). */
+/** Basic lands' type lines start so ("Basic Land", "Basic Snow Land"): a fitted list keeps them, as every player owns them. */
 const BASIC_TYPE_PREFIX = "Basic ";
 
 /** Tall enough to show a commander, the deck heading and a few cards of the placeholder before it scrolls. */
@@ -453,8 +453,8 @@ export function DeckTool() {
   }
 
   /**
-   * Fits a list to the collection (goal 1, D-03): the list fixes the commander and the bracket, its owned cards (and its
-   * basic lands, assumed owned, D-04) are kept, and the build fills the rest from the collection. `text` is a list other
+   * Fits a list to the collection: the list fixes the commander and the bracket, its owned cards (and its
+   * basic lands, assumed owned) are kept, and the build fills the rest from the collection. `text` is a list other
    * than the box's (Done's result); the box's list is read first either way, for its cards.
    */
   async function fitToCollection(text?: string) {

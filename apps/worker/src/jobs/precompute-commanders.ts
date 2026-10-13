@@ -5,7 +5,7 @@ import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-ru
 import { precomputeScores } from './precompute-scores';
 
 /**
- * The precompute worker's two corpus passes (T055, card-graph-plan.md "Precompute worker"):
+ * The precompute worker's two corpus passes (T055):
  *
  * - per commander, after each collation: the commanders whose decks changed (corpus.dirty_commanders, filled by the
  *   collator's triggers) get their commander_keys, commander_stats and commander_card_stats rebuilt from their own

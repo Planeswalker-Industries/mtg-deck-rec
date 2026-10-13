@@ -1,5 +1,5 @@
 /**
- * Pure pieces of the offline evaluation (T058; scoring-design.md, "Evaluation"): a seeded generator, the holdout split,
+ * Pure pieces of the offline evaluation (T058): a seeded generator, the holdout split,
  * the metrics and the bootstrap. The worker's `eval:holdout` job loads the data and calls these, so everything that
  * decides a gate result is tested here.
  */
@@ -168,7 +168,7 @@ export interface GateResult {
 const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 
 /**
- * scoring-design.md's gate: overall recall@k rises with a 95% interval above zero, no bucket falls by more than its own
+ * The evaluation's gate: overall recall@k rises with a 95% interval above zero, no bucket falls by more than its own
  * interval's half-width, and the Sol Ring rate rises by no more than the tolerance. The regression fixtures are the
  * fourth check, run separately (`yarn workspace @mtg/web regress`).
  */

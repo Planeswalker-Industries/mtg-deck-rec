@@ -1,7 +1,7 @@
 import { COMMANDER_DECK_SIZE, isValidPartnerPair, type CommanderCardFacts } from './validate';
 
 /**
- * The one rule a deck passes to count in the corpus statistics (docs/roadmap/card-graph-plan.md, "corpus"): a legal
+ * The one rule a deck passes to count in the corpus statistics: a legal
  * commander or a legal pair, every card known to the catalog and inside the commanders' colour identity, exactly 100
  * cards. The collator applies it to every deck source, crawled and players' alike, so each counts decks the same way.
  *

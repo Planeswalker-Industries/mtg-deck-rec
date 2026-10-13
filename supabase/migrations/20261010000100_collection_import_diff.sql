@@ -1,4 +1,7 @@
--- Preserve untouched identities, physical row versions and provenance.
+-- Applies the caller's import in one transaction, touching only the entries that change: replace deletes entries the
+-- import doesn't name and sets the rest to the imported quantity, merge adds quantities. Unchanged entries keep their
+-- row, timestamp and import id. Repeats of the same entry are summed, unknown cards are skipped, and a printing id
+-- that doesn't belong to its card is dropped (the card still counts). Returns the collection totals.
 create or replace function public.commit_collection_import(p_import_id bigint)
 returns jsonb
 language plpgsql
@@ -6,7 +9,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  -- Existing per-entry copy cap and fallback entry limit; no limit changes.
+  -- Most copies one entry holds, and the entry limit when app_config sets none.
   quantity_cap_copies constant integer := 100000;
   default_max_entries_count constant integer := 100000;
   uid uuid := auth.uid();
@@ -65,8 +68,7 @@ begin
     where ci.user_id = uid and ci.card_id = n.card_id
       and ci.printing_id is not distinct from n.printing_id
       and ci.finish = n.finish and ci.condition = n.condition and ci.lang = n.lang
-  )
-  on conflict do nothing;
+  );
   if (select count(*) from public.collection_items ci where ci.user_id = uid) > max_entries then
     raise exception 'COLLECTION_TOO_LARGE';
   end if;

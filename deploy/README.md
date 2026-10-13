@@ -52,7 +52,7 @@ restart.
 it and the API is told to present it. Changing it means changing it in both places and restarting both. The API
 refuses to start if the two tokens match, or if any of the three is empty.
 
-The **deck crawls** ([`docs/roadmap/deck-crawl.md`](../docs/roadmap/deck-crawl.md)) add three more to the search API,
+The **deck crawls** add three more to the search API,
 all or nothing — with any of them empty the crawl endpoints answer 503 and search is unaffected:
 
 | Secret | Held by | Can |
@@ -74,8 +74,59 @@ curl http://127.0.0.1:8090/v1/health          # {"ok":true} — the stack works
 curl https://<host>/v1/health                 # {"ok":true} — and the proxy routes to it
 ```
 
-Then build the index, and point Vercel and the sync workflow at it. Both steps are in
-[`docs/roadmap/typesense-ops.md`](../docs/roadmap/typesense-ops.md), which is the runbook this summarises.
+search-api publishes **127.0.0.1:8090** only. Keep the `127.0.0.1:` prefix: Docker's iptables rules bypass `ufw`, so
+`0.0.0.0:8090` would be reachable from the internet whatever the firewall says. Put TLS in front of it with a proxy on
+the host (Caddy: `search.example.com { reverse_proxy 127.0.0.1:8090 }`), or with Traefik through the labels the
+compose file carries (`TRAEFIK_ENABLE=true`, `TRAEFIK_EXTERNAL=true`, `SEARCH_API_HOST`, and `TRAEFIK_NETWORK` if
+Traefik's network has another name; both flags are needed). On a panel, use the section below instead.
+
+### Build the index
+
+Actions → **Search index** → *Run workflow* with **rebuild** ticked. Over the GitHub API (a fine-grained token with
+Actions: read and write):
+
+```
+POST https://api.github.com/repos/Planeswalker-Industries/mtg-deck-rec/actions/workflows/search-index.yml/dispatches
+{ "ref": "develop", "inputs": { "rebuild": "true" } }
+```
+
+`"true"` is a string: `workflow_dispatch` inputs are strings over the API. A `204` means it started. Or by hand:
+`SEARCH_API_URL=https://<host> SEARCH_API_ADMIN_TOKEN=... yarn workspace @mtg/worker cli:hosted sync:typesense --rebuild`.
+
+### Point things at it
+
+| Where | Variables |
+|---|---|
+| Vercel (Production **and** Preview) | `SEARCH_API_URL`, `SEARCH_API_TOKEN` |
+| GitHub Actions secrets (the daily sync) | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
+| The VPS worker | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
+| `apps/worker/.env.hosted` | `SEARCH_API_URL`, `SEARCH_API_ADMIN_TOKEN` |
+
+Unset anywhere is a working configuration: that side reads Postgres. **A generated `*.sslip.io` domain can change when
+Dokploy recreates the service**; update every row when it does, or the stale ones get the proxy's plain
+`404 page not found`.
+
+### Keeping it in step
+
+Triggers write each changed document's key into `public.search_index_queue`; nothing in Postgres talks to Typesense.
+The queue drains after each finished sync (`finishRun`), in the daily workflow, and by hand with
+`cli:hosted sync:typesense`. Nothing in the index is a source of truth, so there are no backups: losing it costs one
+`--rebuild`.
+
+| Situation | Do |
+|---|---|
+| Queue growing, not draining | Run the **Search index** workflow without *rebuild* (or `cli:hosted sync:typesense`) and read the error. It stops rather than looping. |
+| Results stale or wrong | `--rebuild`. Safe any time: it builds a versioned collection and moves the alias only when complete. |
+| A field added in `@mtg/core/search` | `--rebuild`; a drain cannot add a field. |
+| Disk or memory filling up | `--rebuild` drops every stale collection version. `GET /collections` should show exactly four. |
+| Upgrading Typesense | Bump the tag in `deploy/typesense/docker-compose.yml`, `docker compose up -d`, then `--rebuild`. |
+| `502` from the API, both containers healthy | Typesense answered with an error; `docker compose logs search-api` names it. |
+| The API won't start | It refuses an empty key or token, or two identical tokens, and says which. |
+| The index is empty after a redeploy | A re-cloned repo replaced the `./data` bind mount. Set `TYPESENSE_DATA_DIR` outside the clone, then `--rebuild`. |
+| The VPS is down | Nothing breaks: every read falls back to Postgres. Rebuild when it's back. |
+
+Checks: `yarn workspace @mtg/web tsx scripts/search-index-check.ts` (the app survives a broken index) and
+`yarn workspace @mtg/web tsx --env-file=.env.local scripts/search-parity-check.ts` (the index agrees with Postgres).
 
 ## On Dokploy: use `deploy/dokploy/`
 
@@ -174,7 +225,9 @@ Typesense publishes nothing at all, so it takes no host port.
 
 [`docker-compose.search.yml`](../docker-compose.search.yml) at the repo root runs both services together on
 56325 and 56326. There is no panel to satisfy on a laptop and you always want both, so one `up` is the right shape
-there — the split exists for how the VPS deploys, not for how the stack works.
+there — the split exists for how the VPS deploys, not for how the stack works. After
+`cli sync:typesense --rebuild`, set `SEARCH_API_URL=http://localhost:56326` and `SEARCH_API_TOKEN=mtg-local-read` in
+`apps/web/.env.local`; leave them out to work against Postgres alone, as CI does.
 
 ## The worker
 

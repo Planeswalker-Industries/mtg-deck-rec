@@ -8,7 +8,7 @@ name: Search index
 #
 # Triggerable three ways:
 #   * the Actions tab, "Run workflow"
-#   * the GitHub API, which is what makes it a Postman request (see docs/roadmap/typesense-ops.md)
+#   * the GitHub API, which is what makes it a Postman request (see deploy/README.md)
 #   * `gh workflow run search-index.yml -f rebuild=true`
 #
 # Secrets (the same two the daily syncs use):

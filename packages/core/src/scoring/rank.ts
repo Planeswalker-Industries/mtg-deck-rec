@@ -192,7 +192,7 @@ function onceEach<T extends { card: CardSummary }>(sorted: readonly T[]): T[] {
 }
 
 /**
- * The buy list (scoring-design.md, "Mode A"): unowned cards scoring at least `buyMargin` above the best card the
+ * The buy list: unowned cards scoring at least `buyMargin` above the best card the
  * collection supplies for the same slot (0 when it supplies none), ranked by gain per dollar with prices under the floor
  * counted as the floor. Cards without a price come after priced ones, by gain.
  */
@@ -506,7 +506,7 @@ export function rankAdds({
 }
 
 /**
- * "Complete a combo" (scoring-design.md, "Combos"): the combos the deck is one named card short of that the bracket
+ * "Complete a combo": the combos the deck is one named card short of that the bracket
  * allows, one entry per missing card (its best combo), ordered by what the combo does and then by the missing card's
  * score as an add. In 'only' mode the collection has to supply the missing card.
  */

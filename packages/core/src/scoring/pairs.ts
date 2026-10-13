@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Card pairs (T064; docs/roadmap/card-graph-plan.md, "Statistics"): which cards decks run together, per commander key
+ * Card pairs (T064): which cards decks run together, per commander key
  * and over the whole corpus. Counted in memory by the precompute worker and the evaluation alike, from these pure
  * functions.
  *

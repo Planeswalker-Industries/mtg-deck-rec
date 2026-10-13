@@ -41,7 +41,7 @@ import {
 import { blendScore } from './swap';
 
 /**
- * Build a deck from a commander and a bracket (T063; scoring-design.md, "Mode C"). A pure function over loaded rows, so
+ * Build a deck from a commander and a bracket (T063). A pure function over loaded rows, so
  * the app, the regression fixtures and the offline evaluation all build with the same code:
  *
  * 1. Skeleton: the land and basic land counts the commander's decks run (a typical count for its colours until they
