@@ -5,15 +5,16 @@ import Link from "next/link";
 import type { Route } from "next";
 import { Plus } from "lucide-react";
 import { cn } from "cn";
+import { BUILD_DECK_HREF } from "@/lib/constants";
 
 /**
  * Where players start from, in their own words, and what to bring. Each cell turns over on hover (or keyboard focus)
- * to show the action, marked with the deck tool's Add symbol, and is a link to it. A commander starts in the deck tool
- * too, pasted on its own.
+ * to show the action, marked with the deck tool's Add symbol, and is a link to it. A commander opens the deck tool's
+ * commander picker, which builds a deck for it.
  */
 const SITUATIONS: { said: string; action: string; href: Route }[] = [
   { said: "Found a great deck online!", action: "Decklist", href: "/deck" },
-  { said: "Just pulled a cool new Commander!", action: "Commander", href: "/deck" },
+  { said: "Just pulled a cool new Commander!", action: "Commander", href: BUILD_DECK_HREF as Route },
   { said: "How do I improve my deck?", action: "Decklist", href: "/deck" },
   { said: "Just want a frame to build from", action: "Collection", href: "/collection/import" },
 ];

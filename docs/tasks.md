@@ -388,7 +388,7 @@ The worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`) 
 
 **Priority:** MEDIUM | **Area:** Database | **Status:** Open; the release is live (PR #140, 2026-10-07) | **Blocked by:** the owner no longer wanting a rollback to the previous build
 
-PR #139 stopped calling `rec_add_candidates` (both overloads), `rec_swap_candidates`, `rec_card_roles` and `log_rec_timeout`, but its migrations go out before its code, and until then production runs the previous build, which falls back to them when `app_config.recs` is missing. So `20261006000200` drops nothing (review, 2026-10-07). A new migration drops them with `rec_timeouts` and the `recs` row, and `supabase/tests/serving.sql` checks they're gone again. `docs/diagnostics/rec-timeout-triage.sql` goes with them.
+PR #139 stopped calling `rec_add_candidates` (both overloads), `rec_swap_candidates`, `rec_card_roles` and `log_rec_timeout`, but its migrations go out before its code, and until then production runs the previous build, which falls back to them when `app_config.recs` is missing. So `20261006000200` drops nothing (review, 2026-10-07). A new migration drops them with `rec_timeouts` and the `recs` row, and `supabase/tests/serving.sql` checks they're gone again.
 
 ---
 
