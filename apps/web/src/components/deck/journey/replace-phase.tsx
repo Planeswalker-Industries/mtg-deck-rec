@@ -96,7 +96,7 @@ export function ReplacePhase({
   // steps over decided cards when their turn comes, since it deals by position, so coming back picks up at the first
   // card still open.
   const skipTarget = (card: CardSummary) => !journey.replace.inDeck(card.id) || journey.replace.isKept(card.id);
-  const toSwipe = targets.map((s) => ({ card: s.card, reasons: s.reasons }));
+  const toSwipe = targets.map((s) => ({ card: s.card, reasons: s.reasons, corpus: s.corpus }));
   const open = targets.filter((s) => !skipTarget(s.card));
   // The list shows open cards and swapped ones, marked; kept cards were decided on and leave it.
   const listed = targets.filter((s) => !skipTarget(s.card) || journey.replace.swapFor(s.card.id));

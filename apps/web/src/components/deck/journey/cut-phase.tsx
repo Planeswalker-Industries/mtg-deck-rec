@@ -20,6 +20,8 @@ import type { DeckJourney } from "./use-deck-journey";
 
 /** Reasons shown under a card, with collection ownership last when present. */
 const MAX_REASONS = 2;
+/** Trim candidates after the one on screen whose rules text is fetched ahead. */
+const PREFETCH_CARDS = 4;
 
 function shownReasons(reasons: readonly CutReason[]): CutReason[] {
   const notOwned = reasons.includes("NOT_OWNED");
@@ -203,8 +205,11 @@ export function CutPhase({
           // ✂ cuts the card; ✓ keeps it. A ✓ on the cut side read as "keep" and the ✕ as "remove".
           acceptIcon={Scissors}
           passIcon={Check}
+          upcoming={[...undecided.slice(1).map((sug) => sug.card.id), ...trimQueue.slice(0, PREFETCH_CARDS).map((c) => c.id)]}
           acceptLabel={`Cut ${next.name}`}
           passLabel={`Keep ${next.name}`}
+          acceptWord="Cut"
+          passWord="Keep"
           caption={mandatoryNext ? reasonText(mandatoryNext.reasons) : trimCaption(next)}
           onAccept={() => journey.dispatch({ type: "cut", card: next })}
           onPass={() => journey.dispatch({ type: "keep", cardId: next.id })}

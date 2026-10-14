@@ -136,7 +136,7 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
   await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 20_000 });
   test.skip(await nothingLeft.isVisible(), "no replacements in this data");
-  const progress = rater.getByText(/^Card \d+ of \d+ to replace$/);
+  const progress = rater.getByText(/^Card \d+ of \d+/);
   const before = await progress.innerText();
   const candidateBefore = await swapIn.getAttribute("aria-label");
 

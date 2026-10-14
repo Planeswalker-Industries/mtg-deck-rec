@@ -17,12 +17,14 @@ import type { AddFilter, DeckJourney } from "./use-deck-journey";
 
 /** How many suggestions the list view shows at once; the rest follow as these are added or skipped. */
 const LIST_SUGGESTIONS = 18;
+/** Cards after the one on screen whose rules text is fetched ahead, so it's there when they're dealt. */
+const PREFETCH_CARDS = 4;
 
 /** Why a suggestion is here, in one or two short lines. */
 function Why({ suggestion }: { suggestion: AddSuggestion }) {
   const { card, fillsRoles, corpus, owned } = suggestion;
   return (
-    <span className="flex flex-col items-center gap-0.5 [li_&]:items-start">
+    <span className="flex flex-col items-start gap-0.5">
       {owned && <OwnedBadge />}
       {fillsRoles.length > 0 && <span className="font-semibold text-add">Adds {fillsRoles.map((r) => r.label.toLowerCase()).join(", ")}</span>}
       {corpus && (
@@ -152,8 +154,11 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
         total={adds.length + Math.min(room, shown.length)}
         label="Cards to add"
         tone="add"
+        upcoming={shown.slice(1, PREFETCH_CARDS + 1).map((s) => s.card.id)}
         acceptLabel={`Add ${next.card.name}`}
         passLabel={`Skip ${next.card.name}`}
+        acceptWord="Add"
+        passWord="Skip"
         caption={<Why suggestion={next} />}
         onAccept={() => accept(next.card)}
         onPass={() => pass(next.card)}
