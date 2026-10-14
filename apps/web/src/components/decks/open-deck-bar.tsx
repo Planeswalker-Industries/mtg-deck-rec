@@ -6,6 +6,7 @@ import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import type { OpenDeck } from "@/components/deck/use-deck-tool";
 import { TEXT_LINK } from "@/lib/constants";
+import { ErrorText } from "@/components/ui/error-text";
 
 const STATUS: Record<OpenDeck["status"], string> = {
   saved: "Saved",
@@ -31,12 +32,13 @@ export function OpenDeckBar({
     <section aria-label="Saved deck" className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <div className="min-w-0">
         <p className="truncate font-heading text-xl leading-none font-semibold">{deck.name}</p>
-        <p
-          role={deck.status === "error" ? "alert" : "status"}
-          className={deck.status === "error" ? "mt-1 text-sm text-destructive" : "mt-1 text-sm text-muted-foreground"}
-        >
-          {deck.status === "error" ? (deck.message ?? STATUS.error) : STATUS[deck.status]}
-        </p>
+        {deck.status === "error" ? (
+          <ErrorText className="mt-1">{deck.message ?? STATUS.error}</ErrorText>
+        ) : (
+          <p role="status" className="mt-1 text-sm text-muted-foreground">
+            {STATUS[deck.status]}
+          </p>
+        )}
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-2">
         <Link

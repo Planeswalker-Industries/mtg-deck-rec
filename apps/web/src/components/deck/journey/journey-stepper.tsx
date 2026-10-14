@@ -5,13 +5,14 @@ import { Check, ClipboardList, Plus, Repeat2, Scissors } from "lucide-react";
 import { JOURNEY_PHASES, type JourneyPhase } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
+import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 
-/** Each step is lit in its job's colour: the icon, and a line of light along the bottom of the current step. */
-const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors; tone: string; glow: string }> = {
-  cut: { name: "Cut", Icon: Scissors, tone: "text-cut", glow: "shadow-[inset_0_-2px_0_var(--cut)]" },
-  add: { name: "Add", Icon: Plus, tone: "text-add", glow: "shadow-[inset_0_-2px_0_var(--add)]" },
-  replace: { name: "Swap", Icon: Repeat2, tone: "text-replace", glow: "shadow-[inset_0_-2px_0_var(--replace)]" },
-  review: { name: "Done", Icon: ClipboardList, tone: "text-primary", glow: "shadow-[inset_0_-2px_0_var(--primary)]" },
+/** Each step's name and icon. Steps are tabs, so they follow the toggle rule: solid blue when current, blue text when open. */
+const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors }> = {
+  cut: { name: "Cut", Icon: Scissors },
+  add: { name: "Add", Icon: Plus },
+  replace: { name: "Swap", Icon: Repeat2 },
+  review: { name: "Done", Icon: ClipboardList },
 };
 
 /**
@@ -33,7 +34,7 @@ export function JourneyStepper({
     <nav aria-label="Deck upgrade steps">
       <ol className="grid grid-cols-4 gap-1 rounded-lg bg-muted p-0.5">
         {JOURNEY_PHASES.map((step, i) => {
-          const { name, Icon, tone, glow } = STEPS[step];
+          const { name, Icon } = STEPS[step];
           const current = i === at;
           const done = i < at;
           return (
@@ -46,18 +47,14 @@ export function JourneyStepper({
                 className={cn(
                   "flex w-full items-center justify-center gap-1 rounded-md px-1.5 py-1 text-sm font-semibold transition-colors sm:gap-1.5 sm:px-2",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default",
-                  current
-                    ? cn("bg-sleeve text-foreground", glow)
-                    : done || canOpen(step)
-                      ? "text-muted-foreground hover:text-foreground"
-                      : "text-muted-foreground/50",
+                  current ? TOGGLE_ON : done || canOpen(step) ? TOGGLE_OFF : "text-muted-foreground/50",
                 )}
               >
                 {/* Phones drop the icons, so every step's name fits in a quarter of the row; the current step keeps its edge. */}
                 {done ? (
                   <Check aria-hidden className="size-4 shrink-0 max-sm:hidden" strokeWidth={2.5} />
                 ) : (
-                  <Icon aria-hidden className={cn("size-4 shrink-0 max-sm:hidden", current && tone)} strokeWidth={2.5} />
+                  <Icon aria-hidden className="size-4 shrink-0 max-sm:hidden" strokeWidth={2.5} />
                 )}
                 <span className="truncate">{name}</span>
               </button>

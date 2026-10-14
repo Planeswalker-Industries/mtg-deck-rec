@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DELETE_CONFIRMATION } from "@/lib/account";
 import { TEXT_LINK } from "@/lib/constants";
+import { ErrorText } from "@/components/ui/error-text";
 
 /**
  * Account deletion, behind a typed confirmation: it can't be undone, so one click is never enough. Collapsed until
@@ -26,7 +27,7 @@ export function DeleteAccount() {
   if (!open) {
     return (
       <div>
-        <Button type="button" variant="ghost" className="h-10 px-4 text-destructive" onClick={() => setOpen(true)}>
+        <Button type="button" variant="destructive" className="h-10 px-4" onClick={() => setOpen(true)}>
           Delete account…
         </Button>
       </div>
@@ -99,9 +100,9 @@ export function DeleteAccount() {
           </Button>
         </div>
         {error && (
-          <p role="alert" className="text-sm text-destructive">
+          <ErrorText>
             {error}
-          </p>
+          </ErrorText>
         )}
       </form>
     </section>

@@ -232,7 +232,7 @@ export function SideButton({
       className={cn(
         "flex size-14 items-center justify-center rounded-full transition-[transform,box-shadow,background-color] duration-150",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-40",
-        kind === "swap" ? ACCEPT_TONE[tone] : "border border-input bg-sleeve text-foreground shadow-[0_2px_0_var(--seam)] hover:bg-muted",
+        kind === "swap" ? ACCEPT_TONE[tone] : "border-2 border-primary/70 bg-sleeve text-primary hover:bg-primary/10",
         pull >= 1 && ["ring-4", PULL_RING[tone]],
       )}
     >

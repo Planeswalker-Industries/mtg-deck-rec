@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { getApis } from "@/lib/api/client";
 import { formatAsOf } from "@/lib/format";
 import type { DeckOriginal as DeckOriginalData } from "@/lib/server/deck-page";
+import { ErrorText } from "@/components/ui/error-text";
 
 /**
  * How the deck differs from the one its owner first brought, and for the owner a way to put that one back.
@@ -102,9 +103,9 @@ export function DeckOriginal({
         </div>
       )}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <ErrorText>
           {error}
-        </p>
+        </ErrorText>
       )}
     </section>
   );

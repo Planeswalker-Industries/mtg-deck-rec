@@ -48,10 +48,11 @@ import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
 import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
-import { BUILD_DECK_HREF, BUILD_DEFAULT_BRACKET, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
+import { BUILD_DECK_HREF, BUILD_DEFAULT_BRACKET, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 import { collectionCounts } from "@/lib/deck-collection";
 import { getApis } from "@/lib/api/client";
 import { RESUME_PARAM, RESUME_SAVE, takePendingSave } from "@/lib/pending-save";
+import { ErrorText } from "@/components/ui/error-text";
 
 const PLACEHOLDER = `Commander
 1 Liesa, Forgotten Archangel
@@ -93,8 +94,8 @@ function Segmented<T extends string>({
           className={cn(
             "rounded-md px-4 py-1 text-sm font-normal transition-colors",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            // The chosen option reads as pressed: the primary fill with dark text, like the main action.
-            value === o.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary",
+            // The chosen option reads as pressed: the primary fill with dark text. The others are blue text: pressable.
+            value === o.value ? TOGGLE_ON : TOGGLE_OFF,
           )}
         >
           {o.label}
@@ -119,7 +120,7 @@ function ViewToggle({ view, onChange }: { view: ReviewView; onChange: (view: Rev
       aria-label={label}
       title={label}
       onClick={() => onChange(toList ? "list" : "swipe")}
-      className="bg-muted text-muted-foreground hover:text-primary focus-visible:text-primary sm:hidden"
+      className="bg-muted sm:hidden"
     >
       {toList ? <List aria-hidden className="size-4" /> : <GalleryHorizontalEnd aria-hidden className="size-4" />}
     </Button>
@@ -699,9 +700,9 @@ export function DeckTool() {
         </p>
       )}
       {openError && (
-        <p role="alert" className="text-sm text-destructive">
+        <ErrorText>
           {openError}
-        </p>
+        </ErrorText>
       )}
 
       {tool.importedFrom && tool.parse.status === "ready" && (
