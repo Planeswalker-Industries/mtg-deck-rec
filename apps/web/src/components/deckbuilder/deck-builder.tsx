@@ -10,6 +10,7 @@ import { DeckStatsFooter } from "@/components/deck/deck-stats/deck-stats-footer"
 import { DeckStatsRail } from "@/components/deck/deck-stats/deck-stats-rail";
 import { useDeckStats } from "@/components/deck/deck-stats/use-deck-stats";
 import { SwapSheet } from "@/components/deck/swap-sheet";
+import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 import { formatAsOf, formatUsd } from "@/lib/format";
 import { CardSearchPanel, type BuilderCollection } from "./card-search-panel";
 import { CardPlate } from "@/components/cards/card-plate";
@@ -104,7 +105,7 @@ export function DeckBuilder({
       </dl>
       {showIssues && issues.length > 0 && (
         <details className="rounded-lg border border-cut/40 bg-cut/5 px-4 py-2 text-sm">
-          <summary className="cursor-pointer font-semibold text-cut">
+          <summary className="cursor-pointer font-semibold text-primary">
             {issues.length} deck issue{issues.length === 1 ? "" : "s"}
           </summary>
           <ul className="mt-2 list-disc pl-5">
@@ -124,7 +125,7 @@ export function DeckBuilder({
             onClick={() => setTab(t)}
             className={cn(
               "inline-flex min-h-11 items-center rounded-md px-4 py-1.5 text-sm font-normal transition-colors sm:min-h-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary",
+              tab === t ? TOGGLE_ON : TOGGLE_OFF,
             )}
           >
             {t === "deck" ? "Deck" : "Add cards"}

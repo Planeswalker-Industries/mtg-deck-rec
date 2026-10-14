@@ -17,6 +17,7 @@ import { BRACKETS, bracketLabel, collectionModeLabel } from "@/lib/labels";
 import { ColorIdentity } from "./color-identity";
 import { DeckIssuesChip } from "./resolution-issues";
 import type { CollectionMode } from "./use-deck-tool";
+import { ErrorText } from "@/components/ui/error-text";
 
 const COLLECTION_MODES: CollectionMode[] = ["first", "only", "off"];
 
@@ -91,9 +92,9 @@ function DeckName({ name, onRename }: { name: string; onRename: (name: string) =
         className="h-8 bg-sleeve font-heading text-base font-semibold"
       />
       {error && (
-        <p role="alert" className="text-xs text-destructive">
+        <ErrorText className="text-xs">
           {error}
-        </p>
+        </ErrorText>
       )}
     </form>
   );

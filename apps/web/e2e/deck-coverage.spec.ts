@@ -110,7 +110,9 @@ test("browser quantities and a live round update the two-line summary and the ke
   await expect(trigger).toHaveText("3/9 available", { timeout: 60_000 });
   await expect(trigger).toHaveAttribute("aria-label", /3 owned, 0 stand-in, 0 basic lands, 0 conflicts, 6 missing/);
 
-  // Check desktop swipe controls while Bolt is still queued, before keeping it in the round.
+  // Check desktop swipe controls while Bolt is still queued in Cut, before keeping it in the round.
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  await steps.getByRole("button", { name: "Cut" }).click();
   await page.setViewportSize({ width: DESKTOP_VIEWPORT_WIDTH_PX, height: DESKTOP_VIEWPORT_HEIGHT_PX });
   await recs.getByRole("group", { name: "How to review cards" }).getByRole("button", { name: "Swipe" }).click();
   await expect(cutControl).toBeVisible({ timeout: 60_000 });
@@ -125,10 +127,10 @@ test("browser quantities and a live round update the two-line summary and the ke
   await page.setViewportSize({ width: PHONE_VIEWPORT_WIDTH_PX, height: PHONE_VIEWPORT_HEIGHT_PX });
 
   await recs.getByRole("button", { name: "Show as a list" }).click();
-  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
   const bolt = recs.getByRole("region", { name: "Your deck" }).getByRole("button", { name: /^Lightning Bolt Off-color(,|$)/ });
   await expect(bolt).toHaveAttribute("aria-pressed", "true", { timeout: 60_000 });
-  await steps.getByRole("button", { name: "Add" }).click();
+  // Moving on to Swap applies the marked cut.
+  await steps.getByRole("button", { name: "Swap" }).click();
   await expect(trigger).toHaveText("3/8 available", { timeout: 60_000 });
   await steps.getByRole("button", { name: "Cut" }).click();
   await bolt.click();

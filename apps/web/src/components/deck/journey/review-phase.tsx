@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff, deckStats, type DeckStatsReport } from "@mtg/core/journey";
@@ -10,61 +10,27 @@ import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
 import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
+import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
+import type { RoundSave } from "./round-bar";
+import { judge, Move, RoundMoves } from "./round-moves";
 import type { DeckJourney } from "./use-deck-journey";
 
 /** Average mana value is shown to one decimal: finer than that is noise at deck scale. */
 const MANA_VALUE_DECIMALS = 1;
 
-/** One number before and after the round, and whether the change moved it toward where it should be. */
-interface Tile {
-  label: string;
-  before: string;
-  after: string;
-  /** Closer to the target (better), further (worse), unchanged, or changed with no target to judge by. */
-  verdict: "better" | "worse" | "same" | "neutral";
-  direction: "up" | "down" | "none";
-  /** A short line under the numbers: the target, or a price's date. */
-  note?: string;
-}
-
-function judge(before: number, after: number, target: number | null): Pick<Tile, "verdict" | "direction"> {
-  const direction = after > before ? "up" : after < before ? "down" : "none";
-  if (direction === "none") return { verdict: "same", direction };
-  if (target === null) return { verdict: "neutral", direction };
-  return { verdict: Math.abs(after - target) < Math.abs(before - target) ? "better" : "worse", direction };
-}
-
 const wholeUsd = (usd: number) => `$${Math.round(usd).toLocaleString("en-US")}`;
 
-const verdictText = (verdict: Tile["verdict"]) => (verdict === "better" ? "text-add" : verdict === "worse" ? "text-cut" : "text-muted-foreground");
-
-function TileView({ tile }: { tile: Tile }) {
-  const Arrow = tile.direction === "up" ? ArrowUp : tile.direction === "down" ? ArrowDown : null;
+/** A deck-wide number for the round's summary line: a small label over its before → after. */
+function Figure({ label, children, note }: { label: string; children: ReactNode; note?: string }) {
   return (
-    <li
-      className={cn(
-        "flex flex-col gap-1 rounded-lg border bg-sleeve p-3",
-        tile.verdict === "better" ? "border-add/60" : tile.verdict === "worse" ? "border-cut/60" : "border-seam",
-        tile.verdict === "same" && "opacity-70",
-      )}
-    >
-      <span className="text-xs text-muted-foreground">{tile.label}</span>
-      <span className="flex flex-wrap items-center gap-x-1.5 font-mono text-lg tabular-nums">
-        {tile.verdict !== "same" && (
-          <>
-            <span className="text-muted-foreground">{tile.before}</span>
-            <ArrowRight aria-hidden className="size-3.5 text-muted-foreground" />
-          </>
-        )}
-        <span className={cn(tile.verdict !== "neutral" && tile.verdict !== "same" && verdictText(tile.verdict))}>{tile.after}</span>
-        {Arrow && <Arrow aria-hidden className={cn("size-4", verdictText(tile.verdict))} />}
-        <span className="sr-only">{tile.verdict === "same" ? ", unchanged" : `, was ${tile.before}`}</span>
-      </span>
-      {tile.note && <span className="text-xs text-muted-foreground">{tile.note}</span>}
-    </li>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm sm:text-base">{children}</dd>
+      {note && <dd className="text-xs text-muted-foreground">{note}</dd>}
+    </div>
   );
 }
 
@@ -96,19 +62,20 @@ function changesOf(journey: DeckJourney): Change[] {
 }
 
 /**
- * Done: the round's result, shown rather than told. The numbers that moved (before → after, green when they moved
- * toward the commander's targets, red when away), every change as card plates, Out beside In, and the finished
+ * Finish: the round's result, shown rather than told. Cards, mana value and price on one line, then each stat line as a
+ * track from where the round started to where it ends against its aim (green toward it, red away), every change as
+ * card plates, Out beside In, and the finished
  * decklist laid out by type on the plates the deck editor uses. From here the player saves, copies or downloads the
- * result, runs it through the journey again, or starts over.
+ * result (or a copy, from an open saved deck), or runs it through the journey again. Undo and Start over are in the
+ * round's bar above, as on every step.
  */
 export function ReviewPhase({
   journey,
   report,
   busy,
   stale = false,
-  onSave,
+  save,
   onReanalyze,
-  onStartOver,
   children,
 }: {
   journey: DeckJourney;
@@ -121,9 +88,9 @@ export function ReviewPhase({
    * result over those edits, so both wait until the new decklist is analyzed.
    */
   stale?: boolean;
-  onSave: () => void;
+  /** What saving does: write back to the open saved deck (or save a copy), or save a new deck. */
+  save: RoundSave;
   onReanalyze: () => void;
-  onStartOver: () => void;
   /** Shown after the changes, e.g. the offer to import a collection. */
   children?: ReactNode;
 }) {
@@ -131,6 +98,7 @@ export function ReviewPhase({
   const deck = journey.deck;
   if (!state || !deck) return null;
 
+  const overBy = journey.cutsNeeded;
   const before = deckStats(journey.before);
   const after = deckStats(journey.after);
   const asOf = after.priceAsOf ?? before.priceAsOf;
@@ -139,31 +107,6 @@ export function ReviewPhase({
   const ins = changes.flatMap((c) => (c.into ? [c.into] : []));
   const addedIds = new Set(deckDiff(state.base, deck).added.map((c) => c.cardId));
   const rounded = (n: number) => Number(n.toFixed(MANA_VALUE_DECIMALS));
-
-  const tiles: Tile[] = [
-    { label: "Cards", before: String(before.cards), after: String(after.cards), ...judge(before.cards, after.cards, COMMANDER_DECK_SIZE) },
-    ...(report?.stats ?? []).map((line) => ({
-      label: line.label,
-      before: String(line.start),
-      after: String(line.value),
-      ...judge(line.start, line.value, line.target),
-      note: `Aim ${Math.round(line.target)}`,
-    })),
-    {
-      label: "Average mana value",
-      before: before.averageManaValue.toFixed(MANA_VALUE_DECIMALS),
-      after: after.averageManaValue.toFixed(MANA_VALUE_DECIMALS),
-      ...judge(rounded(before.averageManaValue), rounded(after.averageManaValue), null),
-    },
-    {
-      label: "Estimated price",
-      // Whole dollars: a tile has room for two prices and an arrow, and cents are noise on an estimate.
-      before: wholeUsd(before.priceUsd),
-      after: wholeUsd(after.priceUsd),
-      ...judge(Math.round(before.priceUsd), Math.round(after.priceUsd), null),
-      ...(asOf ? { note: `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` } : {}),
-    },
-  ];
 
   const commanderIds = new Set<CardId>(deck.commanders);
   const commanders = journey.after.filter((e) => commanderIds.has(e.card.id));
@@ -178,11 +121,33 @@ export function ReviewPhase({
 
   return (
     <div className="flex flex-col gap-6">
-      <h2 className="sr-only">Done</h2>
+      <h2 className="sr-only">Finish</h2>
+      {overBy > 0 && (
+        <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+          <span>
+            The deck is {overBy} over 100.{" "}
+            <button type="button" className={cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer font-semibold")} onClick={() => journey.goTo("cut")}>
+              Back to Cut
+            </button>
+          </span>
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="lg" className="lit" onClick={onSave} disabled={busy || stale}>
-          Save
-        </Button>
+        {save.kind === "open" ? (
+          <>
+            <Button type="button" size="lg" className="lit" onClick={save.onSaveChanges} disabled={busy || stale}>
+              Save changes
+            </Button>
+            <Button type="button" size="lg" variant="outline" onClick={save.onSaveCopy} disabled={busy || stale || save.copy.status === "saving"}>
+              Save as copy
+            </Button>
+          </>
+        ) : (
+          <Button type="button" size="lg" className="lit" onClick={save.onSave} disabled={busy || stale}>
+            Save deck
+          </Button>
+        )}
         <CopyDecklistButton text={journey.resultText} size="lg" disabled={busy || stale} />
         <Button
           type="button"
@@ -196,9 +161,6 @@ export function ReviewPhase({
         <Button type="button" size="lg" variant="outline" onClick={onReanalyze} disabled={busy || stale}>
           Re-analyze
         </Button>
-        <Button type="button" size="lg" variant="ghost" onClick={onStartOver} disabled={busy}>
-          Start over
-        </Button>
       </div>
       {stale && (
         <p role="status" className="-mt-3 text-sm text-muted-foreground">
@@ -206,12 +168,33 @@ export function ReviewPhase({
         </p>
       )}
 
-      <section aria-label="Before and after">
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-          {tiles.map((tile) => (
-            <TileView key={tile.label} tile={tile} />
-          ))}
-        </ul>
+      <section aria-label="Before and after" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4">
+        <dl className="grid grid-cols-3 gap-3">
+          <Figure label="Cards">
+            <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
+          </Figure>
+          <Figure label="Avg mana value">
+            <Move
+              before={rounded(before.averageManaValue)}
+              after={rounded(after.averageManaValue)}
+              verdict={judge(rounded(before.averageManaValue), rounded(after.averageManaValue), null)}
+              format={(n) => n.toFixed(MANA_VALUE_DECIMALS)}
+            />
+          </Figure>
+          {/* Whole dollars: cents are noise on an estimate. */}
+          <Figure
+            label="Price"
+            note={asOf ? `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` : undefined}
+          >
+            <Move
+              before={Math.round(before.priceUsd)}
+              after={Math.round(after.priceUsd)}
+              verdict={judge(Math.round(before.priceUsd), Math.round(after.priceUsd), null)}
+              format={wholeUsd}
+            />
+          </Figure>
+        </dl>
+        {report && report.stats.length > 0 && <RoundMoves lines={report.stats} />}
       </section>
 
       {changes.length > 0 && (

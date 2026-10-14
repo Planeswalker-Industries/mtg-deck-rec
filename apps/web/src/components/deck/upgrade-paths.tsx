@@ -43,11 +43,11 @@ export function UpgradePathPicker({
             className={cn(
               "flex min-h-11 flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors duration-180 ease-table",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              chosen ? "border-primary bg-primary/15" : "border-seam bg-background/40 hover:border-primary",
+              chosen ? "border-primary bg-primary/15" : "border-primary/45 bg-background/40 hover:border-primary hover:bg-primary/10",
             )}
           >
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Icon aria-hidden className={cn("size-4 shrink-0", chosen ? "text-primary" : "text-muted-foreground")} />
+              <Icon aria-hidden className="size-4 shrink-0 text-primary" />
               {title}
             </span>
             <span className="text-xs leading-snug text-muted-foreground">{note(hasCollection)}</span>

@@ -5,9 +5,11 @@ import type { CardId, CardSummary } from "@mtg/core/contract";
 import type { DeckGrouping } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { PocketGrid, type PocketItem } from "@/components/cards/pocket-grid";
+import { PILL_OFF, PILL_ON } from "@/lib/constants";
 import { GameChangerBadge } from "./card-label";
 import { groupHeading, groupId } from "./deck-group-id";
 import type { DeckGroups } from "./use-deck-groups";
+import { ErrorText } from "@/components/ui/error-text";
 
 const PILLS: { value: DeckGrouping; label: string }[] = [
   { value: "type", label: "Card Type" },
@@ -46,9 +48,7 @@ export function DeckGroupsPanel({
               onClick={() => setGrouping(pill.value)}
               className={cn(
                 "rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                grouping === pill.value
-                  ? "border-primary/50 bg-primary/15 text-primary"
-                  : "border-seam text-muted-foreground hover:text-foreground",
+                grouping === pill.value ? PILL_ON : PILL_OFF,
               )}
             >
               {pill.label}
@@ -68,9 +68,9 @@ export function DeckGroupsPanel({
         </p>
       )}
       {tagsError && (
-        <p role="alert" className="text-sm text-destructive">
+        <ErrorText>
           {tagsError}
-        </p>
+        </ErrorText>
       )}
 
       {groups.map((group) => (

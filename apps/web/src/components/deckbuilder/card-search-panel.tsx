@@ -15,9 +15,10 @@ import type { CollectionMode } from "@/components/deck/use-deck-tool";
 import { getApis } from "@/lib/api/client";
 import { displayName } from "@/lib/cards";
 import { cardCategoryLabel } from "@/lib/labels";
-import { TEXT_LINK } from "@/lib/constants";
+import { PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
 import { BasicLandButtons } from "./basic-land-buttons";
 import type { DeckBuilderState } from "./use-deck-builder";
+import { ErrorText } from "@/components/ui/error-text";
 
 /**
  * Typing waits this long before searching, so a word is one request rather than one per letter. It has to sit above a
@@ -103,9 +104,7 @@ function Pill({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
       onClick={onClick}
       className={cn(
         "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        pressed
-          ? "border-primary/50 bg-primary/15 text-primary"
-          : "border-seam text-muted-foreground hover:border-primary/50 hover:text-primary focus-visible:text-primary",
+        pressed ? PILL_ON : PILL_OFF,
       )}
     >
       {children}
@@ -381,7 +380,7 @@ export function CardSearchPanel({
           </Button>
           {/* Clears the name and both filters at once; the browser's own clear cross only emptied the box. */}
           {(text !== "" || query.cardTypes.length > 0 || query.manaValues.length > 0) && (
-            <Button type="button" variant="ghost" onClick={clear} className="shrink-0 text-muted-foreground">
+            <Button type="button" variant="ghost" onClick={clear} className="shrink-0">
               <X aria-hidden /> Clear
             </Button>
           )}
@@ -407,9 +406,9 @@ export function CardSearchPanel({
         </p>
       )}
       {results.status === "error" && (
-        <p role="alert" className="text-sm text-destructive">
+        <ErrorText>
           {results.message}
-        </p>
+        </ErrorText>
       )}
       {results.status === "ready" && results.cards.length === 0 && !searching && (
         <p className="text-sm text-muted-foreground">

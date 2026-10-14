@@ -1,10 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /** Footer button of the docked readout; its name reads "Deck stats Mild, 5 of 8 in line". */
 const FOOTER_NAME = /^Deck stats/;
-/** The Cut swipe's gesture buttons, "Cut <card>" and "Keep <card>"; not the "Cut the rest and move on" link under them. */
-const CUT_CARD = /^Cut (?!the rest and move on$)/;
-const KEEP_CARD = /^Keep /;
+/** The Add swipe's gesture buttons, "Add <card>" and "Skip <card>", inside its sitting. */
+const ADD_CARD = /^Add /;
+const SKIP_CARD = /^Skip /;
+/** The Swap swipe's buttons, "Swap in <card>" and "Pass on <card>". */
+const SWAP_IN = /^Swap in /;
+const PASS_ON = /^Pass on /;
 /** Rounding slack for comparing layout boxes, in CSS pixels. */
 const LAYOUT_SLACK_PX = 1;
 
@@ -15,6 +18,18 @@ async function analyzeSample(page: Page) {
   await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 60_000 });
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+}
+
+/** Both buttons sit inside the viewport and above the Deck stats footer: the 390×844 rule in CLAUDE.md. */
+async function expectAboveFooter(page: Page, buttons: Locator[]) {
+  const viewport = page.viewportSize()!;
+  const footerBox = (await page.getByRole("button", { name: FOOTER_NAME }).boundingBox())!;
+  for (const button of buttons) {
+    await expect(button).toBeVisible({ timeout: 60_000 });
+    const box = (await button.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(Math.min(viewport.height, footerBox.y) + LAYOUT_SLACK_PX);
+  }
 }
 
 test.describe("deck stats on a phone", () => {
@@ -34,16 +49,25 @@ test.describe("deck stats on a phone", () => {
     await sheet.getByRole("button", { name: "Close deck stats", exact: true }).click();
     await expect(sheet).toBeHidden();
 
-    // Cut swipe: both gesture buttons sit inside the viewport and above the footer.
-    const viewport = page.viewportSize()!;
-    const footerBox = (await footer.boundingBox())!;
-    for (const name of [CUT_CARD, KEEP_CARD]) {
-      const button = page.getByRole("button", { name }).first();
-      await expect(button).toBeVisible();
-      const box = (await button.boundingBox())!;
-      expect(box.y).toBeGreaterThanOrEqual(0);
-      expect(box.y + box.height).toBeLessThanOrEqual(Math.min(viewport.height, footerBox.y) + LAYOUT_SLACK_PX);
-    }
+    // Add swipe, the first step. The sample deck is short, so this also covers the open slots it has to fill.
+    const sitting = page.getByRole("region", { name: "Cards to add" });
+    await expectAboveFooter(page, [sitting.getByRole("button", { name: ADD_CARD }).first(), sitting.getByRole("button", { name: SKIP_CARD }).first()]);
+  });
+
+  test("the Swap step keeps both rows and its buttons above the footer", async ({ page }) => {
+    await analyzeSample(page);
+    const recs = page.getByRole("region", { name: "Recommendations" });
+    // Swap opens once Cut has been reached; the sample's mandatory cut can stay for this.
+    const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+    await steps.getByRole("button", { name: "Cut" }).click();
+    await steps.getByRole("button", { name: "Swap" }).click();
+
+    const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
+    const swapIn = rater.getByRole("button", { name: SWAP_IN });
+    const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
+    await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 20_000 });
+    test.skip(await nothingLeft.isVisible(), "no replacements in this data");
+    await expectAboveFooter(page, [swapIn, rater.getByRole("button", { name: PASS_ON })]);
   });
 });
 

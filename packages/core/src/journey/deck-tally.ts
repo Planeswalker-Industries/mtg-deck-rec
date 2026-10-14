@@ -236,3 +236,23 @@ export function tallyCache() {
     },
   };
 }
+
+/**
+ * How each stat line would move if `add` went into the deck and `remove` came out: +1 for a role or land count the
+ * incoming card adds to, -1 for one the outgoing card takes from. Lines that wouldn't move are left out. Deck stats shows
+ * these beside the counts while a card is on screen, so the player sees what answering it does.
+ */
+export function statDeltas(lines: readonly Pick<StatLine, 'key'>[], add: TallyCard | null, remove: TallyCard | null): Map<string, number> {
+  const counts = (card: TallyCard | null, key: string): number => {
+    if (!card) return 0;
+    if (key === 'lands') return isFrontLand(card.typeLine) ? 1 : 0;
+    if (key === 'basicLands') return isFrontLand(card.typeLine) && isBasicLand(card) ? 1 : 0;
+    return card.roles.includes(key) ? 1 : 0;
+  };
+  const deltas = new Map<string, number>();
+  for (const { key } of lines) {
+    const delta = counts(add, key) - counts(remove, key);
+    if (delta !== 0) deltas.set(key, delta);
+  }
+  return deltas;
+}

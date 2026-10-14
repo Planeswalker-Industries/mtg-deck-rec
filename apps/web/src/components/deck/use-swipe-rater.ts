@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CardId, CardSummary, CommanderKeyId, CutReason, RecContext, SwapResult, SwapSuggestion } from "@mtg/core/contract";
+import type { CardId, CardSummary, CommanderKeyId, CorpusEvidence, CutReason, RecContext, SwapResult, SwapSuggestion } from "@mtg/core/contract";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import { shuffled } from "@/lib/shuffle";
@@ -16,6 +16,8 @@ export interface PickedSwap {
 export interface RaterTarget {
   card: CardSummary;
   reasons?: readonly CutReason[];
+  /** Its play data with this commander, for comparing a replacement's play rate with it. */
+  corpus?: CorpusEvidence | null;
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { ExportFormat, FavoriteRef, SyncStatusRow, TagAdminRow } from './account';
-import type { CardDetail, CardSummary, TagRef, CardSearchInput } from './cards';
+import type { CardDetail, CardRules, CardSummary, TagRef, CardSearchInput } from './cards';
 import type { CommanderCoverage, CommanderRequest } from './commander-requests';
 import type {
   CollectionCardsResult,
@@ -63,6 +63,8 @@ export interface CatalogApi {
   searchCards(input: CardSearchInput, options?: CallOptions): Promise<Result<CardSummary[]>>;
   /** Functional tags per card, for grouping a deck by what its cards do. Cards with no tags are omitted. */
   cardTags(input: { cardIds: CardId[] }): Promise<Result<{ cardId: CardId; tags: TagRef[] }[]>>;
+  /** Rules text and printed stats per card, for the cards on screen. Cards the catalog no longer has are left out. */
+  cardRules(input: { cardIds: CardId[] }): Promise<Result<CardRules[]>>;
   /**
    * Cards with their functional tag labels, plus the named sets, for the collection view. ≤ 1,000 cards and 1,000 set
    * codes per call; a larger collection asks in chunks. Cards the catalog no longer has are left out.
