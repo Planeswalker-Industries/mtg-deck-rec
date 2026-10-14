@@ -1,7 +1,15 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
 const CUT_CARD = /^Cut (?!the rest and move on$)/;
+
+/** The step's "8 / 100" counter. The slot tray shows the same on desktop; phones hide it to keep the swipe on screen. */
+const DECK_COUNT = /^\d+ \/ 100$/;
+
+/** The deck size the step's counter shows. */
+async function deckCount(recs: Locator) {
+  return Number((await recs.getByRole("status").getByText(DECK_COUNT).innerText()).split(" / ")[0]);
+}
 
 /**
  * A short Chulane deck with one off-colour card (Lightning Bolt), so the Cut phase always has a mandatory cut and Add has
@@ -51,9 +59,9 @@ test("walks a deck through add, cut, replace and review, then starts over", asyn
   const addIt = adds.getByRole("button", { name: /^Add / });
   await expect(addIt).toBeVisible({ timeout: 60_000 });
   const added = ((await addIt.getAttribute("aria-label")) ?? "").replace(/^Add /, "");
+  const size = await deckCount(recs);
   await addIt.click();
-  const takeOut = recs.getByRole("region", { name: "Slots to fill" }).getByRole("button", { name: /^Take .+ back out$/ });
-  await expect(takeOut).toHaveCount(1);
+  await expect(recs.getByRole("status").getByText(DECK_COUNT)).toHaveText(`${size + 1} / 100`);
   // The recomputed list never offers the card just added.
   await expect(adds.getByRole("button", { name: `Add ${added}` })).toBeHidden({ timeout: 60_000 });
   await recs.getByRole("button", { name: /^Done adding/ }).click();
@@ -95,15 +103,17 @@ test("Undo takes back the last choice, on the step it was made on", async ({ pag
   await expect(undo).toBeDisabled();
 
   const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / });
-  await addIt.click({ timeout: 60_000 });
-  const slots = recs.getByRole("region", { name: "Slots to fill" }).getByRole("button", { name: /^Take .+ back out$/ });
-  await expect(slots).toHaveCount(1);
+  await expect(addIt).toBeVisible({ timeout: 60_000 });
+  const size = await deckCount(recs);
+  await addIt.click();
+  const count = recs.getByRole("status").getByText(DECK_COUNT);
+  await expect(count).toHaveText(`${size + 1} / 100`);
 
   // Moving on to Cut isn't a choice; Undo steps back over the add and returns to Add.
   await steps.getByRole("button", { name: "Cut" }).click();
   await undo.click();
   await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step");
-  await expect(slots).toHaveCount(0);
+  await expect(count).toHaveText(`${size} / 100`);
   await expect(undo).toBeDisabled();
 });
 
@@ -146,7 +156,8 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   // The layer covers the page, so dismissing it can't reach the buttons or the card below.
   await enlarged.click({ position: { x: 10, y: 10 } });
   await expect(enlarged).toBeHidden();
-  await expect(progress).toHaveText(before);
+  // innerText, as `before` was read: the counter hides " to replace" on phones with CSS.
+  await expect(progress).toHaveText(before, { useInnerText: true });
   await expect(swapIn).toHaveAttribute("aria-label", candidateBefore ?? "");
 });
 

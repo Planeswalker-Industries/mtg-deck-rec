@@ -12,10 +12,16 @@ import { ZoomableCard } from "./card-zoom";
 import { ManaCost } from "./mana-cost";
 import { RulesText } from "./rules-text";
 
-/** Rules text lines shown before "More": a whole card on the single panel, the gist on a compact one. */
-const CLAMP = { single: "line-clamp-6", compact: "line-clamp-2" } as const;
+/**
+ * Rules text lines shown before "More": a whole card on the single panel, the gist on a compact one. A phone shows fewer
+ * on the single panel, so the swipe buttons stay above the Deck stats footer at 390×844 with a wordy card.
+ */
+const PHONE_CLAMP = { single: "max-sm:line-clamp-4", compact: "line-clamp-2" } as const;
+const CLAMP = { single: `${PHONE_CLAMP.single} sm:line-clamp-6`, compact: PHONE_CLAMP.compact } as const;
 /** Rules text longer than this many characters gets "More"; shorter text always fits the clamp. */
 const CLAMP_CHARS = { single: 220, compact: 70 } as const;
+/** The same on a phone's narrower column, where fewer characters fill the clamp. */
+const PHONE_CLAMP_CHARS = { single: 90, compact: 70 } as const;
 /** Placeholder lines while a card's rules are on their way. */
 const LOADING_LINES = { single: 4, compact: 2 } as const;
 
@@ -46,9 +52,15 @@ function RulesBlock({ rules, size }: { rules: CardRules | null | undefined; size
   const text = faces.length > 0 ? faces.map((f) => f.oracleText).join("\n") : (rules.oracleText ?? "");
   if (text.trim() === "") return null;
   const long = text.length > CLAMP_CHARS[size];
+  const longOnPhone = text.length > PHONE_CLAMP_CHARS[size];
   return (
     <div className="text-sm leading-snug">
-      <div className={cn("flex flex-col gap-1.5 whitespace-pre-line", long && !open && CLAMP[size])}>
+      <div
+        className={cn(
+          "flex flex-col gap-1.5 whitespace-pre-line",
+          !open && (long ? CLAMP[size] : longOnPhone && PHONE_CLAMP[size]),
+        )}
+      >
         {faces.length > 0 ? (
           faces.map((face, i) => (
             <p key={i}>
@@ -62,11 +74,11 @@ function RulesBlock({ rules, size }: { rules: CardRules | null | undefined; size
           </p>
         )}
       </div>
-      {long && (
+      {(long || longOnPhone) && (
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="relative mt-1 cursor-pointer text-sm font-semibold text-primary after:absolute after:-inset-2 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className={cn(!long && "sm:hidden", "relative mt-1 cursor-pointer text-sm font-semibold text-primary after:absolute after:-inset-2 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary")}
         >
           {open ? "Less" : "More"}
         </button>
@@ -79,7 +91,22 @@ function RulesBlock({ rules, size }: { rules: CardRules | null | undefined; size
  * What a card is and says, beside its image: name and cost, type line and printed stat, then the rules text. `children`
  * goes under it: why the card is here, its play rate, its price.
  */
-function CardFacts({ card, rules, size, tag, children }: { card: CardSummary; rules: CardRules | null | undefined; size: Size; tag?: ReactNode; children?: ReactNode }) {
+function CardFacts({
+  card,
+  rules,
+  size,
+  tag,
+  phoneRules = true,
+  children,
+}: {
+  card: CardSummary;
+  rules: CardRules | null | undefined;
+  size: Size;
+  tag?: ReactNode;
+  /** False leaves the rules text off on phones (the card can still be enlarged to read it). */
+  phoneRules?: boolean;
+  children?: ReactNode;
+}) {
   const stat = rules ? printedStat(rules) : null;
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -94,8 +121,10 @@ function CardFacts({ card, rules, size, tag, children }: { card: CardSummary; ru
         <span className="min-w-0 truncate">{card.typeLine}</span>
         {stat && <span className="shrink-0 rounded border border-seam px-1.5 font-mono text-sm text-foreground">{stat}</span>}
       </p>
-      <div aria-hidden className="h-px bg-seam" />
-      <RulesBlock rules={rules} size={size} />
+      <div aria-hidden className={cn("h-px bg-seam", !phoneRules && "max-sm:hidden")} />
+      <div className={cn(!phoneRules && "max-sm:hidden")}>
+        <RulesBlock rules={rules} size={size} />
+      </div>
       {children && <div className="mt-auto flex flex-col gap-0.5 pt-1 text-xs text-muted-foreground">{children}</div>}
     </div>
   );
@@ -130,7 +159,11 @@ function SwapTag({ side }: { side: "out" | "in" }) {
   );
 }
 
-/** A smaller panel for one side of a swap: two of these stack on a phone with room for the buttons. */
+/**
+ * A smaller panel for one side of a swap: two of these stack on a phone with room for the buttons. On a phone the card
+ * going out shows no rules text: it is the player's own card, and the two rows, the marks and the buttons have to fit
+ * above the Deck stats footer at 390×844. Tapping its image still shows the whole card.
+ */
 export function CompactCardPanel({
   card,
   rules,
@@ -157,7 +190,7 @@ export function CompactCardPanel({
           className={dim ? "opacity-80 saturate-50" : undefined}
         />
       </ZoomableCard>
-      <CardFacts card={card} rules={rules} size="compact" tag={<SwapTag side={side} />}>
+      <CardFacts card={card} rules={rules} size="compact" tag={<SwapTag side={side} />} phoneRules={side === "in"}>
         {children}
       </CardFacts>
     </div>
