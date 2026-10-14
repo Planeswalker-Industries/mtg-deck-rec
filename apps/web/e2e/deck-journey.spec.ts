@@ -32,22 +32,21 @@ async function analyzeDeck(page: Page) {
   return recs;
 }
 
-test("walks a deck through cut, add, replace and review, then starts over", async ({ page }) => {
+/** From Add, the first step, on to Cut through the stepper. */
+async function openCut(page: Page) {
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await recs.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click();
+  return recs;
+}
+
+test("walks a deck through add, cut, replace and review, then starts over", async ({ page }) => {
   const recs = await analyzeDeck(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
-  await expect(steps.getByRole("button", { name: "Cut" })).toHaveAttribute("aria-current", "step");
+  await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step");
   // Swiping is the default on a first visit: on a phone the view toggle offers the list.
   await expect(recs.getByRole("button", { name: "Show as a list" })).toBeVisible();
 
-  // Cut: cards that work against the deck, one at a time. The deck runs an off-colour card.
-  const cuts = recs.getByRole("region", { name: "Cards to cut" });
-  const cutIt = cuts.getByRole("button", { name: CUT_CARD });
-  await expect(cutIt).toBeVisible({ timeout: 60_000 });
-  await cutIt.click();
-  await recs.getByRole("button", { name: /^Next: add \d+ cards?$/ }).click();
-
-  // Add: adding a card fills a slot and asks for the list again.
-  await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step");
+  // Add comes first: adding a card asks for the list again.
   const adds = recs.getByRole("region", { name: "Cards to add" });
   const addIt = adds.getByRole("button", { name: /^Add / });
   await expect(addIt).toBeVisible({ timeout: 60_000 });
@@ -57,7 +56,15 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
   await expect(takeOut).toHaveCount(1);
   // The recomputed list never offers the card just added.
   await expect(adds.getByRole("button", { name: `Add ${added}` })).toBeHidden({ timeout: 60_000 });
-  await recs.getByRole("button", { name: "Done adding for now" }).click();
+  await recs.getByRole("button", { name: /^Done adding/ }).click();
+
+  // Cut: the deck runs an off-colour card, dealt first.
+  await expect(steps.getByRole("button", { name: "Cut" })).toHaveAttribute("aria-current", "step");
+  const cuts = recs.getByRole("region", { name: "Cards to cut" });
+  const cutIt = cuts.getByRole("button", { name: CUT_CARD });
+  await expect(cutIt).toBeVisible({ timeout: 60_000 });
+  await cutIt.click();
+  await recs.getByRole("button", { name: "Next: swaps" }).first().click();
 
   // Replace: weaker fits, each with a replacement. The deck may have none, which goes on to Review.
   await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
@@ -72,14 +79,15 @@ test("walks a deck through cut, add, replace and review, then starts over", asyn
   await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Decklist" })).toBeVisible();
 
-  // Start over goes back to the deck as it was pasted, at Cut.
+  // Start over goes back to the deck as it was pasted, at Add.
   await recs.getByRole("button", { name: "Start over" }).click();
-  await expect(steps.getByRole("button", { name: "Cut" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
-  await expect(recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD })).toBeVisible({ timeout: 60_000 });
+  await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
+  await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
 });
 
 test("the Cut list crosses out recommended cuts and lets any card be cut", async ({ page }) => {
-  const recs = await analyzeDeck(page);
+  await analyzeDeck(page);
+  const recs = await openCut(page);
   await recs.getByRole("button", { name: "Show as a list" }).click();
   const deck = recs.getByRole("region", { name: "Your deck" });
   await expect(deck).toBeVisible({ timeout: 60_000 });
@@ -96,10 +104,10 @@ test("the Cut list crosses out recommended cuts and lets any card be cut", async
 });
 
 test("the Replace swipe enlarges a card on tap without swiping the card underneath", async ({ page }) => {
-  const recs = await analyzeDeck(page);
+  await analyzeDeck(page);
+  const recs = await openCut(page);
   await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
-  await recs.getByRole("button", { name: /^Next: add \d+ cards?$/ }).click();
-  await recs.getByRole("button", { name: "Done adding for now" }).click({ timeout: 60_000 });
+  await recs.getByRole("button", { name: "Next: swaps" }).first().click();
 
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const swapIn = rater.getByRole("button", { name: /^Swap in / });
@@ -121,12 +129,12 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
 });
 
 test("going back from Swap and returning keeps the swaps, and a picked swap reopens its card", async ({ page }) => {
-  const recs = await analyzeDeck(page);
+  await analyzeDeck(page);
+  const recs = await openCut(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  await expect(steps.getByRole("button", { name: "Cut" })).toHaveAttribute("aria-current", "step");
   await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
   // The next step in the stepper does what Next does.
-  await steps.getByRole("button", { name: "Add" }).click();
-  await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step");
   await steps.getByRole("button", { name: "Swap" }).click();
   await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
 
@@ -141,8 +149,8 @@ test("going back from Swap and returning keeps the swaps, and a picked swap reop
   const swaps = recs.getByRole("list", { name: "Swaps picked" }).getByRole("button");
   await expect(swaps).toHaveCount(1);
 
-  // Back to Cut without changing anything, then straight back to Swap: the swap is still there.
-  await steps.getByRole("button", { name: "Cut" }).click();
+  // Back to Add without changing anything, then straight back to Swap: the swap is still there.
+  await steps.getByRole("button", { name: "Add" }).click();
   await expect(steps.getByRole("button", { name: "Swap" })).toBeEnabled();
   await steps.getByRole("button", { name: "Swap" }).click();
   await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
@@ -155,10 +163,10 @@ test("going back from Swap and returning keeps the swaps, and a picked swap reop
 });
 
 test("returning to Swap with the deck unchanged asks for nothing again", async ({ page }) => {
-  const recs = await analyzeDeck(page);
+  await analyzeDeck(page);
+  const recs = await openCut(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
   await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
-  await steps.getByRole("button", { name: "Add" }).click();
   await steps.getByRole("button", { name: "Swap" }).click();
   const swapIn = recs.getByRole("region", { name: "Swipe through cards to replace" }).getByRole("button", { name: /^Swap in / });
   const nothingLeft = recs.getByRole("button", { name: "Next: review the deck" });
@@ -179,7 +187,7 @@ test("returning to Swap with the deck unchanged asks for nothing again", async (
   const loadingSeen = () => page.evaluate(() => (window as unknown as { loadingSeen: string[] }).loadingSeen);
 
   await watchLoading();
-  await steps.getByRole("button", { name: "Cut" }).click();
+  await steps.getByRole("button", { name: "Add" }).click();
   await steps.getByRole("button", { name: "Swap" }).click();
   await expect(swapIn).toBeVisible({ timeout: 60_000 });
   expect(await loadingSeen()).toEqual([]);
@@ -188,6 +196,7 @@ test("returning to Swap with the deck unchanged asks for nothing again", async (
   await watchLoading();
   await steps.getByRole("button", { name: "Add" }).click();
   await recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).click({ timeout: 60_000 });
+  await steps.getByRole("button", { name: "Cut" }).click();
   await steps.getByRole("button", { name: "Swap" }).click();
   await expect(swapIn).toBeVisible({ timeout: 60_000 });
   expect(await loadingSeen()).toContain("Looking at the deck again");

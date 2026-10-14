@@ -21,7 +21,7 @@ interface NavItem {
  * in the browser until an account takes it). Rating swaps moved to the footer.
  */
 const NAV_ITEMS: readonly NavItem[] = [
-  { href: "/deck", label: "Upgrade a deck", hint: "Cards to cut, add and swap", accountOnly: false },
+  { href: "/deck", label: "Upgrade a deck", hint: "Cards to add, cut and swap", accountOnly: false },
   { href: "/collection", label: "My collection", hint: "The cards you own", accountOnly: false },
   { href: "/decks", label: "My decks", hint: "The decks you have saved", accountOnly: true },
 ];

@@ -204,7 +204,7 @@ test("saving a journey's result keeps the original, which the deck page compares
   const email = `original-${Date.now()}@test.invalid`;
   await signIn(page, request, email, "/decks");
 
-  // A short Chulane deck with one off-colour card, which the Cut phase deals as a mandatory cut.
+  // A short Chulane deck with one off-colour card, which the Cut step deals as a mandatory cut.
   await page.goto("/deck");
   await page
     .getByRole("textbox", { name: "Decklist" })
@@ -213,9 +213,9 @@ test("saving a journey's result keeps the original, which the deck page compares
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
 
   const recs = page.getByRole("region", { name: "Recommendations" });
+  await recs.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click({ timeout: 60_000 });
   await recs.getByRole("button", { name: "Cut Lightning Bolt" }).click({ timeout: 60_000 });
-  await recs.getByRole("button", { name: /^Next: add \d+ cards?$/ }).click();
-  await recs.getByRole("button", { name: "Done adding for now" }).click({ timeout: 60_000 });
+  await recs.getByRole("button", { name: "Next: swaps" }).first().click();
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const toReview = recs.getByRole("button", { name: "Next: review the deck" });
   await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });

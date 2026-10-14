@@ -2,9 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 /** Footer button of the docked readout; its name reads "Deck stats Mild, 5 of 8 in line". */
 const FOOTER_NAME = /^Deck stats/;
-/** The Cut swipe's gesture buttons, "Cut <card>" and "Keep <card>"; not the "Cut the rest and move on" link under them. */
-const CUT_CARD = /^Cut (?!the rest and move on$)/;
-const KEEP_CARD = /^Keep /;
+/** The Add swipe's gesture buttons, "Add <card>" and "Skip <card>", inside its sitting. */
+const ADD_CARD = /^Add /;
+const SKIP_CARD = /^Skip /;
 /** Rounding slack for comparing layout boxes, in CSS pixels. */
 const LAYOUT_SLACK_PX = 1;
 
@@ -34,11 +34,13 @@ test.describe("deck stats on a phone", () => {
     await sheet.getByRole("button", { name: "Close deck stats", exact: true }).click();
     await expect(sheet).toBeHidden();
 
-    // Cut swipe: both gesture buttons sit inside the viewport and above the footer.
+    // Add swipe, the first step: both gesture buttons sit inside the viewport and above the footer.
     const viewport = page.viewportSize()!;
     const footerBox = (await footer.boundingBox())!;
-    for (const name of [CUT_CARD, KEEP_CARD]) {
-      const button = page.getByRole("button", { name }).first();
+    const sitting = page.getByRole("region", { name: "Cards to add" });
+    for (const name of [ADD_CARD, SKIP_CARD]) {
+      const button = sitting.getByRole("button", { name }).first();
+      await expect(button).toBeVisible({ timeout: 60_000 });
       await expect(button).toBeVisible();
       const box = (await button.boundingBox())!;
       expect(box.y).toBeGreaterThanOrEqual(0);
