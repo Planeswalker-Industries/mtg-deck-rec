@@ -98,7 +98,6 @@ The overhaul (owner interview 2026-10-13) changed the journey to Add → Cut →
 - [ ] Decide which printing-level fields to store. `printings` lacks rarity, set name, artist, flavor text, frame and promo flags (oracle-level fields are all stored now).
 - [ ] The Deckbuilder's Deck stats shows deltas against the saved version (it has no round start, so nothing moves today).
 - [ ] Add's caption names the role count it moves ("Adds protection: 3 → 4 of 8"). It needs suggestion `fillsRoles` mapped to the stat role keys.
-- [ ] `saved-decks.spec.ts` "a saved deck has its own page…": the hidden deck's export returned 200 on the dev server (2026-10-14). Confirm it on a production build; that code wasn't touched.
 
 ### T006: Wire votes into swap scoring
 
