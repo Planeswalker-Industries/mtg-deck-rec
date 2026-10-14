@@ -103,6 +103,26 @@ export interface CardFace {
   manaCost: string;
   typeLine: string;
   oracleText: string;
+  /** Power and toughness, loyalty and defense as printed ("*", "1+*"); absent or null where the face has none. */
+  power?: string | null;
+  toughness?: string | null;
+  loyalty?: string | null;
+  defense?: string | null;
+}
+
+/**
+ * What a card says, for showing it in full beside its image: rules text and printed stats. Fetched only for the cards
+ * on screen (CatalogApi.cardRules), since CardSummary rides on every suggestion and most views never need the text.
+ * A multi-face card has `faces`; its top-level stats are the front face's.
+ */
+export interface CardRules {
+  cardId: CardId;
+  oracleText: string | null;
+  power: string | null;
+  toughness: string | null;
+  loyalty: string | null;
+  defense: string | null;
+  faces: CardFace[] | null;
 }
 
 export type CommanderLegality = 'legal' | 'not_legal' | 'banned' | 'restricted';

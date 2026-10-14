@@ -113,5 +113,9 @@
  *
  * v27 (2026-10-09): ActionsApi.getDeckCoverage is a private, uncached inventory read with required ownership,
  * returning quantity allocation and metadata for target and allocated source cards. Additive; release needs both teams' approval.
+ *
+ * v28 (2026-10-14): the deck journey's card panel. CatalogApi.cardRules (POST /api/cards/rules) returns CardRules (rules
+ * text, power and toughness, loyalty, defense, faces) for the cards on screen; CardFace gains optional power,
+ * toughness, loyalty and defense. Additive.
  */
-export const CONTRACT_VERSION = 27;
+export const CONTRACT_VERSION = 28;

@@ -321,8 +321,11 @@ export type Database = {
           can_be_commander: boolean
           card_faces: Json | null
           color_identity: number
+          color_indicator: number | null
+          colors: number | null
           content_hash: string
           copy_limit: number | null
+          defense: string | null
           deleted_at: string | null
           equivalence_base_id: number | null
           game_changer: boolean
@@ -334,6 +337,7 @@ export type Database = {
           layout: string
           legal_commander: string
           legalities: Json
+          loyalty: string | null
           mana_cost: string | null
           mana_value: number
           name: string
@@ -342,13 +346,17 @@ export type Database = {
           oracle_text: string | null
           partner_kind: string | null
           partner_qualifier: string | null
+          power: string | null
           prices_as_of: string | null
+          produced_mana: string[] | null
           reference_price_finish: string | null
           reference_price_usd: number | null
           released_at: string | null
+          reserved: boolean
           rules_hash: string | null
           scryfall_uri: string
           slug: string
+          toughness: string | null
           type_line: string
           updated_at: string
         }
@@ -357,8 +365,11 @@ export type Database = {
           can_be_commander: boolean
           card_faces?: Json | null
           color_identity: number
+          color_indicator?: number | null
+          colors?: number | null
           content_hash: string
           copy_limit?: number | null
+          defense?: string | null
           deleted_at?: string | null
           equivalence_base_id?: number | null
           game_changer?: boolean
@@ -370,6 +381,7 @@ export type Database = {
           layout: string
           legal_commander: string
           legalities: Json
+          loyalty?: string | null
           mana_cost?: string | null
           mana_value: number
           name: string
@@ -378,13 +390,17 @@ export type Database = {
           oracle_text?: string | null
           partner_kind?: string | null
           partner_qualifier?: string | null
+          power?: string | null
           prices_as_of?: string | null
+          produced_mana?: string[] | null
           reference_price_finish?: string | null
           reference_price_usd?: number | null
           released_at?: string | null
+          reserved?: boolean
           rules_hash?: string | null
           scryfall_uri: string
           slug: string
+          toughness?: string | null
           type_line: string
           updated_at?: string
         }
@@ -393,8 +409,11 @@ export type Database = {
           can_be_commander?: boolean
           card_faces?: Json | null
           color_identity?: number
+          color_indicator?: number | null
+          colors?: number | null
           content_hash?: string
           copy_limit?: number | null
+          defense?: string | null
           deleted_at?: string | null
           equivalence_base_id?: number | null
           game_changer?: boolean
@@ -406,6 +425,7 @@ export type Database = {
           layout?: string
           legal_commander?: string
           legalities?: Json
+          loyalty?: string | null
           mana_cost?: string | null
           mana_value?: number
           name?: string
@@ -414,13 +434,17 @@ export type Database = {
           oracle_text?: string | null
           partner_kind?: string | null
           partner_qualifier?: string | null
+          power?: string | null
           prices_as_of?: string | null
+          produced_mana?: string[] | null
           reference_price_finish?: string | null
           reference_price_usd?: number | null
           released_at?: string | null
+          reserved?: boolean
           rules_hash?: string | null
           scryfall_uri?: string
           slug?: string
+          toughness?: string | null
           type_line?: string
           updated_at?: string
         }

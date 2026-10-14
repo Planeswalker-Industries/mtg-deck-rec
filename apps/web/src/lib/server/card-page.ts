@@ -1,5 +1,6 @@
-import type { CardDetail, CardFace, CardSummary, CommanderLegality, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
+import type { CardDetail, CardSummary, CommanderLegality, RecContext, SwapResult, TagId, TagRef } from "@mtg/core/contract";
 import { rankSwaps } from "@mtg/core/scoring";
+import { toFaces } from "./card-rules";
 import { fetchCardsById, toCardSummary } from "./cards";
 import { loadCorpusConfig } from "./corpus";
 import { loadSwapPool } from "./recs";
@@ -38,16 +39,6 @@ export interface CardPageData {
   commanderSlug: string | null;
   /** Artist of the printing the images come from, for crediting art shown as a backdrop. */
   artist: string | null;
-}
-
-function toFaces(value: unknown): CardFace[] | null {
-  if (!Array.isArray(value) || value.length < 2) return null;
-  return value.map((face: Record<string, unknown>) => ({
-    name: typeof face.name === "string" ? face.name : "",
-    manaCost: typeof face.mana_cost === "string" ? face.mana_cost : "",
-    typeLine: typeof face.type_line === "string" ? face.type_line : "",
-    oracleText: typeof face.oracle_text === "string" ? face.oracle_text : "",
-  }));
 }
 
 /** Data for a public card page. Null when the slug isn't a card in the catalog. */
