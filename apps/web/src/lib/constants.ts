@@ -38,7 +38,7 @@ export const PHONE_HIT_AREA_BEFORE =
   "relative max-sm:before:absolute max-sm:before:top-1/2 max-sm:before:left-1/2 max-sm:before:size-full max-sm:before:min-h-11 max-sm:before:min-w-11 max-sm:before:-translate-x-1/2 max-sm:before:-translate-y-1/2 max-sm:before:content-['']";
 
 /**
- * Every text link on the site: sleeve blue and underlined, so blue always means "this goes somewhere". The underline
+ * Every text link on the site: primary blue and underlined, so blue always means "this goes somewhere". The underline
  * firms up on hover; keyboard focus gets the site's outline. Callers add size and weight, never another colour.
  */
 export const TEXT_LINK =

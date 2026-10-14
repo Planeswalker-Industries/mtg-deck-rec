@@ -94,28 +94,27 @@
 :root {
   --radius: 0.5rem; /* controls: rounded-lg is 8px */
 
-  /* Kitchen Table (2026-09-29): a friend's kitchen table on game night meets a well-thumbed trade binder.
-     Walnut and oak are the table, warm paper is the ink, sleeve blue is the one thing you can act on. */
-  --background: #1b1510; /* walnut: the table */
-  --foreground: #f2e9dc; /* warm paper, never pure white */
-  --sleeve: #2a2119; /* oiled oak: panels and card rows, one step off the table */
+  /* Cool blue (2026-10-13): blue-grey slate surfaces, cool white ink, one blue accent. */
+  --background: oklch(0.17 0.012 260);
+  --foreground: oklch(0.95 0.005 255); /* cool white, never pure white */
+  --sleeve: oklch(0.21 0.014 260); /* panels and card rows, one step off the background */
   --seam: color-mix(in oklch, var(--foreground) 10%, transparent); /* the hairline where two surfaces meet */
 
   --card: var(--sleeve);
-  --card-foreground: var(--foreground);
-  --popover: #33291f;
+  --card-foreground: oklch(0.96 0.004 255);
+  --popover: oklch(0.21 0.014 260);
   --popover-foreground: var(--foreground);
 
-  --primary: #8db2e4; /* sleeve blue: the only accent, for actions, links, focus and the selected state */
-  --primary-foreground: #1b1510;
-  --secondary: #33291f;
-  --secondary-foreground: var(--foreground);
-  --muted: #241c15;
-  --muted-foreground: #b3a594; /* 7.5:1 on walnut */
-  --accent: #33291f;
-  --accent-foreground: var(--foreground);
+  --primary: oklch(0.707 0.165 254.6); /* the only accent, for actions, links, focus and the selected state */
+  --primary-foreground: var(--background);
+  --secondary: oklch(0.27 0.015 260);
+  --secondary-foreground: oklch(0.92 0.006 255);
+  --muted: oklch(0.25 0.014 260);
+  --muted-foreground: oklch(0.7 0.015 257);
+  --accent: oklch(0.29 0.05 262);
+  --accent-foreground: oklch(0.85 0.08 255);
 
-  /* Cut, add and replace: status colours, always with an icon and a label. Clear of the sleeve blue. */
+  /* Cut, add and replace: status colours, always with an icon and a label. Clear of the primary blue. */
   --cut: #e08a7a;
   --add: #8cc49a;
   --replace: #c7a2da;
@@ -141,12 +140,26 @@
   --gc: #e0b354;
   --gc-bg: #3a2d13;
 
-  --border: var(--seam);
-  --input: #3a2e24;
+  --border: oklch(0.3 0.014 260);
+  --input: oklch(0.3 0.014 260);
   --ring: var(--primary);
 
   /* A card in hand: dragged, dealt or passed. Resting surfaces have no shadow. */
   --lift: 0 14px 30px -14px rgb(20 12 6 / 0.55);
+
+  /* v4 Kitchen Table (2026-09-29): walnut, oak and warm paper. Kept so the earlier values can be restored. */
+  --backgroundv4: #1b1510;
+  --foregroundv4: #f2e9dc;
+  --sleevev4: #2a2119;
+  --popoverv4: #33291f;
+  --primaryv4: #8db2e4;
+  --primary-foregroundv4: #1b1510;
+  --secondaryv4: #33291f;
+  --mutedv4: #241c15;
+  --muted-foregroundv4: #b3a594;
+  --accentv4: #33291f;
+  --borderv4: var(--seam);
+  --inputv4: #3a2e24;
 
   /* v3 "Table at night" (the 2026-09 facelift). Kept so the earlier values can be restored. */
   --backgroundv3: #080e15;

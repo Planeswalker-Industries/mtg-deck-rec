@@ -6,27 +6,27 @@ import type { RaThemeOptions } from "react-admin";
 /**
  * The site's design tokens, as a Material UI theme.
  *
- * React Admin brings Material UI, and the site is shadcn and Tailwind — but "Kitchen Table" is a set of colours,
+ * React Admin brings Material UI, and the site is shadcn and Tailwind — but the site's look is a set of colours,
  * a typeface and a few surface rules, none of which belong to either framework. Restating them here is what makes
  * the admin area read as the same site rather than a bolted-on tool.
  *
- * The values below **mirror `:root` in `app/globals.css`. Change both together.** They are literals rather than
- * `var(--token)` because Material UI does colour maths on palette entries (`alpha`, hover and selected overlays),
- * and a CSS variable is opaque to it. The two font families *are* read as variables: next/font puts them on
+ * The values below **mirror `:root` in `app/globals.css`, as sRGB hex of its oklch values. Change both together.**
+ * They are literals rather than `var(--token)` because Material UI does colour maths on palette entries (`alpha`,
+ * hover and selected overlays), and a CSS variable is opaque to it. The two font families *are* read as variables: next/font puts them on
  * `<html>`, nothing computes on them, and that keeps the fonts in one place.
  */
 const TOKENS = {
-  background: "#1b1510", // walnut: the table
-  sleeve: "#2a2119", // oiled oak: panels, one step off the table
-  seam: "#302a24", // the hairline: warm paper at 10% over walnut
-  popover: "#33291f",
-  foreground: "#f2e9dc", // warm paper, never pure white
-  mutedForeground: "#b3a594",
-  muted: "#241c15",
-  secondary: "#33291f",
-  input: "#3a2e24",
-  primary: "#8db2e4", // sleeve blue: the one accent
-  primaryForeground: "#1b1510",
+  background: "#0c1015", // blue-grey slate
+  sleeve: "#15181f", // panels, one step off the background
+  seam: "#2a2e35", // the hairline: --border
+  popover: "#15181f",
+  foreground: "#eceff2", // cool white, never pure white
+  mutedForeground: "#999fa8",
+  muted: "#1e2228",
+  secondary: "#22272e",
+  input: "#2a2e35",
+  primary: "#50a2ff", // the one accent
+  primaryForeground: "#0c1015",
   cut: "#e08a7a",
   add: "#8cc49a",
   replace: "#c7a2da",
