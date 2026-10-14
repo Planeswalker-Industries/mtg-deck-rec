@@ -76,6 +76,30 @@ The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a r
 
 ## High-Impact Features
 
+### T073: Deck journey UX overhaul follow-ups
+
+**Priority:** HIGH | **Area:** Frontend / Data | **Status:** Overhaul built on `feat/journey-ux` (2026-10-14); these remain
+
+The overhaul (owner interview 2026-10-13) changed the journey to Add → Cut → Swap → Finish:
+- `trimCuts` trims back to 100 after Add.
+- An Undo / Start over / Save bar sits on every step, with Save as copy.
+- A card panel shows rules text, and Swap marks how the replacement compares (`compareCards`).
+- Pressable things are blue at rest, and status colours are never blue.
+- Deck stats rows preview the card on screen (`statDeltas`).
+
+**Files:**
+- `packages/core/src/journey/` — `journey.ts` (order, `roomToAdd`, `cutsNeeded`, `pushUndo`), `room.ts` (`trimCuts`), `compare.ts`, `deck-tally.ts` (`statDeltas`)
+- `apps/web/src/components/deck/journey/` — `round-bar.tsx`, `cut-phase.tsx`, `add-phase.tsx`, `single-swipe.tsx`
+- `apps/web/src/components/cards/card-panel.tsx`, `apps/web/src/lib/card-rules.ts`, `apps/web/src/app/api/cards/rules/route.ts`
+- `supabase/migrations/20261014000100_card_oracle_fields.sql`, `apps/worker/src/lib/scryfall-card.ts`
+
+**Acceptance criteria:**
+- [ ] After the release to `main`, run `cli:hosted sync:catalog` so hosted fills power, toughness, loyalty, defense, colors, color indicator, produced mana and reserved. This is a one-time rewrite of every card. The owner runs it.
+- [ ] Decide which printing-level fields to store. `printings` lacks rarity, set name, artist, flavor text, frame and promo flags (oracle-level fields are all stored now).
+- [ ] The Deckbuilder's Deck stats shows deltas against the saved version (it has no round start, so nothing moves today).
+- [ ] Add's caption names the role count it moves ("Adds protection: 3 → 4 of 8"). It needs suggestion `fillsRoles` mapped to the stat role keys.
+- [ ] `saved-decks.spec.ts` "a saved deck has its own page…": the hidden deck's export returned 200 on the dev server (2026-10-14). Confirm it on a production build; that code wasn't touched.
+
 ### T006: Wire votes into swap scoring
 
 **Priority:** HIGH | **Area:** Backend / Scoring | **Status:** Not started

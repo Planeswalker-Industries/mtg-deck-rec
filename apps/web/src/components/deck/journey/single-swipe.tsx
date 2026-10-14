@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import { CardPanel, DecisionButtons, type DecisionTone } from "@/components/cards/card-panel";
 import { useCardRules } from "@/lib/card-rules";
+import { useStatPreview } from "../deck-stats/stat-preview";
 import { SWIPE_COOLDOWN_MS } from "../swipe-rater";
 
 /**
@@ -18,6 +19,7 @@ import { SWIPE_COOLDOWN_MS } from "../swipe-rater";
 export function SingleSwipe({
   card,
   upcoming = [],
+  previewAs,
   position,
   total,
   label,
@@ -35,6 +37,8 @@ export function SingleSwipe({
 }: {
   card: CardSummary;
   upcoming?: readonly CardId[];
+  /** What accepting does to the deck, for Deck stats' preview: puts the card in, or takes it out. */
+  previewAs: "add" | "remove";
   /** The job the swipe does, which colours the accept button. */
   tone: DecisionTone;
   /** 1-based, for "Card 2 of 5". */
@@ -58,6 +62,7 @@ export function SingleSwipe({
 }) {
   const lastAt = useRef(0);
   const rulesFor = useCardRules([card.id, ...upcoming]);
+  useStatPreview(previewAs === "add" ? card : null, previewAs === "remove" ? card : null);
 
   // A double tap would otherwise answer the card that just came up, which the player never saw.
   const act = (accept: boolean) => {

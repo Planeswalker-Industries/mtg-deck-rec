@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
 import { useCardRules } from "@/lib/card-rules";
+import { useStatPreview } from "./deck-stats/stat-preview";
 import { describeCostDelta } from "@/lib/format";
 import { cutReasonShortLabel, emptySwapMessage } from "@/lib/labels";
 import { PanelError } from "./panel-state";
@@ -104,6 +105,7 @@ export function SwipeRater({
   const upcoming = loaded?.status === "ready" ? loaded.suggestions.slice(0, PREFETCH_CANDIDATES + 1).map((s) => s.card.id) : [];
   const nextTarget = targets[rater.targetIndex + 1]?.card.id;
   const rulesFor = useCardRules([...(target ? [target.card.id] : []), ...upcoming, ...(nextTarget === undefined ? [] : [nextTarget])]);
+  useStatPreview(candidate?.card ?? null, candidate && target ? target.card : null);
 
   const act = (swapIn: boolean) => {
     if (!candidate || Date.now() - lastAt.current < SWIPE_COOLDOWN_MS) return;

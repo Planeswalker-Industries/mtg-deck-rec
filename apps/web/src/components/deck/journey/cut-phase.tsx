@@ -202,6 +202,7 @@ export function CutPhase({
           total={cutCount + undecided.length + Math.min(trimsToDeal, trimQueue.length)}
           label="Cards to cut"
           tone="cut"
+          previewAs="remove"
           // ✂ cuts the card; ✓ keeps it. A ✓ on the cut side read as "keep" and the ✕ as "remove".
           acceptIcon={Scissors}
           passIcon={Check}

@@ -6,7 +6,7 @@ import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List } from "lucide-react";
 import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
-import type { StatLine } from "@mtg/core/journey";
+import { statDeltas, toTallyCard, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
 import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
+import { StatPreviewProvider, type StatPreview } from "./deck-stats/stat-preview";
 import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
 import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
@@ -281,7 +282,13 @@ export function DeckTool() {
     return null;
   };
   const bracketAction: StatAction | null = journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
-  const statsPanel = deckStats ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction } : null;
+  /** The card on screen in a swipe view, which Deck stats previews answering. */
+  const [statPreview, setStatPreview] = useState<StatPreview | null>(null);
+  const tallyOf = (card: CardSummary | null) => (card && analysis ? toTallyCard(card, card.roles ?? analysis.cardRoles[card.id] ?? []) : null);
+  const previewDeltas = deckStats && statPreview ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove)) : null;
+  const statsPanel = deckStats
+    ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction, preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null }
+    : null;
 
   /** Offers a deck lookup when the deck's commander has no play data, remembering which commanders it checked. */
   function checkLookup(checked: DeckAnalysis | null) {
@@ -825,6 +832,7 @@ export function DeckTool() {
           </div>
           {mode === "upgrade" ? (
             journey.state && (
+              <StatPreviewProvider onChange={setStatPreview}>
               <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
                 <div className="flex min-w-0 flex-col gap-3">
                   <div className="flex items-center gap-2">
@@ -899,6 +907,7 @@ export function DeckTool() {
                   </>
                 )}
               </div>
+              </StatPreviewProvider>
             )
           ) : (
             // Remounted when the player pastes a new decklist, so the builder starts from it rather than its old state.

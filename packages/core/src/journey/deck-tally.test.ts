@@ -1,7 +1,7 @@
 // packages/core/src/journey/deck-tally.test.ts
 import { describe, expect, it } from 'vitest';
 import type { BracketSignals, CardId, DeckCombo, StatTargets } from '../contract';
-import { buildTally, gradeDeck, syncTally, tallyCache, withinTolerance, type TallyCard, type TallyEntry } from './deck-tally';
+import { buildTally, gradeDeck, statDeltas, syncTally, tallyCache, withinTolerance, type TallyCard, type TallyEntry } from './deck-tally';
 
 const RAMP = 'ramp-role';
 const DRAW = 'draw-role';
@@ -208,5 +208,22 @@ describe('tallyCache', () => {
     expect(ramp(moved)?.value).toBe(0);
     expect(ramp(moved)?.start).toBe(0);
     expect(moved.curve.bars.every((b) => b.start === b.value)).toBe(true);
+  });
+});
+
+describe('statDeltas', () => {
+  const lines = [{ key: 'lands' }, { key: 'basicLands' }, { key: 'ramp' }, { key: 'removal' }];
+  const card = (typeLine: string, roles: string[]) => ({ id: 1 as CardId, typeLine, manaValue: 2, gameChanger: false, roles });
+
+  it('counts what the incoming card adds and the outgoing one takes, leaving unmoved lines out', () => {
+    const signet = card('Artifact', ['ramp']);
+    const bolt = card('Instant', ['removal']);
+    expect(statDeltas(lines, signet, bolt)).toEqual(new Map([['ramp', 1], ['removal', -1]]));
+    expect(statDeltas(lines, signet, card('Artifact', ['ramp']))).toEqual(new Map());
+  });
+
+  it('counts lands and basic lands from the type line', () => {
+    expect(statDeltas(lines, card('Basic Land — Plains', []), null)).toEqual(new Map([['lands', 1], ['basicLands', 1]]));
+    expect(statDeltas(lines, null, card('Land', ['ramp']))).toEqual(new Map([['lands', -1], ['ramp', -1]]));
   });
 });

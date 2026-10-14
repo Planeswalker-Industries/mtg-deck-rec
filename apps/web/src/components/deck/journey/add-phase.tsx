@@ -154,6 +154,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
         total={adds.length + Math.min(room, shown.length)}
         label="Cards to add"
         tone="add"
+        previewAs="add"
         upcoming={shown.slice(1, PREFETCH_CARDS + 1).map((s) => s.card.id)}
         acceptLabel={`Add ${next.card.name}`}
         passLabel={`Skip ${next.card.name}`}
