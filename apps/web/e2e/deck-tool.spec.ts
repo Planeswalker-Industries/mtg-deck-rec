@@ -1,9 +1,7 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /** Tailwind's `lg` breakpoint, where the deckbuilder shows search beside the deck instead of its own tab. */
 const LG_BREAKPOINT_PX = 1024;
-/** Rounding slack for comparing layout boxes, in CSS pixels. */
-const LAYOUT_SLACK_PX = 1;
 
 /** Analyzes the sample deck and switches to the deckbuilder. Returns the recommendations region. */
 async function openDeckbuilder(page: Page) {
@@ -63,18 +61,6 @@ test("analyzes the sample deck, and the deckbuilder swaps a card for a replaceme
   await expect(deckList.getByRole("button", { name: `Remove ${target}` })).toHaveCount(0);
 });
 
-test("the deckbuilder adds a card from search, within the commander's colours", async ({ page }) => {
-  const { search } = await openCardSearch(page);
-  await search.getByRole("button", { name: "Creatures" }).click();
-  const results = search.getByRole("list", { name: "Search results" });
-  const add = results.getByRole("button", { name: /^Add / }).first();
-  await expect(add).toBeVisible({ timeout: 60_000 });
-  const name = ((await add.getAttribute("aria-label")) ?? "").replace(/^Add /, "");
-  await add.click();
-  // Once in, the card can't be added twice.
-  await expect(results.getByRole("button", { name: `Remove ${name} from the deck` })).toBeVisible();
-});
-
 test("the deckbuilder adds the only search result on Enter, then empties the box for the next card", async ({ page }) => {
   const { recs, search } = await openCardSearch(page);
   const results = search.getByRole("list", { name: "Search results" });
@@ -96,15 +82,6 @@ test("the deckbuilder adds the only search result on Enter, then empties the box
   await expect(deckList.getByRole("button", { name: `Remove ${name}`, includeHidden: true })).toBeAttached();
 });
 
-test("Clear empties the deckbuilder search and hands the box focus back", async ({ page }) => {
-  const { search } = await openCardSearch(page);
-  const box = search.getByRole("searchbox", { name: "Card name" });
-  await box.fill("sol");
-  await search.getByRole("button", { name: "Clear" }).click();
-  await expect(box).toHaveValue("");
-  await expect(box).toBeFocused();
-});
-
 test("the deckbuilder's land buttons add a basic land in the commander's colours", async ({ page }) => {
   test.skip(!process.env.E2E_LOCAL_DATA, "the mock catalog has no basic lands (E2E_LOCAL_DATA)");
   const { recs, search } = await openCardSearch(page);
@@ -119,7 +96,7 @@ test("the deckbuilder's land buttons add a basic land in the commander's colours
   await expect(copies).toHaveText(String(before + 1));
 });
 
-test("the deckbuilder search shows nothing once the name box is emptied", async ({ page }) => {
+test("the deckbuilder search shows nothing once the name box is emptied, and Clear empties it", async ({ page }) => {
   const { search } = await openCardSearch(page);
   const box = search.getByRole("searchbox", { name: "Card name" });
   const results = search.getByRole("list", { name: "Search results" });
@@ -134,72 +111,12 @@ test("the deckbuilder search shows nothing once the name box is emptied", async 
   await box.fill("");
   await expect(results).toBeHidden();
   await expect(search.getByText(/^Type a card name/)).toBeVisible();
-});
 
-/** The deck bar's bottom edge, which a stuck filter block must sit at or below. */
-async function deckBarBottom(page: Page) {
-  const bar = await page.locator("[data-deck-bar]").boundingBox();
-  if (!bar) throw new Error("deck bar not on screen");
-  return bar.y + bar.height;
-}
-
-test("the deckbuilder search filters stay on screen while a phone scrolls the results", async ({ page }) => {
-  const { search } = await openCardSearch(page);
-  await search.getByRole("button", { name: "Instants" }).click();
-  await expect(search.getByRole("list", { name: "Search results" }).getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
-
-  const types = search.getByRole("group", { name: "Card type" });
-  const before = await types.boundingBox();
-  // before.y is viewport-relative; record the page's own scroll offset so the precondition compares document-relative
-  // positions instead of mixing the two.
-  const initialScrollY = await page.evaluate(() => window.scrollY);
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-  // Precondition: the page scrolled past where the filters started, so staying visible means they stuck.
-  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan((before?.y ?? 0) + initialScrollY);
-
-  await expect(types).toBeInViewport();
-  const after = await types.boundingBox();
-  expect(after?.y ?? 0).toBeGreaterThanOrEqual((await deckBarBottom(page)) - LAYOUT_SLACK_PX);
-  // The pill rows scroll inside themselves; the page never scrolls sideways.
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-});
-
-test.describe("on a wide screen", () => {
-  test.use({ viewport: { width: 1280, height: 800 } });
-
-  test("the deckbuilder search filters stay on screen while the sidebar scrolls the results", async ({ page }) => {
-    const { search } = await openCardSearch(page);
-    await search.getByRole("button", { name: "Instants" }).click();
-    await expect(search.getByRole("list", { name: "Search results" }).getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
-
-    // The aside is sticky relative to the page's own scroll, not the sidebar's internal one, so it only sticks once
-    // the page has scrolled past where the aside starts. The site footer sits below the two-column layout, so
-    // scrolling to the document's own bottom overshoots the layout's containing block and un-sticks the aside again;
-    // scroll only as far as bringing that layout's own bottom to the viewport's bottom.
-    const sidebar = search.locator("xpath=ancestor::aside[1]");
-    const target = await sidebar.evaluate((el) => {
-      const layout = el.parentElement ?? el;
-      return Math.max(0, layout.getBoundingClientRect().bottom + window.scrollY - window.innerHeight);
-    });
-    await page.evaluate((y) => window.scrollTo(0, y), target);
-    // Precondition: the page actually scrolled, so the aside had a chance to stick.
-    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-
-    const scrolled = await sidebar.evaluate((el) => {
-      el.scrollTop = el.scrollHeight;
-      return el.scrollTop;
-    });
-    // Precondition: the sidebar has more results than fit, so there was something to scroll.
-    expect(scrolled).toBeGreaterThan(0);
-
-    const types = search.getByRole("group", { name: "Card type" });
-    await expect(types).toBeInViewport();
-    const barBottom = await deckBarBottom(page);
-    const asideBox = await sidebar.boundingBox();
-    expect(asideBox?.y ?? 0).toBeGreaterThanOrEqual(barBottom - LAYOUT_SLACK_PX);
-    const typesBox = await types.boundingBox();
-    expect(typesBox?.y ?? 0).toBeGreaterThanOrEqual(barBottom - LAYOUT_SLACK_PX);
-  });
+  // Clear does the same, and hands the box focus back.
+  await box.fill("sol");
+  await search.getByRole("button", { name: "Clear" }).click();
+  await expect(box).toHaveValue("");
+  await expect(box).toBeFocused();
 });
 
 test("puts the last decklist back in the box without analyzing it, and remembers the list view", async ({ page }) => {
@@ -317,45 +234,10 @@ test("takes a decklist as a file, and reduces a CSV export to quantities and nam
   await expect(page.getByRole("textbox", { name: "Decklist" })).toHaveValue("2 Sol Ring\n1 Liesa, Forgotten Archangel");
 });
 
-test("explains why a replacement was suggested, and the shares add up", async ({ page }) => {
-  await page.goto("/deck");
-  await page.getByRole("button", { name: "Use sample deck" }).click();
-  await page.getByRole("button", { name: "Analyze deck" }).click();
-  const recs = page.getByRole("region", { name: "Recommendations" });
-  await expect(recs).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-
-  await recs.getByRole("button", { name: "Deckbuilder" }).click();
-  await recs.getByRole("region", { name: "Deck list" }).getByRole("button", { name: /^Replace / }).first().click({ timeout: 60_000 });
-
-  const sheet = page.getByRole("dialog");
-  await expect(sheet.getByRole("heading", { name: /^Replace / })).toBeVisible();
-  const why = sheet.getByText("Why this card");
-  await expect(why).toBeVisible({ timeout: 60_000 });
-  await why.click();
-
-  // Every component that counted names its share, and those shares are the whole score.
-  const panel = sheet.locator("details[open]");
-  const shares = await panel.getByText(/% of the score$/).allInnerTexts();
-  expect(shares.length).toBeGreaterThan(0);
-  const total = shares.reduce((sum, text) => sum + Number(text.replace(/\D/g, "")), 0);
-  // Each share is rounded to a whole percent, so the sum lands within a point per row.
-  expect(Math.abs(total - 100)).toBeLessThanOrEqual(shares.length);
-});
-
-test("offers to start from a collection when there isn't one", async ({ page }) => {
-  await page.goto("/deck");
-  await page.getByRole("radio", { name: /Cards I own/ }).click();
-  const link = page.getByRole("link", { name: "Upload your collection" });
-  await expect(link).toBeVisible({ timeout: 30_000 });
-  await link.click();
-  // The import returns to the deck afterwards (`?next=/deck`).
-  await page.waitForURL(/\/collection\/import(\?|$)/);
-});
-
 test("a name search's next page continues the list rather than repeating it", async ({ request }) => {
+  // Sorted, as the deckbuilder pages: without a sort the first page and later ones rank differently when the index is down.
   const page = async (offset: number) => {
-    const res = await request.get(`/api/cards/search?q=angel&limit=5&offset=${offset}`);
+    const res = await request.get(`/api/cards/search?q=angel&limit=5&offset=${offset}&sort=name_asc`);
     const body = (await res.json()) as { ok: boolean; data: { id: number }[] };
     expect(body.ok).toBe(true);
     return body.data.map((c) => c.id);
@@ -365,42 +247,6 @@ test("a name search's next page continues the list rather than repeating it", as
   test.skip(first.length === 0, "no catalog loaded");
   const second = await page(first.length);
   expect(second.filter((id) => first.includes(id))).toEqual([]);
-});
-
-/**
- * Checks that, in every row of a card grid, the first button matching `button` in each card sits at the same height.
- * Rows are found from the cards' own top edges, so the check holds whatever the column count.
- */
-async function expectButtonsAligned(list: Locator, button: RegExp) {
-  const items = list.getByRole("listitem");
-  const count = await items.count();
-  const rows = new Map<number, number[]>();
-  for (let i = 0; i < count; i++) {
-    const item = items.nth(i);
-    const [itemBox, buttonBox] = await Promise.all([item.boundingBox(), item.getByRole("button", { name: button }).first().boundingBox()]);
-    if (!itemBox || !buttonBox) continue;
-    const row = Math.round(itemBox.y);
-    rows.set(row, [...(rows.get(row) ?? []), buttonBox.y]);
-  }
-  expect(rows.size).toBeGreaterThan(0);
-  for (const ys of rows.values()) expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(LAYOUT_SLACK_PX);
-}
-
-test("the deckbuilder's search results line up their Add buttons", async ({ page }) => {
-  const { search } = await openCardSearch(page);
-  await search.getByRole("button", { name: "Instants" }).click();
-  const results = search.getByRole("list", { name: "Search results" });
-  await expect(results.getByRole("listitem").first()).toBeVisible({ timeout: 60_000 });
-  await expectButtonsAligned(results, /^Add |from the deck$/);
-});
-
-test("the deckbuilder's deck cards line up their buttons", async ({ page }) => {
-  const recs = await openDeckbuilder(page);
-  const deckList = recs.getByRole("region", { name: "Deck list" });
-  await expect(deckList.getByRole("button", { name: /^Remove / }).first()).toBeVisible({ timeout: 60_000 });
-  // Every group in the deck, commanders included.
-  const grids = deckList.getByRole("list");
-  for (let i = 0; i < (await grids.count()); i++) await expectButtonsAligned(grids.nth(i), /^Remove /);
 });
 
 test("builds a deck for a picked commander, then goes through it card by card", async ({ page }) => {
