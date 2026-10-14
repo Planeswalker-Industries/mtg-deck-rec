@@ -210,7 +210,7 @@ export function CutPhase({
           onPass={() => journey.dispatch({ type: "keep", cardId: next.id })}
           footer={
             <Button type="button" size="sm" variant="link" onClick={finish}>
-              {undecided.length > 0 ? "Cut the rule breaks and move on" : "Done cutting: go to swaps"}
+              {undecided.length > 0 ? "Cut the rest and move on" : "Done cutting: go to swaps"}
             </Button>
           }
         />

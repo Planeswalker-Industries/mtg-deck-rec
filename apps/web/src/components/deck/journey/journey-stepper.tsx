@@ -12,7 +12,7 @@ const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors }> = {
   cut: { name: "Cut", Icon: Scissors },
   add: { name: "Add", Icon: Plus },
   replace: { name: "Swap", Icon: Repeat2 },
-  review: { name: "Done", Icon: ClipboardList },
+  review: { name: "Finish", Icon: ClipboardList },
 };
 
 /**

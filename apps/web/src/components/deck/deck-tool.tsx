@@ -40,6 +40,7 @@ import { CutPhase, type TrimFocus } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
+import { RoundBar, type CopyState, type RoundSave } from "./journey/round-bar";
 import { useDeckJourney, type AddFilter, type DeckJourney } from "./journey/use-deck-journey";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
@@ -47,6 +48,7 @@ import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
 import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
+import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import { BUILD_DECK_HREF, BUILD_DEFAULT_BRACKET, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 import { collectionCounts } from "@/lib/deck-collection";
 import { getApis } from "@/lib/api/client";
@@ -181,12 +183,15 @@ export function DeckTool() {
     if (path === "online") tool.changeCollectionMode("off");
     else if (tool.collectionMode === "off") tool.changeCollectionMode("only");
   }
+  /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu. */
+  const [copy, setCopy] = useState<CopyState>({ status: "idle" });
   /** The role Deck stats asked Cut to trim; a new deck starts without one. */
   const [trimFor, setTrimFor] = useState<TrimFocus | null>(null);
   const [trimRound, setTrimRound] = useState(tool.round);
   if (trimRound !== tool.round) {
     setTrimRound(tool.round);
     setTrimFor(null);
+    setCopy({ status: "idle" });
   }
   /** The commanders the deck lookup offer was last checked for; a deckbuilder edit that changes them checks again. */
   const lookupCheckedFor = useRef<string | null>(null);
@@ -477,15 +482,15 @@ export function DeckTool() {
   }
 
   /**
-   * Ends a journey round from Review. Save and Re-analyze put the result in the decklist and analyze it; Start over goes
-   * back to the deck the player brought. A new analysis starts a new round at Cut. Save then opens the editor: an open
-   * account deck has just been written back by the analysis, and a deck that isn't saved yet gets the name form.
+   * Ends a journey round. Save and Re-analyze put the result in the decklist and analyze it, which starts a new round
+   * at Add. Save then opens the editor: an open account deck has just been written back by the analysis, and a deck
+   * that isn't saved yet gets the name form.
    */
-  async function commitJourney(kind: "save" | "reanalyze" | "startOver") {
-    const text = kind === "startOver" ? null : journey.resultText();
-    if (kind !== "startOver" && text === null) return;
+  async function commitJourney(kind: "save" | "reanalyze") {
+    const text = journey.resultText();
+    if (text === null) return;
     setCommitting(true);
-    const outcome = text === null ? await tool.startOver() : await tool.commitText(text);
+    const outcome = await tool.commitText(text);
     setCommitting(false);
     if (!outcome.parsed) return;
     if (kind === "save") {
@@ -500,6 +505,35 @@ export function DeckTool() {
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  /**
+   * Save as copy: the round's result as a new deck, leaving the open one as it is. The round goes on; the copy is a
+   * link away. Saving never touches the collection.
+   */
+  async function saveCopy() {
+    const deck = journey.deck;
+    const open = tool.openDeck;
+    if (!deck || !open || !analysis) return;
+    setCopy({ status: "saving" });
+    const name = `${open.name} (copy)`.slice(0, MAX_DECK_NAME_CHARS);
+    const result = await getApis().actions.saveDeck({
+      name,
+      deck,
+      isPublic: true,
+      ...(tool.bracketOverride === null ? {} : { bracket: tool.bracketOverride }),
+      original: analysis.deck,
+    });
+    setCopy(result.ok ? { status: "saved", name, href: editorUrl(result.data.code) } : { status: "error", message: result.error.message });
+  }
+  const roundSave: RoundSave = tool.openDeck
+    ? {
+        kind: "open",
+        deckName: tool.openDeck.name,
+        onSaveChanges: () => void commitJourney("save"),
+        onSaveCopy: () => void saveCopy(),
+        copy,
+      }
+    : { kind: "new", onSave: () => void commitJourney("save") };
 
   return (
     <div className="flex flex-col gap-5">
@@ -799,6 +833,7 @@ export function DeckTool() {
                     </div>
                     {journey.state.phase !== "review" && <ViewToggle view={view} onChange={changeView} />}
                   </div>
+                  <RoundBar canUndo={journey.canUndo} onUndo={journey.undo} onStartOver={journey.restart} save={roundSave} busy={committing || tool.stale} showSave={journey.state.phase !== "review"} />
                   {journey.state.phase === "cut" &&
                     (journey.bracketCheck ? (
                       // A bracket change part way through made cards must-cuts: the step's Next becomes a choice.
@@ -840,9 +875,8 @@ export function DeckTool() {
                       report={deckStats}
                       busy={committing}
                       stale={tool.stale}
-                      onSave={() => void commitJourney("save")}
+                      save={roundSave}
                       onReanalyze={() => void commitJourney("reanalyze")}
-                      onStartOver={() => void commitJourney("startOver")}
                     >
                       {source.kind === "none" ? (
                         <CollectionNudge href={collectionImportHref} step="review" />

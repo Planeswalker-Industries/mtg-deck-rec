@@ -452,11 +452,6 @@ export function useDeckTool(
     return submit({ text: nextText, bracketOverride, importedFrom: null }, { keepOrigin: true, recs });
   }
 
-  /** Goes back to the decklist the player brought and analyzes it again. */
-  function startOver(): Promise<SubmitOutcome> {
-    if (originText === null) return Promise.resolve({ parsed: false, analysis: null });
-    return commitText(originText);
-  }
 
   /** Forgets the deck here and in this browser's storage. */
   function clearDeck() {
@@ -563,7 +558,6 @@ export function useDeckTool(
     commitText,
     /** Resolves once the open deck's last auto-save has landed (or failed, which the open deck bar reports). */
     whenSaved: () => pendingSave.current,
-    startOver,
     originText,
     /** The deck the player brought, when the current deck differs from it: what a save keeps as its original. */
     original: analysis ? changedOriginal(originDeck, analysis.deck) : undefined,

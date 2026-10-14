@@ -217,13 +217,13 @@ test("saving a journey's result keeps the original, which the deck page compares
   await recs.getByRole("button", { name: "Cut Lightning Bolt" }).click({ timeout: 60_000 });
   await recs.getByRole("button", { name: "Next: swaps" }).first().click();
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
-  const toReview = recs.getByRole("button", { name: "Next: review the deck" });
+  const toReview = recs.getByRole("button", { name: "Next: finish" });
   await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });
   if (await rater.isVisible()) await rater.getByRole("button", { name: "Finish" }).click();
   else await toReview.click();
 
-  // Save from Review opens the name form in the editor, prefilled.
-  await recs.getByRole("button", { name: "Save", exact: true }).click();
+  // Save from Finish opens the name form in the editor, prefilled.
+  await recs.getByRole("button", { name: "Save deck", exact: true }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click({ timeout: 60_000 });
   await expectEditor(page);
 

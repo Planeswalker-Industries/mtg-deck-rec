@@ -69,7 +69,7 @@ test("walks a deck through add, cut, replace and review, then starts over", asyn
   // Replace: weaker fits, each with a replacement. The deck may have none, which goes on to Review.
   await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
-  const toReview = recs.getByRole("button", { name: "Next: review the deck" });
+  const toReview = recs.getByRole("button", { name: "Next: finish" });
   await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });
   if (await rater.isVisible()) await rater.getByRole("button", { name: "Finish" }).click();
   else await toReview.click();
@@ -79,10 +79,32 @@ test("walks a deck through add, cut, replace and review, then starts over", asyn
   await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Decklist" })).toBeVisible();
 
-  // Start over goes back to the deck as it was pasted, at Add.
-  await recs.getByRole("button", { name: "Start over" }).click();
+  // Start over, after a confirm, goes back to the deck as the round started, at Add; Undo brings the round back.
+  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Start over" }).click();
+  await page.getByRole("dialog", { name: "Start this round over?" }).getByRole("button", { name: "Start over" }).click();
   await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
   await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
+  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
+  await expect(recs.getByRole("region", { name: "Before and after" })).toBeVisible();
+});
+
+test("Undo takes back the last choice, on the step it was made on", async ({ page }) => {
+  const recs = await analyzeDeck(page);
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  const undo = recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" });
+  await expect(undo).toBeDisabled();
+
+  const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / });
+  await addIt.click({ timeout: 60_000 });
+  const slots = recs.getByRole("region", { name: "Slots to fill" }).getByRole("button", { name: /^Take .+ back out$/ });
+  await expect(slots).toHaveCount(1);
+
+  // Moving on to Cut isn't a choice; Undo steps back over the add and returns to Add.
+  await steps.getByRole("button", { name: "Cut" }).click();
+  await undo.click();
+  await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step");
+  await expect(slots).toHaveCount(0);
+  await expect(undo).toBeDisabled();
 });
 
 test("the Cut list crosses out recommended cuts and lets any card be cut", async ({ page }) => {
@@ -111,7 +133,7 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
 
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const swapIn = rater.getByRole("button", { name: /^Swap in / });
-  const nothingLeft = recs.getByRole("button", { name: "Next: review the deck" });
+  const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
   await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 20_000 });
   test.skip(await nothingLeft.isVisible(), "no replacements in this data");
   const progress = rater.getByText(/^Card \d+ of \d+ to replace$/);
@@ -140,7 +162,7 @@ test("going back from Swap and returning keeps the swaps, and a picked swap reop
 
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const swapIn = rater.getByRole("button", { name: /^Swap in / });
-  const nothingLeft = recs.getByRole("button", { name: "Next: review the deck" });
+  const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
   await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 60_000 });
   test.skip(await nothingLeft.isVisible(), "no replacements in this data");
 
@@ -169,7 +191,7 @@ test("returning to Swap with the deck unchanged asks for nothing again", async (
   await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
   await steps.getByRole("button", { name: "Swap" }).click();
   const swapIn = recs.getByRole("region", { name: "Swipe through cards to replace" }).getByRole("button", { name: /^Swap in / });
-  const nothingLeft = recs.getByRole("button", { name: "Next: review the deck" });
+  const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
   await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 60_000 });
   test.skip(await nothingLeft.isVisible(), "no replacements in this data");
 

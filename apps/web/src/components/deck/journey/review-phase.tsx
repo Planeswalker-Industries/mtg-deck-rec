@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff, deckStats, type DeckStatsReport } from "@mtg/core/journey";
@@ -10,9 +10,11 @@ import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
 import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
+import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
+import type { RoundSave } from "./round-bar";
 import type { DeckJourney } from "./use-deck-journey";
 
 /** Average mana value is shown to one decimal: finer than that is noise at deck scale. */
@@ -96,19 +98,19 @@ function changesOf(journey: DeckJourney): Change[] {
 }
 
 /**
- * Done: the round's result, shown rather than told. The numbers that moved (before → after, green when they moved
+ * Finish: the round's result, shown rather than told. The numbers that moved (before → after, green when they moved
  * toward the commander's targets, red when away), every change as card plates, Out beside In, and the finished
  * decklist laid out by type on the plates the deck editor uses. From here the player saves, copies or downloads the
- * result, runs it through the journey again, or starts over.
+ * result (or a copy, from an open saved deck), or runs it through the journey again. Undo and Start over are in the
+ * round's bar above, as on every step.
  */
 export function ReviewPhase({
   journey,
   report,
   busy,
   stale = false,
-  onSave,
+  save,
   onReanalyze,
-  onStartOver,
   children,
 }: {
   journey: DeckJourney;
@@ -121,9 +123,9 @@ export function ReviewPhase({
    * result over those edits, so both wait until the new decklist is analyzed.
    */
   stale?: boolean;
-  onSave: () => void;
+  /** What saving does: write back to the open saved deck (or save a copy), or save a new deck. */
+  save: RoundSave;
   onReanalyze: () => void;
-  onStartOver: () => void;
   /** Shown after the changes, e.g. the offer to import a collection. */
   children?: ReactNode;
 }) {
@@ -131,6 +133,7 @@ export function ReviewPhase({
   const deck = journey.deck;
   if (!state || !deck) return null;
 
+  const overBy = journey.cutsNeeded;
   const before = deckStats(journey.before);
   const after = deckStats(journey.after);
   const asOf = after.priceAsOf ?? before.priceAsOf;
@@ -178,11 +181,33 @@ export function ReviewPhase({
 
   return (
     <div className="flex flex-col gap-6">
-      <h2 className="sr-only">Done</h2>
+      <h2 className="sr-only">Finish</h2>
+      {overBy > 0 && (
+        <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+          <span>
+            The deck is {overBy} over 100.{" "}
+            <button type="button" className={cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer font-semibold")} onClick={() => journey.goTo("cut")}>
+              Back to Cut
+            </button>
+          </span>
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="lg" className="lit" onClick={onSave} disabled={busy || stale}>
-          Save
-        </Button>
+        {save.kind === "open" ? (
+          <>
+            <Button type="button" size="lg" className="lit" onClick={save.onSaveChanges} disabled={busy || stale}>
+              Save changes
+            </Button>
+            <Button type="button" size="lg" variant="outline" onClick={save.onSaveCopy} disabled={busy || stale || save.copy.status === "saving"}>
+              Save as copy
+            </Button>
+          </>
+        ) : (
+          <Button type="button" size="lg" className="lit" onClick={save.onSave} disabled={busy || stale}>
+            Save deck
+          </Button>
+        )}
         <CopyDecklistButton text={journey.resultText} size="lg" disabled={busy || stale} />
         <Button
           type="button"
@@ -195,9 +220,6 @@ export function ReviewPhase({
         </Button>
         <Button type="button" size="lg" variant="outline" onClick={onReanalyze} disabled={busy || stale}>
           Re-analyze
-        </Button>
-        <Button type="button" size="lg" variant="ghost" onClick={onStartOver} disabled={busy}>
-          Start over
         </Button>
       </div>
       {stale && (

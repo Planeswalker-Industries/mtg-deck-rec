@@ -163,6 +163,26 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
   }
 }
 
+/** How many choices Undo can step back over in one round: far more than a round makes, with a bound on memory. */
+export const UNDO_DEPTH = 100;
+
+/** Whether an action is a choice Undo steps back over. Moving between steps isn't: Undo undoes choices, not tab clicks. */
+export const isChoice = (action: JourneyAction): boolean => action.type !== 'goto';
+
+/**
+ * The undo stack after applying `actions` to `before`, which gave `after`: `before` goes on top when the actions made a
+ * choice that changed the state, and the oldest entry drops off past UNDO_DEPTH.
+ */
+export function pushUndo(
+  past: readonly JourneyState[],
+  before: JourneyState,
+  after: JourneyState,
+  actions: readonly JourneyAction[],
+): JourneyState[] {
+  if (after === before || !actions.some(isChoice)) return [...past];
+  return [...past, before].slice(-UNDO_DEPTH);
+}
+
 function addCopies(counts: Map<CardId, number>, cardId: CardId, quantity: number) {
   counts.set(cardId, (counts.get(cardId) ?? 0) + quantity);
 }

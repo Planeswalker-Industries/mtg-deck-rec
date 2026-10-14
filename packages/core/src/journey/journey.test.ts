@@ -13,7 +13,9 @@ import {
   cutsNeeded,
   journeyReducer,
   openSlots,
+  pushUndo,
   roomToAdd,
+  UNDO_DEPTH,
   removeFromDeck,
   startJourney,
   withoutCards,
@@ -175,6 +177,38 @@ describe('journey reducer', () => {
     expect(state.phase).toBe('cut');
     expect(state.reached).toBe('replace');
     expect(startJourney(base).reached).toBe('add');
+  });
+});
+
+describe('undo stack', () => {
+  const start = startJourney(base);
+
+  it('records a choice and steps back to the state before it, but not a move between steps', () => {
+    const cut: JourneyAction = { type: 'cut', card: card(2) };
+    const after = journeyReducer(start, cut);
+    expect(pushUndo([], start, after, [cut])).toEqual([start]);
+    const moved = journeyReducer(after, { type: 'goto', phase: 'cut' });
+    expect(pushUndo([start], after, moved, [{ type: 'goto', phase: 'cut' }])).toEqual([start]);
+  });
+
+  it('records nothing when the choice changed nothing', () => {
+    const twice: JourneyAction = { type: 'declineSwap', targetId: 3 as CardId, replacementId: 20 as CardId };
+    const once = journeyReducer(start, twice);
+    expect(pushUndo([start], once, journeyReducer(once, twice), [twice])).toEqual([start]);
+  });
+
+  it('records a start over, so it can be undone too', () => {
+    const changed = run({ type: 'cut', card: card(2) });
+    const reset: JourneyAction = { type: 'reset', base };
+    expect(pushUndo([], changed, journeyReducer(changed, reset), [reset])).toEqual([changed]);
+  });
+
+  it('keeps at most UNDO_DEPTH states, dropping the oldest', () => {
+    const past = Array.from({ length: UNDO_DEPTH }, () => start);
+    const after = journeyReducer(start, { type: 'cut', card: card(2) });
+    const next = pushUndo(past, after, journeyReducer(after, { type: 'cut', card: card(3) }), [{ type: 'cut', card: card(3) }]);
+    expect(next).toHaveLength(UNDO_DEPTH);
+    expect(next.at(-1)).toBe(after);
   });
 });
 

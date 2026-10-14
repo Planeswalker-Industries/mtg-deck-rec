@@ -24,6 +24,7 @@ import {
   journeyReducer,
   openSlots,
   phaseIndex,
+  pushUndo,
   roomToAdd,
   startJourney,
   withoutCards,
@@ -63,6 +64,8 @@ interface Round {
   analysis: DeckAnalysis;
   state: JourneyState;
   check: BracketCheck | null;
+  /** The states before each choice this round, newest last: what Undo steps back to. */
+  past: JourneyState[];
 }
 
 /** What "Find …" in Deck stats narrowed Add to (T045). */
@@ -155,6 +158,8 @@ export function useDeckJourney({
   const [replaceFor, setReplace] = useState<ReplaceList | null>(null);
   /** Bumped when the Replace targets are asked for again, so the swipe view starts over on the new list. */
   const [replaceVersion, setReplaceVersion] = useState(0);
+  /** Bumped by every Undo, so a swipe sitting that deals by position starts over on the restored choices. */
+  const [undoCount, setUndoCount] = useState(0);
   const addRequest = useRef(0);
   /**
    * The Add list as recorded for the accept rate (T065), with the filter it was shown under, and the Cut list with the
@@ -177,7 +182,7 @@ export function useDeckJourney({
   // lookup). Adjusted during render rather than in an effect, so no frame shows the old round.
   let current = round;
   if (analysis && round?.id !== roundId) {
-    current = { id: roundId, analysis, state: startJourney(analysis.deck), check: null };
+    current = { id: roundId, analysis, state: startJourney(analysis.deck), check: null, past: [] };
     setRound(current);
   } else if (analysis && round && round.analysis !== analysis) {
     current = { ...round, analysis };
@@ -370,9 +375,10 @@ export function useDeckJourney({
   function cutAndContinue() {
     if (!current?.check) return;
     checkRequest.current++;
+    const mustCuts = current.check.mustCuts.map((m): JourneyAction => ({ type: "cut", card: m.card }));
     const cut = withoutCards(current.state, current.check.mustCuts.map((m) => m.card));
     const next = journeyReducer(cut, { type: "goto", phase: "replace" });
-    setRound({ ...current, check: null, state: next });
+    setRound({ ...current, check: null, state: next, past: pushUndo(current.past, current.state, next, mustCuts) });
     void loadReplaceTargets(next);
   }
 
@@ -397,10 +403,41 @@ export function useDeckJourney({
     const from = latest.current ?? current;
     if (!from) return null;
     const next = actions.reduce(journeyReducer, from.state);
-    const round = { ...from, state: next };
+    const round = { ...from, state: next, past: pushUndo(from.past, from.state, next, actions) };
     latest.current = round;
     setRound(round);
     return next;
+  }
+
+  /** Asks for the list of the step `s` is on, unless the one on hand was made for the same deck. */
+  function refreshStep(s: JourneyState) {
+    if (s.phase === "add" && roomToAdd(s) > 0 && !addFresh(s)) void loadAdds(s);
+    if (s.phase === "replace" && !replaceFresh(s)) void loadReplaceTargets(s);
+  }
+
+  /**
+   * Undo: back to the state before the last choice, on the step it was made on, wherever the player is now. A waiting
+   * bracket check goes with it: it was about the deck as it stood.
+   */
+  function undo() {
+    const from = latest.current ?? current;
+    const previous = from?.past.at(-1);
+    if (!from || !previous) return;
+    checkRequest.current++;
+    const round = { ...from, state: previous, past: from.past.slice(0, -1), check: null };
+    latest.current = round;
+    setRound(round);
+    setUndoCount((n) => n + 1);
+    refreshStep(previous);
+  }
+
+  /** Start over: the round's starting deck with no choices, back on Add. Undo can bring the choices back. */
+  function restart() {
+    const from = latest.current ?? current;
+    if (!from) return;
+    checkRequest.current++;
+    const next = apply({ type: "reset", base: from.analysis.deck });
+    if (next) refreshStep(next);
   }
 
   function goTo(phase: JourneyPhase, ...before: JourneyAction[]) {
@@ -629,6 +666,11 @@ export function useDeckJourney({
     },
     /** A bracket change that made cards must-cuts, waiting for Cut & Continue or Revert. */
     bracketCheck: current?.check ?? null,
+    undo,
+    canUndo: (current?.past.length ?? 0) > 0,
+    /** Changes with every Undo. */
+    undoCount,
+    restart,
     cutAndContinue,
     revertCheck,
     reload,
