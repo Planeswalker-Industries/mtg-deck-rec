@@ -271,12 +271,12 @@ function DeckToolSession() {
   const [confirmLands, setConfirmLands] = useState<(() => void) | null>(null);
   const landsLine = deckStats?.stats.find((stat) => stat.key === "lands");
   /**
-   * Leaves Cut, asking first when the deck would go on to Swap with fewer lands than its commander's decks run: the
-   * typical count as Deck stats shows it, not its tolerance band, since the player is choosing to go below it.
+   * Leaves Cut, asking first when a complete deck would go on to Swap with fewer lands than its commander's decks run:
+   * the typical count as Deck stats shows it, not its tolerance band, since the player is choosing to go below it. A
+   * partial list is short of lands as of everything else, so it isn't asked.
    */
   function leaveCut(go: () => void) {
-    const toSwap = journey.cut.owed === 0 && journey.cut.open === 0;
-    if (toSwap && landsLine && landsLine.value < Math.round(landsLine.target)) setConfirmLands(() => go);
+    if (journey.cut.full && landsLine && landsLine.value < Math.round(landsLine.target)) setConfirmLands(() => go);
     else go();
   }
   /** A step chosen in the stepper; one past Cut, while in Cut, goes through the land check. */

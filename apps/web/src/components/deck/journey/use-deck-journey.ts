@@ -671,6 +671,8 @@ export function useDeckJourney({
       owed: cutsOwed,
       /** Slots open below 100: Cut's way on goes back to Add instead of to Swap. */
       open: cutsOpen,
+      /** Whether the deck is exactly 100 once the undecided recommended cuts go: a complete deck, not a partial list. */
+      full: afterPendingCuts !== null && cutsOwed === 0 && openSlots(afterPendingCuts) === 0,
       restore: restoreCut,
       toggle: toggleCut,
       finish: finishCuts,
