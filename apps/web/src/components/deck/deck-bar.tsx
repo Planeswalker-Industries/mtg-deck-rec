@@ -111,7 +111,6 @@ export function DeckBar({
   context,
   deckName,
   onRename,
-  cardCount,
   coverage,
   onBracketChange,
   collectionMode,
@@ -126,8 +125,7 @@ export function DeckBar({
   deckName: string;
   /** Renames the deck; resolves to an error message, or null when it worked. */
   onRename: (name: string) => Promise<string | null>;
-  cardCount: number;
-  /** Upgrade's current deck coverage; replaces the count on the existing second line. */
+  /** Upgrade's current deck coverage, on the second line beside the colours. */
   coverage?: ReactNode;
   onBracketChange: (bracket: Bracket) => void;
   /** null when there's no saved collection; the bar then links to the collection import. */
@@ -214,7 +212,7 @@ export function DeckBar({
         {!building && (
           <>
             <ColorIdentity identity={analysis.colorIdentity} className={phoneCoverage ? "max-sm:min-w-0" : undefined} />
-            {coverage ?? <span className="font-mono">{cardCount} cards</span>}
+            {coverage}
           </>
         )}
         {onEditDecklist && (

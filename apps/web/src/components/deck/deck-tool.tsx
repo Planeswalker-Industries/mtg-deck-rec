@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
-import { GalleryHorizontalEnd, Library, List } from "lucide-react";
+import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
 import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
 import { phaseIndex, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
@@ -452,10 +452,6 @@ function DeckToolSession() {
     }
     setMode(next);
   }
-  const cardCount = analysis
-    ? analysis.deck.commanders.length +
-      analysis.deck.cards.filter((c) => c.section === "main").reduce((n, c) => n + c.quantity, 0)
-    : 0;
 
   /**
    * The deck bar's pencil: the decklist box opens at the top of the page, so the page goes there with it. A deckbuilder
@@ -817,7 +813,6 @@ function DeckToolSession() {
             context={context}
             deckName={tool.openDeck?.name ?? tool.deckName ?? suggestedDeckName(analysis)}
             onRename={tool.renameDeck}
-            cardCount={cardCount}
             coverage={coverageEnabled && journey.deck && (source.kind === "browser" || source.kind === "account")
               ? collectionRefreshing
                 ? <span role="status" className="whitespace-nowrap">Checking collection…</span>
@@ -982,16 +977,19 @@ function DeckToolSession() {
       <Dialog open={confirmLands !== null} onOpenChange={(open) => !open && setConfirmLands(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Go on with {landsLine?.value} lands?</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <TriangleAlert aria-hidden className="size-5 text-warning" />
+              Low Land Count
+            </DialogTitle>
             <DialogDescription>
-              Decks for this commander run about {Math.round(landsLine?.target ?? 0)}. With fewer, the deck is more likely to
-              miss land drops. You can put lands back in Cut, or add some later.
+              {landsLine?.value} lands; this commander&apos;s decks run about {Math.round(landsLine?.target ?? 0)}. Fewer lands
+              means more missed land drops.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
-                Back to Cut
+                Cancel
               </Button>
             </DialogClose>
             <Button
@@ -1002,7 +1000,7 @@ function DeckToolSession() {
                 go?.();
               }}
             >
-              Go on to swaps
+              Continue
             </Button>
           </DialogFooter>
         </DialogContent>

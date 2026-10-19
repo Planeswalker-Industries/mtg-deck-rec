@@ -163,7 +163,7 @@ export function CutPhase({
 
   /** Where leaving Cut goes: back to Add while the deck is below 100 (Swap trades one for one), else on to Swap. */
   const finishLabel = open > 0 ? `Back to Add: ${open} to fill` : "Next: swaps";
-  const landsTally = landsLine ? `It runs ${landsLine.value} lands; about ${Math.round(landsLine.target)} is typical.` : "";
+  const landsTally = landsLine ? `${landsLine.value} lands; about ${Math.round(landsLine.target)} is typical.` : "";
 
   const status = focus
     ? `Trimming ${focus.label.toLowerCase()}: ${focusRow?.value ?? 0} in the deck, about ${Math.round(focusRow?.target ?? 0)} is typical.`
@@ -292,15 +292,15 @@ export function CutPhase({
         <section aria-labelledby="cut-lands" className="flex flex-col gap-3 rounded-xl border border-seam bg-sleeve/60 p-4">
           <div>
             <h3 id="cut-lands" className="font-heading text-xl font-semibold">
-              Make room with lands?
+              CUT Lands?
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              The deck is still {owed} over 100. {landsTally} Take a few out with −, or see other cards to cut.
+              {owed} over 100. {landsTally}
             </p>
           </div>
           {/* Above the lands, which run long: passing on them shouldn't take a scroll past every one. */}
           <Button type="button" size="lg" variant="outline" onClick={() => setLandsPassed(true)}>
-            Show other cards instead
+            CUT Nonland cards
           </Button>
           {landCuts(lands, "Lands")}
         </section>

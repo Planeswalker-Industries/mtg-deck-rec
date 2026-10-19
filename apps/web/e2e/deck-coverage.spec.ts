@@ -74,7 +74,6 @@ async function analyze(page: Page) {
 test("coverage stays absent without a collection", async ({ page }) => {
   const recs = await analyze(page);
   await expect(recs.getByRole("button", { name: /available:.*owned/ })).toHaveCount(0);
-  await expect(recs.getByText("9 cards")).toBeVisible();
 });
 
 test("browser quantities and a live round update the two-line summary and the keyboard sheet", async ({ page }) => {
@@ -204,6 +203,5 @@ test("cross-tab edits and clearing the collection are read again on focus", asyn
   await page.bringToFront();
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(trigger).toHaveCount(0);
-  await expect(recs.getByText("9 cards")).toBeVisible();
   await other.close();
 });

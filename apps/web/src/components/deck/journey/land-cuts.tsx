@@ -13,7 +13,7 @@ export interface LandCount {
 /**
  * The deck's lands as card plates with the deckbuilder's −/+ counts, for taking lands out a copy at a time in Cut:
  * − cuts a copy, + puts one back, up to the copies the deck started with. A land with every copy cut stays listed,
- * struck through, so it can come back.
+ * dimmed, so it can come back. Pressing a plate enlarges the card, for lands whose rules text matters.
  */
 export function LandCuts({
   lands,
@@ -34,7 +34,7 @@ export function LandCuts({
           key={card.id}
           card={card}
           quantity={left}
-          mark={left === 0 ? "cut" : undefined}
+          className={left === 0 ? "opacity-50" : undefined}
           onQuantity={(next) => {
             if (next < left) onCut(card);
             else if (next > left && left < copies) onRestore(card);
