@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { signOutAction } from "@/app/sign-in/actions";
 import { Button } from "@/components/ui/button";
+import { ErrorText } from "@/components/ui/error-text";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export function SignOutButton() {
       >
         {pending ? "Signing out…" : "Sign out"}
       </Button>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <ErrorText>{error}</ErrorText>}
     </div>
   );
 }

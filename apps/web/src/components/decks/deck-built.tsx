@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { DeckId } from "@mtg/core/contract";
 import { Switch } from "@/components/ui/switch";
 import { getApis } from "@/lib/api/client";
+import { ErrorText } from "@/components/ui/error-text";
 
 /** Marks a saved deck's cards as in use by that deck. */
 export function DeckBuilt({ deckId, isBuilt }: { deckId: DeckId; isBuilt: boolean }) {
@@ -46,9 +47,9 @@ export function DeckBuilt({ deckId, isBuilt }: { deckId: DeckId; isBuilt: boolea
         </div>
       </div>
       {error && (
-        <p role="alert" className="mt-3 text-sm text-destructive">
+        <ErrorText className="mt-3">
           {error}
-        </p>
+        </ErrorText>
       )}
     </div>
   );

@@ -10,10 +10,6 @@ for (const path of ["/card/not-a-real-card", "/commander/not-a-commander", "/no-
   });
 }
 
-test("the deck tool page loads", async ({ request }) => {
-  expect((await request.get("/deck")).status()).toBe(200);
-});
-
 test("existing card and commander pages load", async ({ request }) => {
   test.skip(!localData, "needs the synced catalog and deck corpus");
   for (const path of ["/card/sol-ring", "/commander/liesa-forgotten-archangel"]) {

@@ -225,6 +225,19 @@ export const cardTagsInputSchema = z.object(
   request,
 );
 
+/** A step's worth of cards on screen: a swap list's targets with their replacements, or an add list. */
+export const MAX_CARD_RULES_IDS = 120;
+
+export const cardRulesInputSchema = z.object(
+  {
+    cardIds: z
+      .array(cardId("That card is not valid."))
+      .min(1, "Ask for at least one card.")
+      .max(MAX_CARD_RULES_IDS, "Too many cards in one request."),
+  },
+  request,
+);
+
 export const MAX_COLLECTION_CARD_IDS = 1000;
 export const MAX_COLLECTION_SET_CODES = 1000;
 /** Scryfall set codes are 3–6 letters and digits; a little room either way. */

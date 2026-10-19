@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { DeckAnalysis, RecContext } from "@mtg/core/contract";
+import type { DeckEntry } from "@mtg/core/scoring";
 import { deckStats, isBasicLand } from "@mtg/core/journey";
 import { cn } from "cn";
 import { byCost, groupHeading } from "@/components/deck/deck-group-id";
@@ -10,6 +11,7 @@ import { DeckStatsFooter } from "@/components/deck/deck-stats/deck-stats-footer"
 import { DeckStatsRail } from "@/components/deck/deck-stats/deck-stats-rail";
 import { useDeckStats } from "@/components/deck/deck-stats/use-deck-stats";
 import { SwapSheet } from "@/components/deck/swap-sheet";
+import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 import { formatAsOf, formatUsd } from "@/lib/format";
 import { CardSearchPanel, type BuilderCollection } from "./card-search-panel";
 import { CardPlate } from "@/components/cards/card-plate";
@@ -38,6 +40,20 @@ const HALF_SCROLL =
 
 /** From `xl` the Deck stats rail is a third column beside the halves. */
 const WITH_STATS_RAIL = "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_18rem]";
+
+/**
+ * The deck as the builder opened it (for a saved deck, the version saved before this visit), for Deck stats to measure
+ * the edits against. Each card carries its roles from the first analysis, which read that deck: a later analysis no
+ * longer knows a card cut since. Undefined until that analysis arrives.
+ */
+function useOpenedDeck(main: readonly DeckEntry[], analysis: DeckAnalysis | null): readonly DeckEntry[] | undefined {
+  const [opened] = useState(main);
+  const [start, setStart] = useState<readonly DeckEntry[] | undefined>(undefined);
+  if (start === undefined && analysis) {
+    setStart(opened.map((e) => ({ ...e, card: { ...e.card, roles: e.card.roles ?? analysis.cardRoles[e.card.id] ?? [] } })));
+  }
+  return start;
+}
 
 /**
  * The deckbuilder: a search to add cards on the left and the deck as a list of strips on the right, by type and then
@@ -70,10 +86,12 @@ export function DeckBuilder({
   const mainKey = builder.main.map((e) => `${e.card.id}:${e.quantity}`).join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mainKey is builder.main's content
   const entries = useMemo(() => builder.main, [mainKey]);
+  const start = useOpenedDeck(builder.main, analysis);
   const statsReport = useDeckStats({
     analysis,
     entries,
     bracket: swapContext?.bracket ?? analysis?.estimatedBracket ?? null,
+    start,
   });
   const swapTarget = builder.swap ? (builder.cards.get(builder.swap.targetCardId) ?? null) : null;
 
@@ -104,7 +122,7 @@ export function DeckBuilder({
       </dl>
       {showIssues && issues.length > 0 && (
         <details className="rounded-lg border border-cut/40 bg-cut/5 px-4 py-2 text-sm">
-          <summary className="cursor-pointer font-semibold text-cut">
+          <summary className="cursor-pointer font-semibold text-primary">
             {issues.length} deck issue{issues.length === 1 ? "" : "s"}
           </summary>
           <ul className="mt-2 list-disc pl-5">
@@ -124,7 +142,7 @@ export function DeckBuilder({
             onClick={() => setTab(t)}
             className={cn(
               "inline-flex min-h-11 items-center rounded-md px-4 py-1.5 text-sm font-normal transition-colors sm:min-h-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary",
+              tab === t ? TOGGLE_ON : TOGGLE_OFF,
             )}
           >
             {t === "deck" ? "Deck" : "Add cards"}

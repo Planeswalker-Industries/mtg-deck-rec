@@ -40,6 +40,8 @@ export interface ScryfallCard {
   colors?: string[];
   color_indicator?: string[];
   color_identity: string[];
+  produced_mana?: string[];
+  reserved?: boolean;
   legalities: Record<string, string>;
   games?: string[];
   released_at?: string;
@@ -74,7 +76,7 @@ export interface CardRow {
   mana_cost: string;
   type_line: string;
   oracle_text: string | null;
-  card_faces: { name: string; mana_cost: string; type_line: string; oracle_text: string }[] | null;
+  card_faces: SlimFace[] | null;
   color_identity: number;
   is_basic_land: boolean;
   can_be_commander: boolean;
@@ -91,6 +93,16 @@ export interface CardRow {
   artist: string | null;
   /** Scryfall rules keywords (Deathtouch, Menace). Not Tagger tags: those are card_tags. */
   keywords: string[];
+  /** Power and toughness, loyalty and defense, as Scryfall writes them ("*", "1+*"); null where the card has none. */
+  power: string | null;
+  toughness: string | null;
+  loyalty: string | null;
+  defense: string | null;
+  /** The card's own colours and its colour indicator, as colour bit masks; null when Scryfall gives none. */
+  colors: number | null;
+  color_indicator: number | null;
+  produced_mana: string[] | null;
+  reserved: boolean;
   scryfall_uri: string;
   reference_price_usd: string | null;
   reference_price_finish: 'nonfoil' | 'foil' | 'etched' | null;
@@ -98,6 +110,19 @@ export interface CardRow {
   content_hash: Buffer;
   rules_hash: Buffer;
 }
+
+/** One face of a multi-face card as the catalog keeps it (card_faces). A type alias for postgres.js, like CardImageSet. */
+export type SlimFace = {
+  name: string;
+  mana_cost: string;
+  type_line: string;
+  oracle_text: string;
+  power: string | null;
+  toughness: string | null;
+  loyalty: string | null;
+  defense: string | null;
+  color_indicator: number | null;
+};
 
 export interface CardNameRow {
   oracle_id: string;
@@ -130,6 +155,14 @@ export const CARD_COLUMNS = [
   'images',
   'artist',
   'keywords',
+  'power',
+  'toughness',
+  'loyalty',
+  'defense',
+  'colors',
+  'color_indicator',
+  'produced_mana',
+  'reserved',
   'scryfall_uri',
   'reference_price_usd',
   'reference_price_finish',
@@ -158,6 +191,11 @@ export function isThemeCard(typeLine: string | undefined): boolean {
 }
 
 const COLOR_BITS: Record<string, number> = { W: 1, U: 2, B: 4, R: 8, G: 16 };
+
+/** Scryfall colour letters as the catalog's bit mask; null when Scryfall gives no list (absent, not colourless). */
+function colorMask(colors: readonly string[] | undefined): number | null {
+  return colors ? colors.reduce((bits, c) => bits | (COLOR_BITS[c] ?? 0), 0) : null;
+}
 
 const NUMBER_WORDS: Record<string, number> = {
   two: 2,
@@ -286,11 +324,33 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
     ] as const
   ).find(([, value]) => value !== null);
 
-  const slimFaces =
+  const slimFaces: SlimFace[] | null =
     faces.length > 1
-      ? faces.map((f) => ({ name: f.name, mana_cost: f.mana_cost ?? '', type_line: f.type_line ?? '', oracle_text: f.oracle_text ?? '' }))
+      ? faces.map((f) => ({
+          name: f.name,
+          mana_cost: f.mana_cost ?? '',
+          type_line: f.type_line ?? '',
+          oracle_text: f.oracle_text ?? '',
+          power: f.power ?? null,
+          toughness: f.toughness ?? null,
+          loyalty: f.loyalty ?? null,
+          defense: f.defense ?? null,
+          color_indicator: colorMask(f.color_indicator),
+        }))
       : null;
-  const colorIdentity = card.color_identity.reduce((bits, c) => bits | (COLOR_BITS[c] ?? 0), 0);
+  const colorIdentity = colorMask(card.color_identity) ?? 0;
+  // A double-faced card keeps its stats per face; the top-level ones are the front face's, for a one-line summary.
+  const front0 = faces[0];
+  const stats = {
+    power: card.power ?? front0?.power ?? null,
+    toughness: card.toughness ?? front0?.toughness ?? null,
+    loyalty: card.loyalty ?? front0?.loyalty ?? null,
+    defense: card.defense ?? front0?.defense ?? null,
+  };
+  const colors = colorMask(card.colors);
+  const colorIndicator = colorMask(card.color_indicator);
+  const producedMana = card.produced_mana ?? null;
+  const reserved = card.reserved === true;
   const gameChanger = card.game_changer === true;
   const legalities = card.legalities;
   // Split and flip cards carry the whole cost at the top level; transforming and modal cards only per face.
@@ -314,6 +374,11 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
         card.artist ?? null,
         card.keywords ?? null,
         manaCost,
+        stats,
+        colors,
+        colorIndicator,
+        producedMana,
+        reserved,
       ]),
     )
     .digest();
@@ -343,6 +408,11 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
     images,
     artist: card.artist ?? null,
     keywords: card.keywords ?? [],
+    ...stats,
+    colors,
+    color_indicator: colorIndicator,
+    produced_mana: producedMana,
+    reserved,
     scryfall_uri: card.scryfall_uri,
     reference_price_usd: priced ? priced[1] : null,
     reference_price_finish: priced ? priced[0] : null,

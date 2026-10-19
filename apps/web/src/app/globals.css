@@ -27,6 +27,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -94,28 +96,27 @@
 :root {
   --radius: 0.5rem; /* controls: rounded-lg is 8px */
 
-  /* Kitchen Table (2026-09-29): a friend's kitchen table on game night meets a well-thumbed trade binder.
-     Walnut and oak are the table, warm paper is the ink, sleeve blue is the one thing you can act on. */
-  --background: #1b1510; /* walnut: the table */
-  --foreground: #f2e9dc; /* warm paper, never pure white */
-  --sleeve: #2a2119; /* oiled oak: panels and card rows, one step off the table */
+  /* Cool blue (2026-10-13): blue-grey slate surfaces, cool white ink, one blue accent. */
+  --background: oklch(0.17 0.012 260);
+  --foreground: oklch(0.95 0.005 255); /* cool white, never pure white */
+  --sleeve: oklch(0.21 0.014 260); /* panels and card rows, one step off the background */
   --seam: color-mix(in oklch, var(--foreground) 10%, transparent); /* the hairline where two surfaces meet */
 
   --card: var(--sleeve);
-  --card-foreground: var(--foreground);
-  --popover: #33291f;
+  --card-foreground: oklch(0.96 0.004 255);
+  --popover: oklch(0.21 0.014 260);
   --popover-foreground: var(--foreground);
 
-  --primary: #8db2e4; /* sleeve blue: the only accent, for actions, links, focus and the selected state */
-  --primary-foreground: #1b1510;
-  --secondary: #33291f;
-  --secondary-foreground: var(--foreground);
-  --muted: #241c15;
-  --muted-foreground: #b3a594; /* 7.5:1 on walnut */
-  --accent: #33291f;
-  --accent-foreground: var(--foreground);
+  --primary: oklch(0.707 0.165 254.6); /* the only accent: everything pressable, and only what is pressable */
+  --primary-foreground: var(--background);
+  --secondary: oklch(0.27 0.015 260);
+  --secondary-foreground: oklch(0.92 0.006 255);
+  --muted: oklch(0.25 0.014 260);
+  --muted-foreground: oklch(0.7 0.015 257);
+  --accent: oklch(0.29 0.05 262);
+  --accent-foreground: oklch(0.85 0.08 255);
 
-  /* Cut, add and replace: status colours, always with an icon and a label. Clear of the sleeve blue. */
+  /* Cut, add and replace: status colours, always with an icon and a label. Clear of the primary blue. */
   --cut: #e08a7a;
   --add: #8cc49a;
   --replace: #c7a2da;
@@ -136,64 +137,21 @@
   --cat-planeswalker: #a37dcf;
   --cat-battle: #74c284;
 
+  /* Status: red is an error, an over-target count or a cut; green is good or an add; amber is a warning. Never blue,
+     which only marks what can be pressed. Each comes with an icon and a word. */
   --destructive: #e5796b;
+  --success: var(--add);
+  --warning: var(--gc);
   --save: var(--add);
   --gc: #e0b354;
   --gc-bg: #3a2d13;
 
-  --border: var(--seam);
-  --input: #3a2e24;
+  --border: oklch(0.3 0.014 260);
+  --input: oklch(0.3 0.014 260);
   --ring: var(--primary);
 
   /* A card in hand: dragged, dealt or passed. Resting surfaces have no shadow. */
   --lift: 0 14px 30px -14px rgb(20 12 6 / 0.55);
-
-  /* v3 "Table at night" (the 2026-09 facelift). Kept so the earlier values can be restored. */
-  --backgroundv3: #080e15;
-  --foregroundv3: #e9e5dd;
-  --sleevev3: #0f171d;
-  --seamv3: #1f2c34;
-  --popoverv3: #121c23;
-  --primaryv3: #e3ab6e;
-  --primary-foregroundv3: #08161a;
-  --secondaryv3: #152229;
-  --mutedv3: #111c23;
-  --muted-foregroundv3: #80909f;
-  --inputv3: #243640;
-  --cutv3: #e8687c;
-  --addv3: #3cbd94;
-  --replacev3: #9d8ef5;
-
-  /* v2 surfaces (before the 2026-09 facelift). Kept so the earlier values can be restored. */
-  --backgroundv2: #00090e;
-  --sleevev2: #050e13;
-  --seamv2: #1b2a30;
-  --popoverv2: #08151b;
-  --secondaryv2: #10202a;
-  --mutedv2: #0c1a21;
-  --accentv2: #10202a;
-  --inputv2: #1e3038;
-
-  /* v1 palette (pre-homepage redesign). Kept so the earlier values can be restored. */
-  --backgroundv1: #10131a;
-  --sleevev1: #1a1e28;
-  --seamv1: #2a303d;
-  --popoverv1: #1e232e;
-  --primaryv1: #d8a441;
-  --primary-foregroundv1: #17130a;
-  --secondaryv1: #272d39;
-  --mutedv1: #232936;
-  --muted-foregroundv1: #98a0ae;
-  --accentv1: #272d39;
-  --inputv1: #39414f;
-  --cat-landv1: #7d9e8e;
-  --cat-creaturev1: #7d9e6e;
-  --cat-instantv1: #6e9eaa;
-  --cat-sorceryv1: #9e7d8e;
-  --cat-artifactv1: #8e8e7d;
-  --cat-enchantmentv1: #7d8e9e;
-  --cat-planeswalkerv1: #9e8e6e;
-  --cat-battlev1: #9e6e6e;
 }
 
 @layer base {

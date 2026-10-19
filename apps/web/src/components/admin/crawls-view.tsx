@@ -9,6 +9,8 @@ import type { AdminCrawledDeck, AdminCrawledDeckCard, AdminCrawledDeckPage, Admi
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { ErrorText } from "@/components/ui/error-text";
 
 /** Typing waits this long before asking again, so a word is one request rather than one per letter. */
 const SEARCH_DEBOUNCE_MS = 350;
@@ -82,7 +84,7 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
               aria-hidden
               animate={reduce ? {} : { opacity: [1, 0.35, 1] }}
               transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-              className="size-2 rounded-full bg-primary"
+              className="size-2 rounded-full bg-success"
             />
           )}
           <span className={cn(stateTone(source.lastRun?.state, source.disabled))}>
@@ -192,7 +194,7 @@ function DeckRow({ deck, index }: { deck: AdminCrawledDeck; index: number }) {
             target="_blank"
             rel="noreferrer noopener"
             aria-label={`Open ${deck.sourceDeckId} on ${deck.source}`}
-            className="mt-0.5 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="mt-0.5 shrink-0 rounded-md p-1 text-primary transition-colors hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <ExternalLink aria-hidden className="size-4" />
           </a>
@@ -212,9 +214,9 @@ function DeckRow({ deck, index }: { deck: AdminCrawledDeck; index: number }) {
           >
             <div className="p-3 sm:p-4">
               {problem && (
-                <p role="alert" className="text-xs text-destructive">
+                <ErrorText className="text-xs">
                   {problem}
-                </p>
+                </ErrorText>
               )}
               {!problem && cards === null && (
                 <div className="flex flex-col gap-1.5" role="status" aria-label="Loading the cards">
@@ -346,9 +348,9 @@ export function CrawlsView() {
       </div>
 
       {problem && (
-        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <ErrorText className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
           {problem}
-        </p>
+        </ErrorText>
       )}
 
       {data === null ? (
@@ -378,7 +380,7 @@ export function CrawlsView() {
                 onClick={() => changeSource(s)}
                 className={cn(
                   "rounded-md px-3 py-1.5 text-sm font-normal capitalize transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  source === s ? "bg-sleeve text-foreground shadow-[0_1px_0_var(--seam)]" : "text-muted-foreground hover:text-foreground",
+                  source === s ? TOGGLE_ON : TOGGLE_OFF,
                 )}
               >
                 {s}

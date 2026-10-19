@@ -436,7 +436,7 @@ function CollectionSummary({
       <p className="text-sm text-muted-foreground">{note}</p>
       {unmatched && unmatched.count > 0 && (
         <details className="text-sm">
-          <summary className="cursor-pointer font-semibold">
+          <summary className="cursor-pointer font-semibold text-primary">
             {count(unmatched.count)} line{unmatched.count === 1 ? "" : "s"} didn&apos;t match a card
           </summary>
           <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">

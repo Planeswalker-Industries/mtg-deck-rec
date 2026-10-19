@@ -8,10 +8,12 @@ import { Copy, Pencil, Trash2 } from "lucide-react";
 import type { DeckId, SavedDeckSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { ColorIdentity } from "@/components/deck/color-identity";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getApis } from "@/lib/api/client";
 import { displayName } from "@/lib/cards";
 import { TEXT_LINK } from "@/lib/constants";
+import { ErrorText } from "@/components/ui/error-text";
 
 /** Below this many decks a filter box is clutter; the cap is 100, so it earns its place well before then. */
 const FILTER_FROM = 8;
@@ -51,9 +53,9 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
       )}
 
       {error && (
-        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <ErrorText className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2">
           {error}
-        </p>
+        </ErrorText>
       )}
 
       {shown.length === 0 ? (
@@ -78,7 +80,7 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
                   <div className="min-w-0 flex-1">
                     <Link
                       href={deckHref(deck)}
-                      className="-my-3 block truncate py-3 font-heading text-lg leading-tight font-semibold hover:text-primary sm:my-0 sm:py-0"
+                      className="-my-3 block truncate py-3 font-heading text-lg leading-tight font-semibold text-primary hover:underline sm:my-0 sm:py-0"
                     >
                       {deck.name}
                     </Link>
@@ -146,8 +148,8 @@ function RowButton({
       aria-label={label}
       title={label}
       className={cn(
-        "flex size-11 items-center justify-center rounded-md text-muted-foreground sm:size-9 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        destructive ? "hover:text-destructive focus-visible:text-destructive" : "hover:text-primary focus-visible:text-primary",
+        "flex size-11 items-center justify-center rounded-md sm:size-9 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        destructive ? "text-destructive hover:bg-destructive/10" : "text-primary hover:bg-primary/10",
       )}
     >
       {children}
@@ -184,12 +186,12 @@ function RenameRow({
         maxLength={80}
         className="h-10 bg-background"
       />
-      <button type="submit" className="h-10 shrink-0 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground">
+      <Button type="submit" className="h-10 shrink-0 px-3">
         Save
-      </button>
-      <button type="button" onClick={onCancel} className="h-10 shrink-0 rounded-md px-3 text-sm font-semibold text-muted-foreground hover:text-foreground">
+      </Button>
+      <Button type="button" variant="ghost" onClick={onCancel} className="h-10 shrink-0 px-3">
         Cancel
-      </button>
+      </Button>
     </form>
   );
 }

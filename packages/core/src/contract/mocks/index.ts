@@ -1,5 +1,5 @@
 import type { FavoriteKind, TagAdminRow } from '../account';
-import type { CardDetail, CardSummary, TagRef } from '../cards';
+import type { CardDetail, CardRules, CardSummary, TagRef } from '../cards';
 import type { ResolvedCollectionRow, UnresolvedCollectionRow } from '../collection';
 import type {
   CommanderKeyRef,
@@ -864,6 +864,26 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       const rows = cardIds
         .map((id) => ({ cardId: id, tags: mockCardTags[id] ?? [] }))
         .filter((row) => row.tags.length > 0);
+      return delay(ok(rows), 40);
+    },
+
+    async cardRules({ cardIds }) {
+      const rows = cardIds.flatMap((id): CardRules[] => {
+        const card = byId.get(id);
+        if (!card) return [];
+        const creature = /Creature/.test(card.typeLine);
+        return [
+          {
+            cardId: card.id,
+            oracleText: `${card.name} does what its type line says. Mock rules text for the card panel.`,
+            power: creature ? '2' : null,
+            toughness: creature ? '2' : null,
+            loyalty: /Planeswalker/.test(card.typeLine) ? '4' : null,
+            defense: null,
+            faces: null,
+          },
+        ];
+      });
       return delay(ok(rows), 40);
     },
   };

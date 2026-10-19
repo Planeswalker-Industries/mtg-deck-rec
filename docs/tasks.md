@@ -76,6 +76,27 @@ The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a r
 
 ## High-Impact Features
 
+### T073: Deck journey UX overhaul follow-ups
+
+**Priority:** HIGH | **Area:** Frontend / Data | **Status:** Overhaul built on `feat/journey-ux` (2026-10-14); these remain
+
+The overhaul (owner interview 2026-10-13) changed the journey to Add → Cut → Swap → Finish:
+- `trimCuts` trims back to 100 after Add.
+- An Undo / Start over / Save bar sits on every step, with Save as copy.
+- A card panel shows rules text, and Swap marks how the replacement compares (`compareCards`).
+- Pressable things are blue at rest, and status colours are never blue.
+- Deck stats rows preview the card on screen (`statDeltas`).
+
+**Files:**
+- `packages/core/src/journey/` — `journey.ts` (order, `roomToAdd`, `cutsNeeded`, `pushUndo`), `room.ts` (`trimCuts`), `compare.ts`, `deck-tally.ts` (`statDeltas`)
+- `apps/web/src/components/deck/journey/` — `round-bar.tsx`, `cut-phase.tsx`, `add-phase.tsx`, `single-swipe.tsx`
+- `apps/web/src/components/cards/card-panel.tsx`, `apps/web/src/lib/card-rules.ts`, `apps/web/src/app/api/cards/rules/route.ts`
+- `supabase/migrations/20261014000100_card_oracle_fields.sql`, `apps/worker/src/lib/scryfall-card.ts`
+
+**Acceptance criteria:**
+- [ ] After the release to `main`, run `cli:hosted sync:catalog` so hosted fills power, toughness, loyalty, defense, colors, color indicator, produced mana and reserved. This is a one-time rewrite of every card. The owner runs it.
+- [ ] Decide which printing-level fields to store. `printings` lacks rarity, set name, artist, flavor text, frame and promo flags (oracle-level fields are all stored now).
+
 ### T006: Wire votes into swap scoring
 
 **Priority:** HIGH | **Area:** Backend / Scoring | **Status:** Not started
@@ -612,8 +633,8 @@ Three e2e tests fail locally against the real catalog and corpus, on `develop` a
 
 **Acceptance criteria:**
 - [ ] `analyzeDeck` waits for either the recommendations or the lookup sheet before dismissing, as the page walk scripts do
-- [ ] The ring test hovers a point that is on a slice at the size the ring renders (or asserts through the slice element)
-- [ ] A later page of a name search ranks the way the first did when the search index is down: either the test pages with `sort=name_asc` as the deckbuilder does (one line, no app change; recommended), or any explicit `offset`, 0 included, makes a search filtered (one line in `card-search.ts`)
+- [x] The ring test: removed in the 2026-10-13 e2e trim (a hover cosmetic)
+- [x] A later page of a name search ranks the way the first did when the search index is down: the test pages with `sort=name_asc`, as the deckbuilder does
 - [ ] Both specs pass locally with `E2E_LOCAL_DATA=1` and in CI (mocks)
 
 ---

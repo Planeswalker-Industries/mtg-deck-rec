@@ -21,18 +21,18 @@ interface NavItem {
  * in the browser until an account takes it). Rating swaps moved to the footer.
  */
 const NAV_ITEMS: readonly NavItem[] = [
-  { href: "/deck", label: "Upgrade a deck", hint: "Cards to cut, add and swap", accountOnly: false },
+  { href: "/deck", label: "Upgrade a deck", hint: "Cards to add, cut and swap", accountOnly: false },
   { href: "/collection", label: "My collection", hint: "The cards you own", accountOnly: false },
   { href: "/decks", label: "My decks", hint: "The decks you have saved", accountOnly: true },
 ];
 
-// Quiet until you reach for them: the accent belongs on the one action that matters. The page you are on
-// gets an accent edge along the header's foot, where the header meets the page.
+// Blue, like everything pressable. The page you are on reads in the foreground ink with an accent edge along the
+// header's foot, where the header meets the page.
 const NAV_LINK =
-  "relative flex h-16 items-center whitespace-nowrap px-3 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:text-foreground after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-primary after:opacity-0 aria-[current=page]:after:opacity-100";
+  "relative flex h-16 items-center whitespace-nowrap px-3 text-sm font-semibold text-primary transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:text-foreground after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-primary after:opacity-0 aria-[current=page]:after:opacity-100";
 
 const ICON_BUTTON =
-  "flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-primary focus-visible:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  "flex size-11 items-center justify-center rounded-lg text-primary transition-colors hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 function isCurrent(pathname: string | null, href: string) {
   return pathname !== null && (pathname === href || pathname.startsWith(`${href}/`));
@@ -135,7 +135,7 @@ function MenuLinks({ items }: { items: readonly NavItem[] }) {
                   <span
                     className={cn(
                       "font-heading text-xl leading-tight font-semibold",
-                      current ? "text-foreground" : "text-foreground/85 group-hover:text-foreground",
+                      current ? "text-foreground" : "text-primary",
                     )}
                   >
                     {item.label}

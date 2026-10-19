@@ -33,6 +33,7 @@ import { PHONE_HIT_AREA } from "@/lib/constants";
 import { AddToCollection, EditableCards } from "./collection-edit";
 import { useCollectionEditor } from "./use-collection-editor";
 import { useCollectionView, type CollectionViewItem } from "./use-collection-view";
+import { ErrorText } from "@/components/ui/error-text";
 
 /** The five colour wedges of the multicolour toggle, in WUBRG order, as Scryfall's own pips colour them. */
 const MULTICOLOR_WEDGES = "conic-gradient(#f8f6d8 0 20%, #0e68ab 0 40%, #3a3531 0 60%, #d3202a 0 80%, #00733e 0)";
@@ -70,9 +71,9 @@ export function CollectionView() {
       {view.status === "error" && (
         <>
           <Heading />
-          <p role="alert" className="text-sm text-destructive">
+          <ErrorText>
             {view.message}
-          </p>
+          </ErrorText>
         </>
       )}
       {view.status === "none" && (
@@ -117,9 +118,13 @@ function EmptyView({ signedIn }: { signedIn: boolean }) {
       </PageHero>
       {adding && (
         <>
-          <p role={editor.error ? "alert" : "status"} className={editor.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
-            {editor.error ?? (editor.saving ? "Saving…" : "Your collection starts when you add your first card.")}
-          </p>
+          {editor.error ? (
+            <ErrorText>{editor.error}</ErrorText>
+          ) : (
+            <p role="status" className="text-sm text-muted-foreground">
+              {editor.saving ? "Saving…" : "Your collection starts when you add your first card."}
+            </p>
+          )}
           <AddToCollection editor={editor} />
         </>
       )}
@@ -207,9 +212,13 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
 
       {editing && (
         <>
-          <p role={editor.error ? "alert" : "status"} className={editor.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
-            {editor.error ?? (editor.saving ? "Saving…" : "Changes save as you make them.")}
-          </p>
+          {editor.error ? (
+            <ErrorText>{editor.error}</ErrorText>
+          ) : (
+            <p role="status" className="text-sm text-muted-foreground">
+              {editor.saving ? "Saving…" : "Changes save as you make them."}
+            </p>
+          )}
           <AddToCollection editor={editor} />
         </>
       )}
