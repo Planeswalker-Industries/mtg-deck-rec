@@ -12,7 +12,7 @@ import { OwnedBadge } from "../card-label";
 import { PanelError, PanelLoading } from "../panel-state";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
 import { SingleSwipe, SwipeDone } from "./single-swipe";
-import { SlotTray } from "./slot-tray";
+import { AddsCounter, SlotTray } from "./slot-tray";
 import type { AddFilter, DeckJourney } from "./use-deck-journey";
 
 /** How many suggestions the list view shows at once; the rest follow as these are added or skipped. */
@@ -20,13 +20,29 @@ const LIST_SUGGESTIONS = 18;
 /** Cards after the one on screen whose rules text is fetched ahead, so it's there when they're dealt. */
 const PREFETCH_CARDS = 4;
 
+/**
+ * The roles a suggestion fills, as the counts it moves: "protection: 3 → 4 of 8". Read from the card's tracked roles
+ * against Deck stats' lines, for the lines still short of their target (the ones the server picked it for); without the
+ * card's roles, the role names the server gave.
+ */
+function fills({ card, fillsRoles }: AddSuggestion, roles: readonly StatLine[]): string | null {
+  const moved = card.roles
+    ? roles
+        .filter((role) => card.roles?.includes(role.key) && role.value < role.target)
+        .map((role) => `${role.label.toLowerCase()}: ${role.value} → ${role.value + 1} of ${Math.round(role.target)}`)
+    : [];
+  const named = moved.length > 0 ? moved : fillsRoles.map((r) => r.label.toLowerCase());
+  return named.length > 0 ? `Adds ${named.join(", ")}` : null;
+}
+
 /** Why a suggestion is here, in one or two short lines. */
-function Why({ suggestion }: { suggestion: AddSuggestion }) {
-  const { card, fillsRoles, corpus, owned } = suggestion;
+function Why({ suggestion, roles }: { suggestion: AddSuggestion; roles: readonly StatLine[] }) {
+  const { card, corpus, owned } = suggestion;
+  const adds = fills(suggestion, roles);
   return (
     <span className="flex flex-col items-start gap-0.5">
       {owned && <OwnedBadge />}
-      {fillsRoles.length > 0 && <span className="font-semibold text-add">Adds {fillsRoles.map((r) => r.label.toLowerCase()).join(", ")}</span>}
+      {adds && <span className="font-semibold text-add">{adds}</span>}
       {corpus && (
         <span className="font-mono">{corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}</span>
       )}
@@ -141,7 +157,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
           zoomable
           label="Cards to add"
           onSelect={(card: CardSummary) => accept(card)}
-          items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, caption: <Why suggestion={s} /> }))}
+          items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, caption: <Why suggestion={s} roles={roles} /> }))}
         />
       );
     }
@@ -160,7 +176,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
         passLabel={`Skip ${next.card.name}`}
         acceptWord="Add"
         passWord="Skip"
-        caption={<Why suggestion={next} />}
+        caption={<Why suggestion={next} roles={roles} />}
         onAccept={() => accept(next.card)}
         onPass={() => pass(next.card)}
         footer={
@@ -175,7 +191,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
   return (
     <div className="flex flex-col gap-3">
       {intro}
-      <StepStatus count={`${size} / ${COMMANDER_DECK_SIZE}`}>{statusText(short, room, cutsOwed)}</StepStatus>
+      <StepStatus count={<AddsCounter count={`${size} / ${COMMANDER_DECK_SIZE}`} adds={adds} onTakeOut={undo} />}>{statusText(short, room, cutsOwed)}</StepStatus>
       {room > 0 && <RolePills short={short} filter={filter} onChange={setFilter} />}
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}

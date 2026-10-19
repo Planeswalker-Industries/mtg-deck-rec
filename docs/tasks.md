@@ -96,9 +96,6 @@ The overhaul (owner interview 2026-10-13) changed the journey to Add → Cut →
 **Acceptance criteria:**
 - [ ] After the release to `main`, run `cli:hosted sync:catalog` so hosted fills power, toughness, loyalty, defense, colors, color indicator, produced mana and reserved. This is a one-time rewrite of every card. The owner runs it.
 - [ ] Decide which printing-level fields to store. `printings` lacks rarity, set name, artist, flavor text, frame and promo flags (oracle-level fields are all stored now).
-- [ ] The Deckbuilder's Deck stats shows deltas against the saved version (it has no round start, so nothing moves today).
-- [ ] Add's caption names the role count it moves ("Adds protection: 3 → 4 of 8"). It needs suggestion `fillsRoles` mapped to the stat role keys.
-- [ ] Phones hide Add's slot tray (it pushed the swipe buttons off screen), so a card added earlier in the round can only come back out through Undo. Let the "103 / 100" counter open the round's adds in a sheet, each with "Take back out".
 
 ### T006: Wire votes into swap scoring
 
