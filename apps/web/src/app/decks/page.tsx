@@ -52,7 +52,7 @@ async function SavedDecks() {
       <div className="rounded-xl border border-seam bg-sleeve/60 p-6">
         <h2 className="font-heading text-xl leading-tight font-semibold">No decks saved yet.</h2>
         <p className="mt-2 max-w-prose text-muted-foreground">
-          Paste a decklist to see what to cut, add and replace, or build one from a commander. Save it and it shows up here.
+          Paste a decklist to see what to add, cut and swap, or build one from a commander. Save it and it shows up here.
         </p>
       </div>
     );

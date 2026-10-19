@@ -177,7 +177,7 @@ export function ZoomableCard({
               setOpen("press");
             }}
             className={cn(
-              "absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-full bg-black/65 text-white",
+              "absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-full bg-black/70 text-primary",
               // A 44 px touch target around the 32 px dot, so the dot stays small over the card name.
               "after:absolute after:-inset-1.5 after:content-['']",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
@@ -224,7 +224,7 @@ export function ZoomableCard({
                   e.stopPropagation();
                   setOpen(null, true);
                 }}
-                className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-sm text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1.5 text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <X aria-hidden className="size-4" />
                 Close

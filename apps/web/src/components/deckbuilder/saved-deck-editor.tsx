@@ -11,6 +11,7 @@ import { getApis } from "@/lib/api/client";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 import { DeckBuilder } from "./deck-builder";
 import { useDeckBuilder } from "./use-deck-builder";
+import { ErrorText } from "@/components/ui/error-text";
 
 /** Edits settle this long before they are written, so a run of clicks is one save rather than one each. */
 const SAVE_DEBOUNCE_MS = 800;
@@ -167,9 +168,13 @@ export function SavedDeckEditor({
             </Button>
           </div>
         )}
-        <p role={status.kind === "error" ? "alert" : "status"} className={status.kind === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
-          {status.kind === "error" ? `Couldn't save: ${status.message}` : STATUS_TEXT[status.kind]}
-        </p>
+        {status.kind === "error" ? (
+          <ErrorText>Couldn&apos;t save: {status.message}</ErrorText>
+        ) : (
+          <p role="status" className="text-sm text-muted-foreground">
+            {STATUS_TEXT[status.kind]}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <Link href={{ pathname: "/deck", query: { deck: code } }} className={buttonVariants({ size: "sm" })}>
             Upgrade this deck

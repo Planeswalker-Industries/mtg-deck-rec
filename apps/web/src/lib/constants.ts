@@ -43,3 +43,13 @@ export const PHONE_HIT_AREA_BEFORE =
  */
 export const TEXT_LINK =
   "text-primary underline decoration-primary/50 underline-offset-2 transition-colors hover:decoration-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+/**
+ * A toggle pill or segment (a filter, a grouping, a tab): blue text while off, because it can be pressed, and the solid
+ * primary when on. Callers add shape and size.
+ */
+export const TOGGLE_OFF = "text-primary hover:bg-primary/10";
+export const TOGGLE_ON = "bg-primary text-primary-foreground";
+/** A toggle pill's outline: blue while off, filled when on. */
+export const PILL_OFF = `border-primary/45 ${TOGGLE_OFF}`;
+export const PILL_ON = `border-primary ${TOGGLE_ON}`;

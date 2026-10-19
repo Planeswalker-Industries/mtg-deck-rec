@@ -14,6 +14,7 @@ import { getApis } from "@/lib/api/client";
 import { displayName } from "@/lib/cards";
 import { addShortfallToCollection, collectionCounts } from "@/lib/deck-collection";
 import { signInToSaveHref, stashPendingSave } from "@/lib/pending-save";
+import { ErrorText } from "@/components/ui/error-text";
 
 /** A save waiting on the player's answer about the cards their collection lacks. */
 interface Confirm {
@@ -175,9 +176,9 @@ export function SaveDeckButton({
         </Button>
         {!signedIn && <p className="w-full text-right text-xs text-muted-foreground">You&apos;ll sign in to save it; the deck comes with you.</p>}
         {error && !confirm && (
-          <p role="alert" className="w-full text-right text-sm text-destructive">
+          <ErrorText className="w-full text-right">
             {error}
-          </p>
+          </ErrorText>
         )}
       </form>
 
@@ -205,9 +206,9 @@ export function SaveDeckButton({
             </p>
           )}
           {error && (
-            <p role="alert" className="mt-3 text-sm text-destructive">
+            <ErrorText className="mt-3">
               {error}
-            </p>
+            </ErrorText>
           )}
           <SheetFooter className="mt-4 flex-row flex-wrap justify-end gap-2 p-0">
             <Button

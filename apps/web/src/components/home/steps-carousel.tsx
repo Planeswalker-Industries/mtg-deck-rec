@@ -3,6 +3,7 @@
 import { Children, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { animate, motion, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { cn } from "cn";
+import { TOGGLE_ON } from "@/lib/constants";
 
 /** Each slide is this share of the carousel's width, so the next one peeks in at the edge. Matches `w-[85%]`. */
 const SLIDE_SHARE = 0.85;
@@ -86,7 +87,7 @@ export function StepsCarousel({ labels, children }: { labels: string[]; children
             className={cn(
               "flex size-11 items-center justify-center rounded-lg border font-mono text-sm transition-colors",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              i === index ? "border-primary text-primary" : "border-seam text-muted-foreground",
+              i === index ? TOGGLE_ON : "border-primary/45 text-primary hover:bg-primary/10",
             )}
           >
             {i + 1}

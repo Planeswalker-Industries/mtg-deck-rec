@@ -9,8 +9,13 @@ import {
   decklistFor,
   deckDiff,
   deckSize,
+  ADD_OVERFLOW_MAX,
+  cutsNeeded,
   journeyReducer,
   openSlots,
+  pushUndo,
+  roomToAdd,
+  UNDO_DEPTH,
   removeFromDeck,
   startJourney,
   withoutCards,
@@ -58,9 +63,9 @@ const mainOf = (deck: DeckInput) =>
   Object.fromEntries(deck.cards.filter((c) => c.section === 'main').map((c) => [c.cardId, c.quantity]));
 
 describe('journey reducer', () => {
-  it('starts in the Cut phase with nothing changed', () => {
+  it('starts in the Add phase with nothing changed', () => {
     const state = startJourney(base);
-    expect(state.phase).toBe('cut');
+    expect(state.phase).toBe('add');
     expect(workingDeck(state)).toEqual({ commanders: [COMMANDER], cards: base.cards });
   });
 
@@ -95,15 +100,24 @@ describe('journey reducer', () => {
     expect(run({ type: 'keep', cardId: 2 as CardId }, { type: 'cut', card: card(2) }).kept).toEqual([]);
   });
 
-  it('adds only into open slots, once per card', () => {
-    const state = run(
-      { type: 'cut', card: card(2) },
-      { type: 'add', card: card(10) },
-      { type: 'add', card: card(11) },
-    );
-    expect(state.adds.map((c) => c.id)).toEqual([10]);
+  it('adds once per card, past a full deck up to the overflow limit, and Cut then owes the difference', () => {
+    const state = run({ type: 'add', card: card(10) }, { type: 'add', card: card(10) }, { type: 'add', card: card(11) });
+    expect(state.adds.map((c) => c.id)).toEqual([10, 11]);
     expect(openSlots(state)).toBe(0);
-    expect(mainOf(workingDeck(state))).toEqual({ 3: 1, 4: 1, 10: 1, [PLAINS]: FULL_PLAINS });
+    expect(cutsNeeded(state)).toBe(2);
+    expect(roomToAdd(state)).toBe(ADD_OVERFLOW_MAX - 2);
+    expect(mainOf(workingDeck(state))).toEqual({ 2: 1, 3: 1, 4: 1, 10: 1, 11: 1, [PLAINS]: FULL_PLAINS });
+
+    const ids = Array.from({ length: ADD_OVERFLOW_MAX + 2 }, (_, i) => 100 + i);
+    const full = ids.map((id): JourneyAction => ({ type: 'add', card: card(id) })).reduce(journeyReducer, startJourney(base));
+    expect(full.adds).toHaveLength(ADD_OVERFLOW_MAX);
+    expect(roomToAdd(full)).toBe(0);
+    expect(cutsNeeded(journeyReducer(full, { type: 'cut', card: card(2) }))).toBe(ADD_OVERFLOW_MAX - 1);
+  });
+
+  it('owes no cuts at or below a full deck', () => {
+    expect(cutsNeeded(startJourney(base))).toBe(0);
+    expect(cutsNeeded(run({ type: 'cut', card: card(2) }))).toBe(0);
   });
 
   it('a declined addition stays declined until it is added after all', () => {
@@ -159,10 +173,42 @@ describe('journey reducer', () => {
   });
 
   it('remembers the furthest phase opened when going back', () => {
-    const state = run({ type: 'goto', phase: 'replace' }, { type: 'goto', phase: 'cut' }, { type: 'goto', phase: 'add' });
-    expect(state.phase).toBe('add');
+    const state = run({ type: 'goto', phase: 'replace' }, { type: 'goto', phase: 'add' }, { type: 'goto', phase: 'cut' });
+    expect(state.phase).toBe('cut');
     expect(state.reached).toBe('replace');
-    expect(startJourney(base).reached).toBe('cut');
+    expect(startJourney(base).reached).toBe('add');
+  });
+});
+
+describe('undo stack', () => {
+  const start = startJourney(base);
+
+  it('records a choice and steps back to the state before it, but not a move between steps', () => {
+    const cut: JourneyAction = { type: 'cut', card: card(2) };
+    const after = journeyReducer(start, cut);
+    expect(pushUndo([], start, after, [cut])).toEqual([start]);
+    const moved = journeyReducer(after, { type: 'goto', phase: 'cut' });
+    expect(pushUndo([start], after, moved, [{ type: 'goto', phase: 'cut' }])).toEqual([start]);
+  });
+
+  it('records nothing when the choice changed nothing', () => {
+    const twice: JourneyAction = { type: 'declineSwap', targetId: 3 as CardId, replacementId: 20 as CardId };
+    const once = journeyReducer(start, twice);
+    expect(pushUndo([start], once, journeyReducer(once, twice), [twice])).toEqual([start]);
+  });
+
+  it('records a start over, so it can be undone too', () => {
+    const changed = run({ type: 'cut', card: card(2) });
+    const reset: JourneyAction = { type: 'reset', base };
+    expect(pushUndo([], changed, journeyReducer(changed, reset), [reset])).toEqual([changed]);
+  });
+
+  it('keeps at most UNDO_DEPTH states, dropping the oldest', () => {
+    const past = Array.from({ length: UNDO_DEPTH }, () => start);
+    const after = journeyReducer(start, { type: 'cut', card: card(2) });
+    const next = pushUndo(past, after, journeyReducer(after, { type: 'cut', card: card(3) }), [{ type: 'cut', card: card(3) }]);
+    expect(next).toHaveLength(UNDO_DEPTH);
+    expect(next.at(-1)).toBe(after);
   });
 });
 

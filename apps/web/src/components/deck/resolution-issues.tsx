@@ -48,7 +48,7 @@ export function ResolutionIssues({
       {/* Deck issues are informational; collapsed so cards stay near the top. */}
       {listIssues && (
         <details className="rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm">
-          <summary className="cursor-pointer font-semibold marker:text-muted-foreground">{issueCount(issues.length)}</summary>
+          <summary className="cursor-pointer font-semibold text-primary">{issueCount(issues.length)}</summary>
           <IssueList issues={issues} className="mt-2" />
         </details>
       )}
@@ -81,8 +81,8 @@ export function DeckIssuesChip({ issues }: { issues: DeckIssue[] }) {
         title={label}
         className={cn(
           PHONE_HIT_AREA,
-          "inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-seam bg-sleeve px-2 font-mono text-xs text-foreground transition-colors",
-          "hover:border-primary/60 hover:text-primary focus-visible:text-primary",
+          "inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-primary/45 bg-sleeve px-2 font-mono text-xs text-primary transition-colors",
+          "hover:border-primary hover:bg-primary/10",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         )}
       >

@@ -130,5 +130,6 @@ export const realCatalog: CatalogApi = {
   // POST, not GET: a hundred card ids do not belong in a URL. The answer is the same for everyone, so the
   // route still sets cache headers.
   cardTags: (input) => post("/api/cards/tags", input),
+  cardRules: (input) => post("/api/cards/rules", input),
   collectionCards: (input) => post("/api/cards/collection", input),
 };

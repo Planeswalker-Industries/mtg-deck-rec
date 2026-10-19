@@ -96,7 +96,7 @@ export function ReplacePhase({
   // steps over decided cards when their turn comes, since it deals by position, so coming back picks up at the first
   // card still open.
   const skipTarget = (card: CardSummary) => !journey.replace.inDeck(card.id) || journey.replace.isKept(card.id);
-  const toSwipe = targets.map((s) => ({ card: s.card, reasons: s.reasons }));
+  const toSwipe = targets.map((s) => ({ card: s.card, reasons: s.reasons, corpus: s.corpus }));
   const open = targets.filter((s) => !skipTarget(s.card));
   // The list shows open cards and swapped ones, marked; kept cards were decided on and leave it.
   const listed = targets.filter((s) => !skipTarget(s.card) || journey.replace.swapFor(s.card.id));
@@ -147,7 +147,7 @@ export function ReplacePhase({
   const nothingLeft = (
     <SwipeDone message={targets.length === 0 ? "Nothing left that something else does clearly better." : "That's every card worth a second look."}>
       <Button type="button" size="lg" onClick={toReview}>
-        Next: review the deck
+        Next: finish
       </Button>
     </SwipeDone>
   );
@@ -158,7 +158,7 @@ export function ReplacePhase({
         {intro}
         {focused && (
           <SwipeRater
-            key={`${focused.card.id}:${reopen?.n ?? 0}`}
+            key={`${focused.card.id}:${reopen?.n ?? 0}:${journey.undoCount}`}
             targets={[focused]}
             startAt={reopen?.targetId}
             preferred={reopen?.replacementId}
@@ -200,7 +200,7 @@ export function ReplacePhase({
           />
         )}
         {swapList}
-        <NextBar label="Next: review the deck" onNext={toReview}>
+        <NextBar label="Next: finish" onNext={toReview}>
           {swaps.length} swap{swaps.length === 1 ? "" : "s"}
         </NextBar>
       </div>
@@ -217,7 +217,7 @@ export function ReplacePhase({
         // with the old ones, so the sitting starts over rather than keep them. A swap taken back reopens it on its card.
         <div ref={sitting} className="scroll-mt-44">
           <SwipeRater
-            key={`${journey.replace.version}:${reopen?.n ?? 0}`}
+            key={`${journey.replace.version}:${reopen?.n ?? 0}:${journey.undoCount}`}
             targets={toSwipe}
             startAt={reopen?.targetId}
             preferred={reopen?.replacementId}

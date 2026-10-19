@@ -156,7 +156,7 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
   // On a phone the view toggle now offers the swipe view back.
   await expect(recs.getByRole("button", { name: "Swipe one card at a time" })).toBeVisible();
-  await expect(recs.getByRole("region", { name: "Your deck" })).toBeVisible({ timeout: 60_000 });
+  await expect(recs.getByRole("list", { name: "Cards to add" })).toBeVisible({ timeout: 60_000 });
 
   // Clearing the box forgets it, and the note goes with it.
   await page.getByRole("button", { name: "Edit decklist" }).click();
@@ -282,18 +282,14 @@ test("fits a pasted list to the collection: owned cards stay, the rest comes fro
   await expect(page.getByLabel("Decklist")).toBeVisible();
 });
 
-test("makes room for a role: cuts cards that don't fill it, then finds that role", async ({ page }) => {
+test("Add may take a full deck past 100, and Cut then owes what was added", async ({ page }) => {
   test.skip(!process.env.E2E_LOCAL_DATA, "Deck stats' role targets need the synced corpus (E2E_LOCAL_DATA)");
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  const picker = page.getByRole("combobox", { name: "Make room for" });
-  await picker.click({ timeout: 60_000 });
-  await page.getByRole("option", { name: /Card advantage/ }).click();
-  const sitting = page.getByRole("region", { name: "Cards to cut to make room for card advantage" });
-  await expect(sitting).toBeVisible();
-  await sitting.getByRole("button", { name: /^Cut / }).click();
-  await page.getByRole("button", { name: /find card advantage/i }).first().click();
-  await expect(page.getByText("Showing card advantage only.")).toBeVisible({ timeout: 60_000 });
+  const sitting = page.getByRole("region", { name: "Cards to add" });
+  await sitting.getByRole("button", { name: /^Add / }).click({ timeout: 60_000 });
+  await page.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click();
+  await expect(page.getByText(/^Cut 1 to get back to 100/)).toBeVisible();
 });

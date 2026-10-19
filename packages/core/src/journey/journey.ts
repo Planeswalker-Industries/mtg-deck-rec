@@ -3,12 +3,19 @@ import { COMMANDER_DECK_SIZE } from '../formats/commander/validate';
 import { decklistText, type DeckExportEntry } from '../parse/decklist-export';
 
 /**
- * The deck journey: cut what works against the deck, add into the slots that opens, replace weaker fits, then review
- * the result. Each phase can be revisited; nothing touches the decklist until the player commits the result.
+ * The deck journey: add what the deck is short of (it may go past 100), cut back to 100 starting with what it has too
+ * much of, replace weaker fits, then review the result. Each phase can be revisited; nothing touches the decklist until
+ * the player commits the result.
  */
-export type JourneyPhase = 'cut' | 'add' | 'replace' | 'review';
+export type JourneyPhase = 'add' | 'cut' | 'replace' | 'review';
 
-export const JOURNEY_PHASES: readonly JourneyPhase[] = ['cut', 'add', 'replace', 'review'];
+export const JOURNEY_PHASES: readonly JourneyPhase[] = ['add', 'cut', 'replace', 'review'];
+
+/**
+ * How far past a full deck Add may go. A round adds a handful of cards for the roles the deck is short of (about five)
+ * and Cut trims back to 100 after; ten leaves room for that without the deck ballooning.
+ */
+export const ADD_OVERFLOW_MAX = 10;
 
 export interface JourneySwap {
   target: CardSummary;
@@ -59,10 +66,10 @@ export type JourneyAction =
   | { type: 'reset'; base: DeckInput };
 
 export function startJourney(base: DeckInput): JourneyState {
-  return { phase: 'cut', reached: 'cut', base, cuts: [], kept: [], adds: [], declinedAdds: [], swaps: [], keptInReplace: [], declinedSwaps: [] };
+  return { phase: 'add', reached: 'add', base, cuts: [], kept: [], adds: [], declinedAdds: [], swaps: [], keptInReplace: [], declinedSwaps: [] };
 }
 
-/** A phase's place in the journey: 0 for Cut through 3 for Review. */
+/** A phase's place in the journey: 0 for Add through 3 for Review. */
 export const phaseIndex = (phase: JourneyPhase): number => JOURNEY_PHASES.indexOf(phase);
 
 const without = <T>(list: readonly T[], value: T) => list.filter((v) => v !== value);
@@ -73,12 +80,19 @@ function baseCopies(base: DeckInput, cardId: CardId): number {
   return base.cards.filter((c) => c.section === 'main' && c.cardId === cardId).reduce((n, c) => n + c.quantity, 0);
 }
 
-/**
- * Room left in the deck: how far it is below a full Commander deck. Usually that's the slots the cuts opened, but a deck
- * that came in over 100 cards gets none until it's down to size, and one that came in short has room without any cuts.
- */
+/** How far the deck is below a full Commander deck: 0 at 100 or more. */
 export function openSlots(state: JourneyState): number {
   return Math.max(0, COMMANDER_DECK_SIZE - deckSize(workingDeck(state)));
+}
+
+/** How many more cards Add may put in: up to ADD_OVERFLOW_MAX past a full deck. */
+export function roomToAdd(state: JourneyState): number {
+  return Math.max(0, COMMANDER_DECK_SIZE + ADD_OVERFLOW_MAX - deckSize(workingDeck(state)));
+}
+
+/** How many cards Cut must take out to bring the deck back to 100: 0 at or below a full deck. */
+export function cutsNeeded(state: JourneyState): number {
+  return Math.max(0, deckSize(workingDeck(state)) - COMMANDER_DECK_SIZE);
 }
 
 /**
@@ -109,7 +123,7 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
       return { ...state, cuts, kept: withValue(state.kept, action.cardId) };
     }
     case 'add': {
-      if (openSlots(state) === 0 || state.adds.some((c) => c.id === action.card.id)) return state;
+      if (roomToAdd(state) === 0 || state.adds.some((c) => c.id === action.card.id)) return state;
       return { ...state, adds: [...state.adds, action.card], declinedAdds: without(state.declinedAdds, action.card.id) };
     }
     case 'unadd': {
@@ -147,6 +161,26 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
     case 'reset':
       return startJourney(action.base);
   }
+}
+
+/** How many choices Undo can step back over in one round: far more than a round makes, with a bound on memory. */
+export const UNDO_DEPTH = 100;
+
+/** Whether an action is a choice Undo steps back over. Moving between steps isn't: Undo undoes choices, not tab clicks. */
+export const isChoice = (action: JourneyAction): boolean => action.type !== 'goto';
+
+/**
+ * The undo stack after applying `actions` to `before`, which gave `after`: `before` goes on top when the actions made a
+ * choice that changed the state, and the oldest entry drops off past UNDO_DEPTH.
+ */
+export function pushUndo(
+  past: readonly JourneyState[],
+  before: JourneyState,
+  after: JourneyState,
+  actions: readonly JourneyAction[],
+): JourneyState[] {
+  if (after === before || !actions.some(isChoice)) return [...past];
+  return [...past, before].slice(-UNDO_DEPTH);
 }
 
 function addCopies(counts: Map<CardId, number>, cardId: CardId, quantity: number) {

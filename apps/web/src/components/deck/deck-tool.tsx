@@ -6,7 +6,7 @@ import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List } from "lucide-react";
 import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
-import type { StatLine } from "@mtg/core/journey";
+import { statDeltas, toTallyCard, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -33,14 +33,15 @@ import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
 import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
+import { StatPreviewProvider, type StatPreview } from "./deck-stats/stat-preview";
 import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
 import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
-import { CutPhase } from "./journey/cut-phase";
-import type { RoomFocus } from "./journey/make-room";
+import { CutPhase, type TrimFocus } from "./journey/cut-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
+import { RoundBar, type CopyState, type RoundSave } from "./journey/round-bar";
 import { useDeckJourney, type AddFilter, type DeckJourney } from "./journey/use-deck-journey";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
@@ -48,10 +49,12 @@ import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
 import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
-import { BUILD_DECK_HREF, BUILD_DEFAULT_BRACKET, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK } from "@/lib/constants";
+import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
+import { BUILD_DECK_HREF, BUILD_DEFAULT_BRACKET, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 import { collectionCounts } from "@/lib/deck-collection";
 import { getApis } from "@/lib/api/client";
 import { RESUME_PARAM, RESUME_SAVE, takePendingSave } from "@/lib/pending-save";
+import { ErrorText } from "@/components/ui/error-text";
 
 const PLACEHOLDER = `Commander
 1 Liesa, Forgotten Archangel
@@ -93,8 +96,8 @@ function Segmented<T extends string>({
           className={cn(
             "rounded-md px-4 py-1 text-sm font-normal transition-colors",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            // The chosen option reads as pressed: the primary fill with dark text, like the main action.
-            value === o.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary",
+            // The chosen option reads as pressed: the primary fill with dark text. The others are blue text: pressable.
+            value === o.value ? TOGGLE_ON : TOGGLE_OFF,
           )}
         >
           {o.label}
@@ -119,7 +122,7 @@ function ViewToggle({ view, onChange }: { view: ReviewView; onChange: (view: Rev
       aria-label={label}
       title={label}
       onClick={() => onChange(toList ? "list" : "swipe")}
-      className="bg-muted text-muted-foreground hover:text-primary focus-visible:text-primary sm:hidden"
+      className="bg-muted sm:hidden"
     >
       {toList ? <List aria-hidden className="size-4" /> : <GalleryHorizontalEnd aria-hidden className="size-4" />}
     </Button>
@@ -181,12 +184,15 @@ export function DeckTool() {
     if (path === "online") tool.changeCollectionMode("off");
     else if (tool.collectionMode === "off") tool.changeCollectionMode("only");
   }
-  /** The role the player is making room for in Cut; a new deck starts without one. */
-  const [roomFor, setRoomFor] = useState<RoomFocus | null>(null);
-  const [roomRound, setRoomRound] = useState(tool.round);
-  if (roomRound !== tool.round) {
-    setRoomRound(tool.round);
-    setRoomFor(null);
+  /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu. */
+  const [copy, setCopy] = useState<CopyState>({ status: "idle" });
+  /** The role Deck stats asked Cut to trim; a new deck starts without one. */
+  const [trimFor, setTrimFor] = useState<TrimFocus | null>(null);
+  const [trimRound, setTrimRound] = useState(tool.round);
+  if (trimRound !== tool.round) {
+    setTrimRound(tool.round);
+    setTrimFor(null);
+    setCopy({ status: "idle" });
   }
   /** The commanders the deck lookup offer was last checked for; a deckbuilder edit that changes them checks again. */
   const lookupCheckedFor = useRef<string | null>(null);
@@ -248,23 +254,24 @@ export function DeckTool() {
       journey.stepper.select(phase);
       journey.add.setFilter(filter);
     };
-  /** What an off stat offers: Cut when it's over its target, Add (narrowed to it) when it's short and slots are open. */
+  /**
+   * What an off stat offers: "Trim" (Cut, narrowed to that role) when it's over its target, "Find" (Add, narrowed to
+   * it) when it's short. Adding may take the deck past 100; Cut brings it back.
+   */
   const statAction = (stat: StatLine): StatAction | null => {
     if (stat.ok || !journey.state) return null;
     if (stat.value > Math.round(stat.target)) {
-      return journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
-    }
-    // A full deck short of a role makes room for it first: Cut offers cards that don't fill it.
-    if (journey.openSlots === 0 && stat.group === "roles" && journey.stepper.canOpen("cut")) {
+      if (!journey.stepper.canOpen("cut")) return null;
+      if (stat.group !== "roles") return { label: "Pick cuts", onSelect: openStep("cut") };
       return {
-        label: `Make room for ${stat.label.toLowerCase()}`,
+        label: `Trim ${stat.label.toLowerCase()}`,
         onSelect: () => {
           journey.stepper.select("cut");
-          setRoomFor({ roleId: stat.key, label: stat.label });
+          setTrimFor({ roleId: stat.key, label: stat.label });
         },
       };
     }
-    if (journey.openSlots === 0 || !journey.stepper.canOpen("add")) return null;
+    if (journey.roomToAdd === 0 || !journey.stepper.canOpen("add")) return null;
     if (stat.group === "roles") {
       return {
         label: `Find ${stat.label.toLowerCase()}`,
@@ -275,7 +282,13 @@ export function DeckTool() {
     return null;
   };
   const bracketAction: StatAction | null = journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
-  const statsPanel = deckStats ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction } : null;
+  /** The card on screen in a swipe view, which Deck stats previews answering. */
+  const [statPreview, setStatPreview] = useState<StatPreview | null>(null);
+  const tallyOf = (card: CardSummary | null) => (card && analysis ? toTallyCard(card, card.roles ?? analysis.cardRoles[card.id] ?? []) : null);
+  const previewDeltas = deckStats && statPreview ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove)) : null;
+  const statsPanel = deckStats
+    ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction, preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null }
+    : null;
 
   /** Offers a deck lookup when the deck's commander has no play data, remembering which commanders it checked. */
   function checkLookup(checked: DeckAnalysis | null) {
@@ -476,15 +489,15 @@ export function DeckTool() {
   }
 
   /**
-   * Ends a journey round from Review. Save and Re-analyze put the result in the decklist and analyze it; Start over goes
-   * back to the deck the player brought. A new analysis starts a new round at Cut. Save then opens the editor: an open
-   * account deck has just been written back by the analysis, and a deck that isn't saved yet gets the name form.
+   * Ends a journey round. Save and Re-analyze put the result in the decklist and analyze it, which starts a new round
+   * at Add. Save then opens the editor: an open account deck has just been written back by the analysis, and a deck
+   * that isn't saved yet gets the name form.
    */
-  async function commitJourney(kind: "save" | "reanalyze" | "startOver") {
-    const text = kind === "startOver" ? null : journey.resultText();
-    if (kind !== "startOver" && text === null) return;
+  async function commitJourney(kind: "save" | "reanalyze") {
+    const text = journey.resultText();
+    if (text === null) return;
     setCommitting(true);
-    const outcome = text === null ? await tool.startOver() : await tool.commitText(text);
+    const outcome = await tool.commitText(text);
     setCommitting(false);
     if (!outcome.parsed) return;
     if (kind === "save") {
@@ -499,6 +512,35 @@ export function DeckTool() {
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  /**
+   * Save as copy: the round's result as a new deck, leaving the open one as it is. The round goes on; the copy is a
+   * link away. Saving never touches the collection.
+   */
+  async function saveCopy() {
+    const deck = journey.deck;
+    const open = tool.openDeck;
+    if (!deck || !open || !analysis) return;
+    setCopy({ status: "saving" });
+    const name = `${open.name} (copy)`.slice(0, MAX_DECK_NAME_CHARS);
+    const result = await getApis().actions.saveDeck({
+      name,
+      deck,
+      isPublic: true,
+      ...(tool.bracketOverride === null ? {} : { bracket: tool.bracketOverride }),
+      original: analysis.deck,
+    });
+    setCopy(result.ok ? { status: "saved", name, href: editorUrl(result.data.code) } : { status: "error", message: result.error.message });
+  }
+  const roundSave: RoundSave = tool.openDeck
+    ? {
+        kind: "open",
+        deckName: tool.openDeck.name,
+        onSaveChanges: () => void commitJourney("save"),
+        onSaveCopy: () => void saveCopy(),
+        copy,
+      }
+    : { kind: "new", onSave: () => void commitJourney("save") };
 
   return (
     <div className="flex flex-col gap-5">
@@ -699,9 +741,9 @@ export function DeckTool() {
         </p>
       )}
       {openError && (
-        <p role="alert" className="text-sm text-destructive">
+        <ErrorText>
           {openError}
-        </p>
+        </ErrorText>
       )}
 
       {tool.importedFrom && tool.parse.status === "ready" && (
@@ -790,6 +832,7 @@ export function DeckTool() {
           </div>
           {mode === "upgrade" ? (
             journey.state && (
+              <StatPreviewProvider onChange={setStatPreview}>
               <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
                 <div className="flex min-w-0 flex-col gap-3">
                   <div className="flex items-center gap-2">
@@ -798,6 +841,7 @@ export function DeckTool() {
                     </div>
                     {journey.state.phase !== "review" && <ViewToggle view={view} onChange={changeView} />}
                   </div>
+                  <RoundBar canUndo={journey.canUndo} onUndo={journey.undo} onStartOver={journey.restart} save={roundSave} busy={committing || tool.stale} showSave={journey.state.phase !== "review"} />
                   {journey.state.phase === "cut" &&
                     (journey.bracketCheck ? (
                       // A bracket change part way through made cards must-cuts: the step's Next becomes a choice.
@@ -815,24 +859,16 @@ export function DeckTool() {
                         cutState={tool.cut}
                         view={view}
                         deckGroups={deckGroups}
-                        room={
+                        trim={
                           deckStats && analysis
-                            ? {
-                                focus: roomFor,
-                                setFocus: setRoomFor,
-                                roles: deckStats.stats.filter((s) => s.group === "roles"),
-                                cardRoles: analysis.cardRoles,
-                                onFind: (focus) => {
-                                  setRoomFor(null);
-                                  openStep("add", { kind: "role", roleId: focus.roleId, label: focus.label })();
-                                },
-                              }
+                            ? { stats: deckStats.stats, cardRoles: analysis.cardRoles, focus: trimFor, setFocus: setTrimFor }
                             : undefined
                         }
+                        onShowList={() => changeView("list")}
                       />
                     ))}
                   {journey.state.phase === "add" && (
-                    <AddPhase journey={journey} view={view} />
+                    <AddPhase journey={journey} view={view} roles={deckStats?.stats.filter((stat) => stat.group === "roles") ?? []} />
                   )}
                   {journey.state.phase === "replace" && (
                     <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />
@@ -847,9 +883,8 @@ export function DeckTool() {
                       report={deckStats}
                       busy={committing}
                       stale={tool.stale}
-                      onSave={() => void commitJourney("save")}
+                      save={roundSave}
                       onReanalyze={() => void commitJourney("reanalyze")}
-                      onStartOver={() => void commitJourney("startOver")}
                     >
                       {source.kind === "none" ? (
                         <CollectionNudge href={collectionImportHref} step="review" />
@@ -872,6 +907,7 @@ export function DeckTool() {
                   </>
                 )}
               </div>
+              </StatPreviewProvider>
             )
           ) : (
             // Remounted when the player pastes a new decklist, so the builder starts from it rather than its old state.

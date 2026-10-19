@@ -34,7 +34,7 @@ function previewPosition(row: DOMRect): { top: number; left: number } {
   return { top, left };
 }
 
-/** A round icon button on a row: grey at rest and dimmed until the row is pointed at; blue on hover, red for Remove. */
+/** A round icon button on a row: blue (red for Remove), dimmed until the row is pointed at. */
 function RowButton({ label, onClick, tone, children }: { label: string; onClick: () => void; tone?: "cut"; children: ReactNode }) {
   return (
     <button
@@ -43,14 +43,14 @@ function RowButton({ label, onClick, tone, children }: { label: string; onClick:
       title={label}
       onClick={onClick}
       className={cn(
-        "relative flex size-8 items-center justify-center rounded-full text-muted-foreground transition-[opacity,color,background-color] duration-180 ease-table",
+        "relative flex size-8 items-center justify-center rounded-full transition-[opacity,color,background-color] duration-180 ease-table",
         "[@media(hover:hover)]:opacity-50 [@media(hover:hover)]:group-hover/row:opacity-100 focus-visible:opacity-100",
         // 44 px tall to a thumb without making the row taller.
         "after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']",
         "focus-visible:outline-2 focus-visible:outline-offset-2",
         tone === "cut"
-          ? "hover:bg-cut/15 hover:text-cut focus-visible:text-cut focus-visible:outline-cut"
-          : "hover:bg-primary/15 hover:text-primary focus-visible:text-primary focus-visible:outline-primary",
+          ? "text-destructive hover:bg-destructive/15 focus-visible:outline-destructive"
+          : "text-primary hover:bg-primary/15 focus-visible:outline-primary",
       )}
     >
       {children}
