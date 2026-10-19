@@ -982,8 +982,7 @@ function DeckToolSession() {
               Low Land Count
             </DialogTitle>
             <DialogDescription>
-              {landsLine?.value} lands; this commander&apos;s decks run about {Math.round(landsLine?.target ?? 0)}. Fewer lands
-              means more missed land drops.
+              This commander normally runs around {Math.round(landsLine?.target ?? 0)} lands.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -162,7 +162,7 @@ export function CutPhase({
   }
 
   /** Where leaving Cut goes: back to Add while the deck is below 100 (Swap trades one for one), else on to Swap. */
-  const finishLabel = open > 0 ? `Back to Add: ${open} to fill` : "Next: swaps";
+  const finishLabel = open > 0 ? `Back to Add: ${open} to fill` : "Next";
   const landsTally = landsLine ? `${landsLine.value} lands; about ${Math.round(landsLine.target)} is typical.` : "";
 
   const status = focus
@@ -327,7 +327,7 @@ export function CutPhase({
         </SwipeDone>
       ) : (
         <SwipeDone
-          title={focus ? `${focus.label} trimmed` : size > COMMANDER_DECK_SIZE ? `The deck is at ${size}` : cutCount > 0 ? "Back to 100" : "Nothing needs cutting"}
+          title={focus ? `${focus.label} trimmed` : size > COMMANDER_DECK_SIZE ? `The deck is at ${size}` : cutCount > 0 ? "Looks good." : "Nothing needs cutting"}
           message={
             focus
               ? "Add something the deck is short of with the cards that opened, or go on to swaps."
@@ -340,9 +340,6 @@ export function CutPhase({
         >
           <Button type="button" size="lg" onClick={onFinish}>
             {finishLabel}
-          </Button>
-          <Button type="button" size="lg" variant="outline" onClick={onShowList}>
-            Cut cards anyway
           </Button>
         </SwipeDone>
       )}
