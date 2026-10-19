@@ -114,7 +114,7 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   // The deck's cards are on the page, grouped by type.
   await expect(page.getByRole("heading", { name: "Lands" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Creatures" })).toBeVisible();
-  const builtSwitch = page.getByRole("switch", { name: "I've built this deck" });
+  const builtSwitch = page.getByRole("switch", { name: "Built" });
   await expect(builtSwitch).toBeVisible();
   await expect(builtSwitch).not.toBeChecked();
 
@@ -124,7 +124,7 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   const asPublic = await strangerPage.goto(url);
   expect(asPublic?.status()).toBe(200);
   await expect(strangerPage.getByRole("link", { name: "Report it" })).toBeVisible();
-  await expect(strangerPage.getByRole("switch", { name: "I've built this deck" })).toHaveCount(0);
+  await expect(strangerPage.getByRole("switch", { name: "Built" })).toHaveCount(0);
   // Anyone who can see the page can download it, with the commander on its own board.
   const exportUrl = `${url}/export?format=csv`;
   const publicCsv = await stranger.request.get(exportUrl);
@@ -136,8 +136,10 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   expect(csv).toContain("Sol Ring");
 
   // Hiding it takes the page away from everyone else.
-  await page.getByRole("switch", { name: "Anyone with the link can see this deck" }).click();
-  await expect(page.getByText("Only you can see this deck")).toBeVisible({ timeout: 30_000 });
+  const publicSwitch = page.getByRole("switch", { name: "Public" });
+  await expect(publicSwitch).toBeChecked();
+  await publicSwitch.click();
+  await expect(publicSwitch).not.toBeChecked({ timeout: 30_000 });
   const asPrivate = await strangerPage.goto(url);
   expect(asPrivate?.status()).toBe(404);
   // And the content must not leak either way.
@@ -154,7 +156,7 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
 
   // The owner still sees it.
   await page.reload();
-  await expect(page.getByText("Only you can see this deck")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Public" })).not.toBeChecked();
 });
 
 test("reopens a saved deck in the tool, and edits go back to it", async ({ page, request }) => {
@@ -215,7 +217,7 @@ test("saving a journey's result keeps the original, which the deck page compares
   const recs = page.getByRole("region", { name: "Recommendations" });
   await recs.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click({ timeout: 60_000 });
   await recs.getByRole("button", { name: "Cut Lightning Bolt" }).click({ timeout: 60_000 });
-  await recs.getByRole("button", { name: "Next: swaps" }).first().click();
+  await recs.getByRole("button", { name: "Next", exact: true }).first().click();
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const toReview = recs.getByRole("button", { name: "Next: finish" });
   await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });
