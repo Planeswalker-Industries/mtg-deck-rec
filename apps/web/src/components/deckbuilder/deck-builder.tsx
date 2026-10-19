@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { DeckAnalysis, RecContext } from "@mtg/core/contract";
+import type { DeckEntry } from "@mtg/core/scoring";
 import { deckStats, isBasicLand } from "@mtg/core/journey";
 import { cn } from "cn";
 import { byCost, groupHeading } from "@/components/deck/deck-group-id";
@@ -41,6 +42,20 @@ const HALF_SCROLL =
 const WITH_STATS_RAIL = "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_18rem]";
 
 /**
+ * The deck as the builder opened it (for a saved deck, the version saved before this visit), for Deck stats to measure
+ * the edits against. Each card carries its roles from the first analysis, which read that deck: a later analysis no
+ * longer knows a card cut since. Undefined until that analysis arrives.
+ */
+function useOpenedDeck(main: readonly DeckEntry[], analysis: DeckAnalysis | null): readonly DeckEntry[] | undefined {
+  const [opened] = useState(main);
+  const [start, setStart] = useState<readonly DeckEntry[] | undefined>(undefined);
+  if (start === undefined && analysis) {
+    setStart(opened.map((e) => ({ ...e, card: { ...e.card, roles: e.card.roles ?? analysis.cardRoles[e.card.id] ?? [] } })));
+  }
+  return start;
+}
+
+/**
  * The deckbuilder: a search to add cards on the left and the deck as a list of strips on the right, by type and then
  * by cost, every card editable. On a phone the two are tabs; from `lg` up they sit side by side and scroll apart.
  *
@@ -71,10 +86,12 @@ export function DeckBuilder({
   const mainKey = builder.main.map((e) => `${e.card.id}:${e.quantity}`).join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mainKey is builder.main's content
   const entries = useMemo(() => builder.main, [mainKey]);
+  const start = useOpenedDeck(builder.main, analysis);
   const statsReport = useDeckStats({
     analysis,
     entries,
     bracket: swapContext?.bracket ?? analysis?.estimatedBracket ?? null,
+    start,
   });
   const swapTarget = builder.swap ? (builder.cards.get(builder.swap.targetCardId) ?? null) : null;
 

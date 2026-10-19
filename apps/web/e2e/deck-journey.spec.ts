@@ -117,6 +117,24 @@ test("Undo takes back the last choice, on the step it was made on", async ({ pag
   await expect(undo).toBeDisabled();
 });
 
+// Phones hide the slot tray (the default viewport is a phone).
+test("the deck counter lists this round's adds and takes one back out", async ({ page }) => {
+  const recs = await analyzeDeck(page);
+  const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / });
+  await expect(addIt).toBeVisible({ timeout: 60_000 });
+  const size = await deckCount(recs);
+  await addIt.click();
+  const count = recs.getByRole("status").getByText(DECK_COUNT);
+  await expect(count).toHaveText(`${size + 1} / 100`);
+
+  await count.click();
+  const sheet = page.getByRole("dialog", { name: "Added this round" });
+  await sheet.getByRole("button", { name: /^Take .+ back out$/ }).click();
+  // The last add taken out closes the sheet.
+  await expect(sheet).toBeHidden();
+  await expect(count).toHaveText(`${size} / 100`);
+});
+
 test("the Cut list crosses out recommended cuts and lets any card be cut", async ({ page }) => {
   await analyzeDeck(page);
   const recs = await openCut(page);
