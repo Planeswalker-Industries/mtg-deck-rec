@@ -72,7 +72,7 @@ test("walks a deck through add, cut, replace and review, then starts over", asyn
   const cutIt = cuts.getByRole("button", { name: CUT_CARD });
   await expect(cutIt).toBeVisible({ timeout: 60_000 });
   await cutIt.click();
-  await recs.getByRole("button", { name: "Next: swaps" }).first().click();
+  await recs.getByRole("button", { name: "Next", exact: true }).first().click();
 
   // Replace: weaker fits, each with a replacement. The deck may have none, which goes on to Review.
   await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
@@ -157,7 +157,7 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   await analyzeDeck(page);
   const recs = await openCut(page);
   await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
-  await recs.getByRole("button", { name: "Next: swaps" }).first().click();
+  await recs.getByRole("button", { name: "Next", exact: true }).first().click();
 
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const swapIn = rater.getByRole("button", { name: /^Swap in / });
