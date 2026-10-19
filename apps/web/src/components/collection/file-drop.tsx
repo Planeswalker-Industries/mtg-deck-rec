@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,20 @@ export function FileDrop({
       setProblem(`Couldn't read ${file.name}. If it's open in another program, close it and try again.`);
     }
   }
+
+  /*
+   * A file picked before the page was interactive sent its change event while React was still hydrating, which drops
+   * it: the input holds the file and nothing happened. Take it once hydrated. Later picks go through onChange.
+   */
+  useEffect(() => {
+    const input = inputRef.current;
+    const early = input?.files?.[0];
+    if (!input || !early) return;
+    input.value = "";
+    void take(early);
+    // Once, on mount: take reads only the props of the moment, and later files arrive through onChange.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-col gap-2">
