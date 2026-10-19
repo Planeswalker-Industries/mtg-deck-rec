@@ -2,7 +2,7 @@
 
 Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up.
 
-Checked against the code and hosted on **2026-10-08**: `main` at PR #144 (the derived-pairs and Deck stats release), contract v26, hosted migrations at `20261008000200`.
+Checked against the code and hosted on **2026-10-19**: `main` at PR #156 (the Cut to 100 release), contract v28, hosted migrations at `20261014000100`.
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -700,6 +700,7 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite a 0.65 
 One line each, kept so the gaps in the numbering have a reason. Do not reuse these ids; git history has the full write-ups.
 
 - **Shipped without tickets (2026-09-22, contract v11–v16):** deck journey (#84), deck originals (#85), owned first (#86), deckbuilder (#87), collection editing (#92), every search on the index (#96). Follow-ups: T037, T038.
+- **Shipped without tickets (2026-10-19, released in #156):** a collection file picked before the page hydrated is taken (#153); Cut reaches 100 with a land step and a Low Land Count warning for a complete deck, a fresh commander picker and a compact deck page (#155).
 - **T001** Remove local test seed data — closed 2026-09-21: kept for local testing; `seed.sql` refuses to run on any database with other accounts.
 - **T004** Privacy policy + account deletion — closed 2026-09-21: `/privacy` and `delete_my_account()` shipped.
 - **T005** WotC Fan Content Policy disclaimer — closed 2026-09-21: footer links to the policy.
