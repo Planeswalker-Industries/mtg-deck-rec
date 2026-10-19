@@ -1,59 +1,35 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import type { DeckId } from "@mtg/core/contract";
-import { Switch } from "@/components/ui/switch";
 import { getApis } from "@/lib/api/client";
-import { ErrorText } from "@/components/ui/error-text";
+import { DeckToggle } from "./deck-toggle";
 
 /**
- * Shows or hides the deck's page.
+ * Shows or hides the deck's page: a small "Public" switch, with the full explanation behind its (?).
  *
  * The wording is load-bearing: hiding a deck does **not** take it out of the play-rate aggregates, and the control
  * has to say so rather than let "private" imply more than it delivers. It also says which decks count at all: a
  * complete one (the collator's corpus rule: 100 cards, a legal commander, every card inside its colours).
  */
 export function DeckVisibility({ deckId, isPublic }: { deckId: DeckId; isPublic: boolean }) {
-  const [on, setOn] = useState(isPublic);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
   return (
-    <div className="rounded-xl border border-seam bg-sleeve/60 p-4">
-      <div className="flex items-start gap-3">
-        <Switch
-          id="deck-public"
-          checked={on}
-          disabled={pending}
-          onCheckedChange={(next) => {
-            const previous = on;
-            setOn(next);
-            setError(null);
-            startTransition(async () => {
-              const result = await getApis().actions.setDeckVisibility({ deckId, isPublic: next });
-              if (!result.ok) {
-                setOn(previous);
-                setError(result.error.message);
-              }
-            });
-          }}
-        />
-        <div className="min-w-0">
-          <label htmlFor="deck-public" className="block font-semibold">
-            {on ? "Anyone with the link can see this deck" : "Only you can see this deck"}
-          </label>
-          <p className="mt-1 text-sm text-muted-foreground">
-            This controls the deck&rsquo;s page. Either way, once the deck is complete (100 cards, a legal commander,
-            every card in its colours), the cards you run count toward how often cards are played with your commander,
-            which is what the recommendations are built from.
-          </p>
-        </div>
-      </div>
-      {error && (
-        <ErrorText className="mt-3">
-          {error}
-        </ErrorText>
-      )}
-    </div>
+    <DeckToggle
+      id="deck-public"
+      label="Public"
+      checked={isPublic}
+      onSave={async (next) => {
+        const result = await getApis().actions.setDeckVisibility({ deckId, isPublic: next });
+        return result.ok ? null : result.error.message;
+      }}
+      helpLabel="Who can see this deck"
+      helpTitle={(on) => (on ? "Anyone with the link can see this deck" : "Only you can see this deck")}
+      help={
+        <>
+          This controls the deck&rsquo;s page. Either way, once the deck is complete (100 cards, a legal commander, every
+          card in its colours), the cards you run count toward how often cards are played with your commander, which is
+          what the recommendations are built from.
+        </>
+      }
+    />
   );
 }

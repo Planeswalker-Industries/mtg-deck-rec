@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId } from '../contract';
-import { trimCuts, type RoomCard, type RoomRole } from './room';
+import { lastResortCuts, trimCuts, type RoomCard, type RoomRole } from './room';
 
 const REMOVAL = 'removal';
 const PROTECTION = 'protection';
@@ -53,5 +53,25 @@ describe('trimCuts', () => {
     const cards = [card(1, { roles: [REMOVAL] }), card(2, { roles: [DRAW] })];
     const cutScores = new Map<CardId, number>([[2 as CardId, 0.9]]);
     expect(trimCuts({ ...base, cards, cutScores, focusRoleId: REMOVAL })).toEqual([1]);
+  });
+});
+
+describe('lastResortCuts', () => {
+  it('offers the other cards strongest cut first, never lands, and cards filling a short role last', () => {
+    const cards = [
+      card(1, { isLand: true }),
+      card(3, { roles: [PROTECTION], manaValue: 7 }),
+      card(4, { roles: [DRAW], manaValue: 2 }),
+      card(5, { roles: [RAMP], manaValue: 5 }),
+      card(6, { roles: [DRAW] }),
+    ];
+    const cutScores = new Map<CardId, number>([[6 as CardId, 0.4]]);
+    // 6 is listed; 5 and 4 unlisted, dearest first; 3 fills short protection, so last; the land is left to the land counts.
+    expect(lastResortCuts({ cards, roles, cutScores, spared: new Set() })).toEqual([6, 5, 4, 3]);
+  });
+
+  it('never offers a spared card', () => {
+    const cards = [card(1), card(2)];
+    expect(lastResortCuts({ cards, roles, cutScores: new Map(), spared: new Set([1 as CardId]) })).toEqual([2]);
   });
 });

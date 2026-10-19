@@ -88,26 +88,26 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
         {deck.isOwner && (
           <div className="flex flex-wrap gap-2">
             <Link href={`/decks/${deck.commanderSlug}/${deck.code}/edit` as Route} className={buttonVariants({ size: "sm" })}>
-              Edit deck
+              Edit
             </Link>
             <Link href={{ pathname: "/deck", query: { deck: deck.code } }} className={buttonVariants({ size: "sm", variant: "outline" })}>
-              Upgrade it
+              Upgrade
             </Link>
             <Link href="/decks" className={buttonVariants({ variant: "outline", size: "sm" })}>
-              All your decks
+              My Decks
             </Link>
           </div>
         )}
 
         <DeckExport text={decklistText(deckExportEntries(deck))} commanderSlug={deck.commanderSlug} code={deck.code} />
-      </header>
 
-      {deck.isOwner && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <DeckVisibility deckId={deck.id} isPublic={deck.isPublic} />
-          <DeckBuilt deckId={deck.id} isBuilt={deck.isBuilt} />
-        </div>
-      )}
+        {deck.isOwner && (
+          <div className="-my-2 flex flex-wrap justify-end gap-x-4">
+            <DeckVisibility deckId={deck.id} isPublic={deck.isPublic} />
+            <DeckBuilt deckId={deck.id} isBuilt={deck.isBuilt} />
+          </div>
+        )}
+      </header>
 
       {/* A stranger sees the comparison only while there is one; the owner also sees that a restored deck matches. */}
       {deck.original && (deck.isOwner || deck.original.out.length + deck.original.in.length > 0) && (

@@ -479,9 +479,16 @@ export function useDeckJourney({
     }
   }
 
-  /** List view: a card is marked when it is cut, or recommended and not kept. */
-  const isMarkedForCut = (card: CardSummary) => isCut(card.id) || (recommendedIds.has(card.id) && !isKept(card.id));
+  /**
+   * List view: a card is marked when every copy is cut, or it is recommended and not kept. A card with several copies
+   * (basic lands) stays unmarked while copies are left, so each tap cuts one more.
+   */
+  const isMarkedForCut = (card: CardSummary) =>
+    (isCut(card.id) && state !== null && copiesInDeck(state, card.id) === 0) || (recommendedIds.has(card.id) && !isKept(card.id));
+  /** Copies of a card cut this round. */
+  const cutCopies = (id: CardId) => state?.cuts.filter((c) => c.id === id).length ?? 0;
 
+  /** A tap in the list: cuts one more copy while any are left; on a marked card, puts every copy back. */
   function toggleCut(card: CardSummary) {
     if (!state) return;
     if (!isMarkedForCut(card)) {
@@ -496,9 +503,31 @@ export function useDeckJourney({
 
   const pendingCuts = undecidedCuts.map((s): JourneyAction => ({ type: "cut", card: s.card }));
 
-  /** On to Swap. Recommended cuts nobody decided on go as marked, which is what "accept the cuts as is" means. */
+  /**
+   * Cuts still owed once the undecided recommended cuts go: Swap and Done trade one card for one, so the deck has to be
+   * at 100 or below before the round goes past Cut.
+   */
+  const afterPendingCuts = state ? pendingCuts.reduce(journeyReducer, state) : null;
+  const cutsOwed = afterPendingCuts ? cutsNeeded(afterPendingCuts) : 0;
+  /**
+   * Slots this round's cuts opened below 100, once the undecided recommended cuts go: a deck cut below 100 goes back to
+   * Add to fill them. A deck that was short of 100 before any cut (a partial list) goes on as it is.
+   */
+  const cutsOpen =
+    afterPendingCuts && openSlots({ ...afterPendingCuts, cuts: [] }) === 0 ? openSlots(afterPendingCuts) : 0;
+
+  /**
+   * Leaves Cut: on to Swap at 100, back to Add below it. Recommended cuts nobody decided on go as marked, which is what
+   * "accept the cuts as is" means. Nothing happens while the deck is still over 100.
+   */
   function finishCuts() {
-    goTo("replace", ...pendingCuts);
+    if (cutsOwed > 0) return;
+    goTo(cutsOpen > 0 ? "add" : "replace", ...pendingCuts);
+  }
+
+  /** Puts back one copy of a card cut this round. */
+  function restoreCut(card: CardSummary) {
+    apply({ type: "uncut", cardId: card.id });
   }
 
   // ── Add ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -590,6 +619,7 @@ export function useDeckJourney({
     const to = phaseIndex(phase);
     if (to <= at) return true;
     if (current?.check) return false;
+    if (state.phase === "cut" && (cutsOwed > 0 || cutsOpen > 0)) return false;
     if (to === at + 1) return true;
     if (to > phaseIndex(state.reached)) return false;
     return replaceFresh(state.phase === "cut" ? pendingCuts.reduce(journeyReducer, state) : state);
@@ -632,7 +662,19 @@ export function useDeckJourney({
     openSlots: state ? openSlots(state) : 0,
     roomToAdd: state ? roomToAdd(state) : 0,
     cutsNeeded: state ? cutsNeeded(state) : 0,
-    cut: { recommended: recommendedCuts, undecided: undecidedCuts, isMarked: isMarkedForCut, toggle: toggleCut, finish: finishCuts },
+    cut: {
+      recommended: recommendedCuts,
+      undecided: undecidedCuts,
+      isMarked: isMarkedForCut,
+      cutCopies,
+      /** Cuts the deck still owes before the round may go past Cut. */
+      owed: cutsOwed,
+      /** Slots open below 100: Cut's way on goes back to Add instead of to Swap. */
+      open: cutsOpen,
+      restore: restoreCut,
+      toggle: toggleCut,
+      finish: finishCuts,
+    },
     add: {
       state: add,
       queue: addQueue,

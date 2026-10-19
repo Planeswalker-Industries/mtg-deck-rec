@@ -6,10 +6,11 @@ import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List } from "lucide-react";
 import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
-import { statDeltas, toTallyCard, type StatLine } from "@mtg/core/journey";
+import { phaseIndex, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FEATURED_DECKS } from "@/lib/featured-decks";
@@ -145,7 +146,24 @@ type ToolMode = "upgrade" | "edit";
 /** A deck's commanders as one comparable value, to tell whether the deck lookup offer needs checking again. */
 const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join(",");
 
+/**
+ * Next keeps this page alive while the player is elsewhere (Activity), so a link to the commander picker would land
+ * back on the deck they were working on. A fresh link to it (a push, not Back) starts a new tool at the picker instead.
+ * The deck they left stays in this browser's storage for the decklist box, and a saved one stays in their account.
+ */
 export function DeckTool() {
+  const { bfcacheId } = useRouter();
+  const buildStart = useSearchParams().get(DECK_START_PARAM) === DECK_START_BUILD;
+  const [session, setSession] = useState(bfcacheId);
+  const [seenNavigation, setSeenNavigation] = useState(bfcacheId);
+  if (seenNavigation !== bfcacheId) {
+    setSeenNavigation(bfcacheId);
+    if (buildStart) setSession(bfcacheId);
+  }
+  return <DeckToolSession key={session} />;
+}
+
+function DeckToolSession() {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
   // ?commander=<slug> opens a featured deck from the landing page carousel.
   // ?start=build builds a deck for a commander picked by name (from the collection when there is one).
@@ -214,6 +232,8 @@ export function DeckTool() {
   const [deckFile, setDeckFile] = useState<{ name: string; text: string } | null>(null);
   const [fileTextShown, setFileTextShown] = useState(false);
   const restoreStarted = useRef(false);
+  /** The commander picker opened the tool, so the remembered deck wasn't put back in the box. */
+  const restoreSkipped = useRef(false);
   const resumeStarted = useRef(false);
   /** Until the resumed save settles; shown only once the visitor is known to be signed in. */
   const [resuming, setResuming] = useState(resumeSave);
@@ -247,6 +267,23 @@ export function DeckTool() {
     // The round's starting deck, so a deck lookup finishing mid-round (a new analysis of the same deck) keeps the ticks.
     start: journey.before,
   });
+  /** Leaving Cut for Swap with too few lands waits for the player to confirm; this is the move they confirm. */
+  const [confirmLands, setConfirmLands] = useState<(() => void) | null>(null);
+  const landsLine = deckStats?.stats.find((stat) => stat.key === "lands");
+  /**
+   * Leaves Cut, asking first when the deck would go on to Swap with fewer lands than its commander's decks run: the
+   * typical count as Deck stats shows it, not its tolerance band, since the player is choosing to go below it.
+   */
+  function leaveCut(go: () => void) {
+    const toSwap = journey.cut.owed === 0 && journey.cut.open === 0;
+    if (toSwap && landsLine && landsLine.value < Math.round(landsLine.target)) setConfirmLands(() => go);
+    else go();
+  }
+  /** A step chosen in the stepper; one past Cut, while in Cut, goes through the land check. */
+  function selectStep(phase: JourneyPhase) {
+    if (journey.state?.phase === "cut" && phaseIndex(phase) > phaseIndex("cut")) leaveCut(() => journey.stepper.select(phase));
+    else journey.stepper.select(phase);
+  }
   const openStep =
     (phase: "cut" | "add", filter: AddFilter | null = null): StatAction["onSelect"] =>
     () => {
@@ -313,7 +350,9 @@ export function DeckTool() {
 
     if (!hasLink) {
       restoreStarted.current = true;
-      tool.restoreLastDeck();
+      // The commander picker starts a new deck: the remembered one stays in storage for the decklist box, unoffered here.
+      if (buildStart) restoreSkipped.current = true;
+      else tool.restoreLastDeck();
       return;
     }
 
@@ -345,7 +384,15 @@ export function DeckTool() {
     });
     // checkLookup is rebuilt with every render, like tool and lookup; restoreStarted is what keeps this to one run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, lookup, collectionLoaded, openCode, commanderSlug]);
+  }, [tool, lookup, collectionLoaded, openCode, commanderSlug, buildStart]);
+  // Leaving the picker for the decklist box without building anything offers the remembered deck there after all.
+  useEffect(() => {
+    if (buildStart || !restoreSkipped.current) return;
+    restoreSkipped.current = false;
+    if (!analysis && deckBuild.state.status === "idle") tool.restoreLastDeck();
+    // Runs when the picker is left; analysis, deckBuild and tool are read as they are then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildStart]);
   /*
    * Back from signing in to save: the deck they asked to save was kept in this browser, so it is saved to the account
    * now and opened in its editor. Their collection needs nothing here: a browser collection moves to the account on
@@ -837,7 +884,7 @@ export function DeckTool() {
                 <div className="flex min-w-0 flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
-                      <JourneyStepper phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
+                      <JourneyStepper phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={selectStep} />
                     </div>
                     {journey.state.phase !== "review" && <ViewToggle view={view} onChange={changeView} />}
                   </div>
@@ -865,6 +912,7 @@ export function DeckTool() {
                             : undefined
                         }
                         onShowList={() => changeView("list")}
+                        onFinish={() => leaveCut(journey.cut.finish)}
                       />
                     ))}
                   {journey.state.phase === "add" && (
@@ -931,6 +979,34 @@ export function DeckTool() {
       )}
 
       <CommanderLookupSheet lookup={lookup} />
+      <Dialog open={confirmLands !== null} onOpenChange={(open) => !open && setConfirmLands(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Go on with {landsLine?.value} lands?</DialogTitle>
+            <DialogDescription>
+              Decks for this commander run about {Math.round(landsLine?.target ?? 0)}. With fewer, the deck is more likely to
+              miss land drops. You can put lands back in Cut, or add some later.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Back to Cut
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              onClick={() => {
+                const go = confirmLands;
+                setConfirmLands(null);
+                go?.();
+              }}
+            >
+              Go on to swaps
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {tool.restoredDeck && tool.showsRestoredDeck && !resumeAnswered && !analysis && (
         <ResumeDeckDialog
           name={tool.restoredDeck.deckName ?? tool.restoredDeck.commanderName ?? null}
