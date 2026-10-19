@@ -10,14 +10,13 @@ Ticket ids are stable and never reused: a closed ticket leaves a gap rather than
 
 The order for the UI work (owner, 2026-10-08), most important first. The tickets below hold the detail.
 
-1. **T003** Report link destination: a launch gate, small once the destination is chosen.
-2. **T045** Deck analysis display: the concept that places T046, T048 and T069's combos and bracket signals. P1 released 2026-10-08 (PR #143); next T071 (card types) and T072 (follow-ups).
-3. **T069, collection mode:** the buy list, conflict tags, "stands in for", the swap's `emptyReason`, the built control, then the deck tool's default to owned only (T037).
-4. **T069, combos and bracket signals**, placed per T045.
-5. **T048** Role counts against the commander's decks.
-6. **T046** Mana base analysis (catalog column and contract field first).
-7. **T039, T034:** performance, when measurements call for it.
-8. **T049** Re-record the How it works clips, once the screens above settle.
+1. **T045** Deck analysis display: the concept that places T046, T048 and T069's combos and bracket signals. P1 released 2026-10-08 (PR #143); next T071 (card types) and T072 (follow-ups).
+2. **T069, collection mode:** the buy list, conflict tags, "stands in for", the swap's `emptyReason`, the built control, then the deck tool's default to owned only (T037).
+3. **T069, combos and bracket signals**, placed per T045.
+4. **T048** Role counts against the commander's decks.
+5. **T046** Mana base analysis (catalog column and contract field first).
+6. **T039, T034:** performance, when measurements call for it.
+7. **T049** Re-record the How it works clips, once the screens above settle.
 
 ---
 
@@ -39,21 +38,6 @@ The hosted dashboard steps are done: the URL configuration, the sign-in email te
 
 ---
 
-### T003: Deck report link destination
-
-**Priority:** MEDIUM | **Area:** Frontend / UX | **Status:** Not started
-
-The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a real destination before public launch.
-
-**Files:**
-- `apps/web/src/app/decks/[commander]/[code]/page.tsx:138` — the `github.com/Planeswalker-Industries/mtg-deck-rec/issues/new` link
-
-**Acceptance criteria:**
-- [ ] Decide destination (email, form, in-app feedback)
-- [ ] Update the link
-- [ ] Remove GitHub issue template reference if present
-
----
 
 ### T028: Decide whether public deck pages get indexed
 
@@ -75,27 +59,6 @@ The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a r
 ---
 
 ## High-Impact Features
-
-### T073: Deck journey UX overhaul follow-ups
-
-**Priority:** HIGH | **Area:** Frontend / Data | **Status:** Overhaul built on `feat/journey-ux` (2026-10-14); these remain
-
-The overhaul (owner interview 2026-10-13) changed the journey to Add → Cut → Swap → Finish:
-- `trimCuts` trims back to 100 after Add.
-- An Undo / Start over / Save bar sits on every step, with Save as copy.
-- A card panel shows rules text, and Swap marks how the replacement compares (`compareCards`).
-- Pressable things are blue at rest, and status colours are never blue.
-- Deck stats rows preview the card on screen (`statDeltas`).
-
-**Files:**
-- `packages/core/src/journey/` — `journey.ts` (order, `roomToAdd`, `cutsNeeded`, `pushUndo`), `room.ts` (`trimCuts`), `compare.ts`, `deck-tally.ts` (`statDeltas`)
-- `apps/web/src/components/deck/journey/` — `round-bar.tsx`, `cut-phase.tsx`, `add-phase.tsx`, `single-swipe.tsx`
-- `apps/web/src/components/cards/card-panel.tsx`, `apps/web/src/lib/card-rules.ts`, `apps/web/src/app/api/cards/rules/route.ts`
-- `supabase/migrations/20261014000100_card_oracle_fields.sql`, `apps/worker/src/lib/scryfall-card.ts`
-
-**Acceptance criteria:**
-- [ ] After the release to `main`, run `cli:hosted sync:catalog` so hosted fills power, toughness, loyalty, defense, colors, color indicator, produced mana and reserved. This is a one-time rewrite of every card. The owner runs it.
-- [ ] Decide which printing-level fields to store. `printings` lacks rarity, set name, artist, flavor text, frame and promo flags (oracle-level fields are all stored now).
 
 ### T006: Wire votes into swap scoring
 
@@ -641,6 +604,22 @@ Three e2e tests fail locally against the real catalog and corpus, on `develop` a
 
 ## Future / Lower Priority
 
+### T003: Deck report link destination
+
+**Priority:** LOW | **Area:** Frontend / UX | **Status:** Shelved until the app is released to public users (owner, 2026-10-19); do not raise it before then
+
+The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a real destination before public launch.
+
+**Files:**
+- `apps/web/src/app/decks/[commander]/[code]/page.tsx:138` — the `github.com/Planeswalker-Industries/mtg-deck-rec/issues/new` link
+
+**Acceptance criteria:**
+- [ ] Decide destination (email, form, in-app feedback)
+- [ ] Update the link
+- [ ] Remove GitHub issue template reference if present
+
+---
+
 ### T049: Re-record the How it works clips
 
 **Priority:** LOW | **Area:** Frontend / Content | **Status:** Not started (owner)
@@ -758,3 +737,4 @@ One line each, kept so the gaps in the numbering have a reason. Do not reuse the
 - **T063** Build a deck from a commander and a bracket — closed 2026-10-07: `POST /api/recs/build` live (contract v24); 38.6% overlap with held-out decks. UI is T069.
 - **T064** Deck affinity from card pairs — closed 2026-10-07: pairs built on hosted (800,624 per commander, 485,386 corpus-wide); `deck` weighs 0.1 in adds. Latency follow-ups are T068.
 - **T065** Live accept rate — closed 2026-10-07: `rec_events` live, written by the server only; build events wait for build mode's screen (T069).
+- **T073** Deck journey UX overhaul follow-ups — closed 2026-10-19: released to `main` (PRs #150–#152, contract v28) and hosted's catalog sync filled the new oracle columns. Printing-level fields: none needed for the current scope. Set names are already in `sets`; rarity, flavor text, per-printing art and platform ids wait for a feature that reads them (both bulk files stay on disk).
