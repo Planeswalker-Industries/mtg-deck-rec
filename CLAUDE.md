@@ -2,7 +2,7 @@
 
 mtg-deck-rec: a public, Commander-only web app. Paste or import a decklist and get cards to add, cards to cut and functional substitutes, with estimated prices. It works without a collection (ranked by corpus play rate and Scryfall Tagger tags) and with one (the player's collection filters or reorders the candidates).
 
-Live at https://mtg-app-psi.vercel.app. Open work: [`docs/tasks_open.md`](docs/tasks_open.md); closed tickets, one sentence each: [`docs/tasks_closed.md`](docs/tasks_closed.md). When code and this file disagree, the code wins and this file is fixed.
+Live at https://mtg-app-psi.vercel.app. Open work: [`docs/tasks_open.md`](docs/tasks_open.md). When code and this file disagree, the code wins and this file is fixed.
 
 - **Repo:** `Planeswalker-Industries/mtg-deck-rec`, public. User-Agent strings, in-app links and the search API's Go module path use that address.
 - **Branches:** start every branch from `develop` and open PRs with `--base develop`. `main` is merged from `develop` by the owner; it is what Vercel production and the Supabase GitHub integration deploy.
