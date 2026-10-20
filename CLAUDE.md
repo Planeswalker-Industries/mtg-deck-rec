@@ -28,7 +28,7 @@ yarn workspace @mtg/web e2e [spec]               # Playwright on a production bu
 yarn workspace @mtg/web regress [dir]            # recommendation fixtures (default $MTG_DATA_DIR/regression; never in the repo)
 yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts anon   # from apps/web: sign-in link for a local account
 
-yarn workspace @mtg/worker cli <job>             # sync:catalog, sync:printings, sync:tags, sync:spellbook, sync:edhrec, sync:typesense [--rebuild], collate, aggregate:corpus, precompute, eval:holdout, serve
+yarn workspace @mtg/worker cli <job>             # bulk:download, sync:catalog, sync:printings, sync:tags, sync:spellbook, sync:edhrec, sync:typesense [--rebuild], collate, aggregate:corpus, precompute, eval:holdout, serve
 yarn workspace @mtg/worker cli:hosted <job>      # the same against hosted (apps/worker/.env.hosted); plain `cli` is always local
 
 docker compose -f docker-compose.search.yml up -d --build   # local Typesense (56325) and search API (56326)

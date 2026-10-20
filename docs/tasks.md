@@ -2,7 +2,7 @@
 
 Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up.
 
-Checked against the code and hosted on **2026-10-19**: `main` at PR #156 (the Cut to 100 release), contract v28, hosted migrations at `20261014000100`.
+Checked against the code and hosted on **2026-10-20**: `main` at PR #156 (the Cut to 100 release), contract v28, hosted migrations at `20261014000100` (`20261020000100`, the slower Archidekt pace, waits for the next release).
 
 Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
 
@@ -10,13 +10,12 @@ Ticket ids are stable and never reused: a closed ticket leaves a gap rather than
 
 The order for the UI work (owner, 2026-10-08), most important first. The tickets below hold the detail.
 
-1. **T045** Deck analysis display: the concept that places T046, T048 and T069's combos and bracket signals. P1 released 2026-10-08 (PR #143); next T071 (card types) and T072 (follow-ups).
-2. **T069, collection mode:** the buy list, conflict tags, "stands in for", the swap's `emptyReason`, the built control, then the deck tool's default to owned only (T037).
-3. **T069, combos and bracket signals**, placed per T045.
-4. **T048** Role counts against the commander's decks.
-5. **T046** Mana base analysis (catalog column and contract field first).
-6. **T039, T034:** performance, when measurements call for it.
-7. **T049** Re-record the How it works clips, once the screens above settle.
+1. **T071** Deck stats P2 (card types), then **T072** (follow-ups). Deck stats P1 (T045, with T048's role counts) released 2026-10-08 and signed off 2026-10-20.
+2. **T069, collection mode:** conflict tags, "stands in for", the swap's `emptyReason`, the built control. The buy list, and with it the deck tool's default to owned only (T037), is shelved (owner, 2026-10-12).
+3. **T069, combos and bracket signals**, in Deck stats.
+4. **T046** Mana base analysis (contract field first; the catalog column is stored since T073).
+5. **T039, T034:** performance, when measurements call for it.
+6. **T049** Re-record the How it works clips, once the screens above settle.
 
 ---
 
@@ -101,7 +100,7 @@ The index and the search API run on the VPS (two Dokploy stacks, Traefik in fron
 - [x] `cli:hosted sync:typesense --rebuild` (again after #96)
 - [x] `curl https://<host>/v1/health` returns `{"ok":true}` without `-k`
 - [x] The daily sync drains the queue (hosted `search_index_queue` empty on 2026-10-07; drains had failed until the domain fix of 2026-09-30)
-- [ ] `scripts/search-parity-check.ts` passes against hosted data (`commanders` and `commander_cards` have never been exercised with real rows)
+- [ ] `apps/web/scripts/search-parity-check.ts` passes against hosted data (`commanders` and `commander_cards` have never been exercised with real rows)
 - [ ] Measure RAM after the first build (`/metrics.json`) and record it in the runbook
 
 ---
@@ -110,7 +109,7 @@ The index and the search API run on the VPS (two Dokploy stacks, Traefik in fron
 
 **Priority:** LOW | **Area:** Frontend / Performance | **Status:** Not started
 
-Server Actions run one at a time per page. Every swipe in the Replace phase fires `castVote` (a Server Action), and a running deck lookup polls `getCommanderRequest` every 2 s, so parse, analyze and save calls can queue behind them: Review's Save waits for every vote swiped before it. Found in the deck-flow audit (PR #110) and left out of its fixes, because it changes a transport rather than fixing a bug.
+Server Actions run one at a time per page. Every swipe in the Swap step fires `castVote` (a Server Action), and a running deck lookup polls `getCommanderRequest` every 2 s, so parse, analyze and save calls can queue behind them: Finish's Save waits for every vote swiped before it. Found in the deck-flow audit (PR #110) and left out of its fixes, because it changes a transport rather than fixing a bug.
 
 **Files:**
 - `apps/web/src/lib/api/real.ts` — `realActions.castVote`
@@ -120,34 +119,7 @@ Server Actions run one at a time per page. Every swipe in the Replace phase fire
 **Acceptance criteria:**
 - [ ] `POST /api/votes` with the `vote` rate-limit bucket and `castVoteInputSchema`; `realActions.castVote` calls it with fetch (the contract interface doesn't change)
 - [ ] Decide whether the lookup poll moves the same way
-- [ ] Measure Review's Save after a fast Replace sitting, before and after
-
----
-
-### T045: Design the deck analysis display
-
-**Priority:** MEDIUM | **Area:** Product / UX | **Status:** P1 released 2026-10-08 (PR #143, contract v26); owner sign-off on screenshots open. A "Deck stats" footer on phones, a side rail on wide screens.
-
-First part of the deck analysis work (T046, T048, and the combos and bracket signals in T069), and it comes first: decide where and how the new numbers are shown before building any of them. Came out of a look at EDHcheck (edhcheck.com, 2026-09-28) with the sample Liesa deck. Its functions are solid (mana simulation, per-card cast rates, combo detection, bracket explorer), but the page is a wall of panels, invented composite scores and upsells. We want the useful numbers, shown only where they change what the player does next.
-
-**Files:**
-- `apps/web/src/components/deck/journey/review-phase.tsx`: Review (shown as "Done") already shows before/after curve, card types, Game Changers and price (`deckStats`, `@mtg/core/journey`)
-- `apps/web/src/components/deckbuilder/deck-builder.tsx`: the deckbuilder's own `deckStats` summary
-- `apps/web/src/components/deck/deck-bar.tsx` (the `DeckBar`): the two-line phone budget (swipe controls stay on screen at 390×844)
-- `docs/ui_concepts/`: where earlier concepts live
-
-**Questions to answer:**
-- Where each figure lives: DeckBar, Cut, Add, Review, the Deckbuilder, or a separate analysis view. It must not break the 390×844 swipe budget.
-- How each figure drives an action, for example "4 black sources short" leading into Add with lands filtered, "combo pushes this to bracket 4" leading into Cut, or "2 ramp below Liesa decks" leading into Add for that role.
-- Before and after: Review already compares both decks, so the new figures should do the same.
-- What we deliberately leave out: salt (never stored), 1–10 power levels and radar charts (invented composites), AI-written text, upsells, legality in other formats.
-- Wording for estimates: simulated and estimated numbers are labelled as such, like the bracket estimate is today.
-- Fit the "Kitchen Table" design direction (UI rules in `CLAUDE.md`): numbers in DM Mono, a card-first view rather than stat tables, and a plain-words "why" in the italic aside where a figure explains a suggestion.
-
-**Acceptance criteria:**
-- [ ] A concept (screens or a POC per `docs/ui_concepts/`) for phone and desktop covering T046, T048 and T069's bracket and combo items
-- [ ] Owner sign-off on placement and on what is left out
-- [ ] T046, T048 and T069 updated with the agreed placement
+- [ ] Measure Finish's Save after a fast Swap sitting, before and after
 
 ---
 
@@ -179,12 +151,13 @@ Left over from building Deck stats P1 (2026-10-08); none blocks release.
 
 - **Label for a pair with no decks of its own.** When every deck behind the targets is borrowed from the partners' other pairings, the label reads "Tymna & Thrasios decks (0) with partner decks". This is reachable in production (`minDecks` = `fullDecks` = 50: 200 borrowed decks at 0.25 make the share 1). Proposed: "Decks with Tymna or Thrasios" for a pair, "Thrasios decks with a partner" for one commander, kept only for an own count of 0.
 - **"Estimated" on the bracket row.** The row checks the chosen bracket against the deck's signals as cards move; owner to confirm the word or drop it.
+- **Roles before and after in Finish** (from closed T048): Finish (`review-phase.tsx`) compares curve, card types, Game Changers and price between the original and the new deck, not role counts.
 - **Small polish the reviews left:** the sheet's handle scrolls away with its content (make it sticky); the footer has no pointer capture, so a mouse drag that leaves it isn't seen; after a touch swipe the next Enter on the footer is swallowed once; "Pick cuts" does nothing while already in Cut; "Find …" in Cut counts the slots open now rather than after the pending cuts; an add that completed an over-bracket combo stays flagged after the bracket is raised.
 
 **Files:**
 - `packages/core/src/scoring/stat-targets.ts` (label)
 - `apps/web/src/components/deck/deck-stats/deck-stats-footer.tsx`, `deck-stats-panel.tsx`
-- `apps/web/src/components/deck/deck-tool.tsx` (`statAction`), `journey/use-deck-journey.ts` (`overBracketIds`)
+- `apps/web/src/components/deck/deck-tool.tsx` (`statAction`), `journey/use-deck-journey.ts` (`overBracketIds`), `journey/review-phase.tsx` (Finish)
 
 **Acceptance criteria:**
 - [ ] Owner picks the label wording and the bracket word; both changed
@@ -196,9 +169,7 @@ Left over from building Deck stats P1 (2026-10-08); none blocks release.
 
 **Priority:** MEDIUM | **Area:** Core / Frontend | **Status:** Not started
 
-**Blocked by:** T045 (display)
-
-Placement: Deck stats.
+Placement: Deck stats (T045, signed off 2026-10-20).
 
 Tell the player whether their lands can cast their spells: coloured sources against Frank Karsten's thresholds for each card's pips and turn, a list of the cards least likely to be castable on curve (worst first), and a plain "N sources short on black". This is deterministic arithmetic with no AI. It also fills a gap in Add, which ranks lands by play rate rather than by what the mana base lacks.
 
@@ -208,44 +179,17 @@ Tell the player whether their lands can cast their spells: coloured sources agai
 - `apps/worker/src/jobs/` (catalog sync): lands' colour output is not stored today
 
 **Context:**
-- **Catalog gap:** nothing stores what mana a land (or rock) produces. Scryfall's `produced_mana` covers it. A new catalog column must go into `content_hash`, or existing rows never fill. It also needs a contract field or a separate lookup, which means a contract version bump.
-- **Tiers:** start with source counts against Karsten's tables (cheap, exact). A Monte Carlo goldfish (London mulligan, tapped lands, ramp output) is optional on top and would run in a Web Worker like the collection parser. Only build it if T045 finds a use for the extra numbers.
+- **Catalog:** `cards.produced_mana` (Scryfall's list, `{W}` … `{C}`) is stored since T073 (migration `20261014000100`, in `content_hash`); hosted holds it for 2,711 cards (2026-10-20). Nothing sends it to the client yet: that needs a contract field or a separate lookup, which means a contract version bump.
+- **Tiers:** start with source counts against Karsten's tables (cheap, exact). A Monte Carlo goldfish (London mulligan, tapped lands, ramp output) is optional on top and would run in a Web Worker like the collection parser. Only build it if Deck stats finds a use for the extra numbers.
 - EDHcheck's reference output for the sample Liesa deck: reaches 3 mana by T3 50%, T4 80%, T6 95%; "8 more black sources" for Damn; Avacyn 34.7% on curve. It is a useful sanity check, not ground truth. Its "92% of hands have 2+ lands, so go to 38 lands" advice contradicts itself; don't copy the advice text.
 - Threshold tables are published rules of thumb, not tunable weights, so a constants module in `@mtg/core` is fine (coding policy); name the source in a comment.
 
 **Acceptance criteria:**
-- [ ] Mana production stored per card (column, hash, sync, contract field) and loaded on hosted
+- [x] Mana production stored per card (column, hash, sync) and loaded on hosted (T073)
+- [ ] A contract field (or lookup) that sends it to the client
 - [ ] Source-count analysis in `@mtg/core` with tests (hybrid and Phyrexian pips, MDFC lands, commander pips)
-- [ ] Display per T045, labelled as an estimate
+- [ ] Display in Deck stats, labelled as an estimate
 - [ ] Decide with the owner whether Add should use the shortfall (a land role gap); if so, a separate ticket
-
----
-
-### T048: Role counts against the commander's decks
-
-**Priority:** MEDIUM | **Area:** Frontend / Core | **Status:** Not started
-
-**Blocked by:** T045 (display)
-
-Role counts now show in Deck stats (P1); what remains is P2 types.
-
-Placement: Deck stats.
-
-Show the deck's ramp, draw, removal, wipes and other `deck_role_targets` roles next to what decks for this commander usually run ("12 ramp; Liesa decks average 10"). EDHcheck shows only generic percentages (ramp 8.8%, draw 19.1%); comparing against the commander's own decks is something only our corpus can do.
-
-**Files:**
-- `apps/web/src/lib/server/recs.ts`: `roleTargetsFor` already blends generic targets toward `commander_stats.role_profile` by `commanderShare`
-- `apps/web/src/lib/server/corpus.ts`, `commander-page.ts`: where `role_profile` is read today
-- `packages/core/src/contract/transport.ts`: the commander page's `roleProfile` shape (`{ tag, avgPerDeck }`)
-- `packages/core/src/contract/decks.ts`: `DeckAnalysis` has no role counts yet
-
-**Context:** The numbers exist. Cut redundancy and Add's role gap already use them, but the player never sees them. Use the same blended targets `roleTargetsFor` produces so the display and the recommendations agree. A commander with few decks falls back to generic targets. Say so in the display rather than presenting a generic number as "Liesa decks". Partner pooling applies as it does for play rates.
-
-**Acceptance criteria:**
-- [ ] The deck's count per role and the blended target reach the client (contract version bump if on `DeckAnalysis`)
-- [ ] Display per T045, before and after in Review
-- [ ] Wording distinguishes commander data from generic targets
-- [ ] Tests for the counting, which mirrors `card_roles`
 
 ---
 
@@ -363,7 +307,7 @@ The worker container on the VPS (`deploy/worker/`, `deploy/dokploy/worker.yml`) 
 - [ ] The worker deployed on the VPS with `DATABASE_URL` (session pooler), the search API tokens, `WEB_APP_URL` and `REVALIDATE_SECRET`
 - [x] Schedule in `app_config.worker`; `worker_status` heartbeat every 10 s for the deck tool
 - [x] Deck lookups served through the crawl queue (closes T009 once deployed)
-- [ ] Two days of worker-triggered crawls, then the Vercel cron (`vercel.json`, `/api/cron/*-scrape`) goes; it has started a run in its hour every day since 2026-10-02
+- [ ] Two days of worker-triggered crawls, then the Vercel cron (`apps/web/vercel.json`, `/api/cron/*-scrape`) goes; it has started a run in its hour every day since 2026-10-02 (since 2026-10-15 most of them end on a 429: T074)
 - [ ] Before the first weekly global pair count: a memory limit on the container and a Node heap flag (T068)
 
 ---
@@ -383,7 +327,7 @@ PR #139 stopped calling `rec_add_candidates` (both overloads), `rec_swap_candida
 PR #139's review found these; the fixes in the PR itself are migration `20261007000100` and the commits after it. Left open:
 
 **For the pipeline to run on its own in production (the PR's goal):**
-- [ ] Deploy the VPS worker (T066): hosted's `worker_status` heartbeat last moved 2026-09-16, there is one hand-run collation, and nothing runs the precompute passes, collation, EDHREC or deck lookups on a schedule
+- [ ] Deploy the VPS worker (T066): hosted's `worker_status` heartbeat last moved 2026-09-16, there is one hand-run collation (2026-10-06: `corpus.decks` holds 79,759 decks while the crawl has stored 224,407 in `archidekt.decks` by 2026-10-20; the last precompute pass ran 2026-10-08), and nothing runs the precompute passes, collation, EDHREC or deck lookups on a schedule
 - [ ] Spellbook on hosted: set the repository variable `SPELLBOOK_SYNC_ENABLED` (hosted's `spellbook.*`, `corpus.spellbook_combos` and `spellbook_combo_pieces` are empty, so "complete a combo" and the combo bracket rules answer nothing), then `collate --only spellbook` and `precompute --part combos`
 - [ ] A first `sync:edhrec` on hosted (raw `edhrec.*` is empty; the prior reads the 2026-09-30 import until then), then the next evaluation on the time split with `--snapshot-month` set to the new fetch
 - [ ] Estimator agreement with declared brackets in `eval:holdout`'s report: hosted's crawl has stored 4,449 since T056 (2026-10-07)
@@ -448,6 +392,24 @@ A commander pair is a query context, not a dataset (owner, 2026-10-07). A keyed 
 
 ## Data Pipeline
 
+### T074: Archidekt answers the daily crawl with 429s
+
+**Priority:** HIGH | **Area:** Data / Ops | **Status:** Slower base pace in migration `20261020000100` (owner, 2026-10-20); not released
+
+After weeks of clean runs at one request a second, five of the six daily Archidekt runs from 2026-10-15 to 2026-10-20 (`crawl.runs` 22–27; 25 the exception) failed on an HTTP 429 the fetcher's backoff did not outlast, most of them within the first hour and on a commander's first listing page. Run 20 (2026-10-13) still reads `running`: it was cut off, probably by a VPS redeploy. The fetcher already doubles its interval on a 429 up to `requestIntervalMaxMs` (8 s) and returns to the base after `paceRecoverRequests` clean responses, so a base it keeps being throttled at is the wrong base. CLAUDE.md's rule is to go slower when a host pushes back; a 403 or a challenge would switch the source off instead.
+
+**Files:**
+- `supabase/migrations/20261020000100_archidekt_slower_pace.sql`: `app_config.archidekt.requestIntervalMs` 1000 → 2000, nothing else
+- `services/search-api/internal/crawl/fetcher.go`: the adaptive pace and the retries
+- `services/search-api/internal/archidekt/source.go`: why the pace adapts
+
+**Acceptance criteria:**
+- [ ] The migration on hosted (release, then `db-push.yml` if the integration doesn't apply it)
+- [ ] Three daily runs in a row at the new pace without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
+- [ ] Run 20 closed as failed (by the crawl's stale-run handling or by hand), and a redeploy that kills a run leaves it marked failed
+
+---
+
 ### T043: A database role for the crawl that is not `service_role`
 
 **Priority:** MEDIUM | **Area:** Security / Infrastructure | **Status:** Not started
@@ -493,7 +455,7 @@ Deck lookups queue in `commander_requests`, and nothing consumes them. The worke
 
 **Acceptance criteria:**
 - [ ] Deploy the consumer as a long-running process or scheduled job
-- [ ] Verify `commander_requests` are consumed within reasonable time
+- [ ] Verify `commander_requests` are consumed within reasonable time (hosted, 2026-10-20: 2 queued since 2026-09-28)
 - [ ] Monitor the `worker_status` heartbeat from the UI
 
 ---
@@ -502,10 +464,10 @@ Deck lookups queue in `commander_requests`, and nothing consumes them. The worke
 
 **Priority:** LOW | **Area:** Data | **Status:** Known issue
 
-Some `commander_keys` rows name two cards that aren't a legal partner pair (Archidekt's Commander category also holds companions and misfiled cards). `resolveDeck` now drops those decks (`isValidPartnerPair`), so the rows survive with no stats attached and render an empty commander page.
+Some `commander_keys` rows name two cards that aren't a legal partner pair (Archidekt's Commander category also holds companions and misfiled cards). Collation now drops those decks (`invalid_partner_pair`, from `isValidPartnerPair`), so the rows survive with no stats attached and render an empty commander page.
 
 **Files:**
-- `apps/worker/src/lib/corpus.ts:165` — where `resolveDeck` rejects the pair
+- `packages/core/src/formats/commander/corpus.ts:57` — where collation rejects the pair
 - `packages/core/src/formats/commander/validate.ts` — `isValidPartnerPair`
 - `apps/worker/src/jobs/aggregate-corpus.ts` — writes `commander_keys`
 
@@ -526,7 +488,7 @@ Read 2026-10-07: `printings` is 166 MB on hosted against 56 MB locally (English-
 **Acceptance criteria:**
 - [ ] `vacuum full` on `printings` and `search_index_queue` on hosted as superuser (a human, not the read-only role), at a quiet time: it locks the table
 - [x] `commander_card_scores` vacuumed 2026-10-08 with T070 (1.41 GB → 321 MB)
-- [ ] Record the before and after sizes in this ticket
+- [ ] Record the before and after sizes in this ticket (re-read 2026-10-20: `printings` 166 MB and `search_index_queue` 199 MB unchanged; database 3,305 MB)
 
 ---
 
@@ -611,7 +573,7 @@ Three e2e tests fail locally against the real catalog and corpus, on `develop` a
 The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a real destination before public launch.
 
 **Files:**
-- `apps/web/src/app/decks/[commander]/[code]/page.tsx:138` — the `github.com/Planeswalker-Industries/mtg-deck-rec/issues/new` link
+- `apps/web/src/app/decks/[commander]/[code]/page.tsx:145` — the `github.com/Planeswalker-Industries/mtg-deck-rec/issues/new` link
 
 **Acceptance criteria:**
 - [ ] Decide destination (email, form, in-app feedback)
@@ -624,10 +586,10 @@ The "Report" link on public deck pages opens a prefilled GitHub issue. Needs a r
 
 **Priority:** LOW | **Area:** Frontend / Content | **Status:** Not started (owner)
 
-The three How it works recordings (`apps/web/public/add.png`, `cut_gif*.gif`, `swipe_gif*.gif`) show the old slate UI and the old step names (Replace, Review). They sit in a walnut page since the Kitchen Table retheme.
+The three How it works recordings (`apps/web/public/add.png`, `cut_gif*.gif`, `swipe_gif*.gif`) show the old slate UI and the old step names and order (Cut, Add, Replace, Review). The steps are now Add, Cut, Swap and Finish, and the page has used the cool blue palette since 2026-10-13 (PR #149).
 
 **Acceptance criteria:**
-- [ ] Record Cut, Add and Swap in the current look, one clip per step, same pixel size across the three (`StepMedia` in `components/home/how-it-works.tsx`)
+- [ ] Record Add, Cut and Swap in the current look, one clip per step, same pixel size across the three (`StepMedia` in `components/home/how-it-works.tsx`)
 - [ ] Keep a `_hi` version for 1024 px and up
 - [ ] Check file sizes: the clips load lazily but are still megabytes
 
@@ -738,4 +700,6 @@ One line each, kept so the gaps in the numbering have a reason. Do not reuse the
 - **T063** Build a deck from a commander and a bracket — closed 2026-10-07: `POST /api/recs/build` live (contract v24); 38.6% overlap with held-out decks. UI is T069.
 - **T064** Deck affinity from card pairs — closed 2026-10-07: pairs built on hosted (800,624 per commander, 485,386 corpus-wide); `deck` weighs 0.1 in adds. Latency follow-ups are T068.
 - **T065** Live accept rate — closed 2026-10-07: `rec_events` live, written by the server only; build events wait for build mode's screen (T069).
+- **T045** Design the deck analysis display — closed 2026-10-20: Deck stats P1 released 2026-10-08 (PR #143, contract v26), a footer on phones and a side rail on wide screens; owner signed off on placement and on what is left out. Card types are T071, follow-ups T072; mana base (T046) and combos and bracket signals (T069) go in Deck stats.
+- **T048** Role counts against the commander's decks — closed 2026-10-20: delivered by Deck stats P1, each role's count against the blended target, labelled with the commander's decks or "Typical decks". Roles before and after in Finish moved to T072.
 - **T073** Deck journey UX overhaul follow-ups — closed 2026-10-19: released to `main` (PRs #150–#152, contract v28) and hosted's catalog sync filled the new oracle columns. Printing-level fields: none needed for the current scope. Set names are already in `sets`; rarity, flavor text, per-printing art and platform ids wait for a feature that reads them (both bulk files stay on disk).
