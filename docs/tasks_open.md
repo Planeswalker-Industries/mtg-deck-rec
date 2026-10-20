@@ -38,7 +38,7 @@ Supabase's built-in SMTP sends a couple of emails an hour, so email-code sign-in
 Deck pages are `noindex` today (`robots` in `apps/web/src/app/decks/[commander]/[code]/page.tsx`) because deck names are user-written. Only public decks can be indexed: `loadDeckPage` returns null for missing and not-permitted decks alike, and `proxy.ts` 404s both.
 
 - [ ] A name filter: a deck whose name fails it stays `noindex` and out of the sitemap
-- [ ] Other public decks drop `noindex` and join `apps/web/src/app/sitemap.ts`, addressed by commander and deck code (owner's example: `liesa-forgotten-archangel-iJQ2zHq`; confirm with the owner whether that one slug replaces today's two segments)
+- [ ] Other public decks drop `noindex` and join `apps/web/src/app/sitemap.ts`, at today's `/decks/[commander]/[code]` URLs (owner, 2026-10-20)
 - [ ] The sitemap's deck list stays off build-time queries that grow with the catalog
 
 ---
