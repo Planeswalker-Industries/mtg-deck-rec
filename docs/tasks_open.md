@@ -1,10 +1,10 @@
-# Tasks
+# Open tasks
 
-Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up.
+Open work items, grouped by priority. Each ticket is self-contained — enough context for a fresh model to pick it up. Closed tickets are in [`tasks_closed.md`](tasks_closed.md).
 
 Checked against the code and hosted on **2026-10-20**: `main` at PR #156 (the Cut to 100 release), contract v28, hosted migrations at `20261014000100` (`20261020000100`, the slower Archidekt pace, waits for the next release).
 
-Ticket ids are stable and never reused: a closed ticket leaves a gap rather than renumbering the ones after it.
+Ticket ids are stable and never reused: a closed ticket moves to `tasks_closed.md` as one sentence and leaves a gap. The next new id is T075.
 
 ## UI order
 
@@ -287,7 +287,7 @@ Either the 2026-09-22 work superseded the 2026-09-18 decision without it being r
 
 ## Data Layers and Scoring
 
-One pipeline in layers, then one scoring engine on top. T053–T065 are built and released (PR #140, 2026-10-07; closed below), and derived commander pairs (T070) released 2026-10-08 (PR #142). What is open: the worker that runs the pipeline on a schedule (T066), dropping the retired functions (T067) and the review's follow-ups (T068), and the UI the sprint shelved (T069).
+One pipeline in layers, then one scoring engine on top. T053–T065 are built and released (PR #140, 2026-10-07; see `tasks_closed.md`), and derived commander pairs (T070) released 2026-10-08 (PR #142). What is open: the worker that runs the pipeline on a schedule (T066), dropping the retired functions (T067) and the review's follow-ups (T068), and the UI the sprint shelved (T069).
 
 ### T066: VPS worker
 
@@ -654,52 +654,3 @@ Reliquary Tower tops Sea Gate Restoration swaps at 51% play rate despite a 0.65 
 - [ ] Investigate whether a tag-score floor or play-rate dampening is needed
 - [ ] Test with regression fixtures
 - [ ] Document decision
-
----
-
-## Closed
-
-One line each, kept so the gaps in the numbering have a reason. Do not reuse these ids; git history has the full write-ups.
-
-- **Shipped without tickets (2026-09-22, contract v11–v16):** deck journey (#84), deck originals (#85), owned first (#86), deckbuilder (#87), collection editing (#92), every search on the index (#96). Follow-ups: T037, T038.
-- **Shipped without tickets (2026-10-19, released in #156):** a collection file picked before the page hydrated is taken (#153); Cut reaches 100 with a land step and a Low Land Count warning for a complete deck, a fresh commander picker and a compact deck page (#155).
-- **T001** Remove local test seed data — closed 2026-09-21: kept for local testing; `seed.sql` refuses to run on any database with other accounts.
-- **T004** Privacy policy + account deletion — closed 2026-09-21: `/privacy` and `delete_my_account()` shipped.
-- **T005** WotC Fan Content Policy disclaimer — closed 2026-09-21: footer links to the policy.
-- **T010** Archidekt always-on crawler — closed 2026-09-28: the daily feed crawl is T036; the per-commander backfill is T035 slice 10.
-- **T011** Monitor database growth — closed 2026-09-21: hosted moved to Supabase Pro (8 GB). Leftover vacuum is T041.
-- **T012** Parser test fixtures (26 → 60) — closed 2026-09-18: 63 parser tests.
-- **T016** Deck export — closed 2026-09-21: copy, text and CSV downloads on deck pages.
-- **T019** Admin pages (tag kill switch, sync status) — closed 2026-09-21: `/admin/tags` and `/admin/sync-runs`.
-- **T023** `collections.maxEntries` limit review — closed 2026-09-21: 100,000 stays on Pro.
-- **T024** Invalidate swap pool cache after corpus rebuilds — closed 2026-09-18: already wired through `TAGS_BY_JOB`.
-- **T025** Google sign-in credentials — closed by 2026-09-23: live locally and on hosted.
-- **T026** Collection import from a share link — closed 2026-09-21 for Archidekt; ManaBox and TCGplayer publish no link format, and Moxfield needs an account.
-- **T036** Deck crawls — closed 2026-09-28: engine and Archidekt source deployed, manual runs wrote 666 decks. Leftovers: daily trigger T042, crawl database role T043, Moxfield T044; aggregating `corpus.decks` is T035 slice 2.
-- **T007** Price as a scoring component — closed 2026-10-07: superseded (owner, 2026-10-05). Price ranks the buy list (T059) and the value fill (T063), never the score.
-- **T008** Swap pool caching across serverless instances — closed 2026-10-07: the per-request rec functions it would have cached left the request path (T055); adds, cuts and swaps read the precompute tables in one round. The functions themselves leave the database with T067.
-- **T020** Deck-internal synergy scoring — closed 2026-10-07: built as T064 (card pairs and deck affinity).
-- **T031** Compare our synergy against EDHREC's — closed 2026-10-07: `eval:holdout` reports EDHREC agreement on every run (T058).
-- **T035** Deck aggregation pipeline and card graph — closed 2026-10-07: the pipeline shipped as T053–T065 (PR #140). Open pieces: T066, T067, T068.
-- **T040** Drop the unused `rec_add_candidates(p_deck_count)` overload — closed 2026-10-07: nothing calls either overload; both go with T067.
-- **T042** Make the daily crawl cron produce runs — closed 2026-10-07: a run has started in the cron's hour every day since 2026-10-02. The VPS worker replaces the cron once deployed (T066).
-- **T047** Combo detection in the bracket estimate — closed 2026-10-07: built as T060; Spellbook on hosted is T068, the display T045 and T069.
-- **T052** Release the deckbuilder redesign — closed 2026-10-07: released 2026-09-30; `cards.mana_cost` filled on hosted and multi-filter search answers `index-filtered`.
-- **T053** Data layers — closed 2026-10-07: released 2026-10-05; hosted crawls run on the moved tables.
-- **T054** Collator — closed 2026-10-07: released; hosted collated and aggregated 2026-10-06. The first hosted `sync:edhrec` is T068.
-- **T055** Precompute worker and the serving request path — closed 2026-10-07: production reads the precompute tables since 2026-10-07; hosted parity matched every gated list. Retired functions: T067.
-- **T056** Crawl growth — closed 2026-10-07: 23 commanders past 93 decks (the most 190) and 4,449 declared brackets stored on hosted.
-- **T057** Scoring weights into `app_config.scoring` — closed 2026-10-07: released in PR #140; outputs unchanged.
-- **T058** Offline evaluation — closed 2026-10-07: released; the gate's open weaknesses are T068.
-- **T059** Collection mode — closed 2026-10-07: data, scoring and contract v20 released; its UI is T069.
-- **T060** Bracket rules and combos — closed 2026-10-07: released (contract v21); estimator agreement and Spellbook on hosted are T068, the UI T069.
-- **T061** EDHREC prior by sample size — closed 2026-10-07: on in production (cap 100); adds recall@20 17.2% → 25.0% on the time split.
-- **T062** Learned skeleton — closed 2026-10-07: curve and land counts learned and used by builds; the curve as an add score, curve-based cuts and the EDHREC profile prior failed the gate and ship switched off.
-- **T038** Start a collection by hand — closed 2026-10-12: the empty collection offers adding cards by name; the first card creates the browser or account collection.
-- **T050** Start a deck from one commander — closed 2026-10-12: `/deck?start=build` picks a commander (owned ones first with a collection) and builds a deck for it.
-- **T063** Build a deck from a commander and a bracket — closed 2026-10-07: `POST /api/recs/build` live (contract v24); 38.6% overlap with held-out decks. UI is T069.
-- **T064** Deck affinity from card pairs — closed 2026-10-07: pairs built on hosted (800,624 per commander, 485,386 corpus-wide); `deck` weighs 0.1 in adds. Latency follow-ups are T068.
-- **T065** Live accept rate — closed 2026-10-07: `rec_events` live, written by the server only; build events wait for build mode's screen (T069).
-- **T045** Design the deck analysis display — closed 2026-10-20: Deck stats P1 released 2026-10-08 (PR #143, contract v26), a footer on phones and a side rail on wide screens; owner signed off on placement and on what is left out. Card types are T071, follow-ups T072; mana base (T046) and combos and bracket signals (T069) go in Deck stats.
-- **T048** Role counts against the commander's decks — closed 2026-10-20: delivered by Deck stats P1, each role's count against the blended target, labelled with the commander's decks or "Typical decks". Roles before and after in Finish moved to T072.
-- **T073** Deck journey UX overhaul follow-ups — closed 2026-10-19: released to `main` (PRs #150–#152, contract v28) and hosted's catalog sync filled the new oracle columns. Printing-level fields: none needed for the current scope. Set names are already in `sets`; rarity, flavor text, per-printing art and platform ids wait for a feature that reads them (both bulk files stay on disk).
