@@ -2,7 +2,7 @@
 
 mtg-deck-rec: a public, Commander-only web app. Paste or import a decklist and get cards to add, cards to cut and functional substitutes, with estimated prices. It works without a collection (ranked by corpus play rate and Scryfall Tagger tags) and with one (the player's collection filters or reorders the candidates).
 
-Live at https://mtg-app-psi.vercel.app. Open work: [`docs/tasks.md`](docs/tasks.md). When code and this file disagree, the code wins and this file is fixed.
+Live at https://mtg-app-psi.vercel.app. Open work: [`docs/tasks_open.md`](docs/tasks_open.md). When code and this file disagree, the code wins and this file is fixed.
 
 - **Repo:** `Planeswalker-Industries/mtg-deck-rec`, public. User-Agent strings, in-app links and the search API's Go module path use that address.
 - **Branches:** start every branch from `develop` and open PRs with `--base develop`. `main` is merged from `develop` by the owner; it is what Vercel production and the Supabase GitHub integration deploy.
@@ -28,7 +28,7 @@ yarn workspace @mtg/web e2e [spec]               # Playwright on a production bu
 yarn workspace @mtg/web regress [dir]            # recommendation fixtures (default $MTG_DATA_DIR/regression; never in the repo)
 yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts anon   # from apps/web: sign-in link for a local account
 
-yarn workspace @mtg/worker cli <job>             # sync:catalog, sync:printings, sync:tags, sync:spellbook, sync:edhrec, sync:typesense [--rebuild], collate, aggregate:corpus, precompute, eval:holdout, serve
+yarn workspace @mtg/worker cli <job>             # bulk:download, sync:catalog, sync:printings, sync:tags, sync:spellbook, sync:edhrec, sync:typesense [--rebuild], collate, aggregate:corpus, precompute, eval:holdout, serve
 yarn workspace @mtg/worker cli:hosted <job>      # the same against hosted (apps/worker/.env.hosted); plain `cli` is always local
 
 docker compose -f docker-compose.search.yml up -d --build   # local Typesense (56325) and search API (56326)
