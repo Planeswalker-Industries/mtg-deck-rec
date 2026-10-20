@@ -10,10 +10,13 @@ One sentence each, so the gaps in the numbering have a reason. Ticket ids are ne
 ## Tickets
 
 - **T001** Remove local test seed data (2026-09-21): kept, because `seed.sql` refuses to run on a database with other accounts.
+- **T002** Configure hosted Supabase Auth (2026-10-20): the dashboard steps are done; the email and kill-switch checks moved to T033.
 - **T004** Privacy policy and account deletion (2026-09-21): `/privacy` and `delete_my_account()` shipped.
 - **T005** WotC Fan Content Policy disclaimer (2026-09-21): the footer links to the policy.
+- **T006** Wire votes into swap scoring (2026-10-20): merged into T014, which runs the eval first.
 - **T007** Price as a scoring component (2026-10-07): superseded, because price ranks the buy list and the value fill, never the score.
 - **T008** Swap pool caching across serverless instances (2026-10-07): moot, because requests read the precompute tables in one round (T055).
+- **T009** Always-on commander request consumer (2026-10-20): merged into T066, since the VPS worker serves lookups.
 - **T010** Archidekt always-on crawler (2026-09-28): replaced by the daily crawl (T036).
 - **T011** Monitor database growth (2026-09-21): hosted moved to Supabase Pro (8 GB).
 - **T012** Parser test fixtures (2026-09-18): 63 parser tests.
@@ -27,6 +30,7 @@ One sentence each, so the gaps in the numbering have a reason. Ticket ids are ne
 - **T031** Compare our synergy against EDHREC's (2026-10-07): `eval:holdout` reports EDHREC agreement on every run.
 - **T035** Deck aggregation pipeline and card graph (2026-10-07): shipped as T053–T065 in PR #140.
 - **T036** Deck crawls (2026-09-28): the crawl engine and the Archidekt source deployed.
+- **T037** Tune the owned-first boost (2026-10-20): moot while the buy list is shelved; T069 keeps the owned-only default and the retune for when it returns.
 - **T038** Start a collection by hand (2026-10-12): the empty collection offers adding cards by name.
 - **T040** Drop the unused `rec_add_candidates(p_deck_count)` overload (2026-10-07): folded into T067.
 - **T042** Make the daily crawl cron produce runs (2026-10-07): a run has started in the cron's hour every day since 2026-10-02.
@@ -48,4 +52,5 @@ One sentence each, so the gaps in the numbering have a reason. Ticket ids are ne
 - **T063** Build a deck from a commander and a bracket (2026-10-07): `POST /api/recs/build` live with contract v24.
 - **T064** Deck affinity from card pairs (2026-10-07): card pairs built on hosted, and `deck` weighs 0.1 in adds.
 - **T065** Live accept rate (2026-10-07): `rec_events` live, written by the server only.
+- **T070** Derived commander pairs (2026-10-20): released 2026-10-08, 1,056 pairs derived on hosted; the parity check and the cache were moot.
 - **T073** Deck journey UX overhaul follow-ups (2026-10-19): released in PRs #150–#152 (contract v28).
