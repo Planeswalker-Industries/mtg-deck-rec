@@ -356,6 +356,20 @@ func TestAdminRejectsNamesThatCouldEscapeAPath(t *testing.T) {
 	}
 }
 
+// The worker escapes every path segment, so a commander_cards key ("22:11555") arrives as "22%3A11555".
+func TestDeleteDocumentAcceptsAnEscapedCommanderCardKey(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodDelete, "/v1/admin/collections/commander_cards/documents/22%3A11555", adminToken, "")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200", res.StatusCode)
+	}
+	if countRequests(fake.requests, "DELETE /collections/commander_cards/documents/22:11555") != 1 {
+		t.Fatalf("Typesense saw %v", fake.requests)
+	}
+}
+
 func countRequests(requests []string, want string) int {
 	n := 0
 	for _, r := range requests {

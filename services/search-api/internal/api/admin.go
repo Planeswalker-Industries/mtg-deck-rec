@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"net/url"
 	"regexp"
 
 	"github.com/gofiber/fiber/v3"
@@ -89,8 +90,9 @@ func (s *Server) deleteDocument(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	id := c.Params("id")
-	if !documentID.MatchString(id) {
+	// Fiber hands path params over still escaped, and the worker escapes the ":" in a commander_cards key.
+	id, err := url.PathUnescape(c.Params("id"))
+	if err != nil || !documentID.MatchString(id) {
 		return badRequest("that is not a valid document id")
 	}
 	deleted, err := s.ts.DeleteDocument(c.Context(), name, id)
