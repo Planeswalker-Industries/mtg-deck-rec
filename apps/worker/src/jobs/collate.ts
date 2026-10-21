@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { checkCorpusDeck, CORPUS_EXCLUSIONS, type CorpusExclusion } from '@mtg/core/commander';
 import { normalizeName, SPELLBOOK_BRACKET_TAGS } from '@mtg/core/parse';
 import { commanderFacts, loadCatalog, type CatalogCard } from '../lib/corpus';
-import { connect, reserve, type Sql } from '../lib/db';
+import { connect, reserve, type ReservedSql, type Sql } from '../lib/db';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 
 /**
@@ -106,7 +106,7 @@ const deckHash = (commanderIds: number[], cardIds: number[], basicLands: number)
  * The filter is built from fragments rather than one OR with parameters, so an ordinary run reads by the raw table's
  * `fetched_at` index; only a retry (a newer catalog) reads every deck.
  */
-function deckFacts(sql: Sql, source: DeckSource, since: Date | null, retry: boolean) {
+function deckFacts(sql: ReservedSql, source: DeckSource, since: Date | null, retry: boolean) {
   const written = (column: ReturnType<Sql>) =>
     since === null ? sql`true` : sql`${column} >= ${since}::timestamptz - ${RAW_OVERLAP}::interval`;
   if (source === 'user') {
@@ -178,6 +178,9 @@ async function collateDecks(ctx: Context, runId: number, source: DeckSource, cat
   let included = 0;
 
   const db = await reserve(sql);
+  // The cursor is one statement until it ends, so it needs the worker's timeout too, on its own connection since the
+  // loop writes to db while it is open.
+  const reader = await reserve(sql);
   try {
     await db`
       create temp table stg_decks (
@@ -192,7 +195,7 @@ async function collateDecks(ctx: Context, runId: number, source: DeckSource, cat
         content_hash bytea
       )
     `;
-    for await (const rows of deckFacts(sql, source, since, retry)) {
+    for await (const rows of deckFacts(reader, source, since, retry)) {
       const staged: StagedDeck[] = rows.map((row) => {
         const check = checkCorpusDeck({
           commanders: (row.commander_ids ?? []).map((id) => {
@@ -310,6 +313,7 @@ async function collateDecks(ctx: Context, runId: number, source: DeckSource, cat
   } finally {
     await db`drop table if exists stg_decks`.catch(() => {});
     db.release();
+    reader.release();
   }
 }
 
