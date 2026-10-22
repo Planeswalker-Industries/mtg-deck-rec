@@ -50,6 +50,38 @@ async function inBatches<T, R>(items: readonly T[], limit: number, run: (item: T
   return results;
 }
 
+/** Card details for every entry, in chunks the route accepts. `onProgress` hears how many have loaded so far. */
+async function fillEntries(
+  entries: CollectionEntry[],
+  onProgress: (loaded: number, total: number) => void,
+): Promise<{ status: "error"; message: string } | { status: "ready"; items: CollectionViewItem[]; sets: CardSet[] }> {
+  const chunks: CardId[][] = [];
+  for (let i = 0; i < entries.length; i += MAX_COLLECTION_CARD_IDS) {
+    chunks.push(entries.slice(i, i + MAX_COLLECTION_CARD_IDS).map((e) => e.cardId));
+  }
+  const setCodes = [...new Set(entries.flatMap((e) => e.setCodes))];
+  let loaded = 0;
+  onProgress(loaded, entries.length);
+
+  // Set names ride along with the first chunk only: there are a few hundred sets at most.
+  const results = await inBatches(chunks, CONCURRENT_CHUNKS, async (cardIds) => {
+    const result = await getApis().catalog.collectionCards({ cardIds, setCodes: cardIds === chunks[0] ? setCodes : [] });
+    loaded += cardIds.length;
+    onProgress(loaded, entries.length);
+    return result;
+  });
+  const failed = results.find((r) => !r.ok);
+  if (failed && !failed.ok) return { status: "error", message: failed.error.message };
+
+  const details = new Map(results.flatMap((r) => (r.ok ? r.data.cards : [])).map((d) => [d.card.id as number, d]));
+  const items = entries.flatMap((e): CollectionViewItem[] => {
+    const detail = details.get(e.cardId);
+    return detail ? [{ card: detail.card, tags: detail.tags, quantity: e.quantity, setCodes: e.setCodes }] : [];
+  });
+  const sets = results.flatMap((r) => (r.ok ? r.data.sets : []));
+  return { status: "ready", items, sets };
+}
+
 /**
  * The visitor's collection with every card filled in, wherever it lives. The entries come from the browser or the
  * account; the cards, their tags and the set names come from the catalog, in chunks the route accepts.
@@ -72,32 +104,10 @@ export function useCollectionView(): CollectionViewState {
         entries = result.data;
       }
       if (entries.length === 0) return { status: "none", signedIn: from.kind === "account" || from.signedIn };
-
-      const chunks: CardId[][] = [];
-      for (let i = 0; i < entries.length; i += MAX_COLLECTION_CARD_IDS) {
-        chunks.push(entries.slice(i, i + MAX_COLLECTION_CARD_IDS).map((e) => e.cardId));
-      }
-      const setCodes = [...new Set(entries.flatMap((e) => e.setCodes))];
-      let loaded = 0;
-      if (active) setState({ status: "loading", loaded, total: entries.length });
-
-      // Set names ride along with the first chunk only: there are a few hundred sets at most.
-      const results = await inBatches(chunks, CONCURRENT_CHUNKS, async (cardIds) => {
-        const result = await getApis().catalog.collectionCards({ cardIds, setCodes: cardIds === chunks[0] ? setCodes : [] });
-        loaded += cardIds.length;
-        if (active) setState({ status: "loading", loaded, total: entries.length });
-        return result;
+      const filled = await fillEntries(entries, (loaded, total) => {
+        if (active) setState({ status: "loading", loaded, total });
       });
-      const failed = results.find((r) => !r.ok);
-      if (failed && !failed.ok) return { status: "error", message: failed.error.message };
-
-      const details = new Map(results.flatMap((r) => (r.ok ? r.data.cards : [])).map((d) => [d.card.id as number, d]));
-      const items = entries.flatMap((e): CollectionViewItem[] => {
-        const detail = details.get(e.cardId);
-        return detail ? [{ card: detail.card, tags: detail.tags, quantity: e.quantity, setCodes: e.setCodes }] : [];
-      });
-      const sets = results.flatMap((r) => (r.ok ? r.data.sets : []));
-      return { status: "ready", where: from.kind, items, sets };
+      return filled.status === "ready" ? { ...filled, where: from.kind } : filled;
     }
 
     void load()
@@ -112,5 +122,39 @@ export function useCollectionView(): CollectionViewState {
 
   // Nothing to load: derived here rather than set from the effect.
   if (source.kind === "none") return { status: "none", signedIn: source.signedIn };
+  return state;
+}
+
+export type SharedCollectionViewState =
+  | { status: "loading"; loaded: number; total: number }
+  | { status: "error"; message: string }
+  | { status: "ready"; displayName: string | null; items: CollectionViewItem[]; sets: CardSet[] };
+
+/** Someone's shared collection, by the code in its link, with every card filled in. */
+export function useSharedCollectionView(code: string): SharedCollectionViewState {
+  const [state, setState] = useState<SharedCollectionViewState>({ status: "loading", loaded: 0, total: 0 });
+
+  useEffect(() => {
+    let active = true;
+
+    async function load(): Promise<SharedCollectionViewState> {
+      const result = await getApis().actions.getSharedCollection({ code });
+      if (!result.ok) return { status: "error", message: result.error.message };
+      const filled = await fillEntries(result.data.entries, (loaded, total) => {
+        if (active) setState({ status: "loading", loaded, total });
+      });
+      return filled.status === "ready" ? { ...filled, displayName: result.data.displayName } : filled;
+    }
+
+    void load()
+      .catch((): SharedCollectionViewState => ({ status: "error", message: "Couldn't load this collection. Try again in a moment." }))
+      .then((next) => {
+        if (active) setState(next);
+      });
+    return () => {
+      active = false;
+    };
+  }, [code]);
+
   return state;
 }

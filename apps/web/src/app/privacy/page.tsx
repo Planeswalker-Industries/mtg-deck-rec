@@ -48,7 +48,8 @@ export default function PrivacyPage() {
           </Item>
           <Item term="Your collection">
             If you import a collection while signed in: each card, and the printing, finish, condition and language when
-            your file includes them.
+            your file includes them. A collection is private until you turn on its share link; then anyone with the link
+            can see its cards and how many copies you have. Turning the link off stops it working.
           </Item>
           <Item term="Votes">
             When you rate a suggested replacement, we keep the vote along with what was on screen at the time (the other

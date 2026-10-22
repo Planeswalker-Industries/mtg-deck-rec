@@ -9,6 +9,7 @@ export type RateLimitBucket =
   | "import"
   | "lookup"
   | "collection"
+  | "shared_collection"
   | "auth"
   | "vote"
   | "events"

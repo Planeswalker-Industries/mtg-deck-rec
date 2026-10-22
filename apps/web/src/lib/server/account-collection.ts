@@ -1,6 +1,16 @@
 import type { CollectionCopies } from "@mtg/core/collection";
-import type { CardId, CollectionEntry, CollectionTotals, DeckId, ResolvedCollectionRow, SourceApp } from "@mtg/core/contract";
+import type {
+  CardId,
+  CollectionEntry,
+  CollectionSharing,
+  CollectionTotals,
+  DeckId,
+  ResolvedCollectionRow,
+  SharedCollection,
+  SourceApp,
+} from "@mtg/core/contract";
 import type { createAuthClient } from "./auth";
+import type { PublicClient } from "./supabase";
 
 type AuthClient = Awaited<ReturnType<typeof createAuthClient>>;
 
@@ -124,4 +134,37 @@ export async function deleteAccountCollection(db: AuthClient): Promise<void> {
   // Row-level security limits the delete to the caller's own rows; PostgREST still requires a filter.
   const { error } = await db.from("collection_items").delete().gte("id", 0);
   if (error) throw new Error(`Deleting the collection failed: ${error.message}`);
+}
+
+const toSharing = (value: unknown): CollectionSharing | null => {
+  const v = value as { code?: unknown; shared?: unknown } | null;
+  return v && typeof v.code === "string" ? { code: v.code, shared: v.shared === true } : null;
+};
+
+/** Whether the signed-in user's collection has a link that works, or null when they have never shared it. */
+export async function accountCollectionSharing(db: AuthClient): Promise<CollectionSharing | null> {
+  const { data, error } = await db.rpc("my_collection_sharing");
+  if (error) throw new Error(`Loading collection sharing failed: ${error.message}`);
+  return toSharing(data);
+}
+
+/** Turns the link to the signed-in user's collection on or off. The code stays the same either way. */
+export async function setAccountCollectionSharing(db: AuthClient, shared: boolean): Promise<CollectionSharing> {
+  const { data, error } = await db.rpc("set_collection_sharing", { p_shared: shared });
+  if (error) throw writeFailed("Changing collection sharing", error.message);
+  const sharing = toSharing(data);
+  if (!sharing) throw new Error("Changing collection sharing returned nothing.");
+  return sharing;
+}
+
+/** Anyone's shared collection by its code; null when the code is unknown or the collection isn't shared. */
+export async function sharedCollection(db: PublicClient, code: string): Promise<SharedCollection | null> {
+  const { data, error } = await db.rpc("shared_collection", { p_code: code });
+  if (error) throw new Error(`Loading shared collection ${code} failed: ${error.message}`);
+  const v = data as { displayName?: unknown; entries?: unknown } | null;
+  if (!v) return null;
+  return {
+    displayName: typeof v.displayName === "string" && v.displayName.trim() !== "" ? v.displayName : null,
+    entries: (v.entries ?? []) as CollectionEntry[],
+  };
 }

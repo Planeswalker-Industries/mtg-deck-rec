@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/server/database.types";
 import { fromIndex } from "@/lib/server/search-index";
-import { createPublicClient } from "@/lib/server/supabase";
+import { createPublicClient, type PublicClient } from "@/lib/server/supabase";
 
 /**
  * Runs before pages and route handlers:
@@ -13,6 +13,7 @@ import { createPublicClient } from "@/lib/server/supabase";
  *   refreshed here. Visitors without a session cookie skip this entirely.
  * - The whole status story for /admin: signed-out visitors are redirected to sign in, and a signed-in visitor who
  *   is not a platform admin gets a real 404. Neither can be done from the page, which streams.
+ * - Shared collections: a link that isn't shared gets a real 404, and the owner's own link goes to /collection.
  */
 export async function proxy(request: NextRequest) {
   const [, section, slug] = request.nextUrl.pathname.split("/");
@@ -31,12 +32,25 @@ export async function proxy(request: NextRequest) {
     signIn.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(signIn);
   }
-  if (section === "decks" && code && DECK_CODE.test(code) && !hasSessionCookie(request)) {
+  if (section === "decks" && code && SHARE_CODE.test(code) && !hasSessionCookie(request)) {
     try {
       if (!(await publicDeckExists(code))) {
         return NextResponse.rewrite(new URL("/_missing", request.url));
       }
     } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // A collection link answers 404 unless it is shared, the same to everyone, so a private collection can't be told
+  // from a missing one. Its owner is sent to /collection, where they can edit it.
+  if (section === "collection" && slug && SHARE_CODE.test(slug)) {
+    try {
+      const status = await collectionShareStatus(request, slug);
+      if (status === "mine") return NextResponse.redirect(new URL("/collection", request.url));
+      if (status !== "shared") return NextResponse.rewrite(new URL("/_missing", request.url));
+    } catch (err) {
+      // The page asks for the collection itself and says when it can't be found.
       console.error(err);
     }
   }
@@ -77,8 +91,11 @@ export async function proxy(request: NextRequest) {
   return hasSessionCookie(request) ? refreshSession(request) : NextResponse.next();
 }
 
-/** Matches decks_code_shape in the database, so a path that could never be a code costs no query. */
-const DECK_CODE = /^[A-Za-z0-9]{8,32}$/;
+/**
+ * Matches decks_code_shape and collection_shares_code_shape in the database, so a path that could never be a code
+ * costs no query. /collection/import is too short to match.
+ */
+const SHARE_CODE = /^[A-Za-z0-9]{8,32}$/;
 
 /** Row-level security limits the anon client to public decks, which is exactly the question being asked. */
 async function publicDeckExists(code: string): Promise<boolean> {
@@ -134,6 +151,25 @@ async function isPlatformAdmin(request: NextRequest): Promise<boolean> {
   const { data, error } = await supabase.rpc("is_platform_admin", {});
   if (error) throw new Error(`Checking platform admin failed: ${error.message}`);
   return data === true;
+}
+
+/**
+ * 'mine', 'shared' or null for a collection link. Signed out, the anon client asks; signed in, the visitor's own
+ * session does, so the database can tell the owner apart. Like the admin check, it reads the cookies without refreshing them.
+ */
+async function collectionShareStatus(request: NextRequest, code: string): Promise<string | null> {
+  let db: PublicClient;
+  if (hasSessionCookie(request)) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    if (!url || !key) throw new Error("Supabase isn't configured, so the collection check can't run.");
+    db = createServerClient<Database>(url, key, { cookies: { getAll: () => request.cookies.getAll(), setAll: () => {} } });
+  } else {
+    db = createPublicClient();
+  }
+  const { data, error } = await db.rpc("collection_share_status", { p_code: code });
+  if (error) throw new Error(`Checking collection page ${code} failed: ${error.message}`);
+  return data;
 }
 
 /** Supabase stores the session in cookies named sb-<project>-auth-token (split into .0, .1, ... when large). */

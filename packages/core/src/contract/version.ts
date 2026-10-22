@@ -117,5 +117,8 @@
  * v28 (2026-10-14): the deck journey's card panel. CatalogApi.cardRules (POST /api/cards/rules) returns CardRules (rules
  * text, power and toughness, loyalty, defense, faces) for the cards on screen; CardFace gains optional power,
  * toughness, loyalty and defense. Additive.
+ *
+ * v29 (2026-10-22): shared collections. ActionsApi getMyCollectionSharing, setCollectionSharing and getSharedCollection,
+ * with CollectionSharing and SharedCollection. Sharing is off until the owner turns it on. Additive.
  */
-export const CONTRACT_VERSION = 28;
+export const CONTRACT_VERSION = 29;
