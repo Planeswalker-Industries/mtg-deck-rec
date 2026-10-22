@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Link2 } from "lucide-react";
 import type { CollectionSharing } from "@mtg/core/contract";
+import { DeckToggle } from "@/components/decks/deck-toggle";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
-import { Switch } from "@/components/ui/switch";
 import { getApis } from "@/lib/api/client";
 import { TEXT_LINK } from "@/lib/constants";
 
@@ -24,13 +24,13 @@ const COPY_LABEL: Record<CopyState, string> = {
 const shareUrl = (code: string) => `${window.location.origin}/collection/${code}`;
 
 /**
- * The owner's switch for a link to their collection, and the link to copy while it is on. A collection kept in this
- * browser has no copy on the server to share, so signed out it only says to sign in.
+ * The owner's "Public" switch for their collection, the same one a saved deck has, and the link to copy while it is
+ * on. A collection kept in this browser has no copy on the server to share, so signed out it only says to sign in.
  */
 export function CollectionSharingControl({ where }: { where: "browser" | "account" }) {
   if (where === "browser") {
     return (
-      <Link href="/sign-in?next=/collection" className={`text-sm ${TEXT_LINK}`}>
+      <Link href="/sign-in?next=/collection" className={`self-end text-sm ${TEXT_LINK}`}>
         Sign in to share
       </Link>
     );
@@ -42,7 +42,6 @@ function AccountSharing() {
   const [sharing, setSharing] = useState<CollectionSharing | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
   const [copy, setCopy] = useState<CopyState>("idle");
 
   useEffect(() => {
@@ -66,26 +65,8 @@ function AccountSharing() {
     return () => clearTimeout(timer);
   }, [copy]);
 
-  const on = sharing?.shared === true;
-
-  function toggle(next: boolean) {
-    const previous = sharing;
-    setSharing({ code: previous?.code ?? "", shared: next });
-    setError(null);
-    startTransition(async () => {
-      const result = await getApis()
-        .actions.setCollectionSharing({ shared: next })
-        .catch(() => null);
-      if (result?.ok) setSharing(result.data);
-      else {
-        setSharing(previous);
-        setError(result ? result.error.message : "Couldn't change sharing. Check your connection and try again.");
-      }
-    });
-  }
-
   async function copyLink() {
-    if (!sharing?.code) return;
+    if (!sharing) return;
     try {
       await navigator.clipboard.writeText(shareUrl(sharing.code));
       setCopy("copied");
@@ -95,25 +76,43 @@ function AccountSharing() {
     }
   }
 
+  // The toggle keeps its own state from its first render, so it waits for the saved one.
+  if (!loaded) return null;
+  if (error) return <ErrorText>{error}</ErrorText>;
+
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-center gap-3">
-        <label htmlFor="collection-share" className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-semibold">
-          Share link
-          <Switch id="collection-share" checked={on} disabled={!loaded || pending} onCheckedChange={toggle} />
-        </label>
-        {on && sharing?.code && (
-          <Button type="button" variant="outline" size="sm" onClick={copyLink} disabled={pending}>
+    <div className="flex flex-wrap items-start justify-end gap-x-4">
+      {sharing?.shared && (
+        <div className="flex min-h-11 items-center">
+          <Button type="button" variant="outline" size="sm" onClick={copyLink}>
             <Link2 aria-hidden />
             {COPY_LABEL[copy]}
           </Button>
-        )}
-        <span role="status" aria-live="polite" className="sr-only">
-          {copy === "copied" ? "Link copied to the clipboard" : copy === "failed" ? "Couldn't copy the link" : ""}
-        </span>
-      </div>
-      {on && <p className="text-sm text-muted-foreground">Anyone with the link can see your collection.</p>}
-      {error && <ErrorText>{error}</ErrorText>}
+          <span role="status" aria-live="polite" className="sr-only">
+            {copy === "copied" ? "Link copied to the clipboard" : copy === "failed" ? "Couldn't copy the link" : ""}
+          </span>
+        </div>
+      )}
+      <DeckToggle
+        id="collection-public"
+        label="Public"
+        checked={sharing?.shared === true}
+        onSave={async (next) => {
+          const result = await getApis().actions.setCollectionSharing({ shared: next });
+          if (!result.ok) return result.error.message;
+          setSharing(result.data);
+          return null;
+        }}
+        helpLabel="Who can see this collection"
+        helpTitle={(on) => (on ? "Anyone with the link can see this collection" : "Only you can see this collection")}
+        help={
+          <>
+            Public gives your collection a link you can send to friends. They see your cards and how many copies you have,
+            but can&rsquo;t change anything. Turn it off and the link stops working; turn it back on and the same link
+            works again.
+          </>
+        }
+      />
     </div>
   );
 }

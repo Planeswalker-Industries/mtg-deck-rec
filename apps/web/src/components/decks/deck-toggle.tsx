@@ -12,8 +12,8 @@ import { PHONE_HIT_AREA } from "@/lib/constants";
 type SaveResult = string | null;
 
 /**
- * A small labelled switch for a saved deck's page ("Public", "Built"), with what it means behind its (?). The switch
- * moves at once and goes back if saving fails.
+ * A small labelled switch for a saved deck's page ("Public", "Built") or for the collection ("Public"), with what it
+ * means behind its (?). The switch moves at once and goes back if saving fails.
  */
 export function DeckToggle({
   id,
@@ -51,7 +51,7 @@ export function DeckToggle({
               setOn(next);
               setError(null);
               startTransition(async () => {
-                const message = await onSave(next).catch(() => "Couldn't update this deck. Check your connection and try again.");
+                const message = await onSave(next).catch(() => "Couldn't save that. Check your connection and try again.");
                 if (message !== null) {
                   setOn(previous);
                   setError(message);

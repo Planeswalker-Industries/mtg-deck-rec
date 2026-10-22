@@ -15,7 +15,7 @@ test("a shared collection is read-only to others, sends its owner home and 404s 
   await expect(page.getByRole("region", { name: "Saved collection" }).getByText(/Saved to your account/)).toBeVisible({ timeout: SYNC_WAIT_MS });
 
   await page.goto("/collection");
-  const share = page.getByRole("switch", { name: "Share link" });
+  const share = page.getByRole("switch", { name: "Public" });
   await expect(share).toBeEnabled({ timeout: SYNC_WAIT_MS });
   await share.click();
   await page.getByRole("button", { name: "Copy link" }).click();
@@ -37,7 +37,7 @@ test("a shared collection is read-only to others, sends its owner home and 404s 
   await expect(visitor.getByRole("button", { name: "Edit collection" })).toHaveCount(0);
   await expect(visitor.getByRole("link", { name: "Import" })).toHaveCount(0);
   await expect(visitor.getByRole("link", { name: "Use in the deck tool" })).toHaveCount(0);
-  await expect(visitor.getByRole("switch", { name: "Share link" })).toHaveCount(0);
+  await expect(visitor.getByRole("switch", { name: "Public" })).toHaveCount(0);
 
   // Off, the link is a real 404; on again, the same link works.
   await page.goto("/collection");
