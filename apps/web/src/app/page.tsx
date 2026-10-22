@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { cn } from "cn";
 import { Suspense } from "react";
-import { ClipboardPaste, Library } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { ArtBackdrop } from "@/components/ui/art-backdrop";
 import { ArtCredit } from "@/components/ui/art-credit";
@@ -16,10 +14,6 @@ import { Situations } from "@/components/home/situations";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
 import { CLOSING_VISTA, HERO_VISTA } from "@/lib/landing-art";
 
-/** Hero buttons: tall enough for a wrapped label on phones, the usual 48 px single line from sm up. */
-const HERO_BUTTON =
-  "h-auto min-h-12 gap-2 px-3 py-2 max-sm:min-h-12 text-center text-sm leading-tight font-semibold whitespace-normal sm:h-12 sm:px-6 sm:text-base sm:whitespace-nowrap";
-
 /** The closing art runs from its column to the window edge on desktop, and full width below it. */
 const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
 
@@ -32,7 +26,7 @@ const CLOSING_ART_RIGHT = "calc(min(0px, (var(--page-column) - 100vw) / 2) - 1re
 async function FeaturedCommandersSection() {
   const commanders = await getFeaturedCommanders();
   return (
-    <section aria-labelledby="popular-decks" className="py-12 md:py-16 lg:col-span-2 lg:pr-8">
+    <section aria-labelledby="popular-decks" className="py-8 md:py-10 lg:col-span-2 lg:pr-8">
       <FeaturedCommanders
         commanders={commanders}
         intro={
@@ -48,7 +42,7 @@ async function FeaturedCommandersSection() {
 /** Popular Decks while it loads: the heading, the ring and one tile per featured deck, in the same grid. */
 function FeaturedCommandersSkeleton() {
   return (
-    <section aria-busy="true" aria-label="Popular Decks" className="py-12 md:py-16 lg:col-span-2 lg:pr-8">
+    <section aria-busy="true" aria-label="Popular Decks" className="py-8 md:py-10 lg:col-span-2 lg:pr-8">
       <SectionHeading eyebrow="Featured" nowrap>
         Popular Decks
       </SectionHeading>
@@ -70,13 +64,15 @@ function FeaturedCommandersSkeleton() {
  */
 function StrongestDecks() {
   return (
-    <section className="relative isolate border-t border-seam py-12 md:py-16 lg:border-t-0 lg:border-l lg:pl-8">
+    <section className="relative isolate border-t border-seam py-8 md:py-10 lg:border-t-0 lg:border-l lg:pl-8">
       <div aria-hidden className="absolute inset-y-0 -left-4 lg:left-0" style={{ right: CLOSING_ART_RIGHT }}>
         <ArtBackdrop src={CLOSING_VISTA.src} wash="left" sizes={CLOSING_ART_SIZES} position={CLOSING_VISTA.position} />
       </div>
       <h2 className="font-heading text-2xl font-semibold tracking-tight">
-        <span className="block">The strongest decks.</span> <span className="block">Your own cards.</span>{" "}
-        <span className="block font-drama font-normal tracking-normal italic text-foreground/85">No singles necessary.</span>
+        <span className="block">You already bought the cards.</span>{" "}
+        <span className="block font-drama font-normal tracking-normal italic text-foreground/85">
+          Let&apos;s build something awesome.
+        </span>
       </h2>
       <Link
         href="/deck"
@@ -106,57 +102,27 @@ export default function Home() {
       <section className="relative isolate mx-[calc(50%-50vw)] -mt-4 w-[100vw] overflow-hidden border-b border-seam">
         <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority />
 
-        {/* The columns stretch, so the credit at the foot of the fan's column ends level with "No account necessary". */}
-        <div className="page-column grid gap-6 pt-4 pb-12 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-4 md:py-24 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
+        {/* The fan's column stretches, so its credit sits at the hero's foot; the headline centres against the fan. */}
+        <div className="page-column grid gap-6 pt-4 pb-8 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] md:gap-4 md:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
           {/* Cards come first on a phone: they say what this is faster than any sentence. */}
           <div className="order-first flex flex-col md:order-last">
             <div className="flex flex-1 items-center justify-center">
               <HeroFan />
             </div>
-            <ArtCredit vista={HERO_VISTA} className="hidden text-right text-xs leading-5 text-muted-foreground md:block" />
+            {/* Clear of the passed card, which hangs below the fan's box. */}
+            <ArtCredit vista={HERO_VISTA} className="hidden pt-10 text-right text-xs leading-5 text-muted-foreground md:block" />
           </div>
 
-          <div className="relative z-20 max-w-2xl">
+          <div className="relative z-20 max-w-2xl md:self-center">
             <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
-              Make any commander compete.
+              Build better decks.
               {/* The buddy's voice: the page's one italic headline phrase. */}
               <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
-                With the cards you already own.
+                Spend less on singles.
               </span>
             </h1>
-            <p className="mt-6 max-w-[34rem] text-lg text-foreground/80">
-              Not another site selling you decks and singles. Paste a list and we cut the junk, add what works and swap in
-              cards from your collection, even for a commander nobody else plays.
-            </p>
-
-            {/* Phones: two half-width buttons with shorter labels that may wrap; from sm up, the full labels in a row. */}
-            <div className="mt-8 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
-              <Link
-                href="/deck"
-                className={buttonVariants({
-                  size: "lg",
-                  className: cn(HERO_BUTTON, "lit"),
-                })}
-              >
-                <ClipboardPaste aria-hidden className="size-5 shrink-0" />
-                <span className="sm:hidden">Paste Decklist</span>
-                <span className="hidden sm:inline">Paste a decklist</span>
-              </Link>
-              <Link
-                href="/collection/import"
-                className={buttonVariants({
-                  variant: "outline",
-                  size: "lg",
-                  className: cn(HERO_BUTTON, "bg-background/40"),
-                })}
-              >
-                <Library aria-hidden className="size-5 shrink-0" />
-                <span className="sm:hidden">Import Collection</span>
-                <span className="hidden sm:inline">Import your collection</span>
-              </Link>
-            </div>
             {/* Phones: the credit shares this line; from md up it sits under the fan, level with it. */}
-            <div className="mt-3 flex items-end justify-between gap-3">
+            <div className="mt-4 flex items-end justify-between gap-3">
               <p className="shrink-0 text-sm leading-5 text-muted-foreground">No account necessary</p>
               <ArtCredit vista={HERO_VISTA} className="text-right text-xs leading-5 text-muted-foreground md:hidden" />
             </div>
