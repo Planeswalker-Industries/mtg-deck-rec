@@ -8,9 +8,9 @@ import { cn } from "cn";
 import { BUILD_DECK_HREF } from "@/lib/constants";
 
 /**
- * Where players start from, in their own words, and what to bring. Each cell turns over on hover (or keyboard focus)
- * to show the action, marked with the deck tool's Add symbol, and is a link to it. A commander opens the deck tool's
- * commander picker, which builds a deck for it.
+ * Where players start from, in their own words, and what to bring. Each cell is a link, filled blue on both faces like
+ * the site's primary button. It turns over on hover (or keyboard focus) to show the action, marked with the deck
+ * tool's Add symbol. A commander opens the deck tool's commander picker, which builds a deck for it.
  */
 const SITUATIONS: { said: string; action: string; href: Route }[] = [
   { said: "Found a great deck online!", action: "Decklist", href: "/deck" },
@@ -54,7 +54,7 @@ function SituationCell({ said, action, href, className }: (typeof SITUATIONS)[nu
             tapped && "rotate-y-180",
           )}
         >
-          <span aria-hidden className={cn(FACE, "font-drama text-lg text-balance text-foreground italic")}>
+          <span aria-hidden className={cn(FACE, "bg-primary font-drama text-lg text-balance text-primary-foreground italic")}>
             &ldquo;{said}&rdquo;
           </span>
           {/* The back is the action: the whole cell fills blue with dark text, like the site's primary button. */}
