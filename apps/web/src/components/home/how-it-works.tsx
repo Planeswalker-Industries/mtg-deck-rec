@@ -6,11 +6,14 @@ import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { StepsCarousel } from "./steps-carousel";
 
-const HOW_IT_WORKS_HEADING = "No more singles!";
+const HOW_IT_WORKS_HEADING = "Use your own cards!";
 
-/** Beside the steps: who it is for and the three ways in, the same three the "Sound familiar?" ribbon offers. */
+/** Under the heading, in the buddy's voice: a collection helps but is never required. */
+const HOW_IT_WORKS_SUBLINE = "Or don't.";
+
+/** Beside the steps: the three places players start from, a deck to improve, a new commander or a deck to trim. */
 const HOW_IT_WORKS_BLURB =
-  "If you're sick of overpriced decklists and just want to build your best deck with the cards you've got, it's as easy as pasting a decklist, choosing a commander, or uploading your collection.";
+  "Whether you want to improve your own decklist, build off of a new commander you just pulled, or find a way to trim that $2,000 decklist down to something manageable, we've got you covered!";
 
 /** Wide screens get the higher-quality file; the recordings share one pixel size, so it is the colours that differ. */
 const HI_RES_MEDIA = "(min-width: 1024px)";
@@ -31,17 +34,17 @@ interface StepMedia {
 const STEPS: { step: number; verb: string; rest: string; tone: string; media: StepMedia }[] = [
   {
     step: 1,
-    verb: "Cut",
-    rest: "the junk",
-    tone: "text-cut",
-    media: { src: "/cut_gif.gif", hiSrc: "/cut_gif_hi.gif", width: 566, height: 346 },
-  },
-  {
-    step: 2,
     verb: "Add",
     rest: "what works",
     tone: "text-add",
     media: { src: "/add.png", width: 427, height: 333 },
+  },
+  {
+    step: 2,
+    verb: "Cut",
+    rest: "the junk",
+    tone: "text-cut",
+    media: { src: "/cut_gif.gif", hiSrc: "/cut_gif_hi.gif", width: 566, height: 346 },
   },
   {
     step: 3,
@@ -110,12 +113,13 @@ export function HowItWorks() {
   return (
     <Band
       aria-labelledby="how-it-works"
-      inner="grid grid-cols-[minmax(0,1fr)] gap-6 py-12 md:py-16 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-12"
+      inner="grid grid-cols-[minmax(0,1fr)] gap-6 py-8 md:py-10 lg:grid-cols-[22rem_minmax(0,1fr)] lg:gap-12"
     >
       <div>
         <SectionHeading id="how-it-works" eyebrow="How it works">
           {HOW_IT_WORKS_HEADING}
         </SectionHeading>
+        <p className="mt-1 font-drama text-xl text-foreground/85 italic">{HOW_IT_WORKS_SUBLINE}</p>
         <p className="mt-4 max-w-prose text-base text-muted-foreground">{HOW_IT_WORKS_BLURB}</p>
       </div>
 

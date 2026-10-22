@@ -52,7 +52,7 @@ const FAN: FanCard[] = [
     wide: true,
   },
 ];
-const FAN_SIZES = "(min-width: 768px) 240px, 42vw";
+const FAN_SIZES = "(min-width: 768px) 172px, 42vw";
 /** The middle card: every other card's stacking and deal delay counts outward from it. */
 const FAN_MIDDLE = Math.floor(FAN.length / 2);
 /** The middle card lands first, then each pair outward this much later. */
@@ -81,7 +81,7 @@ const PASS_SCALE = 0.78;
 export function HeroFan() {
   return (
     <div aria-hidden className="w-full">
-      <div className="relative mx-auto h-[14rem] w-[9.5rem] sm:h-[16rem] sm:w-[9rem] md:h-[17rem] md:w-[12rem] lg:h-[21rem] lg:w-[15rem]">
+      <div className="relative mx-auto h-[14rem] w-[9.5rem] sm:h-[16rem] sm:w-[9rem] md:h-[12.5rem] md:w-[9rem] lg:h-[15rem] lg:w-[10.75rem]">
         {FAN.map((pocket, i) => (
           <div
             key={pocket.card.name}

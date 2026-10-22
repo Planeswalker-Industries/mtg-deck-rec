@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ClipboardCopy, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { deckFileName, downloadText } from "@/lib/deck-download";
 import { deckExportHref } from "@/lib/deck-export";
 
 /** How long "Copied" stays on the button before it reads "Copy decklist" again. */
@@ -74,13 +75,30 @@ export function CopyDecklistButton({
   );
 }
 
-/**
- * Copy the deck as text, or download it as a text file or a CSV.
- *
- * The copied text is the same decklist the text download holds, built on the server beside the page, so copying
- * needs no request. Downloads go to the export route, which checks visibility the same way the page does.
- */
-export function DeckExport({ text, commanderSlug, code }: { text: string; commanderSlug: string; code: string }) {
+const CSV_TYPE = "text/csv;charset=utf-8";
+
+/** Copy beside a Download menu of the text file and the CSV, each a link (`href`) or built in the browser (`onSelect`). */
+function ExportRow({
+  text,
+  txt,
+  csv,
+}: {
+  text: string;
+  txt: { href: string } | { onSelect: () => void };
+  csv: { href: string } | { onSelect: () => void };
+}) {
+  const item = (format: { href: string } | { onSelect: () => void }, label: string) =>
+    "href" in format ? (
+      <DropdownMenuItem asChild className="text-primary focus:text-primary">
+        <a href={format.href} download>
+          {label}
+        </a>
+      </DropdownMenuItem>
+    ) : (
+      <DropdownMenuItem className="text-primary focus:text-primary" onSelect={format.onSelect}>
+        {label}
+      </DropdownMenuItem>
+    );
   return (
     <div className="flex flex-wrap items-center gap-2">
       <CopyDecklistButton text={text} short />
@@ -93,18 +111,37 @@ export function DeckExport({ text, commanderSlug, code }: { text: string; comman
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
-          <DropdownMenuItem asChild className="text-primary focus:text-primary">
-            <a href={deckExportHref(commanderSlug, code, "txt")} download>
-              Text (.txt)
-            </a>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild className="text-primary focus:text-primary">
-            <a href={deckExportHref(commanderSlug, code, "csv")} download>
-              CSV (.csv)
-            </a>
-          </DropdownMenuItem>
+          {item(txt, "Text (.txt)")}
+          {item(csv, "CSV (.csv)")}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+/**
+ * Copy the deck as text, or download it as a text file or a CSV.
+ *
+ * The copied text is the same decklist the text download holds, built on the server beside the page, so copying
+ * needs no request. Downloads go to the export route, which checks visibility the same way the page does.
+ */
+export function DeckExport({ text, commanderSlug, code }: { text: string; commanderSlug: string; code: string }) {
+  return (
+    <ExportRow
+      text={text}
+      txt={{ href: deckExportHref(commanderSlug, code, "txt") }}
+      csv={{ href: deckExportHref(commanderSlug, code, "csv") }}
+    />
+  );
+}
+
+/** The same Copy and Download for a deck that isn't saved: it has no export route, so the files are built here. */
+export function UnsavedDeckExport({ text, csv, commanders }: { text: string; csv: string; commanders: string[] }) {
+  return (
+    <ExportRow
+      text={text}
+      txt={{ onSelect: () => downloadText(text, deckFileName(commanders)) }}
+      csv={{ onSelect: () => downloadText(csv, deckFileName(commanders, "csv"), CSV_TYPE) }}
+    />
   );
 }

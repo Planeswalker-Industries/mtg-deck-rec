@@ -259,7 +259,7 @@ test("builds a deck for a picked commander, then goes through it card by card", 
   // Without a collection the build draws on every card, and says how to build from owned cards instead.
   await expect(built.getByText(/picked from every card in print/)).toBeVisible();
   await expect(built.getByRole("link", { name: "Import your collection" })).toBeVisible();
-  await built.getByRole("button", { name: "Go through it card by card" }).click();
+  await built.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 90_000 });
 });
 

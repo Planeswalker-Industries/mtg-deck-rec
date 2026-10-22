@@ -495,17 +495,23 @@ function DeckToolSession() {
    * Takes a built deck into the tool: Upgrade goes through it card by card, the Deckbuilder edits it. It is a new deck,
    * so an open account deck is let go first rather than overwritten.
    */
-  async function openBuilt(text: string, next: ToolMode) {
-    if (deckBuild.state.status !== "ready") return;
+  async function openBuilt(text: string, next: ToolMode): Promise<boolean> {
+    if (deckBuild.state.status !== "ready") return false;
     editorHandle.current?.discard();
     if (tool.openDeck) tool.closeSavedDeck();
     const bracket = deckBuild.state.request.bracket;
     const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null }, { recs: next === "upgrade" });
-    if (!outcome.parsed) return;
+    if (!outcome.parsed) return false;
     deckBuild.reset();
     setEditing(false);
     setMode(next);
     checkLookup(outcome.analysis);
+    return true;
+  }
+
+  /** Save for Later: the built deck in the Deckbuilder with the name form open, as Upgrade's Save does. */
+  async function saveBuilt(text: string) {
+    if (await openBuilt(text, "edit")) setSaveAsked(true);
   }
 
   /**
@@ -599,7 +605,7 @@ function DeckToolSession() {
             if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
           }}
           onUpgrade={(text) => void openBuilt(text, "upgrade")}
-          onEdit={(text) => void openBuilt(text, "edit")}
+          onSave={(text) => void saveBuilt(text)}
           onPickAnother={() => {
             // Back from a fitted list goes to the list; back from a build goes to the commander picker.
             if (deckBuild.state.status !== "idle" && deckBuild.state.request.list) setEditing(true);
