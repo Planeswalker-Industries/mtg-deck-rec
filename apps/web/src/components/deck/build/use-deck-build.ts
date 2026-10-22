@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { Bracket, BuildResult, CardId, CardSummary, DeckCardEntry, OwnershipInput } from "@mtg/core/contract";
-import { decklistFor } from "@mtg/core/journey";
+import { decklistCsv, decklistText, type DeckExportEntry } from "@mtg/core/parse";
 import { getApis } from "@/lib/api/client";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 
@@ -42,13 +42,27 @@ export function buildCards(result: BuildResult): Map<CardId, CardSummary> {
   return cards;
 }
 
+/** A build's cards by name, as the decklist and CSV exports take them: commanders, every picked card once, basics by count. */
+function buildExportEntries(result: BuildResult): DeckExportEntry[] {
+  const cards = buildCards(result);
+  const entry = (cardId: CardId, quantity: number, commander: boolean): DeckExportEntry[] => {
+    const name = cards.get(cardId)?.name;
+    return name === undefined ? [] : [{ name, quantity, commander }];
+  };
+  return [
+    ...result.commanderKey.commanders.flatMap((c) => entry(c.id, 1, true)),
+    ...buildEntries(result).flatMap((c) => entry(c.cardId, c.quantity, false)),
+  ];
+}
+
 /** The decklist a build makes: its commanders, every picked card once, and the basic lands by count. */
 export function buildDecklist(result: BuildResult): string {
-  const cards = buildCards(result);
-  return decklistFor(
-    { commanders: result.commanderKey.commanders.map((c) => c.id), cards: buildEntries(result) },
-    (id) => cards.get(id)?.name ?? null,
-  );
+  return decklistText(buildExportEntries(result));
+}
+
+/** The same cards as a CSV, for the Download menu. */
+export function buildDecklistCsv(result: BuildResult): string {
+  return decklistCsv(buildExportEntries(result));
 }
 
 /**
