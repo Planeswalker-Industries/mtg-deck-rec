@@ -1,28 +1,86 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
+import { CircleCheck, CircleHelp, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff } from "@mtg/core/journey";
 import { PocketGrid } from "@/components/cards/pocket-grid";
-import { CopyDecklistButton } from "@/components/decks/deck-export";
+import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
-import { downloadText, deckFileName } from "@/lib/deck-download";
 import { cn } from "cn";
-import { TEXT_LINK } from "@/lib/constants";
+import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { ShuffleDeck } from "../shuffle-deck";
-import { buildCards, buildDecklist, buildEntries, type BuildRequest, type BuildState } from "./use-deck-build";
+import {
+  buildCards,
+  buildDecklist,
+  buildDecklistCsv,
+  buildEntries,
+  type BuildRequest,
+  type BuildState,
+} from "./use-deck-build";
+
+/** What the open slots panel says, inline from sm up and behind its (?) on phones. */
+const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue and we'll fill the missing pieces together.";
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** What the build managed, in a sentence: how many slots the collection filled, and what's still open. */
+/** What the build managed, in a sentence: how many slots the collection filled (the open ones get their own panel). */
 function summary(result: BuildResult, fromCollection: boolean): string {
-  const { slots, filled, open } = result.feasibility;
-  if (!fromCollection) return `All ${slots} cards picked from every card in print, basic lands included.`;
-  if (open === 0) return `All ${slots} cards come from your collection, basic lands included.`;
-  return `${filled} of ${slots} cards come from your collection, basic lands included. ${count(open, "slot")} ${open === 1 ? "is" : "are"} still open.`;
+  const { slots, filled } = result.feasibility;
+  if (!fromCollection) return `All ${slots} cards picked from every card in print.`;
+  return `${filled}/${slots} matched from collection.`;
+}
+
+/**
+ * The commanders' art behind the header, fading in from the right like a card plate's; partners share the strip.
+ * The left stays clear for the name.
+ */
+function CommanderArt({ commanders }: { commanders: CardSummary[] }) {
+  const arts = commanders.flatMap((c) => (c.images?.front.artCrop ? [c.images.front.artCrop] : []));
+  if (arts.length === 0) return null;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-y-0 right-0 flex w-full [mask-image:linear-gradient(to_right,transparent,black_60%)] sm:w-3/4"
+    >
+      {arts.map((src) => (
+        <span key={src} className="relative flex-1">
+          <Image src={src} alt="" fill unoptimized sizes="(min-width: 640px) 75vw, 100vw" className="object-cover object-[center_30%]" />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** The roles the build is still short of, by how many cards. Two equal columns on phones, a row from sm up. */
+function RoleShortfalls({ shortfalls }: { shortfalls: BuildResult["feasibility"]["roleShortfalls"] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="flex items-start gap-2">
+        <TriangleAlert aria-hidden className="mt-0.5 size-5 shrink-0 text-warning" />
+        Adjustments needed:
+      </p>
+      <ul aria-label="Roles the deck is short of" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:pl-7">
+        {shortfalls.map(({ role, short }) => (
+          <li
+            key={role.id}
+            className="flex min-w-0 items-center justify-between gap-2 rounded-full border border-warning/40 bg-warning/10 px-3 py-1 text-sm"
+          >
+            <span className="truncate">{role.label}</span>
+            <span className="shrink-0 font-mono text-warning">
+              −{short}
+              <span className="sr-only"> {short === 1 ? "card" : "cards"} short</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** What a fitted list lost and gained against the build; null when the build fitted no list. */
@@ -87,58 +145,67 @@ function FitChanges({ request, result }: { request: BuildRequest; result: BuildR
 }
 
 /**
- * A deck built for one commander: what the build picked, grouped like the deck tool's lists, the basic lands
- * to gather, and what it couldn't fill. From here the player goes through it card by card (Upgrade), edits it in the
- * Deckbuilder, or takes it away as text. Buying cards for the open slots is shelved: a placeholder says so.
- * A pasted list fitted to the collection also shows what went out of the list and what came in.
+ * A deck built for one commander: what the build picked, grouped like the deck tool's lists, the basic lands, and
+ * what it couldn't fill. From here the player continues card by card (Upgrade), saves it for later (the Deckbuilder
+ * with the name form open), or copies or downloads it. Buying cards for the open slots is shelved: a placeholder
+ * says so. A pasted list fitted to the collection also shows what went out of the list and what came in.
  */
 export function BuildView({
   state,
   collectionImportHref,
   onBracket,
   onUpgrade,
-  onEdit,
+  onSave,
   onPickAnother,
 }: {
   state: Exclude<BuildState, { status: "idle" }>;
   collectionImportHref: Route;
   onBracket: (bracket: Bracket) => void;
-  /** Takes the built decklist into the deck tool's Upgrade round, or into the Deckbuilder. */
+  /** Takes the built decklist into the deck tool's Upgrade round, or into the Deckbuilder to save it. */
   onUpgrade: (decklist: string) => void;
-  onEdit: (decklist: string) => void;
+  onSave: (decklist: string) => void;
   onPickAnother: () => void;
 }) {
   const { request } = state;
   const fitting = request.list !== undefined;
   const commanderName = request.commanders.map((c) => c.name).join(" and ");
+  // A build from the collection needs no line: the summary below says how much of it is the player's.
+  const tagline = fitting
+    ? "Here's that list, made from your cards."
+    : state.status === "ready" && !state.fromCollection
+      ? "Here's a deck to start from."
+      : null;
   const header = (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+    <header className="relative isolate overflow-hidden rounded-panel border border-seam bg-sleeve">
+      <CommanderArt commanders={request.commanders} />
+      <div className="relative flex min-h-32 flex-col justify-between gap-4 p-4 sm:min-h-40 sm:p-5">
+        <h1 className="max-w-xl font-heading text-2xl font-semibold tracking-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] sm:text-3xl">
           {commanderName}
-          <span className="mt-1 block font-drama text-xl font-normal tracking-normal italic text-foreground/85 sm:text-2xl">
-            {fitting ? "Here's that list, made from your cards." : state.status === "ready" && state.fromCollection ? "Here's what your cards make." : "Here's a deck to start from."}
-          </span>
+          {tagline && (
+            <span className="mt-1 block font-drama text-xl font-normal tracking-normal italic text-foreground/85 sm:text-2xl">
+              {tagline}
+            </span>
+          )}
         </h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={String(request.bracket)} onValueChange={(value) => onBracket(Number(value) as Bracket)} disabled={state.status === "loading"}>
+            <SelectTrigger aria-label="Bracket" size="sm" className="bg-sleeve">
+              <SelectValue>Bracket {request.bracket}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {BRACKETS.map((b) => (
+                <SelectItem key={b} value={String(b)}>
+                  {bracketLabel[b]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="button" size="sm" variant="outline" className="bg-background/70" onClick={onPickAnother}>
+            {fitting ? "Back to the list" : "Change commander"}
+          </Button>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Select value={String(request.bracket)} onValueChange={(value) => onBracket(Number(value) as Bracket)} disabled={state.status === "loading"}>
-          <SelectTrigger aria-label="Bracket" size="sm" className="bg-sleeve">
-            <SelectValue>Bracket {request.bracket}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {BRACKETS.map((b) => (
-              <SelectItem key={b} value={String(b)}>
-                {bracketLabel[b]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button type="button" size="sm" variant="ghost" onClick={onPickAnother}>
-          {fitting ? "Back to the list" : "Pick another commander"}
-        </Button>
-      </div>
-    </div>
+    </header>
   );
 
   if (state.status === "loading") {
@@ -166,34 +233,37 @@ export function BuildView({
   const { result, fromCollection } = state;
   const decklist = buildDecklist(result);
   const { open, roleShortfalls } = result.feasibility;
-  const fileName = deckFileName(result.commanderKey.commanders.map((c) => c.name));
+  const basicCount = result.basics.reduce((n, b) => n + b.quantity, 0);
   const fit = fitDiff(request, result);
 
   return (
     <section aria-label="Your built deck" className="flex flex-col gap-6">
-      {header}
+      {/* Taking the list away sits under the plate, apart from the two ways on. */}
+      <div className="flex flex-col gap-2">
+        {header}
+        <div className="flex justify-end">
+          <UnsavedDeckExport
+            text={decklist}
+            csv={buildDecklistCsv(result)}
+            commanders={result.commanderKey.commanders.map((c) => c.name)}
+          />
+        </div>
+      </div>
 
       <div className="flex flex-col gap-4 rounded-panel border border-seam bg-sleeve p-4 sm:p-5">
         {request.list && fit && <p>{fitSummary(copies(request.list.entries), copies(fit.removed), copies(fit.added))}</p>}
-        <p className={cn(request.list && "text-sm text-muted-foreground")}>{summary(result, fromCollection)}</p>
-        {roleShortfalls.length > 0 && (
-          <p className="text-sm text-muted-foreground">
-            Still short of {roleShortfalls.map((s) => `${s.role.label.toLowerCase()} (${s.short})`).join(", ")} against what this commander&apos;s decks run.
-          </p>
-        )}
-        <p className="text-sm text-muted-foreground">
-          Estimated bracket {result.estimatedBracket}. {result.landTarget} lands, basics included.
+        <p className={cn("flex items-start gap-2", request.list && "text-sm text-muted-foreground")}>
+          {fromCollection && <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />}
+          {summary(result, fromCollection)}
         </p>
-        <div className="flex flex-wrap gap-2">
+        {roleShortfalls.length > 0 && <RoleShortfalls shortfalls={roleShortfalls} />}
+        {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
+        <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
           <Button type="button" size="lg" className="lit" onClick={() => onUpgrade(decklist)}>
-            Go through it card by card
+            Continue
           </Button>
-          <Button type="button" size="lg" variant="outline" onClick={() => onEdit(decklist)}>
-            Edit in the deckbuilder
-          </Button>
-          <CopyDecklistButton text={decklist} size="lg" />
-          <Button type="button" size="lg" variant="outline" onClick={() => downloadText(decklist, fileName)}>
-            Download text
+          <Button type="button" size="lg" variant="outline" className="px-2" onClick={() => onSave(decklist)}>
+            Save for Later
           </Button>
         </div>
       </div>
@@ -209,14 +279,27 @@ export function BuildView({
       )}
       {fromCollection && open > 0 && (
         // The buy side is shelved. The slot it will fill stays visible, honestly empty.
-        <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4">
-          <h2 id="build-open-slots" className="font-semibold">
-            {count(open, "open slot")}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Your collection ran out of cards that fit. Fill them by hand in the deckbuilder, or with basic lands. Suggestions
-            for cards to pick up are coming later.
-          </p>
+        <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:py-2">
+          {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="build-open-slots" className="font-semibold">
+              {count(open, "open slot")}
+            </h2>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className={cn(PHONE_HIT_AREA, "sm:hidden")} aria-label="What open slots mean">
+                  <CircleHelp aria-hidden />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{count(open, "open slot")}</DialogTitle>
+                  <DialogDescription>{OPEN_SLOTS_HELP}</DialogDescription>
+                </DialogHeader>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>
         </aside>
       )}
 
@@ -233,15 +316,16 @@ export function BuildView({
       {result.basics.length > 0 && (
         <section aria-labelledby="build-basics" className="flex flex-col gap-2">
           <h2 id="build-basics" className="font-heading text-xl leading-none font-semibold">
-            Basic lands to gather
+            Basic Lands <span className="font-mono text-base font-normal text-muted-foreground">{basicCount}</span>
           </h2>
-          <ul className="flex flex-wrap gap-x-6 gap-y-1">
-            {result.basics.map((b) => (
-              <li key={b.card.id}>
-                <span className="font-mono">{b.quantity}</span> {b.card.name}
-              </li>
-            ))}
-          </ul>
+          <PocketGrid
+            zoomable
+            label="Basic Lands"
+            items={result.basics.map((b) => ({
+              card: b.card,
+              caption: <span className="font-mono text-muted-foreground">{count(b.quantity, "copy", "copies")}</span>,
+            }))}
+          />
         </section>
       )}
     </section>
