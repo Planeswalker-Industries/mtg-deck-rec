@@ -7,6 +7,7 @@
 #   SEARCH_API_CRON_TOKEN    the search API's cron token, which starts crawls
 #   SEARCH_API_ADMIN_TOKEN   the search API's write token, so finished syncs update the search index
 #   WEB_APP_URL, REVALIDATE_SECRET   so a corpus rebuild refreshes the web app's cached pages
+# and, only to change the defaults, WORKER_MEM_LIMIT and WORKER_HEAP_MB (see the comment on mem_limit below).
 #
 # The schedule (crawl hour, collation, rebuild and EDHREC intervals) is app_config.worker in the database, not a panel
 # setting. No domain: the worker serves nothing.
@@ -27,6 +28,11 @@ services:
       SEARCH_API_CRON_TOKEN: "${SEARCH_API_CRON_TOKEN:-}"
       WEB_APP_URL: "${WEB_APP_URL:-}"
       REVALIDATE_SECRET: "${REVALIDATE_SECRET:-}"
+      # The weekly global pair count needed about 1.3 GB of heap over 212,606 decks (2026-10-23), beside a 1 GB
+      # typed-array count outside the heap. The heap cap sits under the container's, so running out logs Node's
+      # "heap out of memory" instead of a silent kill.
+      NODE_OPTIONS: "--max-old-space-size=${WORKER_HEAP_MB:-1792}"
+    mem_limit: ${WORKER_MEM_LIMIT:-3g}
     networks:
       - dokploy-network
     logging:
