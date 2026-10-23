@@ -35,6 +35,11 @@ services:
       # Refreshes the web app's cached pages after a rebuild; without them caches expire on their own schedule.
       WEB_APP_URL: "${WEB_APP_URL:-}"
       REVALIDATE_SECRET: "${REVALIDATE_SECRET:-}"
+      # The weekly global pair count needed about 1.3 GB of heap over 212,606 decks (2026-10-23), beside a 1 GB
+      # typed-array count outside the heap. The heap cap sits under the container's, so running out logs Node's
+      # "heap out of memory" instead of a silent kill.
+      NODE_OPTIONS: "--max-old-space-size=${WORKER_HEAP_MB:-1792}"
+    mem_limit: ${WORKER_MEM_LIMIT:-3g}
     networks:
       - mtg-search
     logging:

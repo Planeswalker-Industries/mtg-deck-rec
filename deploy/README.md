@@ -252,3 +252,49 @@ docker compose run --rm worker collate     # any other worker command, one off, 
 `DATABASE_URL` must be Supabase's **session** pooler: the jobs stage rows in temp tables, which the transaction
 pooler drops between statements. The deck tool shows the collector online while the worker's heartbeat
 (`worker_status`) is under 30 s old.
+
+### Memory
+
+The container is capped at `WORKER_MEM_LIMIT` (3g) and Node's heap at `WORKER_HEAP_MB` (1792). The largest duty is
+the weekly global pair count: over 212,606 decks (2026-10-23) it needed about 1.3 GB of heap, and its count of every
+card pair is a further typed array outside the heap (22,583 cards in 50 or more decks: about 1 GB). That array grows
+with the square of the card count, so the need grows as the corpus does. If the logs show `heap out of memory`, raise
+both variables together and keep the container limit at least 1.2 GB above the heap.
+
+### Deploy checklist (Dokploy)
+
+1. **The search API runs with its crawl secrets.** On the VPS, `curl 127.0.0.1:8090/v1/health` answers
+   `{"ok":true}`, and the search-api app has `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SEARCH_API_CRON_TOKEN`.
+2. **There is room.** `free -h` and `docker stats --no-stream` on the VPS: the worker may take up to 3 GB, beside
+   Typesense's 1 GB.
+3. **Create a Compose app** for the repo, branch `main`, compose path `deploy/dokploy/worker.yml`. Add no domain.
+4. **Set its environment:**
+
+   | Variable | Value |
+   |---|---|
+   | `DATABASE_URL` | Supabase → Connect → **Session pooler** (port 5432), the same string as the GitHub secret the daily sync uses |
+   | `SEARCH_API_CRON_TOKEN` | the same value as on the search-api app |
+   | `SEARCH_API_ADMIN_TOKEN` | the same value as on the search-api app |
+   | `WEB_APP_URL` | `https://mtg-app-psi.vercel.app` |
+   | `REVALIDATE_SECRET` | the web app's `REVALIDATE_SECRET` in Vercel (Production) |
+
+   `SEARCH_API_URL` is fixed in the compose file (`http://search-api:8080`). Leave `WORKER_MEM_LIMIT` and
+   `WORKER_HEAP_MB` unset unless the defaults above need changing.
+5. **Deploy, and read the logs.** The first line is `worker: serving`. The first pass then does several things:
+   - serves the queued deck lookups;
+   - collates and rebuilds the commanders whose decks changed;
+   - counts the global pairs (last run 2026-10-07);
+   - starts the first EDHREC fetch, which runs in the background for hours;
+   - rebuilds substitute lists two minutes at a time between lookups.
+6. **Check it on hosted** (Claude can, with the read-only role):
+   - `select heartbeat_at from public.worker_status` is under 30 s old;
+   - `public.commander_requests` leave `queued`;
+   - `public.sync_runs` shows `precompute_global_pairs` succeeded and `edhrec_pages` running, then succeeded;
+   - after the daily sync loads `spellbook.*` (10:23 UTC), the next collation fills the combo pieces.
+7. **Watch memory during the global pair count:** `docker stats mtg-worker --no-stream`. See *Memory* above if it
+   runs out.
+
+Dokploy redeploys the worker on every merge to `main`. A stop lets the duty in hand finish within 60 s. The schedule
+is read from the database, so a restarted worker neither repeats nor skips work, and an interrupted EDHREC fetch is
+retried after `retryHours`. Once the worker has started the daily crawls for two days, the Vercel cron
+(`apps/web/vercel.json`, `/api/cron/*-scrape`) goes.
