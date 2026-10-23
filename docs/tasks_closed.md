@@ -6,6 +6,7 @@ One sentence each, so the gaps in the numbering have a reason. Ticket ids are ne
 
 - **2026-09-22 (contract v11–v16):** deck journey (#84), deck originals (#85), owned first (#86), deckbuilder (#87), collection editing (#92) and every search on the index (#96).
 - **2026-10-19 (released in #156):** a collection file picked before hydration is taken (#153), and Cut reaches 100 with a land step and a Low Land Count warning (#155).
+- **2026-10-23 (released in #164, contract v29):** a clearer build view for collection decks (#160), refreshed homepage copy (#161) and shareable collections behind the "Public" toggle (#163).
 
 ## Tickets
 
