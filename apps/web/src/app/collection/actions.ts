@@ -1,12 +1,19 @@
 "use server";
 
 import { headers } from "next/headers";
-import type { ActionsApi, ApiError, CardId, CollectionEntry, CollectionTotals, Result } from "@mtg/core/contract";
+import type { ActionsApi, ApiError, CardId, CollectionEntry, CollectionSharing, CollectionTotals, Result } from "@mtg/core/contract";
 import { collectionLink, type CollectionLinkSource } from "@mtg/core/parse";
-import { parseInput, saveCollectionBatchInputSchema, setCollectionCardQuantityInputSchema } from "@mtg/core/schemas";
+import {
+  parseInput,
+  saveCollectionBatchInputSchema,
+  setCollectionCardQuantityInputSchema,
+  setCollectionSharingInputSchema,
+  sharedCollectionInputSchema,
+} from "@mtg/core/schemas";
 import { z } from "zod";
 import {
   accountCollectionEntries,
+  accountCollectionSharing,
   accountCollectionTotals,
   CollectionRefused,
   commitImport,
@@ -15,6 +22,8 @@ import {
   requireUserId,
   saveRows,
   setAccountCardQuantity,
+  setAccountCollectionSharing,
+  sharedCollection,
   startImport,
 } from "@/lib/server/account-collection";
 import { createAuthClient } from "@/lib/server/auth";
@@ -128,6 +137,53 @@ export async function deleteCollectionAction(): Promise<Result<null>> {
     return { ok: true, data: null };
   } catch (err) {
     return failed(err, "Couldn't clear your collection. Try again in a moment.");
+  }
+}
+
+/** The signed-in user's sharing state, for the share control on their collection. */
+export async function getMyCollectionSharingAction(): Promise<Result<CollectionSharing | null>> {
+  try {
+    const blocked = await limited();
+    if (blocked) return blocked;
+    const db = await createAuthClient();
+    await requireUserId(db);
+    return { ok: true, data: await accountCollectionSharing(db) };
+  } catch (err) {
+    return failed(err, "Couldn't check whether your collection is shared. Try again in a moment.");
+  }
+}
+
+/** Turns the link to the signed-in user's collection on or off. */
+export async function setCollectionSharingAction(
+  input: Parameters<ActionsApi["setCollectionSharing"]>[0],
+): ReturnType<ActionsApi["setCollectionSharing"]> {
+  try {
+    const parsed = parseInput(setCollectionSharingInputSchema, input);
+    if (!parsed.ok) return parsed;
+    const blocked = await limited();
+    if (blocked) return blocked;
+    const db = await createAuthClient();
+    await requireUserId(db);
+    return { ok: true, data: await setAccountCollectionSharing(db, parsed.data.shared) };
+  } catch (err) {
+    return failed(err, "Couldn't change sharing. Try again in a moment.");
+  }
+}
+
+/** Someone's shared collection, for anyone with its link. Its own rate limit: a collection can be very large. */
+export async function getSharedCollectionAction(
+  input: Parameters<ActionsApi["getSharedCollection"]>[0],
+): ReturnType<ActionsApi["getSharedCollection"]> {
+  try {
+    const parsed = parseInput(sharedCollectionInputSchema, input);
+    if (!parsed.ok) return parsed;
+    const db = createPublicClient();
+    const error = await checkRateLimit(db, "shared_collection", visitorKey(await headers()));
+    if (error) return { ok: false, error };
+    const shared = await sharedCollection(db, parsed.data.code);
+    return shared ? { ok: true, data: shared } : failure("NOT_FOUND", "This collection isn't shared.");
+  } catch (err) {
+    return failed(err, "Couldn't load this collection. Try again in a moment.");
   }
 }
 

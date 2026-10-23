@@ -382,6 +382,17 @@ export const setCollectionCardQuantityInputSchema = z.object(
   request,
 );
 
+export const setCollectionSharingInputSchema = z.object(
+  { shared: z.boolean({ error: 'Choose whether to share your collection.' }) },
+  request,
+);
+
+/** Collection codes are generated like deck codes, so anything else is a bad request rather than a missing collection. */
+export const sharedCollectionInputSchema = z.object(
+  { code: z.string({ error: 'That link is not valid.' }).regex(/^[A-Za-z0-9]{8,32}$/, 'That link is not valid.') },
+  request,
+);
+
 /** Deck codes are generated, so anything that isn't one of ours is a bad request rather than a missing deck. */
 export const openSavedDeckInputSchema = z.object(
   { code: z.string({ error: 'That deck is not valid.' }).regex(/^[A-Za-z0-9]{8,32}$/, 'That deck is not valid.') },

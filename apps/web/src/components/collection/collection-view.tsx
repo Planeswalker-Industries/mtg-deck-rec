@@ -31,8 +31,9 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import { displayName } from "@/lib/cards";
 import { PHONE_HIT_AREA } from "@/lib/constants";
 import { AddToCollection, EditableCards } from "./collection-edit";
+import { CollectionSharingControl } from "./collection-sharing";
 import { useCollectionEditor } from "./use-collection-editor";
-import { useCollectionView, type CollectionViewItem } from "./use-collection-view";
+import { useCollectionView, useSharedCollectionView, type CollectionViewItem } from "./use-collection-view";
 import { ErrorText } from "@/components/ui/error-text";
 
 /** The five colour wedges of the multicolour toggle, in WUBRG order, as Scryfall's own pips colour them. */
@@ -132,14 +133,125 @@ function EmptyView({ signedIn }: { signedIn: boolean }) {
   );
 }
 
-function Heading() {
-  return <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">My collection</h1>;
+function Heading({ children = "My collection" }: { children?: ReactNode }) {
+  return <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">{children}</h1>;
+}
+
+/** Someone's shared collection, read-only: the same filters and grid as the owner's, without editing or importing. */
+export function SharedCollectionView({ code }: { code: string }) {
+  const view = useSharedCollectionView(code);
+  const heading = view.status === "ready" && view.displayName ? `${view.displayName}'s collection` : "Shared collection";
+
+  return (
+    <div className="flex flex-col gap-5">
+      {view.status === "loading" && (
+        <>
+          <Heading>{heading}</Heading>
+          <div className="flex max-w-md flex-col gap-1.5" aria-live="polite">
+            <p className="text-sm tabular-nums">
+              {view.total === 0 ? "Loading the collection…" : `Loading the collection: ${count(view.loaded)} of ${count(view.total)} cards`}
+            </p>
+            <ProgressBar value={view.total === 0 ? 0 : Math.round((view.loaded / view.total) * 100)} label="Loading the collection" />
+          </div>
+        </>
+      )}
+      {view.status === "error" && (
+        <>
+          <Heading>{heading}</Heading>
+          <ErrorText>{view.message}</ErrorText>
+        </>
+      )}
+      {view.status === "ready" && (
+        <CollectionBrowser
+          items={view.items}
+          sets={view.sets}
+          owner={false}
+          header={
+            <div>
+              <Heading>{heading}</Heading>
+              <p className="mt-2 text-muted-foreground tabular-nums">
+                {count(view.items.length)} different cards, {count(view.items.reduce((n, i) => n + i.quantity, 0))} copies.
+              </p>
+            </div>
+          }
+        />
+      )}
+    </div>
+  );
 }
 
 function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]; sets: CardSet[]; where: "browser" | "account" }) {
   const editor = useCollectionEditor(loaded, where);
   const items = editor.items;
   const [editing, setEditing] = useState(false);
+  const copies = items.reduce((n, i) => n + i.quantity, 0);
+
+  return (
+    <CollectionBrowser
+      items={items}
+      sets={sets}
+      owner
+      header={
+        <>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <Heading />
+              <p className="mt-2 text-muted-foreground tabular-nums">
+                {count(items.length)} different cards, {count(copies)} copies.{" "}
+                {where === "account" ? "Saved to your account." : "Saved in this browser."}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant={editing ? "default" : "outline"} aria-pressed={editing} onClick={() => setEditing(!editing)}>
+                {editing ? "Done editing" : "Edit collection"}
+              </Button>
+              <Link href="/collection/import" className={buttonVariants({ variant: "outline" })}>
+                Import
+              </Link>
+              <Link href="/deck" className={buttonVariants()}>
+                Use in the deck tool
+              </Link>
+            </div>
+          </div>
+          <CollectionSharingControl where={where} />
+
+          {editing && (
+            <>
+              {editor.error ? (
+                <ErrorText>{editor.error}</ErrorText>
+              ) : (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {editor.saving ? "Saving…" : "Changes save as you make them."}
+                </p>
+              )}
+              <AddToCollection editor={editor} />
+            </>
+          )}
+        </>
+      }
+      editableCards={editing ? (label, groupItems) => <EditableCards label={label} items={groupItems} editor={editor} /> : undefined}
+    />
+  );
+}
+
+/**
+ * A collection's filters and card groups. `owner` words it as the visitor's own; `editableCards`, while editing,
+ * replaces each group's grid.
+ */
+function CollectionBrowser({
+  items,
+  sets,
+  owner,
+  header,
+  editableCards,
+}: {
+  items: CollectionViewItem[];
+  sets: CardSet[];
+  owner: boolean;
+  header: ReactNode;
+  editableCards?: ((label: string, items: CollectionViewItem[]) => ReactNode) | undefined;
+}) {
+  const whose = owner ? "your" : "this";
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [colors, setColors] = useState<ColorFilter>({ colors: new Set(), colorless: false, multicolor: false });
@@ -169,7 +281,6 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
   }, [items, colors, setValue, majorCodes, deferredQuery]);
 
   const shown = groups.reduce((n, g) => n + g.items.length, 0);
-  const copies = items.reduce((n, i) => n + i.quantity, 0);
   const filtering = query.trim() !== "" || colors.colors.size > 0 || colors.colorless || colors.multicolor || setValue !== ALL_SETS;
 
   function clearFilters() {
@@ -189,43 +300,11 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
 
   return (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">My collection</h1>
-          <p className="mt-2 text-muted-foreground tabular-nums">
-            {count(items.length)} different cards, {count(copies)} copies.{" "}
-            {where === "account" ? "Saved to your account." : "Saved in this browser."}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant={editing ? "default" : "outline"} aria-pressed={editing} onClick={() => setEditing(!editing)}>
-            {editing ? "Done editing" : "Edit collection"}
-          </Button>
-          <Link href="/collection/import" className={buttonVariants({ variant: "outline" })}>
-            Import
-          </Link>
-          <Link href="/deck" className={buttonVariants()}>
-            Use in the deck tool
-          </Link>
-        </div>
-      </div>
-
-      {editing && (
-        <>
-          {editor.error ? (
-            <ErrorText>{editor.error}</ErrorText>
-          ) : (
-            <p role="status" className="text-sm text-muted-foreground">
-              {editor.saving ? "Saving…" : "Changes save as you make them."}
-            </p>
-          )}
-          <AddToCollection editor={editor} />
-        </>
-      )}
+      {header}
 
       <div
         role="search"
-        aria-label="Filter your collection"
+        aria-label={`Filter ${whose} collection`}
         // Pinned while scrolling from sm up. On a phone the panel is a third of the screen, so it scrolls away with the page.
         className="z-20 -mx-4 flex flex-col gap-3 border-y border-seam bg-sleeve/95 px-4 py-3 backdrop-blur-sm sm:sticky sm:top-0 sm:mx-0 sm:rounded-lg sm:border"
       >
@@ -236,7 +315,7 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name or what it does"
-            aria-label="Search your collection by card name or what it does"
+            aria-label={`Search ${whose} collection by card name or what it does`}
             className="pl-9"
           />
         </div>
@@ -291,7 +370,7 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
 
       {groups.length === 0 ? (
         <div className="flex flex-col items-start gap-2 py-6">
-          <p>No cards in your collection match those filters.</p>
+          <p>No cards in {whose} collection match those filters.</p>
           <Button type="button" variant="outline" onClick={clearFilters}>
             Clear filters
           </Button>
@@ -324,8 +403,8 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
               </h2>
               {open && (
                 <div id={id}>
-                  {editing ? (
-                    <EditableCards label={COLLECTION_GROUP_LABELS[group]} items={groupItems} editor={editor} />
+                  {editableCards ? (
+                    editableCards(COLLECTION_GROUP_LABELS[group], groupItems)
                   ) : (
                     <PocketGrid
                       zoomable

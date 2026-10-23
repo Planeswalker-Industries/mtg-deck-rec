@@ -6,9 +6,11 @@ import type {
   DeckCoverageResult,
   CollectionEntry,
   CollectionRowInput,
+  CollectionSharing,
   CollectionTotals,
   ResolveCollectionResult,
   ResolvedCollectionRow,
+  SharedCollection,
   SourceApp,
 } from './collection';
 import type {
@@ -107,6 +109,12 @@ export interface ActionsApi {
    * the last to go. Returns the new total.
    */
   setCollectionCardQuantity(input: { cardId: CardId; quantity: number }): Promise<Result<{ cardId: CardId; quantity: number }>>;
+  /** Authenticated. The signed-in user's sharing state; null until they first share. */
+  getMyCollectionSharing(): Promise<Result<CollectionSharing | null>>;
+  /** Authenticated. Turns the link to the signed-in user's collection on or off. The code never changes. */
+  setCollectionSharing(input: { shared: boolean }): Promise<Result<CollectionSharing>>;
+  /** Public. A shared collection by its code; NOT_FOUND when the code is unknown or its collection isn't shared. */
+  getSharedCollection(input: { code: string }): Promise<Result<SharedCollection>>;
 
   /** Returns the deck's code as well as its id, so a deck just saved can be linked to and gone on editing. */
   saveDeck(input: {

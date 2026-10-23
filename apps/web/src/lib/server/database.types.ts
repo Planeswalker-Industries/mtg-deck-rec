@@ -590,6 +590,27 @@ export type Database = {
           },
         ]
       }
+      collection_shares: {
+        Row: {
+          code: string
+          is_shared: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code?: string
+          is_shared?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code?: string
+          is_shared?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       commander_card_pairs: {
         Row: {
           card_a: number
@@ -2026,6 +2047,7 @@ export type Database = {
         Args: { p_max: number; p_name: string }
         Returns: string
       }
+      collection_share_status: { Args: { p_code: string }; Returns: string }
       commander_collector_online: { Args: never; Returns: boolean }
       commander_request_config: { Args: never; Returns: Json }
       commander_request_json: {
@@ -2131,6 +2153,7 @@ export type Database = {
       is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
       my_card_availability: { Args: { p_deck_id?: string }; Returns: Json }
       my_collection_entries: { Args: never; Returns: Json }
+      my_collection_sharing: { Args: never; Returns: Json }
       my_collection_totals: { Args: never; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
       new_deck_code: { Args: never; Returns: string }
@@ -2370,6 +2393,7 @@ export type Database = {
         Args: { p_card_id: number; p_quantity: number }
         Returns: number
       }
+      set_collection_sharing: { Args: { p_shared: boolean }; Returns: Json }
       set_deck_built: {
         Args: { p_deck_id: string; p_is_built: boolean }
         Returns: undefined
@@ -2378,6 +2402,7 @@ export type Database = {
         Args: { p_deck_id: string; p_is_public: boolean }
         Returns: undefined
       }
+      shared_collection: { Args: { p_code: string }; Returns: Json }
       sitemap_slugs: { Args: never; Returns: Json }
       start_collection_import: {
         Args: { p_mode: string; p_source_app: string }

@@ -2,8 +2,11 @@ import type { ActionsApi, ApiError, CardSummary, CatalogApi, RecsApi, Result } f
 import {
   deleteCollectionAction,
   getMyCollectionEntriesAction,
+  getMyCollectionSharingAction,
+  getSharedCollectionAction,
   saveCollectionBatchAction,
   setCollectionCardQuantityAction,
+  setCollectionSharingAction,
 } from "@/app/collection/actions";
 import { dealRaterCardsAction } from "@/app/rate/actions";
 import {
@@ -72,6 +75,9 @@ export const realActions: ActionsApi = {
   deleteCollection: () => deleteCollectionAction(),
   getMyCollectionEntries: () => getMyCollectionEntriesAction(),
   setCollectionCardQuantity: (input) => setCollectionCardQuantityAction(input),
+  getMyCollectionSharing: () => getMyCollectionSharingAction(),
+  setCollectionSharing: (input) => setCollectionSharingAction(input),
+  getSharedCollection: (input) => getSharedCollectionAction(input),
   saveDeck: (input) => saveDeckAction(input),
   openSavedDeck: (input) => openSavedDeckAction(input),
   renameDeck: (input) => renameDeckAction(input),

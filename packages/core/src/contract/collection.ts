@@ -64,6 +64,20 @@ export interface CollectionEntry {
   setCodes: string[];
 }
 
+/** Whether the signed-in user's collection can be opened by anyone with its link, at /collection/<code>. */
+export interface CollectionSharing {
+  /** Random, and the same link every time sharing is turned back on. */
+  code: string;
+  shared: boolean;
+}
+
+/** Someone's shared collection, as a visitor with the link sees it. */
+export interface SharedCollection {
+  /** The owner's display name; null when they haven't set one. */
+  displayName: string | null;
+  entries: CollectionEntry[];
+}
+
 /** A Magic set, for the collection view's set filter. */
 export interface CardSet {
   /** Upper case, as printings store it. */
