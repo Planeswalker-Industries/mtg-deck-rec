@@ -1,6 +1,6 @@
 import type { FavoriteKind, TagAdminRow } from '../account';
 import type { CardDetail, CardRules, CardSummary, TagRef } from '../cards';
-import type { ResolvedCollectionRow, UnresolvedCollectionRow } from '../collection';
+import type { CollectionEntry, CollectionSharing, ResolvedCollectionRow, UnresolvedCollectionRow } from '../collection';
 import type {
   CommanderKeyRef,
   DeckAnalysis,
@@ -328,6 +328,19 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
   const votes = new Map<string, -1 | 1>();
   const disabledTags = new Map<string, { reason: string; at: string }>();
   let collectionRows: ResolvedCollectionRow[] = [];
+  let collectionSharing: CollectionSharing | null = null;
+
+  /** The mock collection folded to one entry per card, like `my_collection_entries`. */
+  function collectionEntries(): CollectionEntry[] {
+    const byCard = new Map<number, { quantity: number; setCodes: Set<string> }>();
+    for (const row of collectionRows) {
+      const entry = byCard.get(row.cardId) ?? { quantity: 0, setCodes: new Set<string>() };
+      entry.quantity += row.quantity;
+      if (row.setCode) entry.setCodes.add(row.setCode);
+      byCard.set(row.cardId, entry);
+    }
+    return [...byCard].map(([cardId, e]) => ({ cardId: cardId as CardId, quantity: e.quantity, setCodes: [...e.setCodes] }));
+  }
   let nextDeckId = 1;
 
   const voteSummary = (targetId: number, replacementId: number): VoteSummary => {
@@ -683,16 +696,21 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     },
 
     async getMyCollectionEntries() {
-      const byCard = new Map<number, { quantity: number; setCodes: Set<string> }>();
-      for (const row of collectionRows) {
-        const entry = byCard.get(row.cardId) ?? { quantity: 0, setCodes: new Set<string>() };
-        entry.quantity += row.quantity;
-        if (row.setCode) entry.setCodes.add(row.setCode);
-        byCard.set(row.cardId, entry);
-      }
-      return delay(
-        ok([...byCard].map(([cardId, e]) => ({ cardId: cardId as CardId, quantity: e.quantity, setCodes: [...e.setCodes] }))),
-      );
+      return delay(ok(collectionEntries()));
+    },
+
+    async getMyCollectionSharing() {
+      return delay(ok(collectionSharing));
+    },
+
+    async setCollectionSharing({ shared }) {
+      collectionSharing = { code: collectionSharing?.code ?? 'mockShare01', shared };
+      return delay(ok(collectionSharing));
+    },
+
+    async getSharedCollection({ code }) {
+      if (!collectionSharing?.shared || collectionSharing.code !== code) return delay(fail('NOT_FOUND', 'Collection not found.'));
+      return delay(ok({ displayName: null, entries: collectionEntries() }));
     },
 
     async setCollectionCardQuantity({ cardId, quantity }) {
