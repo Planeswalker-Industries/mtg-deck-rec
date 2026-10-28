@@ -105,6 +105,8 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
   const room = journey.roomToAdd;
   const cutsOwed = journey.cutsNeeded;
   const size = COMMANDER_DECK_SIZE - open + cutsOwed;
+  // The bottom prompt on to Cut shows once the deck is full (100 or more).
+  const full = size >= COMMANDER_DECK_SIZE;
   // This round's additions plus the holes a short deck came in with.
   const slots = open + adds.length;
   const short = roles.filter((r) => !r.ok && r.value < r.target);
@@ -180,9 +182,11 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
         onAccept={() => accept(next.card)}
         onPass={() => pass(next.card)}
         footer={
-          <Button type="button" size="sm" variant="link" onClick={toCut}>
-            Done adding: {nextLabel.replace("Next: ", "")}
-          </Button>
+          full && (
+            <Button type="button" size="sm" variant="link" onClick={toCut}>
+              Done adding: {nextLabel.replace("Next: ", "")}
+            </Button>
+          )
         }
       />
     );
@@ -196,7 +200,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}
       {asOf && room > 0 && <p className="text-xs text-muted-foreground">Prices are Scryfall estimates from {formatAsOf(asOf)}.</p>}
-      {view === "list" && (
+      {view === "list" && full && (
         <NextBar label={nextLabel} onNext={toCut}>
           {adds.length} added
         </NextBar>

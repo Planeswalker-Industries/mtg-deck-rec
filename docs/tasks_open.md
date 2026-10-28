@@ -51,7 +51,7 @@ Add Creatures, Instants, Sorceries, Artifacts, Enchantments and Planeswalkers to
 
 **HIGH** · Frontend / Scoring · Owner, 2026-10-23
 
-A build from a commander, most often from a collection, can stop short of 99 cards; Add can then run out ("no cards left to recommend") with the deck still short, and the player can move on to Cut while under 100, where there is nothing to cut. A start (Add hides "Done adding" and the next bar until the deck is over 100, with the e2e step updated) sits uncommitted on the owner's machine.
+A build from a commander, most often from a collection, can stop short of 99 cards; Add can then run out ("no cards left to recommend") with the deck still short, and the player can move on to Cut while under 100, where there is nothing to cut. A start is in: Add hides "Done adding" and the next bar until the deck reaches 100, and the e2e step goes on through the stepper.
 
 - [ ] Find why the build stops short (pool size, `serving_limits` clamps, colour or role caps) and fill to 99 where the pool allows
 - [ ] When Add runs out under 100: first offer unowned singles to finish the deck; if the player declines, widen the owned pool; if still short, a warning in as few words as possible (icon and label) offering high-impact singles or basic lands for the holes
