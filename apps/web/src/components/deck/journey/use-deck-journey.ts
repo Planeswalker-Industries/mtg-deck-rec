@@ -726,7 +726,9 @@ export function useDeckJourney({
   /** Opens Add's Combos part, from Add or from a later step (Deck stats' link). */
   function openCombos() {
     if (!state || !current) return;
-    if (state.phase !== "add") goTo("add");
+    // From Cut, Add takes the pending cuts with it, as Deck stats' Find links do.
+    if (state.phase === "cut") goTo("add", ...pendingCuts);
+    else if (state.phase !== "add") goTo("add");
     setCombosRound(current.id);
   }
 
