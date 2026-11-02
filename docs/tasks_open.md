@@ -8,17 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T066: Deploy the VPS worker
-
-**HIGH** · Worker / Ops · Released 2026-10-07, not deployed (hosted's `worker_status` heartbeat last moved 2026-09-16) · Absorbs T009
-
-The container (`deploy/worker/`, `deploy/dokploy/worker.yml`, `cli serve`) runs on the `app_config.worker` schedule: deck lookups (a requested commander goes first in the crawl's queue, and the worker starts a crawl run when none is going), each source's daily crawl, `collate` (decks, Spellbook and EDHREC) with the precompute passes, the nightly baseline and a weekly `sync:edhrec`. Verified locally 2026-10-05. Without it the deck tool's commander lookup promises a wait that never ends (2 hosted `commander_requests` queued since 2026-09-19 and 2026-09-28), and every hosted refresh is a hand run.
-
-- [ ] Claude writes the deploy checklist; the owner deploys on Dokploy with `DATABASE_URL` (session pooler), the search API tokens, `WEB_APP_URL` and `REVALIDATE_SECRET`, a container memory limit (about 2 GB; the VPS has 8 GB or more) and a Node heap flag before the first weekly global pair count
-- [ ] Hosted `commander_requests` are consumed and the deck tool sees the heartbeat
-- [ ] The worker's passes fill what hand runs would: Spellbook combos (`SPELLBOOK_SYNC_ENABLED` set 2026-10-23, so the daily sync loads `spellbook.*`), a first `sync:edhrec` (raw `edhrec.*` is empty), and every substitutes list recomputed once (its hash changed; the stored lists are already right)
-- [ ] After two days of worker-triggered crawls, remove the Vercel cron (`apps/web/vercel.json`, `/api/cron/*-scrape`)
-
 ## T074: Archidekt answers the daily crawl with 429s
 
 **HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`
@@ -35,7 +24,7 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 
 Add Creatures, Instants, Sorceries, Artifacts, Enchantments and Planeswalkers to Deck stats (`ok/total` 8 → 14): one `type_profile` jsonb column on `commander_stats`, written by the per-commander pass beside `curve_profile` (`apps/worker/src/lib/key-stats.ts`), with typical types from `typical_deck_profile()`. No new table or job.
 
-- [ ] Migration: the column, and `typical_deck_profile()` returning types; written diff-only and filled on hosted by a full pass (the worker's, once T066 is up)
+- [ ] Migration: the column, and `typical_deck_profile()` returning types; written diff-only and filled on hosted by a full pass (a hand run while T066 is shelved)
 - [ ] Type targets on `StatTargets` (`stat-targets.ts`, contract bump) and counts in `deck-tally.ts`: front face only, an artifact creature counted as a creature as Add groups it
 - [ ] A Types group between Curve and Bracket in `deck-stats-panel.tsx`
 - [ ] A SQL check in `serving.sql`, tally tests extended, screens re-checked at 390×844
@@ -64,7 +53,7 @@ A build from a commander, most often from a collection, can stop short of 99 car
 
 - [ ] Collection mode (T059): release the built control and whole-deck coverage; per-suggestion ownership labels; builder and saved-page coverage
 - [ ] Swap with nothing owned: show `SwapResult.emptyReason` (`NOTHING_OWNED_FITS`, `NO_TAGS_ON_TARGET`, `NO_CANDIDATES`) in place of "No replacements do the same job"
-- [ ] Combos and bracket (T060), in Deck stats, once hosted has combos (T066): the "complete a combo" group, `completesOverBracket`, `DeckAnalysis.combos`, `bracketSignals`; credit and link Commander Spellbook wherever combos show
+- [ ] Combos and bracket (T060), in Deck stats, once hosted has combos (Spellbook loads raw daily since 2026-10-23; a hand `collate` and precompute serve them): the "complete a combo" group, `completesOverBracket`, `DeckAnalysis.combos`, `bracketSignals`; credit and link Commander Spellbook wherever combos show
 - [ ] Build mode (T063): each card's score and origin, "complete a combo" entries, the build's bracket estimate, saving a build directly, accept-rate events as mode `build` (T065)
 - [ ] Each checked at 390×844 within the swipe budget
 
@@ -175,7 +164,7 @@ Deck pages are `noindex` today (`robots` in `apps/web/src/app/decks/[commander]/
 **MEDIUM** · Data / Ops · Split from T068
 
 Evaluation:
-- [ ] Once EDHREC is on hosted (T066), the evaluation on the time split with `--snapshot-month` set to it
+- [ ] Once EDHREC is on hosted (a hand `sync:edhrec`), the evaluation on the time split with `--snapshot-month` set to it
 - [ ] Estimator agreement with declared brackets in `eval:holdout`'s report (4,449 declared on hosted)
 
 Storage (8 GB disk):
@@ -267,6 +256,27 @@ Some `commander_keys` rows pair cards that aren't legal partners (companions, mi
 The adapter (`services/search-api/internal/moxfield/`) is built and seeded disabled after Cloudflare's 403 from the VPS (2026-09-22). A block is obeyed, not worked around; the whitelist wants a production domain (T033).
 
 - [ ] Moxfield grants a path, a VPS probe returns 2xx, the parsers are pinned to live fixtures, and `disabled` is cleared
+
+## T066: Background jobs on the VPS
+
+**HIGH** · Worker / Ops · Shelved and handed off to the VPS host (owner, 2026-10-24); the owner runs the syncs by hand until they say otherwise · Absorbs T009
+
+The Node worker (`apps/worker` `cli serve`, `deploy/dokploy/worker.yml`, memory limits from PR #166) is built and released but not deployed: the VPS host would rather run background jobs in the Go search API than host a second kind of service. Until the owner says otherwise, they run by hand every sync no deployed service runs: `collate`, the precompute passes, the global pair count and `sync:edhrec`. The daily GitHub Actions sync (catalog, printings, tags and, since 2026-10-23, Spellbook) and the Go API's daily crawl keep running. Deck lookups stay unserved meanwhile: 2 hosted `commander_requests` queued since 2026-09-19 and 2026-09-28, and the deck tool shows the collector offline.
+
+What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
+
+- The `app_config.worker` schedule, read from the database so a restart neither repeats nor skips work, and the `worker_status` heartbeat (`commander-requests`) the deck tool reads (offline after 30 s).
+- Deck lookups (`lookups.ts`): a requested commander goes first in the crawl's queue, a crawl run starts when none is going, and after the visit the commander is collated, precomputed and its request closed.
+- Each source's daily crawl, now started by the Vercel cron (`apps/web/vercel.json`).
+- Incremental collation (`collate.ts`) about every 30 minutes, then the per-commander precompute passes for the commanders whose decks changed.
+- The heavy full passes (owner, 2026-10-23: monthly, since big swings come with new sets): every substitute list (2 h 41 min on 2026-10-21), the global pair count and the baseline. EDHREC stays weekly.
+- Parity: the precompute's formulas live in `@mtg/core/scoring`, which the web app (`cardPrior`, `servedCardRates`, `commanderShare`, `pickCorpusSources`) and `eval:holdout` also run. A port to Go needs a check that its tables match the TypeScript jobs' on the same corpus.
+- Memory (2026-10-24): the global pair count over 212,606 decks needs about 1.3 GB of Node heap, plus a 1 GB count of card pairs (22,583 cards in 50 or more decks) that grows with the square of the card count.
+
+- [ ] The VPS host picks the design (a Go port, or the Node worker after all) and the owner unshelves
+- [ ] Hosted `commander_requests` are consumed and the deck tool sees the heartbeat
+- [ ] The new jobs fill what hand runs do now, on the owner's cadence
+- [ ] Once the new trigger has started the daily crawls for two days, the Vercel cron (`/api/cron/*-scrape`) goes
 
 ## T003: Deck report link destination
 
