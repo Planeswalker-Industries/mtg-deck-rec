@@ -7,6 +7,7 @@ import Link from "next/link";
 import { displayName } from "@/lib/cards";
 import { CardImage } from "./card-image";
 import { ZoomableCard } from "./card-zoom";
+import { OwnedCorner } from "./owned-corner";
 
 export interface PocketItem {
   card: CardSummary;
@@ -20,6 +21,8 @@ export interface PocketItem {
   mark?: "cut" | "add";
   /** Makes the pocket a link, e.g. to the card's page. */
   href?: string;
+  /** Marks the card as owned (`OwnedCorner`); set only where owned and unowned cards mix. */
+  owned?: boolean;
 }
 
 const GRID_SIZES = "(min-width: 1024px) 160px, (min-width: 640px) 25vw, 33vw";
@@ -37,19 +40,38 @@ const MARK_GLOW = {
   add: "shadow-[0_0_0_2px_var(--add),0_0_18px_color-mix(in_oklch,var(--add),transparent_35%)]",
 } as const;
 
-function MarkedImage({ card, mark }: { card: CardSummary; mark: "cut" | "add" | undefined }) {
-  if (!mark) return <CardImage card={card} variant={GRID_VARIANT} alt="" sizes={GRID_SIZES} />;
+function MarkedImage({
+  card,
+  mark,
+  owned,
+  belowZoom,
+}: {
+  card: CardSummary;
+  mark: "cut" | "add" | undefined;
+  owned: boolean;
+  belowZoom: boolean;
+}) {
+  if (!mark && !owned) return <CardImage card={card} variant={GRID_VARIANT} alt="" sizes={GRID_SIZES} />;
   const Icon = mark === "cut" ? X : Check;
   return (
     <span className="relative block">
-      <CardImage card={card} variant={GRID_VARIANT} alt="" sizes={GRID_SIZES} className={cn(MARK_GLOW[mark], mark === "cut" && "saturate-50")} />
+      <CardImage
+        card={card}
+        variant={GRID_VARIANT}
+        alt=""
+        sizes={GRID_SIZES}
+        className={mark ? cn(MARK_GLOW[mark], mark === "cut" && "saturate-50") : undefined}
+      />
+      {owned && <OwnedCorner belowZoom={belowZoom} />}
       {/* Upper 60% only: Scryfall's artist and copyright line along the bottom must stay visible. */}
-      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex h-3/5 items-center justify-center">
-        <Icon
-          className={cn("size-3/5 drop-shadow-[0_2px_4px_rgb(0_0_0/0.8)]", mark === "cut" ? "text-cut" : "text-add")}
-          strokeWidth={3}
-        />
-      </span>
+      {mark && (
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex h-3/5 items-center justify-center">
+          <Icon
+            className={cn("size-3/5 drop-shadow-[0_2px_4px_rgb(0_0_0/0.8)]", mark === "cut" ? "text-cut" : "text-add")}
+            strokeWidth={3}
+          />
+        </span>
+      )}
     </span>
   );
 }
@@ -81,7 +103,13 @@ export function PocketGrid({
         {items.map((item) => {
           const content = (
             <>
-              <MarkedImage card={item.card} mark={item.mark} />
+              <MarkedImage
+                card={item.card}
+                mark={item.mark}
+                owned={item.owned ?? false}
+                // Pressable zoomable pockets put the magnifier in the image's top-left corner.
+                belowZoom={zoomable && (onSelect !== undefined || item.href !== undefined)}
+              />
               <span className="mt-1.5 line-clamp-2 text-sm leading-tight font-semibold">{displayName(item.card)}</span>
               {item.caption && <span className="mt-0.5 block text-xs leading-snug">{item.caption}</span>}
             </>

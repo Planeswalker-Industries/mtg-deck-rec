@@ -43,6 +43,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
   const actions = {
     actionFor: actionFor && ((stat: StatLine) => closing(actionFor(stat))),
     bracketAction: closing(panel.bracketAction),
+    combosAction: closing(panel.combosAction),
   };
   const startY = useRef<number | null>(null);
   const swiped = useRef(false);

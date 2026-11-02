@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Scissors } from "lucide-react";
+import { Check, Scissors, TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, CutReason, CutResult } from "@mtg/core/contract";
 import { lastResortCuts, trimCuts, type RoomCard, type StatLine } from "@mtg/core/journey";
@@ -50,6 +50,16 @@ export interface TrimInputs {
 }
 
 const s = (n: number) => (n === 1 ? "" : "s");
+
+/** A card that is a piece of a complete combo: cutting it breaks the combo, so it says what it would lose. */
+function ComboWarning({ result }: { result: string }) {
+  return (
+    <span className="inline-flex items-start gap-1 font-semibold text-warning">
+      <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+      Combo piece: {result}
+    </span>
+  );
+}
 
 /**
  * Cut, after Add: bring the deck back to 100. Cards that break a rule come first (the cut list's mandatory ones); then
@@ -103,7 +113,20 @@ export function CutPhase({
   const roleRows = roles.map((r) => ({ roleId: r.key, value: r.value, target: r.target }));
   const reasonsFor = new Map(cutState.data.suggestions.map((sug) => [sug.card.id as number, sug.reasons]));
   const mandatoryIds = new Set<number>(recommended.map((sug) => sug.card.id));
-  const spared = new Set<CardId>([...state.kept, ...state.adds.map((c) => c.id)]);
+  // Combo pieces are never trimmed or dealt as a last resort: cutting one is the player's call, with a warning.
+  const pieces = journey.protectedPieces;
+  const spared = new Set<CardId>([...state.kept, ...state.adds.map((c) => c.id), ...pieces.keys()]);
+  const withWarning = (card: CardSummary, text: string) => {
+    const result = pieces.get(card.id);
+    return result ? (
+      <span className="flex flex-col gap-1">
+        <ComboWarning result={result} />
+        <span>{text}</span>
+      </span>
+    ) : (
+      text
+    );
+  };
 
   /** Copies of a card left in the deck as it stands, for a card with several (basic lands). */
   const copiesLeft = (id: CardId) => deck.cards.find((entry) => entry.section === "main" && entry.cardId === id)?.quantity ?? 0;
@@ -231,10 +254,13 @@ export function CutPhase({
                 </span>
               );
             }
+            const combo = pieces.get(card.id);
             if (mandatoryIds.has(card.id)) {
               const reasons = reasonsFor.get(card.id) ?? [];
-              return <span className="font-semibold text-cut">{shownReasons(reasons).map((reason) => cutReasonShortLabel[reason]).join(", ")}</span>;
+              const text = <span className="font-semibold text-cut">{shownReasons(reasons).map((reason) => cutReasonShortLabel[reason]).join(", ")}</span>;
+              return combo ? <span className="flex flex-col gap-0.5"><ComboWarning result={combo} />{text}</span> : text;
             }
+            if (combo) return <ComboWarning result={combo} />;
             return suggested.has(card.id) && !isMarked(card) ? <span className="font-semibold">Suggested trim</span> : undefined;
           }}
         />
@@ -276,7 +302,7 @@ export function CutPhase({
           passLabel={`Keep ${next.name}`}
           acceptWord="Cut"
           passWord="Keep"
-          caption={mandatoryNext ? reasonText(mandatoryNext.reasons) : trimCaption(next)}
+          caption={withWarning(next, mandatoryNext ? reasonText(mandatoryNext.reasons) : trimCaption(next))}
           onAccept={() => journey.dispatch({ type: "cut", card: next })}
           onPass={() => journey.dispatch({ type: "keep", cardId: next.id })}
           footer={

@@ -28,6 +28,7 @@ export function SingleSwipe({
   acceptWord,
   passWord,
   caption,
+  owned = false,
   footer,
   onAccept,
   onPass,
@@ -53,6 +54,8 @@ export function SingleSwipe({
   passWord: string;
   /** Why this card is here: reasons to cut, roles it fills, play rate, price. */
   caption?: ReactNode;
+  /** Marks the card as owned, in its image's corner. */
+  owned?: boolean;
   /** Controls under the buttons, e.g. "Done adding". */
   footer?: ReactNode;
   onAccept: () => void;
@@ -92,7 +95,7 @@ export function SingleSwipe({
         Card {position} of {total}
       </p>
       <div aria-live="polite">
-        <CardPanel card={card} rules={rulesFor(card.id)}>
+        <CardPanel card={card} rules={rulesFor(card.id)} owned={owned}>
           {caption}
         </CardPanel>
       </div>

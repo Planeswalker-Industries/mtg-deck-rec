@@ -12,6 +12,7 @@ import { defaultIncludeGameChangers } from "@/lib/labels";
 import { DeckBuilder } from "./deck-builder";
 import { useDeckBuilder } from "./use-deck-builder";
 import { ErrorText } from "@/components/ui/error-text";
+import { SavedDeckCoverage } from "@/components/decks/saved-deck-coverage";
 
 /** Edits settle this long before they are written, so a run of clicks is one save rather than one each. */
 const SAVE_DEBOUNCE_MS = 800;
@@ -49,6 +50,8 @@ export function SavedDeckEditor({
   cards: CardSummary[];
 }) {
   const [name, setName] = useState(initialName);
+  /** The deck as edited, for the coverage read; saving lags it by the debounce. */
+  const [liveDeck, setLiveDeck] = useState(deck);
   /**
    * The name every save writes. A ref as well as state: the save that runs when the page is left belongs to the first
    * render, and would otherwise write the name the deck had then, undoing a rename.
@@ -95,6 +98,7 @@ export function SavedDeckEditor({
     initialDeck: deck,
     initialCards: cards,
     onChange: (next: DeckInput) => {
+      setLiveDeck(next);
       setStatus({ kind: "pending" });
       pending.current = next;
       if (timer.current) clearTimeout(timer.current);
@@ -187,7 +191,7 @@ export function SavedDeckEditor({
           </Link>
         </div>
       </header>
-      <DeckBuilder builder={builder} analysis={analysis} swapContext={swapContext} />
+      <DeckBuilder builder={builder} analysis={analysis} swapContext={swapContext} coverage={<SavedDeckCoverage deck={liveDeck} deckId={deckId} />} />
     </article>
   );
 }

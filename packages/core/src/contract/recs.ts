@@ -249,7 +249,10 @@ export interface ComboRef {
   id: string;
   /** The combo's page on commanderspellbook.com. */
   url: string;
-  /** What it does: the standalone results ("Win the game"), then those that matter in context. */
+  /**
+   * What it does: the standalone results ("Win the game"), the one that matters most first (app_config's combo result
+   * classes), then those that matter in context. Show results[0] when there's room for one.
+   */
   results: string[];
   /** The lowest bracket it belongs in, from Spellbook's bracket tag. */
   minBracket: Bracket;
@@ -276,7 +279,10 @@ export interface AddResult {
   groups: { category: CardCategory; suggestions: AddSuggestion[] }[];
   /** 'only' mode: unowned cards worth buying, best value first, every group together. Shown apart, as such. */
   buyList?: BuyAddSuggestion[];
-  /** "Complete a combo": its own group, best result first. Credited and linked to Commander Spellbook. */
+  /**
+   * "Complete a combo": its own group, best result first. Credited and linked to Commander Spellbook. Combos whose
+   * missing card isn't owned come in every mode (`owned` null), so the client can show them apart as upgrades.
+   */
   combos?: ComboSuggestion[];
 }
 

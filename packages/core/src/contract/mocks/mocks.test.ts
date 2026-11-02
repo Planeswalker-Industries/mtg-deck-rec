@@ -287,3 +287,35 @@ describe('mock build', () => {
     expect(filled.ok && filled.data.fillCost !== undefined && filled.data.feasibility.filledByValue > 0).toBe(true);
   });
 });
+
+describe('mock combos', () => {
+  const chulane = () => idOf('Chulane, Teller of Tales');
+  const ring = () => idOf('Sol Ring');
+  const project = () => idOf('Guardian Project');
+  const deckOf = (...ids: CardId[]) => ({ commanders: [chulane()], cards: ids.map((cardId) => ({ cardId, quantity: 1, section: 'main' as const })) });
+
+  it('offers the missing piece as "complete a combo", credited to Spellbook', async () => {
+    const { apis, context } = await setup();
+    const r = await apis.recs.add({ context: context({ deck: deckOf(ring()) }) });
+    if (!r.ok) throw new Error(r.error.message);
+    expect(r.data.combos).toHaveLength(1);
+    expect(r.data.combos?.[0]).toMatchObject({ card: { id: project() }, pieceIds: [ring()], alsoNeeded: [], owned: null });
+    expect(r.data.combos?.[0]?.url).toMatch(/^https:\/\/commanderspellbook\.com\/combo\//);
+  });
+
+  it('leaves it out once the piece is in the deck or skipped, and keeps cards to buy in owned-only mode', async () => {
+    const { apis, context } = await setup();
+    const both = await apis.recs.add({ context: context({ deck: deckOf(ring(), project()) }) });
+    expect(both.ok && both.data.combos).toEqual([]);
+    const skipped = await apis.recs.add({ context: context({ deck: deckOf(ring()) }), excludeCardIds: [project()] });
+    expect(skipped.ok && skipped.data.combos).toEqual([]);
+    const ownedOnly = await apis.recs.add({
+      context: context({ deck: deckOf(ring()), ownership: { kind: 'session', catalogEpoch: 'mock-1', ownedCardIds: [ring()] } }),
+    });
+    expect(ownedOnly.ok && ownedOnly.data.combos?.map((c) => [c.card.id, c.owned])).toEqual([[project(), null]]);
+    const owned = await apis.recs.add({
+      context: context({ deck: deckOf(ring()), ownership: { kind: 'session', catalogEpoch: 'mock-1', ownedCardIds: [project()] } }),
+    });
+    expect(owned.ok && owned.data.combos?.[0]?.owned).toEqual({ quantity: 1 });
+  });
+});

@@ -123,5 +123,10 @@
  *
  * v30 (2026-11-02): deck stats card types (T071). StatTargets gains `types`, the nonland cards per card type blended
  * toward typical decks like the curve; empty until typical decks have a type profile. Additive for readers.
+ *
+ * v31 (2026-11-02): combos (T069). ComboRef.results put the standalone result that matters most first, by
+ * app_config.scoring.combos' result classes (ties in Spellbook's order), so a client shows results[0]. AddResult.combos
+ * carries combos whose missing card isn't owned in every collection mode, 'only' included, capped apart from the owned
+ * ones. Same shapes.
  */
-export const CONTRACT_VERSION = 30;
+export const CONTRACT_VERSION = 31;

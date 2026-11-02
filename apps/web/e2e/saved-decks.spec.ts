@@ -278,3 +278,34 @@ test("saving asks to add the cards the collection lacks, and explicit add adds t
   await page.goto("/collection");
   await expect(page.getByText("Sol Ring").first()).toBeVisible({ timeout: 30_000 });
 });
+
+test("a saved deck shows its owner's collection coverage, on its page and in its deckbuilder, and strangers none", async ({ page, request, browser }) => {
+  await signIn(page, request, `deckcoverage-${Date.now()}@test.invalid`, "/collection/import");
+  await page.getByLabel("Collection export").fill("1 Sol Ring\n1 Command Tower");
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByText(/Saved to your account/)).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page.getByRole("region", { name: "Recommendations" }).getByRole("button", { name: "Deckbuilder" }).click({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Save deck" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expectEditor(page);
+
+  // The deckbuilder's summary row carries it.
+  await expect(page.getByRole("button", { name: /available/ })).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/decks");
+  await page.getByRole("listitem").getByRole("link").first().click();
+  await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
+  await expect(page.getByRole("button", { name: /available/ })).toBeVisible({ timeout: 30_000 });
+
+  const stranger = await browser.newContext();
+  const strangerPage = await stranger.newPage();
+  await strangerPage.goto(page.url());
+  await expect(strangerPage.getByRole("heading", { name: "Lands" })).toBeVisible({ timeout: 30_000 });
+  await expect(strangerPage.getByRole("button", { name: /available/ })).toHaveCount(0);
+  await stranger.close();
+});

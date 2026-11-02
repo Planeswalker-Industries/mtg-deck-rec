@@ -167,6 +167,7 @@ export function DeckStatsPanel({
   cards,
   actionFor,
   bracketAction,
+  combosAction,
   preview,
 }: {
   report: DeckStatsReport;
@@ -174,6 +175,8 @@ export function DeckStatsPanel({
   cards: ReadonlyMap<CardId, CardSummary>;
   actionFor?: (stat: StatLine) => StatAction | null;
   bracketAction?: StatAction | null;
+  /** "Find combos": opens Add's Combos, in the deck tool when it has any. */
+  combosAction?: StatAction | null;
   /** How answering the card on screen would move each line (statDeltas), when one is on screen. */
   preview?: ReadonlyMap<string, number> | null;
 }) {
@@ -239,6 +242,7 @@ export function DeckStatsPanel({
             ))}
           </ul>
         )}
+        {combosAction && <ActionLink action={combosAction} className="self-start text-xs" />}
       </Group>
     </div>
   );

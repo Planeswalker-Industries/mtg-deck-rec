@@ -337,12 +337,24 @@ function DeckToolSession() {
     return null;
   };
   const bracketAction: StatAction | null = journey.stepper.canOpen("cut") ? pickCuts : null;
+  const comboCount = journey.add.combos.length;
+  /** "Find combos" under Bracket: Add's Combos part, when the last Add list had any. */
+  const combosAction: StatAction | null =
+    comboCount > 0 && journey.stepper.canOpen("add")
+      ? {
+          label: `Find combos (${comboCount})`,
+          onSelect: () => {
+            journey.add.openCombos();
+            document.getElementById(STEPS_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
+          },
+        }
+      : null;
   /** The card on screen in a swipe view, which Deck stats previews answering. */
   const [statPreview, setStatPreview] = useState<StatPreview | null>(null);
   const tallyOf = (card: CardSummary | null) => (card && analysis ? toTallyCard(card, card.roles ?? analysis.cardRoles[card.id] ?? []) : null);
   const previewDeltas = deckStats && statPreview ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove)) : null;
   const statsPanel = deckStats
-    ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction, preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null }
+    ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction, combosAction, preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null }
     : null;
 
   /** Offers a deck lookup when the deck's commander has no play data, remembering which commanders it checked. */
@@ -622,8 +634,14 @@ function DeckToolSession() {
           onBracket={(bracket) => {
             if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
           }}
-          onUpgrade={(text) => void openBuilt(text, "upgrade")}
-          onSave={(text) => void saveBuilt(text)}
+          onUpgrade={(text) => {
+            deckBuild.accept();
+            void openBuilt(text, "upgrade");
+          }}
+          onSave={(text) => {
+            deckBuild.accept();
+            void saveBuilt(text);
+          }}
           onPickAnother={() => {
             // Back from a fitted list goes to the list; back from a build goes to the commander picker.
             if (deckBuild.state.status !== "idle" && deckBuild.state.request.list) setEditing(true);
@@ -941,6 +959,11 @@ function DeckToolSession() {
                       view={view}
                       roles={deckStats?.stats.filter((stat) => stat.group === "roles") ?? []}
                       onShowUnowned={() => tool.changeCollectionMode("first")}
+                      uploadHref={
+                        (signedIn
+                          ? `${collectionImportHref}&ifEmpty=1`
+                          : `/sign-in?next=${encodeURIComponent(`${collectionImportHref}&ifEmpty=1`)}`) as Route
+                      }
                     />
                   )}
                   {journey.state.phase === "replace" && (

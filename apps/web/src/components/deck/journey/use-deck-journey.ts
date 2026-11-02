@@ -8,6 +8,7 @@ import type {
   CardId,
   CardSummary,
   ComboRef,
+  ComboSuggestion,
   CutResult,
   CutSuggestion,
   DeckAnalysis,
@@ -86,6 +87,30 @@ const filtered = (suggestions: AddSuggestion[], filter: AddFilter | null) =>
 
 /** No cards: the over-bracket adds before any add, kept as one value so their readers see a stable reference. */
 const NO_ADDS: ReadonlyMap<CardId, readonly ComboRef[]> = new Map();
+
+const NO_PIECES: ReadonlyMap<CardId, string> = new Map();
+
+/** A combo the round completed: every piece, and the result it gives (what cutting a piece breaks). */
+export interface CompletedCombo {
+  pieces: readonly CardId[];
+  result: string;
+}
+
+/**
+ * Every card of every complete combo in the deck as `s` leaves it, with the result cutting it would break: the deck's
+ * combos when the round started and the ones it completed since, while every piece is still there (the commander
+ * counts as a piece). Cut warns on these and leaves them out of its trims; Swap never deals them.
+ */
+function protectedPiecesOf(s: JourneyState, combos: readonly CompletedCombo[]): ReadonlyMap<CardId, string> {
+  const commanders = new Set<CardId>(s.base.commanders);
+  const held = (id: CardId) => commanders.has(id) || copiesInDeck(s, id) > 0;
+  const pieces = new Map<CardId, string>();
+  for (const combo of combos) {
+    if (!combo.pieces.every(held)) continue;
+    for (const id of combo.pieces) if (!commanders.has(id) && !pieces.has(id)) pieces.set(id, combo.result);
+  }
+  return pieces;
+}
 
 const isLand = (card: CardSummary) => /\bLand\b/.test(card.typeLine.split(" // ")[0] ?? card.typeLine);
 
@@ -169,6 +194,8 @@ export function useDeckJourney({
    * its place in the list the player was looking at.
    */
   const addBatch = useRef<{ batch: RecBatch; filter: AddFilter | null } | null>(null);
+  /** "Complete a combo" as recorded, apart from the main list: its cards are dealt from their own group. */
+  const comboBatch = useRef<RecBatch | null>(null);
   /** An Add list asked for and not yet in: it is recorded on arrival, under the filter on screen then. */
   const addPending = useRef(false);
   const cutBatch = useRef<{ from: CutResult; batch: RecBatch } | null>(null);
@@ -185,6 +212,8 @@ export function useDeckJourney({
    * lands for the holes. Taking cards they don't own instead changes the tool's collection setting to Owned first.
    */
   const [ownedOnlyRound, setOwnedOnlyRound] = useState<number | null>(null);
+  /** The round whose Add is on its second part, Combos; the stepper still says Add. */
+  const [combosRound, setCombosRound] = useState<number | null>(null);
   /** Basic lands on their way into the holes (their names are resolved first), or the failure. */
   const [basicsFill, setBasicsFill] = useState<{ round: number; value: Async<null> } | null>(null);
   /** A step past Add the player asked for while the deck is under 100, waiting for them to confirm (T076). */
@@ -214,6 +243,13 @@ export function useDeckJourney({
   const replace = current && replaceFor?.round === current.id ? replaceFor.value : idle;
 
   const overBracketAdds = current && overBracket?.round === current.id ? overBracket.adds : NO_ADDS;
+  /** Combos this round completed by adding their missing card, from either part of Add: their pieces and result. */
+  const [completed, setCompleted] = useState<{ round: number; combos: readonly CompletedCombo[] } | null>(null);
+  /** The round's starting combos and the ones completed since, for `protectedPiecesOf`. */
+  const roundCombos: readonly CompletedCombo[] = [
+    ...(analysis?.combos ?? []).map((c) => ({ pieces: c.pieceIds, result: c.results[0] ?? "a combo" })),
+    ...(current && completed?.round === current.id ? completed.combos : []),
+  ];
 
   /** What a "Find …" action in Deck stats narrowed Add to. It lasts while Add is on screen: leaving the step, or a new round, clears it. */
   const [addFilterSet, setAddFilterSet] = useState<AddFilter | null>(null);
@@ -275,6 +311,7 @@ export function useDeckJourney({
       const filter = addFilterRef.current;
       const shown = filtered(addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands), filter).map((s) => s.card.id);
       addBatch.current = { batch: recordShown("add", shown, { ...ctx, deck }), filter };
+      comboBatch.current = recordShown("add", (r.data.combos ?? []).map((c) => c.card.id), { ...ctx, deck });
     }
   }
 
@@ -299,9 +336,10 @@ export function useDeckJourney({
       setReplace({ round, key, candidates, value: toAsync(r) });
       return;
     }
-    // Additions were chosen just now, so they aren't dealt as weaker fits.
+    // Additions were chosen just now, so they aren't dealt as weaker fits; combo pieces are never dealt.
     const added = new Set<number>(next.adds.map((c) => c.id));
-    const listed = r.data.suggestions.filter((s) => !added.has(s.card.id));
+    const pieces = protectedPiecesOf(next, roundCombos);
+    const listed = r.data.suggestions.filter((s) => !added.has(s.card.id) && !pieces.has(s.card.id));
     const named = new Set<number>(listed.map((s) => s.card.id));
     const swapped = next.swaps
       .filter((s) => !named.has(s.target.id))
@@ -458,6 +496,8 @@ export function useDeckJourney({
     const leaving = state?.phase;
     const next = apply(...before, { type: "goto", phase });
     if (!next) return;
+    // Add opens on its cards; Combos is entered on purpose (Next, its link, Deck stats).
+    setCombosRound(null);
     if (leaving === "cut" && phase !== "cut") recordCuts(next);
     // The Add and Replace lists depend on everything chosen before them, so they are asked for on the way in, unless
     // the one on hand was made for the same deck: then the player picks up where they left off. A deck at its overflow
@@ -553,6 +593,11 @@ export function useDeckJourney({
           landsShort,
         )
       : [];
+  /** "Complete a combo" on hand: the combos whose card this round hasn't added or passed on. */
+  const addCombos: ComboSuggestion[] =
+    add.status === "ready" && state
+      ? (add.data.combos ?? []).filter((c) => !state.declinedAdds.includes(c.card.id) && !state.adds.some((a) => a.id === c.card.id))
+      : [];
 
   /**
    * Records the Add list on hand as shown under `filter`, unless it already was. Called when a filter is applied or
@@ -584,15 +629,36 @@ export function useDeckJourney({
     recordDecision(addBatch.current.batch, card.id, accepted, ctx, addQueue.find((s) => s.card.id === card.id)?.score);
   }
 
+  /** Notes the combo a card completes, so its pieces are protected from Cut and Swap while it stays whole. */
+  function noteCompleted(card: CardSummary) {
+    const combo = addCombos.find((c) => c.card.id === card.id);
+    const roundId = current?.id;
+    if (!combo || roundId === undefined) return;
+    const entry: CompletedCombo = { pieces: [...combo.pieceIds, card.id], result: combo.results[0] ?? "a combo" };
+    setCompleted((prev) => ({ round: roundId, combos: [...(prev?.round === roundId ? prev.combos : []), entry] }));
+  }
+
   /** Adding recomputes the list: the new card may fill the gap the next ones were suggested for. */
   function acceptAdd(card: CardSummary) {
     recordAddDecision(card, true);
+    noteCompleted(card);
     // An add that completes a combo above the bracket counts against it while it stays (Deck stats checks the deck).
     const roundId = current?.id;
     const overCombos = addQueue.find((s) => s.card.id === card.id)?.completesOverBracket;
     if (roundId !== undefined && overCombos?.length) {
       setOverBracket((prev) => ({ round: roundId, adds: new Map([...(prev?.round === roundId ? prev.adds : []), [card.id, overCombos]]) }));
     }
+    const next = apply({ type: "add", card });
+    if (next && roomToAdd(next) > 0) void loadAdds(next);
+  }
+
+  /** A card taken from "Complete a combo": added like any other, recorded against the combo list. */
+  function acceptCombo(card: CardSummary) {
+    const ctx = workingContext ?? context;
+    if (ctx && comboBatch.current) {
+      recordDecision(comboBatch.current, card.id, true, ctx, addCombos.find((c) => c.card.id === card.id)?.score);
+    }
+    noteCompleted(card);
     const next = apply({ type: "add", card });
     if (next && roomToAdd(next) > 0) void loadAdds(next);
   }
@@ -654,6 +720,24 @@ export function useDeckJourney({
     return true;
   }
 
+  /** Add's part on screen: its cards, or the combos after them. */
+  const addPart: "cards" | "combos" = current !== null && state?.phase === "add" && combosRound === current.id ? "combos" : "cards";
+
+  /** Opens Add's Combos part, from Add or from a later step (Deck stats' link). */
+  function openCombos() {
+    if (!state || !current) return;
+    // From Cut, Add takes the pending cuts with it, as Deck stats' Find links do.
+    if (state.phase === "cut") goTo("add", ...pendingCuts);
+    else if (state.phase !== "add") goTo("add");
+    setCombosRound(current.id);
+  }
+
+  /** Add's own Next (not the stepper's Cut, which jumps): through Combos when there are any, then on to Cut. */
+  function addNext() {
+    if (addPart === "cards" && addCombos.length > 0) openCombos();
+    else select("cut");
+  }
+
   /** The current step's Next: what its own button does. */
   function nextStep() {
     if (!state) return;
@@ -683,6 +767,8 @@ export function useDeckJourney({
   /** A step chosen in the stepper: the next step is the current one's Next; another goes there directly. */
   function select(phase: JourneyPhase) {
     if (!state || !canOpen(phase)) return;
+    // Add in the stepper from Add's Combos goes back to its cards.
+    if (phase === "add" && state.phase === "add") setCombosRound(null);
     const at = phaseIndex(state.phase);
     const to = phaseIndex(phase);
     if (to === at + 1) nextStep();
@@ -725,6 +811,8 @@ export function useDeckJourney({
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
     before,
     after,
+    /** Cards of complete combos in the deck, with the result cutting one breaks: Cut warns, Swap never deals them. */
+    protectedPieces: state ? protectedPiecesOf(state, roundCombos) : NO_PIECES,
     /** Cards added this round that complete a combo above the bracket; Deck stats counts the ones still in the deck. */
     overBracketAdds,
     /** How far the deck is below 100, how many more cards Add may put in, and how many Cut must take out. */
@@ -760,6 +848,18 @@ export function useDeckJourney({
       landsShort,
       accept: acceptAdd,
       pass: passAdd,
+      /** "Complete a combo": cards that finish a combo one card short, Add's second part. */
+      combos: addCombos,
+      acceptCombo,
+      /** Which part of Add is on screen. */
+      part: addPart,
+      openCombos,
+      /** Back from Combos to Add's cards. */
+      showCards: () => setCombosRound(null),
+      /** Add's Next: Combos first when there are any, then Cut. */
+      next: addNext,
+      /** Straight on to Cut, as Combos' own Next does. */
+      toCut: () => select("cut"),
       undo: undoAdd,
       /** A collection is applied, so owned cards show as owned and the rest show what they'd cost. */
       hasCollection: context !== null && context.ownership !== null,

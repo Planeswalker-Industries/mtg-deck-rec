@@ -13,7 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
 import { describeCostDelta, formatAsOf, formatPercent } from "@/lib/format";
 import { emptySwapMessage } from "@/lib/labels";
-import { GameChangerBadge, OwnedBadge } from "./card-label";
+import { OwnedCorner } from "@/components/cards/owned-corner";
+import { GameChangerBadge } from "./card-label";
 import { PanelError } from "./panel-state";
 import { ScoreExplainer } from "./score-explainer";
 import type { SwapState } from "./use-deck-tool";
@@ -124,15 +125,18 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
         <ChevronRight aria-hidden className="size-6 text-muted-foreground" />
         <figure className="min-w-0">
           <figcaption className="mb-1.5 text-xs text-muted-foreground">Replacement</figcaption>
-          <FlippableCardImage
-            key={selected.card.id}
-            card={selected.card}
-            zoomable
-            variant="large"
-            sizes="(min-width: 640px) 320px, 56vw"
-            eager
-            className="shadow-[0_0_0_2px_var(--color-primary)] motion-safe:animate-in motion-safe:duration-200 motion-safe:fade-in-0 motion-safe:zoom-in-95"
-          />
+          <div className="relative">
+            <FlippableCardImage
+              key={selected.card.id}
+              card={selected.card}
+              zoomable
+              variant="large"
+              sizes="(min-width: 640px) 320px, 56vw"
+              eager
+              className="shadow-[0_0_0_2px_var(--color-primary)] motion-safe:animate-in motion-safe:duration-200 motion-safe:fade-in-0 motion-safe:zoom-in-95"
+            />
+            {selected.owned && <OwnedCorner />}
+          </div>
         </figure>
       </div>
 
@@ -142,7 +146,6 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {selected.card.gameChanger && <GameChangerBadge />}
-        {selected.owned && <OwnedBadge />}
         <span className="font-mono">
           {!selected.corpus
             ? "No deck data yet"
