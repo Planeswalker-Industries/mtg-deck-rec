@@ -328,6 +328,8 @@ export type Database = {
           defense: string | null
           deleted_at: string | null
           equivalence_base_id: number | null
+          fetchable_basic_only: boolean
+          fetchable_mana: string[] | null
           game_changer: boolean
           id: number
           images: Json | null
@@ -372,6 +374,8 @@ export type Database = {
           defense?: string | null
           deleted_at?: string | null
           equivalence_base_id?: number | null
+          fetchable_basic_only?: boolean
+          fetchable_mana?: string[] | null
           game_changer?: boolean
           id?: never
           images?: Json | null
@@ -416,6 +420,8 @@ export type Database = {
           defense?: string | null
           deleted_at?: string | null
           equivalence_base_id?: number | null
+          fetchable_basic_only?: boolean
+          fetchable_mana?: string[] | null
           game_changer?: boolean
           id?: never
           images?: Json | null
@@ -2490,6 +2496,9 @@ export type Database = {
         edhrec_decks: number | null
         own_decks_with: number | null
         own_too_early: number | null
+        produced_mana: string[] | null
+        fetchable_mana: string[] | null
+        fetchable_basic_only: boolean | null
       }
     }
   }
