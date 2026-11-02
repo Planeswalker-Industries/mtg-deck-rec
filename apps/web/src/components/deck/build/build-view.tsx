@@ -337,33 +337,35 @@ export function BuildView({
           to build from the cards you own instead.
         </p>
       )}
-      {fromCollection && open > 0 && (
-        // The buy side is shelved. The slot it will fill stays visible, honestly empty.
-        <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:py-2">
-          {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
-          <div className="flex items-center justify-between gap-2">
-            <h2 id="build-open-slots" className="font-semibold">
-              {count(open, "open slot")}
-            </h2>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" className={cn(PHONE_HIT_AREA, "sm:hidden")} aria-label="What open slots mean">
-                  <CircleHelp aria-hidden />
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>{count(open, "open slot")}</DialogTitle>
-                  <DialogDescription>{OPEN_SLOTS_HELP}</DialogDescription>
-                </DialogHeader>
-              </DialogContent>
-            </Dialog>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>
-        </aside>
-      )}
-
-      <DeckViewToggle view={view} onChange={setView} />
+      {/* On phones the open slots panel shares a row with the view toggle, so the cards start higher. */}
+      <div className="flex items-center gap-2 sm:flex-col sm:items-stretch sm:gap-6">
+        {fromCollection && open > 0 && (
+          // The buy side is shelved. The slot it will fill stays visible, honestly empty.
+          <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:py-0">
+            {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="build-open-slots" className="font-semibold max-sm:text-sm">
+                {count(open, "open slot")}
+              </h2>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className={cn(PHONE_HIT_AREA, "sm:hidden")} aria-label="What open slots mean">
+                    <CircleHelp aria-hidden />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{count(open, "open slot")}</DialogTitle>
+                    <DialogDescription>{OPEN_SLOTS_HELP}</DialogDescription>
+                  </DialogHeader>
+                </DialogContent>
+              </Dialog>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>
+          </aside>
+        )}
+        <DeckViewToggle view={view} onChange={setView} className="ml-auto max-sm:self-center" />
+      </div>
 
       <FitChanges request={request} result={result} view={view} />
 
