@@ -96,7 +96,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             <span className="flex min-w-0 items-center gap-3 text-sm">
               <span className="sr-only">Deck stats. This card: </span>
               {previewLines.map(({ stat, delta }) => {
-                const better = towardTarget(stat.value, stat.target, delta);
+                const better = towardTarget(stat.value, stat.target, delta, stat.group === "colours");
                 const Icon = better ? ArrowUp : ArrowDown;
                 return (
                   <span key={stat.key} className="flex min-w-0 items-center gap-1">

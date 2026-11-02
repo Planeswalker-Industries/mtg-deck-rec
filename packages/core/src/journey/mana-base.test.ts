@@ -166,6 +166,16 @@ describe('manaBase', () => {
     expect(report.colours.find((c) => c.colour === 'B')).toMatchObject({ cardId: gold.id, needed: sourcesNeeded(1, 4, true) });
   });
 
+  it('leaves out cards that need a colour outside the deck’s', () => {
+    const bolt = card({ manaCost: '{R}', manaValue: 1 });
+    const kitchenFinks = card({ manaCost: '{1}{G/W}{G/W}', manaValue: 3 });
+    const report = manaBase([many(37, plains), { card: bolt, quantity: 1 }, { card: kitchenFinks, quantity: 1 }, many(60, {})], [], 'WB');
+    expect(report.colours.map((c) => c.colour)).toEqual([]);
+    expect(report.hardToCast.some((h) => h.cardId === bolt.id)).toBe(false);
+    // A hybrid pip one deck colour can pay stays in: 37 Plains pay it.
+    expect(report.hardToCast.some((h) => h.cardId === kitchenFinks.id)).toBe(false);
+  });
+
   it('has no colour rows for a deck with no commander colours and no {C} costs', () => {
     const report = manaBase([many(30, { typeLine: 'Land', producedMana: 'C', manaValue: 0 }), many(10, { manaCost: '{2}', manaValue: 2 })], [], '');
     expect(report.colours).toEqual([]);

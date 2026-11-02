@@ -272,8 +272,10 @@ export function manaBase(main: readonly ManaEntry[], commanders: readonly ManaCa
   const hardToCast: HardToCast[] = [];
   const worst = new Map<string, { need: ColourNeed; gap: number }>();
   const castable = [...main.map((e) => ({ card: e.card, commander: false })), ...commanders.map((c) => ({ card: c, commander: true }))];
+  // A half needing a colour outside the deck's is off-identity, already flagged as illegal elsewhere: it isn't counted.
+  const inColours = (half: CastingHalf) => half.needs.every((n) => usable(n.colours, deckColours).length > 0);
   for (const { card, commander } of castable) {
-    const halves = castingHalves(card);
+    const halves = castingHalves(card).filter(inColours);
     if (halves.length === 0) continue;
     const best = halves.map((half) => ({ half, chance: halfChance(half) })).reduce((a, b) => (b.chance > a.chance ? b : a));
     const target = consistencyTarget(best.half.manaValue);
