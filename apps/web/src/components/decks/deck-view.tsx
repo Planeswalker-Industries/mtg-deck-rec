@@ -5,36 +5,44 @@ import { LayoutGrid, List } from "lucide-react";
 import { cn } from "cn";
 import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 
-/** How a saved deck's cards show: whole card images, or one plate per card. */
+/** How a deck's cards show: whole card images, or one plate per card. */
 export type DeckView = "images" | "plates";
 
-/** Remembered in this browser, so a player who prefers plates gets them on every deck they open. */
-const DECK_VIEW_KEY = "mtg-deck-rec:deck-view";
-const DEFAULT_VIEW: DeckView = "images";
+/**
+ * Where each page remembers its view in this browser, and what it shows first: a saved deck opens on images; a built
+ * deck opens on plates, since the player reads it as a list before going through it card by card.
+ */
+const VIEW_SETTINGS = {
+  deck: { key: "mtg-deck-rec:deck-view", fallback: "images" },
+  build: { key: "mtg-deck-rec:build-view", fallback: "plates" },
+} as const satisfies Record<string, { key: string; fallback: DeckView }>;
+export type DeckViewPage = keyof typeof VIEW_SETTINGS;
 const VIEWS: { view: DeckView; label: string; icon: typeof LayoutGrid }[] = [
   { view: "images", label: "Images", icon: LayoutGrid },
   { view: "plates", label: "List", icon: List },
 ];
 
 const listeners = new Set<() => void>();
-/** The choice as last made on this page, which stands in when storage is blocked. */
-let memory: DeckView | null = null;
+/** The choices as last made on this page, which stand in when storage is blocked. */
+const memory = new Map<DeckViewPage, DeckView>();
 
-function readView(): DeckView {
+function readView(page: DeckViewPage): DeckView {
+  const { key, fallback } = VIEW_SETTINGS[page];
   try {
-    return localStorage.getItem(DECK_VIEW_KEY) === "plates" ? "plates" : DEFAULT_VIEW;
+    const stored = localStorage.getItem(key);
+    return stored === "plates" || stored === "images" ? stored : fallback;
   } catch {
-    return DEFAULT_VIEW;
+    return fallback;
   }
 }
 
-function writeView(view: DeckView) {
+function writeView(page: DeckViewPage, view: DeckView) {
   try {
-    localStorage.setItem(DECK_VIEW_KEY, view);
+    localStorage.setItem(VIEW_SETTINGS[page].key, view);
   } catch {
     // Storage is blocked; the choice holds for this page only.
   }
-  memory = view;
+  memory.set(page, view);
   listeners.forEach((listener) => listener());
 }
 
@@ -43,13 +51,13 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-/** The deck view in use. The server and the first render show images, so hydration matches. */
-export function useDeckView(): [DeckView, (view: DeckView) => void] {
-  const view = useSyncExternalStore(subscribe, () => memory ?? readView(), () => DEFAULT_VIEW);
-  return [view, writeView];
+/** The view in use on a page. The server and the first render show the page's default, so hydration matches. */
+export function useDeckView(page: DeckViewPage = "deck"): [DeckView, (view: DeckView) => void] {
+  const view = useSyncExternalStore(subscribe, () => memory.get(page) ?? readView(page), () => VIEW_SETTINGS[page].fallback);
+  return [view, (next: DeckView) => writeView(page, next)];
 }
 
-/** Images or List, for every card on a saved deck's page. */
+/** Images or List, for every card on a saved deck's page or a built deck. */
 export function DeckViewToggle({ view, onChange }: { view: DeckView; onChange: (view: DeckView) => void }) {
   return (
     <div role="group" aria-label="Show cards as" className="flex gap-1 self-end">

@@ -60,6 +60,8 @@ test.describe("deck stats on a phone", () => {
     // Swap opens once Cut has been reached; the sample's mandatory cut can stay for this.
     const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
     await steps.getByRole("button", { name: "Cut" }).click();
+    // The sample is short of 100, so leaving Add asks first.
+    await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
     await steps.getByRole("button", { name: "Swap" }).click();
 
     const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });

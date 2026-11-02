@@ -139,6 +139,15 @@ describe('journey reducer', () => {
     expect(undone.swaps.map((s) => s.target.id)).toEqual([3, PLAINS]);
   });
 
+  it('adds a basic land more than once, and taking one back out takes one copy', () => {
+    const forest = card(60, { typeLine: 'Basic Land — Forest' });
+    const state = run({ type: 'cut', card: card(2) }, { type: 'cut', card: card(3) }, { type: 'add', card: forest }, { type: 'add', card: forest });
+    expect(mainOf(workingDeck(state))).toEqual({ 4: 1, 60: 2, [PLAINS]: FULL_PLAINS });
+    const undone = journeyReducer(state, { type: 'unadd', cardId: 60 as CardId });
+    expect(undone.adds.map((c) => c.id)).toEqual([60]);
+    expect(journeyReducer(undone, { type: 'unadd', cardId: 61 as CardId })).toBe(undone);
+  });
+
   it('a second swap for the same card replaces the first, and keeping the card clears it', () => {
     const state = run({ type: 'swap', target: card(3), replacement: card(20) }, { type: 'swap', target: card(3), replacement: card(21) });
     expect(state.swaps.map((s) => s.replacement.id)).toEqual([21]);

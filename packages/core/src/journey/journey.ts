@@ -1,6 +1,7 @@
 import type { CardId, CardSummary, DeckCardEntry, DeckInput } from '../contract';
 import { COMMANDER_DECK_SIZE } from '../formats/commander/validate';
 import { decklistText, type DeckExportEntry } from '../parse/decklist-export';
+import { isBasicLand } from './builder';
 
 /**
  * The deck journey: add what the deck is short of (it may go past 100), cut back to 100 starting with what it has too
@@ -41,6 +42,7 @@ export interface JourneyState {
   cuts: CardSummary[];
   /** Recommended cuts the player chose to keep, so they aren't dealt again this round. */
   kept: CardId[];
+  /** One copy each; a basic land can be added more than once (filling a short deck's holes). */
   adds: CardSummary[];
   /** Additions the player passed on, so the recomputed list doesn't offer them again. */
   declinedAdds: CardId[];
@@ -123,13 +125,15 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
       return { ...state, cuts, kept: withValue(state.kept, action.cardId) };
     }
     case 'add': {
-      if (roomToAdd(state) === 0 || state.adds.some((c) => c.id === action.card.id)) return state;
+      if (roomToAdd(state) === 0) return state;
+      if (!isBasicLand(action.card) && state.adds.some((c) => c.id === action.card.id)) return state;
       return { ...state, adds: [...state.adds, action.card], declinedAdds: without(state.declinedAdds, action.card.id) };
     }
     case 'unadd': {
-      // A swap of the added card goes with it: its target is no longer in the deck.
-      const swaps = state.swaps.filter((s) => s.target.id !== action.cardId);
-      return { ...state, adds: state.adds.filter((c) => c.id !== action.cardId), swaps };
+      // One copy, the latest added. A swap of the added card goes with it once no copy is left: pruneSwaps drops it.
+      const at = state.adds.findLastIndex((c) => c.id === action.cardId);
+      if (at < 0) return state;
+      return { ...state, adds: state.adds.filter((_, i) => i !== at) };
     }
     case 'declineAdd':
       return { ...state, declinedAdds: withValue(state.declinedAdds, action.cardId) };

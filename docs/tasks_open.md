@@ -36,17 +36,6 @@ Add Creatures, Instants, Sorceries, Artifacts, Enchantments and Planeswalkers to
 - [ ] Finish (`review-phase.tsx`) compares role counts before and after
 - [ ] Polish, each fixed or struck with a reason: the sheet's handle scrolls away (make it sticky); the footer has no pointer capture (`deck-stats-footer.tsx`); after a touch swipe the next Enter on the footer is swallowed once; "Pick cuts" does nothing while in Cut (`deck-tool.tsx` `statAction`); "Find …" in Cut counts slots open now, not after the pending cuts; an add that completed an over-bracket combo stays flagged after the bracket is raised (`use-deck-journey.ts` `overBracketIds`)
 
-## T076: Decks that stay under 100
-
-**HIGH** · Frontend / Scoring · Owner, 2026-10-23
-
-A build from a commander, most often from a collection, can stop short of 99 cards; Add can then run out ("no cards left to recommend") with the deck still short, and the player can move on to Cut while under 100, where there is nothing to cut. A start is in: Add hides "Done adding" and the next bar until the deck reaches 100, and the e2e step goes on through the stepper.
-
-- [ ] Find why the build stops short (pool size, `serving_limits` clamps, colour or role caps) and fill to 99 where the pool allows
-- [ ] When Add runs out under 100: first offer unowned singles to finish the deck; if the player declines, widen the owned pool; if still short, a warning in as few words as possible (icon and label) offering high-impact singles or basic lands for the holes
-- [ ] Leaving Add for Cut under 100 asks to continue, saying the deck is under 100
-- [ ] e2e covers a short collection build, and the swipe buttons still fit at 390×844
-
 ## T069: Scoring UI
 
 **MEDIUM** · Frontend · The data, scoring and contract are live
