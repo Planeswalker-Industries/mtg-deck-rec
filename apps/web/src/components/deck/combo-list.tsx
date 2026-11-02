@@ -47,7 +47,7 @@ export function ComboList({
           ),
           // Outside the pocket: a link can't sit inside the pocket's button.
           footer: (
-            <a href={combo.url} target="_blank" rel="noreferrer" className={cn(TEXT_LINK, PHONE_HIT_AREA, "px-1 text-xs")}>
+            <a href={combo.url} target="_blank" rel="noreferrer" className={cn(TEXT_LINK, PHONE_HIT_AREA, "mx-1 block w-fit text-xs leading-snug")}>
               Commander Spellbook
             </a>
           ),
