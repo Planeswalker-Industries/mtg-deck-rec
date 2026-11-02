@@ -278,3 +278,40 @@ describe('statDeltas', () => {
     expect(statDeltas(lines, card('Artifact Creature — Golem', []), null)).toEqual(new Map([['creature', 1]]));
   });
 });
+
+describe('mana base in the report', () => {
+  const liesa = card({ typeLine: 'Legendary Creature — Angel', manaValue: 5, manaCost: '{2}{W}{W}{B}', colorIdentity: 'WB' });
+  const land = (producedMana: string, typeLine: string) => card({ typeLine, manaValue: 0, producedMana });
+  const deck = (): TallyEntry[] => [
+    { card: land('W', 'Basic Land — Plains'), quantity: 25 },
+    { card: land('B', 'Basic Land — Swamp'), quantity: 12 },
+    { card: card({ typeLine: 'Sorcery', manaValue: 2, manaCost: '{B}{B}' }), quantity: 1 },
+    { card: card(), quantity: 61 },
+  ];
+
+  it('adds a colour row per commander colour, counted in the level', () => {
+    const report = gradeDeck(buildTally(deck(), [liesa]), targets, bracket());
+    const colours = report.stats.filter((s) => s.group === 'colours');
+    expect(colours.map((s) => s.key)).toEqual(['sources:W', 'sources:B']);
+    expect(colours.find((s) => s.key === 'sources:B')).toMatchObject({ value: 12, target: 30, ok: false, label: 'Black sources' });
+    expect(report.total).toBe(report.stats.length + 2);
+    expect(report.mana.hardToCast.length).toBeGreaterThan(0);
+    expect(report.mana.byTurn.map((b) => b.turn)).toEqual([3, 4, 6]);
+  });
+
+  it('adds no rows without commanders or coloured costs', () => {
+    const plain = gradeDeck(buildTally([{ card: card(), quantity: 40 }], []), targets, bracket());
+    expect(plain.stats.some((s) => s.group === 'colours')).toBe(false);
+  });
+
+  it('previews a Swamp as +1 black and a Signet as +0.8 only for spells of mana value 3 or more', () => {
+    const report = gradeDeck(buildTally(deck(), [liesa]), targets, bracket());
+    const swamp = land('B', 'Basic Land — Swamp');
+    const signet = card({ typeLine: 'Artifact', manaValue: 2, producedMana: 'WB' });
+    expect(statDeltas(report.stats, swamp, null).get('sources:B')).toBe(1);
+    // The binding black card is the {B}{B} sorcery (mana value 2): a Signet doesn't help it on curve.
+    expect(statDeltas(report.stats, signet, null).has('sources:B')).toBe(false);
+    const late = report.stats.map((s) => (s.sourceFor ? { ...s, sourceFor: { ...s.sourceFor, manaValue: 4 } } : s));
+    expect(statDeltas(late, signet, null).get('sources:B')).toBe(0.8);
+  });
+});

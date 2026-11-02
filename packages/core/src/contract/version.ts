@@ -128,5 +128,9 @@
  * app_config.scoring.combos' result classes (ties in Spellbook's order), so a client shows results[0]. AddResult.combos
  * carries combos whose missing card isn't owned in every collection mode, 'only' included, capped apart from the owned
  * ones. Same shapes.
+ *
+ * v32 (2026-11-02): mana base (T046). CardSummary gains optional `producedMana` (the colours it adds), `findsMana` (the
+ * colours of lands it can put onto the battlefield) and `findsBasicOnly`, absent when empty. Deck stats reads them for
+ * colour sources and on-curve odds. Additive.
  */
-export const CONTRACT_VERSION = 31;
+export const CONTRACT_VERSION = 32;

@@ -47,6 +47,15 @@ export interface CardSummary {
   released: boolean;
   /** Scryfall rules keywords (Deathtouch, Menace). Empty for most cards. Not Tagger tags: those come from cardTags. */
   keywords: string[];
+  /** The colours of mana it can add, WUBRGC letters in that order (Scryfall produced_mana, both faces). Absent: none. */
+  producedMana?: string;
+  /**
+   * The colours of the lands it can put onto the battlefield from the library (fetch lands, land ramp), WUBRGC, read
+   * from its rules text at catalog sync. Absent: none.
+   */
+  findsMana?: string;
+  /** True when it finds basic lands only (Evolving Wilds, Fabled Passage); absent otherwise. */
+  findsBasicOnly?: boolean;
   price: PriceEstimate | null;
   /**
    * The tracked role ids (`deck_role_targets`) the card fills, where the server had them (suggestions, T045). Absent

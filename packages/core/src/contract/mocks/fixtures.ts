@@ -74,6 +74,29 @@ const TAGS_BY_NAME: Record<string, TagRef[]> = {
 
 const toFinish = (finish: string): Finish => (finish === 'foil' || finish === 'etched' ? finish : 'nonfoil');
 
+/** What the mock pool's mana cards make and find, as the catalog would fill producedMana / findsMana. */
+const MANA_BY_NAME: Record<string, Pick<CardSummary, 'producedMana' | 'findsMana' | 'findsBasicOnly'>> = {
+  'Sol Ring': { producedMana: 'C' },
+  'Arcane Signet': { producedMana: 'WUBRG' },
+  'Mind Stone': { producedMana: 'C' },
+  'Fellwar Stone': { producedMana: 'WUBRG' },
+  'Talisman of Unity': { producedMana: 'WGC' },
+  Cultivate: { findsMana: 'WUBRGC', findsBasicOnly: true },
+  "Kodama's Reach": { findsMana: 'WUBRGC', findsBasicOnly: true },
+  Farseek: { findsMana: 'WUBR' },
+  "Nature's Lore": { findsMana: 'G' },
+  'Three Visits': { findsMana: 'G' },
+  'Rampant Growth': { findsMana: 'WUBRGC', findsBasicOnly: true },
+  'Birds of Paradise': { producedMana: 'WUBRG' },
+  'Llanowar Elves': { producedMana: 'G' },
+  'Elvish Mystic': { producedMana: 'G' },
+  'Command Tower': { producedMana: 'WUBRG' },
+  'Sea Gate Restoration // Sea Gate, Reborn': { producedMana: 'U' },
+  Plains: { producedMana: 'W' },
+  Island: { producedMana: 'U' },
+  Forest: { producedMana: 'G' },
+};
+
 /** Real Scryfall data (names, images, prices, Game Changer flags) for a small card pool. */
 export const mockCards: CardSummary[] = scryfall.cards.map((c, i) => ({
   id: (i + 1) as CardId,
@@ -88,6 +111,7 @@ export const mockCards: CardSummary[] = scryfall.cards.map((c, i) => ({
   gameChanger: c.gameChanger,
   released: true,
   keywords: c.keywords ?? [],
+  ...MANA_BY_NAME[c.name],
   price: c.price ? { usd: c.price.usd, finish: toFinish(c.price.finish), asOf: MOCK_AS_OF, source: 'scryfall' } : null,
 }));
 
