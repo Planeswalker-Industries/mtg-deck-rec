@@ -8,6 +8,7 @@ import {
   curveTargets,
   deckCurve,
   isFrontLand,
+  statCardType,
 } from './curve';
 import { rankAdds, rankCuts, roleTargetsFor, type CardPlayRates, type RankCard, type RankCorpus } from './rank';
 import { TEST_CORPUS_SETTINGS, TEST_SCORING } from './test-config';
@@ -55,6 +56,22 @@ describe('the learned curve (T062)', () => {
     expect(curveTargets(ours, 10, prior, TEST_CORPUS_SETTINGS)).toEqual({ '2': 6 });
     expect(curveTargets(ours, 200, prior, TEST_CORPUS_SETTINGS)).toEqual({ '2': 10 });
     expect(curveTargets(ours, 200, null, TEST_CORPUS_SETTINGS)).toEqual({ '2': 10 });
+  });
+});
+
+describe('statCardType (T071)', () => {
+  it('counts a card once, as the first type its front face has', () => {
+    expect(statCardType('Artifact Creature — Golem')).toBe('creature');
+    expect(statCardType('Enchantment Creature — God')).toBe('creature');
+    expect(statCardType('Artifact Enchantment')).toBe('artifact');
+    expect(statCardType('Kindred Instant — Elf')).toBe('instant');
+    expect(statCardType('Legendary Planeswalker — Jace')).toBe('planeswalker');
+    expect(statCardType('Sorcery // Instant')).toBe('sorcery');
+  });
+  it('leaves out lands by their front face, and battles', () => {
+    expect(statCardType('Land Creature — Forest Dryad')).toBeNull();
+    expect(statCardType('Legendary Creature — God // Legendary Land')).toBe('creature');
+    expect(statCardType('Battle — Siege')).toBeNull();
   });
 });
 

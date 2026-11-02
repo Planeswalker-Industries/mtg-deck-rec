@@ -174,16 +174,8 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
   const picked = pickCorpusSources(ids, corpusKeys, settings);
   if (picked.sources.length === 0) return none;
 
-  // Each key's averages weighted by its decks at their weight, so own and borrowed decks count as they do for play rates.
-  const weighted = (profileOf: (stats: CommanderKeyRow["commander_stats"]) => unknown) => {
-    const totals: Record<string, number> = {};
-    for (const source of picked.sources) {
-      for (const [key, average] of Object.entries(parseNumberRecord(profileOf(statsByKey.get(source.id) ?? null)))) {
-        totals[key] = (totals[key] ?? 0) + average * source.deckCount * source.weight;
-      }
-    }
-    return Object.fromEntries(Object.entries(totals).map(([key, total]) => [key, total / Math.max(picked.effectiveDeckCount, 1)]));
-  };
+  const weighted = (profileOf: (stats: CommanderKeyRow["commander_stats"]) => unknown) =>
+    sourcesProfile(picked.sources, picked.effectiveDeckCount, (keyId) => profileOf(statsByKey.get(keyId) ?? null));
   const roleProfile = weighted((s) => s?.role_profile);
   // A per-deck count over the sources that have one, at their weights.
   const average = (valueOf: (stats: NonNullable<CommanderKeyRow["commander_stats"]>) => number | null) => {
@@ -216,6 +208,24 @@ export function commanderCorpusFrom(commanderIds: readonly number[], keys: reado
     basicLandCount: average((s) => s.basic_land_count),
     confidence: sourcesConfidence(picked, settings),
   };
+}
+
+/**
+ * A per-deck profile over a corpus's source keys: each key's averages weighted by its decks at their weight, so own and
+ * borrowed decks count as they do for play rates. `profileOf` reads a key's stored profile (jsonb, unparsed).
+ */
+export function sourcesProfile(
+  sources: readonly CorpusSource[],
+  effectiveDeckCount: number,
+  profileOf: (keyId: number) => unknown,
+): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const source of sources) {
+    for (const [key, average] of Object.entries(parseNumberRecord(profileOf(source.id)))) {
+      totals[key] = (totals[key] ?? 0) + average * source.deckCount * source.weight;
+    }
+  }
+  return Object.fromEntries(Object.entries(totals).map(([key, total]) => [key, total / Math.max(effectiveDeckCount, 1)]));
 }
 
 /** EDHREC's profiles for exactly these commanders (`serving_commander_profile`), with the decks they rest on. */

@@ -31,6 +31,8 @@ export interface KeyAggregate {
   roleCounts: Record<string, number>;
   /** Curve bucket ('0' to '7') → nonland cards there, summed over the decks (T062). */
   curveCounts: Record<string, number>;
+  /** Counted card type ('creature', ...) → nonland cards of that type, summed over the decks (T071). */
+  typeCounts: Record<string, number>;
   /** Lands and basic lands, summed over the decks (T062). */
   lands: number;
   basicLands: number;
@@ -87,7 +89,7 @@ export async function tallyDecks(
     const { key, commanders, identity, month, cardIds } = resolved.deck;
     let aggregate = keys.get(key);
     if (!aggregate) {
-      aggregate = { commanders, identity, decks: 0, sources: {}, months: {}, roleCounts: {}, curveCounts: {}, lands: 0, basicLands: 0, cards: new Map() };
+      aggregate = { commanders, identity, decks: 0, sources: {}, months: {}, roleCounts: {}, curveCounts: {}, typeCounts: {}, lands: 0, basicLands: 0, cards: new Map() };
       keys.set(key, aggregate);
     }
     aggregate.decks++;
@@ -105,11 +107,18 @@ export async function tallyDecks(
   return { keys, excluded, decksRead, eligibleDecks };
 }
 
-/** One card's place in a deck's shape: a land, or a nonland card at its mana value. */
-export function tallyShape(aggregate: Pick<KeyAggregate, 'curveCounts' | 'lands'>, card: Pick<CatalogCard, 'manaValue' | 'isLand'> | undefined): void {
+/** One card's place in a deck's shape: a land, or a nonland card at its mana value and of its counted type. */
+export function tallyShape(
+  aggregate: Pick<KeyAggregate, 'curveCounts' | 'typeCounts' | 'lands'>,
+  card: Pick<CatalogCard, 'manaValue' | 'isLand' | 'statType'> | undefined,
+): void {
   if (!card) return;
-  if (card.isLand) aggregate.lands++;
-  else bump(aggregate.curveCounts, curveBucket(card.manaValue));
+  if (card.isLand) {
+    aggregate.lands++;
+    return;
+  }
+  bump(aggregate.curveCounts, curveBucket(card.manaValue));
+  if (card.statType) bump(aggregate.typeCounts, card.statType);
 }
 
 /** Per-deck averages, to two places. */
@@ -137,6 +146,7 @@ export interface KeyStatRow {
   deck_months: string;
   role_profile: string;
   curve_profile: string;
+  type_profile: string;
   land_count: number;
   basic_land_count: number;
 }
@@ -166,6 +176,7 @@ export function keyStatRows(keys: ReadonlyMap<string, KeyAggregate>): KeyStatRow
     curve_profile: JSON.stringify(
       Object.fromEntries(Object.entries(a.curveCounts).sort(([x], [y]) => Number(x) - Number(y)).map(([bucket, cards]) => [bucket, perDeck(cards, a.decks)])),
     ),
+    type_profile: JSON.stringify(Object.fromEntries(Object.entries(a.typeCounts).map(([type, cards]) => [type, perDeck(cards, a.decks)]))),
     land_count: perDeck(a.lands, a.decks),
     basic_land_count: perDeck(a.basicLands, a.decks),
   }));
@@ -265,7 +276,7 @@ export async function mergeBaseline(db: ReservedSql, globalRows: readonly Global
 
 const KEY_COLUMNS = [
   'key', 'commander_1', 'commander_2', 'color_identity', 'slug', 'deck_count', 'source_counts', 'deck_months', 'role_profile',
-  'curve_profile', 'land_count', 'basic_land_count',
+  'curve_profile', 'type_profile', 'land_count', 'basic_land_count',
 ];
 const CARD_COLUMNS = ['key', 'card_id', 'decks_with', 'eligible_decks', 'inclusion_shrunk', 'synergy'];
 
@@ -293,6 +304,7 @@ export async function mergeKeyStats(
       deck_months text not null,
       role_profile text not null,
       curve_profile text not null,
+      type_profile text not null,
       land_count real not null,
       basic_land_count real not null
     )
@@ -345,9 +357,10 @@ export async function mergeKeyStats(
   // brackets our estimator assigns come with the bracket rules (T060).
   await db`
     insert into public.commander_stats as cs
-      (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile, curve_profile, land_count, basic_land_count)
+      (commander_key_id, deck_count, source_counts, bracket_counts, deck_months, role_profile, curve_profile, type_profile, land_count,
+       basic_land_count)
     select i.id, s.deck_count, s.source_counts::jsonb, '{}'::jsonb, s.deck_months::jsonb, s.role_profile::jsonb,
-           s.curve_profile::jsonb, s.land_count, s.basic_land_count
+           s.curve_profile::jsonb, s.type_profile::jsonb, s.land_count, s.basic_land_count
     from stg_keys s
     join stg_key_ids i on i.key = s.key
     on conflict (commander_key_id) do update set
@@ -357,12 +370,14 @@ export async function mergeKeyStats(
       deck_months = excluded.deck_months,
       role_profile = excluded.role_profile,
       curve_profile = excluded.curve_profile,
+      type_profile = excluded.type_profile,
       land_count = excluded.land_count,
       basic_land_count = excluded.basic_land_count,
       computed_at = now()
-    where (cs.deck_count, cs.source_counts, cs.bracket_counts, cs.deck_months, cs.role_profile, cs.curve_profile, cs.land_count, cs.basic_land_count)
+    where (cs.deck_count, cs.source_counts, cs.bracket_counts, cs.deck_months, cs.role_profile, cs.curve_profile, cs.type_profile,
+           cs.land_count, cs.basic_land_count)
       is distinct from (excluded.deck_count, excluded.source_counts, excluded.bracket_counts, excluded.deck_months, excluded.role_profile,
-                        excluded.curve_profile, excluded.land_count, excluded.basic_land_count)
+                        excluded.curve_profile, excluded.type_profile, excluded.land_count, excluded.basic_land_count)
   `;
 
   await db`drop table if exists stg_commander_card_rows`;

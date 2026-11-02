@@ -351,8 +351,8 @@ do $$
 declare
   v jsonb := public.typical_deck_profile();
 begin
-  if not (v ? 'decks' and v ? 'curve') then
-    raise exception 'typical_deck_profile: expected decks and curve, got %', v;
+  if not (v ? 'decks' and v ? 'curve' and v ? 'types') then
+    raise exception 'typical_deck_profile: expected decks, curve and types, got %', v;
   end if;
 end $$;
 reset role;
@@ -368,6 +368,27 @@ begin
   -- Keys without bucket 3 add decks but no cards, so the function's value is at most the expected one over keys with it.
   if expected is not null and (v -> 'curve' ->> '3')::numeric > expected then
     raise exception 'typical_deck_profile: bucket 3 is % but cannot exceed %', v -> 'curve' ->> '3', expected;
+  end if;
+end $$;
+-- Types average over the keys that have a type profile only (T071): two keys, 30 and 10 decks, 20 and 40 creatures.
+do $$
+declare
+  k1 integer;
+  k2 integer;
+  v jsonb;
+begin
+  select s.commander_key_id into k1 from public.commander_stats s order by s.commander_key_id limit 1;
+  select s.commander_key_id into k2 from public.commander_stats s order by s.commander_key_id offset 1 limit 1;
+  if k2 is null then
+    raise notice 'typical_deck_profile types: fewer than two commander_stats rows, skipped';
+    return;
+  end if;
+  update public.commander_stats set type_profile = '{}'::jsonb;
+  update public.commander_stats set deck_count = 30, type_profile = '{"creature": 20, "instant": 9}' where commander_key_id = k1;
+  update public.commander_stats set deck_count = 10, type_profile = '{"creature": 40}' where commander_key_id = k2;
+  v := public.typical_deck_profile();
+  if (v -> 'types') <> '{"creature": 25.00, "instant": 6.75}'::jsonb then
+    raise exception 'typical_deck_profile: expected creature 25 and instant 6.75, got %', v -> 'types';
   end if;
 end $$;
 

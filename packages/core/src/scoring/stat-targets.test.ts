@@ -33,6 +33,8 @@ const input = (c: StatCorpus | null) => ({
   corpus: c,
   genericRoles: [{ roleId: 'ramp', label: 'Ramp', target: 10 }],
   typicalCurve: { '0': 0.1, '1': 8, '2': 12, '3': 11, '4': 8, '5': 6, '6': 3, '7': 2 },
+  typicalTypes: { creature: 24, instant: 10, sorcery: 8, artifact: 12, enchantment: 6, planeswalker: 0.4 },
+  commanderTypes: { creature: 32, instant: 6 } as Record<string, number>,
   build: { landCounts: [32, 35, 36, 37, 38, 38], basicLandCounts: [30, 32, 20, 12, 8, 5] },
   colourCount: 2,
   bracketRules: rules,
@@ -73,6 +75,24 @@ describe('statTargetsFor', () => {
     expect(t.lands).toBe(34.5); // the blend still reads the effective count
     const full = statTargetsFor({ ...input(corpus(120, { ownDeckCount: 70, borrowedDeckCount: 200 })), commanderLabel: 'Tymna & Thrasios' });
     expect(full.label).toBe('Tymna & Thrasios decks (70) with partner decks');
+  });
+  it('blends card types like the curve, in their fixed order (T071)', () => {
+    const own = statTargetsFor(input(corpus(102)));
+    expect(own.types.map((t) => [t.cardType, t.target])).toEqual([
+      ['creature', 32],
+      ['instant', 6],
+      ['sorcery', 0], // a commander's missing type is 0
+      ['artifact', 0],
+      ['enchantment', 0],
+      ['planeswalker', 0],
+    ]);
+    expect(own.types[0]!.label).toBe('Creatures');
+    expect(statTargetsFor(input(corpus(60))).types[0]!.target).toBe(28); // share 0.5
+    expect(statTargetsFor({ ...input(corpus(102)), commanderTypes: {} }).types[0]!.target).toBe(24); // no profile yet
+    expect(statTargetsFor(input(null)).types[5]!.target).toBe(0.4);
+  });
+  it('leaves card types out until typical decks have them', () => {
+    expect(statTargetsFor({ ...input(corpus(102)), typicalTypes: {} }).types).toEqual([]);
   });
   it('never reads the EDHREC prior', () => {
     expect(statTargetsFor(input(corpus(102))).roles[0]!.target).not.toBe(99);

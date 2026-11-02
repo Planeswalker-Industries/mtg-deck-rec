@@ -179,6 +179,7 @@ export function DeckStatsPanel({
 }) {
   const mana = report.stats.filter((s) => s.group === "mana");
   const roles = report.stats.filter((s) => s.group === "roles");
+  const types = report.stats.filter((s) => s.group === "types");
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">Compared with {report.label}</p>
@@ -199,6 +200,15 @@ export function DeckStatsPanel({
       <Group title="Curve">
         <CurveRows report={report} />
       </Group>
+      {types.length > 0 && (
+        <Group title="Types">
+          <ul className="flex flex-col gap-2.5">
+            {types.map((s) => (
+              <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key) ?? 0} />
+            ))}
+          </ul>
+        </Group>
+      )}
       <Group title="Bracket">
         <div className="flex items-center gap-2 text-sm">
           <Mark ok={report.bracket.ok} />

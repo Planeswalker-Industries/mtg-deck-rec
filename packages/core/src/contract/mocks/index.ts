@@ -81,6 +81,14 @@ const MOCK_STAT_TARGETS: StatTargets = {
   basicLands: 20,
   roles: MOCK_ROLES,
   curve: [0, 9, 13, 12, 8, 6, 3, 2],
+  types: [
+    { cardType: 'creature', label: 'Creatures', target: 26 },
+    { cardType: 'instant', label: 'Instants', target: 10 },
+    { cardType: 'sorcery', label: 'Sorceries', target: 8 },
+    { cardType: 'artifact', label: 'Artifacts', target: 12 },
+    { cardType: 'enchantment', label: 'Enchantments', target: 6 },
+    { cardType: 'planeswalker', label: 'Planeswalkers', target: 1 },
+  ],
   bracketLimits: {
     massLandDenialFromBracket: 4,
     maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 },

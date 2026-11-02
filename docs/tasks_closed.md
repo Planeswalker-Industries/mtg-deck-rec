@@ -54,5 +54,6 @@ One sentence each, so the gaps in the numbering have a reason. Ticket ids are ne
 - **T064** Deck affinity from card pairs (2026-10-07): card pairs built on hosted, and `deck` weighs 0.1 in adds.
 - **T065** Live accept rate (2026-10-07): `rec_events` live, written by the server only.
 - **T070** Derived commander pairs (2026-10-20): released 2026-10-08, 1,056 pairs derived on hosted; the parity check and the cache were moot.
+- **T071** Deck stats card types (2026-11-02): six type lines between Curve and Bracket (contract v30); hosted shows them once a full pass writes `commander_stats.type_profile`.
 - **T073** Deck journey UX overhaul follow-ups (2026-10-19): released in PRs #150–#152 (contract v28).
 - **T076** Decks that stay under 100 (2026-11-02): collection builds fill to 99 where the collection allows, and Add running out offers Allow Singles, then basic lands for the holes, with a Deck Under 100 check before Cut (PR #170).

@@ -957,6 +957,7 @@ export type Database = {
           land_count: number | null
           role_profile: Json
           source_counts: Json
+          type_profile: Json
         }
         Insert: {
           basic_land_count?: number | null
@@ -969,6 +970,7 @@ export type Database = {
           land_count?: number | null
           role_profile?: Json
           source_counts: Json
+          type_profile?: Json
         }
         Update: {
           basic_land_count?: number | null
@@ -981,6 +983,7 @@ export type Database = {
           land_count?: number | null
           role_profile?: Json
           source_counts?: Json
+          type_profile?: Json
         }
         Relationships: [
           {
