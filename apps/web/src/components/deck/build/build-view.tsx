@@ -17,7 +17,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
-import { ComboList } from "../combo-list";
 import { ShuffleDeck } from "../shuffle-deck";
 import { BuildCardSheet } from "./build-card-sheet";
 import {
@@ -292,7 +291,6 @@ export function BuildView({
   const { open, roleShortfalls } = result.feasibility;
   const basicCount = result.basics.reduce((n, b) => n + b.quantity, 0);
   const builtCards = new Map(result.groups.flatMap((g) => g.cards).map((c) => [c.card.id, c]));
-  const cardNames = buildCards(result);
   const fit = fitDiff(request, result);
 
   return (
@@ -382,10 +380,6 @@ export function BuildView({
           />
         </section>
       ))}
-      <ComboList
-        combos={result.combos}
-        names={(id) => cardNames.get(id)?.name ?? request.commanders.find((c) => c.id === id)?.name ?? "Unknown card"}
-      />
       {result.basics.length > 0 && (
         <section aria-labelledby="build-basics" className="flex flex-col gap-2">
           <h2 id="build-basics" className="font-heading text-xl leading-none font-semibold">

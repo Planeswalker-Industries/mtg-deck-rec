@@ -5,13 +5,14 @@ import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { AddSuggestion, CardSummary } from "@mtg/core/contract";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
+import type { Route } from "next";
 import { PocketGrid } from "@/components/cards/pocket-grid";
-import { ComboList } from "../combo-list";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
-import { PHONE_HIT_AREA, PILL_OFF, PILL_ON } from "@/lib/constants";
+import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
 import { PanelError, PanelLoading } from "../panel-state";
+import { CombosPhase } from "./combos-phase";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
 import { SingleSwipe, SwipeDone } from "./single-swipe";
 import { AddsCounter, SlotTray } from "./slot-tray";
@@ -154,11 +155,14 @@ export function AddPhase({
   view,
   roles,
   onShowUnowned,
+  uploadHref,
 }: {
   journey: DeckJourney;
   view: "swipe" | "list";
   roles: readonly StatLine[];
   onShowUnowned: () => void;
+  /** Where Combos' "Upload a collection" goes: sign-in first when signed out, then the import. */
+  uploadHref: Route;
 }) {
   const { state: addState, queue, shown, filter, setFilter, landsShort, accept, pass, undo } = journey.add;
   const onClearFilter = () => setFilter(null);
@@ -173,14 +177,20 @@ export function AddPhase({
   const slots = open + adds.length;
   const short = roles.filter((r) => !r.ok && r.value < r.target);
   // Through the stepper, so a deck under 100 asks before it goes.
-  const toCut = () => journey.stepper.select("cut");
-  const nextLabel = cutsOwed > 0 ? `Next: cut ${cutsOwed}` : "Next: cut";
+  // Add's own way on: through Combos when there are any (the stepper's Cut jumps straight there).
+  const toCut = journey.add.next;
+  const cutLabel = cutsOwed > 0 ? `Next: cut ${cutsOwed}` : "Next: cut";
+  const combos = journey.add.combos;
+  // Next goes through Combos when there are any.
+  const nextLabel = combos.length > 0 ? "Next: combos" : cutLabel;
   const hasCollection = journey.add.hasCollection;
   // Owned cards are marked only where they mix with cards to buy: in Owned only every card is owned.
   const markOwned = hasCollection && !journey.add.collectionOnly;
   // The as-of date goes with the prices on screen: with a collection, only cards not owned show one.
   const asOf = queue.find((s) => s.card.price && !(hasCollection && s.owned))?.card.price?.asOf;
   const filterName = filter ? (filter.kind === "lands" ? "lands" : filter.label.toLowerCase()) : null;
+
+  if (journey.add.part === "combos") return <CombosPhase journey={journey} uploadHref={uploadHref} nextLabel={cutLabel} />;
 
   const intro = (
     <PhaseIntro title="Add" brief={view === "swipe" && room > 0 ? "Swipe right to add, left to skip." : undefined}>
@@ -230,12 +240,6 @@ export function AddPhase({
             onSelect={(card: CardSummary) => accept(card)}
             items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, owned: markOwned && s.owned !== null, caption: <Why suggestion={s} roles={roles} hasCollection={hasCollection} /> }))}
           />
-          <ComboList
-            combos={journey.add.combos}
-            names={(id) => journey.cards.get(id)?.name ?? "Unknown card"}
-            onAdd={journey.add.acceptCombo}
-            markOwned={markOwned}
-          />
         </div>
       );
     }
@@ -272,7 +276,13 @@ export function AddPhase({
   return (
     <div className="flex flex-col gap-3">
       {intro}
-      <StepStatus count={<AddsCounter count={`${size} / ${COMMANDER_DECK_SIZE}`} adds={adds} onTakeOut={undo} />} />
+      <StepStatus count={<AddsCounter count={`${size} / ${COMMANDER_DECK_SIZE}`} adds={adds} onTakeOut={undo} />}>
+        {combos.length > 0 && (
+          <button type="button" onClick={journey.add.openCombos} className={cn(TEXT_LINK, PHONE_HIT_AREA, "text-sm")}>
+            Combos ({combos.length})
+          </button>
+        )}
+      </StepStatus>
       {room > 0 && <RolePills short={short} filter={filter} onChange={setFilter} />}
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}

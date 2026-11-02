@@ -947,6 +947,11 @@ function DeckToolSession() {
                       view={view}
                       roles={deckStats?.stats.filter((stat) => stat.group === "roles") ?? []}
                       onShowUnowned={() => tool.changeCollectionMode("first")}
+                      uploadHref={
+                        (signedIn
+                          ? `${collectionImportHref}&ifEmpty=1`
+                          : `/sign-in?next=${encodeURIComponent(`${collectionImportHref}&ifEmpty=1`)}`) as Route
+                      }
                     />
                   )}
                   {journey.state.phase === "replace" && (

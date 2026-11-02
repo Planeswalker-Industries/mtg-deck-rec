@@ -188,6 +188,8 @@ export function useDeckJourney({
    * lands for the holes. Taking cards they don't own instead changes the tool's collection setting to Owned first.
    */
   const [ownedOnlyRound, setOwnedOnlyRound] = useState<number | null>(null);
+  /** The round whose Add is on its second part, Combos; the stepper still says Add. */
+  const [combosRound, setCombosRound] = useState<number | null>(null);
   /** Basic lands on their way into the holes (their names are resolved first), or the failure. */
   const [basicsFill, setBasicsFill] = useState<{ round: number; value: Async<null> } | null>(null);
   /** A step past Add the player asked for while the deck is under 100, waiting for them to confirm (T076). */
@@ -462,6 +464,8 @@ export function useDeckJourney({
     const leaving = state?.phase;
     const next = apply(...before, { type: "goto", phase });
     if (!next) return;
+    // Add opens on its cards; Combos is entered on purpose (Next, its link, Deck stats).
+    setCombosRound(null);
     if (leaving === "cut" && phase !== "cut") recordCuts(next);
     // The Add and Replace lists depend on everything chosen before them, so they are asked for on the way in, unless
     // the one on hand was made for the same deck: then the player picks up where they left off. A deck at its overflow
@@ -673,6 +677,22 @@ export function useDeckJourney({
     return true;
   }
 
+  /** Add's part on screen: its cards, or the combos after them. */
+  const addPart: "cards" | "combos" = current !== null && state?.phase === "add" && combosRound === current.id ? "combos" : "cards";
+
+  /** Opens Add's Combos part, from Add or from a later step (Deck stats' link). */
+  function openCombos() {
+    if (!state || !current) return;
+    if (state.phase !== "add") goTo("add");
+    setCombosRound(current.id);
+  }
+
+  /** Add's own Next (not the stepper's Cut, which jumps): through Combos when there are any, then on to Cut. */
+  function addNext() {
+    if (addPart === "cards" && addCombos.length > 0) openCombos();
+    else select("cut");
+  }
+
   /** The current step's Next: what its own button does. */
   function nextStep() {
     if (!state) return;
@@ -702,6 +722,8 @@ export function useDeckJourney({
   /** A step chosen in the stepper: the next step is the current one's Next; another goes there directly. */
   function select(phase: JourneyPhase) {
     if (!state || !canOpen(phase)) return;
+    // Add in the stepper from Add's Combos goes back to its cards.
+    if (phase === "add" && state.phase === "add") setCombosRound(null);
     const at = phaseIndex(state.phase);
     const to = phaseIndex(phase);
     if (to === at + 1) nextStep();
@@ -779,9 +801,18 @@ export function useDeckJourney({
       landsShort,
       accept: acceptAdd,
       pass: passAdd,
-      /** "Complete a combo": cards that finish a combo one card short, shown as their own group in the list view. */
+      /** "Complete a combo": cards that finish a combo one card short, Add's second part. */
       combos: addCombos,
       acceptCombo,
+      /** Which part of Add is on screen. */
+      part: addPart,
+      openCombos,
+      /** Back from Combos to Add's cards. */
+      showCards: () => setCombosRound(null),
+      /** Add's Next: Combos first when there are any, then Cut. */
+      next: addNext,
+      /** Straight on to Cut, as Combos' own Next does. */
+      toCut: () => select("cut"),
       undo: undoAdd,
       /** A collection is applied, so owned cards show as owned and the rest show what they'd cost. */
       hasCollection: context !== null && context.ownership !== null,
