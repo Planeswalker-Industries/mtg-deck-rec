@@ -50,8 +50,10 @@ import { blendScore } from './swap';
  *    (`weights.add`) against the deck so far, so role, curve and affinity needs move with every pick. A card that would
  *    break a bracket rule is skipped: here every rule is a limit, since the player asked for that bracket.
  * 3. Nonbasic lands the same way, leaving the basic land count; basics split by the spells' mana symbols.
- * 4. From a collection, picking stops once the best card left scores under `qualityFloor`: what stays open is the
- *    feasibility report, and `fill: 'value'` fills it with unowned cards by score above the floor per dollar.
+ * 4. From a collection, nonland picks go on while the collection has cards left (a weak owned card beats an empty slot),
+ *    but nonbasic lands stop once the best one left scores under `qualityFloor`, leaving those slots to basics. What
+ *    stays open is the feasibility report, and `fill: 'value'` fills it with unowned cards by score above the floor per
+ *    dollar.
  */
 
 /** A basic land's colour: one of WUBRG, or C for Wastes. */
@@ -366,13 +368,14 @@ export function buildDeck(input: BuildInput): BuildRanking {
   const nonlandCount = () => deck.filter((id) => !isLand(id)).length;
   const landCount = () => deck.filter(isLand).length;
   const pool = input.poolIds.filter((id) => supplied(id));
-  const stop = fromCollection ? floor : null;
+  // Only nonbasic lands stop at the floor: a basic is a fine land, while an empty spell slot is a hole in the deck.
+  const landStop = fromCollection ? floor : null;
 
   phase(
     pool.filter((id) => !isLand(id)),
     () => nonlandCount() < nonlandSlots && deck.length < slots,
     'pick',
-    stop,
+    null,
   );
   if (fill === 'value' && fromCollection) {
     const open = (input.fillIds ?? []).filter((id) => !isLand(id) && !supplied(id));
@@ -382,7 +385,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
     pool.filter(isLand),
     () => landCount() < landTarget - basicTarget && deck.length < slots,
     'pick',
-    stop,
+    landStop,
   );
 
   // Basic lands make up the land count, split by the mana symbols of the spells and the commanders.

@@ -1,6 +1,6 @@
 import { corpusCommanders, type CorpusCommanderFacts, type CorpusExclusion } from '@mtg/core/commander';
 import type { CardId } from '@mtg/core/contract';
-import { isFrontLand, parseCorpusSettings, type CorpusSettings } from '@mtg/core/scoring';
+import { isFrontLand, parseCorpusSettings, statCardType, type CorpusSettings, type StatCardType } from '@mtg/core/scoring';
 import type { Sql } from './db';
 
 /** Shared by the corpus jobs, so every job counts the same decks. */
@@ -29,6 +29,8 @@ export interface CatalogCard {
   manaValue: number;
   /** The front face is a land (`isFrontLand`). */
   isLand: boolean;
+  /** The type Deck stats counts the card as (`statCardType`), null for lands and uncounted types (T071). */
+  statType: StatCardType | null;
 }
 
 /**
@@ -133,6 +135,7 @@ export async function loadCatalog(sql: Sql): Promise<Map<number, CatalogCard>> {
       releaseMonth: r.release_month,
       manaValue: r.mana_value,
       isLand: isFrontLand(r.type_line),
+      statType: statCardType(r.type_line),
     });
   }
   if (catalog.size === 0) throw new Error('The card catalog is empty. Run sync:catalog first.');

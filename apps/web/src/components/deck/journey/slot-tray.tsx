@@ -8,6 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { displayName } from "@/lib/cards";
 
+/** A key per added copy: a basic land can be added more than once, and each copy keeps its key as others come and go. */
+function copyKeys(adds: readonly CardSummary[]): string[] {
+  const seen = new Map<number, number>();
+  return adds.map((card) => {
+    const n = seen.get(card.id) ?? 0;
+    seen.set(card.id, n + 1);
+    return `${card.id}:${n}`;
+  });
+}
+
 /** A card dropped into its slot settles from slightly above and larger, so the player sees where it went. */
 const DROP = { fromY: -10, fromScale: 1.12, seconds: 0.28 } as const;
 /** Empty sleeves drawn after the added cards; the rest fold into a count, so a short deck can't push the swipe down. */
@@ -23,13 +33,14 @@ export function SlotTray({ slots, adds, onTakeOut }: { slots: number; adds: read
   const reduceMotion = useReducedMotion();
   const empty = Math.max(0, slots - adds.length);
   const emptyShown = Math.min(empty, EMPTY_SLOTS_SHOWN);
+  const keys = copyKeys(adds);
 
   return (
     <section aria-label="Slots to fill" className="flex flex-col gap-1.5 max-sm:hidden">
       <ul className="flex flex-wrap gap-1.5">
-        {adds.map((card) => (
+        {adds.map((card, i) => (
           <motion.li
-            key={card.id}
+            key={keys[i]}
             initial={reduceMotion ? false : { y: DROP.fromY, scale: DROP.fromScale, opacity: 0 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}
             transition={{ duration: DROP.seconds, ease: "easeOut" }}
@@ -72,6 +83,7 @@ export function SlotTray({ slots, adds, onTakeOut }: { slots: number; adds: read
 export function AddsCounter({ count, adds, onTakeOut }: { count: string; adds: readonly CardSummary[]; onTakeOut: (card: CardSummary) => void }) {
   const [open, setOpen] = useState(false);
   if (adds.length === 0) return <>{count}</>;
+  const keys = copyKeys(adds);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -87,8 +99,8 @@ export function AddsCounter({ count, adds, onTakeOut }: { count: string; adds: r
       >
         <SheetTitle className="font-heading text-base font-semibold">Added this round</SheetTitle>
         <ul className="flex flex-col gap-2">
-          {adds.map((card) => (
-            <li key={card.id} className="flex items-center gap-3">
+          {adds.map((card, i) => (
+            <li key={keys[i]} className="flex items-center gap-3">
               <CardImage card={card} variant="small" alt="" sizes="48px" className="w-12 shrink-0" />
               <span className="min-w-0 flex-1 truncate text-sm">{displayName(card)}</span>
               <Button

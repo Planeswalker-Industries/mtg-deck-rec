@@ -120,5 +120,8 @@
  *
  * v29 (2026-10-22): shared collections. ActionsApi getMyCollectionSharing, setCollectionSharing and getSharedCollection,
  * with CollectionSharing and SharedCollection. Sharing is off until the owner turns it on. Additive.
+ *
+ * v30 (2026-11-02): deck stats card types (T071). StatTargets gains `types`, the nonland cards per card type blended
+ * toward typical decks like the curve; empty until typical decks have a type profile. Additive for readers.
  */
-export const CONTRACT_VERSION = 29;
+export const CONTRACT_VERSION = 30;

@@ -23,7 +23,7 @@ import { normalizeName, parseDecklist } from "@mtg/core/parse";
 import { statTargetsFor } from "@mtg/core/scoring";
 import { loadBracketBasics } from "./brackets";
 import { fetchCardsById, toCardSummary, toCommanderFacts, type CardRow } from "./cards";
-import { commanderKeyCounts, loadCommanderCorpus, type CommanderCorpus } from "./corpus";
+import { commanderKeyCounts, loadCommanderCorpus, sourcesProfile, type CommanderCorpus } from "./corpus";
 import { loadStatInputs, type StatInputs } from "./deck-stats";
 import { loadDeckCombos } from "./serving";
 import type { PublicClient } from "./supabase";
@@ -107,7 +107,7 @@ export async function resolveDecklist(db: PublicClient, text: string): Promise<P
   const [corpus, bracket, stats] = await Promise.all([
     loadCommanderCorpus(db, deck.commanders),
     loadDeckBracket(db, deck),
-    loadStatInputs(db, [...deck.commanders, ...deck.cards.map((c) => c.cardId)]),
+    loadStatInputs(db, deck.commanders, [...deck.commanders, ...deck.cards.map((c) => c.cardId)]),
   ]);
   return { lines: resolved, analysis: analyzeDeck(deck, cards, bracket, today, corpus, stats) };
 }
@@ -169,6 +169,10 @@ export function analyzeDeck(
             corpus,
             genericRoles: stats.genericRoles,
             typicalCurve: stats.typicalCurve,
+            typicalTypes: stats.typicalTypes,
+            commanderTypes: corpus
+              ? sourcesProfile(corpus.sources, corpus.effectiveDeckCount, (keyId) => stats.keyTypeProfiles.get(keyId))
+              : {},
             build: stats.build,
             colourCount,
             bracketRules: bracket.rules,
@@ -194,7 +198,7 @@ export async function analyzeDeckById(db: PublicClient, deck: DeckInput): Promis
     fetchCardsById(db, cardIds),
     loadCommanderCorpus(db, deck.commanders),
     loadDeckBracket(db, deck),
-    loadStatInputs(db, cardIds),
+    loadStatInputs(db, deck.commanders, cardIds),
   ]);
   return analyzeDeck(deck, cards, bracket, undefined, corpus, stats);
 }

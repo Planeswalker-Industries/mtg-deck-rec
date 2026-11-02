@@ -6,8 +6,10 @@ import type { Route } from "next";
 import { CircleCheck, CircleHelp, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff } from "@mtg/core/journey";
+import { CardPlate } from "@/components/cards/card-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
+import { DeckViewToggle, useDeckView, type DeckView } from "@/components/decks/deck-view";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -98,8 +100,49 @@ function fitSummary(listCopies: number, removed: number, added: number): string 
   return `Kept ${kept} of the list's ${listCopies} cards. ${count(removed, "card")} you don't own ${removed === 1 ? "was" : "were"} swapped for ${count(added, "card")} from your collection.`;
 }
 
+/**
+ * One group of the build's cards, as whole card images or as plates (the toggle above the groups). In the image grid a
+ * card with several copies says how many; `alwaysCount` says it for one copy too (basic lands).
+ */
+function BuildCards({
+  view,
+  label,
+  entries,
+  mark,
+  alwaysCount = false,
+}: {
+  view: DeckView;
+  label: string;
+  entries: readonly { card: CardSummary; quantity: number }[];
+  mark?: "cut" | "add";
+  alwaysCount?: boolean;
+}) {
+  if (view === "plates") {
+    return (
+      <ul aria-label={label} className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {entries.map(({ card, quantity }) => (
+          <CardPlate key={card.id} card={card} quantity={quantity} mark={mark} />
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <PocketGrid
+      zoomable
+      label={label}
+      items={entries.map(({ card, quantity }) => ({
+        card,
+        ...(mark ? { mark } : {}),
+        ...(alwaysCount || quantity > 1
+          ? { caption: <span className="font-mono text-muted-foreground">{count(quantity, "copy", "copies")}</span> }
+          : {}),
+      }))}
+    />
+  );
+}
+
 /** The list's cards and the build's, side by side as what went out and what came in. */
-function FitChanges({ request, result }: { request: BuildRequest; result: BuildResult }) {
+function FitChanges({ request, result, view }: { request: BuildRequest; result: BuildResult; view: DeckView }) {
   const list = request.list;
   const diff = fitDiff(request, result);
   if (!list || !diff) return null;
@@ -110,15 +153,7 @@ function FitChanges({ request, result }: { request: BuildRequest; result: BuildR
       return card ? [{ card, quantity }] : [];
     });
   const grid = (entries: { card: CardSummary; quantity: number }[], label: string, mark: "cut" | "add") => (
-    <PocketGrid
-      zoomable
-      label={label}
-      items={entries.map(({ card, quantity }) => ({
-        card,
-        mark,
-        ...(quantity > 1 ? { caption: <span className="font-mono text-muted-foreground">{quantity} copies</span> } : {}),
-      }))}
-    />
+    <BuildCards view={view} label={label} entries={entries} mark={mark} />
   );
   const out = named(diff.removed, list.cards);
   const into = named(diff.added, built);
@@ -166,6 +201,7 @@ export function BuildView({
   onSave: (decklist: string) => void;
   onPickAnother: () => void;
 }) {
+  const [view, setView] = useDeckView("build");
   const { request } = state;
   const fitting = request.list !== undefined;
   const commanderName = request.commanders.map((c) => c.name).join(" and ");
@@ -303,14 +339,16 @@ export function BuildView({
         </aside>
       )}
 
-      <FitChanges request={request} result={result} />
+      <DeckViewToggle view={view} onChange={setView} />
+
+      <FitChanges request={request} result={result} view={view} />
 
       {result.groups.map((group) => (
         <section key={group.category} aria-labelledby={`build-${group.category}`} className="flex flex-col gap-2">
           <h2 id={`build-${group.category}`} className="font-heading text-xl leading-none font-semibold">
             {cardCategoryLabel[group.category]} <span className="font-mono text-base font-normal text-muted-foreground">{group.cards.length}</span>
           </h2>
-          <PocketGrid zoomable label={cardCategoryLabel[group.category]} items={group.cards.map((c) => ({ card: c.card }))} />
+          <BuildCards view={view} label={cardCategoryLabel[group.category]} entries={group.cards.map((c) => ({ card: c.card, quantity: 1 }))} />
         </section>
       ))}
       {result.basics.length > 0 && (
@@ -318,14 +356,7 @@ export function BuildView({
           <h2 id="build-basics" className="font-heading text-xl leading-none font-semibold">
             Basic Lands <span className="font-mono text-base font-normal text-muted-foreground">{basicCount}</span>
           </h2>
-          <PocketGrid
-            zoomable
-            label="Basic Lands"
-            items={result.basics.map((b) => ({
-              card: b.card,
-              caption: <span className="font-mono text-muted-foreground">{count(b.quantity, "copy", "copies")}</span>,
-            }))}
-          />
+          <BuildCards view={view} label="Basic Lands" entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))} alwaysCount />
         </section>
       )}
     </section>

@@ -216,6 +216,8 @@ test("saving a journey's result keeps the original, which the deck page compares
 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await recs.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click({ timeout: 60_000 });
+  // The deck is short of 100, so leaving Add asks first.
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
   await recs.getByRole("button", { name: "Cut Lightning Bolt" }).click({ timeout: 60_000 });
   await recs.getByRole("button", { name: "Next", exact: true }).first().click();
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });

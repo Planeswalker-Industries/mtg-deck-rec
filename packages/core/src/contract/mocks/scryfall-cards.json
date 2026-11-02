@@ -843,6 +843,87 @@
       },
       "scryfallUri": "https://scryfall.com/card/znr/76/sea-gate-restoration-sea-gate-reborn?utm_source=api",
       "keywords": []
+    },
+    {
+      "name": "Plains",
+      "oracleId": "bc71ebf6-2056-41f7-be35-b2e5c34afa99",
+      "scryfallId": "09ac862f-0a51-44dd-b86f-9412b8218b13",
+      "layout": "normal",
+      "manaValue": 0,
+      "manaCost": "",
+      "typeLine": "Basic Land — Plains",
+      "colorIdentity": "",
+      "gameChanger": false,
+      "releasedAt": "1993-08-05",
+      "price": {
+        "usd": 0.08,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/0/9/09ac862f-0a51-44dd-b86f-9412b8218b13.jpg?1791578423",
+          "normal": "https://cards.scryfall.io/normal/front/0/9/09ac862f-0a51-44dd-b86f-9412b8218b13.jpg?1791578423",
+          "large": "https://cards.scryfall.io/large/front/0/9/09ac862f-0a51-44dd-b86f-9412b8218b13.jpg?1791578423",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/0/9/09ac862f-0a51-44dd-b86f-9412b8218b13.jpg?1791578423"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/mdd/292/plains?utm_source=api",
+      "keywords": []
+    },
+    {
+      "name": "Island",
+      "oracleId": "b2c6aa39-2d2a-459c-a555-fb48ba993373",
+      "scryfallId": "1335d293-3dd2-4f13-bd2c-22181f4528ee",
+      "layout": "normal",
+      "manaValue": 0,
+      "manaCost": "",
+      "typeLine": "Basic Land — Island",
+      "colorIdentity": "",
+      "gameChanger": false,
+      "releasedAt": "1993-08-05",
+      "price": {
+        "usd": 0.08,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/1/3/1335d293-3dd2-4f13-bd2c-22181f4528ee.jpg?1791578424",
+          "normal": "https://cards.scryfall.io/normal/front/1/3/1335d293-3dd2-4f13-bd2c-22181f4528ee.jpg?1791578424",
+          "large": "https://cards.scryfall.io/large/front/1/3/1335d293-3dd2-4f13-bd2c-22181f4528ee.jpg?1791578424",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/1/3/1335d293-3dd2-4f13-bd2c-22181f4528ee.jpg?1791578424"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/mdd/294/island?utm_source=api",
+      "keywords": []
+    },
+    {
+      "name": "Forest",
+      "oracleId": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+      "scryfallId": "2e781bfd-f8cb-4d20-b977-4359f3a21311",
+      "layout": "normal",
+      "manaValue": 0,
+      "manaCost": "",
+      "typeLine": "Basic Land — Forest",
+      "colorIdentity": "",
+      "gameChanger": false,
+      "releasedAt": "1993-08-05",
+      "price": {
+        "usd": 0.09,
+        "finish": "nonfoil"
+      },
+      "images": {
+        "front": {
+          "small": "https://cards.scryfall.io/small/front/2/e/2e781bfd-f8cb-4d20-b977-4359f3a21311.jpg?1791578317",
+          "normal": "https://cards.scryfall.io/normal/front/2/e/2e781bfd-f8cb-4d20-b977-4359f3a21311.jpg?1791578317",
+          "large": "https://cards.scryfall.io/large/front/2/e/2e781bfd-f8cb-4d20-b977-4359f3a21311.jpg?1791578317",
+          "artCrop": "https://cards.scryfall.io/art_crop/front/2/e/2e781bfd-f8cb-4d20-b977-4359f3a21311.jpg?1791578317"
+        },
+        "back": null
+      },
+      "scryfallUri": "https://scryfall.com/card/mdd/301/forest?utm_source=api",
+      "keywords": []
     }
   ]
 }

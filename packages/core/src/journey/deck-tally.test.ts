@@ -16,6 +16,7 @@ const targets: StatTargets = {
     { roleId: DRAW, label: 'Card advantage', target: 10 },
   ],
   curve: [0, 8, 12, 10, 8, 6, 3, 2],
+  types: [],
   bracketLimits: { massLandDenialFromBracket: 4, maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 }, extraTurnLoopResults: ['Infinite turns'], extraTurnLoopFromBracket: 4 },
 };
 
@@ -59,6 +60,21 @@ describe('buildTally and applyCard', () => {
     expect(t.gameChangers).toBe(2); // the commander counts toward Game Changers
     expect(t.cards).toBe(7); // commanders are not in the main count
   });
+  it('counts nonland cards by type, an artifact creature as a creature', () => {
+    const t = buildTally(
+      [
+        { card: card({ typeLine: 'Artifact Creature — Golem' }), quantity: 1 },
+        { card: card({ typeLine: 'Instant' }), quantity: 2 },
+        { card: card({ typeLine: 'Battle — Siege' }), quantity: 1 },
+        { card: forest, quantity: 3 },
+      ],
+      [card({ typeLine: 'Legendary Creature — Elf' })],
+    );
+    expect(t.types.get('creature')).toBe(1); // the commander isn't counted
+    expect(t.types.get('instant')).toBe(2);
+    expect(t.types.get('artifact')).toBeUndefined();
+    expect([...t.types.values()].reduce((a, b) => a + b, 0)).toBe(3); // no land or battle
+  });
   it('puts mana value 7 and up in the last bar', () => {
     const t = buildTally([{ card: card({ manaValue: 9 }), quantity: 1 }], []);
     expect(t.curve[7]).toBe(1);
@@ -84,7 +100,7 @@ describe('syncTally', () => {
     const pool: TallyCard[] = Array.from({ length: 40 }, (_, i) =>
       card({
         manaValue: i % 9,
-        typeLine: i % 5 === 0 ? 'Land' : i % 7 === 0 ? 'Basic Land — Island' : 'Instant',
+        typeLine: i % 5 === 0 ? 'Land' : i % 7 === 0 ? 'Basic Land — Island' : i % 2 === 0 ? 'Artifact Creature — Golem' : 'Instant',
         roles: i % 3 === 0 ? [RAMP] : i % 4 === 0 ? [RAMP, DRAW] : [],
         gameChanger: i % 11 === 0,
       }),
@@ -103,10 +119,12 @@ describe('syncTally', () => {
         syncTally(t, [...deck.values()]);
       }
       const full = buildTally([...deck.values()], []);
-      expect({ ...t, main: [...t.main.entries()].sort(), roles: [...t.roles.entries()].filter(([, n]) => n !== 0).sort() }).toEqual({
+      const nonzero = (m: Map<string, number>) => [...m.entries()].filter(([, n]) => n !== 0).sort();
+      expect({ ...t, main: [...t.main.entries()].sort(), roles: nonzero(t.roles), types: nonzero(t.types) }).toEqual({
         ...full,
         main: [...full.main.entries()].sort(),
-        roles: [...full.roles.entries()].sort(),
+        roles: nonzero(full.roles),
+        types: nonzero(full.types),
       });
     }
   });
@@ -145,6 +163,23 @@ describe('gradeDeck', () => {
     const report = gradeDeck(t, targets, bracket());
     expect(report.okCount).toBe(3);
     expect(report.level).toBe('mild');
+  });
+
+  it('grades each card type when the targets have them', () => {
+    const typed: StatTargets = {
+      ...targets,
+      types: [
+        { cardType: 'creature', label: 'Creatures', target: 2 },
+        { cardType: 'instant', label: 'Instants', target: 10 },
+      ],
+    };
+    const t = buildTally([{ card: card(), quantity: 2 }, { card: card({ typeLine: 'Instant' }), quantity: 1 }], []);
+    const report = gradeDeck(t, typed, bracket());
+    expect(report.total).toBe(8);
+    expect(report.stats.filter((s) => s.group === 'types').map((s) => [s.key, s.value, s.ok])).toEqual([
+      ['creature', 2, true],
+      ['instant', 1, false],
+    ]);
   });
 
   it('fails the bracket for an intact combo above it and passes once a piece leaves', () => {
@@ -212,18 +247,22 @@ describe('tallyCache', () => {
 });
 
 describe('statDeltas', () => {
-  const lines = [{ key: 'lands' }, { key: 'basicLands' }, { key: 'ramp' }, { key: 'removal' }];
+  const lines = [{ key: 'lands' }, { key: 'basicLands' }, { key: 'ramp' }, { key: 'removal' }, { key: 'creature' }, { key: 'artifact' }];
   const card = (typeLine: string, roles: string[]) => ({ id: 1 as CardId, typeLine, manaValue: 2, gameChanger: false, roles });
 
   it('counts what the incoming card adds and the outgoing one takes, leaving unmoved lines out', () => {
     const signet = card('Artifact', ['ramp']);
     const bolt = card('Instant', ['removal']);
-    expect(statDeltas(lines, signet, bolt)).toEqual(new Map([['ramp', 1], ['removal', -1]]));
+    expect(statDeltas(lines, signet, bolt)).toEqual(new Map([['ramp', 1], ['removal', -1], ['artifact', 1]]));
     expect(statDeltas(lines, signet, card('Artifact', ['ramp']))).toEqual(new Map());
   });
 
   it('counts lands and basic lands from the type line', () => {
     expect(statDeltas(lines, card('Basic Land — Plains', []), null)).toEqual(new Map([['lands', 1], ['basicLands', 1]]));
     expect(statDeltas(lines, null, card('Land', ['ramp']))).toEqual(new Map([['lands', -1], ['ramp', -1]]));
+  });
+
+  it('counts a card type once, as the first its front face has', () => {
+    expect(statDeltas(lines, card('Artifact Creature — Golem', []), null)).toEqual(new Map([['creature', 1]]));
   });
 });
