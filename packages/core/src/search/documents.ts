@@ -98,6 +98,12 @@ export interface CardDocument {
   artist?: string;
   /** The printed cost ({2}{W}{W}); absent until the catalog sync has filled cards.mana_cost. */
   mana_cost?: string;
+  /** cards.produced_mana; absent when the card makes no mana. Read back into CardSummary.producedMana (T046). */
+  produced_mana?: string[];
+  /** cards.fetchable_mana; absent when the card finds no land. */
+  fetchable_mana?: string[];
+  /** cards.fetchable_basic_only; absent unless true. */
+  fetchable_basic_only?: boolean;
   /** CardImages as JSON text: storing it as an object would mean turning nested fields on for one unindexed payload. */
   images_json?: string;
   released_at?: string;
@@ -232,6 +238,9 @@ export const CARD_SCHEMA: CollectionSchema = {
     { name: "copy_limit", type: "int32", index: false, optional: true },
     { name: "artist", type: "string", index: false, optional: true },
     { name: "mana_cost", type: "string", index: false, optional: true },
+    { name: "produced_mana", type: "string[]", index: false, optional: true },
+    { name: "fetchable_mana", type: "string[]", index: false, optional: true },
+    { name: "fetchable_basic_only", type: "bool", index: false, optional: true },
     { name: "images_json", type: "string", index: false, optional: true },
     { name: "released_at", type: "string", index: false, optional: true },
     { name: "first_printed_at", type: "string", index: false, optional: true },

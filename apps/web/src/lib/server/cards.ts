@@ -2,13 +2,14 @@ import type { CommanderCardFacts } from "@mtg/core/commander";
 import { maskToIdentity } from "@mtg/core/commander";
 import type { CardId, CardImages, CardSummary, Finish, OracleId } from "@mtg/core/contract";
 import type { RankCard } from "@mtg/core/scoring";
+import { manaLetters } from "@mtg/core/journey";
 import { cardRowFromDocument } from "@mtg/core/search";
 import { fromIndex } from "./search-index";
 import type { PublicClient } from "./supabase";
 
 /** Columns needed to build a CardSummary and run Commander rules. */
 export const CARD_COLUMNS =
-  "id, oracle_id, name, slug, mana_value, mana_cost, type_line, color_identity, images, game_changer, released_at, reference_price_usd, reference_price_finish, prices_as_of, legal_commander, can_be_commander, partner_kind, partner_qualifier, copy_limit, is_basic_land, artist, keywords" as const;
+  "id, oracle_id, name, slug, mana_value, mana_cost, type_line, color_identity, images, game_changer, released_at, reference_price_usd, reference_price_finish, prices_as_of, legal_commander, can_be_commander, partner_kind, partner_qualifier, copy_limit, is_basic_land, artist, keywords, produced_mana, fetchable_mana, fetchable_basic_only" as const;
 
 export interface CardRow {
   id: number;
@@ -38,11 +39,26 @@ export interface CardRow {
    */
   artist: string | null;
   keywords: string[] | null;
+  produced_mana: string[] | null;
+  /** Colours of the lands it can put onto the battlefield (fetch lands, land ramp); null when none. */
+  fetchable_mana: string[] | null;
+  fetchable_basic_only: boolean;
 }
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const toFinish = (finish: string | null): Finish => (finish === "foil" || finish === "etched" ? finish : "nonfoil");
+
+/** The mana fields CardSummary carries only when they say something (T046). */
+function manaFields(row: CardRow): Pick<CardSummary, "producedMana" | "findsMana" | "findsBasicOnly"> {
+  const producedMana = manaLetters(row.produced_mana ?? []);
+  const findsMana = manaLetters(row.fetchable_mana ?? []);
+  return {
+    ...(producedMana ? { producedMana } : {}),
+    ...(findsMana ? { findsMana } : {}),
+    ...(findsMana && row.fetchable_basic_only ? { findsBasicOnly: true } : {}),
+  };
+}
 
 export function toCardSummary(row: CardRow, today = todayIso()): CardSummary {
   return {
@@ -58,6 +74,7 @@ export function toCardSummary(row: CardRow, today = todayIso()): CardSummary {
     gameChanger: row.game_changer,
     released: row.released_at === null || row.released_at <= today,
     keywords: row.keywords ?? [],
+    ...manaFields(row),
     price:
       row.reference_price_usd !== null && row.prices_as_of !== null
         ? { usd: Number(row.reference_price_usd), finish: toFinish(row.reference_price_finish), asOf: row.prices_as_of, source: "scryfall" }

@@ -75,6 +75,9 @@ function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
       is_basic_land: card.is_basic_land ?? false,
       artist: card.artist,
       keywords: card.keywords,
+      produced_mana: card.produced_mana,
+      fetchable_mana: card.fetchable_mana,
+      fetchable_basic_only: card.fetchable_basic_only ?? false,
     },
     checkedAt,
   );
