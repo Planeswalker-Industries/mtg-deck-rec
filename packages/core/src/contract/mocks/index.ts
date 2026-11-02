@@ -21,6 +21,7 @@ import type {
   BuildCard,
   BuildResult,
   CardCategory,
+  ComboSuggestion,
   CorpusEvidence,
   CostDelta,
   CutReason,
@@ -112,6 +113,11 @@ const MOCK_OWNED_FIRST_BOOST = 0.1;
 const MOCK_BUY_LIST = { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 5 };
 /** Lands a mock build aims for, about what Commander decks run (`app_config.scoring.build` holds the real counts). */
 const MOCK_BUILD_LANDS = 36;
+/**
+ * One stand-in Commander Spellbook combo over two fixture cards (not a real combo), so mock Add and Build have a
+ * "complete a combo" entry to show. Bracket 2 so every estimate (2–4) allows it.
+ */
+const MOCK_COMBO = { id: 'mock-combo-1', pieces: ['Sol Ring', 'Guardian Project'], results: ['Draw cards'], minBracket: 2 as Bracket };
 const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0 };
 const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'];
 
@@ -326,6 +332,39 @@ const modeOf = (ctx: RecContext): SwapResult['mode'] => (ctx.ownership ? 'collec
 const confidenceOf = (ctx: RecContext): SwapResult['confidence'] => (ctx.deck.commanders.length > 0 ? 'full' : 'none');
 const ownedInfo = (owned: Set<number> | null, id: number) => (owned?.has(id) ? { quantity: 1 } : null);
 
+/**
+ * The mock combo when `held` has every piece but one, that one isn't in `excluded`, fits the colours and the
+ * collection setting (`only`: owned-only mode), and the bracket allows it.
+ */
+function mockCombos(
+  held: ReadonlySet<number>,
+  excluded: ReadonlySet<number>,
+  identity: string,
+  context: RecContext,
+  owned: Set<number> | null,
+  only: Set<number> | null,
+): ComboSuggestion[] {
+  const ids = MOCK_COMBO.pieces.map((name) => mockCards.find((c) => c.name === name)!.id);
+  const missing = ids.filter((id) => !held.has(id));
+  if (missing.length !== 1 || context.bracket < MOCK_COMBO.minBracket) return [];
+  const card = getCard(missing[0]!);
+  if (excluded.has(card.id) || !withinIdentity(card, identity) || (only && !only.has(card.id))) return [];
+  const corpus = corpusFor(card.id);
+  return [
+    {
+      id: MOCK_COMBO.id,
+      url: `https://commanderspellbook.com/combo/${MOCK_COMBO.id}/`,
+      results: MOCK_COMBO.results,
+      minBracket: MOCK_COMBO.minBracket,
+      card,
+      pieceIds: ids.filter((id) => held.has(id)),
+      alsoNeeded: [],
+      score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null, role: null }, 0),
+      owned: ownedInfo(owned, card.id),
+    },
+  ];
+}
+
 /** In-memory implementations of the contract for frontend work (NEXT_PUBLIC_USE_MOCKS=1). */
 export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {}): MockApis {
   const delay = <T>(value: T, ms = latencyMs) => wait(value, ms);
@@ -454,6 +493,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
               .slice(0, limitPerCategory),
           })),
           ...(only ? { buyList: buyList(unowned, (s) => best.get(s.category) ?? 0, MOCK_BUY_LIST) } : {}),
+          combos: mockCombos(deckCardIds(context.deck), new Set(excludeCardIds), identity, context, owned, only),
         };
         return delay(ok(result));
       } catch (e) {
@@ -508,7 +548,14 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           groups: [...groups].map(([category, list]) => ({ category, cards: list })),
           basics: basics.filter((b) => b.quantity > 0),
           landTarget: MOCK_BUILD_LANDS,
-          combos: [],
+          combos: mockCombos(
+            new Set<number>([...context.deck.commanders, ...cards.map((s) => s.card.id)]),
+            new Set<number>(),
+            identity,
+            context,
+            owned,
+            owned,
+          ),
           estimatedBracket: gameChangerCount === 0 ? 2 : gameChangerCount <= 3 ? 3 : 4,
           bracketSignals: { gameChangerCount, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
           feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed, roleShortfalls: [] },
