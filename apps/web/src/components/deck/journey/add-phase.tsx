@@ -6,6 +6,7 @@ import type { AddSuggestion, CardSummary } from "@mtg/core/contract";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
+import { ComboList } from "../combo-list";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON } from "@/lib/constants";
@@ -222,12 +223,20 @@ export function AddPhase({
 
     if (view === "list") {
       return (
-        <PocketGrid
-          zoomable
-          label="Cards to add"
-          onSelect={(card: CardSummary) => accept(card)}
-          items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, owned: markOwned && s.owned !== null, caption: <Why suggestion={s} roles={roles} hasCollection={hasCollection} /> }))}
-        />
+        <div className="flex flex-col gap-6">
+          <PocketGrid
+            zoomable
+            label="Cards to add"
+            onSelect={(card: CardSummary) => accept(card)}
+            items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, owned: markOwned && s.owned !== null, caption: <Why suggestion={s} roles={roles} hasCollection={hasCollection} /> }))}
+          />
+          <ComboList
+            combos={journey.add.combos}
+            names={(id) => journey.cards.get(id)?.name ?? "Unknown card"}
+            onAdd={journey.add.acceptCombo}
+            markOwned={markOwned}
+          />
+        </div>
       );
     }
 

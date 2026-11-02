@@ -8,6 +8,7 @@ import type {
   CardId,
   CardSummary,
   ComboRef,
+  ComboSuggestion,
   CutResult,
   CutSuggestion,
   DeckAnalysis,
@@ -169,6 +170,8 @@ export function useDeckJourney({
    * its place in the list the player was looking at.
    */
   const addBatch = useRef<{ batch: RecBatch; filter: AddFilter | null } | null>(null);
+  /** "Complete a combo" as recorded, apart from the main list: its cards are dealt from their own group. */
+  const comboBatch = useRef<RecBatch | null>(null);
   /** An Add list asked for and not yet in: it is recorded on arrival, under the filter on screen then. */
   const addPending = useRef(false);
   const cutBatch = useRef<{ from: CutResult; batch: RecBatch } | null>(null);
@@ -275,6 +278,7 @@ export function useDeckJourney({
       const filter = addFilterRef.current;
       const shown = filtered(addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands), filter).map((s) => s.card.id);
       addBatch.current = { batch: recordShown("add", shown, { ...ctx, deck }), filter };
+      comboBatch.current = recordShown("add", (r.data.combos ?? []).map((c) => c.card.id), { ...ctx, deck });
     }
   }
 
@@ -553,6 +557,11 @@ export function useDeckJourney({
           landsShort,
         )
       : [];
+  /** "Complete a combo" on hand: the combos whose card this round hasn't added or passed on. */
+  const addCombos: ComboSuggestion[] =
+    add.status === "ready" && state
+      ? (add.data.combos ?? []).filter((c) => !state.declinedAdds.includes(c.card.id) && !state.adds.some((a) => a.id === c.card.id))
+      : [];
 
   /**
    * Records the Add list on hand as shown under `filter`, unless it already was. Called when a filter is applied or
@@ -592,6 +601,16 @@ export function useDeckJourney({
     const overCombos = addQueue.find((s) => s.card.id === card.id)?.completesOverBracket;
     if (roundId !== undefined && overCombos?.length) {
       setOverBracket((prev) => ({ round: roundId, adds: new Map([...(prev?.round === roundId ? prev.adds : []), [card.id, overCombos]]) }));
+    }
+    const next = apply({ type: "add", card });
+    if (next && roomToAdd(next) > 0) void loadAdds(next);
+  }
+
+  /** A card taken from "Complete a combo": added like any other, recorded against the combo list. */
+  function acceptCombo(card: CardSummary) {
+    const ctx = workingContext ?? context;
+    if (ctx && comboBatch.current) {
+      recordDecision(comboBatch.current, card.id, true, ctx, addCombos.find((c) => c.card.id === card.id)?.score);
     }
     const next = apply({ type: "add", card });
     if (next && roomToAdd(next) > 0) void loadAdds(next);
@@ -760,6 +779,9 @@ export function useDeckJourney({
       landsShort,
       accept: acceptAdd,
       pass: passAdd,
+      /** "Complete a combo": cards that finish a combo one card short, shown as their own group in the list view. */
+      combos: addCombos,
+      acceptCombo,
       undo: undoAdd,
       /** A collection is applied, so owned cards show as owned and the rest show what they'd cost. */
       hasCollection: context !== null && context.ownership !== null,

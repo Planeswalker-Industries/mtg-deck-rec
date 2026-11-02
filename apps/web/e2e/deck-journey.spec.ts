@@ -260,3 +260,19 @@ test("returning to Swap with the deck unchanged asks for nothing again", async (
   await expect(swapIn).toBeVisible({ timeout: 60_000 });
   expect(await loadingSeen()).toContain("Looking at the deck again");
 });
+
+test("the Add list offers a card that completes a combo, credited to Commander Spellbook", async ({ page }) => {
+  test.skip(process.env.E2E_LOCAL_DATA === "1", "The stand-in combo exists only in the mocks");
+  const recs = await analyzeDeck(page);
+  await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
+  await recs.getByRole("button", { name: "Show as a list" }).click();
+  const combos = recs.getByRole("region", { name: "Complete a combo" });
+  await expect(combos).toBeVisible();
+  await expect(combos.getByText("Draw cards")).toBeVisible();
+  await expect(combos.getByText("+ Sol Ring")).toBeVisible();
+  await expect(combos.getByRole("link", { name: "Commander Spellbook" })).toHaveAttribute("href", /commanderspellbook\.com\/combo\//);
+  const before = await deckCount(recs);
+  await combos.getByRole("button", { name: /^Guardian Project/ }).click();
+  await expect.poll(() => deckCount(recs)).toBe(before + 1);
+  await expect(combos).toHaveCount(0);
+});
