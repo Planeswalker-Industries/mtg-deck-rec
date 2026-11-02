@@ -105,3 +105,19 @@ test("owned suggestions carry the corner marker where they mix with cards to buy
   await expect(adds.getByRole("button").first()).toBeVisible({ timeout: RECS_WAIT_MS });
   await expect(adds.getByRole("img", { name: "Owned" })).toHaveCount(0);
 });
+
+test("a built deck shows its bracket estimate, and a card's origin and score on tap", async ({ page }) => {
+  await page.goto("/deck?start=build");
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
+  await expect(built.getByText(/^(Fits|Over) bracket \d/)).toBeVisible();
+  await expect(built.getByText("Estimated", { exact: true })).toBeVisible();
+
+  await built.getByRole("list", { name: "Artifacts" }).getByRole("button", { name: /^Sol Ring/ }).click();
+  const detail = page.getByRole("dialog", { name: "Sol Ring" });
+  await expect(detail.getByText("Picked for this deck")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detail).toBeHidden();
+});

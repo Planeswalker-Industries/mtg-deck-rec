@@ -622,8 +622,14 @@ function DeckToolSession() {
           onBracket={(bracket) => {
             if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
           }}
-          onUpgrade={(text) => void openBuilt(text, "upgrade")}
-          onSave={(text) => void saveBuilt(text)}
+          onUpgrade={(text) => {
+            deckBuild.accept();
+            void openBuilt(text, "upgrade");
+          }}
+          onSave={(text) => {
+            deckBuild.accept();
+            void saveBuilt(text);
+          }}
           onPickAnother={() => {
             // Back from a fitted list goes to the list; back from a build goes to the commander picker.
             if (deckBuild.state.status !== "idle" && deckBuild.state.request.list) setEditing(true);
