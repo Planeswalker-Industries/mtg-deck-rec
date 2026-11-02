@@ -283,10 +283,13 @@ describe('buildDeck', () => {
       expect(deckIds(result).filter((id) => id === 200)).toHaveLength(1);
     });
 
-    it('stops below the quality floor', () => {
+    it('fills spell slots past the quality floor, but leaves weak nonbasic lands to basics', () => {
       const scoring = { ...TEST_SCORING, build: { ...TEST_SCORING.build, qualityFloor: 1 } };
       const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, scoring }));
-      expect(deckIds(result).filter((id) => id < 200)).toHaveLength(0);
+      const ids = deckIds(result);
+      expect(ids.filter((id) => id < 200)).toHaveLength(30);
+      expect(ids.filter((id) => id >= 200)).toHaveLength(0);
+      expect(basicCount(result)).toBe(result.landTarget);
     });
 
     it('fills the open slots with unowned cards by value, with a running total', () => {

@@ -1,11 +1,13 @@
 "use client";
 
+import { TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { AddSuggestion, CardSummary } from "@mtg/core/contract";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
+import { ErrorText } from "@/components/ui/error-text";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON } from "@/lib/constants";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
 import { OwnedBadge } from "../card-label";
@@ -35,8 +37,11 @@ function fills({ card, fillsRoles }: AddSuggestion, roles: readonly StatLine[]):
   return named.length > 0 ? `Adds ${named.join(", ")}` : null;
 }
 
-/** Why a suggestion is here, in one or two short lines. */
-function Why({ suggestion, roles }: { suggestion: AddSuggestion; roles: readonly StatLine[] }) {
+/**
+ * Why a suggestion is here, in one or two short lines. With a collection, an owned card shows as owned and only the
+ * others show a price, so a price reads as a card to buy.
+ */
+function Why({ suggestion, roles, hasCollection }: { suggestion: AddSuggestion; roles: readonly StatLine[]; hasCollection: boolean }) {
   const { card, corpus, owned } = suggestion;
   const adds = fills(suggestion, roles);
   return (
@@ -46,19 +51,67 @@ function Why({ suggestion, roles }: { suggestion: AddSuggestion; roles: readonly
       {corpus && (
         <span className="font-mono">{corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}</span>
       )}
-      <span className="font-mono">{card.price ? `About ${formatUsd(card.price.usd)}` : "No price"}</span>
+      {!(hasCollection && owned) && <span className="font-mono">{card.price ? `About ${formatUsd(card.price.usd)}` : "No price"}</span>}
     </span>
   );
 }
 
-/** "protection (3 of 8)": a short role as the status line names it. */
-const shortfall = (role: StatLine) => `${role.label.toLowerCase()} (${role.value} of ${Math.round(role.target)})`;
-
-/** The status line: what the deck is light on, and that Cut trims back to 100 after. */
-function statusText(short: readonly StatLine[], room: number, cutsOwed: number): string {
-  if (room === 0) return `That's as many as one round adds. Next, cut ${cutsOwed} to get back to 100.`;
-  const light = short.length > 0 ? `Light on ${short.slice(0, 2).map(shortfall).join(" and ")}. ` : "";
-  return `${light}Add what the deck needs; you'll trim back to 100 next.`;
+/**
+ * Add ran out with the deck under 100 (T076). Kept to the collection, it first offers cards the player doesn't own;
+ * after that, or when the player keeps to owned cards, a warning offers basic lands for the holes.
+ */
+function RunOut({
+  journey,
+  open,
+  onCut,
+  nextLabel,
+  onShowUnowned,
+}: {
+  journey: DeckJourney;
+  open: number;
+  onCut: () => void;
+  nextLabel: string;
+  /** Allow Singles: switches the collection setting to Owned first, so Add suggests cards the player doesn't own too. */
+  onShowUnowned: () => void;
+}) {
+  const { collectionOnly, keptToOwned, keepToOwned, fillBasics, basicsFill } = journey.add;
+  if (collectionOnly && !keptToOwned) {
+    return (
+      <SwipeDone title="Insufficient Collection" message="You don't have a large enough collection.">
+        <Button type="button" size="lg" onClick={onShowUnowned}>
+          Allow Singles
+        </Button>
+        <Button type="button" size="lg" variant="outline" onClick={keepToOwned}>
+          Owned only
+        </Button>
+      </SwipeDone>
+    );
+  }
+  const adding = basicsFill.status === "loading";
+  return (
+    <SwipeDone
+      title={
+        <span className="inline-flex items-center gap-2">
+          <TriangleAlert aria-hidden className="size-5 shrink-0 text-warning" />
+          {open} open
+        </span>
+      }
+      message={collectionOnly ? "No more owned cards to suggest. Fill the holes with basics?" : "No more cards to suggest. Fill the holes with basics?"}
+    >
+      <Button type="button" size="lg" disabled={adding} onClick={() => void fillBasics()}>
+        {adding ? "Adding basics…" : `Add ${open} ${open === 1 ? "basic" : "basics"}`}
+      </Button>
+      {collectionOnly && (
+        <Button type="button" size="lg" variant="outline" onClick={onShowUnowned}>
+          Allow Singles
+        </Button>
+      )}
+      <Button type="button" size="lg" variant="link" onClick={onCut}>
+        {nextLabel}
+      </Button>
+      {basicsFill.status === "error" && <ErrorText className="w-full justify-center">{basicsFill.message}</ErrorText>}
+    </SwipeDone>
+  );
 }
 
 /** Narrows Add to one short role, or shows every suggestion: blue pills, the chosen one solid. */
@@ -97,7 +150,17 @@ function RolePills({ short, filter, onChange }: { short: readonly StatLine[]; fi
  *
  * The role pills (and "Find …" in Deck stats) narrow the list to one short role; "All" puts the whole list back.
  */
-export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view: "swipe" | "list"; roles: readonly StatLine[] }) {
+export function AddPhase({
+  journey,
+  view,
+  roles,
+  onShowUnowned,
+}: {
+  journey: DeckJourney;
+  view: "swipe" | "list";
+  roles: readonly StatLine[];
+  onShowUnowned: () => void;
+}) {
   const { state: addState, queue, shown, filter, setFilter, landsShort, accept, pass, undo } = journey.add;
   const onClearFilter = () => setFilter(null);
   const adds = journey.state?.adds ?? [];
@@ -110,9 +173,12 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
   // This round's additions plus the holes a short deck came in with.
   const slots = open + adds.length;
   const short = roles.filter((r) => !r.ok && r.value < r.target);
-  const toCut = () => journey.goTo("cut");
+  // Through the stepper, so a deck under 100 asks before it goes.
+  const toCut = () => journey.stepper.select("cut");
   const nextLabel = cutsOwed > 0 ? `Next: cut ${cutsOwed}` : "Next: cut";
-  const asOf = queue.find((s) => s.card.price)?.card.price?.asOf;
+  const hasCollection = journey.add.hasCollection;
+  // The as-of date goes with the prices on screen: with a collection, only cards not owned show one.
+  const asOf = queue.find((s) => s.card.price && !(hasCollection && s.owned))?.card.price?.asOf;
   const filterName = filter ? (filter.kind === "lands" ? "lands" : filter.label.toLowerCase()) : null;
 
   const intro = (
@@ -135,6 +201,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
     if (addState.status === "loading" || addState.status === "idle") return <PanelLoading label="Finding cards to add" />;
     if (addState.status === "error") return <PanelError message={addState.message} />;
     if (queue.length === 0) {
+      if (open > 0) return <RunOut journey={journey} open={open} onCut={toCut} nextLabel={nextLabel} onShowUnowned={onShowUnowned} />;
       return (
         <SwipeDone title="That's every suggestion for now" message="Go on to Cut, or come back after a swap or two for fresh ideas.">
           <Button type="button" size="lg" onClick={toCut}>
@@ -159,7 +226,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
           zoomable
           label="Cards to add"
           onSelect={(card: CardSummary) => accept(card)}
-          items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, caption: <Why suggestion={s} roles={roles} /> }))}
+          items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, caption: <Why suggestion={s} roles={roles} hasCollection={hasCollection} /> }))}
         />
       );
     }
@@ -178,7 +245,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
         passLabel={`Skip ${next.card.name}`}
         acceptWord="Add"
         passWord="Skip"
-        caption={<Why suggestion={next} roles={roles} />}
+        caption={<Why suggestion={next} roles={roles} hasCollection={hasCollection} />}
         onAccept={() => accept(next.card)}
         onPass={() => pass(next.card)}
         footer={
@@ -195,7 +262,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
   return (
     <div className="flex flex-col gap-3">
       {intro}
-      <StepStatus count={<AddsCounter count={`${size} / ${COMMANDER_DECK_SIZE}`} adds={adds} onTakeOut={undo} />}>{statusText(short, room, cutsOwed)}</StepStatus>
+      <StepStatus count={<AddsCounter count={`${size} / ${COMMANDER_DECK_SIZE}`} adds={adds} onTakeOut={undo} />} />
       {room > 0 && <RolePills short={short} filter={filter} onChange={setFilter} />}
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}

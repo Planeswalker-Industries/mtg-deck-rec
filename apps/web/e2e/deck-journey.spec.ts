@@ -44,6 +44,8 @@ async function analyzeDeck(page: Page) {
 async function openCut(page: Page) {
   const recs = page.getByRole("region", { name: "Recommendations" });
   await recs.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click();
+  // The deck is short of 100, so leaving Add asks first.
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
   return recs;
 }
 
@@ -113,6 +115,7 @@ test("Undo takes back the last choice, on the step it was made on", async ({ pag
 
   // Moving on to Cut isn't a choice; Undo steps back over the add and returns to Add.
   await steps.getByRole("button", { name: "Cut" }).click();
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
   await undo.click();
   await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step");
   await expect(count).toHaveText(`${size} / 100`);
@@ -206,6 +209,7 @@ test("going back from Swap and returning keeps the swaps, and a picked swap reop
   await steps.getByRole("button", { name: "Add" }).click();
   await expect(steps.getByRole("button", { name: "Swap" })).toBeEnabled();
   await steps.getByRole("button", { name: "Swap" }).click();
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
   await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
   await expect(swaps).toHaveCount(1);
 
@@ -242,6 +246,7 @@ test("returning to Swap with the deck unchanged asks for nothing again", async (
   await watchLoading();
   await steps.getByRole("button", { name: "Add" }).click();
   await steps.getByRole("button", { name: "Swap" }).click();
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
   await expect(swapIn).toBeVisible({ timeout: 60_000 });
   expect(await loadingSeen()).toEqual([]);
 
@@ -250,6 +255,7 @@ test("returning to Swap with the deck unchanged asks for nothing again", async (
   await steps.getByRole("button", { name: "Add" }).click();
   await recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).click({ timeout: 60_000 });
   await steps.getByRole("button", { name: "Cut" }).click();
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
   await steps.getByRole("button", { name: "Swap" }).click();
   await expect(swapIn).toBeVisible({ timeout: 60_000 });
   expect(await loadingSeen()).toContain("Looking at the deck again");

@@ -112,6 +112,8 @@ test("browser quantities and a live round update the two-line summary and the ke
   // Check desktop swipe controls while Bolt is still queued in Cut, before keeping it in the round.
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
   await steps.getByRole("button", { name: "Cut" }).click();
+  // The deck is short of 100, so leaving Add asks first.
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
   await page.setViewportSize({ width: DESKTOP_VIEWPORT_WIDTH_PX, height: DESKTOP_VIEWPORT_HEIGHT_PX });
   await recs.getByRole("group", { name: "How to review cards" }).getByRole("button", { name: "Swipe" }).click();
   await expect(cutControl).toBeVisible({ timeout: 60_000 });

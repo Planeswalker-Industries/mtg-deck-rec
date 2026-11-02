@@ -110,7 +110,7 @@ export function SingleSwipe({
  * Shown when a step has nothing (left) to deal, with the way on. A panel with a heading rather than a quiet line, so an
  * empty step reads as finished, not as still loading.
  */
-export function SwipeDone({ title, message, children }: { title?: string; message: string; children?: ReactNode }) {
+export function SwipeDone({ title, message, children }: { title?: ReactNode; message: string; children?: ReactNode }) {
   return (
     <div role="status" className="playmat mx-auto flex w-full max-w-md flex-col items-center gap-3 px-5 py-8 text-center">
       {title && <p className="font-heading text-xl leading-tight font-semibold text-balance">{title}</p>}
