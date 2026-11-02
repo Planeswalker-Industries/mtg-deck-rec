@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { DeckAnalysis, RecContext } from "@mtg/core/contract";
 import type { DeckEntry } from "@mtg/core/scoring";
@@ -68,6 +68,7 @@ export function DeckBuilder({
   swapContext,
   showIssues = true,
   collection,
+  coverage,
 }: {
   builder: DeckBuilderState;
   analysis: DeckAnalysis | null;
@@ -77,6 +78,8 @@ export function DeckBuilder({
   showIssues?: boolean;
   /** The player's collection, for the search panel's Owned only choice. The deck tool has one; a saved deck's page doesn't. */
   collection?: BuilderCollection | undefined;
+  /** The owner's collection coverage, beside the card count; the deck tool shows its own in the deck bar. */
+  coverage?: ReactNode;
 }) {
   const [tab, setTab] = useState<"deck" | "add">("deck");
   const stats = deckStats([...builder.commanders.map((card) => ({ card, quantity: 1 })), ...builder.main]);
@@ -119,6 +122,12 @@ export function DeckBuilder({
             {stats.priceAsOf && <span className="font-normal text-muted-foreground"> as of {formatAsOf(stats.priceAsOf)}</span>}
           </dd>
         </div>
+        {coverage && (
+          <div className="flex items-center gap-1.5">
+            <dt className="text-muted-foreground">Collection</dt>
+            <dd>{coverage}</dd>
+          </div>
+        )}
       </dl>
       {showIssues && issues.length > 0 && (
         <details className="rounded-lg border border-cut/40 bg-cut/5 px-4 py-2 text-sm">
