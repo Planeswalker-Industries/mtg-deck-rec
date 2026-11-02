@@ -10,6 +10,8 @@ const SWAP_IN = /^Swap in /;
 const PASS_ON = /^Pass on /;
 /** Rounding slack for comparing layout boxes, in CSS pixels. */
 const LAYOUT_SLACK_PX = 1;
+/** How far the touch test drags up the footer: past its SWIPE_OPEN_PX (24) and out of the bar. */
+const SWIPE_TEST_PX = 80;
 
 async function analyzeSample(page: Page) {
   await page.goto("/deck");

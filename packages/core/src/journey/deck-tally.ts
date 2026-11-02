@@ -1,5 +1,5 @@
 // packages/core/src/journey/deck-tally.ts
-import type { Bracket, BracketSignals, CardId, CardSummary, DeckCombo, StatTargets } from '../contract';
+import type { Bracket, BracketSignals, CardId, CardSummary, ComboRef, DeckCombo, StatTargets } from '../contract';
 import { fitsBracket, type BracketRules } from '../formats/commander/bracket';
 import { curveBucket, isFrontLand, isStatCardType, statCardType } from '../scoring/curve';
 import { isBasicLand } from './builder';
@@ -121,8 +121,11 @@ export interface BracketInput {
   /** The analysis's signals: its mass land denial and extra-turn lists are checked against the cards still in the deck. */
   signals: BracketSignals;
   combos: readonly DeckCombo[];
-  /** Cards added this round whose suggestion completed a combo above the bracket. */
-  overBracketIds: ReadonlySet<CardId>;
+  /**
+   * Cards added this round whose suggestion completed a combo above the bracket then, with those combos. Each counts
+   * against the chosen bracket while one of its combos is still over it, so raising the bracket clears it.
+   */
+  overBracketAdds: ReadonlyMap<CardId, readonly ComboRef[]>;
 }
 
 export type StatGroup = 'mana' | 'roles' | 'types';
@@ -175,7 +178,11 @@ function bracketFits(tally: DeckTally, targets: StatTargets, input: BracketInput
   };
   // fitsBracket reads only the limits; the tag ids are how the server found the cards, already done.
   const rules: BracketRules = { ...limits, massLandDenialTagIds: [], extraTurnTagIds: [] };
-  const overBracketAdd = [...input.overBracketIds].some((id) => inDeck(tally, id));
+  // As the server's overBracket reads a combo: above its minimum, or an extra-turn loop the bracket forbids.
+  const comboOver = (c: ComboRef) =>
+    c.minBracket > input.chosen ||
+    (input.chosen < limits.extraTurnLoopFromBracket && c.results.some((r) => limits.extraTurnLoopResults.includes(r)));
+  const overBracketAdd = [...input.overBracketAdds].some(([id, refs]) => inDeck(tally, id) && refs.some(comboOver));
   return { ok: fitsBracket(signals, input.chosen, rules) && !overBracketAdd, combos };
 }
 

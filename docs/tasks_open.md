@@ -18,13 +18,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] Three daily runs in a row without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
 - [ ] Run 20 (2026-10-13, still `running`) closed as failed, and a redeploy that kills a run leaves it marked failed
 
-## T072: Deck stats follow-ups
-
-**MEDIUM** · Frontend
-
-- [ ] Finish (`review-phase.tsx`) compares role counts before and after
-- [ ] Polish, each fixed or struck with a reason: the sheet's handle scrolls away (make it sticky); the footer has no pointer capture (`deck-stats-footer.tsx`); after a touch swipe the next Enter on the footer is swallowed once; "Pick cuts" does nothing while in Cut (`deck-tool.tsx` `statAction`); "Find …" in Cut counts slots open now, not after the pending cuts; an add that completed an over-bracket combo stays flagged after the bracket is raised (`use-deck-journey.ts` `overBracketIds`)
-
 ## T069: Scoring UI
 
 **MEDIUM** · Frontend · The data, scoring and contract are live

@@ -72,6 +72,9 @@ const BASIC_TYPE_PREFIX = "Basic ";
 /** Tall enough to show a commander, the deck heading and a few cards of the placeholder before it scrolls. */
 const DECKLIST_ROWS = 9;
 
+/** The journey's steps column, which "Pick cuts" scrolls back to when Cut is already open. */
+const STEPS_ID = "deck-journey-steps";
+
 /**
  * A segmented control: one of a few options, pressed state on the chosen one. Used for the tool's mode (upgrade or
  * edit) and for how each journey phase is reviewed (swipe or list).
@@ -264,7 +267,7 @@ function DeckToolSession() {
     analysis,
     entries: journey.after,
     bracket: context?.bracket ?? null,
-    overBracketIds: journey.overBracketIds,
+    overBracketAdds: journey.overBracketAdds,
     // The round's starting deck, so a deck lookup finishing mid-round (a new analysis of the same deck) keeps the ticks.
     start: journey.before,
   });
@@ -288,19 +291,32 @@ function DeckToolSession() {
   const openStep =
     (phase: "cut" | "add", filter: AddFilter | null = null): StatAction["onSelect"] =>
     () => {
-      // The step opens first, so the journey records the Add list under the filter as the player will see it.
-      journey.stepper.select(phase);
+      // The step opens first, so the journey records the Add list under the filter as the player will see it. Add from
+      // Cut takes the pending cuts with it, or the deck would still be over 100 with no room to add.
+      if (phase === "add" && journey.state?.phase === "cut") journey.cut.toAdd();
+      else journey.stepper.select(phase);
       journey.add.setFilter(filter);
     };
   /**
    * What an off stat offers: "Trim" (Cut, narrowed to that role) when it's over its target, "Find" (Add, narrowed to
    * it) when it's short. Adding may take the deck past 100; Cut brings it back.
    */
+  const inCut = journey.state?.phase === "cut";
+  /** "Pick cuts" opens Cut; in Cut already, it shows Cut's list from the top, to cut any card by hand. */
+  const pickCuts: StatAction = {
+    label: "Pick cuts",
+    onSelect: inCut
+      ? () => {
+          changeView("list");
+          document.getElementById(STEPS_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
+        }
+      : openStep("cut"),
+  };
   const statAction = (stat: StatLine): StatAction | null => {
     if (stat.ok || !journey.state) return null;
     if (stat.value > Math.round(stat.target)) {
       if (!journey.stepper.canOpen("cut")) return null;
-      if (stat.group !== "roles") return { label: "Pick cuts", onSelect: openStep("cut") };
+      if (stat.group !== "roles") return pickCuts;
       return {
         label: `Trim ${stat.label.toLowerCase()}`,
         onSelect: () => {
@@ -309,7 +325,8 @@ function DeckToolSession() {
         },
       };
     }
-    if (journey.roomToAdd === 0 || !journey.stepper.canOpen("add")) return null;
+    // From Cut, Add opens with the pending cuts taken, so the room counted is the room after them.
+    if ((inCut ? journey.cut.roomToAdd : journey.roomToAdd) === 0 || !journey.stepper.canOpen("add")) return null;
     if (stat.group === "roles") {
       return {
         label: `Find ${stat.label.toLowerCase()}`,
@@ -319,7 +336,7 @@ function DeckToolSession() {
     if (stat.key === "lands") return { label: "Find lands", onSelect: openStep("add", { kind: "lands" }) };
     return null;
   };
-  const bracketAction: StatAction | null = journey.stepper.canOpen("cut") ? { label: "Pick cuts", onSelect: openStep("cut") } : null;
+  const bracketAction: StatAction | null = journey.stepper.canOpen("cut") ? pickCuts : null;
   /** The card on screen in a swipe view, which Deck stats previews answering. */
   const [statPreview, setStatPreview] = useState<StatPreview | null>(null);
   const tallyOf = (card: CardSummary | null) => (card && analysis ? toTallyCard(card, card.roles ?? analysis.cardRoles[card.id] ?? []) : null);
@@ -883,7 +900,8 @@ function DeckToolSession() {
             journey.state && (
               <StatPreviewProvider onChange={setStatPreview}>
               <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
-                <div className="flex min-w-0 flex-col gap-3">
+                {/* scroll-mt clears the sticky deck bar when "Pick cuts" brings the steps back into view. */}
+                <div id={STEPS_ID} className="flex min-w-0 scroll-mt-24 flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
                       <JourneyStepper phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={selectStep} />
