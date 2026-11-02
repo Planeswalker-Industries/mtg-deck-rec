@@ -81,7 +81,9 @@ test("a short collection build: Add runs out, offers singles, then basics for th
 test("owned suggestions carry the corner marker where they mix with cards to buy, and none in Owned only", async ({ page }) => {
   await page.goto("/collection/import");
   await page.getByLabel("Collection export").fill(
-    ["1 Chulane, Teller of Tales", "1 Sol Ring", "1 Rhystic Study", "1 Cyclonic Rift", "1 Farseek"].join("\n"),
+    // Creatures near the top of Chulane's Add list in the mocks and the real catalog alike, and no Game Changers,
+    // which a low bracket leaves out.
+    ["1 Chulane, Teller of Tales", "1 Birds of Paradise", "1 Llanowar Elves", "1 Elvish Mystic", "1 Beast Whisperer"].join("\n"),
   );
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
@@ -115,8 +117,8 @@ test("a built deck shows its bracket estimate, and a card's origin and score on 
   await expect(built.getByText(/^(Fits|Over) bracket \d/)).toBeVisible();
   await expect(built.getByText("Estimated", { exact: true })).toBeVisible();
 
-  await built.getByRole("list", { name: "Artifacts" }).getByRole("button", { name: /^Sol Ring/ }).click();
-  const detail = page.getByRole("dialog", { name: "Sol Ring" });
+  await built.getByRole("list", { name: "Creatures" }).getByRole("button").first().click();
+  const detail = page.getByRole("dialog");
   await expect(detail.getByText("Picked for this deck")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(detail).toBeHidden();
