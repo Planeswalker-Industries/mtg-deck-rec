@@ -334,6 +334,7 @@ function aggregate(decks: readonly EvalDeck[], data: Data): Map<string, KeyAggre
         months: {},
         roleCounts: {},
         curveCounts: {},
+        typeCounts: {},
         lands: 0,
         basicLands: 0,
         cards: new Map(),

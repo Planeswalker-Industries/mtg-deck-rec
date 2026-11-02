@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-/** Footer button of the docked readout; its name reads "Deck stats Mild, 5 of 8 in line". */
+/** Footer button of the docked readout; its name reads "Deck stats Mild, 5 of 14 in line". */
 const FOOTER_NAME = /^Deck stats/;
 /** The Add swipe's gesture buttons, "Add <card>" and "Skip <card>", inside its sitting. */
 const ADD_CARD = /^Add /;
@@ -40,7 +40,7 @@ test.describe("deck stats on a phone", () => {
     const footer = page.getByRole("button", { name: FOOTER_NAME });
     await expect(footer).toBeVisible();
     await expect(footer).toContainText(/(OK|Mild|Urgent)/);
-    await expect(footer).toContainText(/\d+\/8/);
+    await expect(footer).toContainText(/\d+\/14/);
 
     await footer.click();
     const sheet = page.getByRole("dialog", { name: "Deck stats" });

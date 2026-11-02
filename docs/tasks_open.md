@@ -29,17 +29,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] Three daily runs in a row without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
 - [ ] Run 20 (2026-10-13, still `running`) closed as failed, and a redeploy that kills a run leaves it marked failed
 
-## T071: Deck stats card types
-
-**MEDIUM** · Database / Worker / Frontend · Option A approved (owner, 2026-10-08)
-
-Add Creatures, Instants, Sorceries, Artifacts, Enchantments and Planeswalkers to Deck stats (`ok/total` 8 → 14): one `type_profile` jsonb column on `commander_stats`, written by the per-commander pass beside `curve_profile` (`apps/worker/src/lib/key-stats.ts`), with typical types from `typical_deck_profile()`. No new table or job.
-
-- [ ] Migration: the column, and `typical_deck_profile()` returning types; written diff-only and filled on hosted by a full pass (the worker's, once T066 is up)
-- [ ] Type targets on `StatTargets` (`stat-targets.ts`, contract bump) and counts in `deck-tally.ts`: front face only, an artifact creature counted as a creature as Add groups it
-- [ ] A Types group between Curve and Bracket in `deck-stats-panel.tsx`
-- [ ] A SQL check in `serving.sql`, tally tests extended, screens re-checked at 390×844
-
 ## T072: Deck stats follow-ups
 
 **MEDIUM** · Frontend

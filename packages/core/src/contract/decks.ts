@@ -121,6 +121,11 @@ export interface StatTargets {
   roles: { roleId: string; label: string; target: number }[];
   /** Nonland cards per mana value, index = mana value, the last 7 and up. */
   curve: number[];
+  /**
+   * Nonland cards per counted card type (T071: creature, instant, sorcery, artifact, enchantment, planeswalker), in that
+   * order. Empty until typical decks have a type profile; Deck stats then leaves the group out.
+   */
+  types: { cardType: string; label: string; target: number }[];
   bracketLimits: BracketLimits;
 }
 

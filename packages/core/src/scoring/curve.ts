@@ -17,6 +17,32 @@ export const curveBucket = (manaValue: number): string => String(Math.min(CURVE_
 /** Whether a card's front face is a land (a modal land on its back doesn't make it one), as the deck groups read it. */
 export const isFrontLand = (typeLine: string): boolean => /\bLand\b/.test(typeLine.split(' // ')[0] ?? typeLine);
 
+/**
+ * The card types Deck stats counts (T071), in decklist order. A card counts once, as the first type its front face has,
+ * the order the deck groups use: an artifact creature is a creature, an artifact enchantment an artifact.
+ */
+export const STAT_CARD_TYPES = [
+  { key: 'creature', name: 'Creature', label: 'Creatures' },
+  { key: 'instant', name: 'Instant', label: 'Instants' },
+  { key: 'sorcery', name: 'Sorcery', label: 'Sorceries' },
+  { key: 'artifact', name: 'Artifact', label: 'Artifacts' },
+  { key: 'enchantment', name: 'Enchantment', label: 'Enchantments' },
+  { key: 'planeswalker', name: 'Planeswalker', label: 'Planeswalkers' },
+] as const;
+
+export type StatCardType = (typeof STAT_CARD_TYPES)[number]['key'];
+
+const STAT_CARD_TYPE_KEYS: ReadonlySet<string> = new Set(STAT_CARD_TYPES.map((t) => t.key));
+export const isStatCardType = (key: string): key is StatCardType => STAT_CARD_TYPE_KEYS.has(key);
+
+/** A nonland card's counted type, or null for a land (front face) or a type Deck stats doesn't count (a battle). */
+export function statCardType(typeLine: string): StatCardType | null {
+  if (isFrontLand(typeLine)) return null;
+  const front = typeLine.split(' // ')[0] ?? typeLine;
+  const types = front.split('—')[0] ?? front;
+  return STAT_CARD_TYPES.find((t) => new RegExp(`\\b${t.name}\\b`).test(types))?.key ?? null;
+}
+
 /** A deck's nonland cards per curve bucket. */
 export function deckCurve(cards: readonly { manaValue: number; isLand: boolean }[]): Map<string, number> {
   const curve = new Map<string, number>();

@@ -1,7 +1,7 @@
 // packages/core/src/journey/deck-tally.ts
 import type { Bracket, BracketSignals, CardId, CardSummary, DeckCombo, StatTargets } from '../contract';
 import { fitsBracket, type BracketRules } from '../formats/commander/bracket';
-import { curveBucket, isFrontLand } from '../scoring/curve';
+import { curveBucket, isFrontLand, isStatCardType, statCardType } from '../scoring/curve';
 import { isBasicLand } from './builder';
 import { CURVE_TOP_MANA_VALUE } from './deck-stats';
 
@@ -29,7 +29,7 @@ export interface TallyEntry {
 
 /**
  * A deck's counts, changed card by card. Commanders count toward Game Changers and the bracket, never toward the
- * main deck's lands, curve or roles (the corpus profiles count the 99 the same way).
+ * main deck's lands, curve, types or roles (the corpus profiles count the 99 the same way).
  */
 export interface DeckTally {
   cards: number;
@@ -39,6 +39,8 @@ export interface DeckTally {
   roles: Map<string, number>;
   /** Nonland copies per mana value, index = mana value, the last bar CURVE_TOP_MANA_VALUE and up. */
   curve: number[];
+  /** Nonland copies per counted card type (`statCardType`). */
+  types: Map<string, number>;
   gameChangers: number;
   /** The main deck as the tally last saw it: what `syncTally` diffs against. */
   main: Map<CardId, TallyEntry>;
@@ -62,6 +64,7 @@ const emptyTally = (): DeckTally => ({
   basicLands: 0,
   roles: new Map(),
   curve: Array.from({ length: CURVE_TOP_MANA_VALUE + 1 }, () => 0),
+  types: new Map(),
   gameChangers: 0,
   main: new Map(),
   commanderIds: new Set(),
@@ -80,6 +83,8 @@ export function applyCard(tally: DeckTally, card: TallyCard, quantity: number): 
   } else {
     const bar = Number(curveBucket(card.manaValue));
     tally.curve[bar] = (tally.curve[bar] ?? 0) + quantity;
+    const type = statCardType(card.typeLine);
+    if (type) tally.types.set(type, (tally.types.get(type) ?? 0) + quantity);
   }
   for (const role of card.roles) tally.roles.set(role, (tally.roles.get(role) ?? 0) + quantity);
   if (card.gameChanger) tally.gameChangers += quantity;
@@ -120,10 +125,10 @@ export interface BracketInput {
   overBracketIds: ReadonlySet<CardId>;
 }
 
-export type StatGroup = 'mana' | 'roles';
+export type StatGroup = 'mana' | 'roles' | 'types';
 
 export interface StatLine {
-  /** 'lands', 'basicLands' or a role id. */
+  /** 'lands', 'basicLands', a role id or a card type ('creature'). */
   key: string;
   group: StatGroup;
   label: string;
@@ -187,10 +192,11 @@ function statLines(tally: DeckTally, targets: StatTargets): Omit<StatLine, 'star
     line('lands', 'mana', 'Lands', tally.lands, targets.lands),
     line('basicLands', 'mana', 'Basic lands', tally.basicLands, targets.basicLands),
     ...targets.roles.map((r) => line(r.roleId, 'roles', r.label, tally.roles.get(r.roleId) ?? 0, r.target)),
+    ...targets.types.map((t) => line(t.cardType, 'types', t.label, tally.types.get(t.cardType) ?? 0, t.target)),
   ];
 }
 
-/** Grades the tally against the targets: about fifteen comparisons, never a pass over the deck. */
+/** Grades the tally against the targets: about twenty comparisons, never a pass over the deck. */
 export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: BracketInput, start: DeckTally = tally): DeckStatsReport {
   const startLines = new Map(statLines(start, targets).map((s) => [s.key, s.value]));
   const stats = statLines(tally, targets).map((s) => ({ ...s, start: startLines.get(s.key) ?? s.value }));
@@ -238,15 +244,16 @@ export function tallyCache() {
 }
 
 /**
- * How each stat line would move if `add` went into the deck and `remove` came out: +1 for a role or land count the
- * incoming card adds to, -1 for one the outgoing card takes from. Lines that wouldn't move are left out. Deck stats shows
- * these beside the counts while a card is on screen, so the player sees what answering it does.
+ * How each stat line would move if `add` went into the deck and `remove` came out: +1 for a role, land or card type
+ * count the incoming card adds to, -1 for one the outgoing card takes from. Lines that wouldn't move are left out. Deck
+ * stats shows these beside the counts while a card is on screen, so the player sees what answering it does.
  */
 export function statDeltas(lines: readonly Pick<StatLine, 'key'>[], add: TallyCard | null, remove: TallyCard | null): Map<string, number> {
   const counts = (card: TallyCard | null, key: string): number => {
     if (!card) return 0;
     if (key === 'lands') return isFrontLand(card.typeLine) ? 1 : 0;
     if (key === 'basicLands') return isFrontLand(card.typeLine) && isBasicLand(card) ? 1 : 0;
+    if (isStatCardType(key)) return statCardType(card.typeLine) === key ? 1 : 0;
     return card.roles.includes(key) ? 1 : 0;
   };
   const deltas = new Map<string, number>();
