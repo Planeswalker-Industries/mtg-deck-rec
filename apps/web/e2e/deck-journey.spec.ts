@@ -289,3 +289,35 @@ test("Add's combos: ready and upgrade sections, Add Combo, and the pieces protec
   await recs.getByRole("button", { name: "Show as a list" }).click();
   await expect(recs.getByText("Combo piece: Win the game").first()).toBeVisible({ timeout: 60_000 });
 });
+
+/** From a fresh analysis to Swap's list, as the Replace swipe test gets there; the names Swap deals. */
+async function swapTargets(page: Page, addSwanSong: boolean): Promise<string[]> {
+  const recs = await analyzeDeck(page);
+  await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
+  if (addSwanSong) {
+    await recs.getByRole("button", { name: /^Combos \(\d+\)$/ }).click();
+    const upgrades = recs.locator("details", { hasText: "Combo Upgrades" });
+    if ((await upgrades.getAttribute("open")) === null) await upgrades.locator("summary").click();
+    await upgrades.getByRole("button", { name: /^Add Swan Song/ }).click();
+  }
+  await openCut(page);
+  await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
+  await recs.getByRole("button", { name: "Next", exact: true }).first().click();
+  const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
+  await expect(rater.or(recs.getByRole("button", { name: "Next: finish" })).first()).toBeVisible({ timeout: 20_000 });
+  await recs.getByRole("button", { name: "Show as a list" }).click();
+  const list = recs.getByRole("list", { name: "Cards worth replacing" });
+  await expect(list).toBeVisible({ timeout: 20_000 });
+  return list.getByRole("listitem").allInnerTexts();
+}
+
+test("Swap never deals a piece of a combo the deck holds", async ({ page, browser }) => {
+  test.skip(process.env.E2E_LOCAL_DATA === "1", "The stand-in combos exist only in the mocks");
+  const without = await swapTargets(page, false);
+  test.skip(!without.some((t) => t.includes("Counterspell")), "Swap doesn't deal Counterspell in this data, so there's nothing to hold back");
+  // A fresh visitor, so the deck tool doesn't offer the last deck back.
+  const fresh = await browser.newContext({ viewport: page.viewportSize() });
+  const withCombo = await swapTargets(await fresh.newPage(), true);
+  await fresh.close();
+  expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
+});

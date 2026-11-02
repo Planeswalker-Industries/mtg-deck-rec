@@ -30,7 +30,8 @@ export function BuildCardSheet({ card, onClose }: { card: BuildCard | null; onCl
         {card && (
           <>
             <SheetHeader className="p-0">
-              <SheetTitle>{card.card.name}</SheetTitle>
+              {/* The panel shows the name; the title names the sheet for screen readers. */}
+              <SheetTitle className="sr-only">{card.card.name}</SheetTitle>
               <SheetDescription>{ORIGIN_LABEL[card.origin]}</SheetDescription>
             </SheetHeader>
             <CardPanel card={card.card} rules={rulesFor(card.card.id)} />
