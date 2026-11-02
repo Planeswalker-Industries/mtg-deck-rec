@@ -53,9 +53,9 @@ Add Creatures, Instants, Sorceries, Artifacts, Enchantments and Planeswalkers to
 
 A build from a commander, most often from a collection, can stop short of 99 cards; Add can then run out ("no cards left to recommend") with the deck still short, and the player can move on to Cut while under 100, where there is nothing to cut. A start is in: Add hides "Done adding" and the next bar until the deck reaches 100, and the e2e step goes on through the stepper.
 
-- [ ] Find why the build stops short (pool size, `serving_limits` clamps, colour or role caps) and fill to 99 where the pool allows
-- [ ] When Add runs out under 100: first offer unowned singles to finish the deck; if the player declines, widen the owned pool; if still short, a warning in as few words as possible (icon and label) offering high-impact singles or basic lands for the holes
-- [ ] Leaving Add for Cut under 100 asks to continue, saying the deck is under 100
+- [x] Find why the build stops short and fill to 99 where the pool allows: `qualityFloor` stopped owned spell picks with the value fill shelved; it now stops only nonbasic lands
+- [x] When Add runs out under 100: first offer unowned cards to finish the deck (Add asks in 'first' mode for the rest of the round); if the player declines, a warning (icon and label) offering basic lands for the holes or the unowned cards again. Widening the owned pool was dropped (owner, 2026-11-02): it already holds every owned on-colour card with play data, 400 by commander and 400 by colours
+- [x] Leaving Add for Cut under 100 asks to continue, saying the deck is under 100
 - [ ] e2e covers a short collection build, and the swipe buttons still fit at 390×844
 
 ## T069: Scoring UI

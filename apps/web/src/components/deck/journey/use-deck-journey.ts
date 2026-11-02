@@ -34,11 +34,12 @@ import {
   type JourneyPhase,
   type JourneyState,
 } from "@mtg/core/journey";
-import { isFrontLand, type DeckEntry } from "@mtg/core/scoring";
+import { isFrontLand, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import type { Async, ContextChange } from "../use-deck-tool";
 import type { Candidates } from "../use-swipe-rater";
+import { basicsToFill } from "./fill-basics";
 
 /**
  * Cut suggestions asked for when checking a deck against a new bracket: the cut route's cap (MAX_CUT_LIMIT), so every
@@ -70,6 +71,12 @@ interface Round {
 
 /** What "Find …" in Deck stats narrowed Add to (T045). */
 export type AddFilter = { kind: "role"; roleId: string; label: string } | { kind: "lands" };
+
+/**
+ * What the player chose when Add ran out of owned cards under 100 (T076): cards they don't own for the rest of the
+ * round ('unowned', Add asks in 'first' mode), or owned cards only ('owned', Add offers basic lands for the holes).
+ */
+export type RunOutChoice = "unowned" | "owned";
 
 /** Whether a card fits the filter: one of its tracked roles, or a land on its front face. */
 export const matchesAddFilter = (filter: AddFilter, card: CardSummary) =>
@@ -177,6 +184,13 @@ export function useDeckJourney({
    * against the bracket while they are in the deck. Kept with the round it belongs to, so a new round starts empty.
    */
   const [overBracket, setOverBracket] = useState<{ round: number; ids: ReadonlySet<CardId> } | null>(null);
+  /** The run-out choice, with the round it belongs to; a ref too, for the Add request sent in the same handler. */
+  const [runOut, setRunOut] = useState<{ round: number; choice: RunOutChoice } | null>(null);
+  const runOutRef = useRef(runOut);
+  /** Basic lands on their way into the holes (their names are resolved first), or the failure. */
+  const [basicsFill, setBasicsFill] = useState<{ round: number; value: Async<null> } | null>(null);
+  /** A step past Add the player asked for while the deck is under 100, waiting for them to confirm (T076). */
+  const [leaveAsk, setLeaveAsk] = useState<{ round: number; phase: JourneyPhase } | null>(null);
 
   // A new analysis starts a new round; the same deck read again keeps it, with the new reading (commander data after a
   // lookup). Adjusted during render rather than in an effect, so no frame shows the old round.
@@ -253,7 +267,10 @@ export function useDeckJourney({
     const key = deckKey(deck);
     setAdd({ round, key, value: { status: "loading" } });
     addPending.current = true;
-    const r = await getApis().recs.add({ context: { ...ctx, deck }, excludeCardIds: next.declinedAdds });
+    // Past the collection's last card the player may take cards they don't own: owned ones still come first.
+    const unowned = runOutRef.current?.round === round && runOutRef.current.choice === "unowned" && ctx.ownership !== null;
+    const asked: RecContext = unowned ? { ...ctx, ownershipMode: "first" } : ctx;
+    const r = await getApis().recs.add({ context: { ...asked, deck }, excludeCardIds: next.declinedAdds });
     if (id !== addRequest.current) return;
     addPending.current = false;
     setAdd({ round, key, value: toAsync(r) });
@@ -262,7 +279,7 @@ export function useDeckJourney({
       const shortOfLands = analysis ? lands(deck) < lands(analysis.deck) : false;
       const filter = addFilterRef.current;
       const shown = filtered(addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands), filter).map((s) => s.card.id);
-      addBatch.current = { batch: recordShown("add", shown, { ...ctx, deck }), filter };
+      addBatch.current = { batch: recordShown("add", shown, { ...asked, deck }), filter };
     }
   }
 
@@ -599,12 +616,64 @@ export function useDeckJourney({
     if (next) void loadAdds(next);
   }
 
+  const runOutChoice = current && runOut?.round === current.id ? runOut.choice : null;
+  /** Whether Add keeps to the collection's cards: what the run-out prompt offers a way past. */
+  const collectionOnly = context !== null && ownedOnly(context) && runOutChoice !== "unowned";
+
+  function chooseRunOut(choice: RunOutChoice) {
+    const from = latest.current ?? current;
+    if (!from) return;
+    const next = { round: from.id, choice };
+    runOutRef.current = next;
+    setRunOut(next);
+    if (choice === "unowned" && roomToAdd(from.state) > 0) void loadAdds(from.state);
+  }
+
+  /**
+   * Fills every open slot with basic lands, split by the deck's mana symbols, as one choice Undo takes back. Their names
+   * are resolved like a pasted list's, since the round may not have seen the basics it needs.
+   */
+  async function fillBasics() {
+    const from = latest.current ?? current;
+    if (!from) return;
+    const count = openSlots(from.state);
+    if (count === 0) return;
+    const roundAt = from.id;
+    setBasicsFill({ round: roundAt, value: { status: "loading" } });
+    const text = basicsToFill(count, commanders.map((c) => c.card), entriesOf(workingDeck(from.state)).map((e) => e.card));
+    const r = await getApis().actions.parseDeck({ text });
+    if (latest.current?.id !== roundAt) return;
+    const lands = r.ok
+      ? r.data.lines.flatMap(({ line, resolution }) =>
+          resolution.status === "resolved" ? Array.from({ length: line.quantity }, () => resolution.card) : [],
+        )
+      : [];
+    if (lands.length === 0) {
+      setBasicsFill({ round: roundAt, value: { status: "error", message: r.ok ? "Couldn't find the basic lands. Try again." : r.error.message } });
+      return;
+    }
+    setBasicsFill(null);
+    const next = apply(...lands.map((card): JourneyAction => ({ type: "add", card })));
+    if (next && roomToAdd(next) > 0) void loadAdds(next);
+  }
+
   // ── Stepper ────────────────────────────────────────────────────────────────────────────────────────────────────
+  /**
+   * Leaving Add for a later step while the deck is under 100 asks first, since Cut has nothing to take out of a short
+   * deck. True when it asked instead of going.
+   */
+  function askBeforeLeavingShort(phase: JourneyPhase): boolean {
+    if (!current || !state || state.phase !== "add" || openSlots(state) === 0) return false;
+    setLeaveAsk({ round: current.id, phase });
+    return true;
+  }
+
   /** The current step's Next: what its own button does. */
   function nextStep() {
     if (!state) return;
-    if (state.phase === "add") goTo("cut");
-    else if (state.phase === "cut") finishCuts();
+    if (state.phase === "add") {
+      if (!askBeforeLeavingShort("cut")) goTo("cut");
+    } else if (state.phase === "cut") finishCuts();
     else if (state.phase === "replace") goTo("review");
   }
 
@@ -631,8 +700,12 @@ export function useDeckJourney({
     const at = phaseIndex(state.phase);
     const to = phaseIndex(phase);
     if (to === at + 1) nextStep();
-    else goTo(phase, ...(state.phase === "cut" && to > at ? pendingCuts : []));
+    else if (!(to > at && askBeforeLeavingShort(phase))) goTo(phase, ...(state.phase === "cut" && to > at ? pendingCuts : []));
   }
+
+  const leaving = current && state?.phase === "add" && openSlots(state) > 0 && leaveAsk?.round === current.id ? leaveAsk.phase : null;
+  // An ask the deck outgrew (it reached 100, or the round moved on) is dropped, so it can't come back on its own.
+  if (leaveAsk !== null && leaving === null) setLeaveAsk(null);
 
   // ── Replace ────────────────────────────────────────────────────────────────────────────────────────────────────
   /** Weaker fits in the deck as it now stands, each dealt with a replacement (kept ones left out when they load). */
@@ -649,7 +722,17 @@ export function useDeckJourney({
     state,
     dispatch: (action: JourneyAction) => void apply(action),
     goTo,
-    stepper: { canOpen, select },
+    stepper: {
+      canOpen,
+      select,
+      /** The step past Add waiting for the player to confirm leaving a deck under 100; null when nothing is asked. */
+      leaving,
+      confirmLeave: () => {
+        setLeaveAsk(null);
+        if (leaving) goTo(leaving);
+      },
+      cancelLeave: () => setLeaveAsk(null),
+    },
     deck,
     workingContext,
     cards,
@@ -688,6 +771,14 @@ export function useDeckJourney({
       accept: acceptAdd,
       pass: passAdd,
       undo: undoAdd,
+      /** Add keeps to the collection's cards, so running out offers cards the player doesn't own. */
+      collectionOnly,
+      /** What the player chose once the collection ran out, this round. */
+      runOutChoice,
+      chooseRunOut,
+      /** Basic lands for every open slot. */
+      fillBasics,
+      basicsFill: current && basicsFill?.round === current.id ? basicsFill.value : idle,
     },
     replace: {
       state: replace,

@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
 import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
+import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import { phaseIndex, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
@@ -1005,6 +1006,29 @@ function DeckToolSession() {
                 go?.();
               }}
             >
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={journey.stepper.leaving !== null} onOpenChange={(open) => !open && journey.stepper.cancelLeave()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TriangleAlert aria-hidden className="size-5 text-warning" />
+              Deck Under 100
+            </DialogTitle>
+            <DialogDescription>
+              The deck is at {COMMANDER_DECK_SIZE - journey.openSlots} of {COMMANDER_DECK_SIZE}. Continue anyway?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Keep adding
+              </Button>
+            </DialogClose>
+            <Button type="button" onClick={journey.stepper.confirmLeave}>
               Continue
             </Button>
           </DialogFooter>

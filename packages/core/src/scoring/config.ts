@@ -117,7 +117,7 @@ export const scoringConfigSchema = z.object({
   }),
   /** Building a deck from a commander and a bracket (T063). Builds rank by `weights.add`, the one marginal-value function. */
   build: z.object({
-    /** A build from a collection stops picking once the best card left scores under this; the value fill picks by score above it per dollar. */
+    /** A build from a collection stops picking nonbasic lands once the best one left scores under this; the value fill picks by score above it per dollar. */
     qualityFloor: share,
     /** Lands per deck by the commanders' colour count (index 0–5), for commanders whose own decks don't say yet. */
     landCounts: z.array(positive).length(COLOUR_COUNTS),

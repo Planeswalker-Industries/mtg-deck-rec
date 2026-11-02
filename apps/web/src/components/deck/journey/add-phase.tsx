@@ -1,11 +1,13 @@
 "use client";
 
+import { TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { AddSuggestion, CardSummary } from "@mtg/core/contract";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
+import { ErrorText } from "@/components/ui/error-text";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON } from "@/lib/constants";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
 import { OwnedBadge } from "../card-label";
@@ -61,6 +63,51 @@ function statusText(short: readonly StatLine[], room: number, cutsOwed: number):
   return `${light}Add what the deck needs; you'll trim back to 100 next.`;
 }
 
+/**
+ * Add ran out with the deck under 100 (T076). Kept to the collection, it first offers cards the player doesn't own;
+ * after that, or when the player keeps to owned cards, a warning offers basic lands for the holes.
+ */
+function RunOut({ journey, open, onCut, nextLabel }: { journey: DeckJourney; open: number; onCut: () => void; nextLabel: string }) {
+  const { collectionOnly, runOutChoice, chooseRunOut, fillBasics, basicsFill } = journey.add;
+  if (collectionOnly && runOutChoice === null) {
+    return (
+      <SwipeDone title="Collection's out" message={`${open} open. Show cards you don't own?`}>
+        <Button type="button" size="lg" onClick={() => chooseRunOut("unowned")}>
+          Show cards I don&apos;t own
+        </Button>
+        <Button type="button" size="lg" variant="outline" onClick={() => chooseRunOut("owned")}>
+          Owned only
+        </Button>
+      </SwipeDone>
+    );
+  }
+  const adding = basicsFill.status === "loading";
+  return (
+    <SwipeDone
+      title={
+        <span className="inline-flex items-center gap-2">
+          <TriangleAlert aria-hidden className="size-5 shrink-0 text-warning" />
+          {open} open
+        </span>
+      }
+      message={collectionOnly ? "No more owned cards to suggest. Fill the holes with basics?" : "No more cards to suggest. Fill the holes with basics?"}
+    >
+      <Button type="button" size="lg" disabled={adding} onClick={() => void fillBasics()}>
+        {adding ? "Adding basics…" : `Add ${open} ${open === 1 ? "basic" : "basics"}`}
+      </Button>
+      {collectionOnly && (
+        <Button type="button" size="lg" variant="outline" onClick={() => chooseRunOut("unowned")}>
+          Show cards I don&apos;t own
+        </Button>
+      )}
+      <Button type="button" size="lg" variant="link" onClick={onCut}>
+        {nextLabel}
+      </Button>
+      {basicsFill.status === "error" && <ErrorText className="w-full justify-center">{basicsFill.message}</ErrorText>}
+    </SwipeDone>
+  );
+}
+
 /** Narrows Add to one short role, or shows every suggestion: blue pills, the chosen one solid. */
 function RolePills({ short, filter, onChange }: { short: readonly StatLine[]; filter: AddFilter | null; onChange: (filter: AddFilter | null) => void }) {
   if (short.length === 0) return null;
@@ -110,7 +157,8 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
   // This round's additions plus the holes a short deck came in with.
   const slots = open + adds.length;
   const short = roles.filter((r) => !r.ok && r.value < r.target);
-  const toCut = () => journey.goTo("cut");
+  // Through the stepper, so a deck under 100 asks before it goes.
+  const toCut = () => journey.stepper.select("cut");
   const nextLabel = cutsOwed > 0 ? `Next: cut ${cutsOwed}` : "Next: cut";
   const asOf = queue.find((s) => s.card.price)?.card.price?.asOf;
   const filterName = filter ? (filter.kind === "lands" ? "lands" : filter.label.toLowerCase()) : null;
@@ -135,6 +183,7 @@ export function AddPhase({ journey, view, roles }: { journey: DeckJourney; view:
     if (addState.status === "loading" || addState.status === "idle") return <PanelLoading label="Finding cards to add" />;
     if (addState.status === "error") return <PanelError message={addState.message} />;
     if (queue.length === 0) {
+      if (open > 0) return <RunOut journey={journey} open={open} onCut={toCut} nextLabel={nextLabel} />;
       return (
         <SwipeDone title="That's every suggestion for now" message="Go on to Cut, or come back after a swap or two for fresh ideas.">
           <Button type="button" size="lg" onClick={toCut}>
