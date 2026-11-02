@@ -88,6 +88,30 @@ const filtered = (suggestions: AddSuggestion[], filter: AddFilter | null) =>
 /** No cards: the over-bracket adds before any add, kept as one value so their readers see a stable reference. */
 const NO_ADDS: ReadonlyMap<CardId, readonly ComboRef[]> = new Map();
 
+const NO_PIECES: ReadonlyMap<CardId, string> = new Map();
+
+/** A combo the round completed: every piece, and the result it gives (what cutting a piece breaks). */
+export interface CompletedCombo {
+  pieces: readonly CardId[];
+  result: string;
+}
+
+/**
+ * Every card of every complete combo in the deck as `s` leaves it, with the result cutting it would break: the deck's
+ * combos when the round started and the ones it completed since, while every piece is still there (the commander
+ * counts as a piece). Cut warns on these and leaves them out of its trims; Swap never deals them.
+ */
+function protectedPiecesOf(s: JourneyState, combos: readonly CompletedCombo[]): ReadonlyMap<CardId, string> {
+  const commanders = new Set<CardId>(s.base.commanders);
+  const held = (id: CardId) => commanders.has(id) || copiesInDeck(s, id) > 0;
+  const pieces = new Map<CardId, string>();
+  for (const combo of combos) {
+    if (!combo.pieces.every(held)) continue;
+    for (const id of combo.pieces) if (!commanders.has(id) && !pieces.has(id)) pieces.set(id, combo.result);
+  }
+  return pieces;
+}
+
 const isLand = (card: CardSummary) => /\bLand\b/.test(card.typeLine.split(" // ")[0] ?? card.typeLine);
 
 /**
@@ -219,6 +243,13 @@ export function useDeckJourney({
   const replace = current && replaceFor?.round === current.id ? replaceFor.value : idle;
 
   const overBracketAdds = current && overBracket?.round === current.id ? overBracket.adds : NO_ADDS;
+  /** Combos this round completed by adding their missing card, from either part of Add: their pieces and result. */
+  const [completed, setCompleted] = useState<{ round: number; combos: readonly CompletedCombo[] } | null>(null);
+  /** The round's starting combos and the ones completed since, for `protectedPiecesOf`. */
+  const roundCombos: readonly CompletedCombo[] = [
+    ...(analysis?.combos ?? []).map((c) => ({ pieces: c.pieceIds, result: c.results[0] ?? "a combo" })),
+    ...(current && completed?.round === current.id ? completed.combos : []),
+  ];
 
   /** What a "Find …" action in Deck stats narrowed Add to. It lasts while Add is on screen: leaving the step, or a new round, clears it. */
   const [addFilterSet, setAddFilterSet] = useState<AddFilter | null>(null);
@@ -305,9 +336,10 @@ export function useDeckJourney({
       setReplace({ round, key, candidates, value: toAsync(r) });
       return;
     }
-    // Additions were chosen just now, so they aren't dealt as weaker fits.
+    // Additions were chosen just now, so they aren't dealt as weaker fits; combo pieces are never dealt.
     const added = new Set<number>(next.adds.map((c) => c.id));
-    const listed = r.data.suggestions.filter((s) => !added.has(s.card.id));
+    const pieces = protectedPiecesOf(next, roundCombos);
+    const listed = r.data.suggestions.filter((s) => !added.has(s.card.id) && !pieces.has(s.card.id));
     const named = new Set<number>(listed.map((s) => s.card.id));
     const swapped = next.swaps
       .filter((s) => !named.has(s.target.id))
@@ -597,9 +629,19 @@ export function useDeckJourney({
     recordDecision(addBatch.current.batch, card.id, accepted, ctx, addQueue.find((s) => s.card.id === card.id)?.score);
   }
 
+  /** Notes the combo a card completes, so its pieces are protected from Cut and Swap while it stays whole. */
+  function noteCompleted(card: CardSummary) {
+    const combo = addCombos.find((c) => c.card.id === card.id);
+    const roundId = current?.id;
+    if (!combo || roundId === undefined) return;
+    const entry: CompletedCombo = { pieces: [...combo.pieceIds, card.id], result: combo.results[0] ?? "a combo" };
+    setCompleted((prev) => ({ round: roundId, combos: [...(prev?.round === roundId ? prev.combos : []), entry] }));
+  }
+
   /** Adding recomputes the list: the new card may fill the gap the next ones were suggested for. */
   function acceptAdd(card: CardSummary) {
     recordAddDecision(card, true);
+    noteCompleted(card);
     // An add that completes a combo above the bracket counts against it while it stays (Deck stats checks the deck).
     const roundId = current?.id;
     const overCombos = addQueue.find((s) => s.card.id === card.id)?.completesOverBracket;
@@ -616,6 +658,7 @@ export function useDeckJourney({
     if (ctx && comboBatch.current) {
       recordDecision(comboBatch.current, card.id, true, ctx, addCombos.find((c) => c.card.id === card.id)?.score);
     }
+    noteCompleted(card);
     const next = apply({ type: "add", card });
     if (next && roomToAdd(next) > 0) void loadAdds(next);
   }
@@ -766,6 +809,8 @@ export function useDeckJourney({
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
     before,
     after,
+    /** Cards of complete combos in the deck, with the result cutting one breaks: Cut warns, Swap never deals them. */
+    protectedPieces: state ? protectedPiecesOf(state, roundCombos) : NO_PIECES,
     /** Cards added this round that complete a combo above the bracket; Deck stats counts the ones still in the deck. */
     overBracketAdds,
     /** How far the deck is below 100, how many more cards Add may put in, and how many Cut must take out. */
