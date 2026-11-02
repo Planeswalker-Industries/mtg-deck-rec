@@ -64,7 +64,9 @@ test("walks a deck through add, cut, replace and review, then starts over", asyn
   await expect(recs.getByRole("status").getByText(DECK_COUNT)).toHaveText(`${size + 1} / 100`);
   // The recomputed list never offers the card just added.
   await expect(adds.getByRole("button", { name: `Add ${added}` })).toBeHidden({ timeout: 60_000 });
-  await recs.getByRole("button", { name: /^Done adding/ }).click();
+  // The deck is still under 100, so there is no "Done adding" prompt: go on through the stepper.
+  await expect(recs.getByRole("button", { name: /^Done adding/ })).toBeHidden();
+  await openCut(page);
 
   // Cut: the deck runs an off-colour card, dealt first.
   await expect(steps.getByRole("button", { name: "Cut" })).toHaveAttribute("aria-current", "step");

@@ -4,9 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { decklistText } from "@mtg/core/parse";
-import { PocketGrid } from "@/components/cards/pocket-grid";
+import { DeckCards } from "@/components/decks/deck-cards";
 import { DeckExport } from "@/components/decks/deck-export";
-import { DeckOriginal } from "@/components/decks/deck-original";
 import { DeckBuilt } from "@/components/decks/deck-built";
 import { DeckVisibility } from "@/components/decks/deck-visibility";
 import { buttonVariants } from "@/components/ui/button";
@@ -15,7 +14,6 @@ import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
 import { deckExportEntries } from "@/lib/server/deck-export";
 import { loadDeckPage } from "@/lib/server/deck-page";
 import { displayName } from "@/lib/cards";
-import { cardCategoryLabel } from "@/lib/labels";
 import { TEXT_LINK } from "@/lib/constants";
 
 const WUBRG = "WUBRG";
@@ -109,34 +107,14 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
         )}
       </header>
 
-      {/* A stranger sees the comparison only while there is one; the owner also sees that a restored deck matches. */}
-      {deck.original && (deck.isOwner || deck.original.out.length + deck.original.in.length > 0) && (
-        <DeckOriginal deckId={deck.id} name={deck.name} isOwner={deck.isOwner} original={deck.original} />
-      )}
-
-      {deck.groups.length === 0 ? (
-        <p className="text-muted-foreground">This deck has no cards yet.</p>
-      ) : (
-        deck.groups.map((group) => (
-          <section key={group.category} aria-labelledby={`group-${group.category}`} className="flex flex-col gap-3">
-            <h2 id={`group-${group.category}`} className="font-heading text-xl font-semibold tracking-tight">
-              {cardCategoryLabel[group.category]}{" "}
-              <span className="text-base font-normal text-muted-foreground font-mono">
-                {group.cards.reduce((n, c) => n + c.quantity, 0)}
-              </span>
-            </h2>
-            <PocketGrid
-              zoomable
-              label={cardCategoryLabel[group.category]}
-              items={group.cards.map((entry) => ({
-                card: entry.card,
-                href: `/card/${entry.card.slug}`,
-                caption: entry.quantity > 1 ? <span className="font-mono">×{entry.quantity}</span> : undefined,
-              }))}
-            />
-          </section>
-        ))
-      )}
+      <DeckCards
+        deckId={deck.id}
+        name={deck.name}
+        isOwner={deck.isOwner}
+        // A stranger sees the comparison only while there is one; the owner also sees that a restored deck matches.
+        original={deck.original && (deck.isOwner || deck.original.out.length + deck.original.in.length > 0) ? deck.original : null}
+        groups={deck.groups}
+      />
 
       {!deck.isOwner && (
         <p className="border-t border-seam pt-4 text-sm text-muted-foreground">
