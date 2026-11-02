@@ -36,6 +36,7 @@ One sentence each, so the gaps in the numbering have a reason. Ticket ids are ne
 - **T040** Drop the unused `rec_add_candidates(p_deck_count)` overload (2026-10-07): folded into T067.
 - **T042** Make the daily crawl cron produce runs (2026-10-07): a run has started in the cron's hour every day since 2026-10-02.
 - **T045** Design the deck analysis display (2026-10-20): Deck stats P1 released in PR #143 and signed off by the owner.
+- **T046** Mana base analysis (2026-11-02): Deck stats' Colours group checks coloured sources against Frank Karsten's 2022 tables, with on-curve odds per card and mana by turn (contract v32).
 - **T047** Combo detection in the bracket estimate (2026-10-07): built as T060.
 - **T048** Role counts against the commander's decks (2026-10-20): delivered by Deck stats P1.
 - **T050** Start a deck from one commander (2026-10-12): `/deck?start=build` picks a commander and builds a deck for it.

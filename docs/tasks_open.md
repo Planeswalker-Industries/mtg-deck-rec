@@ -18,18 +18,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] Three daily runs in a row without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
 - [ ] Run 20 (2026-10-13, still `running`) closed as failed, and a redeploy that kills a run leaves it marked failed
 
-## T046: Mana base analysis
-
-**MEDIUM** · Core / Frontend · Placement: Deck stats · Display only; steering Add is T078
-
-Can the lands cast the spells: coloured sources against Frank Karsten's thresholds for each card's pips and turn, the cards least likely to be cast on curve (worst first), and a plain "N sources short on black". Deterministic, no AI. `cards.produced_mana` is stored (T073; 2,711 cards on hosted) but not sent to the client.
-
-- [ ] A contract field (or lookup) carrying it, with a version bump
-- [ ] Source-count analysis beside `packages/core/src/journey/deck-stats.ts`, tested for hybrid and Phyrexian pips, MDFC lands and commander pips; the thresholds as a constants module that names its source
-- [ ] Shown in Deck stats, labelled as an estimate
-
-Sanity check, not ground truth: EDHcheck on the sample Liesa deck reaches 3 mana by T3 50%, T4 80%, T6 95%, wants 8 more black sources for Damn and puts Avacyn at 34.7% on curve; don't copy its advice text. A Monte Carlo goldfish (in a Web Worker) only if Deck stats needs it.
-
 ## T077: Feedback reports
 
 **MEDIUM** · Database / Frontend · Owner, 2026-10-23 · Replaces the GitHub Report link until T003
