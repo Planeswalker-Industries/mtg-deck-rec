@@ -18,18 +18,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] Three daily runs in a row without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
 - [ ] Run 20 (2026-10-13, still `running`) closed as failed, and a redeploy that kills a run leaves it marked failed
 
-## T069: Scoring UI
-
-**MEDIUM** · Frontend · The data, scoring and contract are live
-
-- [ ] Collection mode (T059): release the built control and whole-deck coverage; per-suggestion ownership labels; builder and saved-page coverage
-- [ ] Swap with nothing owned: show `SwapResult.emptyReason` (`NOTHING_OWNED_FITS`, `NO_TAGS_ON_TARGET`, `NO_CANDIDATES`) in place of "No replacements do the same job"
-- [ ] Combos and bracket (T060), in Deck stats, once hosted has combos (Spellbook loads raw daily since 2026-10-23; a hand `collate` and precompute serve them): the "complete a combo" group, `completesOverBracket`, `DeckAnalysis.combos`, `bracketSignals`; credit and link Commander Spellbook wherever combos show
-- [ ] Build mode (T063): each card's score and origin, "complete a combo" entries, the build's bracket estimate, saving a build directly, accept-rate events as mode `build` (T065)
-- [ ] Each checked at 390×844 within the swipe budget
-
-The buy list and value fill are shelved (owner, 2026-10-12). When the buy list returns, the deck tool defaults to owned only, and `app_config.ownership.firstBoost` (0.1) is retuned then (closed T037).
-
 ## T046: Mana base analysis
 
 **MEDIUM** · Core / Frontend · Placement: Deck stats · Display only; steering Add is T078
