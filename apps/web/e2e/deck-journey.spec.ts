@@ -261,18 +261,31 @@ test("returning to Swap with the deck unchanged asks for nothing again", async (
   expect(await loadingSeen()).toContain("Looking at the deck again");
 });
 
-test("the Add list offers a card that completes a combo, credited to Commander Spellbook", async ({ page }) => {
-  test.skip(process.env.E2E_LOCAL_DATA === "1", "The stand-in combo exists only in the mocks");
+test("Add's combos: ready and upgrade sections, Add Combo, and the pieces protected in Cut", async ({ page }) => {
+  test.skip(process.env.E2E_LOCAL_DATA === "1", "The stand-in combos exist only in the mocks");
   const recs = await analyzeDeck(page);
   await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
-  await recs.getByRole("button", { name: "Show as a list" }).click();
-  const combos = recs.getByRole("region", { name: "Complete a combo" });
-  await expect(combos).toBeVisible();
-  await expect(combos.getByText("Draw cards")).toBeVisible();
-  await expect(combos.getByText("+ Sol Ring")).toBeVisible();
-  await expect(combos.getByRole("link", { name: "Commander Spellbook" })).toHaveAttribute("href", /commanderspellbook\.com\/combo\//);
+
+  // The deck holds Sol Ring and Counterspell, each one card short of a stand-in combo.
+  await recs.getByRole("button", { name: "Combos (2)" }).click();
+  await expect(recs.getByRole("heading", { name: "Combos" })).toBeVisible();
+  await expect(recs.getByRole("link", { name: "Commander Spellbook" })).toHaveAttribute("href", "https://commanderspellbook.com/");
+  // No collection: the ready section is the way to upload one.
+  await expect(recs.getByRole("link", { name: "Upload a collection" })).toHaveAttribute("href", /collection%2Fimport|collection\/import/);
+  const upgrades = recs.locator("details", { hasText: "Combo Upgrades" });
+  if (!(await upgrades.getAttribute("open").then((v) => v !== null))) await upgrades.locator("summary").click();
+  await expect(upgrades.getByText("Win the game")).toBeVisible();
+  await expect(upgrades.getByRole("link", { name: "via Counterspell" })).toHaveAttribute("href", /commanderspellbook\.com\/combo\/mock-combo-2\//);
+  await expect(upgrades.getByText(/^About \$/).first()).toBeVisible();
+
   const before = await deckCount(recs);
-  await combos.getByRole("button", { name: /^Guardian Project/ }).click();
+  await upgrades.getByRole("button", { name: /^Add Swan Song/ }).click();
   await expect.poll(() => deckCount(recs)).toBe(before + 1);
-  await expect(combos).toHaveCount(0);
+  await expect(upgrades.getByRole("button", { name: /^Add Swan Song/ })).toHaveCount(0);
+
+  // Counterspell and Swan Song now make a combo: Cut warns before either goes.
+  await recs.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click();
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
+  await recs.getByRole("button", { name: "Show as a list" }).click();
+  await expect(recs.getByText("Combo piece: Win the game").first()).toBeVisible({ timeout: 60_000 });
 });

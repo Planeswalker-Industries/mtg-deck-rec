@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { ChevronDown, Library } from "lucide-react";
+import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, ComboSuggestion } from "@mtg/core/contract";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
@@ -11,7 +12,7 @@ import { ZoomableCard } from "@/components/cards/card-zoom";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { formatAsOf, formatUsd } from "@/lib/format";
-import { NextBar, PhaseIntro } from "./journey-stepper";
+import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
 import type { DeckJourney } from "./use-deck-journey";
 
 /** Commander Spellbook's home page, which the credit line links to. */
@@ -109,6 +110,7 @@ export function CombosPhase({ journey, uploadHref, nextLabel }: { journey: DeckJ
   const [upgradesOpen, setUpgradesOpen] = useState(() => window.matchMedia(WIDE_QUERY).matches);
   const names = (id: CardId) => journey.cards.get(id)?.name ?? "Unknown card";
   const room = journey.roomToAdd;
+  const size = COMMANDER_DECK_SIZE - journey.openSlots + journey.cutsNeeded;
   const ready = hasCollection ? combos.filter((c) => c.owned !== null) : [];
   const upgrades = hasCollection ? combos.filter((c) => c.owned === null) : combos;
   const asOf = upgrades.find((c) => c.card.price)?.card.price?.asOf;
@@ -135,6 +137,7 @@ export function CombosPhase({ journey, uploadHref, nextLabel }: { journey: DeckJ
           Back to cards
         </button>
       </div>
+      <StepStatus count={`${size} / ${COMMANDER_DECK_SIZE}`} />
       <p className="text-xs text-muted-foreground">
         via{" "}
         <a href={SPELLBOOK_HOME} target="_blank" rel="noreferrer" className={TEXT_LINK}>
