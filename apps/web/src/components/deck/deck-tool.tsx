@@ -918,7 +918,12 @@ function DeckToolSession() {
                       />
                     ))}
                   {journey.state.phase === "add" && (
-                    <AddPhase journey={journey} view={view} roles={deckStats?.stats.filter((stat) => stat.group === "roles") ?? []} />
+                    <AddPhase
+                      journey={journey}
+                      view={view}
+                      roles={deckStats?.stats.filter((stat) => stat.group === "roles") ?? []}
+                      onShowUnowned={() => tool.changeCollectionMode("first")}
+                    />
                   )}
                   {journey.state.phase === "replace" && (
                     <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />

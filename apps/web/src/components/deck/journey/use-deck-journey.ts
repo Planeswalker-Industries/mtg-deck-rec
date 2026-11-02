@@ -72,12 +72,6 @@ interface Round {
 /** What "Find …" in Deck stats narrowed Add to (T045). */
 export type AddFilter = { kind: "role"; roleId: string; label: string } | { kind: "lands" };
 
-/**
- * What the player chose when Add ran out of owned cards under 100 (T076): cards they don't own for the rest of the
- * round ('unowned', Add asks in 'first' mode), or owned cards only ('owned', Add offers basic lands for the holes).
- */
-export type RunOutChoice = "unowned" | "owned";
-
 /** Whether a card fits the filter: one of its tracked roles, or a land on its front face. */
 export const matchesAddFilter = (filter: AddFilter, card: CardSummary) =>
   filter.kind === "lands" ? isFrontLand(card.typeLine) : (card.roles ?? []).includes(filter.roleId);
@@ -184,9 +178,11 @@ export function useDeckJourney({
    * against the bracket while they are in the deck. Kept with the round it belongs to, so a new round starts empty.
    */
   const [overBracket, setOverBracket] = useState<{ round: number; ids: ReadonlySet<CardId> } | null>(null);
-  /** The run-out choice, with the round it belongs to; a ref too, for the Add request sent in the same handler. */
-  const [runOut, setRunOut] = useState<{ round: number; choice: RunOutChoice } | null>(null);
-  const runOutRef = useRef(runOut);
+  /**
+   * The round in which the player chose to keep to owned cards when Add ran out under 100 (T076), so Add offers basic
+   * lands for the holes. Taking cards they don't own instead changes the tool's collection setting to Owned first.
+   */
+  const [ownedOnlyRound, setOwnedOnlyRound] = useState<number | null>(null);
   /** Basic lands on their way into the holes (their names are resolved first), or the failure. */
   const [basicsFill, setBasicsFill] = useState<{ round: number; value: Async<null> } | null>(null);
   /** A step past Add the player asked for while the deck is under 100, waiting for them to confirm (T076). */
@@ -267,10 +263,7 @@ export function useDeckJourney({
     const key = deckKey(deck);
     setAdd({ round, key, value: { status: "loading" } });
     addPending.current = true;
-    // Past the collection's last card the player may take cards they don't own: owned ones still come first.
-    const unowned = runOutRef.current?.round === round && runOutRef.current.choice === "unowned" && ctx.ownership !== null;
-    const asked: RecContext = unowned ? { ...ctx, ownershipMode: "first" } : ctx;
-    const r = await getApis().recs.add({ context: { ...asked, deck }, excludeCardIds: next.declinedAdds });
+    const r = await getApis().recs.add({ context: { ...ctx, deck }, excludeCardIds: next.declinedAdds });
     if (id !== addRequest.current) return;
     addPending.current = false;
     setAdd({ round, key, value: toAsync(r) });
@@ -279,7 +272,7 @@ export function useDeckJourney({
       const shortOfLands = analysis ? lands(deck) < lands(analysis.deck) : false;
       const filter = addFilterRef.current;
       const shown = filtered(addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands), filter).map((s) => s.card.id);
-      addBatch.current = { batch: recordShown("add", shown, { ...asked, deck }), filter };
+      addBatch.current = { batch: recordShown("add", shown, { ...ctx, deck }), filter };
     }
   }
 
@@ -616,18 +609,8 @@ export function useDeckJourney({
     if (next) void loadAdds(next);
   }
 
-  const runOutChoice = current && runOut?.round === current.id ? runOut.choice : null;
   /** Whether Add keeps to the collection's cards: what the run-out prompt offers a way past. */
-  const collectionOnly = context !== null && ownedOnly(context) && runOutChoice !== "unowned";
-
-  function chooseRunOut(choice: RunOutChoice) {
-    const from = latest.current ?? current;
-    if (!from) return;
-    const next = { round: from.id, choice };
-    runOutRef.current = next;
-    setRunOut(next);
-    if (choice === "unowned" && roomToAdd(from.state) > 0) void loadAdds(from.state);
-  }
+  const collectionOnly = context !== null && ownedOnly(context);
 
   /**
    * Fills every open slot with basic lands, split by the deck's mana symbols, as one choice Undo takes back. Their names
@@ -771,11 +754,15 @@ export function useDeckJourney({
       accept: acceptAdd,
       pass: passAdd,
       undo: undoAdd,
+      /** A collection is applied, so owned cards show as owned and the rest show what they'd cost. */
+      hasCollection: context !== null && context.ownership !== null,
       /** Add keeps to the collection's cards, so running out offers cards the player doesn't own. */
       collectionOnly,
-      /** What the player chose once the collection ran out, this round. */
-      runOutChoice,
-      chooseRunOut,
+      /** The player chose to keep to owned cards once the collection ran out, this round. */
+      keptToOwned: current !== null && ownedOnlyRound === current.id,
+      keepToOwned: () => {
+        if (current) setOwnedOnlyRound(current.id);
+      },
       /** Basic lands for every open slot. */
       fillBasics,
       basicsFill: current && basicsFill?.round === current.id ? basicsFill.value : idle,

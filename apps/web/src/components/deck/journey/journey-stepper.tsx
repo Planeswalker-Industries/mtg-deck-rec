@@ -106,7 +106,7 @@ export function PhaseIntro({
  * One line under the steps saying where the round stands and what this step asks for ("Cut 3 to get back to 100"). Shown
  * in both views: an empty or finished step must never read as a stuck one.
  */
-export function StepStatus({ children, count }: { children: ReactNode; count?: ReactNode }) {
+export function StepStatus({ children, count }: { children?: ReactNode; count?: ReactNode }) {
   return (
     <p role="status" className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
       <span className="min-w-0 text-pretty">{children}</span>
