@@ -77,3 +77,31 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await expectAboveFooter(page, [sitting.getByRole("button", { name: /^Add / }).first(), sitting.getByRole("button", { name: /^Skip / }).first()]);
   await expect(sitting.getByText(/^About \$/)).toBeVisible();
 });
+
+test("owned suggestions carry the corner marker where they mix with cards to buy, and none in Owned only", async ({ page }) => {
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill(
+    ["1 Chulane, Teller of Tales", "1 Sol Ring", "1 Rhystic Study", "1 Cyclonic Rift", "1 Farseek"].join("\n"),
+  );
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+
+  await page.goto("/deck");
+  await page.getByRole("textbox", { name: "Decklist" }).fill(["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Command Tower"].join("\n"));
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+
+  const mode = page.getByRole("combobox", { name: "My collection" });
+  await expect(mode).toHaveText("Owned first", { timeout: RECS_WAIT_MS });
+  await page.getByRole("button", { name: "Show as a list" }).click();
+  const adds = recs.getByRole("list", { name: "Cards to add" });
+  await expect(adds.getByRole("img", { name: "Owned" }).first()).toBeVisible({ timeout: RECS_WAIT_MS });
+
+  await mode.click();
+  await page.getByRole("option", { name: "Owned only" }).click();
+  await expect(mode).toHaveText("Owned only");
+  await expect(adds.getByRole("button").first()).toBeVisible({ timeout: RECS_WAIT_MS });
+  await expect(adds.getByRole("img", { name: "Owned" })).toHaveCount(0);
+});

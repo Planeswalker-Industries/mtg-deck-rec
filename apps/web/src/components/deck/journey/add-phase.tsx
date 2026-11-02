@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON } from "@/lib/constants";
 import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
-import { OwnedBadge } from "../card-label";
 import { PanelError, PanelLoading } from "../panel-state";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
 import { SingleSwipe, SwipeDone } from "./single-swipe";
@@ -46,7 +45,6 @@ function Why({ suggestion, roles, hasCollection }: { suggestion: AddSuggestion; 
   const adds = fills(suggestion, roles);
   return (
     <span className="flex flex-col items-start gap-0.5">
-      {owned && <OwnedBadge />}
       {adds && <span className="font-semibold text-add">{adds}</span>}
       {corpus && (
         <span className="font-mono">{corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}</span>
@@ -177,6 +175,8 @@ export function AddPhase({
   const toCut = () => journey.stepper.select("cut");
   const nextLabel = cutsOwed > 0 ? `Next: cut ${cutsOwed}` : "Next: cut";
   const hasCollection = journey.add.hasCollection;
+  // Owned cards are marked only where they mix with cards to buy: in Owned only every card is owned.
+  const markOwned = hasCollection && !journey.add.collectionOnly;
   // The as-of date goes with the prices on screen: with a collection, only cards not owned show one.
   const asOf = queue.find((s) => s.card.price && !(hasCollection && s.owned))?.card.price?.asOf;
   const filterName = filter ? (filter.kind === "lands" ? "lands" : filter.label.toLowerCase()) : null;
@@ -226,7 +226,7 @@ export function AddPhase({
           zoomable
           label="Cards to add"
           onSelect={(card: CardSummary) => accept(card)}
-          items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, caption: <Why suggestion={s} roles={roles} hasCollection={hasCollection} /> }))}
+          items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, owned: markOwned && s.owned !== null, caption: <Why suggestion={s} roles={roles} hasCollection={hasCollection} /> }))}
         />
       );
     }
@@ -246,6 +246,7 @@ export function AddPhase({
         acceptWord="Add"
         passWord="Skip"
         caption={<Why suggestion={next} roles={roles} hasCollection={hasCollection} />}
+        owned={markOwned && next.owned !== null}
         onAccept={() => accept(next.card)}
         onPass={() => pass(next.card)}
         footer={
