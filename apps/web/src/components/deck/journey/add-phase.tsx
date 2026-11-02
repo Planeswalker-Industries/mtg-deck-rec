@@ -71,15 +71,15 @@ function RunOut({
   open: number;
   onCut: () => void;
   nextLabel: string;
-  /** Switches the collection setting to Owned first, so Add suggests cards the player doesn't own too. */
+  /** Allow Singles: switches the collection setting to Owned first, so Add suggests cards the player doesn't own too. */
   onShowUnowned: () => void;
 }) {
   const { collectionOnly, keptToOwned, keepToOwned, fillBasics, basicsFill } = journey.add;
   if (collectionOnly && !keptToOwned) {
     return (
-      <SwipeDone title="Collection's out" message={`${open} open. Show cards you don't own?`}>
+      <SwipeDone title="Insufficient Collection" message="You don't have a large enough collection.">
         <Button type="button" size="lg" onClick={onShowUnowned}>
-          Show cards I don&apos;t own
+          Allow Singles
         </Button>
         <Button type="button" size="lg" variant="outline" onClick={keepToOwned}>
           Owned only
@@ -103,7 +103,7 @@ function RunOut({
       </Button>
       {collectionOnly && (
         <Button type="button" size="lg" variant="outline" onClick={onShowUnowned}>
-          Show cards I don&apos;t own
+          Allow Singles
         </Button>
       )}
       <Button type="button" size="lg" variant="link" onClick={onCut}>
