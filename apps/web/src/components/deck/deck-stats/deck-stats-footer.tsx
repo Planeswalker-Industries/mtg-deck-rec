@@ -69,6 +69,8 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
           aria-controls={open ? "deck-stats-sheet" : undefined}
           className="page-column flex min-h-12 w-full cursor-pointer touch-none items-center justify-between gap-3 px-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
           onPointerDown={(e) => {
+            // Captured, so a mouse drag that leaves the bar still ends here.
+            e.currentTarget.setPointerCapture(e.pointerId);
             startY.current = e.clientY;
             swiped.current = false;
           }}
@@ -79,8 +81,12 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             }
             startY.current = null;
           }}
-          onClick={() => {
-            if (swiped.current) return;
+          onClick={(e) => {
+            // The click a mouse swipe ends with is skipped. A touch swipe fires none, so the flag can outlive it: a key's
+            // click (detail 0) is never skipped, and clears it.
+            const skip = swiped.current && e.detail > 0;
+            swiped.current = false;
+            if (skip) return;
             setOpen((o) => !o);
           }}
         >
@@ -122,8 +128,10 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
           <button
             type="button"
             aria-label="Close deck stats"
-            className="mx-auto flex min-h-11 w-full cursor-pointer touch-none items-center justify-between gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
+            // Sticky, so the handle stays in reach while the readout scrolls under it.
+            className="sticky top-0 z-10 mx-auto -mt-2 flex min-h-11 w-full cursor-pointer touch-none items-center justify-between gap-3 bg-sleeve pt-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
             onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
               startY.current = e.clientY;
             }}
             onPointerUp={(e) => {

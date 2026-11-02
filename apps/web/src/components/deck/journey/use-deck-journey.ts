@@ -7,6 +7,7 @@ import type {
   Bracket,
   CardId,
   CardSummary,
+  ComboRef,
   CutResult,
   CutSuggestion,
   DeckAnalysis,
@@ -83,8 +84,8 @@ const sameFilter = (a: AddFilter | null, b: AddFilter | null) =>
 const filtered = (suggestions: AddSuggestion[], filter: AddFilter | null) =>
   filter ? suggestions.filter((s) => matchesAddFilter(filter, s.card)) : suggestions;
 
-/** No card ids: the over-bracket set before any add, kept as one value so its readers see a stable reference. */
-const NO_IDS: ReadonlySet<CardId> = new Set();
+/** No cards: the over-bracket adds before any add, kept as one value so their readers see a stable reference. */
+const NO_ADDS: ReadonlyMap<CardId, readonly ComboRef[]> = new Map();
 
 const isLand = (card: CardSummary) => /\bLand\b/.test(card.typeLine.split(" // ")[0] ?? card.typeLine);
 
@@ -174,10 +175,11 @@ export function useDeckJourney({
   const replaceRequest = useRef(0);
   const checkRequest = useRef(0);
   /**
-   * Cards added this round whose suggestion would complete a combo above the bracket (T045): Deck stats counts them
-   * against the bracket while they are in the deck. Kept with the round it belongs to, so a new round starts empty.
+   * Cards added this round whose suggestion would complete a combo above the bracket (T045), with those combos: Deck
+   * stats counts them against the bracket while they are in the deck and a combo is still over the bracket chosen. Kept
+   * with the round it belongs to, so a new round starts empty.
    */
-  const [overBracket, setOverBracket] = useState<{ round: number; ids: ReadonlySet<CardId> } | null>(null);
+  const [overBracket, setOverBracket] = useState<{ round: number; adds: ReadonlyMap<CardId, readonly ComboRef[]> } | null>(null);
   /**
    * The round in which the player chose to keep to owned cards when Add ran out under 100 (T076), so Add offers basic
    * lands for the holes. Taking cards they don't own instead changes the tool's collection setting to Owned first.
@@ -211,7 +213,7 @@ export function useDeckJourney({
   const add = current && addFor?.round === current.id ? addFor.value : idle;
   const replace = current && replaceFor?.round === current.id ? replaceFor.value : idle;
 
-  const overBracketIds = current && overBracket?.round === current.id ? overBracket.ids : NO_IDS;
+  const overBracketAdds = current && overBracket?.round === current.id ? overBracket.adds : NO_ADDS;
 
   /** What a "Find …" action in Deck stats narrowed Add to. It lasts while Add is on screen: leaving the step, or a new round, clears it. */
   const [addFilterSet, setAddFilterSet] = useState<AddFilter | null>(null);
@@ -587,8 +589,9 @@ export function useDeckJourney({
     recordAddDecision(card, true);
     // An add that completes a combo above the bracket counts against it while it stays (Deck stats checks the deck).
     const roundId = current?.id;
-    if (roundId !== undefined && addQueue.find((s) => s.card.id === card.id)?.completesOverBracket?.length) {
-      setOverBracket((prev) => ({ round: roundId, ids: new Set([...(prev?.round === roundId ? prev.ids : []), card.id]) }));
+    const overCombos = addQueue.find((s) => s.card.id === card.id)?.completesOverBracket;
+    if (roundId !== undefined && overCombos?.length) {
+      setOverBracket((prev) => ({ round: roundId, adds: new Map([...(prev?.round === roundId ? prev.adds : []), [card.id, overCombos]]) }));
     }
     const next = apply({ type: "add", card });
     if (next && roomToAdd(next) > 0) void loadAdds(next);
@@ -723,7 +726,7 @@ export function useDeckJourney({
     before,
     after,
     /** Cards added this round that complete a combo above the bracket; Deck stats counts the ones still in the deck. */
-    overBracketIds,
+    overBracketAdds,
     /** How far the deck is below 100, how many more cards Add may put in, and how many Cut must take out. */
     openSlots: state ? openSlots(state) : 0,
     roomToAdd: state ? roomToAdd(state) : 0,
@@ -739,9 +742,13 @@ export function useDeckJourney({
       open: cutsOpen,
       /** Whether the deck is exactly 100 once the undecided recommended cuts go: a complete deck, not a partial list. */
       full: afterPendingCuts !== null && cutsOwed === 0 && openSlots(afterPendingCuts) === 0,
+      /** How many cards Add may put in once the undecided recommended cuts go. */
+      roomToAdd: afterPendingCuts ? roomToAdd(afterPendingCuts) : 0,
       restore: restoreCut,
       toggle: toggleCut,
       finish: finishCuts,
+      /** Back to Add with the undecided recommended cuts taken as marked, as Cut's way on takes them. */
+      toAdd: () => goTo("add", ...pendingCuts),
     },
     add: {
       state: add,

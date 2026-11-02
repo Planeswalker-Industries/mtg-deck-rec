@@ -1,6 +1,6 @@
 // packages/core/src/journey/deck-tally.test.ts
 import { describe, expect, it } from 'vitest';
-import type { BracketSignals, CardId, DeckCombo, StatTargets } from '../contract';
+import type { BracketSignals, CardId, ComboRef, DeckCombo, StatTargets } from '../contract';
 import { buildTally, gradeDeck, statDeltas, syncTally, tallyCache, withinTolerance, type TallyCard, type TallyEntry } from './deck-tally';
 
 const RAMP = 'ramp-role';
@@ -32,7 +32,7 @@ const card = (over: Partial<TallyCard> = {}): TallyCard => ({
   ...over,
 });
 const forest = card({ typeLine: 'Basic Land — Forest', manaValue: 0 });
-const bracket = (over = {}) => ({ chosen: 3 as const, signals: noSignals, combos: [] as DeckCombo[], overBracketIds: new Set<CardId>(), ...over });
+const bracket = (over = {}) => ({ chosen: 3 as const, signals: noSignals, combos: [] as DeckCombo[], overBracketAdds: new Map<CardId, ComboRef[]>(), ...over });
 
 describe('withinTolerance', () => {
   it('uses 20% of the target', () => {
@@ -192,10 +192,22 @@ describe('gradeDeck', () => {
     expect(gradeDeck(t, targets, bracket({ combos: [combo] })).bracket.ok).toBe(true);
   });
 
-  it('fails the bracket while an added card completes a combo above it', () => {
+  it('fails the bracket while an added card completes a combo above it, until the bracket is raised to it', () => {
     const a = card();
     const t = buildTally([{ card: a, quantity: 1 }], []);
-    expect(gradeDeck(t, targets, bracket({ overBracketIds: new Set([a.id]) })).bracket.ok).toBe(false);
+    const combo: ComboRef = { id: 'x', url: 'https://commanderspellbook.com/combo/x/', results: ['Win the game'], minBracket: 4 };
+    const adds = new Map([[a.id, [combo]]]);
+    expect(gradeDeck(t, targets, bracket({ overBracketAdds: adds })).bracket.ok).toBe(false);
+    expect(gradeDeck(t, targets, bracket({ chosen: 4, overBracketAdds: adds })).bracket.ok).toBe(true);
+  });
+
+  it('keeps an added extra-turn loop over the bracket until the bracket that allows loops', () => {
+    const a = card();
+    const t = buildTally([{ card: a, quantity: 1 }], []);
+    const loop: ComboRef = { id: 'y', url: 'https://commanderspellbook.com/combo/y/', results: ['Infinite turns'], minBracket: 2 };
+    const adds = new Map([[a.id, [loop]]]);
+    expect(gradeDeck(t, targets, bracket({ overBracketAdds: adds })).bracket.ok).toBe(false); // loops from bracket 4
+    expect(gradeDeck(t, targets, bracket({ chosen: 4, overBracketAdds: adds })).bracket.ok).toBe(true);
   });
 
   it('counts Game Changers against the chosen bracket', () => {

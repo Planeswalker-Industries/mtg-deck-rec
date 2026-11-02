@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Bracket, CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, ComboRef, DeckAnalysis } from "@mtg/core/contract";
 import { tallyCache, toTallyCard, type DeckStatsReport, type TallyEntry } from "@mtg/core/journey";
 import type { DeckEntry } from "@mtg/core/scoring";
 
-const NO_IDS: ReadonlySet<CardId> = new Set();
+const NO_ADDS: ReadonlyMap<CardId, readonly ComboRef[]> = new Map();
 
 /**
  * Deck stats for the deck on screen. The tally is counted in full once per analysis and then moved only by the cards
@@ -16,14 +16,14 @@ export function useDeckStats({
   analysis,
   entries,
   bracket,
-  overBracketIds = NO_IDS,
+  overBracketAdds = NO_ADDS,
   start,
 }: {
   analysis: DeckAnalysis | null;
   /** The deck as it stands, commanders included or not: commanders are taken from the analysis. */
   entries: readonly DeckEntry[];
   bracket: Bracket | null;
-  overBracketIds?: ReadonlySet<CardId>;
+  overBracketAdds?: ReadonlyMap<CardId, readonly ComboRef[]>;
   /** The deck the round started from, commanders included or not; keep one array per round, as for `entries`. */
   start?: readonly DeckEntry[] | undefined;
 }): DeckStatsReport | null {
@@ -44,8 +44,8 @@ export function useDeckStats({
       tallied(entries),
       commanders,
       targets,
-      { chosen: bracket, signals: analysis.bracketSignals, combos: analysis.combos, overBracketIds },
+      { chosen: bracket, signals: analysis.bracketSignals, combos: analysis.combos, overBracketAdds },
       start && tallied(start),
     );
-  }, [cache, analysis, entries, bracket, overBracketIds, start]);
+  }, [cache, analysis, entries, bracket, overBracketAdds, start]);
 }
