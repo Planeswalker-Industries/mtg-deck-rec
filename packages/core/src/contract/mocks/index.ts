@@ -114,10 +114,14 @@ const MOCK_BUY_LIST = { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 5 };
 /** Lands a mock build aims for, about what Commander decks run (`app_config.scoring.build` holds the real counts). */
 const MOCK_BUILD_LANDS = 36;
 /**
- * One stand-in Commander Spellbook combo over two fixture cards (not a real combo), so mock Add and Build have a
- * "complete a combo" entry to show. Bracket 2 so every estimate (2–4) allows it.
+ * Stand-in Commander Spellbook combos over fixture cards (not real combos), so mock Add has "complete a combo" entries
+ * to show: one usually to buy, one a collection usually holds (Swan Song). Bracket 2 so every estimate (2–4) allows
+ * them; results best first, as the server sends them.
  */
-const MOCK_COMBO = { id: 'mock-combo-1', pieces: ['Sol Ring', 'Guardian Project'], results: ['Draw cards'], minBracket: 2 as Bracket };
+const MOCK_COMBOS = [
+  { id: 'mock-combo-1', pieces: ['Sol Ring', 'Guardian Project'], results: ['Draw cards'], minBracket: 2 as Bracket },
+  { id: 'mock-combo-2', pieces: ['Counterspell', 'Swan Song'], results: ['Win the game', 'Infinite colorless mana'], minBracket: 2 as Bracket },
+];
 const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0 };
 const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'];
 
@@ -333,8 +337,8 @@ const confidenceOf = (ctx: RecContext): SwapResult['confidence'] => (ctx.deck.co
 const ownedInfo = (owned: Set<number> | null, id: number) => (owned?.has(id) ? { quantity: 1 } : null);
 
 /**
- * The mock combo when `held` has every piece but one, that one isn't in `excluded`, fits the colours and the
- * collection setting (`only`: owned-only mode), and the bracket allows it.
+ * The mock combos `held` has every piece of but one, when that one isn't in `excluded`, fits the colours and the
+ * bracket allows it. Owned or not, like the server: the client shows the unowned ones as upgrades.
  */
 function mockCombos(
   held: ReadonlySet<number>,
@@ -342,27 +346,28 @@ function mockCombos(
   identity: string,
   context: RecContext,
   owned: Set<number> | null,
-  only: Set<number> | null,
 ): ComboSuggestion[] {
-  const ids = MOCK_COMBO.pieces.map((name) => mockCards.find((c) => c.name === name)!.id);
-  const missing = ids.filter((id) => !held.has(id));
-  if (missing.length !== 1 || context.bracket < MOCK_COMBO.minBracket) return [];
-  const card = getCard(missing[0]!);
-  if (excluded.has(card.id) || !withinIdentity(card, identity) || (only && !only.has(card.id))) return [];
-  const corpus = corpusFor(card.id);
-  return [
-    {
-      id: MOCK_COMBO.id,
-      url: `https://commanderspellbook.com/combo/${MOCK_COMBO.id}/`,
-      results: MOCK_COMBO.results,
-      minBracket: MOCK_COMBO.minBracket,
-      card,
-      pieceIds: ids.filter((id) => held.has(id)),
-      alsoNeeded: [],
-      score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null, role: null }, 0),
-      owned: ownedInfo(owned, card.id),
-    },
-  ];
+  return MOCK_COMBOS.flatMap((combo): ComboSuggestion[] => {
+    const ids = combo.pieces.map((name) => mockCards.find((c) => c.name === name)!.id);
+    const missing = ids.filter((id) => !held.has(id));
+    if (missing.length !== 1 || context.bracket < combo.minBracket) return [];
+    const card = getCard(missing[0]!);
+    if (excluded.has(card.id) || !withinIdentity(card, identity)) return [];
+    const corpus = corpusFor(card.id);
+    return [
+      {
+        id: combo.id,
+        url: `https://commanderspellbook.com/combo/${combo.id}/`,
+        results: combo.results,
+        minBracket: combo.minBracket,
+        card,
+        pieceIds: ids.filter((id) => held.has(id)),
+        alsoNeeded: [],
+        score: blend({ tag: null, manaValue: null, staple: null, corpus: corpusScore(corpus), votes: null, role: null }, 0),
+        owned: ownedInfo(owned, card.id),
+      },
+    ];
+  });
 }
 
 /** In-memory implementations of the contract for frontend work (NEXT_PUBLIC_USE_MOCKS=1). */
@@ -493,7 +498,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
               .slice(0, limitPerCategory),
           })),
           ...(only ? { buyList: buyList(unowned, (s) => best.get(s.category) ?? 0, MOCK_BUY_LIST) } : {}),
-          combos: mockCombos(deckCardIds(context.deck), new Set(excludeCardIds), identity, context, owned, only),
+          combos: mockCombos(deckCardIds(context.deck), new Set(excludeCardIds), identity, context, owned),
         };
         return delay(ok(result));
       } catch (e) {
@@ -553,7 +558,6 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             new Set<number>(),
             identity,
             context,
-            owned,
             owned,
           ),
           estimatedBracket: gameChangerCount === 0 ? 2 : gameChangerCount <= 3 ? 3 : 4,

@@ -299,11 +299,11 @@ describe('mock combos', () => {
     const r = await apis.recs.add({ context: context({ deck: deckOf(ring()) }) });
     if (!r.ok) throw new Error(r.error.message);
     expect(r.data.combos).toHaveLength(1);
-    expect(r.data.combos?.[0]).toMatchObject({ card: { id: project() }, pieceIds: [ring()], alsoNeeded: [] });
+    expect(r.data.combos?.[0]).toMatchObject({ card: { id: project() }, pieceIds: [ring()], alsoNeeded: [], owned: null });
     expect(r.data.combos?.[0]?.url).toMatch(/^https:\/\/commanderspellbook\.com\/combo\//);
   });
 
-  it('leaves it out once the piece is in the deck, skipped, or not owned in owned-only mode', async () => {
+  it('leaves it out once the piece is in the deck or skipped, and keeps cards to buy in owned-only mode', async () => {
     const { apis, context } = await setup();
     const both = await apis.recs.add({ context: context({ deck: deckOf(ring(), project()) }) });
     expect(both.ok && both.data.combos).toEqual([]);
@@ -312,21 +312,10 @@ describe('mock combos', () => {
     const ownedOnly = await apis.recs.add({
       context: context({ deck: deckOf(ring()), ownership: { kind: 'session', catalogEpoch: 'mock-1', ownedCardIds: [ring()] } }),
     });
-    expect(ownedOnly.ok && ownedOnly.data.combos).toEqual([]);
-  });
-
-  it('builds report none when they hold both pieces, or when the missing one is not owned', async () => {
-    const { apis, context } = await setup();
-    const owned = { kind: 'session' as const, catalogEpoch: 'mock-1', ownedCardIds: [chulane(), ring(), project()] };
-    const r = await apis.recs.build({ context: context({ deck: deckOf(), ownership: owned, ownershipMode: 'only' }) });
-    if (!r.ok) throw new Error(r.error.message);
-    const built = new Set(r.data.groups.flatMap((g) => g.cards).map((c) => c.card.id));
-    expect(built.has(ring()) && built.has(project())).toBe(true);
-    expect(r.data.combos).toEqual([]);
-    const short = await apis.recs.build({
-      context: context({ deck: deckOf(), ownership: { ...owned, ownedCardIds: [chulane(), ring()] }, ownershipMode: 'only' }),
+    expect(ownedOnly.ok && ownedOnly.data.combos?.map((c) => [c.card.id, c.owned])).toEqual([[project(), null]]);
+    const owned = await apis.recs.add({
+      context: context({ deck: deckOf(ring()), ownership: { kind: 'session', catalogEpoch: 'mock-1', ownedCardIds: [project()] } }),
     });
-    if (!short.ok) throw new Error(short.error.message);
-    expect(short.data.combos).toEqual([]);
+    expect(owned.ok && owned.data.combos?.[0]?.owned).toEqual({ quantity: 1 });
   });
 });
