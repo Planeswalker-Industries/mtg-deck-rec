@@ -793,6 +793,8 @@ export function useDeckJourney({
   return {
     state,
     dispatch: (action: JourneyAction) => void apply(action),
+    /** A land swap (T083): one copy of a basic out and a card in, as one choice Undo takes back, so the deck stays at its size. */
+    swapLand: (basic: CardSummary, card: CardSummary) => void apply({ type: "cut", card: basic }, { type: "add", card }),
     goTo,
     stepper: {
       canOpen,
@@ -892,6 +894,10 @@ export function useDeckJourney({
       /** Replacements passed on this round, which aren't offered for that card again. */
       declined: state?.declinedSwaps ?? [],
       decline: (targetId: CardId, replacementId: CardId) => void apply({ type: "declineSwap", targetId, replacementId }),
+      /** Asks for the weaker fits again when the deck changed under them in Swap (land swaps, T083). */
+      refresh: () => {
+        if (state?.phase === "replace" && !replaceFresh(state)) void loadReplaceTargets(state);
+      },
     },
     /** A bracket change that made cards must-cuts, waiting for Cut & Continue or Revert. */
     bracketCheck: current?.check ?? null,

@@ -17,6 +17,7 @@ import type { DeckGroups } from "../use-deck-groups";
 import type { Async } from "../use-deck-tool";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
 import { LandCuts, type LandCount } from "./land-cuts";
+import { LandSwaps, type LandSwapNeed } from "./land-swaps";
 import { SingleSwipe, SwipeDone } from "./single-swipe";
 import type { DeckJourney } from "./use-deck-journey";
 
@@ -80,6 +81,7 @@ export function CutPhase({
   trim,
   onShowList,
   onFinish,
+  landSwap = null,
 }: {
   journey: DeckJourney;
   cutState: Async<CutResult>;
@@ -91,6 +93,8 @@ export function CutPhase({
   onShowList: () => void;
   /** Leaves Cut (to Swap, or back to Add below 100); the deck tool checks the land count first. */
   onFinish: () => void;
+  /** The deck runs too many lands or basics: at 100, Cut offers to trade them rather than saying nothing needs cutting (T083). */
+  landSwap?: LandSwapNeed | null;
 }) {
   const { recommended, undecided, isMarked, cutCopies, owed: owedAfterRuleBreaks, open, restore, toggle } = journey.cut;
   const focus = trim?.focus ?? null;
@@ -351,6 +355,8 @@ export function CutPhase({
             Put cards back from the list
           </Button>
         </SwipeDone>
+      ) : landSwap && !focus && size === COMMANDER_DECK_SIZE ? (
+        <LandSwaps journey={journey} need={landSwap} doneLabel="Done: go to swaps" onDone={onFinish} />
       ) : (
         <SwipeDone
           title={focus ? `${focus.label} trimmed` : size > COMMANDER_DECK_SIZE ? `The deck is at ${size}` : cutCount > 0 ? "Looks good." : "Nothing needs cutting"}
