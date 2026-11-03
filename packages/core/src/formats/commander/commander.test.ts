@@ -156,6 +156,26 @@ describe('validateCommanderDeck', () => {
     expect(validateCommanderDeck([chulane], fillers, 3)).toEqual([]);
   });
 
+  it('counts a commander once when the deck also lists it as a commander entry', () => {
+    const fillers = Array.from({ length: 99 }, (_, i) => main(card({ name: `Card ${i}`, colorIdentityMask: identityToMask('G') })));
+    const entry: CommanderDeckEntry = { card: chulane, quantity: 1, section: 'commander' };
+    expect(validateCommanderDeck([chulane], [entry, ...fillers], 3)).toEqual([]);
+  });
+
+  it('counts a partner pair once each when both are also commander entries', () => {
+    const thrasios = card({ name: 'Thrasios', colorIdentityMask: identityToMask('UG'), canBeCommander: true, partnerKind: 'partner' });
+    const tymna = card({ name: 'Tymna', colorIdentityMask: identityToMask('WB'), canBeCommander: true, partnerKind: 'partner' });
+    const fillers = Array.from({ length: 98 }, (_, i) => main(card({ name: `Pair card ${i}`, colorIdentityMask: identityToMask('G') })));
+    const entries: CommanderDeckEntry[] = [thrasios, tymna].map((c) => ({ card: c, quantity: 1, section: 'commander' }));
+    expect(validateCommanderDeck([thrasios, tymna], [...entries, ...fillers], 3)).toEqual([]);
+  });
+
+  it('still counts a commander entry whose card is not a commander', () => {
+    const fillers = Array.from({ length: 99 }, (_, i) => main(card({ name: `Card ${i}`, colorIdentityMask: identityToMask('G') })));
+    const stray: CommanderDeckEntry = { card: card({ name: 'Stray', colorIdentityMask: identityToMask('G') }), quantity: 1, section: 'commander' };
+    expect(codes(validateCommanderDeck([chulane], [stray, ...fillers], 3))).toContain('WRONG_DECK_SIZE');
+  });
+
   it('flags missing and invalid commanders', () => {
     expect(codes(validateCommanderDeck([], [], 3))).toContain('MISSING_COMMANDER');
     const notACommander = card({ name: 'Sol Ring' });
