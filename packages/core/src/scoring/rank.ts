@@ -356,6 +356,18 @@ export interface AddRanking {
  * short on. In 'only' mode the groups hold what the collection supplies and the unowned cards that would do clearly
  * better go to the buy list; in 'first' mode owned cards move up by `ownedBoost`.
  */
+/**
+ * A card's staple score (T083), carried in the score breakdown at weight 0 (`app_config.scoring` weights.add.staple):
+ * it never moves the total, and breaks ties (`byStaple`). Cards the commander's decks never run all score the same
+ * corpus floor, and without it they tied and fell back to name order. Null when the scores weren't loaded.
+ */
+export const stapleOf = (staples: ReadonlyMap<number, number> | null | undefined, cardId: number): number | null =>
+  staples ? round2(staples.get(cardId) ?? 0) : null;
+
+/** Equal scores, the wider staple first (T083): a comparator for the step after the score. */
+export const byStaple = (a: Pick<ScoreBreakdown, 'components'>, b: Pick<ScoreBreakdown, 'components'>): number =>
+  (b.components.staple ?? 0) - (a.components.staple ?? 0);
+
 export function rankAdds({
   context,
   poolIds,
@@ -372,6 +384,7 @@ export function rankAdds({
   bracketFacts = null,
   deckCards = NO_STAND_INS,
   affinity = null,
+  staples = null,
   limitPerCategory,
 }: {
   context: RecContext;
@@ -401,6 +414,8 @@ export function rankAdds({
   deckCards?: ReadonlyMap<number, RankCard>;
   /** Card pairs for the deck (T064): the `deck` component, and the cards its pairs point to join the pool. */
   affinity?: AffinityInput | null;
+  /** Each card's global staple score (`card_stats`), 0..1 (T083): breaks ties between equal scores (`stapleOf`). */
+  staples?: ReadonlyMap<number, number> | null;
   limitPerCategory: number;
 }): AddRanking {
   const only = availability !== null && ownedOnly(context);
@@ -464,7 +479,7 @@ export function rankAdds({
         {
           tag: null,
           manaValue: null,
-          staple: null,
+          staple: stapleOf(staples, cardId),
           corpus: round2(corpusScore?.value ?? neutralCorpus),
           votes: null,
           role: round2(gap),
@@ -494,7 +509,9 @@ export function rankAdds({
     suggestions: onceEach(
       listed
         .filter((s) => s.category === category)
-        .sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost)),
+        .sort(
+          (a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost) || byStaple(a.score, b.score),
+        ),
     ).slice(0, limitPerCategory),
   })).filter((g) => g.suggestions.length > 0);
   if (!only) return { groups, ...(combos ? { combos } : {}) };

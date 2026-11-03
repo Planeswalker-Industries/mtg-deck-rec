@@ -1,6 +1,6 @@
 /**
  * How a replacement compares with the card it would replace, as a few better/worse marks the Swap step shows under the
- * pair ("1 cheaper to cast", "played in more decks"). Pure: the panel supplies what it knows about each card, and a
+ * pair ("1 cheaper to cast", "Popular"). Pure: the panel supplies what it knows about each card, and a
  * fact either card lacks makes no mark rather than a guess.
  */
 
@@ -17,6 +17,8 @@ export interface CompareCard {
   /** Printed power and toughness, null for a non-creature; "*" and the like make no mark. */
   power: string | null;
   toughness: string | null;
+  /** The player owns this card: what it costs to buy doesn't matter, so it makes no price mark. */
+  owned?: boolean;
 }
 
 export type CompareTone = 'better' | 'worse';
@@ -34,8 +36,6 @@ export const PRICE_MARK_MIN_USD = 0.5;
 /** Play-rate gaps under this share (five points) are noise and make no mark. */
 export const PLAY_MARK_MIN_SHARE = 0.05;
 
-const PERCENT = 100;
-
 type Speed = 0 | 1 | 2;
 
 /** 2 for instant speed (an instant, or flash), 1 for sorcery speed, 0 for a land, which isn't cast. */
@@ -46,7 +46,6 @@ function speedOf(card: CompareCard): Speed {
   return 1;
 }
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const usd = (n: number) => `$${n.toFixed(2)}`;
 const whole = (s: string | null): number | null => (s !== null && /^\d+$/.test(s) ? Number(s) : null);
 
@@ -77,16 +76,11 @@ export function compareCards(outgoing: CompareCard, incoming: CompareCard): Comp
   if (outgoing.inclusionRate !== null && incoming.inclusionRate !== null) {
     const gap = incoming.inclusionRate - outgoing.inclusionRate;
     if (Math.abs(gap) >= PLAY_MARK_MIN_SHARE) {
-      const points = Math.round(Math.abs(gap) * PERCENT);
-      marks.push(
-        gap > 0
-          ? { key: 'play', tone: 'better', label: `In ${plural(points, 'point')} more decks` }
-          : { key: 'play', tone: 'worse', label: `In ${plural(points, 'point')} fewer decks` },
-      );
+      marks.push(gap > 0 ? { key: 'play', tone: 'better', label: 'Popular' } : { key: 'play', tone: 'worse', label: 'Rarely played' });
     }
   }
 
-  if (outgoing.priceUsd !== null && incoming.priceUsd !== null) {
+  if (!incoming.owned && outgoing.priceUsd !== null && incoming.priceUsd !== null) {
     const gap = incoming.priceUsd - outgoing.priceUsd;
     if (Math.abs(gap) >= PRICE_MARK_MIN_USD) {
       marks.push(gap < 0 ? { key: 'price', tone: 'better', label: `${usd(-gap)} cheaper` } : { key: 'price', tone: 'worse', label: `${usd(gap)} dearer` });

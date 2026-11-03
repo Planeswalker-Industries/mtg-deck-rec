@@ -38,6 +38,7 @@ import {
   pmiIndex,
   scaledPrior,
   precisionAt,
+  byStaple,
   rankAdds,
   rankCuts,
   recallAt,
@@ -135,6 +136,8 @@ interface Data {
   declaredBrackets: Map<string, number>;
   /** Each basic land's row by colour, for builds. */
   basics: Map<BasicColour, RankCard>;
+  /** Each card's global staple score (card_stats, from printings, not the corpus), as the app serves it (T083). */
+  staples: Map<number, number>;
 }
 
 /** The bracket rules, the cards they watch and every collated combo by card, for the estimator check (T060). */
@@ -237,7 +240,7 @@ const mean = (xs: readonly number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) 
 
 async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
   const catalog = await loadCatalog(sql);
-  const [details, roleRows, targetsRow, pages, snapshot, declaredRows] = await Promise.all([
+  const [details, roleRows, targetsRow, pages, snapshot, declaredRows, stapleRows] = await Promise.all([
     sql<{ id: number; oracle_id: string; type_line: string; mana_value: number; mana_cost: string | null; game_changer: boolean }[]>`
       select id, oracle_id, type_line, mana_value, mana_cost, game_changer from public.cards where deleted_at is null
     `,
@@ -250,7 +253,9 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
     sql<{ source_deck_id: string; declared_bracket: number }[]>`
       select source_deck_id, declared_bracket from archidekt.decks where declared_bracket is not null
     `,
+    sql<{ card_id: number; staple_score: number }[]>`select card_id, staple_score from public.card_stats`,
   ]);
+  const staples = new Map(stapleRows.map((r) => [r.card_id, r.staple_score]));
 
   const cards = new Map<number, RankCard>();
   const nonland = new Set<number>();
@@ -317,7 +322,7 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
       basicLands: deck.basicLands,
     });
   }
-  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets, basics };
+  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets, basics, staples };
 }
 
 /** Per-key counts from these decks, as `tallyDecks` makes them. */
@@ -553,17 +558,15 @@ function trainingPairs(train: readonly EvalDeck[], trainingDecks: Map<string, Ev
       settings,
     ),
   );
-  const own = new Map<string, PmiIndex>();
+  // One commander's index at a time: the held-out decks are graded commander by commander (see run), and keeping every
+  // commander's index ran a 212k-deck corpus out of heap (T083).
+  let own: { key: string; index: PmiIndex } | null = null;
   const releaseMonth = (id: number) => data.facts.get(id)?.releaseMonth ?? null;
   return {
     global,
     ownFor: (key) => {
-      let index = own.get(key);
-      if (!index) {
-        index = pmiOf(keyPairs(trainingDecks.get(key) ?? [], releaseMonth, settings));
-        own.set(key, index);
-      }
-      return index;
+      if (own?.key !== key) own = { key, index: pmiOf(keyPairs(trainingDecks.get(key) ?? [], releaseMonth, settings)) };
+      return own.index;
     },
   };
 }
@@ -603,11 +606,13 @@ function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel,
     deckCards: new Map(visible.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : []))),
     affinity,
     availability: owned ? availability({ owned: new Map([...owned].map((id) => [id, 1])), builtDecks: [] }, new Map()) : null,
+    staples: data.staples,
     limitPerCategory: ALL_CATEGORIES,
   });
   return groups
     .flatMap((g) => g.suggestions)
-    .sort((a, b) => b.score.total - a.score.total)
+    // As the journey deals them: equal scores, the wider staple first (T083).
+    .sort((a, b) => b.score.total - a.score.total || byStaple(a.score, b.score))
     .map((s) => s.card.id as number);
 }
 
@@ -749,6 +754,7 @@ function buildFor(commanderIds: readonly number[], bracket: Bracket, model: SetM
     bracketFacts: { rules: brackets.rules, cards: brackets.cards, combos: [...combos.values()] },
     affinity: affinity ? { lifts: affinity.lifts, weights: affinity.weights } : null,
     basics: data.basics,
+    staples: data.staples,
   });
   const nonbasic = built.groups.flatMap((g) => g.cards.map((c) => c.card.id as number));
   const basics = built.basics.reduce((n, b) => n + b.quantity, 0);
@@ -801,27 +807,41 @@ function run(
   brackets: BracketData,
 ): RunResult {
   const e = settings.eval;
-  const models = new Map<string, SetModel>();
-  const modelFor = (key: string, commanderIds: readonly number[]) => {
-    let m = models.get(key);
-    if (!m) {
-      m = setModel(commanderIds, training, settings, data);
-      models.set(key, m);
-    }
-    return m;
-  };
-
+  // Commander by commander, each model dropped once its decks are graded and built: holding a model per commander at
+  // once ran a 212k-deck corpus out of heap (T083). Every deck is still graded with its commander's model, so the
+  // results don't change.
   const byCommander = new Map<string, DeckResult[]>();
+  /** Our pool's top cards per graded commander, for the EDHREC agreement below. */
+  const oursTop = new Map<string, number[]>();
+  // Builds (T063): one per commander and estimated bracket, graded against each held-out deck asking for it.
+  const buildGrades = new Map<string, BuildGrade[]>();
+  const firstBuild = new Map<string, Built>();
   let decksGraded = 0;
   let addHits = 0;
   let stapleHits = 0;
-  for (const deck of heldOut) {
-    const result = gradeDeck(deck, modelFor(deck.key, deck.commanderIds), training, settings, data);
-    if (!result) continue;
-    decksGraded++;
-    addHits += result.addHits;
-    stapleHits += result.stapleHits;
-    byCommander.set(deck.key, [...(byCommander.get(deck.key) ?? []), result]);
+  for (const [key, decks] of groupBy(heldOut, (d) => d.key)) {
+    const model = setModel(decks[0]?.commanderIds ?? [], training, settings, data);
+    for (const deck of decks) {
+      const result = gradeDeck(deck, model, training, settings, data);
+      if (!result) continue;
+      decksGraded++;
+      addHits += result.addHits;
+      stapleHits += result.stapleHits;
+      byCommander.set(key, [...(byCommander.get(key) ?? []), result]);
+    }
+    if (!byCommander.has(key)) continue;
+    oursTop.set(key, model.ordered.slice(0, e.edhrecTop));
+    const built = new Map<string, Built>();
+    for (const deck of decks) {
+      const bracket = estimateDeck(deck, data, brackets);
+      let b = built.get(String(bracket));
+      if (!b) {
+        b = buildFor(deck.commanderIds, bracket, model, settings, data, brackets);
+        built.set(String(bracket), b);
+      }
+      if (!firstBuild.has(key)) firstBuild.set(key, b);
+      buildGrades.set(key, [...(buildGrades.get(key) ?? []), gradeBuild(b, deck, data)]);
+    }
   }
 
   const commanders = new Map<string, { bucket: string; addRecall: number; cutPrecision: number; collectionRecall: number; decks: number }>();
@@ -865,9 +885,9 @@ function run(
   const edhrecOverlap: number[] = [];
   for (const key of commanders.keys()) {
     const pageRows = data.pages.get(setKeyOf(key.split(':').map(Number)));
-    const model = models.get(key);
-    if (!pageRows || !model) continue;
-    const ours = new Set(model.ordered.slice(0, e.edhrecTop));
+    const ourTop = oursTop.get(key);
+    if (!pageRows || !ourTop) continue;
+    const ours = new Set(ourTop);
     const top = [...pageRows.listings]
       .sort((a, b) => b[1].rate - a[1].rate || a[0] - b[0])
       .slice(0, e.edhrecTop)
@@ -875,23 +895,6 @@ function run(
     if (top.length > 0) edhrecOverlap.push(top.filter((id) => ours.has(id)).length / top.length);
   }
 
-  // Builds (T063): one per commander and estimated bracket, graded against each held-out deck asking for it.
-  const built = new Map<string, Built>();
-  const buildGrades = new Map<string, BuildGrade[]>();
-  const firstBuild = new Map<string, Built>();
-  for (const deck of heldOut) {
-    const model = models.get(deck.key);
-    if (!model || !commanders.has(deck.key)) continue;
-    const bracket = estimateDeck(deck, data, brackets);
-    const memo = `${deck.key}:${bracket}`;
-    let b = built.get(memo);
-    if (!b) {
-      b = buildFor(deck.commanderIds, bracket, model, settings, data, brackets);
-      built.set(memo, b);
-    }
-    if (!firstBuild.has(deck.key)) firstBuild.set(deck.key, b);
-    buildGrades.set(deck.key, [...(buildGrades.get(deck.key) ?? []), gradeBuild(b, deck, data)]);
-  }
   const builds = new Map(
     [...buildGrades].map(([key, grades]) => [
       key,

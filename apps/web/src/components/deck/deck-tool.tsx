@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
 import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import { phaseIndex, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
+import { LAND_SWAP_LINE, landSwapMode, phaseIndex, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -40,6 +40,7 @@ import { AddPhase } from "./journey/add-phase";
 import { BracketCheckPanel } from "./journey/bracket-check-panel";
 import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
 import { CutPhase, type TrimFocus } from "./journey/cut-phase";
+import type { LandSwapNeed } from "./journey/land-swaps";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
@@ -302,19 +303,41 @@ function DeckToolSession() {
    * it) when it's short. Adding may take the deck past 100; Cut brings it back.
    */
   const inCut = journey.state?.phase === "cut";
-  /** "Pick cuts" opens Cut; in Cut already, it shows Cut's list from the top, to cut any card by hand. */
+  const toSteps = () => document.getElementById(STEPS_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  /**
+   * "Pick cuts" opens Cut; in Cut already, or with nothing owed (the swipe would have nothing to deal), it shows Cut's
+   * list from the top, to cut any card by hand.
+   */
   const pickCuts: StatAction = {
     label: "Pick cuts",
-    onSelect: inCut
-      ? () => {
-          changeView("list");
-          document.getElementById(STEPS_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
-        }
-      : openStep("cut"),
+    onSelect: () => {
+      if (!inCut) openStep("cut")();
+      if (inCut || journey.cutsNeeded === 0) changeView("list");
+      if (inCut) toSteps();
+    },
   };
+  /**
+   * Too many lands or basics at 100 or under (T083): traded one for one, first thing in Swap, or in Cut once nothing
+   * else is owed. Over 100, Cut's own land step takes lands out instead.
+   */
+  const landMode = deckStats && journey.cutsNeeded === 0 && journey.openSlots === 0 ? landSwapMode(deckStats.stats) : null;
+  const landLine = landMode ? deckStats?.stats.find((stat) => stat.key === LAND_SWAP_LINE[landMode]) : undefined;
+  const landSwap: LandSwapNeed | null = landMode && landLine ? { mode: landMode, line: landLine } : null;
+  const swapLands: StatAction | null = landSwap
+    ? {
+        label: landSwap.mode === "spells" ? "Swap lands" : "Swap basics",
+        onSelect: () => {
+          const phase = journey.state?.phase;
+          if (phase === "replace") toSteps();
+          else if (journey.stepper.canOpen("replace")) selectStep("replace");
+          else journey.stepper.select("cut");
+        },
+      }
+    : null;
   const statAction = (stat: StatLine): StatAction | null => {
     if (stat.ok || !journey.state) return null;
     if (stat.value > Math.round(stat.target)) {
+      if (swapLands && (stat.key === "lands" || stat.key === "basicLands")) return swapLands;
       if (!journey.stepper.canOpen("cut")) return null;
       if (stat.group !== "roles") return pickCuts;
       return {
@@ -954,6 +977,7 @@ function DeckToolSession() {
                         }
                         onShowList={() => changeView("list")}
                         onFinish={() => leaveCut(journey.cut.finish)}
+                        landSwap={landSwap}
                       />
                     ))}
                   {journey.state.phase === "add" && (
@@ -970,7 +994,7 @@ function DeckToolSession() {
                     />
                   )}
                   {journey.state.phase === "replace" && (
-                    <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />
+                    <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} landSwap={landSwap} />
                   )}
                   {/* Players who came with only a list are offered their collection at every step (Done has its own). */}
                   {source.kind === "none" && journey.state.phase !== "review" && (
@@ -984,6 +1008,7 @@ function DeckToolSession() {
                       stale={tool.stale}
                       save={roundSave}
                       onReanalyze={() => void commitJourney("reanalyze")}
+                      actionFor={statAction}
                     >
                       {source.kind === "none" ? (
                         <CollectionNudge href={collectionImportHref} step="review" />

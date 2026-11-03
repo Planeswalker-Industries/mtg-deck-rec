@@ -74,7 +74,9 @@ export function validateCommanderDeck(
   }
 
   const identity = deckIdentityMask(commanders);
-  const deckCards = entries.filter((e) => e.section === 'main' || e.section === 'commander');
+  // A deck from the saved-deck editor also lists each commander as a 'commander' entry: count it once.
+  const commanderIds = new Set(commanders.map((c) => c.id));
+  const deckCards = entries.filter((e) => e.section === 'main' || (e.section === 'commander' && !commanderIds.has(e.card.id)));
   const copies = new Map<CardId, { card: CommanderCardFacts; quantity: number }>();
 
   for (const { card, quantity } of [...commanders.map((card) => ({ card, quantity: 1 })), ...deckCards]) {

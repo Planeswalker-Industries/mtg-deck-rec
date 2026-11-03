@@ -275,6 +275,7 @@ export async function getAddSuggestions(
     bracketFacts: { ...bracket, combos: served.combos },
     deckCards: served.deckCards,
     affinity: served.affinity,
+    staples: served.pool.staples,
     limitPerCategory,
   });
   return {
@@ -338,6 +339,7 @@ export async function getBuild(
     affinity: served.affinity,
     basics: served.basics,
     fill,
+    staples: served.cards.staples,
   });
   return {
     mode: modeOf(context),

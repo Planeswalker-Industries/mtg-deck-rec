@@ -122,6 +122,8 @@ export interface ServedCards {
   rows: Map<number, CardRow>;
   rates: Map<number, CardCorpus>;
   roles: Map<number, string[]>;
+  /** Each card's global staple score (card_stats), for Add and Build's staple component (T083). */
+  staples: Map<number, number>;
 }
 
 function servedCards(
@@ -133,13 +135,15 @@ function servedCards(
   const rows = new Map<number, CardRow>();
   const rates = new Map<number, CardCorpus>();
   const roles = new Map<number, string[]>();
+  const staples = new Map<number, number>();
   for (const card of cards) {
     if (card.card_id === null) continue;
     rows.set(card.card_id, cardRowOf(card, checkedAt));
     roles.set(card.card_id, (card.role_ids ?? []) as string[]);
+    staples.set(card.card_id, card.staple_score ?? 0);
     if (corpus.available) rates.set(card.card_id, cardCorpusOf(card, corpus, identityMonths));
   }
-  return { rows, rates, roles };
+  return { rows, rates, roles, staples };
 }
 
 const asCards = (data: unknown) => (data ?? []) as ServingCard[];
