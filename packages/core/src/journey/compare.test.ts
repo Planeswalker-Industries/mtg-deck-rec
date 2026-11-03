@@ -19,7 +19,7 @@ describe('compareCards', () => {
     expect(compareCards(out, inc)).toEqual([
       { key: 'cost', tone: 'better', label: '1 cheaper to cast' },
       { key: 'speed', tone: 'better', label: 'Instant speed' },
-      { key: 'play', tone: 'better', label: 'In 20 points more decks' },
+      { key: 'play', tone: 'better', label: 'Popular' },
       { key: 'price', tone: 'better', label: '$2.00 cheaper' },
     ]);
   });
@@ -49,5 +49,14 @@ describe('compareCards', () => {
     expect(compareCards(out, card({ priceUsd: 1.2, inclusionRate: 0.32 }))).toEqual([]);
     expect(compareCards(out, card({ priceUsd: null, inclusionRate: null }))).toEqual([]);
     expect(compareCards(card({ typeLine: 'Land', manaValue: 0 }), card({ typeLine: 'Instant', manaValue: 2 }))).toEqual([]);
+  });
+
+  it('reads lower play as rarely played', () => {
+    expect(compareCards(card({ inclusionRate: 0.4 }), card({ inclusionRate: 0.1 }))).toEqual([{ key: 'play', tone: 'worse', label: 'Rarely played' }]);
+  });
+
+  it('makes no price mark for an owned replacement', () => {
+    expect(compareCards(card({ priceUsd: 5 }), card({ priceUsd: 1, owned: true }))).toEqual([]);
+    expect(compareCards(card({ priceUsd: 1 }), card({ priceUsd: 5, owned: true }))).toEqual([]);
   });
 });
