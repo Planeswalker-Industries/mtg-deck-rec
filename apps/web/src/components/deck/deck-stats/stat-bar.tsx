@@ -1,4 +1,4 @@
-import { STAT_TOLERANCE_MIN_CARDS, STAT_TOLERANCE_SHARE } from "@mtg/core/journey";
+import { STAT_TOLERANCE_MIN_CARDS, STAT_TOLERANCE_SHARE, towardTarget } from "@mtg/core/journey";
 import { cn } from "cn";
 
 /** Room past the larger of value and band, so a bar at the band's edge doesn't touch the end of the track. */
@@ -14,19 +14,38 @@ const STRIPES = "repeating-linear-gradient(135deg, currentColor 0 2px, transpare
 /**
  * A horizontal bar: the shaded band is the target's tolerance, the fill the deck's value (ink in line, amber off), the
  * faint tick where the deck stood when the round started. A striped piece shows what the card on screen would change:
- * green when toward the target, red when away. Numbers sit beside it; the bar itself is decoration.
+ * green when toward the target, red when away. Numbers sit beside it; the bar itself is decoration. A `minimum` line
+ * (colour sources) is in line anywhere from its target up: its band runs to the end, and more is always better.
+ * `targetAfter` is the target the card on screen would set, when it moves one.
  */
-export function StatBar({ value, target, start, ok, preview = 0 }: { value: number; target: number; start: number; ok: boolean; preview?: number }) {
+export function StatBar({
+  value,
+  target,
+  start,
+  ok,
+  preview = 0,
+  targetAfter,
+  minimum = false,
+}: {
+  value: number;
+  target: number;
+  start: number;
+  ok: boolean;
+  preview?: number;
+  targetAfter?: number | undefined;
+  minimum?: boolean;
+}) {
   const reach = Math.max(target * STAT_TOLERANCE_SHARE, STAT_TOLERANCE_MIN_CARDS);
   const scale = Math.max(value + Math.max(0, preview), start, target + reach, 1) * TRACK_HEADROOM;
-  const low = Math.max(0, target - reach);
-  const toward = Math.abs(value + preview - target) < Math.abs(value - target);
+  const low = minimum ? target : Math.max(0, target - reach);
+  const high = minimum ? scale : target + reach;
+  const toward = towardTarget(value, target, preview, minimum, targetAfter);
   const from = Math.min(value, value + preview);
   return (
     <div aria-hidden className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted">
       <div
         className="absolute inset-y-0 bg-foreground/10"
-        style={{ left: pct(low, scale), width: pct(target + reach - low, scale) }}
+        style={{ left: pct(low, scale), width: pct(high - low, scale) }}
       />
       <div
         className={cn("absolute inset-y-0 left-0 rounded-full", ok ? "bg-muted-foreground/70" : "bg-warning")}

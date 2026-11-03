@@ -28,6 +28,10 @@ export interface CardIndexRow {
   mana_cost: string | null;
   color_identity: number;
   keywords: string[] | null;
+  produced_mana: string[] | null;
+  fetchable_mana: string[] | null;
+  fetchable_basic_only: boolean;
+  layout: string;
   game_changer: boolean;
   is_basic_land: boolean;
   legal_commander: string;
@@ -79,6 +83,10 @@ export interface CardRowShape {
   is_basic_land: boolean;
   artist: string | null;
   keywords: string[] | null;
+  produced_mana: string[] | null;
+  fetchable_mana: string[] | null;
+  fetchable_basic_only: boolean;
+  layout: string | null;
 }
 
 /** Postgres hands back dates as Date over the wire driver and as text through PostgREST; documents keep text. */
@@ -161,6 +169,10 @@ export function toCardDocument(row: CardIndexRow, updatedAt = Date.now()): CardD
       copy_limit: row.copy_limit ?? undefined,
       artist: row.artist ?? undefined,
       mana_cost: row.mana_cost ?? undefined,
+      produced_mana: row.produced_mana && row.produced_mana.length > 0 ? row.produced_mana : undefined,
+      fetchable_mana: row.fetchable_mana && row.fetchable_mana.length > 0 ? row.fetchable_mana : undefined,
+      fetchable_basic_only: row.fetchable_basic_only ? true : undefined,
+      layout: row.layout,
       images_json: row.images === null || row.images === undefined ? undefined : JSON.stringify(row.images),
       released_at: isoDate(row.released_at)?.slice(0, 10),
       first_printed_at: isoDate(row.first_printed_at)?.slice(0, 10),
@@ -196,6 +208,10 @@ export function cardRowFromDocument(doc: CardDocument): CardRowShape {
     is_basic_land: doc.is_basic_land,
     artist: doc.artist ?? null,
     keywords: doc.keywords ?? [],
+    produced_mana: doc.produced_mana ?? null,
+    fetchable_mana: doc.fetchable_mana ?? null,
+    fetchable_basic_only: doc.fetchable_basic_only ?? false,
+    layout: doc.layout ?? null,
   };
 }
 

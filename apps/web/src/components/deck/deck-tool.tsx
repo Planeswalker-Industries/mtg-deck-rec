@@ -352,7 +352,10 @@ function DeckToolSession() {
   /** The card on screen in a swipe view, which Deck stats previews answering. */
   const [statPreview, setStatPreview] = useState<StatPreview | null>(null);
   const tallyOf = (card: CardSummary | null) => (card && analysis ? toTallyCard(card, card.roles ?? analysis.cardRoles[card.id] ?? []) : null);
-  const previewDeltas = deckStats && statPreview ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove)) : null;
+  const previewDeltas =
+    deckStats && statPreview
+      ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove), deckStats.mana.deck)
+      : null;
   const statsPanel = deckStats
     ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction, combosAction, preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null }
     : null;
