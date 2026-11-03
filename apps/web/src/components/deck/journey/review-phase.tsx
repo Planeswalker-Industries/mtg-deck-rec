@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary } from "@mtg/core/contract";
-import { deckDiff, deckStats, type DeckStatsReport } from "@mtg/core/journey";
+import { deckDiff, deckStats, type DeckStatsReport, type StatLine } from "@mtg/core/journey";
 import { groupDeck, type DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
@@ -14,6 +14,7 @@ import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
+import type { StatAction } from "../deck-stats/deck-stats-panel";
 import type { RoundSave } from "./round-bar";
 import { judge, Move, RoundMoves } from "./round-moves";
 import type { DeckJourney } from "./use-deck-journey";
@@ -76,6 +77,7 @@ export function ReviewPhase({
   stale = false,
   save,
   onReanalyze,
+  actionFor,
   children,
 }: {
   journey: DeckJourney;
@@ -91,6 +93,8 @@ export function ReviewPhase({
   /** What saving does: write back to the open saved deck (or save a copy), or save a new deck. */
   save: RoundSave;
   onReanalyze: () => void;
+  /** What Deck stats offers for a line still off target (Trim, Find, Swap lands), to fix it from here. */
+  actionFor?: (line: StatLine) => StatAction | null;
   /** Shown after the changes, e.g. the offer to import a collection. */
   children?: ReactNode;
 }) {
@@ -99,6 +103,8 @@ export function ReviewPhase({
   if (!state || !deck) return null;
 
   const overBy = journey.cutsNeeded;
+  // A finished deck can still be off on what decks like it run: each line is named, with its fix (T083).
+  const offLines = (report?.stats ?? []).filter((line) => !line.ok);
   const before = deckStats(journey.before);
   const after = deckStats(journey.after);
   const asOf = after.priceAsOf ?? before.priceAsOf;
@@ -132,6 +138,32 @@ export function ReviewPhase({
             </button>
           </span>
         </p>
+      )}
+      {offLines.length > 0 && (
+        <section aria-labelledby="review-still-off" className="flex flex-col gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          <h3 id="review-still-off" className="flex items-center gap-2 font-semibold">
+            <TriangleAlert aria-hidden className="size-4 shrink-0 text-warning" />
+            Still off
+          </h3>
+          <ul className="flex flex-col gap-1">
+            {offLines.map((line) => {
+              const action = actionFor?.(line) ?? null;
+              return (
+                <li key={line.key}>
+                  {line.label}: {line.value}, about {Math.round(line.target)} is typical.
+                  {action && (
+                    <>
+                      {" "}
+                      <button type="button" className={cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer font-semibold")} onClick={action.onSelect}>
+                        {action.label}
+                      </button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
       <div className="flex flex-wrap gap-2">
         {save.kind === "open" ? (

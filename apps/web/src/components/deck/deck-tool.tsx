@@ -1008,6 +1008,7 @@ function DeckToolSession() {
                       stale={tool.stale}
                       save={roundSave}
                       onReanalyze={() => void commitJourney("reanalyze")}
+                      actionFor={statAction}
                     >
                       {source.kind === "none" ? (
                         <CollectionNudge href={collectionImportHref} step="review" />
