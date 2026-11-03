@@ -557,17 +557,15 @@ function trainingPairs(train: readonly EvalDeck[], trainingDecks: Map<string, Ev
       settings,
     ),
   );
-  const own = new Map<string, PmiIndex>();
+  // One commander's index at a time: the held-out decks are graded commander by commander (see run), and keeping every
+  // commander's index ran a 212k-deck corpus out of heap (T083).
+  let own: { key: string; index: PmiIndex } | null = null;
   const releaseMonth = (id: number) => data.facts.get(id)?.releaseMonth ?? null;
   return {
     global,
     ownFor: (key) => {
-      let index = own.get(key);
-      if (!index) {
-        index = pmiOf(keyPairs(trainingDecks.get(key) ?? [], releaseMonth, settings));
-        own.set(key, index);
-      }
-      return index;
+      if (own?.key !== key) own = { key, index: pmiOf(keyPairs(trainingDecks.get(key) ?? [], releaseMonth, settings)) };
+      return own.index;
     },
   };
 }
@@ -807,27 +805,41 @@ function run(
   brackets: BracketData,
 ): RunResult {
   const e = settings.eval;
-  const models = new Map<string, SetModel>();
-  const modelFor = (key: string, commanderIds: readonly number[]) => {
-    let m = models.get(key);
-    if (!m) {
-      m = setModel(commanderIds, training, settings, data);
-      models.set(key, m);
-    }
-    return m;
-  };
-
+  // Commander by commander, each model dropped once its decks are graded and built: holding a model per commander at
+  // once ran a 212k-deck corpus out of heap (T083). Every deck is still graded with its commander's model, so the
+  // results don't change.
   const byCommander = new Map<string, DeckResult[]>();
+  /** Our pool's top cards per graded commander, for the EDHREC agreement below. */
+  const oursTop = new Map<string, number[]>();
+  // Builds (T063): one per commander and estimated bracket, graded against each held-out deck asking for it.
+  const buildGrades = new Map<string, BuildGrade[]>();
+  const firstBuild = new Map<string, Built>();
   let decksGraded = 0;
   let addHits = 0;
   let stapleHits = 0;
-  for (const deck of heldOut) {
-    const result = gradeDeck(deck, modelFor(deck.key, deck.commanderIds), training, settings, data);
-    if (!result) continue;
-    decksGraded++;
-    addHits += result.addHits;
-    stapleHits += result.stapleHits;
-    byCommander.set(deck.key, [...(byCommander.get(deck.key) ?? []), result]);
+  for (const [key, decks] of groupBy(heldOut, (d) => d.key)) {
+    const model = setModel(decks[0]?.commanderIds ?? [], training, settings, data);
+    for (const deck of decks) {
+      const result = gradeDeck(deck, model, training, settings, data);
+      if (!result) continue;
+      decksGraded++;
+      addHits += result.addHits;
+      stapleHits += result.stapleHits;
+      byCommander.set(key, [...(byCommander.get(key) ?? []), result]);
+    }
+    if (!byCommander.has(key)) continue;
+    oursTop.set(key, model.ordered.slice(0, e.edhrecTop));
+    const built = new Map<string, Built>();
+    for (const deck of decks) {
+      const bracket = estimateDeck(deck, data, brackets);
+      let b = built.get(String(bracket));
+      if (!b) {
+        b = buildFor(deck.commanderIds, bracket, model, settings, data, brackets);
+        built.set(String(bracket), b);
+      }
+      if (!firstBuild.has(key)) firstBuild.set(key, b);
+      buildGrades.set(key, [...(buildGrades.get(key) ?? []), gradeBuild(b, deck, data)]);
+    }
   }
 
   const commanders = new Map<string, { bucket: string; addRecall: number; cutPrecision: number; collectionRecall: number; decks: number }>();
@@ -871,9 +883,9 @@ function run(
   const edhrecOverlap: number[] = [];
   for (const key of commanders.keys()) {
     const pageRows = data.pages.get(setKeyOf(key.split(':').map(Number)));
-    const model = models.get(key);
-    if (!pageRows || !model) continue;
-    const ours = new Set(model.ordered.slice(0, e.edhrecTop));
+    const ourTop = oursTop.get(key);
+    if (!pageRows || !ourTop) continue;
+    const ours = new Set(ourTop);
     const top = [...pageRows.listings]
       .sort((a, b) => b[1].rate - a[1].rate || a[0] - b[0])
       .slice(0, e.edhrecTop)
@@ -881,23 +893,6 @@ function run(
     if (top.length > 0) edhrecOverlap.push(top.filter((id) => ours.has(id)).length / top.length);
   }
 
-  // Builds (T063): one per commander and estimated bracket, graded against each held-out deck asking for it.
-  const built = new Map<string, Built>();
-  const buildGrades = new Map<string, BuildGrade[]>();
-  const firstBuild = new Map<string, Built>();
-  for (const deck of heldOut) {
-    const model = models.get(deck.key);
-    if (!model || !commanders.has(deck.key)) continue;
-    const bracket = estimateDeck(deck, data, brackets);
-    const memo = `${deck.key}:${bracket}`;
-    let b = built.get(memo);
-    if (!b) {
-      b = buildFor(deck.commanderIds, bracket, model, settings, data, brackets);
-      built.set(memo, b);
-    }
-    if (!firstBuild.has(deck.key)) firstBuild.set(deck.key, b);
-    buildGrades.set(deck.key, [...(buildGrades.get(deck.key) ?? []), gradeBuild(b, deck, data)]);
-  }
   const builds = new Map(
     [...buildGrades].map(([key, grades]) => [
       key,
