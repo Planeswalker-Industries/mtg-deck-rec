@@ -38,6 +38,7 @@ import {
   pmiIndex,
   scaledPrior,
   precisionAt,
+  byStaple,
   rankAdds,
   rankCuts,
   recallAt,
@@ -610,7 +611,8 @@ function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel,
   });
   return groups
     .flatMap((g) => g.suggestions)
-    .sort((a, b) => b.score.total - a.score.total)
+    // As the journey deals them: equal scores, the wider staple first (T083).
+    .sort((a, b) => b.score.total - a.score.total || byStaple(a.score, b.score))
     .map((s) => s.card.id as number);
 }
 

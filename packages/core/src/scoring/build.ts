@@ -33,6 +33,7 @@ import {
   identityMaskOf,
   mainDeckIds,
   owningOf,
+  byStaple,
   stapleOf,
   roleTargetsFor,
   type CardPlayRates,
@@ -161,7 +162,7 @@ export interface BuildInput {
   /** Each basic land's row by colour. */
   basics: ReadonlyMap<BasicColour, RankCard>;
   fill?: BuildFill;
-  /** Each card's global staple score (`card_stats`), 0..1 (T083), for cards the commander's play data says nothing about (`stapleOf`). */
+  /** Each card's global staple score (`card_stats`), 0..1 (T083): breaks ties between equal scores (`stapleOf`). */
   staples?: ReadonlyMap<number, number> | null;
 }
 
@@ -178,7 +179,7 @@ export interface BuildRanking {
 
 const NO_STAND_INS: ReadonlyMap<number, RankCard> = new Map();
 
-/** Builds a deck. Deterministic: ties break on name, then id. */
+/** Builds a deck. Deterministic: ties break on the staple score (T083), then name, then id. */
 export function buildDeck(input: BuildInput): BuildRanking {
   const { context, cards, rates, roles, corpus, scoring, availability, bracketFacts, fill = 'none' } = input;
   const standIns = input.standIns ?? NO_STAND_INS;
@@ -256,7 +257,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
       {
         tag: null,
         manaValue: null,
-        staple: stapleOf(input.staples, id, rates.get(id)),
+        staple: stapleOf(input.staples, id),
         corpus: round2(corpusOf(id) ?? neutralCorpus),
         votes: null,
         role: round2(gap),
@@ -354,7 +355,11 @@ export function buildDeck(input: BuildInput): BuildRanking {
           key = (key - floor) / Math.max(usd, scoring.collection.priceFloorUsd);
         }
         const name = cards.get(id)?.summary.name ?? '';
-        if (!best || key > best.key || (key === best.key && (name.localeCompare(cards.get(best.id)?.summary.name ?? '') || id - best.id) < 0)) {
+        const ahead =
+          !best ||
+          key > best.key ||
+          (key === best.key && (byStaple(scored.score, best.scored.score) || name.localeCompare(cards.get(best.id)?.summary.name ?? '') || id - best.id) < 0);
+        if (ahead) {
           best = { id, key, scored };
         }
       }
@@ -423,7 +428,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
         const s = pickScores.get(id);
         return s && s.category === category ? [{ ...s, origin: origins.get(id) ?? 'pick' }] : [];
       })
-      .sort((a, b) => b.score.total - a.score.total || a.card.name.localeCompare(b.card.name)),
+      .sort((a, b) => b.score.total - a.score.total || byStaple(a.score, b.score) || a.card.name.localeCompare(b.card.name)),
   })).filter((g) => g.cards.length > 0);
 
   // The finished build against the bracket rules, and the combos it is one card short of.

@@ -36,7 +36,7 @@ import {
   type JourneyPhase,
   type JourneyState,
 } from "@mtg/core/journey";
-import { isFrontLand, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
+import { byStaple, isFrontLand, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import type { Async, ContextChange } from "../use-deck-tool";
@@ -144,12 +144,15 @@ const toAsync = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: s
   r.ok ? { status: "ready", data: r.data } : { status: "error", message: r.error.message };
 
 /**
- * The order Add deals its cards in: best score first, except that a deck a cut left short of lands gets lands first,
- * since ranking by score alone would fill the slot with spells.
+ * The order Add deals its cards in: best score first, the wider staple first between equal scores (T083), except that a
+ * deck a cut left short of lands gets lands first, since ranking by score alone would fill the slot with spells.
  */
 function addOrder(suggestions: readonly AddSuggestion[], landsShort: boolean): AddSuggestion[] {
   return [...suggestions].sort(
-    (a, b) => Number(landsShort && isLand(b.card)) - Number(landsShort && isLand(a.card)) || b.score.total - a.score.total,
+    (a, b) =>
+      Number(landsShort && isLand(b.card)) - Number(landsShort && isLand(a.card)) ||
+      b.score.total - a.score.total ||
+      byStaple(a.score, b.score),
   );
 }
 
