@@ -35,6 +35,13 @@ when (
 )
 execute function public.enqueue_search_card_by_id();
 
+-- Documents already in the index have no mana columns, and the trigger above only queues the cards whose columns
+-- change (fetch lands, at the next sync:catalog). '*' has the next sync:typesense reindex every card, as for a tag
+-- hierarchy change, so a Plains read from the index makes {W} before anyone runs --rebuild.
+insert into public.search_index_queue (collection, document_id)
+values ('cards', '*')
+on conflict (collection, document_id) do update set seq = nextval('public.search_index_queue_seq'), enqueued_at = now();
+
 -- === serving_card: the mana columns ===
 
 alter type public.serving_card

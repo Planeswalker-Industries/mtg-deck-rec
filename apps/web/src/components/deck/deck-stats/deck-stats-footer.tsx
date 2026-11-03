@@ -2,11 +2,11 @@
 
 import { useRef, useState, type ComponentProps } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
-import type { StatLine } from "@mtg/core/journey";
+import { towardTarget, type StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { LevelBadge } from "./level";
-import { DeckStatsPanel, towardTarget, type StatAction } from "./deck-stats-panel";
+import { DeckStatsPanel, type StatAction } from "./deck-stats-panel";
 
 /** A drag this far up the footer opens the sheet; shorter is a tap. */
 const SWIPE_OPEN_PX = 24;
@@ -49,8 +49,8 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
   const swiped = useRef(false);
   const previewLines = panel.preview
     ? report.stats.flatMap((stat) => {
-        const delta = panel.preview?.get(stat.key) ?? 0;
-        return delta === 0 ? [] : [{ stat, delta }];
+        const preview = panel.preview?.get(stat.key);
+        return preview ? [{ stat, preview }] : [];
       }).slice(0, PREVIEW_LINES)
     : [];
 
@@ -95,8 +95,8 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             // While a card is on screen the closed bar says what answering it would change, so a phone sees it too.
             <span className="flex min-w-0 items-center gap-3 text-sm">
               <span className="sr-only">Deck stats. This card: </span>
-              {previewLines.map(({ stat, delta }) => {
-                const better = towardTarget(stat.value, stat.target, delta, stat.group === "colours");
+              {previewLines.map(({ stat, preview: { delta, target } }) => {
+                const better = towardTarget(stat.value, stat.target, delta, stat.group === "colours", target);
                 const Icon = better ? ArrowUp : ArrowDown;
                 return (
                   <span key={stat.key} className="flex min-w-0 items-center gap-1">
@@ -104,6 +104,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
                     <span className="truncate">{stat.label}</span>
                     <span className="shrink-0 font-mono">
                       {stat.value}→{stat.value + delta}
+                      {target !== undefined && ` / ${Math.round(target)}`}
                     </span>
                   </span>
                 );

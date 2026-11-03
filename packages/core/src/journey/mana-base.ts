@@ -1,6 +1,7 @@
 // packages/core/src/journey/mana-base.ts
 import type { CardId } from '../contract';
 import { isFrontLand } from '../scoring/curve';
+import { isBasicLand } from './builder';
 import { COLOUR_ORDER } from './land-search';
 import {
   BASIC_FETCH_PARTIAL_FROM_COLOURS,
@@ -41,6 +42,23 @@ export interface ManaEntry {
   card: ManaCard;
   quantity: number;
 }
+
+/** A deck as the mana base reads it: what a preview runs `manaBase` on again with a card in or out. */
+export interface ManaDeck {
+  main: readonly ManaEntry[];
+  commanders: readonly ManaCard[];
+  deckColours: string;
+}
+
+/** Lands in the deck that make {C}: a land search finds colourless mana only when there is one to find. */
+export interface ColourlessLands {
+  /** Any land makes {C} (a "land card" search can find it). */
+  any: boolean;
+  /** A basic land makes {C}: Wastes, the only one a "basic land card" search can find. */
+  basic: boolean;
+}
+
+const NO_COLOURLESS_LANDS: ColourlessLands = { any: false, basic: false };
 
 /** `pips` symbols any one of `colours` pays: one letter, or two for a hybrid pip. */
 export interface PipNeed {
@@ -133,10 +151,20 @@ const earlyCredit = (manaValue: number, spellManaValue: number, cheap: number, t
       ? three
       : 0;
 
-/** Karsten's credit for one copy of `card` toward a need any of `colours` pays, for a spell of `spellManaValue`. */
-export function sourceCredit(card: ManaCard, colours: string, spellManaValue: number, deckColours: string): number {
+/**
+ * Karsten's credit for one copy of `card` toward a need any of `colours` pays, for a spell of `spellManaValue`. A land
+ * search counts toward {C} only when `colourless` says the deck has such a land to find.
+ */
+export function sourceCredit(
+  card: ManaCard,
+  colours: string,
+  spellManaValue: number,
+  deckColours: string,
+  colourless: ColourlessLands = NO_COLOURLESS_LANDS,
+): number {
   const makes = usable(card.producedMana, deckColours).some((c) => colours.includes(c));
-  const finds = usable(card.findsMana, deckColours).some((c) => colours.includes(c));
+  const findsColourless = card.findsBasicOnly === true ? colourless.basic : colourless.any;
+  const finds = usable(card.findsMana, deckColours).some((c) => colours.includes(c) && (c !== 'C' || findsColourless));
   if (!makes && !finds) return 0;
   if (isFrontLand(card.typeLine)) {
     const partial = !makes && card.findsBasicOnly === true && deckColours.length >= BASIC_FETCH_PARTIAL_FROM_COLOURS;
@@ -152,6 +180,34 @@ export function sourceCredit(card: ManaCard, colours: string, spellManaValue: nu
   }
   return earlyCredit(card.manaValue, spellManaValue, SOURCE_CREDIT.cheapRock, SOURCE_CREDIT.threeRock);
 }
+
+/** The lands in `main` that make {C}, for `sourceCredit`. */
+export function colourlessLandsIn(main: readonly ManaEntry[]): ColourlessLands {
+  const makers = main.filter(({ card }) => isFrontLand(card.typeLine) && (card.producedMana ?? '').includes('C'));
+  return { any: makers.length > 0, basic: makers.some(({ card }) => isBasicLand(card)) };
+}
+
+/** Credited copies in `main` toward a need any of `colours` pays, for a spell of `spellManaValue`. */
+export function creditedSources(
+  main: readonly ManaEntry[],
+  colours: string,
+  spellManaValue: number,
+  deckColours: string,
+  colourless: ColourlessLands = colourlessLandsIn(main),
+): number {
+  return main.reduce((n, { card, quantity }) => n + sourceCredit(card, colours, spellManaValue, deckColours, colourless) * quantity, 0);
+}
+
+/**
+ * A card that needs two colours pays Karsten's gold premium. Hybrid pips don't make a card gold when one of its own
+ * colours pays them: {W}{W/B} needs white only.
+ */
+const isGold = (needs: readonly PipNeed[]): boolean => {
+  const singles = new Set(needs.filter((n) => n.colours.length === 1).map((n) => n.colours));
+  if (singles.size > 1) return true;
+  const hybrids = needs.filter((n) => n.colours.length > 1);
+  return singles.size === 1 && hybrids.some((h) => ![...h.colours].some((c) => singles.has(c)));
+};
 
 /** Karsten's sources for `pips` of one colour at `manaValue`, clamped to his table; one more for a gold card. */
 export function sourcesNeeded(pips: number, manaValue: number, gold: boolean): number {
@@ -241,17 +297,20 @@ export function landsByTurnChance(library: number, pool: number, turn: number): 
  */
 export function manaBase(main: readonly ManaEntry[], commanders: readonly ManaCard[], deckColours: string): ManaBaseReport {
   const library = main.reduce((n, e) => n + e.quantity, 0);
+  const colourless = colourlessLandsIn(main);
   const sums = new Map<string, number>();
   /** Credited copies toward `colours` for a spell of `manaValue`; '' is the land pool (any colour, lands count 1). */
   const credited = (colours: string, manaValue: number) => {
     const key = `${colours}:${manaValue}`;
     const known = sums.get(key);
     if (known !== undefined) return known;
-    const total = main.reduce((n, { card, quantity }) => {
-      if (colours !== '') return n + sourceCredit(card, colours, manaValue, deckColours) * quantity;
-      if (isFrontLand(card.typeLine) || isBackLand(card.typeLine)) return n + quantity;
-      return n + sourceCredit(card, COLOUR_ORDER, manaValue, deckColours) * quantity;
-    }, 0);
+    const total =
+      colours !== ''
+        ? creditedSources(main, colours, manaValue, deckColours, colourless)
+        : main.reduce((n, { card, quantity }) => {
+            if (isFrontLand(card.typeLine) || isBackLand(card.typeLine)) return n + quantity;
+            return n + sourceCredit(card, COLOUR_ORDER, manaValue, deckColours, colourless) * quantity;
+          }, 0);
     sums.set(key, total);
     return total;
   };
@@ -275,12 +334,14 @@ export function manaBase(main: readonly ManaEntry[], commanders: readonly ManaCa
   // A half needing a colour outside the deck's is off-identity, already flagged as illegal elsewhere: it isn't counted.
   const inColours = (half: CastingHalf) => half.needs.every((n) => usable(n.colours, deckColours).length > 0);
   for (const { card, commander } of castable) {
+    // A spell/land card counts as a land (above), so its spell face sets no requirement.
+    if (isBackLand(card.typeLine)) continue;
     const halves = castingHalves(card).filter(inColours);
     if (halves.length === 0) continue;
     const best = halves.map((half) => ({ half, chance: halfChance(half) })).reduce((a, b) => (b.chance > a.chance ? b : a));
     const target = consistencyTarget(best.half.manaValue);
     if (best.chance < target) hardToCast.push({ cardId: card.id, chance: best.chance, turn: turnOf(best.half.manaValue), target, commander });
-    const gold = new Set(best.half.needs.flatMap((n) => [...n.colours])).size > 1;
+    const gold = isGold(best.half.needs);
     for (const need of best.half.needs) {
       if (need.colours.length !== 1) continue;
       const needed = sourcesNeeded(need.pips, best.half.manaValue, gold);

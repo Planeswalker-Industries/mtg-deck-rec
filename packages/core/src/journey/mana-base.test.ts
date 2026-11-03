@@ -80,6 +80,13 @@ describe('sourceCredit', () => {
     expect(sourceCredit(cultivate, 'B', 4, 'WB')).toBe(0);
     expect(sourceCredit(cultivate, 'B', 5, 'WB')).toBe(0.5);
   });
+  it('counts a land search toward {C} only when the deck has such a land to find', () => {
+    expect(sourceCredit(wilds, 'C', 1, 'WB')).toBe(0);
+    expect(sourceCredit(wilds, 'C', 1, 'WB', { any: true, basic: false })).toBe(0);
+    expect(sourceCredit(wilds, 'C', 1, 'WB', { any: true, basic: true })).toBe(1);
+    const anyLand = card({ typeLine: 'Sorcery', findsMana: 'WUBRGC', manaValue: 2 });
+    expect(sourceCredit(anyLand, 'C', 3, 'WB', { any: true, basic: false })).toBe(0.75);
+  });
   it('gives rituals and cards that make nothing 0', () => {
     expect(sourceCredit(ritual, 'B', 4, 'B')).toBe(0);
     expect(sourceCredit(card(), 'B', 4, 'B')).toBe(0);
@@ -164,6 +171,19 @@ describe('manaBase', () => {
     const split = card({ manaCost: '{B}{B}{B} // {1}{W}', manaValue: 5 });
     const report = manaBase([many(36, plains), many(1, swamp), { card: gold, quantity: 1 }, { card: split, quantity: 1 }, many(61, {})], [], 'WB');
     expect(report.colours.find((c) => c.colour === 'B')).toMatchObject({ cardId: gold.id, needed: sourcesNeeded(1, 4, true) });
+  });
+
+  it('adds nothing for gold when a hybrid pip is paid by the card’s own colour', () => {
+    const mono = card({ manaCost: '{1}{W}{W/B}', manaValue: 3 });
+    const report = manaBase([many(37, plains), { card: mono, quantity: 1 }, many(61, {})], [], 'WB');
+    expect(report.colours.find((c) => c.colour === 'W')).toMatchObject({ cardId: mono.id, needed: sourcesNeeded(1, 3, false) });
+  });
+
+  it('sets no requirement from the spell face of a spell/land card', () => {
+    const restoration = card({ manaCost: '{4}{U}{U}{U}', manaValue: 7, typeLine: 'Sorcery // Land', producedMana: 'U' });
+    const report = manaBase([many(36, { typeLine: 'Basic Land — Island', producedMana: 'U', manaValue: 0 }), { card: restoration, quantity: 1 }, many(62, {})], [], 'U');
+    expect(report.colours).toEqual([]);
+    expect(report.hardToCast).toEqual([]);
   });
 
   it('leaves out cards that need a colour outside the deck’s', () => {

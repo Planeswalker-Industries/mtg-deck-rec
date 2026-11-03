@@ -4,7 +4,7 @@ import { fitsBracket, type BracketRules } from '../formats/commander/bracket';
 import { curveBucket, isFrontLand, isStatCardType, statCardType } from '../scoring/curve';
 import { isBasicLand } from './builder';
 import { CURVE_TOP_MANA_VALUE } from './deck-stats';
-import { manaBase, manaLetters, sourceCredit, type ManaBaseReport } from './mana-base';
+import { creditedSources, manaBase, manaLetters, type ManaBaseReport, type ManaDeck, type ManaEntry } from './mana-base';
 
 /** Colour row labels. */
 const COLOUR_NAMES: Readonly<Record<string, string>> = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green', C: 'Colourless' };
@@ -161,8 +161,6 @@ export interface StatLine {
   ok: boolean;
   /** The value when the round started: the faint tick on the bar. */
   start: number;
-  /** Colour rows: what a card's credit is measured against, for preview deltas. */
-  sourceFor?: { colour: string; manaValue: number; deckColours: string };
 }
 
 export interface CurveBar {
@@ -183,9 +181,21 @@ export interface DeckStatsReport {
   okCount: number;
   total: number;
   level: DeckStatsLevel;
-  /** The mana base beyond the colour rows (which are in `stats`): cards under target and mana by turn. */
-  mana: Pick<ManaBaseReport, 'hardToCast' | 'byTurn'>;
+  /**
+   * The mana base beyond the colour rows (which are in `stats`): cards under target and mana by turn, and the deck it
+   * was read from, which `statDeltas` reads again with the card on screen in or out.
+   */
+  mana: Pick<ManaBaseReport, 'hardToCast' | 'byTurn'> & { deck: ManaDeck };
 }
+
+/**
+ * Whether moving a line by `delta`, its target becoming `targetAfter`, brings it closer to the target; for a `minimum`
+ * line (colour sources), whether it ends further above it.
+ */
+export const towardTarget = (value: number, target: number, delta: number, minimum = false, targetAfter = target): boolean =>
+  minimum
+    ? value + delta - targetAfter > value - target
+    : Math.abs(value + delta - targetAfter) < Math.abs(value - target);
 
 const inDeck = (tally: DeckTally, id: CardId) => tally.main.has(id) || tally.commanderIds.has(id);
 
@@ -229,32 +239,36 @@ function statLines(tally: DeckTally, targets: StatTargets): Omit<StatLine, 'star
 }
 
 const deckColoursOf = (tally: DeckTally) => manaLetters(tally.commanders.flatMap((c) => [...(c.colorIdentity ?? '')]));
-const manaOf = (tally: DeckTally) => manaBase([...tally.main.values()], tally.commanders, deckColoursOf(tally));
+const colourKey = (colour: string) => `sources:${colour}`;
 
-function colourLines(mana: ManaBaseReport, start: ManaBaseReport, deckColours: string): StatLine[] {
-  return mana.colours.map((need) => ({
-    key: `sources:${need.colour}`,
-    group: 'colours' as const,
-    label: `${COLOUR_NAMES[need.colour] ?? need.colour} sources`,
-    value: Math.floor(need.sources),
-    target: need.needed,
-    // A minimum, not a band: more sources are never a problem.
-    ok: need.sources >= need.needed,
-    start: Math.floor(start.colours.find((s) => s.colour === need.colour)?.sources ?? need.sources),
-    sourceFor: { colour: need.colour, manaValue: need.manaValue, deckColours },
-  }));
+/** The colour rows. The start tick is the start deck measured against today's requirement, so the two compare. */
+function colourLines(mana: ManaBaseReport, start: readonly ManaEntry[] | null, deckColours: string): StatLine[] {
+  return mana.colours.map((need) => {
+    const value = Math.floor(need.sources);
+    return {
+      key: colourKey(need.colour),
+      group: 'colours' as const,
+      label: `${COLOUR_NAMES[need.colour] ?? need.colour} sources`,
+      value,
+      target: need.needed,
+      // A minimum, not a band: more sources are never a problem.
+      ok: need.sources >= need.needed,
+      start: start ? Math.floor(creditedSources(start, need.colour, need.manaValue, deckColours)) : value,
+    };
+  });
 }
 
 /**
  * Grades the tally against the targets. The mana base reads the deck once per report (about a hundred cards; the
- * odds are cached); everything else is about twenty comparisons.
+ * odds are cached) and the start deck once per colour row; everything else is about twenty comparisons.
  */
 export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: BracketInput, start: DeckTally = tally): DeckStatsReport {
   const startLines = new Map(statLines(start, targets).map((s) => [s.key, s.value]));
-  const mana = manaOf(tally);
+  const deck: ManaDeck = { main: [...tally.main.values()], commanders: [...tally.commanders], deckColours: deckColoursOf(tally) };
+  const mana = manaBase(deck.main, deck.commanders, deck.deckColours);
   const stats = [
     ...statLines(tally, targets).map((s) => ({ ...s, start: startLines.get(s.key) ?? s.value })),
-    ...colourLines(mana, start === tally ? mana : manaOf(start), deckColoursOf(tally)),
+    ...colourLines(mana, start === tally ? null : [...start.main.values()], deck.deckColours),
   ];
   const bars = targets.curve.map((target, manaValue) => {
     const value = tally.curve[manaValue] ?? 0;
@@ -273,7 +287,7 @@ export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: Brack
     okCount,
     total,
     level,
-    mana: { hardToCast: mana.hardToCast, byTurn: mana.byTurn },
+    mana: { hardToCast: mana.hardToCast, byTurn: mana.byTurn, deck },
   };
 }
 
@@ -308,17 +322,48 @@ export function tallyCache() {
   };
 }
 
+/** How a line would move with the card on screen answered; `target` is set on a colour row whose requirement moves. */
+export interface StatDelta {
+  delta: number;
+  target?: number;
+}
+
+/** The deck with one copy of `add` in and one of `remove` out. */
+function withSwap(main: readonly ManaEntry[], add: TallyCard | null, remove: TallyCard | null): ManaEntry[] {
+  const next = new Map(main.map((e) => [e.card.id, e]));
+  const move = (card: TallyCard, quantity: number) => {
+    const held = (next.get(card.id)?.quantity ?? 0) + quantity;
+    if (held > 0) next.set(card.id, { card, quantity: held });
+    else next.delete(card.id);
+  };
+  if (add) move(add, 1);
+  if (remove) move(remove, -1);
+  return [...next.values()];
+}
+
+/** A report's mana base kept by its deck, so a preview reads the deck once per report rather than once per card. */
+const manaOfDeck = new WeakMap<ManaDeck, ManaBaseReport>();
+const manaBaseOf = (deck: ManaDeck): ManaBaseReport => {
+  const known = manaOfDeck.get(deck);
+  if (known) return known;
+  const mana = manaBase(deck.main, deck.commanders, deck.deckColours);
+  manaOfDeck.set(deck, mana);
+  return mana;
+};
+
 /**
  * How each stat line would move if `add` went into the deck and `remove` came out: +1 for a role, land or card type
- * count the incoming card adds to, -1 for one the outgoing card takes from; for a colour row, the difference in source
- * credit, in tenths. Lines that wouldn't move are left out. Deck stats shows these beside the counts while a card is on
- * screen, so the player sees what answering it does.
+ * count the incoming card adds to, -1 for one the outgoing card takes from. Colour rows need the report's `deck`: the
+ * mana base is read again with the card in or out, so a card that becomes (or stops being) the hardest to cast moves
+ * the target too; their deltas are in tenths (a Signet is +0.8, not +0.75). Lines that wouldn't move are left out.
+ * Deck stats shows these beside the counts while a card is on screen, so the player sees what answering it does.
  */
 export function statDeltas(
-  lines: readonly Pick<StatLine, 'key' | 'sourceFor'>[],
+  lines: readonly Pick<StatLine, 'key' | 'group'>[],
   add: TallyCard | null,
   remove: TallyCard | null,
-): Map<string, number> {
+  deck?: ManaDeck,
+): Map<string, StatDelta> {
   const counts = (card: TallyCard | null, key: string): number => {
     if (!card) return 0;
     if (key === 'lands') return isFrontLand(card.typeLine) ? 1 : 0;
@@ -326,14 +371,22 @@ export function statDeltas(
     if (isStatCardType(key)) return statCardType(card.typeLine) === key ? 1 : 0;
     return card.roles.includes(key) ? 1 : 0;
   };
-  const deltas = new Map<string, number>();
-  const credit = (card: TallyCard | null, on: NonNullable<StatLine['sourceFor']>) =>
-    card ? sourceCredit(card, on.colour, on.manaValue, on.deckColours) : 0;
-  for (const { key, sourceFor } of lines) {
-    const delta = sourceFor
-      ? Math.round((credit(add, sourceFor) - credit(remove, sourceFor)) * DELTA_TENTHS) / DELTA_TENTHS
-      : counts(add, key) - counts(remove, key);
-    if (delta !== 0) deltas.set(key, delta);
+  const deltas = new Map<string, StatDelta>();
+  for (const { key, group } of lines) {
+    if (group === 'colours') continue;
+    const delta = counts(add, key) - counts(remove, key);
+    if (delta !== 0) deltas.set(key, { delta });
+  }
+  if (!deck || (!add && !remove)) return deltas;
+  const before = manaBaseOf(deck);
+  const after = manaBase(withSwap(deck.main, add, remove), deck.commanders, deck.deckColours);
+  for (const need of before.colours) {
+    const key = colourKey(need.colour);
+    const next = after.colours.find((n) => n.colour === need.colour);
+    if (!next || !lines.some((l) => l.key === key)) continue;
+    const delta = Math.round((next.sources - need.sources) * DELTA_TENTHS) / DELTA_TENTHS;
+    if (next.needed !== need.needed) deltas.set(key, { delta, target: next.needed });
+    else if (delta !== 0) deltas.set(key, { delta });
   }
   return deltas;
 }

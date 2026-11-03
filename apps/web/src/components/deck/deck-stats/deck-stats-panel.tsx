@@ -2,7 +2,7 @@
 
 import { useId, useState, type ReactNode } from "react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
-import { KARSTEN_ARTICLE_URL, type DeckStatsReport, type StatLine } from "@mtg/core/journey";
+import { KARSTEN_ARTICLE_URL, towardTarget, type DeckStatsReport, type StatDelta, type StatLine } from "@mtg/core/journey";
 import { ArrowDown, ArrowUp, Check, CircleHelp, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
@@ -12,18 +12,16 @@ import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { LevelBadge } from "./level";
 import { StatBar } from "./stat-bar";
 
-/** Percent of a curve column's height a value can take. */
-const FULL_COLUMN_PCT = 100;
+/** A whole in percent: a curve column's full height, a chance of 1. */
+const PERCENT = 100;
 /** Room above the tallest bar or tick, so a tick at the curve's maximum stays inside the box (as StatBar's track). */
 const COLUMN_HEADROOM = 1.15;
 /** Hard-to-cast cards shown before "Show all" (owner, 2026-11-02). */
 const HARD_TO_CAST_SHOWN = 5;
 /** Rendered width of a hard-to-cast thumbnail (w-10), for CardImage's sizes. */
 const THUMB_SIZES = "40px";
-/** Chance to percent. */
-const PCT = 100;
 
-const columnPct = (n: number, scale: number) => `${Math.max(0, Math.min(FULL_COLUMN_PCT, (n / scale) * FULL_COLUMN_PCT))}%`;
+const columnPct = (n: number, scale: number) => `${Math.max(0, Math.min(PERCENT, (n / scale) * PERCENT))}%`;
 
 export interface StatAction {
   label: string;
@@ -52,21 +50,29 @@ function ActionLink({ action, className }: { action: StatAction; className?: str
   );
 }
 
-/** Whether moving a count by `delta` brings it closer to its target; for a `minimum` line (colour sources), whether it adds. */
-export const towardTarget = (value: number, target: number, delta: number, minimum = false) =>
-  minimum ? delta > 0 : Math.abs(value + delta - target) < Math.abs(value - target);
-
 /**
  * What answering the card on screen would do to a line: "+1" or "−1", green with an up arrow when it moves the count
- * toward its target, red with a down arrow when away.
+ * toward its target, red with a down arrow when away. A colour row whose requirement moves names the new one.
  */
-export function PreviewDelta({ value, target, delta, minimum = false }: { value: number; target: number; delta: number; minimum?: boolean }) {
-  const better = towardTarget(value, target, delta, minimum);
+export function PreviewDelta({
+  value,
+  target,
+  preview,
+  minimum = false,
+}: {
+  value: number;
+  target: number;
+  preview: StatDelta;
+  minimum?: boolean;
+}) {
+  const better = towardTarget(value, target, preview.delta, minimum, preview.target);
   const Icon = better ? ArrowUp : ArrowDown;
+  const { delta } = preview;
   return (
     <span className={cn("inline-flex items-center gap-0.5 font-mono text-xs", better ? "text-success" : "text-destructive")}>
       <Icon aria-hidden className="size-3" strokeWidth={2.75} />
-      {delta > 0 ? `+${delta}` : `−${-delta}`}
+      {delta > 0 ? `+${delta}` : delta < 0 ? `−${-delta}` : null}
+      {preview.target !== undefined && `${delta !== 0 ? " " : ""}needs ${Math.round(preview.target)}`}
       <span className="sr-only">{better ? ", toward the target" : ", away from the target"}</span>
     </span>
   );
@@ -77,11 +83,11 @@ export function PreviewDelta({ value, target, delta, minimum = false }: { value:
  * when off) with how far it moved this round. A thin bar under it. When a card is on screen, what answering it would
  * change shows beside the count and as a striped piece of the bar.
  */
-function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | null; preview: number }) {
+function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | null; preview: StatDelta | undefined }) {
   const moved = stat.value - stat.start;
   const minimum = stat.group === "colours";
   return (
-    <li className={cn("flex flex-col gap-1 rounded-md", preview !== 0 && "-mx-1.5 bg-foreground/5 px-1.5 py-1")}>
+    <li className={cn("flex flex-col gap-1 rounded-md", preview && "-mx-1.5 bg-foreground/5 px-1.5 py-1")}>
       <div className="flex items-center gap-2 text-sm">
         <Mark ok={stat.ok} />
         <span className="min-w-0 truncate">{stat.label}</span>
@@ -93,14 +99,22 @@ function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | n
               <span className="sr-only"> this round</span>
             </span>
           )}
-          {preview !== 0 && <PreviewDelta value={stat.value} target={stat.target} delta={preview} minimum={minimum} />}
+          {preview && <PreviewDelta value={stat.value} target={stat.target} preview={preview} minimum={minimum} />}
           <span className="font-mono">
             <span className={cn(!stat.ok && "text-warning")}>{stat.value}</span>
             <span className="text-muted-foreground"> / {Math.round(stat.target)}</span>
           </span>
         </span>
       </div>
-      <StatBar value={stat.value} target={stat.target} start={stat.start} ok={stat.ok} preview={preview} minimum={minimum} />
+      <StatBar
+        value={stat.value}
+        target={stat.target}
+        start={stat.start}
+        ok={stat.ok}
+        preview={preview?.delta ?? 0}
+        targetAfter={preview?.target}
+        minimum={minimum}
+      />
       {!stat.ok && <span className="sr-only">{offBy(stat.value, stat.target)}</span>}
     </li>
   );
@@ -175,7 +189,7 @@ function CurveRows({ report }: { report: DeckStatsReport }) {
   );
 }
 
-const pct = (chance: number) => `${Math.round(chance * PCT)}%`;
+const pct = (chance: number) => `${Math.round(chance * PERCENT)}%`;
 
 /** What the colour estimate rests on, behind a (?) so the group stays short. */
 function ColoursHelp() {
@@ -254,7 +268,7 @@ export function DeckStatsPanel({
   /** "Find combos": opens Add's Combos, in the deck tool when it has any. */
   combosAction?: StatAction | null;
   /** How answering the card on screen would move each line (statDeltas), when one is on screen. */
-  preview?: ReadonlyMap<string, number> | null;
+  preview?: ReadonlyMap<string, StatDelta> | null;
 }) {
   const mana = report.stats.filter((s) => s.group === "mana");
   const roles = report.stats.filter((s) => s.group === "roles");
@@ -268,7 +282,7 @@ export function DeckStatsPanel({
       <Group title="Mana">
         <ul className="flex flex-col gap-2.5">
           {mana.map((s) => (
-            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key) ?? 0} />
+            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} />
           ))}
         </ul>
       </Group>
@@ -283,7 +297,7 @@ export function DeckStatsPanel({
           </div>
           <ul className="flex flex-col gap-2.5">
             {colours.map((s) => (
-              <Row key={s.key} stat={s} action={null} preview={preview?.get(s.key) ?? 0} />
+              <Row key={s.key} stat={s} action={null} preview={preview?.get(s.key)} />
             ))}
           </ul>
           <p className="text-xs text-muted-foreground">
@@ -300,7 +314,7 @@ export function DeckStatsPanel({
       <Group title="Roles">
         <ul className="flex flex-col gap-2.5">
           {roles.map((s) => (
-            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key) ?? 0} />
+            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} />
           ))}
         </ul>
       </Group>
@@ -311,7 +325,7 @@ export function DeckStatsPanel({
         <Group title="Types">
           <ul className="flex flex-col gap-2.5">
             {types.map((s) => (
-              <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key) ?? 0} />
+              <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} />
             ))}
           </ul>
         </Group>

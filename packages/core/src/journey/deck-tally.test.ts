@@ -259,23 +259,24 @@ describe('tallyCache', () => {
 });
 
 describe('statDeltas', () => {
-  const lines = [{ key: 'lands' }, { key: 'basicLands' }, { key: 'ramp' }, { key: 'removal' }, { key: 'creature' }, { key: 'artifact' }];
+  const lines = ['lands', 'basicLands', 'ramp', 'removal', 'creature', 'artifact'].map((key) => ({ key, group: 'roles' as const }));
   const card = (typeLine: string, roles: string[]) => ({ id: 1 as CardId, typeLine, manaValue: 2, gameChanger: false, roles });
+  const moves = (entries: [string, number][]) => new Map(entries.map(([key, delta]) => [key, { delta }]));
 
   it('counts what the incoming card adds and the outgoing one takes, leaving unmoved lines out', () => {
     const signet = card('Artifact', ['ramp']);
     const bolt = card('Instant', ['removal']);
-    expect(statDeltas(lines, signet, bolt)).toEqual(new Map([['ramp', 1], ['removal', -1], ['artifact', 1]]));
+    expect(statDeltas(lines, signet, bolt)).toEqual(moves([['ramp', 1], ['removal', -1], ['artifact', 1]]));
     expect(statDeltas(lines, signet, card('Artifact', ['ramp']))).toEqual(new Map());
   });
 
   it('counts lands and basic lands from the type line', () => {
-    expect(statDeltas(lines, card('Basic Land — Plains', []), null)).toEqual(new Map([['lands', 1], ['basicLands', 1]]));
-    expect(statDeltas(lines, null, card('Land', ['ramp']))).toEqual(new Map([['lands', -1], ['ramp', -1]]));
+    expect(statDeltas(lines, card('Basic Land — Plains', []), null)).toEqual(moves([['lands', 1], ['basicLands', 1]]));
+    expect(statDeltas(lines, null, card('Land', ['ramp']))).toEqual(moves([['lands', -1], ['ramp', -1]]));
   });
 
   it('counts a card type once, as the first its front face has', () => {
-    expect(statDeltas(lines, card('Artifact Creature — Golem', []), null)).toEqual(new Map([['creature', 1]]));
+    expect(statDeltas(lines, card('Artifact Creature — Golem', []), null)).toEqual(moves([['creature', 1]]));
   });
 });
 
@@ -304,14 +305,46 @@ describe('mana base in the report', () => {
     expect(plain.stats.some((s) => s.group === 'colours')).toBe(false);
   });
 
-  it('previews a Swamp as +1 black and a Signet as +0.8 only for spells of mana value 3 or more', () => {
+  const signet = card({ typeLine: 'Artifact', manaValue: 2, producedMana: 'WB' });
+  const swamp = land('B', 'Basic Land — Swamp');
+
+  it('previews a Swamp as +1 black and a Signet as nothing while a 2-drop is the hardest to cast', () => {
     const report = gradeDeck(buildTally(deck(), [liesa]), targets, bracket());
-    const swamp = land('B', 'Basic Land — Swamp');
-    const signet = card({ typeLine: 'Artifact', manaValue: 2, producedMana: 'WB' });
-    expect(statDeltas(report.stats, swamp, null).get('sources:B')).toBe(1);
+    const preview = (add: TallyCard | null, remove: TallyCard | null = null) =>
+      statDeltas(report.stats, add, remove, report.mana.deck).get('sources:B');
+    expect(preview(swamp)).toEqual({ delta: 1 });
     // The binding black card is the {B}{B} sorcery (mana value 2): a Signet doesn't help it on curve.
-    expect(statDeltas(report.stats, signet, null).has('sources:B')).toBe(false);
-    const late = report.stats.map((s) => (s.sourceFor ? { ...s, sourceFor: { ...s.sourceFor, manaValue: 4 } } : s));
-    expect(statDeltas(late, signet, null).get('sources:B')).toBe(0.8);
+    expect(preview(signet)).toBeUndefined();
+  });
+
+  it('previews a card that would become the hardest to cast with its target', () => {
+    const report = gradeDeck(buildTally(deck(), [liesa]), targets, bracket());
+    const triple = card({ typeLine: 'Sorcery', manaValue: 3, manaCost: '{B}{B}{B}' });
+    const preview = statDeltas(report.stats, triple, null, report.mana.deck).get('sources:B');
+    expect(preview?.target).toBeGreaterThan(30);
+  });
+
+  it('previews cutting the hardest card to cast: the next one sets the target and counts the rocks', () => {
+    const late = card({ typeLine: 'Sorcery', manaValue: 4, manaCost: '{2}{B}{B}' });
+    const base = deck();
+    const bb = base[2]!.card;
+    const entries = [...base, { card: late, quantity: 1 }, { card: signet, quantity: 4 }];
+    const report = gradeDeck(buildTally(entries, [liesa]), targets, bracket());
+    const preview = statDeltas(report.stats, null, bb, report.mana.deck).get('sources:B');
+    // Four Signets count 0.75 each for the 4-drop, none for the 2-drop.
+    expect(preview?.delta).toBe(3);
+    expect(preview?.target).toBeLessThan(30);
+  });
+
+  it('measures the start tick against the requirement as it is now', () => {
+    const late = card({ typeLine: 'Sorcery', manaValue: 4, manaCost: '{2}{B}{B}' });
+    const base = deck();
+    const bb = base[2]!.card;
+    const start = [...base, { card: late, quantity: 1 }, { card: signet, quantity: 4 }];
+    const now = start.filter((e) => e.card !== bb);
+    const report = gradeDeck(buildTally(now, [liesa]), targets, bracket(), buildTally(start, [liesa]));
+    const black = report.stats.find((s) => s.key === 'sources:B');
+    // The {B}{B} sorcery left; no source did. Against the 4-drop, both decks have 12 Swamps and four Signets.
+    expect(black?.start).toBe(black?.value);
   });
 });
