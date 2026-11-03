@@ -28,14 +28,14 @@ const MAX_JOBS = 4;
 /** Replacements after the one on screen whose rules text is fetched ahead. */
 const PREFETCH_CANDIDATES = 4;
 
-/** What comparing reads from a card, with its printed body and play rate when known. */
-function compareCard(card: CardSummary, power: string | null, toughness: string | null, inclusionRate: number | null): CompareCard {
-  return { manaValue: card.manaValue, typeLine: card.typeLine, keywords: card.keywords, priceUsd: card.price?.usd ?? null, inclusionRate, power, toughness };
+/** What comparing reads from a card, with its printed body and play rate when known, and whether the player owns it. */
+function compareCard(card: CardSummary, power: string | null, toughness: string | null, inclusionRate: number | null, owned = false): CompareCard {
+  return { manaValue: card.manaValue, typeLine: card.typeLine, keywords: card.keywords, priceUsd: card.price?.usd ?? null, inclusionRate, power, toughness, owned };
 }
 
 /**
  * A card to replace and one replacement at a time, both in full: the card in the deck on top, the replacement below,
- * and green and red marks for how the replacement compares (cheaper, faster, played more). Answered with the buttons
+ * and green and red marks for how the replacement compares (cheaper to cast, faster, popular). Answered with the buttons
  * under them or the arrow keys: right swaps it in, left shows the next replacement.
  */
 export function SwipeRater({
@@ -147,7 +147,14 @@ export function SwipeRater({
     candidate && targetRules !== undefined && candidateRules !== undefined
       ? compareCards(
           compareCard(target.card, targetRules?.power ?? null, targetRules?.toughness ?? null, target.corpus?.inclusionRate ?? null),
-          compareCard(candidate.card, candidateRules?.power ?? null, candidateRules?.toughness ?? null, candidate.corpus?.inclusionRate ?? null),
+          compareCard(
+            candidate.card,
+            candidateRules?.power ?? null,
+            candidateRules?.toughness ?? null,
+            candidate.corpus?.inclusionRate ?? null,
+            // An owned replacement costs nothing to put in, so its price makes no mark.
+            context.ownership !== null && candidate.owned !== null,
+          ),
         )
       : [];
   const keepLabel = `${inRater ? "Skip" : "Keep"} ${targetName}`;
@@ -170,20 +177,13 @@ export function SwipeRater({
       </div>
 
       <CompactCardPanel card={target.card} rules={targetRules} side="out" dim={!inRater}>
-        {/* Keeping is about this card, so it sits with it rather than in a row of its own under the buttons. */}
-        <span className="flex flex-wrap items-baseline gap-x-2">
-          {reasons.length > 0 && <span>{reasons.join(", ")}</span>}
-          {candidate && (
-            <button
-              type="button"
-              aria-label={keepLabel}
-              onClick={rater.keep}
-              className="relative cursor-pointer text-sm font-semibold text-primary after:absolute after:-inset-2 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              {inRater ? "Skip it" : "Keep it"}
-            </button>
-          )}
-        </span>
+        {reasons.length > 0 && <span>{reasons.join(", ")}</span>}
+        {/* Keeping is about this card, so it sits with it, as a button of its own rather than a link in the caption. */}
+        {candidate && (
+          <Button type="button" size="lg" aria-label={keepLabel} onClick={rater.keep} className="mt-1 self-start">
+            {inRater ? "Skip" : "Keep"}
+          </Button>
+        )}
       </CompactCardPanel>
 
       <div aria-hidden className="h-px bg-seam max-sm:hidden" />
@@ -222,7 +222,9 @@ export function SwipeRater({
           <div aria-live="polite" className="flex flex-col gap-2">
             <CompactCardPanel card={candidate.card} rules={candidateRules} side="in" owned={markOwned && candidate.owned !== null}>
               <span className="font-mono max-sm:hidden">
-                {describeCostDelta(candidate.costDelta)} · {rater.candidateIndex + 1} of {rater.candidateCount}
+                {/* In Owned only every replacement is owned, so what it would save says nothing. */}
+                {ownedOnly(context) ? "" : `${describeCostDelta(candidate.costDelta)} · `}
+                {rater.candidateIndex + 1} of {rater.candidateCount}
               </span>
               {candidate.functionalTwin ? (
                 <span className="font-drama text-sm text-foreground/85 italic">Same rules as {targetName}, under a different name.</span>

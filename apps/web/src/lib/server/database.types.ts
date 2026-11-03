@@ -2500,6 +2500,7 @@ export type Database = {
         fetchable_mana: string[] | null
         fetchable_basic_only: boolean | null
         layout: string | null
+        staple_score: number | null
       }
     }
   }

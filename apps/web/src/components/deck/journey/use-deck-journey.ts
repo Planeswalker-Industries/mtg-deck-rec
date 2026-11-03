@@ -36,7 +36,7 @@ import {
   type JourneyPhase,
   type JourneyState,
 } from "@mtg/core/journey";
-import { isFrontLand, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
+import { byStaple, isFrontLand, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import type { Async, ContextChange } from "../use-deck-tool";
@@ -144,12 +144,15 @@ const toAsync = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: s
   r.ok ? { status: "ready", data: r.data } : { status: "error", message: r.error.message };
 
 /**
- * The order Add deals its cards in: best score first, except that a deck a cut left short of lands gets lands first,
- * since ranking by score alone would fill the slot with spells.
+ * The order Add deals its cards in: best score first, the wider staple first between equal scores (T083), except that a
+ * deck a cut left short of lands gets lands first, since ranking by score alone would fill the slot with spells.
  */
 function addOrder(suggestions: readonly AddSuggestion[], landsShort: boolean): AddSuggestion[] {
   return [...suggestions].sort(
-    (a, b) => Number(landsShort && isLand(b.card)) - Number(landsShort && isLand(a.card)) || b.score.total - a.score.total,
+    (a, b) =>
+      Number(landsShort && isLand(b.card)) - Number(landsShort && isLand(a.card)) ||
+      b.score.total - a.score.total ||
+      byStaple(a.score, b.score),
   );
 }
 
@@ -793,6 +796,8 @@ export function useDeckJourney({
   return {
     state,
     dispatch: (action: JourneyAction) => void apply(action),
+    /** A land swap (T083): one copy of a basic out and a card in, as one choice Undo takes back, so the deck stays at its size. */
+    swapLand: (basic: CardSummary, card: CardSummary) => void apply({ type: "cut", card: basic }, { type: "add", card }),
     goTo,
     stepper: {
       canOpen,
@@ -892,6 +897,10 @@ export function useDeckJourney({
       /** Replacements passed on this round, which aren't offered for that card again. */
       declined: state?.declinedSwaps ?? [],
       decline: (targetId: CardId, replacementId: CardId) => void apply({ type: "declineSwap", targetId, replacementId }),
+      /** Asks for the weaker fits again when the deck changed under them in Swap (land swaps, T083). */
+      refresh: () => {
+        if (state?.phase === "replace" && !replaceFresh(state)) void loadReplaceTargets(state);
+      },
     },
     /** A bracket change that made cards must-cuts, waiting for Cut & Continue or Revert. */
     bracketCheck: current?.check ?? null,

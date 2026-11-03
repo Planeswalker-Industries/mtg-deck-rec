@@ -183,6 +183,18 @@ describe('buildDeck', () => {
     expect(buildDeck(input())).toEqual(result);
   });
 
+  it('breaks ties between equal scores on the wider staple, then the name (T083)', () => {
+    // Every spell unplayed, so equal on play data: without staples the build takes them by name, with them by staple.
+    const unplayed = new Map([...playRates].map(([id, r]) => [id, id <= spells.length ? rates(0) : r]));
+    const widerLater = new Map(spells.map((c) => [c.summary.id as number, (c.summary.id as number) / 100]));
+    const byName = deckIds(buildDeck(input({ rates: unplayed })));
+    const byStapleIds = deckIds(buildDeck(input({ rates: unplayed, staples: widerLater })));
+    expect(byName).toContain(2);
+    expect(byName).not.toContain(80);
+    expect(byStapleIds).toContain(80);
+    expect(byStapleIds).not.toContain(2);
+  });
+
   it('splits basics by the spells and the commander', () => {
     const result = buildDeck(input());
     const plainsCount = result.basics.find((b) => b.card.name === 'Plains')?.quantity ?? 0;

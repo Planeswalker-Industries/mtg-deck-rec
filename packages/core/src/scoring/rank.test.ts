@@ -156,6 +156,45 @@ describe('rankAdds with a collection (T059)', () => {
   });
 });
 
+describe('rankAdds staple tiebreak (T083)', () => {
+  // Two artifacts the commander's decks never run, so they score the same: only their staple scores tell them apart.
+  const unplayed = new Map<number, CardPlayRates>([
+    [2, rates(0)],
+    [3, rates(0)],
+  ]);
+  const staples = new Map([
+    [2, 0.06],
+    [3, 0.76],
+  ]);
+  const adds = (withStaples: boolean) =>
+    rankAdds({
+      context: { ...context('first'), ownership: null },
+      poolIds: [2, 3],
+      cards,
+      rates: unplayed,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: TEST_SCORING,
+      availability: null,
+      staples: withStaples ? staples : null,
+      limitPerCategory: 10,
+    }).groups.flatMap((g) => g.suggestions);
+
+  it('breaks a tie on the wider staple without moving the score', () => {
+    const ranked = adds(true);
+    expect(new Set(ranked.map((s) => s.score.total)).size).toBe(1);
+    expect(ranked.map((s) => s.card.name)).toEqual(['Thought Vessel', 'Orzhov Signet']);
+    expect(ranked.map((s) => s.score.components.staple)).toEqual([0.76, 0.06]);
+  });
+
+  it('keeps the pool order without staple scores', () => {
+    expect(adds(false).map((s) => s.card.name)).toEqual(['Orzhov Signet', 'Thought Vessel']);
+  });
+});
+
 describe('rankCuts with a collection (T059)', () => {
   it('never calls a basic land or a card an owned twin covers unowned', () => {
     const result = rankCuts({
