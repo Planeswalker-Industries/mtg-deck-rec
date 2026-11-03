@@ -161,7 +161,7 @@ export interface BuildInput {
   /** Each basic land's row by colour. */
   basics: ReadonlyMap<BasicColour, RankCard>;
   fill?: BuildFill;
-  /** Each card's global staple score (`card_stats`), 0..1 (T083); without it there is no staple component. */
+  /** Each card's global staple score (`card_stats`), 0..1 (T083), for cards the commander's play data says nothing about (`stapleOf`). */
   staples?: ReadonlyMap<number, number> | null;
 }
 
@@ -256,7 +256,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
       {
         tag: null,
         manaValue: null,
-        staple: stapleOf(input.staples, id),
+        staple: stapleOf(input.staples, id, rates.get(id)),
         corpus: round2(corpusOf(id) ?? neutralCorpus),
         votes: null,
         role: round2(gap),

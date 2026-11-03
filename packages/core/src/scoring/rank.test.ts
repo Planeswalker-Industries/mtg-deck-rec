@@ -192,6 +192,29 @@ describe('rankAdds staple component (T083)', () => {
   it('puts the wider staple first once it has weight', () => {
     expect(order(0.1).map((s) => s.card.name)).toEqual(['Thought Vessel', 'Orzhov Signet']);
   });
+
+  it("leaves the staple score off a card the commander's decks run", () => {
+    const played = rankAdds({
+      context: { ...context('first'), ownership: null },
+      poolIds: [2, 3],
+      cards,
+      rates: new Map([
+        [2, rates(0.4)],
+        [3, rates(0)],
+      ]),
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: TEST_SCORING,
+      availability: null,
+      staples,
+      limitPerCategory: 10,
+    }).groups.flatMap((g) => g.suggestions);
+    expect(played.find((s) => s.card.name === 'Orzhov Signet')?.score.components.staple).toBeNull();
+    expect(played.find((s) => s.card.name === 'Thought Vessel')?.score.components.staple).toBe(0.76);
+  });
 });
 
 describe('rankCuts with a collection (T059)', () => {

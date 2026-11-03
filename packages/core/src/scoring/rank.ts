@@ -356,9 +356,18 @@ export interface AddRanking {
  * short on. In 'only' mode the groups hold what the collection supplies and the unowned cards that would do clearly
  * better go to the buy list; in 'first' mode owned cards move up by `ownedBoost`.
  */
-/** A card's staple score as a component, or null when the scores weren't loaded. */
-export const stapleOf = (staples: ReadonlyMap<number, number> | null | undefined, cardId: number): number | null =>
-  staples ? round2(staples.get(cardId) ?? 0) : null;
+/**
+ * A card's staple score as a component (T083), only where the commander's play data says nothing about the card: no
+ * rates, too few decks to judge, a commander with no decks yet, or none of its decks running it. Those cards all score
+ * the same corpus floor and tie; for the rest, the play data already ranks them, and a staple score there only lifts
+ * generic staples (the eval's Sol Ring rate). Null when the scores weren't loaded or the play data speaks.
+ */
+export function stapleOf(staples: ReadonlyMap<number, number> | null | undefined, cardId: number, rates: CardPlayRates | undefined): number | null {
+  if (!staples) return null;
+  // Fewer than one deck: counts over borrowed decks are weighted, so "none" can come out a fraction above zero.
+  const unplayed = !rates || rates.evidence.limited || rates.evidence.scope === 'colors' || rates.evidence.decksWith < 1;
+  return unplayed ? round2(staples.get(cardId) ?? 0) : null;
+}
 
 export function rankAdds({
   context,
@@ -471,7 +480,7 @@ export function rankAdds({
         {
           tag: null,
           manaValue: null,
-          staple: stapleOf(staples, cardId),
+          staple: stapleOf(staples, cardId, r),
           corpus: round2(corpusScore?.value ?? neutralCorpus),
           votes: null,
           role: round2(gap),
