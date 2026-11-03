@@ -177,20 +177,13 @@ export function SwipeRater({
       </div>
 
       <CompactCardPanel card={target.card} rules={targetRules} side="out" dim={!inRater}>
-        {/* Keeping is about this card, so it sits with it rather than in a row of its own under the buttons. */}
-        <span className="flex flex-wrap items-baseline gap-x-2">
-          {reasons.length > 0 && <span>{reasons.join(", ")}</span>}
-          {candidate && (
-            <button
-              type="button"
-              aria-label={keepLabel}
-              onClick={rater.keep}
-              className="relative cursor-pointer text-sm font-semibold text-primary after:absolute after:-inset-2 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              {inRater ? "Skip it" : "Keep it"}
-            </button>
-          )}
-        </span>
+        {reasons.length > 0 && <span>{reasons.join(", ")}</span>}
+        {/* Keeping is about this card, so it sits with it, as a button of its own rather than a link in the caption. */}
+        {candidate && (
+          <Button type="button" size="lg" aria-label={keepLabel} onClick={rater.keep} className="mt-1 self-start">
+            {inRater ? "Skip" : "Keep"}
+          </Button>
+        )}
       </CompactCardPanel>
 
       <div aria-hidden className="h-px bg-seam max-sm:hidden" />
