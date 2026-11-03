@@ -183,3 +183,27 @@ test("a failed move to the account says so, keeps the browser copy, and the next
   await expect(summary.locator("dd").nth(1)).toHaveText(String(STALE_BROWSER_COPIES));
   expect(await hasBrowserCopy(page)).toBe(false);
 });
+
+test("Upload a collection's return: an account with a collection goes straight back, an empty one stays to import", async ({ page, request }) => {
+  test.skip(!mailpit, "needs the local mail catcher (E2E_MAILPIT_URL)");
+  test.setTimeout(SYNC_TEST_TIMEOUT_MS);
+  const returnPath = `/collection/import?next=${encodeURIComponent("/deck")}&ifEmpty=1`;
+
+  // A new account has nothing yet, so the import page stays.
+  // signIn waits for a bare path, so it lands on the import page and the return path is opened from there.
+  await signIn(page, request, `e2e-ifempty-${Date.now()}@example.com`, "/collection/import");
+  await page.goto(returnPath);
+  await expect(page.getByLabel("Collection export")).toBeVisible({ timeout: SYNC_WAIT_MS });
+  expect(new URL(page.url()).pathname).toBe("/collection/import");
+
+  // Importing here stays to show how it went, even with ifEmpty.
+  await page.getByLabel("Collection export").fill("1 Sol Ring");
+  await page.getByRole("button", { name: "Import collection" }).click();
+  const summary = page.getByRole("region", { name: "Saved collection" });
+  await expect(summary.getByText(/Saved to your account/)).toBeVisible({ timeout: SYNC_WAIT_MS });
+  expect(new URL(page.url()).pathname).toBe("/collection/import");
+
+  // Coming back with a collection in the account goes straight on to `next`.
+  await page.goto(returnPath);
+  await page.waitForURL((url) => url.pathname === "/deck", { timeout: SYNC_WAIT_MS });
+});

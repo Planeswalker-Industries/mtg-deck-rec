@@ -10,6 +10,7 @@ import { displayName } from "@/lib/cards";
 import { CardImage } from "./card-image";
 import { ZoomableCard } from "./card-zoom";
 import { ManaCost } from "./mana-cost";
+import { OwnedCorner } from "./owned-corner";
 import { RulesText } from "./rules-text";
 
 /**
@@ -131,16 +132,30 @@ function CardFacts({
 }
 
 /**
- * One card in full, the way a binder page shows it: the image on the left (tap to enlarge; nothing is drawn over it, so
- * the artist line stays visible), what it says on the right. Replaces the big swipe card, so a card can be judged
- * without opening anything.
+ * One card in full, the way a binder page shows it: the image on the left (tap to enlarge; only the owned marker, in
+ * the top corner, is drawn over it, so the artist line stays visible), what it says on the right. Replaces the big
+ * swipe card, so a card can be judged without opening anything.
  */
-export function CardPanel({ card, rules, children }: { card: CardSummary; rules: CardRules | null | undefined; children?: ReactNode }) {
+export function CardPanel({
+  card,
+  rules,
+  owned = false,
+  children,
+}: {
+  card: CardSummary;
+  rules: CardRules | null | undefined;
+  /** Marks the card as owned (`OwnedCorner`). */
+  owned?: boolean;
+  children?: ReactNode;
+}) {
   return (
     <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)] items-start gap-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4">
-      <ZoomableCard card={card}>
-        <CardImage card={card} variant="normal" alt={card.name} sizes="(max-width: 640px) 40vw, 208px" eager />
-      </ZoomableCard>
+      <div className="relative">
+        <ZoomableCard card={card}>
+          <CardImage card={card} variant="normal" alt={card.name} sizes="(max-width: 640px) 40vw, 208px" eager />
+        </ZoomableCard>
+        {owned && <OwnedCorner />}
+      </div>
       <CardFacts card={card} rules={rules} size="single">
         {children}
       </CardFacts>
@@ -169,6 +184,7 @@ export function CompactCardPanel({
   rules,
   side,
   dim = false,
+  owned = false,
   children,
 }: {
   card: CardSummary;
@@ -176,20 +192,25 @@ export function CompactCardPanel({
   side: "out" | "in";
   /** The card going out reads quieter than the one coming in. */
   dim?: boolean;
+  /** Marks the card as owned (`OwnedCorner`). */
+  owned?: boolean;
   children?: ReactNode;
 }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,3fr)] items-start gap-3 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
-      <ZoomableCard card={card}>
-        <CardImage
-          card={card}
-          variant="normal"
-          alt={`${side === "out" ? "In your deck" : "Replacement"}: ${card.name}`}
-          sizes="(max-width: 640px) 28vw, 136px"
-          eager
-          className={dim ? "opacity-80 saturate-50" : undefined}
-        />
-      </ZoomableCard>
+      <div className="relative">
+        <ZoomableCard card={card}>
+          <CardImage
+            card={card}
+            variant="normal"
+            alt={`${side === "out" ? "In your deck" : "Replacement"}: ${card.name}`}
+            sizes="(max-width: 640px) 28vw, 136px"
+            eager
+            className={dim ? "opacity-80 saturate-50" : undefined}
+          />
+        </ZoomableCard>
+        {owned && <OwnedCorner />}
+      </div>
       <CardFacts card={card} rules={rules} size="compact" tag={<SwapTag side={side} />} phoneRules={side === "in"}>
         {children}
       </CardFacts>

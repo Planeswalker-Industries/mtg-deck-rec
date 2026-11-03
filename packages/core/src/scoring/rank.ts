@@ -30,7 +30,7 @@ import { cardCategory, roleGap, roleShortfalls } from './add';
 import type { CorpusSettings, ScoringConfig } from './config';
 import { commanderCorpusScore, commanderShare, corpusComponent, neutralCorpusValue, type CommanderCardRate } from './corpus';
 import { deckAffinity, type DeckCardWeight, type PairLifts } from './affinity';
-import { bracketExclusions, comboResultWeight, cutBracketMarks, overBracket, type DeckBracketFacts } from './combos';
+import { bracketExclusions, comboResultWeight, cutBracketMarks, overBracket, resultWeigher, type DeckBracketFacts } from './combos';
 import { scoreCuts, type RoleTarget } from './cut';
 import {
   curveMeanManaValue,
@@ -446,7 +446,7 @@ export function rankAdds({
   const overCombos = new Map<number, ComboRef[]>();
   for (const c of bracketFacts?.combos ?? []) {
     if (c.missing === null || !bracketFacts || !overBracket(c, context.bracket, bracketFacts.rules)) continue;
-    overCombos.set(c.missing, [...(overCombos.get(c.missing) ?? []), comboRef(c)]);
+    overCombos.set(c.missing, [...(overCombos.get(c.missing) ?? []), comboRef(c, resultWeigher(scoring.combos))]);
   }
 
   const scoreOne = ({ cardId, rates: r, corpusScore }: ReturnType<typeof corpusOf>) => {
@@ -508,7 +508,8 @@ export function rankAdds({
 /**
  * "Complete a combo": the combos the deck is one named card short of that the bracket
  * allows, one entry per missing card (its best combo), ordered by what the combo does and then by the missing card's
- * score as an add. In 'only' mode the collection has to supply the missing card.
+ * score as an add. Cards the collection supplies and cards to buy are capped apart, at `maxSuggestions` each, so the
+ * owned ones always have room; cards to buy come in every mode, 'only' included (the Combo Upgrades section).
  */
 export function completeACombo(
   facts: DeckBracketFacts,
@@ -525,13 +526,13 @@ export function completeACombo(
     const held = best.get(c.missing);
     if (!held || weight > held.weight || (weight === held.weight && c.pieces.length < held.combo.pieces.length)) best.set(c.missing, { combo: c, weight });
   }
-  return [...best]
+  const ranked = [...best]
     .flatMap(([missing, { combo, weight }]) => {
       const scored = score(missing);
-      if (!scored || (only && !scored.supplied)) return [];
+      if (!scored) return [];
       const { suggestion } = scored;
       const entry: ComboSuggestion = {
-        ...comboRef(combo),
+        ...comboRef(combo, resultWeigher(scoring.combos)),
         card: suggestion.card,
         pieceIds: combo.pieces.filter((id) => id !== missing).map((id) => id as CardId),
         alsoNeeded: [...combo.templateNames],
@@ -539,10 +540,14 @@ export function completeACombo(
         owned: suggestion.owned,
         ...(suggestion.conflicts ? { conflicts: suggestion.conflicts } : {}),
       };
-      return [{ entry, weight }];
+      // 'only' mode counts a card as owned when the collection supplies it; otherwise ownership says.
+      const owned = only ? scored.supplied : suggestion.owned !== null;
+      return [{ entry, weight, owned }];
     })
+    .sort((a, b) => b.weight - a.weight || b.entry.score.total - a.entry.score.total || a.entry.card.name.localeCompare(b.entry.card.name));
+  const capped = (owned: boolean) => ranked.filter((e) => e.owned === owned).slice(0, scoring.combos.maxSuggestions);
+  return [...capped(true), ...capped(false)]
     .sort((a, b) => b.weight - a.weight || b.entry.score.total - a.entry.score.total || a.entry.card.name.localeCompare(b.entry.card.name))
-    .slice(0, scoring.combos.maxSuggestions)
     .map((e) => e.entry);
 }
 

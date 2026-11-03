@@ -34,13 +34,18 @@ function classesOf(settings: ScoringConfig['combos']) {
  * that matches ("Win the game" over infinite mana, damage or turns over the rest), a contextual result below those.
  */
 export function comboResultWeight(combo: Pick<ComboFacts, 'results' | 'contextualResults'>, settings: ScoringConfig['combos']): number {
-  const classes = classesOf(settings);
   let best = combo.contextualResults.length > 0 ? settings.contextualWeight : 0;
-  for (const result of combo.results) {
-    best = Math.max(best, classes.find((c) => c.pattern.test(result))?.weight ?? settings.standaloneWeight);
-  }
+  for (const result of combo.results) best = Math.max(best, resultWeight(result, settings));
   return best;
 }
+
+/** What one standalone result is worth: the first class it matches, or the standalone weight. */
+export function resultWeight(result: string, settings: ScoringConfig['combos']): number {
+  return classesOf(settings).find((c) => c.pattern.test(result))?.weight ?? settings.standaloneWeight;
+}
+
+/** Weighs results by the combo settings, for `comboRef` to put the one that matters most first. */
+export const resultWeigher = (settings: ScoringConfig['combos']) => (result: string) => resultWeight(result, settings);
 
 /** Whether a combo is over the line for a bracket: above its minimum, or an extra-turn loop the bracket forbids. */
 export const overBracket = (combo: ComboFacts, bracket: Bracket, rules: BracketRules): boolean =>

@@ -192,7 +192,8 @@
    deck tool and Deckbuilder also set --deck-stats-dock (height plus safe area, 0 where the rail shows) for the swipe
    cards, the sticky Next bars and the Deckbuilder's scrolling halves. The widths are Tailwind's lg and xl. */
 :root {
-  --deck-stats-dock-height: 3.5rem;
+  /* The bar's button (min-h-12) and its 1px top border: sticky bars sit flush on it, with no gap between. */
+  --deck-stats-dock-height: calc(3rem + 1px);
 }
 
 @media (width < 64rem) {

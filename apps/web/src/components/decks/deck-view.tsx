@@ -58,9 +58,9 @@ export function useDeckView(page: DeckViewPage = "deck"): [DeckView, (view: Deck
 }
 
 /** Images or List, for every card on a saved deck's page or a built deck. */
-export function DeckViewToggle({ view, onChange }: { view: DeckView; onChange: (view: DeckView) => void }) {
+export function DeckViewToggle({ view, onChange, className }: { view: DeckView; onChange: (view: DeckView) => void; className?: string }) {
   return (
-    <div role="group" aria-label="Show cards as" className="flex gap-1 self-end">
+    <div role="group" aria-label="Show cards as" className={cn("flex gap-1 self-end", className)}>
       {VIEWS.map(({ view: v, label, icon: Icon }) => (
         <button
           key={v}

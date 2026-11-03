@@ -80,17 +80,22 @@ export const isCheckedComplete = (combo: ComboFacts): boolean => combo.missing =
 /** A combo's minimum bracket, kept inside 1–5. */
 const asBracket = (n: number): Bracket => Math.min(5, Math.max(1, Math.round(n))) as Bracket;
 
-export function comboRef(combo: ComboFacts): ComboRef {
+/**
+ * A combo as the contract shows it. `weigh` (`resultWeigher` of the combo settings) puts its standalone results best
+ * first, ties in Spellbook's order, so the first result is the one to show; contextual results follow.
+ */
+export function comboRef(combo: ComboFacts, weigh?: (result: string) => number): ComboRef {
+  const standalone = weigh ? [...combo.results].sort((a, b) => weigh(b) - weigh(a)) : [...combo.results];
   return {
     id: combo.variantId,
     url: comboUrl(combo.variantId),
-    results: [...combo.results, ...combo.contextualResults],
+    results: [...standalone, ...combo.contextualResults],
     minBracket: asBracket(combo.minBracket),
   };
 }
 
-export function deckCombo(combo: ComboFacts): DeckCombo {
-  return { ...comboRef(combo), pieceIds: combo.pieces.map((id) => id as CardId), alsoNeeded: [...combo.templateNames] };
+export function deckCombo(combo: ComboFacts, weigh?: (result: string) => number): DeckCombo {
+  return { ...comboRef(combo, weigh), pieceIds: combo.pieces.map((id) => id as CardId), alsoNeeded: [...combo.templateNames] };
 }
 
 /** Whether a complete combo takes infinite turns. */

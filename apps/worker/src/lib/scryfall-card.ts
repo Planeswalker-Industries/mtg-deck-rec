@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { normalizeName, slugify } from '@mtg/core/parse';
+import { landSearch } from '@mtg/core/journey';
 
 export interface ScryfallImageUris {
   small: string;
@@ -102,6 +103,9 @@ export interface CardRow {
   colors: number | null;
   color_indicator: number | null;
   produced_mana: string[] | null;
+  /** Colours of the lands it can put onto the battlefield from the library (@mtg/core landSearch); null when none. */
+  fetchable_mana: string[] | null;
+  fetchable_basic_only: boolean;
   reserved: boolean;
   scryfall_uri: string;
   reference_price_usd: string | null;
@@ -162,6 +166,8 @@ export const CARD_COLUMNS = [
   'colors',
   'color_indicator',
   'produced_mana',
+  'fetchable_mana',
+  'fetchable_basic_only',
   'reserved',
   'scryfall_uri',
   'reference_price_usd',
@@ -350,6 +356,7 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
   const colors = colorMask(card.colors);
   const colorIndicator = colorMask(card.color_indicator);
   const producedMana = card.produced_mana ?? null;
+  const finds = landSearch(text);
   const reserved = card.reserved === true;
   const gameChanger = card.game_changer === true;
   const legalities = card.legalities;
@@ -379,6 +386,8 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
         colorIndicator,
         producedMana,
         reserved,
+        // Only cards that find lands hash the parsed search, so adding it rewrote those rows and no others.
+        ...(finds ? [finds] : []),
       ]),
     )
     .digest();
@@ -412,6 +421,8 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
     colors,
     color_indicator: colorIndicator,
     produced_mana: producedMana,
+    fetchable_mana: finds?.colours ?? null,
+    fetchable_basic_only: finds?.basicOnly ?? false,
     reserved,
     scryfall_uri: card.scryfall_uri,
     reference_price_usd: priced ? priced[1] : null,

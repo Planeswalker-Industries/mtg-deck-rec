@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { Bracket, BuildResult, CardId, CardSummary, DeckCardEntry, OwnershipInput } from "@mtg/core/contract";
+import type { Bracket, BuildResult, CardId, CardSummary, DeckCardEntry, OwnershipInput, RecContext } from "@mtg/core/contract";
 import { decklistCsv, decklistText, type DeckExportEntry } from "@mtg/core/parse";
 import { getApis } from "@/lib/api/client";
+import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 
 /**
@@ -73,22 +74,28 @@ export function buildDecklistCsv(result: BuildResult): string {
 export function useDeckBuild(ownership: OwnershipInput | null) {
   const [state, setState] = useState<BuildState>({ status: "idle" });
   const requestId = useRef(0);
+  /** The ready build as recorded for the accept rate (T065), with the settings it was made with. */
+  const shown = useRef<{ batch: RecBatch; context: RecContext } | null>(null);
 
   async function build(request: BuildRequest) {
     const id = ++requestId.current;
+    shown.current = null;
     setState({ status: "loading", request });
-    const r = await getApis().recs.build({
-      context: {
-        deck: { commanders: request.commanders.map((c) => c.id), cards: request.kept ?? [] },
-        bracket: request.bracket,
-        bracketSource: "user",
-        includeGameChangers: defaultIncludeGameChangers(request.bracket),
-        ownership,
-        ...(ownership ? { ownershipMode: "only" as const } : {}),
-      },
-      fill: "none",
-    });
+    const context: RecContext = {
+      deck: { commanders: request.commanders.map((c) => c.id), cards: request.kept ?? [] },
+      bracket: request.bracket,
+      bracketSource: "user",
+      includeGameChangers: defaultIncludeGameChangers(request.bracket),
+      ownership,
+      ...(ownership ? { ownershipMode: "only" as const } : {}),
+    };
+    const r = await getApis().recs.build({ context, fill: "none" });
     if (id !== requestId.current) return;
+    if (r.ok) {
+      // The build's own picks: kept cards were the player's already, and basics are filled by count.
+      const picked = r.data.groups.flatMap((g) => g.cards).filter((c) => c.origin === "pick").map((c) => c.card.id);
+      shown.current = { batch: recordShown("build", picked, context), context };
+    }
     setState(
       r.ok
         ? { status: "ready", request, result: r.data, fromCollection: ownership !== null }
@@ -98,8 +105,17 @@ export function useDeckBuild(ownership: OwnershipInput | null) {
 
   function reset() {
     requestId.current++;
+    shown.current = null;
     setState({ status: "idle" });
   }
 
-  return { state, build, reset };
+  /** The build taken on (Continue or Save for Later): every card it picked counts as accepted, once. */
+  function accept() {
+    const taken = shown.current;
+    shown.current = null;
+    if (!taken) return;
+    for (const cardId of taken.batch.cardIds) recordDecision(taken.batch, cardId, true, taken.context);
+  }
+
+  return { state, build, reset, accept };
 }

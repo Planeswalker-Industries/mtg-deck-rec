@@ -21,6 +21,10 @@ const row: CardIndexRow = {
   mana_cost: "{W}",
   color_identity: 1, // W
   keywords: [],
+  produced_mana: null,
+  fetchable_mana: null,
+  fetchable_basic_only: false,
+  layout: "normal",
   game_changer: false,
   is_basic_land: false,
   legal_commander: "legal",
@@ -87,7 +91,19 @@ describe("card documents", () => {
       is_basic_land: false,
       artist: "Terese Nielsen",
       keywords: [],
+      produced_mana: null,
+      fetchable_mana: null,
+      fetchable_basic_only: false,
+      layout: "normal",
     });
+  });
+
+  it("round-trips the mana columns, and reads their absence as none", () => {
+    const withMana = { ...row, produced_mana: ["U", "B"], fetchable_mana: ["U", "B"], fetchable_basic_only: true };
+    expect(cardRowFromDocument(toCardDocument(withMana))).toMatchObject({ produced_mana: ["U", "B"], fetchable_mana: ["U", "B"], fetchable_basic_only: true });
+    const none = toCardDocument({ ...row, produced_mana: [], fetchable_mana: null });
+    expect("produced_mana" in none || "fetchable_mana" in none || "fetchable_basic_only" in none).toBe(false);
+    expect(cardRowFromDocument(none)).toMatchObject({ produced_mana: null, fetchable_mana: null, fetchable_basic_only: false });
   });
 
   it("keys a document by the card id, so a rename cannot orphan it", () => {

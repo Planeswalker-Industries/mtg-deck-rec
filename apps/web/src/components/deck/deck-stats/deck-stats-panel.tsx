@@ -1,18 +1,27 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useId, useState, type ReactNode } from "react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
-import type { DeckStatsReport, StatLine } from "@mtg/core/journey";
-import { ArrowDown, ArrowUp, Check, TriangleAlert } from "lucide-react";
+import { KARSTEN_ARTICLE_URL, towardTarget, type DeckStatsReport, type StatDelta, type StatLine } from "@mtg/core/journey";
+import { ArrowDown, ArrowUp, Check, CircleHelp, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
+import { CardImage } from "@/components/cards/card-image";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { LevelBadge } from "./level";
 import { StatBar } from "./stat-bar";
 
-/** Percent of a curve column's height a value can take. */
-const FULL_COLUMN_PCT = 100;
+/** A whole in percent: a curve column's full height, a chance of 1. */
+const PERCENT = 100;
 /** Room above the tallest bar or tick, so a tick at the curve's maximum stays inside the box (as StatBar's track). */
 const COLUMN_HEADROOM = 1.15;
+/** Hard-to-cast cards shown before "Show all" (owner, 2026-11-02). */
+const HARD_TO_CAST_SHOWN = 5;
+/** Rendered width of a hard-to-cast thumbnail (w-10), for CardImage's sizes. */
+const THUMB_SIZES = "40px";
 
-const columnPct = (n: number, scale: number) => `${Math.max(0, Math.min(FULL_COLUMN_PCT, (n / scale) * FULL_COLUMN_PCT))}%`;
+const columnPct = (n: number, scale: number) => `${Math.max(0, Math.min(PERCENT, (n / scale) * PERCENT))}%`;
 
 export interface StatAction {
   label: string;
@@ -41,20 +50,29 @@ function ActionLink({ action, className }: { action: StatAction; className?: str
   );
 }
 
-/** Whether moving a count by `delta` brings it closer to its target. */
-export const towardTarget = (value: number, target: number, delta: number) => Math.abs(value + delta - target) < Math.abs(value - target);
-
 /**
  * What answering the card on screen would do to a line: "+1" or "−1", green with an up arrow when it moves the count
- * toward its target, red with a down arrow when away.
+ * toward its target, red with a down arrow when away. A colour row whose requirement moves names the new one.
  */
-export function PreviewDelta({ value, target, delta }: { value: number; target: number; delta: number }) {
-  const better = towardTarget(value, target, delta);
+export function PreviewDelta({
+  value,
+  target,
+  preview,
+  minimum = false,
+}: {
+  value: number;
+  target: number;
+  preview: StatDelta;
+  minimum?: boolean;
+}) {
+  const better = towardTarget(value, target, preview.delta, minimum, preview.target);
   const Icon = better ? ArrowUp : ArrowDown;
+  const { delta } = preview;
   return (
     <span className={cn("inline-flex items-center gap-0.5 font-mono text-xs", better ? "text-success" : "text-destructive")}>
       <Icon aria-hidden className="size-3" strokeWidth={2.75} />
-      {delta > 0 ? `+${delta}` : `−${-delta}`}
+      {delta > 0 ? `+${delta}` : delta < 0 ? `−${-delta}` : null}
+      {preview.target !== undefined && `${delta !== 0 ? " " : ""}needs ${Math.round(preview.target)}`}
       <span className="sr-only">{better ? ", toward the target" : ", away from the target"}</span>
     </span>
   );
@@ -65,10 +83,11 @@ export function PreviewDelta({ value, target, delta }: { value: number; target: 
  * when off) with how far it moved this round. A thin bar under it. When a card is on screen, what answering it would
  * change shows beside the count and as a striped piece of the bar.
  */
-function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | null; preview: number }) {
+function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | null; preview: StatDelta | undefined }) {
   const moved = stat.value - stat.start;
+  const minimum = stat.group === "colours";
   return (
-    <li className={cn("flex flex-col gap-1 rounded-md", preview !== 0 && "-mx-1.5 bg-foreground/5 px-1.5 py-1")}>
+    <li className={cn("flex flex-col gap-1 rounded-md", preview && "-mx-1.5 bg-foreground/5 px-1.5 py-1")}>
       <div className="flex items-center gap-2 text-sm">
         <Mark ok={stat.ok} />
         <span className="min-w-0 truncate">{stat.label}</span>
@@ -80,14 +99,22 @@ function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | n
               <span className="sr-only"> this round</span>
             </span>
           )}
-          {preview !== 0 && <PreviewDelta value={stat.value} target={stat.target} delta={preview} />}
+          {preview && <PreviewDelta value={stat.value} target={stat.target} preview={preview} minimum={minimum} />}
           <span className="font-mono">
             <span className={cn(!stat.ok && "text-warning")}>{stat.value}</span>
             <span className="text-muted-foreground"> / {Math.round(stat.target)}</span>
           </span>
         </span>
       </div>
-      <StatBar value={stat.value} target={stat.target} start={stat.start} ok={stat.ok} preview={preview} />
+      <StatBar
+        value={stat.value}
+        target={stat.target}
+        start={stat.start}
+        ok={stat.ok}
+        preview={preview?.delta ?? 0}
+        targetAfter={preview?.target}
+        minimum={minimum}
+      />
       {!stat.ok && <span className="sr-only">{offBy(stat.value, stat.target)}</span>}
     </li>
   );
@@ -162,11 +189,75 @@ function CurveRows({ report }: { report: DeckStatsReport }) {
   );
 }
 
+const pct = (chance: number) => `${Math.round(chance * PERCENT)}%`;
+
+/** What the colour estimate rests on, behind a (?) so the group stays short. */
+function ColoursHelp() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button" variant="ghost" size="icon" className={PHONE_HIT_AREA} aria-label="About the colour estimate">
+          <CircleHelp aria-hidden />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Colour estimate</DialogTitle>
+          <DialogDescription>
+            Sources needed come from Frank Karsten&apos;s 2022 tables for 99-card decks. Odds assume you keep a 7-card hand
+            with 2 to 5 lands and draw on turn one. Mana rocks, dorks and ramp count partly, as he counts them.
+          </DialogDescription>
+        </DialogHeader>
+        <a href={KARSTEN_ARTICLE_URL} target="_blank" rel="noreferrer" className={cn(TEXT_LINK, PHONE_HIT_AREA, "self-start text-sm")}>
+          Karsten&apos;s article
+        </a>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The cards least likely to be cast on curve, worst first, each with its image. */
+function HardToCast({ report, cards }: { report: DeckStatsReport; cards: ReadonlyMap<CardId, CardSummary> }) {
+  const [all, setAll] = useState(false);
+  // Every card shown shows its image: one the panel can't find is left out.
+  const listed = report.mana.hardToCast.filter((h) => cards.has(h.cardId));
+  if (listed.length === 0) return null;
+  const shown = all ? listed : listed.slice(0, HARD_TO_CAST_SHOWN);
+  return (
+    <div className="flex flex-col gap-2">
+      <h4 className="text-sm">Hard to cast on curve</h4>
+      <ul className="flex flex-col gap-2">
+        {shown.map((h) => {
+          const card = cards.get(h.cardId)!;
+          return (
+            <li key={h.cardId} className="flex items-center gap-2 text-sm">
+              <CardImage card={card} variant="small" alt="" sizes={THUMB_SIZES} className="w-10 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                {card.name}
+                {h.commander && <span className="text-xs text-muted-foreground"> · Commander</span>}
+              </span>
+              <span className="shrink-0 font-mono text-xs">
+                {pct(h.chance)} · turn {h.turn}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {listed.length > HARD_TO_CAST_SHOWN && !all && (
+        <Button type="button" variant="ghost" className={cn(PHONE_HIT_AREA, "self-start text-xs")} onClick={() => setAll(true)}>
+          Show all ({listed.length})
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function DeckStatsPanel({
   report,
   cards,
   actionFor,
   bracketAction,
+  combosAction,
   preview,
 }: {
   report: DeckStatsReport;
@@ -174,26 +265,56 @@ export function DeckStatsPanel({
   cards: ReadonlyMap<CardId, CardSummary>;
   actionFor?: (stat: StatLine) => StatAction | null;
   bracketAction?: StatAction | null;
+  /** "Find combos": opens Add's Combos, in the deck tool when it has any. */
+  combosAction?: StatAction | null;
   /** How answering the card on screen would move each line (statDeltas), when one is on screen. */
-  preview?: ReadonlyMap<string, number> | null;
+  preview?: ReadonlyMap<string, StatDelta> | null;
 }) {
   const mana = report.stats.filter((s) => s.group === "mana");
   const roles = report.stats.filter((s) => s.group === "roles");
   const types = report.stats.filter((s) => s.group === "types");
+  const colours = report.stats.filter((s) => s.group === "colours");
+  // The rail and the phone sheet can both be mounted: the heading id must be unique.
+  const coloursHeading = useId();
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">Compared with {report.label}</p>
       <Group title="Mana">
         <ul className="flex flex-col gap-2.5">
           {mana.map((s) => (
-            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key) ?? 0} />
+            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} />
           ))}
         </ul>
       </Group>
+      {(colours.length > 0 || report.mana.hardToCast.length > 0) && (
+        <section className="flex flex-col gap-2" aria-labelledby={coloursHeading}>
+          <div className="flex items-center gap-2">
+            <h3 id={coloursHeading} className="flex-1 text-sm font-semibold text-muted-foreground">
+              Colours
+            </h3>
+            <span className="text-xs text-muted-foreground">Estimate</span>
+            <ColoursHelp />
+          </div>
+          <ul className="flex flex-col gap-2.5">
+            {colours.map((s) => (
+              <Row key={s.key} stat={s} action={null} preview={preview?.get(s.key)} />
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            {report.mana.byTurn.map((b, i) => (
+              <span key={b.turn}>
+                {i > 0 && " · "}
+                {b.turn} by turn {b.turn} <span className="font-mono text-foreground">{pct(b.chance)}</span>
+              </span>
+            ))}
+          </p>
+          <HardToCast report={report} cards={cards} />
+        </section>
+      )}
       <Group title="Roles">
         <ul className="flex flex-col gap-2.5">
           {roles.map((s) => (
-            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key) ?? 0} />
+            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} />
           ))}
         </ul>
       </Group>
@@ -204,7 +325,7 @@ export function DeckStatsPanel({
         <Group title="Types">
           <ul className="flex flex-col gap-2.5">
             {types.map((s) => (
-              <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key) ?? 0} />
+              <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} />
             ))}
           </ul>
         </Group>
@@ -239,6 +360,7 @@ export function DeckStatsPanel({
             ))}
           </ul>
         )}
+        {combosAction && <ActionLink action={combosAction} className="self-start text-xs" />}
       </Group>
     </div>
   );

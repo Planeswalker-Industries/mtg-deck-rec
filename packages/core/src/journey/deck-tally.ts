@@ -1,9 +1,15 @@
 // packages/core/src/journey/deck-tally.ts
-import type { Bracket, BracketSignals, CardId, CardSummary, DeckCombo, StatTargets } from '../contract';
+import type { Bracket, BracketSignals, CardId, CardSummary, ComboRef, DeckCombo, StatTargets } from '../contract';
 import { fitsBracket, type BracketRules } from '../formats/commander/bracket';
 import { curveBucket, isFrontLand, isStatCardType, statCardType } from '../scoring/curve';
 import { isBasicLand } from './builder';
 import { CURVE_TOP_MANA_VALUE } from './deck-stats';
+import { creditedSources, manaBase, manaLetters, type ManaBaseReport, type ManaDeck, type ManaEntry } from './mana-base';
+
+/** Colour row labels. */
+const COLOUR_NAMES: Readonly<Record<string, string>> = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green', C: 'Colourless' };
+/** Preview deltas for colour rows show tenths (a Signet is +0.8, not +0.75). */
+const DELTA_TENTHS = 10;
 
 /** A stat is in line within this share of its target (owner, 2026-10-08). */
 export const STAT_TOLERANCE_SHARE = 0.2;
@@ -20,6 +26,13 @@ export interface TallyCard {
   gameChanger: boolean;
   /** The tracked role ids the card fills (`deck_role_targets`). */
   roles: readonly string[];
+  manaCost?: string | undefined;
+  producedMana?: string | undefined;
+  findsMana?: string | undefined;
+  findsBasicOnly?: boolean | undefined;
+  layout?: string | undefined;
+  /** Commanders only: the deck's colours come from theirs. */
+  colorIdentity?: string | undefined;
 }
 
 export interface TallyEntry {
@@ -45,6 +58,8 @@ export interface DeckTally {
   /** The main deck as the tally last saw it: what `syncTally` diffs against. */
   main: Map<CardId, TallyEntry>;
   commanderIds: Set<CardId>;
+  /** The commanders as passed in: their costs count toward the mana base, their mana doesn't. */
+  commanders: TallyCard[];
 }
 
 export const toTallyCard = (card: CardSummary, roles: readonly string[]): TallyCard => ({
@@ -53,6 +68,12 @@ export const toTallyCard = (card: CardSummary, roles: readonly string[]): TallyC
   manaValue: card.manaValue,
   gameChanger: card.gameChanger,
   roles,
+  manaCost: card.manaCost,
+  producedMana: card.producedMana,
+  findsMana: card.findsMana,
+  findsBasicOnly: card.findsBasicOnly,
+  layout: card.layout,
+  colorIdentity: card.colorIdentity,
 });
 
 export const withinTolerance = (value: number, target: number): boolean =>
@@ -68,6 +89,7 @@ const emptyTally = (): DeckTally => ({
   gameChangers: 0,
   main: new Map(),
   commanderIds: new Set(),
+  commanders: [],
 });
 
 /** Moves the counts by `quantity` copies of a card (negative to take them out). Mutates `tally`. */
@@ -96,6 +118,7 @@ export function buildTally(main: readonly TallyEntry[], commanders: readonly Tal
   for (const { card, quantity } of main) applyCard(tally, card, quantity);
   for (const c of commanders) {
     tally.commanderIds.add(c.id);
+    tally.commanders.push(c);
     if (c.gameChanger) tally.gameChangers++;
   }
   return tally;
@@ -121,14 +144,17 @@ export interface BracketInput {
   /** The analysis's signals: its mass land denial and extra-turn lists are checked against the cards still in the deck. */
   signals: BracketSignals;
   combos: readonly DeckCombo[];
-  /** Cards added this round whose suggestion completed a combo above the bracket. */
-  overBracketIds: ReadonlySet<CardId>;
+  /**
+   * Cards added this round whose suggestion completed a combo above the bracket then, with those combos. Each counts
+   * against the chosen bracket while one of its combos is still over it, so raising the bracket clears it.
+   */
+  overBracketAdds: ReadonlyMap<CardId, readonly ComboRef[]>;
 }
 
-export type StatGroup = 'mana' | 'roles' | 'types';
+export type StatGroup = 'mana' | 'roles' | 'types' | 'colours';
 
 export interface StatLine {
-  /** 'lands', 'basicLands', a role id or a card type ('creature'). */
+  /** 'lands', 'basicLands', a role id, a card type ('creature') or a colour's sources ('sources:B'). */
   key: string;
   group: StatGroup;
   label: string;
@@ -157,7 +183,21 @@ export interface DeckStatsReport {
   okCount: number;
   total: number;
   level: DeckStatsLevel;
+  /**
+   * The mana base beyond the colour rows (which are in `stats`): cards under target and mana by turn, and the deck it
+   * was read from, which `statDeltas` reads again with the card on screen in or out.
+   */
+  mana: Pick<ManaBaseReport, 'hardToCast' | 'byTurn'> & { deck: ManaDeck };
 }
+
+/**
+ * Whether moving a line by `delta`, its target becoming `targetAfter`, brings it closer to the target; for a `minimum`
+ * line (colour sources), whether it ends further above it.
+ */
+export const towardTarget = (value: number, target: number, delta: number, minimum = false, targetAfter = target): boolean =>
+  minimum
+    ? value + delta - targetAfter > value - target
+    : Math.abs(value + delta - targetAfter) < Math.abs(value - target);
 
 const inDeck = (tally: DeckTally, id: CardId) => tally.main.has(id) || tally.commanderIds.has(id);
 
@@ -175,7 +215,11 @@ function bracketFits(tally: DeckTally, targets: StatTargets, input: BracketInput
   };
   // fitsBracket reads only the limits; the tag ids are how the server found the cards, already done.
   const rules: BracketRules = { ...limits, massLandDenialTagIds: [], extraTurnTagIds: [] };
-  const overBracketAdd = [...input.overBracketIds].some((id) => inDeck(tally, id));
+  // As the server's overBracket reads a combo: above its minimum, or an extra-turn loop the bracket forbids.
+  const comboOver = (c: ComboRef) =>
+    c.minBracket > input.chosen ||
+    (input.chosen < limits.extraTurnLoopFromBracket && c.results.some((r) => limits.extraTurnLoopResults.includes(r)));
+  const overBracketAdd = [...input.overBracketAdds].some(([id, refs]) => inDeck(tally, id) && refs.some(comboOver));
   return { ok: fitsBracket(signals, input.chosen, rules) && !overBracketAdd, combos };
 }
 
@@ -196,10 +240,38 @@ function statLines(tally: DeckTally, targets: StatTargets): Omit<StatLine, 'star
   ];
 }
 
-/** Grades the tally against the targets: about twenty comparisons, never a pass over the deck. */
+const deckColoursOf = (tally: DeckTally) => manaLetters(tally.commanders.flatMap((c) => [...(c.colorIdentity ?? '')]));
+const colourKey = (colour: string) => `sources:${colour}`;
+
+/** The colour rows. The start tick is the start deck measured against today's requirement, so the two compare. */
+function colourLines(mana: ManaBaseReport, start: readonly ManaEntry[] | null, deckColours: string): StatLine[] {
+  return mana.colours.map((need) => {
+    const value = Math.floor(need.sources);
+    return {
+      key: colourKey(need.colour),
+      group: 'colours' as const,
+      label: `${COLOUR_NAMES[need.colour] ?? need.colour} sources`,
+      value,
+      target: need.needed,
+      // A minimum, not a band: more sources are never a problem.
+      ok: need.sources >= need.needed,
+      start: start ? Math.floor(creditedSources(start, need.colour, need.manaValue, deckColours)) : value,
+    };
+  });
+}
+
+/**
+ * Grades the tally against the targets. The mana base reads the deck once per report (about a hundred cards; the
+ * odds are cached) and the start deck once per colour row; everything else is about twenty comparisons.
+ */
 export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: BracketInput, start: DeckTally = tally): DeckStatsReport {
   const startLines = new Map(statLines(start, targets).map((s) => [s.key, s.value]));
-  const stats = statLines(tally, targets).map((s) => ({ ...s, start: startLines.get(s.key) ?? s.value }));
+  const deck: ManaDeck = { main: [...tally.main.values()], commanders: [...tally.commanders], deckColours: deckColoursOf(tally) };
+  const mana = manaBase(deck.main, deck.commanders, deck.deckColours);
+  const stats = [
+    ...statLines(tally, targets).map((s) => ({ ...s, start: startLines.get(s.key) ?? s.value })),
+    ...colourLines(mana, start === tally ? null : [...start.main.values()], deck.deckColours),
+  ];
   const bars = targets.curve.map((target, manaValue) => {
     const value = tally.curve[manaValue] ?? 0;
     return { manaValue, value, target, ok: withinTolerance(value, target), start: start.curve[manaValue] ?? 0 };
@@ -209,7 +281,16 @@ export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: Brack
   const okCount = stats.filter((s) => s.ok).length + (curve.ok ? 1 : 0) + (fit.ok ? 1 : 0);
   const total = stats.length + 2;
   const level: DeckStatsLevel = okCount === total ? 'ok' : okCount >= total * STAT_MILD_SHARE ? 'mild' : 'urgent';
-  return { label: targets.label, stats, curve, bracket: { ok: fit.ok, chosen: bracket.chosen, combos: fit.combos }, okCount, total, level };
+  return {
+    label: targets.label,
+    stats,
+    curve,
+    bracket: { ok: fit.ok, chosen: bracket.chosen, combos: fit.combos },
+    okCount,
+    total,
+    level,
+    mana: { hardToCast: mana.hardToCast, byTurn: mana.byTurn, deck },
+  };
 }
 
 /**
@@ -243,12 +324,48 @@ export function tallyCache() {
   };
 }
 
+/** How a line would move with the card on screen answered; `target` is set on a colour row whose requirement moves. */
+export interface StatDelta {
+  delta: number;
+  target?: number;
+}
+
+/** The deck with one copy of `add` in and one of `remove` out. */
+function withSwap(main: readonly ManaEntry[], add: TallyCard | null, remove: TallyCard | null): ManaEntry[] {
+  const next = new Map(main.map((e) => [e.card.id, e]));
+  const move = (card: TallyCard, quantity: number) => {
+    const held = (next.get(card.id)?.quantity ?? 0) + quantity;
+    if (held > 0) next.set(card.id, { card, quantity: held });
+    else next.delete(card.id);
+  };
+  if (add) move(add, 1);
+  if (remove) move(remove, -1);
+  return [...next.values()];
+}
+
+/** A report's mana base kept by its deck, so a preview reads the deck once per report rather than once per card. */
+const manaOfDeck = new WeakMap<ManaDeck, ManaBaseReport>();
+const manaBaseOf = (deck: ManaDeck): ManaBaseReport => {
+  const known = manaOfDeck.get(deck);
+  if (known) return known;
+  const mana = manaBase(deck.main, deck.commanders, deck.deckColours);
+  manaOfDeck.set(deck, mana);
+  return mana;
+};
+
 /**
  * How each stat line would move if `add` went into the deck and `remove` came out: +1 for a role, land or card type
- * count the incoming card adds to, -1 for one the outgoing card takes from. Lines that wouldn't move are left out. Deck
- * stats shows these beside the counts while a card is on screen, so the player sees what answering it does.
+ * count the incoming card adds to, -1 for one the outgoing card takes from. Colour rows need the report's `deck`: the
+ * mana base is read again with the card in or out, so a card that becomes (or stops being) the hardest to cast moves
+ * the target too; their deltas are in tenths (a Signet is +0.8, not +0.75). Lines that wouldn't move are left out.
+ * Deck stats shows these beside the counts while a card is on screen, so the player sees what answering it does.
  */
-export function statDeltas(lines: readonly Pick<StatLine, 'key'>[], add: TallyCard | null, remove: TallyCard | null): Map<string, number> {
+export function statDeltas(
+  lines: readonly Pick<StatLine, 'key' | 'group'>[],
+  add: TallyCard | null,
+  remove: TallyCard | null,
+  deck?: ManaDeck,
+): Map<string, StatDelta> {
   const counts = (card: TallyCard | null, key: string): number => {
     if (!card) return 0;
     if (key === 'lands') return isFrontLand(card.typeLine) ? 1 : 0;
@@ -256,10 +373,22 @@ export function statDeltas(lines: readonly Pick<StatLine, 'key'>[], add: TallyCa
     if (isStatCardType(key)) return statCardType(card.typeLine) === key ? 1 : 0;
     return card.roles.includes(key) ? 1 : 0;
   };
-  const deltas = new Map<string, number>();
-  for (const { key } of lines) {
+  const deltas = new Map<string, StatDelta>();
+  for (const { key, group } of lines) {
+    if (group === 'colours') continue;
     const delta = counts(add, key) - counts(remove, key);
-    if (delta !== 0) deltas.set(key, delta);
+    if (delta !== 0) deltas.set(key, { delta });
+  }
+  if (!deck || (!add && !remove)) return deltas;
+  const before = manaBaseOf(deck);
+  const after = manaBase(withSwap(deck.main, add, remove), deck.commanders, deck.deckColours);
+  for (const need of before.colours) {
+    const key = colourKey(need.colour);
+    const next = after.colours.find((n) => n.colour === need.colour);
+    if (!next || !lines.some((l) => l.key === key)) continue;
+    const delta = Math.round((next.sources - need.sources) * DELTA_TENTHS) / DELTA_TENTHS;
+    if (next.needed !== need.needed) deltas.set(key, { delta, target: next.needed });
+    else if (delta !== 0) deltas.set(key, { delta });
   }
   return deltas;
 }

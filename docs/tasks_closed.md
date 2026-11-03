@@ -36,6 +36,7 @@ One sentence each, so the gaps in the numbering have a reason. Ticket ids are ne
 - **T040** Drop the unused `rec_add_candidates(p_deck_count)` overload (2026-10-07): folded into T067.
 - **T042** Make the daily crawl cron produce runs (2026-10-07): a run has started in the cron's hour every day since 2026-10-02.
 - **T045** Design the deck analysis display (2026-10-20): Deck stats P1 released in PR #143 and signed off by the owner.
+- **T046** Mana base analysis (2026-11-02): Deck stats' Colours group checks coloured sources against Frank Karsten's 2022 tables, with on-curve odds per card and mana by turn (contract v32).
 - **T047** Combo detection in the bracket estimate (2026-10-07): built as T060.
 - **T048** Role counts against the commander's decks (2026-10-20): delivered by Deck stats P1.
 - **T050** Start a deck from one commander (2026-10-12): `/deck?start=build` picks a commander and builds a deck for it.
@@ -53,7 +54,9 @@ One sentence each, so the gaps in the numbering have a reason. Ticket ids are ne
 - **T063** Build a deck from a commander and a bracket (2026-10-07): `POST /api/recs/build` live with contract v24.
 - **T064** Deck affinity from card pairs (2026-10-07): card pairs built on hosted, and `deck` weighs 0.1 in adds.
 - **T065** Live accept rate (2026-10-07): `rec_events` live, written by the server only.
+- **T069** Scoring UI (2026-11-02): owned cards marked in the image corner where owned and unowned mix, combos as a second part of Add (Collection Ready Combos and priced Combo Upgrades, best result first by `app_config.scoring.combos`, contract v31) with combo pieces protected in Cut and Swap, Build card detail (score and origin), the build's bracket estimate and `build` accept-rate events, and coverage on saved decks; the `emptyReason` copy and Deck stats combos were already live. Hosted serves combos once the owner runs the local Spellbook sync file (collate and precompute output, kept outside the repo). When the buy list returns, the deck tool defaults to owned only and `app_config.ownership.firstBoost` (0.1) is retuned.
 - **T070** Derived commander pairs (2026-10-20): released 2026-10-08, 1,056 pairs derived on hosted; the parity check and the cache were moot.
 - **T071** Deck stats card types (2026-11-02): six type lines between Curve and Bracket (contract v30); hosted shows them once a full pass writes `commander_stats.type_profile`.
+- **T072** Deck stats follow-ups (2026-11-02): sticky sheet handle, footer pointer capture and keyboard toggle, "Pick cuts" in Cut opens the list, "Find …" in Cut counts room after the pending cuts, and a raised bracket clears an over-bracket add; Finish's role comparison was already there (`RoundMoves`, since 2026-10-14).
 - **T073** Deck journey UX overhaul follow-ups (2026-10-19): released in PRs #150–#152 (contract v28).
 - **T076** Decks that stay under 100 (2026-11-02): collection builds fill to 99 where the collection allows, and Add running out offers Allow Singles, then basic lands for the holes, with a Deck Under 100 check before Cut (PR #170).

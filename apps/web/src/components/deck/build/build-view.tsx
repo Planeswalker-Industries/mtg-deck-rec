@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
@@ -17,6 +18,7 @@ import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { ShuffleDeck } from "../shuffle-deck";
+import { BuildCardSheet } from "./build-card-sheet";
 import {
   buildCards,
   buildDecklist,
@@ -100,6 +102,19 @@ function fitSummary(listCopies: number, removed: number, added: number): string 
   return `Kept ${kept} of the list's ${listCopies} cards. ${count(removed, "card")} you don't own ${removed === 1 ? "was" : "were"} swapped for ${count(added, "card")} from your collection.`;
 }
 
+/** The build's estimated bracket against the one asked for: a status, so its colour comes with an icon and a word. */
+function BracketEstimate({ asked, estimated }: { asked: Bracket; estimated: Bracket }) {
+  const fits = estimated <= asked;
+  const Icon = fits ? CircleCheck : TriangleAlert;
+  return (
+    <p className="flex items-center gap-2">
+      <Icon aria-hidden className={cn("size-5 shrink-0", fits ? "text-success" : "text-destructive")} />
+      {fits ? "Fits" : "Over"} bracket {asked}
+      <span className="text-xs text-muted-foreground">Estimated</span>
+    </p>
+  );
+}
+
 /**
  * One group of the build's cards, as whole card images or as plates (the toggle above the groups). In the image grid a
  * card with several copies says how many; `alwaysCount` says it for one copy too (basic lands).
@@ -110,18 +125,21 @@ function BuildCards({
   entries,
   mark,
   alwaysCount = false,
+  onSelect,
 }: {
   view: DeckView;
   label: string;
   entries: readonly { card: CardSummary; quantity: number }[];
   mark?: "cut" | "add";
   alwaysCount?: boolean;
+  /** Opens a card's detail: its score and where it came from. */
+  onSelect?: (cardId: CardId) => void;
 }) {
   if (view === "plates") {
     return (
       <ul aria-label={label} className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
         {entries.map(({ card, quantity }) => (
-          <CardPlate key={card.id} card={card} quantity={quantity} mark={mark} />
+          <CardPlate key={card.id} card={card} quantity={quantity} mark={mark} onSelect={onSelect ? () => onSelect(card.id) : undefined} />
         ))}
       </ul>
     );
@@ -130,6 +148,7 @@ function BuildCards({
     <PocketGrid
       zoomable
       label={label}
+      {...(onSelect ? { onSelect: (card: CardSummary) => onSelect(card.id) } : {})}
       items={entries.map(({ card, quantity }) => ({
         card,
         ...(mark ? { mark } : {}),
@@ -202,6 +221,7 @@ export function BuildView({
   onPickAnother: () => void;
 }) {
   const [view, setView] = useDeckView("build");
+  const [detail, setDetail] = useState<CardId | null>(null);
   const { request } = state;
   const fitting = request.list !== undefined;
   const commanderName = request.commanders.map((c) => c.name).join(" and ");
@@ -270,6 +290,7 @@ export function BuildView({
   const decklist = buildDecklist(result);
   const { open, roleShortfalls } = result.feasibility;
   const basicCount = result.basics.reduce((n, b) => n + b.quantity, 0);
+  const builtCards = new Map(result.groups.flatMap((g) => g.cards).map((c) => [c.card.id, c]));
   const fit = fitDiff(request, result);
 
   return (
@@ -292,6 +313,7 @@ export function BuildView({
           {fromCollection && <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />}
           {summary(result, fromCollection)}
         </p>
+        <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
         {roleShortfalls.length > 0 && <RoleShortfalls shortfalls={roleShortfalls} />}
         {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
         <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
@@ -313,33 +335,35 @@ export function BuildView({
           to build from the cards you own instead.
         </p>
       )}
-      {fromCollection && open > 0 && (
-        // The buy side is shelved. The slot it will fill stays visible, honestly empty.
-        <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:py-2">
-          {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
-          <div className="flex items-center justify-between gap-2">
-            <h2 id="build-open-slots" className="font-semibold">
-              {count(open, "open slot")}
-            </h2>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" className={cn(PHONE_HIT_AREA, "sm:hidden")} aria-label="What open slots mean">
-                  <CircleHelp aria-hidden />
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>{count(open, "open slot")}</DialogTitle>
-                  <DialogDescription>{OPEN_SLOTS_HELP}</DialogDescription>
-                </DialogHeader>
-              </DialogContent>
-            </Dialog>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>
-        </aside>
-      )}
-
-      <DeckViewToggle view={view} onChange={setView} />
+      {/* On phones the open slots panel shares a row with the view toggle, so the cards start higher. */}
+      <div className="flex items-center gap-2 sm:flex-col sm:items-stretch sm:gap-6">
+        {fromCollection && open > 0 && (
+          // The buy side is shelved. The slot it will fill stays visible, honestly empty.
+          <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:py-0">
+            {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="build-open-slots" className="font-semibold max-sm:text-sm">
+                {count(open, "open slot")}
+              </h2>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className={cn(PHONE_HIT_AREA, "sm:hidden")} aria-label="What open slots mean">
+                    <CircleHelp aria-hidden />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{count(open, "open slot")}</DialogTitle>
+                    <DialogDescription>{OPEN_SLOTS_HELP}</DialogDescription>
+                  </DialogHeader>
+                </DialogContent>
+              </Dialog>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>
+          </aside>
+        )}
+        <DeckViewToggle view={view} onChange={setView} className="ml-auto max-sm:self-center" />
+      </div>
 
       <FitChanges request={request} result={result} view={view} />
 
@@ -348,7 +372,12 @@ export function BuildView({
           <h2 id={`build-${group.category}`} className="font-heading text-xl leading-none font-semibold">
             {cardCategoryLabel[group.category]} <span className="font-mono text-base font-normal text-muted-foreground">{group.cards.length}</span>
           </h2>
-          <BuildCards view={view} label={cardCategoryLabel[group.category]} entries={group.cards.map((c) => ({ card: c.card, quantity: 1 }))} />
+          <BuildCards
+            view={view}
+            label={cardCategoryLabel[group.category]}
+            entries={group.cards.map((c) => ({ card: c.card, quantity: 1 }))}
+            onSelect={setDetail}
+          />
         </section>
       ))}
       {result.basics.length > 0 && (
@@ -359,6 +388,7 @@ export function BuildView({
           <BuildCards view={view} label="Basic Lands" entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))} alwaysCount />
         </section>
       )}
+      <BuildCardSheet card={detail === null ? null : (builtCards.get(detail) ?? null)} onClose={() => setDetail(null)} />
     </section>
   );
 }

@@ -18,37 +18,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] Three daily runs in a row without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
 - [ ] Run 20 (2026-10-13, still `running`) closed as failed, and a redeploy that kills a run leaves it marked failed
 
-## T072: Deck stats follow-ups
-
-**MEDIUM** · Frontend
-
-- [ ] Finish (`review-phase.tsx`) compares role counts before and after
-- [ ] Polish, each fixed or struck with a reason: the sheet's handle scrolls away (make it sticky); the footer has no pointer capture (`deck-stats-footer.tsx`); after a touch swipe the next Enter on the footer is swallowed once; "Pick cuts" does nothing while in Cut (`deck-tool.tsx` `statAction`); "Find …" in Cut counts slots open now, not after the pending cuts; an add that completed an over-bracket combo stays flagged after the bracket is raised (`use-deck-journey.ts` `overBracketIds`)
-
-## T069: Scoring UI
-
-**MEDIUM** · Frontend · The data, scoring and contract are live
-
-- [ ] Collection mode (T059): release the built control and whole-deck coverage; per-suggestion ownership labels; builder and saved-page coverage
-- [ ] Swap with nothing owned: show `SwapResult.emptyReason` (`NOTHING_OWNED_FITS`, `NO_TAGS_ON_TARGET`, `NO_CANDIDATES`) in place of "No replacements do the same job"
-- [ ] Combos and bracket (T060), in Deck stats, once hosted has combos (Spellbook loads raw daily since 2026-10-23; a hand `collate` and precompute serve them): the "complete a combo" group, `completesOverBracket`, `DeckAnalysis.combos`, `bracketSignals`; credit and link Commander Spellbook wherever combos show
-- [ ] Build mode (T063): each card's score and origin, "complete a combo" entries, the build's bracket estimate, saving a build directly, accept-rate events as mode `build` (T065)
-- [ ] Each checked at 390×844 within the swipe budget
-
-The buy list and value fill are shelved (owner, 2026-10-12). When the buy list returns, the deck tool defaults to owned only, and `app_config.ownership.firstBoost` (0.1) is retuned then (closed T037).
-
-## T046: Mana base analysis
-
-**MEDIUM** · Core / Frontend · Placement: Deck stats · Display only; steering Add is T078
-
-Can the lands cast the spells: coloured sources against Frank Karsten's thresholds for each card's pips and turn, the cards least likely to be cast on curve (worst first), and a plain "N sources short on black". Deterministic, no AI. `cards.produced_mana` is stored (T073; 2,711 cards on hosted) but not sent to the client.
-
-- [ ] A contract field (or lookup) carrying it, with a version bump
-- [ ] Source-count analysis beside `packages/core/src/journey/deck-stats.ts`, tested for hybrid and Phyrexian pips, MDFC lands and commander pips; the thresholds as a constants module that names its source
-- [ ] Shown in Deck stats, labelled as an estimate
-
-Sanity check, not ground truth: EDHcheck on the sample Liesa deck reaches 3 mana by T3 50%, T4 80%, T6 95%, wants 8 more black sources for Damn and puts Avacyn at 34.7% on curve; don't copy its advice text. A Monte Carlo goldfish (in a Web Worker) only if Deck stats needs it.
-
 ## T077: Feedback reports
 
 **MEDIUM** · Database / Frontend · Owner, 2026-10-23 · Replaces the GitHub Report link until T003

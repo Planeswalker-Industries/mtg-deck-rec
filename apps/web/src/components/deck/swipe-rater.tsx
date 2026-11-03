@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { compareCards, type CompareCard } from "@mtg/core/journey";
+import { ownedOnly } from "@mtg/core/scoring";
 import { CompactCardPanel, CompareMarks, DecisionButtons } from "@/components/cards/card-panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -140,6 +141,8 @@ export function SwipeRater({
     : [];
   const targetRules = rulesFor(target.card.id);
   const candidateRules = candidate ? rulesFor(candidate.card.id) : undefined;
+  // Owned replacements are marked only where they mix with cards to buy: in Owned only every one is owned.
+  const markOwned = context.ownership !== null && !ownedOnly(context);
   const marks =
     candidate && targetRules !== undefined && candidateRules !== undefined
       ? compareCards(
@@ -217,7 +220,7 @@ export function SwipeRater({
       ) : (
         <>
           <div aria-live="polite" className="flex flex-col gap-2">
-            <CompactCardPanel card={candidate.card} rules={candidateRules} side="in">
+            <CompactCardPanel card={candidate.card} rules={candidateRules} side="in" owned={markOwned && candidate.owned !== null}>
               <span className="font-mono max-sm:hidden">
                 {describeCostDelta(candidate.costDelta)} · {rater.candidateIndex + 1} of {rater.candidateCount}
               </span>

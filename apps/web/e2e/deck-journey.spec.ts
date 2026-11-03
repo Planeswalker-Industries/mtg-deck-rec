@@ -260,3 +260,64 @@ test("returning to Swap with the deck unchanged asks for nothing again", async (
   await expect(swapIn).toBeVisible({ timeout: 60_000 });
   expect(await loadingSeen()).toContain("Looking at the deck again");
 });
+
+test("Add's combos: ready and upgrade sections, Add Combo, and the pieces protected in Cut", async ({ page }) => {
+  test.skip(process.env.E2E_LOCAL_DATA === "1", "The stand-in combos exist only in the mocks");
+  const recs = await analyzeDeck(page);
+  await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
+
+  // The deck holds Sol Ring and Counterspell, each one card short of a stand-in combo.
+  await recs.getByRole("button", { name: "Combos (2)" }).click();
+  await expect(recs.getByRole("heading", { name: "Combos" })).toBeVisible();
+  await expect(recs.getByRole("link", { name: "Commander Spellbook" })).toHaveAttribute("href", "https://commanderspellbook.com/");
+  // No collection: the ready section is the way to upload one.
+  await expect(recs.getByRole("link", { name: "Upload a collection" })).toHaveAttribute("href", /collection%2Fimport|collection\/import/);
+  const upgrades = recs.locator("details", { hasText: "Combo Upgrades" });
+  if (!(await upgrades.getAttribute("open").then((v) => v !== null))) await upgrades.locator("summary").click();
+  await expect(upgrades.getByText("Win the game")).toBeVisible();
+  await expect(upgrades.getByRole("link", { name: "via Counterspell" })).toHaveAttribute("href", /commanderspellbook\.com\/combo\/mock-combo-2\//);
+  await expect(upgrades.getByText(/^About \$/).first()).toBeVisible();
+
+  const before = await deckCount(recs);
+  await upgrades.getByRole("button", { name: /^Add Swan Song/ }).click();
+  await expect.poll(() => deckCount(recs)).toBe(before + 1);
+  await expect(upgrades.getByRole("button", { name: /^Add Swan Song/ })).toHaveCount(0);
+
+  // Counterspell and Swan Song now make a combo: Cut warns before either goes.
+  await recs.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click();
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
+  await recs.getByRole("button", { name: "Show as a list" }).click();
+  await expect(recs.getByText("Combo piece: Win the game").first()).toBeVisible({ timeout: 60_000 });
+});
+
+/** From a fresh analysis to Swap's list, as the Replace swipe test gets there; the names Swap deals. */
+async function swapTargets(page: Page, addSwanSong: boolean): Promise<string[]> {
+  const recs = await analyzeDeck(page);
+  await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
+  if (addSwanSong) {
+    await recs.getByRole("button", { name: /^Combos \(\d+\)$/ }).click();
+    const upgrades = recs.locator("details", { hasText: "Combo Upgrades" });
+    if ((await upgrades.getAttribute("open")) === null) await upgrades.locator("summary").click();
+    await upgrades.getByRole("button", { name: /^Add Swan Song/ }).click();
+  }
+  await openCut(page);
+  await recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD }).click({ timeout: 60_000 });
+  await recs.getByRole("button", { name: "Next", exact: true }).first().click();
+  const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
+  await expect(rater.or(recs.getByRole("button", { name: "Next: finish" })).first()).toBeVisible({ timeout: 20_000 });
+  await recs.getByRole("button", { name: "Show as a list" }).click();
+  const list = recs.getByRole("list", { name: "Cards worth replacing" });
+  await expect(list).toBeVisible({ timeout: 20_000 });
+  return list.getByRole("listitem").allInnerTexts();
+}
+
+test("Swap never deals a piece of a combo the deck holds", async ({ page, browser }) => {
+  test.skip(process.env.E2E_LOCAL_DATA === "1", "The stand-in combos exist only in the mocks");
+  const without = await swapTargets(page, false);
+  test.skip(!without.some((t) => t.includes("Counterspell")), "Swap doesn't deal Counterspell in this data, so there's nothing to hold back");
+  // A fresh visitor, so the deck tool doesn't offer the last deck back.
+  const fresh = await browser.newContext({ viewport: page.viewportSize() });
+  const withCombo = await swapTargets(await fresh.newPage(), true);
+  await fresh.close();
+  expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
+});

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-/** Footer button of the docked readout; its name reads "Deck stats Mild, 5 of 14 in line". */
+/** Footer button of the docked readout; its name reads "Deck stats Mild, 5 of 17 in line". */
 const FOOTER_NAME = /^Deck stats/;
 /** The Add swipe's gesture buttons, "Add <card>" and "Skip <card>", inside its sitting. */
 const ADD_CARD = /^Add /;
@@ -10,6 +10,8 @@ const SWAP_IN = /^Swap in /;
 const PASS_ON = /^Pass on /;
 /** Rounding slack for comparing layout boxes, in CSS pixels. */
 const LAYOUT_SLACK_PX = 1;
+/** How far the touch test drags up the footer: past its SWIPE_OPEN_PX (24) and out of the bar. */
+const SWIPE_TEST_PX = 80;
 
 async function analyzeSample(page: Page) {
   await page.goto("/deck");
@@ -40,7 +42,8 @@ test.describe("deck stats on a phone", () => {
     const footer = page.getByRole("button", { name: FOOTER_NAME });
     await expect(footer).toBeVisible();
     await expect(footer).toContainText(/(OK|Mild|Urgent)/);
-    await expect(footer).toContainText(/\d+\/14/);
+    // Colour rows join the count, so the total depends on the commander's colours.
+    await expect(footer).toContainText(/\d+\/\d+/);
 
     await footer.click();
     const sheet = page.getByRole("dialog", { name: "Deck stats" });
@@ -52,6 +55,22 @@ test.describe("deck stats on a phone", () => {
     // Add swipe, the first step. The sample deck is short, so this also covers the open slots it has to fill.
     const sitting = page.getByRole("region", { name: "Cards to add" });
     await expectAboveFooter(page, [sitting.getByRole("button", { name: ADD_CARD }).first(), sitting.getByRole("button", { name: SKIP_CARD }).first()]);
+  });
+
+  test("the readout shows the colours estimate with the hardest cards to cast", async ({ page }) => {
+    await analyzeSample(page);
+    await page.getByRole("button", { name: FOOTER_NAME }).click();
+    const sheet = page.getByRole("dialog", { name: "Deck stats" });
+    const colours = sheet.getByRole("region", { name: "Colours" });
+    await expect(colours).toBeVisible();
+    await expect(colours.getByText("Estimate")).toBeVisible();
+    await expect(colours.getByText(/ sources$/).first()).toBeVisible();
+    await expect(colours.getByText(/3 by turn 3/)).toBeVisible();
+    const hard = colours.getByRole("listitem").filter({ hasText: /% · turn \d+$/ });
+    await expect(hard.first()).toBeVisible();
+    await expect(hard.first().locator("img")).toBeVisible();
+    await colours.getByRole("button", { name: "About the colour estimate" }).click();
+    await expect(page.getByRole("link", { name: "Karsten's article" })).toBeVisible();
   });
 
   test("the Swap step keeps both rows and its buttons above the footer", async ({ page }) => {

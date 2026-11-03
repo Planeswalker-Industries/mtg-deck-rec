@@ -20,12 +20,13 @@ import type {
   ResolveVia,
 } from "@mtg/core/contract";
 import { normalizeName, parseDecklist } from "@mtg/core/parse";
-import { statTargetsFor } from "@mtg/core/scoring";
+import { resultWeigher, statTargetsFor, type ScoringConfig } from "@mtg/core/scoring";
 import { loadBracketBasics } from "./brackets";
 import { fetchCardsById, toCardSummary, toCommanderFacts, type CardRow } from "./cards";
 import { commanderKeyCounts, loadCommanderCorpus, sourcesProfile, type CommanderCorpus } from "./corpus";
 import { loadStatInputs, type StatInputs } from "./deck-stats";
 import { loadDeckCombos } from "./serving";
+import { loadScoringConfig } from "./scoring-config";
 import type { PublicClient } from "./supabase";
 
 /** Typo matches at or above this trigram similarity are accepted and flagged; below it the line stays unresolved. */
@@ -117,12 +118,18 @@ export interface DeckBracket {
   rules: BracketRules;
   cards: BracketCards;
   combos: ComboFacts[];
+  /** The combo settings, which put each combo's result that matters most first; without them, Spellbook's order. */
+  comboSettings?: ScoringConfig["combos"];
 }
 
 async function loadDeckBracket(db: PublicClient, deck: DeckInput): Promise<DeckBracket> {
   const mainIds = [...new Set(deck.cards.filter((c) => c.section === "main").map((c) => c.cardId))];
-  const [basics, combos] = await Promise.all([loadBracketBasics(db), loadDeckCombos(db, mainIds, deck.commanders)]);
-  return { ...basics, combos };
+  const [basics, combos, scoring] = await Promise.all([
+    loadBracketBasics(db),
+    loadDeckCombos(db, mainIds, deck.commanders),
+    loadScoringConfig(),
+  ]);
+  return { ...basics, combos, comboSettings: scoring.combos };
 }
 
 /** Commander analysis for a resolved deck. Without corpus data, the commander key reports no decks. */
@@ -162,7 +169,9 @@ export function analyzeDeck(
     estimatedBracket,
     bracketSignals: signals,
     gameChangerIds,
-    combos: bracket.combos.filter((c) => c.missing === null).map(deckCombo),
+    combos: bracket.combos
+      .filter((c) => c.missing === null)
+      .map((c) => deckCombo(c, bracket.comboSettings ? resultWeigher(bracket.comboSettings) : undefined)),
     statTargets:
       stats && commanderRows.length > 0
         ? statTargetsFor({

@@ -332,6 +332,34 @@ describe('bracket rules and combos (T060)', () => {
     expect(combos?.[0]).toMatchObject({ pieceIds: [52], url: 'https://commanderspellbook.com/combo/52-53/', minBracket: 3 });
   });
 
+  it('puts the result that matters most first, and caps owned and unowned combo cards apart', () => {
+    const lifegain = combo('52-53', [52, 53], 3, 53, ['Near-infinite lifegain', 'Target opponent loses the game']);
+    const tokens = combo('50-51', [50, 51], 3, 51, ['Infinite creature tokens with haste']);
+    const kept = combo('40-41', [40, 41], 3, 41, ['Infinite turns']);
+    const result = rankAdds({
+      context: { ...context('only', [40, 50, 52]), bracket: 3 },
+      poolIds: [1, 2],
+      cards: allCards,
+      rates: lowRates,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: { ...TEST_SCORING, combos: { ...TEST_SCORING.combos, maxSuggestions: 1 } },
+      availability: availability({ owned: new Map([[51, 1]]), builtDecks: [] }, twins),
+      standIns: allCards,
+      bracketFacts: { rules, cards: bracketCards, combos: [lifegain, tokens, kept] },
+      limitPerCategory: 10,
+    });
+    // One owned (Exarch) and one to buy (Consultation beats Time Warp on what it does), even in 'only' mode.
+    expect(result.combos?.map((c) => [c.card.name, c.owned !== null])).toEqual([
+      ['Demonic Consultation', false],
+      ['Deceiver Exarch', true],
+    ]);
+    expect(result.combos?.[0]?.results).toEqual(['Target opponent loses the game', 'Near-infinite lifegain']);
+  });
+
   it('says when an add would complete a combo above the bracket, and leaves that combo out of the group', () => {
     const over = combo('50-51', [50, 51], 4, 51, ['Infinite creature tokens with haste']);
     const result = addsAt(3, [50], [over]);

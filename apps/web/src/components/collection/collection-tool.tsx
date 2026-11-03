@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "cn";
 import Link from "next/link";
 import type { Route } from "next";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { CollectionTotals, ResolvedCollectionRow, UnresolvedCollectionRow } from "@mtg/core/contract";
 import { appendCsvPage, collectionLink } from "@mtg/core/parse";
 import { importCollectionFromLinkAction } from "@/app/collection/actions";
@@ -59,8 +59,20 @@ interface Problem {
 const LINK = cn(TEXT_LINK, "font-semibold");
 
 export function CollectionTool() {
-  const next = useSearchParams().get("next");
+  const params = useSearchParams();
+  const next = params.get("next");
+  // `ifEmpty`: the deck tool's "Upload a collection" sends players here after signing in; one whose account already
+  // has a collection goes straight back.
+  const ifEmpty = params.get("ifEmpty") === "1";
+  const router = useRouter();
   const { source, setSource } = useCollectionSource();
+  // Decided once, on the collection as the page found it: an import made here stays to show how it went.
+  const returnChecked = useRef(false);
+  useEffect(() => {
+    if (!ifEmpty || returnChecked.current || source.kind === "loading") return;
+    returnChecked.current = true;
+    if (source.kind === "account") router.replace(safeNextPath(next, "/deck") as Route);
+  }, [ifEmpty, source.kind, next, router]);
   const parse = useCollectionParser();
   const [text, setText] = useState("");
   /** The file the text came from, so the import can say what it is working on. */

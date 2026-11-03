@@ -2,11 +2,11 @@
 
 import { useRef, useState, type ComponentProps } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
-import type { StatLine } from "@mtg/core/journey";
+import { towardTarget, type StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { LevelBadge } from "./level";
-import { DeckStatsPanel, towardTarget, type StatAction } from "./deck-stats-panel";
+import { DeckStatsPanel, type StatAction } from "./deck-stats-panel";
 
 /** A drag this far up the footer opens the sheet; shorter is a tap. */
 const SWIPE_OPEN_PX = 24;
@@ -43,13 +43,14 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
   const actions = {
     actionFor: actionFor && ((stat: StatLine) => closing(actionFor(stat))),
     bracketAction: closing(panel.bracketAction),
+    combosAction: closing(panel.combosAction),
   };
   const startY = useRef<number | null>(null);
   const swiped = useRef(false);
   const previewLines = panel.preview
     ? report.stats.flatMap((stat) => {
-        const delta = panel.preview?.get(stat.key) ?? 0;
-        return delta === 0 ? [] : [{ stat, delta }];
+        const preview = panel.preview?.get(stat.key);
+        return preview ? [{ stat, preview }] : [];
       }).slice(0, PREVIEW_LINES)
     : [];
 
@@ -69,6 +70,8 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
           aria-controls={open ? "deck-stats-sheet" : undefined}
           className="page-column flex min-h-12 w-full cursor-pointer touch-none items-center justify-between gap-3 px-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
           onPointerDown={(e) => {
+            // Captured, so a mouse drag that leaves the bar still ends here.
+            e.currentTarget.setPointerCapture(e.pointerId);
             startY.current = e.clientY;
             swiped.current = false;
           }}
@@ -79,8 +82,12 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             }
             startY.current = null;
           }}
-          onClick={() => {
-            if (swiped.current) return;
+          onClick={(e) => {
+            // The click a mouse swipe ends with is skipped. A touch swipe fires none, so the flag can outlive it: a key's
+            // click (detail 0) is never skipped, and clears it.
+            const skip = swiped.current && e.detail > 0;
+            swiped.current = false;
+            if (skip) return;
             setOpen((o) => !o);
           }}
         >
@@ -88,8 +95,8 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             // While a card is on screen the closed bar says what answering it would change, so a phone sees it too.
             <span className="flex min-w-0 items-center gap-3 text-sm">
               <span className="sr-only">Deck stats. This card: </span>
-              {previewLines.map(({ stat, delta }) => {
-                const better = towardTarget(stat.value, stat.target, delta);
+              {previewLines.map(({ stat, preview: { delta, target } }) => {
+                const better = towardTarget(stat.value, stat.target, delta, stat.group === "colours", target);
                 const Icon = better ? ArrowUp : ArrowDown;
                 return (
                   <span key={stat.key} className="flex min-w-0 items-center gap-1">
@@ -97,6 +104,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
                     <span className="truncate">{stat.label}</span>
                     <span className="shrink-0 font-mono">
                       {stat.value}→{stat.value + delta}
+                      {target !== undefined && ` / ${Math.round(target)}`}
                     </span>
                   </span>
                 );
@@ -122,8 +130,10 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
           <button
             type="button"
             aria-label="Close deck stats"
-            className="mx-auto flex min-h-11 w-full cursor-pointer touch-none items-center justify-between gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
+            // Sticky, so the handle stays in reach while the readout scrolls under it.
+            className="sticky top-0 z-10 mx-auto -mt-2 flex min-h-11 w-full cursor-pointer touch-none items-center justify-between gap-3 bg-sleeve pt-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
             onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
               startY.current = e.clientY;
             }}
             onPointerUp={(e) => {

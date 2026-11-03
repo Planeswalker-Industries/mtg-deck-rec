@@ -77,3 +77,49 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await expectAboveFooter(page, [sitting.getByRole("button", { name: /^Add / }).first(), sitting.getByRole("button", { name: /^Skip / }).first()]);
   await expect(sitting.getByText(/^About \$/)).toBeVisible();
 });
+
+test("owned suggestions carry the corner marker where they mix with cards to buy, and none in Owned only", async ({ page }) => {
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection export").fill(
+    // Creatures near the top of Chulane's Add list in the mocks and the real catalog alike, and no Game Changers,
+    // which a low bracket leaves out.
+    ["1 Chulane, Teller of Tales", "1 Birds of Paradise", "1 Llanowar Elves", "1 Elvish Mystic", "1 Beast Whisperer"].join("\n"),
+  );
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+
+  await page.goto("/deck");
+  await page.getByRole("textbox", { name: "Decklist" }).fill(["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Command Tower"].join("\n"));
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+
+  const mode = page.getByRole("combobox", { name: "My collection" });
+  await expect(mode).toHaveText("Owned first", { timeout: RECS_WAIT_MS });
+  await page.getByRole("button", { name: "Show as a list" }).click();
+  const adds = recs.getByRole("list", { name: "Cards to add" });
+  await expect(adds.getByRole("img", { name: "Owned" }).first()).toBeVisible({ timeout: RECS_WAIT_MS });
+
+  await mode.click();
+  await page.getByRole("option", { name: "Owned only" }).click();
+  await expect(mode).toHaveText("Owned only");
+  await expect(adds.getByRole("button").first()).toBeVisible({ timeout: RECS_WAIT_MS });
+  await expect(adds.getByRole("img", { name: "Owned" })).toHaveCount(0);
+});
+
+test("a built deck shows its bracket estimate, and a card's origin and score on tap", async ({ page }) => {
+  await page.goto("/deck?start=build");
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
+  await expect(built.getByText(/^(Fits|Over) bracket \d/)).toBeVisible();
+  await expect(built.getByText("Estimated", { exact: true })).toBeVisible();
+
+  await built.getByRole("list", { name: "Creatures" }).getByRole("button").first().click();
+  const detail = page.getByRole("dialog");
+  await expect(detail.getByText("Picked for this deck")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detail).toBeHidden();
+});
