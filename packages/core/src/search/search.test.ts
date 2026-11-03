@@ -24,6 +24,7 @@ const row: CardIndexRow = {
   produced_mana: null,
   fetchable_mana: null,
   fetchable_basic_only: false,
+  layout: "normal",
   game_changer: false,
   is_basic_land: false,
   legal_commander: "legal",
@@ -93,6 +94,7 @@ describe("card documents", () => {
       produced_mana: null,
       fetchable_mana: null,
       fetchable_basic_only: false,
+      layout: "normal",
     });
   });
 

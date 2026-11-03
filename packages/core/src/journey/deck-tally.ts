@@ -30,6 +30,7 @@ export interface TallyCard {
   producedMana?: string | undefined;
   findsMana?: string | undefined;
   findsBasicOnly?: boolean | undefined;
+  layout?: string | undefined;
   /** Commanders only: the deck's colours come from theirs. */
   colorIdentity?: string | undefined;
 }
@@ -71,6 +72,7 @@ export const toTallyCard = (card: CardSummary, roles: readonly string[]): TallyC
   producedMana: card.producedMana,
   findsMana: card.findsMana,
   findsBasicOnly: card.findsBasicOnly,
+  layout: card.layout,
   colorIdentity: card.colorIdentity,
 });
 

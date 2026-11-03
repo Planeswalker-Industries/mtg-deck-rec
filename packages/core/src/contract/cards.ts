@@ -56,6 +56,11 @@ export interface CardSummary {
   findsMana?: string;
   /** True when it finds basic lands only (Evolving Wilds, Fabled Passage); absent otherwise. */
   findsBasicOnly?: boolean;
+  /**
+   * Scryfall layout ('normal', 'modal_dfc', 'transform'). Deck stats reads it to tell a spell/land MDFC, whose land
+   * face can be played from hand, from a card that transforms into a land. Absent where the server didn't read it.
+   */
+  layout?: string;
   price: PriceEstimate | null;
   /**
    * The tracked role ids (`deck_role_targets`) the card fills, where the server had them (suggestions, T045). Absent

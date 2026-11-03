@@ -104,6 +104,8 @@ export interface CardDocument {
   fetchable_mana?: string[];
   /** cards.fetchable_basic_only; absent unless true. */
   fetchable_basic_only?: boolean;
+  /** cards.layout; absent on documents written before it was carried. */
+  layout?: string;
   /** CardImages as JSON text: storing it as an object would mean turning nested fields on for one unindexed payload. */
   images_json?: string;
   released_at?: string;
@@ -241,6 +243,7 @@ export const CARD_SCHEMA: CollectionSchema = {
     { name: "produced_mana", type: "string[]", index: false, optional: true },
     { name: "fetchable_mana", type: "string[]", index: false, optional: true },
     { name: "fetchable_basic_only", type: "bool", index: false, optional: true },
+    { name: "layout", type: "string", index: false, optional: true },
     { name: "images_json", type: "string", index: false, optional: true },
     { name: "released_at", type: "string", index: false, optional: true },
     { name: "first_printed_at", type: "string", index: false, optional: true },

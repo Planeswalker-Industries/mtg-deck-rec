@@ -130,7 +130,8 @@
  * ones. Same shapes.
  *
  * v32 (2026-11-02): mana base (T046). CardSummary gains optional `producedMana` (the colours it adds), `findsMana` (the
- * colours of lands it can put onto the battlefield) and `findsBasicOnly`, absent when empty. Deck stats reads them for
- * colour sources and on-curve odds. Additive.
+ * colours of lands it can put onto the battlefield) and `findsBasicOnly`, absent when empty, and optional `layout`
+ * (Scryfall's), which tells a spell/land MDFC from a card that transforms into a land. Deck stats reads them for colour
+ * sources and on-curve odds. Additive.
  */
 export const CONTRACT_VERSION = 32;

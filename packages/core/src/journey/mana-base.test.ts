@@ -186,6 +186,15 @@ describe('manaBase', () => {
     expect(report.hardToCast).toEqual([]);
   });
 
+  it('counts a card that transforms into a land as a spell, not a source', () => {
+    const azcanta = card({ manaCost: '{1}{U}', manaValue: 2, typeLine: 'Legendary Enchantment // Legendary Land', producedMana: 'U', layout: 'transform' });
+    const mdfc = card({ manaCost: '{4}{U}{U}{U}', manaValue: 7, typeLine: 'Sorcery // Land', producedMana: 'U', layout: 'modal_dfc' });
+    expect(sourceCredit(azcanta, 'U', 4, 'U')).toBe(0);
+    expect(sourceCredit(mdfc, 'U', 4, 'U')).toBe(0.8);
+    const report = manaBase([many(30, { typeLine: 'Basic Land — Island', producedMana: 'U', manaValue: 0 }), { card: azcanta, quantity: 1 }, many(68, {})], [], 'U');
+    expect(report.colours).toMatchObject([{ colour: 'U', cardId: azcanta.id, sources: 30 }]);
+  });
+
   it('leaves out cards that need a colour outside the deck’s', () => {
     const bolt = card({ manaCost: '{R}', manaValue: 1 });
     const kitchenFinks = card({ manaCost: '{1}{G/W}{G/W}', manaValue: 3 });

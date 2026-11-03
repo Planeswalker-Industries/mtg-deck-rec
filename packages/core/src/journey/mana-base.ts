@@ -36,6 +36,8 @@ export interface ManaCard {
   producedMana?: string | undefined;
   findsMana?: string | undefined;
   findsBasicOnly?: boolean | undefined;
+  /** Scryfall layout: a land back face counts as a land only on a 'modal_dfc'. Absent: read from the type line. */
+  layout?: string | undefined;
 }
 
 export interface ManaEntry {
@@ -102,7 +104,12 @@ export const manaLetters = (letters: Iterable<string>): string =>
   [...new Set(letters)].filter((c) => c.length === 1 && COLOUR_ORDER.includes(c)).sort(byColourOrder).join('');
 
 const faces = (typeLine: string) => typeLine.split(' // ');
-const isBackLand = (typeLine: string) => !isFrontLand(typeLine) && faces(typeLine).slice(1).some((f) => /\bLand\b/.test(f));
+const hasBackLand = (typeLine: string) => !isFrontLand(typeLine) && faces(typeLine).slice(1).some((f) => /\bLand\b/.test(f));
+/** A spell/land MDFC: its land face can be played from hand. */
+const isBackLand = (card: Pick<ManaCard, 'typeLine' | 'layout'>) =>
+  hasBackLand(card.typeLine) && (card.layout === undefined || card.layout === 'modal_dfc');
+/** A card that transforms into a land (Search for Azcanta): its mana comes only after it has flipped. */
+const flipsToLand = (card: Pick<ManaCard, 'typeLine' | 'layout'>) => hasBackLand(card.typeLine) && !isBackLand(card);
 const isCreature = (typeLine: string) => /\bCreature\b/.test(faces(typeLine)[0] ?? typeLine);
 const isInstantOrSorcery = (typeLine: string) => /\b(Instant|Sorcery)\b/.test(faces(typeLine)[0] ?? typeLine);
 /** The turn a spell is cast on curve. */
@@ -165,12 +172,12 @@ export function sourceCredit(
   const makes = usable(card.producedMana, deckColours).some((c) => colours.includes(c));
   const findsColourless = card.findsBasicOnly === true ? colourless.basic : colourless.any;
   const finds = usable(card.findsMana, deckColours).some((c) => colours.includes(c) && (c !== 'C' || findsColourless));
-  if (!makes && !finds) return 0;
+  if ((!makes && !finds) || flipsToLand(card)) return 0;
   if (isFrontLand(card.typeLine)) {
     const partial = !makes && card.findsBasicOnly === true && deckColours.length >= BASIC_FETCH_PARTIAL_FROM_COLOURS;
     return partial ? SOURCE_CREDIT.basicFetchManyColours : SOURCE_CREDIT.land;
   }
-  if (isBackLand(card.typeLine)) return makes ? SOURCE_CREDIT.mdfcLand : 0;
+  if (isBackLand(card)) return makes ? SOURCE_CREDIT.mdfcLand : 0;
   if (isInstantOrSorcery(card.typeLine) || !makes) {
     // Rituals make mana once: no credit. Ramp spells and land-finding permanents put a land down.
     return finds ? earlyCredit(card.manaValue, spellManaValue, SOURCE_CREDIT.cheapRamp, SOURCE_CREDIT.threeRamp) : 0;
@@ -308,7 +315,7 @@ export function manaBase(main: readonly ManaEntry[], commanders: readonly ManaCa
       colours !== ''
         ? creditedSources(main, colours, manaValue, deckColours, colourless)
         : main.reduce((n, { card, quantity }) => {
-            if (isFrontLand(card.typeLine) || isBackLand(card.typeLine)) return n + quantity;
+            if (isFrontLand(card.typeLine) || isBackLand(card)) return n + quantity;
             return n + sourceCredit(card, COLOUR_ORDER, manaValue, deckColours, colourless) * quantity;
           }, 0);
     sums.set(key, total);
@@ -335,7 +342,7 @@ export function manaBase(main: readonly ManaEntry[], commanders: readonly ManaCa
   const inColours = (half: CastingHalf) => half.needs.every((n) => usable(n.colours, deckColours).length > 0);
   for (const { card, commander } of castable) {
     // A spell/land card counts as a land (above), so its spell face sets no requirement.
-    if (isBackLand(card.typeLine)) continue;
+    if (isBackLand(card)) continue;
     const halves = castingHalves(card).filter(inColours);
     if (halves.length === 0) continue;
     const best = halves.map((half) => ({ half, chance: halfChance(half) })).reduce((a, b) => (b.chance > a.chance ? b : a));

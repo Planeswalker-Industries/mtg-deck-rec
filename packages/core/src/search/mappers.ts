@@ -31,6 +31,7 @@ export interface CardIndexRow {
   produced_mana: string[] | null;
   fetchable_mana: string[] | null;
   fetchable_basic_only: boolean;
+  layout: string;
   game_changer: boolean;
   is_basic_land: boolean;
   legal_commander: string;
@@ -85,6 +86,7 @@ export interface CardRowShape {
   produced_mana: string[] | null;
   fetchable_mana: string[] | null;
   fetchable_basic_only: boolean;
+  layout: string | null;
 }
 
 /** Postgres hands back dates as Date over the wire driver and as text through PostgREST; documents keep text. */
@@ -170,6 +172,7 @@ export function toCardDocument(row: CardIndexRow, updatedAt = Date.now()): CardD
       produced_mana: row.produced_mana && row.produced_mana.length > 0 ? row.produced_mana : undefined,
       fetchable_mana: row.fetchable_mana && row.fetchable_mana.length > 0 ? row.fetchable_mana : undefined,
       fetchable_basic_only: row.fetchable_basic_only ? true : undefined,
+      layout: row.layout,
       images_json: row.images === null || row.images === undefined ? undefined : JSON.stringify(row.images),
       released_at: isoDate(row.released_at)?.slice(0, 10),
       first_printed_at: isoDate(row.first_printed_at)?.slice(0, 10),
@@ -208,6 +211,7 @@ export function cardRowFromDocument(doc: CardDocument): CardRowShape {
     produced_mana: doc.produced_mana ?? null,
     fetchable_mana: doc.fetchable_mana ?? null,
     fetchable_basic_only: doc.fetchable_basic_only ?? false,
+    layout: doc.layout ?? null,
   };
 }
 

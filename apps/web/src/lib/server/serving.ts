@@ -78,6 +78,7 @@ function cardRowOf(card: ServingCard, checkedAt: string | null): CardRow {
       produced_mana: card.produced_mana,
       fetchable_mana: card.fetchable_mana,
       fetchable_basic_only: card.fetchable_basic_only ?? false,
+      layout: card.layout,
     },
     checkedAt,
   );

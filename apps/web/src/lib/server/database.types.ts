@@ -2499,6 +2499,7 @@ export type Database = {
         produced_mana: string[] | null
         fetchable_mana: string[] | null
         fetchable_basic_only: boolean | null
+        layout: string | null
       }
     }
   }

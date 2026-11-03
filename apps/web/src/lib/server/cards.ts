@@ -9,7 +9,7 @@ import type { PublicClient } from "./supabase";
 
 /** Columns needed to build a CardSummary and run Commander rules. */
 export const CARD_COLUMNS =
-  "id, oracle_id, name, slug, mana_value, mana_cost, type_line, color_identity, images, game_changer, released_at, reference_price_usd, reference_price_finish, prices_as_of, legal_commander, can_be_commander, partner_kind, partner_qualifier, copy_limit, is_basic_land, artist, keywords, produced_mana, fetchable_mana, fetchable_basic_only" as const;
+  "id, oracle_id, name, slug, mana_value, mana_cost, type_line, color_identity, images, game_changer, released_at, reference_price_usd, reference_price_finish, prices_as_of, legal_commander, can_be_commander, partner_kind, partner_qualifier, copy_limit, is_basic_land, artist, keywords, produced_mana, fetchable_mana, fetchable_basic_only, layout" as const;
 
 export interface CardRow {
   id: number;
@@ -43,6 +43,8 @@ export interface CardRow {
   /** Colours of the lands it can put onto the battlefield (fetch lands, land ramp); null when none. */
   fetchable_mana: string[] | null;
   fetchable_basic_only: boolean;
+  /** Scryfall layout; null from a search index document written before it carried one. */
+  layout: string | null;
 }
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -75,6 +77,7 @@ export function toCardSummary(row: CardRow, today = todayIso()): CardSummary {
     released: row.released_at === null || row.released_at <= today,
     keywords: row.keywords ?? [],
     ...manaFields(row),
+    ...(row.layout ? { layout: row.layout } : {}),
     price:
       row.reference_price_usd !== null && row.prices_as_of !== null
         ? { usd: Number(row.reference_price_usd), finish: toFinish(row.reference_price_finish), asOf: row.prices_as_of, source: "scryfall" }

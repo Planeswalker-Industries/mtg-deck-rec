@@ -25,13 +25,13 @@ when (
    old.game_changer, old.is_basic_land, old.legal_commander, old.can_be_commander, old.partner_kind,
    old.partner_qualifier, old.copy_limit, old.artist, old.images, old.released_at, old.reference_price_usd,
    old.reference_price_finish, old.prices_as_of, old.deleted_at, old.mana_cost, old.produced_mana,
-   old.fetchable_mana, old.fetchable_basic_only)
+   old.fetchable_mana, old.fetchable_basic_only, old.layout)
   is distinct from
   (new.name, new.name_normalized, new.slug, new.type_line, new.mana_value, new.color_identity, new.keywords,
    new.game_changer, new.is_basic_land, new.legal_commander, new.can_be_commander, new.partner_kind,
    new.partner_qualifier, new.copy_limit, new.artist, new.images, new.released_at, new.reference_price_usd,
    new.reference_price_finish, new.prices_as_of, new.deleted_at, new.mana_cost, new.produced_mana,
-   new.fetchable_mana, new.fetchable_basic_only)
+   new.fetchable_mana, new.fetchable_basic_only, new.layout)
 )
 execute function public.enqueue_search_card_by_id();
 
@@ -42,14 +42,15 @@ insert into public.search_index_queue (collection, document_id)
 values ('cards', '*')
 on conflict (collection, document_id) do update set seq = nextval('public.search_index_queue_seq'), enqueued_at = now();
 
--- === serving_card: the mana columns ===
+-- === serving_card: the mana columns, and layout (a spell/land MDFC or a card that transforms into a land) ===
 
 alter type public.serving_card
   add attribute produced_mana text[],
   add attribute fetchable_mana text[],
-  add attribute fetchable_basic_only boolean;
+  add attribute fetchable_basic_only boolean,
+  add attribute layout text;
 
--- serving_cards: as 20261008000100_derived_pairs.sql, with the three columns last (the type's attribute order).
+-- serving_cards: as 20261008000100_derived_pairs.sql, with the four columns last (the type's attribute order).
 create or replace function public.serving_cards(p_commander_ids integer[], p_card_ids integer[])
 returns setof public.serving_card
 language sql
@@ -88,7 +89,7 @@ as $$
          coalesce(s.prior_rate, pr.prior_rate), coalesce(s.prior_decks, pr.prior_decks), t.edhrec_floor, t.edhrec_decks,
          case when t.derived then coalesce(o.decks_with, 0) end,
          case when t.derived then coalesce(t.key_decks - coalesce(o.eligible_decks, t.key_decks), 0) end,
-         c.produced_mana, c.fetchable_mana, c.fetchable_basic_only
+         c.produced_mana, c.fetchable_mana, c.fetchable_basic_only, c.layout
   from (select distinct unnest(p_card_ids) as id) ids
   join public.cards c on c.id = ids.id and c.deleted_at is null
   cross join target_set t
