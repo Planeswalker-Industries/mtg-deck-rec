@@ -135,6 +135,8 @@ interface Data {
   declaredBrackets: Map<string, number>;
   /** Each basic land's row by colour, for builds. */
   basics: Map<BasicColour, RankCard>;
+  /** Each card's global staple score (card_stats, from printings, not the corpus), as the app serves it (T083). */
+  staples: Map<number, number>;
 }
 
 /** The bracket rules, the cards they watch and every collated combo by card, for the estimator check (T060). */
@@ -237,7 +239,7 @@ const mean = (xs: readonly number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) 
 
 async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
   const catalog = await loadCatalog(sql);
-  const [details, roleRows, targetsRow, pages, snapshot, declaredRows] = await Promise.all([
+  const [details, roleRows, targetsRow, pages, snapshot, declaredRows, stapleRows] = await Promise.all([
     sql<{ id: number; oracle_id: string; type_line: string; mana_value: number; mana_cost: string | null; game_changer: boolean }[]>`
       select id, oracle_id, type_line, mana_value, mana_cost, game_changer from public.cards where deleted_at is null
     `,
@@ -250,7 +252,9 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
     sql<{ source_deck_id: string; declared_bracket: number }[]>`
       select source_deck_id, declared_bracket from archidekt.decks where declared_bracket is not null
     `,
+    sql<{ card_id: number; staple_score: number }[]>`select card_id, staple_score from public.card_stats`,
   ]);
+  const staples = new Map(stapleRows.map((r) => [r.card_id, r.staple_score]));
 
   const cards = new Map<number, RankCard>();
   const nonland = new Set<number>();
@@ -317,7 +321,7 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
       basicLands: deck.basicLands,
     });
   }
-  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets, basics };
+  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets, basics, staples };
 }
 
 /** Per-key counts from these decks, as `tallyDecks` makes them. */
@@ -603,6 +607,7 @@ function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel,
     deckCards: new Map(visible.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : []))),
     affinity,
     availability: owned ? availability({ owned: new Map([...owned].map((id) => [id, 1])), builtDecks: [] }, new Map()) : null,
+    staples: data.staples,
     limitPerCategory: ALL_CATEGORIES,
   });
   return groups
@@ -749,6 +754,7 @@ function buildFor(commanderIds: readonly number[], bracket: Bracket, model: SetM
     bracketFacts: { rules: brackets.rules, cards: brackets.cards, combos: [...combos.values()] },
     affinity: affinity ? { lifts: affinity.lifts, weights: affinity.weights } : null,
     basics: data.basics,
+    staples: data.staples,
   });
   const nonbasic = built.groups.flatMap((g) => g.cards.map((c) => c.card.id as number));
   const basics = built.basics.reduce((n, b) => n + b.quantity, 0);

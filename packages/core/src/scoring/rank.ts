@@ -356,6 +356,10 @@ export interface AddRanking {
  * short on. In 'only' mode the groups hold what the collection supplies and the unowned cards that would do clearly
  * better go to the buy list; in 'first' mode owned cards move up by `ownedBoost`.
  */
+/** A card's staple score as a component, or null when the scores weren't loaded. */
+export const stapleOf = (staples: ReadonlyMap<number, number> | null | undefined, cardId: number): number | null =>
+  staples ? round2(staples.get(cardId) ?? 0) : null;
+
 export function rankAdds({
   context,
   poolIds,
@@ -372,6 +376,7 @@ export function rankAdds({
   bracketFacts = null,
   deckCards = NO_STAND_INS,
   affinity = null,
+  staples = null,
   limitPerCategory,
 }: {
   context: RecContext;
@@ -401,6 +406,8 @@ export function rankAdds({
   deckCards?: ReadonlyMap<number, RankCard>;
   /** Card pairs for the deck (T064): the `deck` component, and the cards its pairs point to join the pool. */
   affinity?: AffinityInput | null;
+  /** Each card's global staple score (`card_stats`), 0..1 (T083); without it there is no staple component. */
+  staples?: ReadonlyMap<number, number> | null;
   limitPerCategory: number;
 }): AddRanking {
   const only = availability !== null && ownedOnly(context);
@@ -464,7 +471,7 @@ export function rankAdds({
         {
           tag: null,
           manaValue: null,
-          staple: null,
+          staple: stapleOf(staples, cardId),
           corpus: round2(corpusScore?.value ?? neutralCorpus),
           votes: null,
           role: round2(gap),

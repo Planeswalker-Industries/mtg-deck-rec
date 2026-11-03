@@ -156,6 +156,44 @@ describe('rankAdds with a collection (T059)', () => {
   });
 });
 
+describe('rankAdds staple component (T083)', () => {
+  // Two artifacts the commander's decks play equally: only their staple scores tell them apart.
+  const even = new Map<number, CardPlayRates>([
+    [2, rates(0)],
+    [3, rates(0)],
+  ]);
+  const staples = new Map([
+    [2, 0.06],
+    [3, 0.76],
+  ]);
+  const order = (staple: number) =>
+    rankAdds({
+      context: { ...context('first'), ownership: null },
+      poolIds: [2, 3],
+      cards,
+      rates: even,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: { ...TEST_SCORING, weights: { ...TEST_SCORING.weights, add: { ...TEST_SCORING.weights.add, staple } } },
+      availability: null,
+      staples,
+      limitPerCategory: 10,
+    }).groups.flatMap((g) => g.suggestions);
+
+  it('reports the staple score and leaves the order alone at weight 0', () => {
+    const adds = order(0);
+    expect(adds.map((s) => s.score.components.staple)).toEqual(expect.arrayContaining([0.06, 0.76]));
+    expect(new Set(adds.map((s) => s.score.total)).size).toBe(1);
+  });
+
+  it('puts the wider staple first once it has weight', () => {
+    expect(order(0.1).map((s) => s.card.name)).toEqual(['Thought Vessel', 'Orzhov Signet']);
+  });
+});
+
 describe('rankCuts with a collection (T059)', () => {
   it('never calls a basic land or a card an owned twin covers unowned', () => {
     const result = rankCuts({
