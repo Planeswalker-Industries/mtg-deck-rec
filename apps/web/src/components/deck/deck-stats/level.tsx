@@ -8,12 +8,23 @@ export const LEVEL: Record<DeckStatsLevel, { icon: LucideIcon; word: string; tex
   urgent: { icon: CircleAlert, word: "Urgent", text: "text-stat-urgent" },
 };
 
-export function LevelBadge({ level, okCount, total }: { level: DeckStatsLevel; okCount: number; total: number }) {
+/** `compact`: the icon and count only (the docked bar); the word stays for screen readers. */
+export function LevelBadge({
+  level,
+  okCount,
+  total,
+  compact = false,
+}: {
+  level: DeckStatsLevel;
+  okCount: number;
+  total: number;
+  compact?: boolean;
+}) {
   const { icon: Icon, word, text } = LEVEL[level];
   return (
     <span className={`inline-flex items-center gap-1.5 ${text}`}>
       <Icon aria-hidden className="size-4" />
-      <span className="text-sm">{word}</span>
+      <span className={compact ? "sr-only" : "text-sm"}>{word}</span>
       <span aria-hidden className="font-mono text-sm text-foreground">
         {okCount}/{total}
       </span>
