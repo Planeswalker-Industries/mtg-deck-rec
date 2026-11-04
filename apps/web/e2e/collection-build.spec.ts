@@ -140,13 +140,15 @@ test("a refresh after Continue offers the deck back with its choices", async ({ 
   await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
   await expect(page).toHaveURL(/\/deck$/);
   const count = recs.getByRole("status").getByText(/^\d+ \/ 100$/).first();
+  // The real catalog deals a card to add; the mocks' build is short and has none, so it offers basics for the holes.
   const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).first();
-  await expect(addIt).toBeVisible({ timeout: RECS_WAIT_MS });
-  // The build fills all 100 from the real catalog and fewer from the mocks: the add is counted from where it starts.
+  const fill = recs.getByRole("button", { name: /^Add \d+ basics?$/ });
+  await expect(addIt.or(fill).first()).toBeVisible({ timeout: RECS_WAIT_MS });
   const before = Number((await count.innerText()).split(" / ")[0]);
-  const after = `${before + 1} / 100`;
-  await addIt.click();
-  await expect(count).toHaveText(after);
+  const viaFill = await fill.isVisible();
+  const after = viaFill ? "100 / 100" : `${before + 1} / 100`;
+  await (viaFill ? fill : addIt).click();
+  await expect(count).toHaveText(after, { timeout: RECS_WAIT_MS });
 
   await page.reload();
   const ask = page.getByRole("dialog", { name: /^Continue with / });
