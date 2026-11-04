@@ -108,7 +108,7 @@ test("owned suggestions carry the corner marker where they mix with cards to buy
   await expect(adds.getByRole("img", { name: "Owned" })).toHaveCount(0);
 });
 
-test("a built deck shows its bracket estimate, and a card's origin and score on tap", async ({ page }) => {
+test("a built deck shows its bracket estimate, and a card's score on tap", async ({ page }) => {
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
@@ -118,8 +118,12 @@ test("a built deck shows its bracket estimate, and a card's origin and score on 
   await expect(built.getByText("Estimated", { exact: true })).toBeVisible();
 
   await built.getByRole("list", { name: "Creatures" }).getByRole("button").first().click();
-  const detail = page.getByRole("dialog");
-  await expect(detail.getByText("Picked for this deck")).toBeVisible();
+  const zoom = page.getByRole("dialog", { name: /, enlarged$/ });
+  await expect(zoom).toBeVisible();
+  await expect(zoom.getByRole("button", { name: "Close" })).toHaveCount(0);
+  await zoom.getByText("Why this card").click();
+  await expect(zoom.getByText(/of the score$/).first()).toBeVisible();
+  await expect(zoom.getByText(/^Not counted/)).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await expect(detail).toBeHidden();
+  await expect(zoom).toBeHidden();
 });

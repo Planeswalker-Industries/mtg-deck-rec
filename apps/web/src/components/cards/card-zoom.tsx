@@ -89,25 +89,6 @@ export function ZoomableCard({
 
   useEffect(() => clearTimer, []);
 
-  useEffect(() => {
-    if (!open) return;
-    // Capture, so the swipe view's arrow keys never fire while the enlarged card is up, and Escape closes the card
-    // rather than the sheet it was opened over.
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(null);
-      else if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    window.addEventListener("keydown", onKey, true);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey, true);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
-
   const name = displayName(card);
 
   const hoverHandlers = {
@@ -189,50 +170,99 @@ export function ZoomableCard({
         </div>
       )}
 
-      {/*
-        Into the body: the swipe view animates cards with transforms, and a transformed ancestor would make this
-        "fixed" layer cover only the card itself, letting a dismissing press through to whatever sits below.
-      */}
-      {open &&
-        createPortal(
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${name}, enlarged`}
-            {...{ [ZOOM_LAYER_ATTRIBUTE]: "" }}
-            // Closing waits for the click: unmounting on pointerdown would hand the click that follows to whatever the
-            // layer was covering. The pointer events are swallowed so the card below never starts a drag.
-            onPointerDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(null, true);
-            }}
-            className={cn(
-              "fixed inset-0 z-[70] flex touch-none flex-col items-center justify-center gap-3 bg-black/85 p-4",
-              // A Radix modal turns pointer events off on the body; a pressed-open card has to take them back.
-              openBy === "hover" ? "pointer-events-none" : "pointer-events-auto",
-            )}
-          >
-            <div className="max-h-[78dvh] w-[min(90vw,24rem)] [&_img]:mx-auto [&_img]:max-h-[78dvh] [&_img]:w-auto">
-              <CardImage card={card} face={face} variant="large" alt={`${name}, enlarged`} sizes="(max-width: 480px) 90vw, 384px" eager />
-            </div>
-            {openBy === "press" && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpen(null, true);
-                }}
-                className="flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1.5 text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                <X aria-hidden className="size-4" />
-                Close
-              </button>
-            )}
-          </div>,
-          document.body,
-        )}
+      {open && <CardZoomLayer card={card} face={face} passThrough={openBy === "hover"} onClose={(byPointer) => setOpen(null, byPointer)} />}
     </>
+  );
+}
+
+/**
+ * The enlarged card on its dimmed layer, put in the body. A press on the layer closes it; the press is swallowed so it
+ * never reaches the card underneath. `footer` takes the Close button's place (a tap anywhere else closes), and presses
+ * inside it stay there. `passThrough` is the hover-opened copy, which lets the pointer through.
+ */
+export function CardZoomLayer({
+  card,
+  face = "front",
+  passThrough = false,
+  footer,
+  onClose,
+}: {
+  card: CardSummary;
+  face?: "front" | "back";
+  passThrough?: boolean;
+  footer?: ReactNode;
+  /** `byPointer`: closed by a press, whose leftover click must not reopen the card. */
+  onClose: (byPointer: boolean) => void;
+}) {
+  const name = displayName(card);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
+  useEffect(() => {
+    // Capture, so the swipe view's arrow keys never fire while the enlarged card is up, and Escape closes the card
+    // rather than the sheet it was opened over.
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close.current(false);
+      else if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    window.addEventListener("keydown", onKey, true);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+  const dismiss = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    close.current(true);
+  };
+  // Into the body: the swipe view animates cards with transforms, and a transformed ancestor would make this "fixed"
+  // layer cover only the card itself, letting a dismissing press through to whatever sits below.
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${name}, enlarged`}
+      {...{ [ZOOM_LAYER_ATTRIBUTE]: "" }}
+      // Closing waits for the click: unmounting on pointerdown would hand the click that follows to whatever the
+      // layer was covering. The pointer events are swallowed so the card below never starts a drag.
+      onPointerDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onClick={dismiss}
+      className={cn(
+        "fixed inset-0 z-[70] overflow-y-auto overscroll-contain bg-black/85",
+        // Without a footer nothing in the layer scrolls, and a touch must not pan the page.
+        footer === undefined && "touch-none",
+        // A Radix modal turns pointer events off on the body; a pressed-open card has to take them back.
+        passThrough ? "pointer-events-none" : "pointer-events-auto",
+      )}
+    >
+      <div className="flex min-h-full flex-col items-center justify-center gap-3 p-4">
+        <div className="max-h-[78dvh] w-[min(90vw,24rem)] [&_img]:mx-auto [&_img]:max-h-[78dvh] [&_img]:w-auto">
+          <CardImage card={card} face={face} variant="large" alt={`${name}, enlarged`} sizes="(max-width: 480px) 90vw, 384px" eager />
+        </div>
+        {footer !== undefined ? (
+          <div className="w-[min(90vw,24rem)]" onClick={(e) => e.stopPropagation()}>
+            {footer}
+          </div>
+        ) : (
+          !passThrough && (
+            <button
+              type="button"
+              onClick={dismiss}
+              className="flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1.5 text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <X aria-hidden className="size-4" />
+              Close
+            </button>
+          )
+        )}
+      </div>
+    </div>,
+    document.body,
   );
 }

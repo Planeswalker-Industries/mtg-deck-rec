@@ -8,6 +8,7 @@ import { CircleCheck, CircleHelp, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
+import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { DeckViewToggle, useDeckView, type DeckView } from "@/components/decks/deck-view";
@@ -18,7 +19,7 @@ import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { ShuffleDeck } from "../shuffle-deck";
-import { BuildCardSheet } from "./build-card-sheet";
+import { ScoreExplainer } from "../score-explainer";
 import {
   buildCards,
   buildDecklist,
@@ -132,7 +133,7 @@ function BuildCards({
   entries: readonly { card: CardSummary; quantity: number }[];
   mark?: "cut" | "add";
   alwaysCount?: boolean;
-  /** Opens a card's detail: its score and where it came from. */
+  /** Opens a card's zoom with its score. */
   onSelect?: (cardId: CardId) => void;
 }) {
   if (view === "plates") {
@@ -146,7 +147,8 @@ function BuildCards({
   }
   return (
     <PocketGrid
-      zoomable
+      // A pocket that opens the zoom with its score doesn't need the magnifier.
+      zoomable={!onSelect}
       label={label}
       {...(onSelect ? { onSelect: (card: CardSummary) => onSelect(card.id) } : {})}
       items={entries.map(({ card, quantity }) => ({
@@ -291,6 +293,7 @@ export function BuildView({
   const { open, roleShortfalls } = result.feasibility;
   const basicCount = result.basics.reduce((n, b) => n + b.quantity, 0);
   const builtCards = new Map(result.groups.flatMap((g) => g.cards).map((c) => [c.card.id, c]));
+  const detailCard = detail === null ? null : (builtCards.get(detail) ?? null);
   const fit = fitDiff(request, result);
 
   return (
@@ -390,7 +393,13 @@ export function BuildView({
           <BuildCards view={view} label="Basic Lands" entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))} alwaysCount />
         </section>
       )}
-      <BuildCardSheet card={detail === null ? null : (builtCards.get(detail) ?? null)} onClose={() => setDetail(null)} />
+      {detailCard && (
+        <CardZoomLayer
+          card={detailCard.card}
+          onClose={() => setDetail(null)}
+          footer={<ScoreExplainer score={detailCard.score} className="mt-0 bg-sleeve" />}
+        />
+      )}
     </section>
   );
 }
