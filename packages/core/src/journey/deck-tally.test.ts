@@ -1,7 +1,18 @@
 // packages/core/src/journey/deck-tally.test.ts
 import { describe, expect, it } from 'vitest';
 import type { BracketSignals, CardId, ComboRef, DeckCombo, StatTargets } from '../contract';
-import { buildTally, gradeDeck, statDeltas, syncTally, tallyCache, withinTolerance, type TallyCard, type TallyEntry } from './deck-tally';
+import {
+  buildTally,
+  cardsShort,
+  gradeDeck,
+  shortOfTarget,
+  statDeltas,
+  syncTally,
+  tallyCache,
+  withinTolerance,
+  type TallyCard,
+  type TallyEntry,
+} from './deck-tally';
 
 const RAMP = 'ramp-role';
 const DRAW = 'draw-role';
@@ -33,6 +44,19 @@ const card = (over: Partial<TallyCard> = {}): TallyCard => ({
 });
 const forest = card({ typeLine: 'Basic Land — Forest', manaValue: 0 });
 const bracket = (over = {}) => ({ chosen: 3 as const, signals: noSignals, combos: [] as DeckCombo[], overBracketAdds: new Map<CardId, ComboRef[]>(), ...over });
+
+describe('shortOfTarget', () => {
+  it('is short only outside the tolerance', () => {
+    expect(shortOfTarget({ value: 23, target: 31 })).toBe(true); // 8 short, band 6.2
+    expect(shortOfTarget({ value: 12, target: 14 })).toBe(false); // 2 short, band 2.8
+    expect(shortOfTarget({ value: 9, target: 10 })).toBe(false); // 1 short, band 2
+    expect(shortOfTarget({ value: 12, target: 10 })).toBe(false); // over is not short
+  });
+  it('counts whole cards against the rounded target', () => {
+    expect(cardsShort({ value: 23, target: 30.6 })).toBe(8);
+    expect(cardsShort({ value: 12, target: 10 })).toBe(0);
+  });
+});
 
 describe('withinTolerance', () => {
   it('uses 20% of the target', () => {

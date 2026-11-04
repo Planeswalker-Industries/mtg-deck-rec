@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
 import { ChevronDown, CircleCheck, CircleHelp, LoaderCircle, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
-import { deckDiff } from "@mtg/core/journey";
+import { cardsShort, deckDiff, shortOfTarget, type StatLine } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
 import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -28,6 +28,7 @@ import {
   type BuildRequest,
   type BuildState,
 } from "./use-deck-build";
+import { useBuildStats } from "./use-build-stats";
 
 /** What the open slots panel says, inline from sm up and behind its (?) on phones. */
 const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue and we'll fill the missing pieces together.";
@@ -63,7 +64,7 @@ function CommanderArt({ commanders }: { commanders: CardSummary[] }) {
 }
 
 /** The roles the build is still short of, by how many cards. Two equal columns on phones, a row from sm up. */
-function RoleShortfalls({ shortfalls }: { shortfalls: BuildResult["feasibility"]["roleShortfalls"] }) {
+function RoleShortfalls({ lines }: { lines: readonly StatLine[] }) {
   return (
     <div className="flex flex-col gap-2">
       <p className="flex items-start gap-2">
@@ -71,15 +72,15 @@ function RoleShortfalls({ shortfalls }: { shortfalls: BuildResult["feasibility"]
         Adjustments needed:
       </p>
       <ul aria-label="Roles the deck is short of" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:pl-7">
-        {shortfalls.map(({ role, short }) => (
+        {lines.map((line) => (
           <li
-            key={role.id}
+            key={line.key}
             className="flex min-w-0 items-center justify-between gap-2 rounded-full border border-warning/40 bg-warning/10 px-3 py-1 text-sm"
           >
-            <span className="truncate">{role.label}</span>
+            <span className="truncate">{line.label}</span>
             <span className="shrink-0 font-mono text-warning">
-              −{short}
-              <span className="sr-only"> {short === 1 ? "card" : "cards"} short</span>
+              −{cardsShort(line)}
+              <span className="sr-only"> {cardsShort(line) === 1 ? "card" : "cards"} short</span>
             </span>
           </li>
         ))}
@@ -238,6 +239,11 @@ export function BuildView({
   const [opening, setOpening] = useState<"upgrade" | "save" | null>(null);
   /** Set at once, so a second tap before the re-render can't open the deck twice. */
   const openingNow = useRef(false);
+  // The built deck graded by Deck stats, the report Add reads after Continue; shown once the analysis is in.
+  const ready = state.status === "ready" ? state : null;
+  const builtList = useMemo(() => (ready ? buildDecklist(ready.result) : null), [ready]);
+  const stats = useBuildStats(ready?.result ?? null, builtList, state.request.bracket);
+  const shortRoles = stats?.stats.filter((s) => s.group === "roles" && shortOfTarget(s)) ?? [];
   /** One open at a time: the deck tool reads the list first, which takes a moment on a phone. */
   async function openDeck(kind: "upgrade" | "save", run: (decklist: string) => Promise<void>, decklist: string) {
     if (openingNow.current) return;
@@ -324,8 +330,8 @@ export function BuildView({
   }
 
   const { result, fromCollection } = state;
-  const decklist = buildDecklist(result);
-  const { open, roleShortfalls } = result.feasibility;
+  const decklist = builtList ?? buildDecklist(result);
+  const { open } = result.feasibility;
   const basicCount = result.basics.reduce((n, b) => n + b.quantity, 0);
   const builtCards = new Map(result.groups.flatMap((g) => g.cards).map((c) => [c.card.id, c]));
   const detailCard = detail === null ? null : (builtCards.get(detail) ?? null);
@@ -354,7 +360,7 @@ export function BuildView({
           </p>
           <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
         </div>
-        {roleShortfalls.length > 0 && <RoleShortfalls shortfalls={roleShortfalls} />}
+        {shortRoles.length > 0 && <RoleShortfalls lines={shortRoles} />}
         {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
         <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
           <Button

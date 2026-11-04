@@ -562,7 +562,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           ),
           estimatedBracket: gameChangerCount === 0 ? 2 : gameChangerCount <= 3 ? 3 : 4,
           bracketSignals: { gameChangerCount, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
-          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed, roleShortfalls: [] },
+          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed },
           ...(owned && fill === 'value'
             ? {
                 fillCost: {

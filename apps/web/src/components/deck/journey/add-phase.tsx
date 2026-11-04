@@ -3,7 +3,7 @@
 import { TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { AddSuggestion, CardSummary } from "@mtg/core/contract";
-import type { StatLine } from "@mtg/core/journey";
+import { shortOfTarget, type StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import type { Route } from "next";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -175,7 +175,7 @@ export function AddPhase({
   const full = size >= COMMANDER_DECK_SIZE;
   // This round's additions plus the holes a short deck came in with.
   const slots = open + adds.length;
-  const short = roles.filter((r) => !r.ok && r.value < r.target);
+  const short = roles.filter(shortOfTarget);
   // Through the stepper, so a deck under 100 asks before it goes.
   // Add's own way on: through Combos when there are any (the stepper's Cut jumps straight there).
   const toCut = journey.add.next;

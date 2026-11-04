@@ -79,6 +79,13 @@ export const toTallyCard = (card: CardSummary, roles: readonly string[]): TallyC
 export const withinTolerance = (value: number, target: number): boolean =>
   Math.abs(value - target) <= Math.max(target * STAT_TOLERANCE_SHARE, STAT_TOLERANCE_MIN_CARDS);
 
+/** A line short of its target by more than the tolerance: what Deck stats, Add's pills and the build page call short. */
+export const shortOfTarget = (line: { value: number; target: number }): boolean =>
+  line.value < line.target && !withinTolerance(line.value, line.target);
+
+/** Whole cards a line is short of its target as shown (the target rounds for display). */
+export const cardsShort = (line: { value: number; target: number }): number => Math.max(0, Math.round(line.target) - line.value);
+
 const emptyTally = (): DeckTally => ({
   cards: 0,
   lands: 0,

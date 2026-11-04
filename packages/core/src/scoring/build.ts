@@ -459,19 +459,11 @@ export function buildDeck(input: BuildInput): BuildRanking {
   );
 
   const filledByValue = deck.filter((id) => origins.get(id) === 'fill').length;
-  const shortfalls = targets
-    .map((t) => ({ t, short: Math.round(t.target - (roleCounts.get(t.roleId) ?? 0)) }))
-    .filter(({ short }) => short >= 1)
-    .sort((a, b) => b.short - a.short || a.t.label.localeCompare(b.t.label));
   const feasibility: BuildFeasibility = {
     slots,
     filled: deck.length - filledByValue + basicTotal,
     filledByValue,
     open: slots - deck.length - basicTotal,
-    roleShortfalls: shortfalls.flatMap(({ t, short }) => {
-      const tag = input.roleTags.get(t.roleId);
-      return tag ? [{ role: { ...tag, label: t.label }, short }] : [];
-    }),
   };
 
   const fillPrices = deck.filter((id) => origins.get(id) === 'fill').map((id) => cards.get(id)?.summary.price);
