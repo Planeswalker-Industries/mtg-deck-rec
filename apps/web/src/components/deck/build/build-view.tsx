@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
-import { CircleCheck, CircleHelp, TriangleAlert } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleHelp, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
@@ -163,6 +163,23 @@ function BuildCards({
 }
 
 /** The list's cards and the build's, side by side as what went out and what came in. */
+/** A section of the built deck that folds from its heading; every one starts open. */
+function BuildSection({ id, title, className, children }: { id: string; title: ReactNode; className?: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby={id}>
+      <details open className="group/section">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 marker:content-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+          <h2 id={id} className={cn("font-heading text-xl leading-none font-semibold", className)}>
+            {title}
+          </h2>
+          <ChevronDown aria-hidden className="size-5 shrink-0 text-primary transition-transform group-open/section:rotate-180" />
+        </summary>
+        <div className="mt-2">{children}</div>
+      </details>
+    </section>
+  );
+}
+
 function FitChanges({ request, result, view }: { request: BuildRequest; result: BuildResult; view: DeckView }) {
   const list = request.list;
   const diff = fitDiff(request, result);
@@ -181,20 +198,14 @@ function FitChanges({ request, result, view }: { request: BuildRequest; result: 
   return (
     <>
       {out.length > 0 && (
-        <section aria-labelledby="fit-out" className="flex flex-col gap-2">
-          <h2 id="fit-out" className="font-heading text-xl leading-none font-semibold text-cut">
-            Out: not in your collection
-          </h2>
+        <BuildSection id="fit-out" className="text-cut" title="Out: not in your collection">
           {grid(out, "Cards from the list you don't own", "cut")}
-        </section>
+        </BuildSection>
       )}
       {into.length > 0 && (
-        <section aria-labelledby="fit-in" className="flex flex-col gap-2">
-          <h2 id="fit-in" className="font-heading text-xl leading-none font-semibold text-add">
-            In: from your collection
-          </h2>
+        <BuildSection id="fit-in" className="text-add" title="In: from your collection">
           {grid(into, "Cards from your collection that took their place", "add")}
-        </section>
+        </BuildSection>
       )}
     </>
   );
@@ -373,25 +384,34 @@ export function BuildView({
       <FitChanges request={request} result={result} view={view} />
 
       {result.groups.map((group) => (
-        <section key={group.category} aria-labelledby={`build-${group.category}`} className="flex flex-col gap-2">
-          <h2 id={`build-${group.category}`} className="font-heading text-xl leading-none font-semibold">
-            {cardCategoryLabel[group.category]} <span className="font-mono text-base font-normal text-muted-foreground">{group.cards.length}</span>
-          </h2>
+        <BuildSection
+          key={group.category}
+          id={`build-${group.category}`}
+          title={
+            <>
+              {cardCategoryLabel[group.category]} <span className="font-mono text-base font-normal text-muted-foreground">{group.cards.length}</span>
+            </>
+          }
+        >
           <BuildCards
             view={view}
             label={cardCategoryLabel[group.category]}
             entries={group.cards.map((c) => ({ card: c.card, quantity: 1 }))}
             onSelect={setDetail}
           />
-        </section>
+        </BuildSection>
       ))}
       {result.basics.length > 0 && (
-        <section aria-labelledby="build-basics" className="flex flex-col gap-2">
-          <h2 id="build-basics" className="font-heading text-xl leading-none font-semibold">
-            Basic Lands <span className="font-mono text-base font-normal text-muted-foreground">{basicCount}</span>
-          </h2>
+        <BuildSection
+          id="build-basics"
+          title={
+            <>
+              Basic Lands <span className="font-mono text-base font-normal text-muted-foreground">{basicCount}</span>
+            </>
+          }
+        >
           <BuildCards view={view} label="Basic Lands" entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))} alwaysCount />
-        </section>
+        </BuildSection>
       )}
       {detailCard && (
         <CardZoomLayer
