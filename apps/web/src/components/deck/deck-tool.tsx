@@ -660,13 +660,13 @@ function DeckToolSession() {
           onBracket={(bracket) => {
             if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
           }}
-          onUpgrade={(text) => {
+          onUpgrade={async (text) => {
             deckBuild.accept();
-            void openBuilt(text, "upgrade");
+            await openBuilt(text, "upgrade");
           }}
-          onSave={(text) => {
+          onSave={async (text) => {
             deckBuild.accept();
-            void saveBuilt(text);
+            await saveBuilt(text);
           }}
           onPickAnother={() => {
             // Back from a fitted list goes to the list; back from a build goes to the commander picker.

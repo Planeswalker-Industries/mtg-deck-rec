@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
-import { ChevronDown, CircleCheck, CircleHelp, TriangleAlert } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleHelp, LoaderCircle, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
 import { deckDiff } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
@@ -229,12 +229,36 @@ export function BuildView({
   collectionImportHref: Route;
   onBracket: (bracket: Bracket) => void;
   /** Takes the built decklist into the deck tool's Upgrade round, or into the Deckbuilder to save it. */
-  onUpgrade: (decklist: string) => void;
-  onSave: (decklist: string) => void;
+  onUpgrade: (decklist: string) => Promise<void>;
+  onSave: (decklist: string) => Promise<void>;
   onPickAnother: () => void;
 }) {
   const [view, setView] = useDeckView("build");
   const [detail, setDetail] = useState<CardId | null>(null);
+  const [opening, setOpening] = useState<"upgrade" | "save" | null>(null);
+  /** Set at once, so a second tap before the re-render can't open the deck twice. */
+  const openingNow = useRef(false);
+  /** One open at a time: the deck tool reads the list first, which takes a moment on a phone. */
+  async function openDeck(kind: "upgrade" | "save", run: (decklist: string) => Promise<void>, decklist: string) {
+    if (openingNow.current) return;
+    openingNow.current = true;
+    setOpening(kind);
+    try {
+      await run(decklist);
+    } finally {
+      openingNow.current = false;
+      setOpening(null);
+    }
+  }
+  const busy = (kind: "upgrade" | "save", label: string) =>
+    opening === kind ? (
+      <>
+        <LoaderCircle aria-hidden className="motion-safe:animate-spin" />
+        Opening…
+      </>
+    ) : (
+      label
+    );
   const { request } = state;
   const fitting = request.list !== undefined;
   const commanderName = request.commanders.map((c) => c.name).join(" and ");
@@ -333,11 +357,26 @@ export function BuildView({
         {roleShortfalls.length > 0 && <RoleShortfalls shortfalls={roleShortfalls} />}
         {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
         <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
-          <Button type="button" size="lg" className="lit" onClick={() => onUpgrade(decklist)}>
-            Continue
+          <Button
+            type="button"
+            size="lg"
+            className="lit"
+            disabled={opening !== null}
+            aria-busy={opening === "upgrade"}
+            onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
+          >
+            {busy("upgrade", "Continue")}
           </Button>
-          <Button type="button" size="lg" variant="outline" className="px-2" onClick={() => onSave(decklist)}>
-            Save for Later
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            className="px-2"
+            disabled={opening !== null}
+            aria-busy={opening === "save"}
+            onClick={() => void openDeck("save", onSave, decklist)}
+          >
+            {busy("save", "Save for Later")}
           </Button>
         </div>
       </div>
