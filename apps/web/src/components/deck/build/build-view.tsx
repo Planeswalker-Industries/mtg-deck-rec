@@ -33,11 +33,11 @@ const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue 
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** What the build managed, in a sentence: how many slots the collection filled (the open ones get their own panel). */
+/** What the build managed, in a few words: how many slots the collection filled (the open ones get their own panel). */
 function summary(result: BuildResult, fromCollection: boolean): string {
   const { slots, filled } = result.feasibility;
   if (!fromCollection) return `All ${slots} cards picked from every card in print.`;
-  return `${filled}/${slots} matched from collection.`;
+  return count(filled, "match", "matches");
 }
 
 /**
@@ -109,7 +109,7 @@ function BracketEstimate({ asked, estimated }: { asked: Bracket; estimated: Brac
   return (
     <p className="flex items-center gap-2">
       <Icon aria-hidden className={cn("size-5 shrink-0", fits ? "text-success" : "text-destructive")} />
-      {fits ? "Fits" : "Over"} bracket {asked}
+      {fits ? `Bracket ${asked}` : `Over bracket ${asked}`}
       <span className="text-xs text-muted-foreground">Estimated</span>
     </p>
   );
@@ -309,11 +309,13 @@ export function BuildView({
 
       <div className="flex flex-col gap-4 rounded-panel border border-seam bg-sleeve p-4 sm:p-5">
         {request.list && fit && <p>{fitSummary(copies(request.list.entries), copies(fit.removed), copies(fit.added))}</p>}
-        <p className={cn("flex items-start gap-2", request.list && "text-sm text-muted-foreground")}>
-          {fromCollection && <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />}
-          {summary(result, fromCollection)}
-        </p>
-        <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <p className={cn("flex items-center gap-2", request.list && "text-sm text-muted-foreground")}>
+            {fromCollection && <CircleCheck aria-hidden className="size-5 shrink-0 text-success" />}
+            {summary(result, fromCollection)}
+          </p>
+          <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
+        </div>
         {roleShortfalls.length > 0 && <RoleShortfalls shortfalls={roleShortfalls} />}
         {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
         <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">

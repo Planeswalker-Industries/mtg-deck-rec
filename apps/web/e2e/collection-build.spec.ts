@@ -37,7 +37,7 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
-  await expect(built.getByText(/^\d+\/99 matched from collection\.$/)).toBeVisible();
+  await expect(built.getByText(/^\d+ match(es)?$/)).toBeVisible();
   await built.getByRole("button", { name: "Continue" }).click();
 
   const recs = page.getByRole("region", { name: "Recommendations" });
@@ -114,7 +114,7 @@ test("a built deck shows its bracket estimate, and a card's origin and score on 
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
-  await expect(built.getByText(/^(Fits|Over) bracket \d/)).toBeVisible();
+  await expect(built.getByText(/^(Over bracket|Bracket) \d/)).toBeVisible();
   await expect(built.getByText("Estimated", { exact: true })).toBeVisible();
 
   await built.getByRole("list", { name: "Creatures" }).getByRole("button").first().click();
