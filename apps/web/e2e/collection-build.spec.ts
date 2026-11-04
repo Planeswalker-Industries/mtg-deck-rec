@@ -140,12 +140,16 @@ test("a refresh after Continue offers the deck back with its choices", async ({ 
   await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
   await expect(page).toHaveURL(/\/deck$/);
   const count = recs.getByRole("status").getByText(/^\d+ \/ 100$/).first();
-  await expect(count).toHaveText("100 / 100", { timeout: RECS_WAIT_MS });
-  await recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).first().click({ timeout: RECS_WAIT_MS });
-  await expect(count).toHaveText("101 / 100");
+  const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).first();
+  await expect(addIt).toBeVisible({ timeout: RECS_WAIT_MS });
+  // The build fills all 100 from the real catalog and fewer from the mocks: the add is counted from where it starts.
+  const before = Number((await count.innerText()).split(" / ")[0]);
+  const after = `${before + 1} / 100`;
+  await addIt.click();
+  await expect(count).toHaveText(after);
 
   await page.reload();
   const ask = page.getByRole("dialog", { name: /^Continue with / });
   await ask.getByRole("button", { name: "Yes" }).click();
-  await expect(count).toHaveText("101 / 100", { timeout: RECS_WAIT_MS });
+  await expect(count).toHaveText(after, { timeout: RECS_WAIT_MS });
 });
