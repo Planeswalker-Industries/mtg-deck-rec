@@ -127,3 +127,25 @@ test("a built deck shows its bracket estimate, and a card's score on tap", async
   await page.keyboard.press("Escape");
   await expect(zoom).toBeHidden();
 });
+
+test("a refresh after Continue offers the deck back with its choices", async ({ page }) => {
+  await page.goto("/deck?start=build");
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
+  await built.getByRole("button", { name: "Continue" }).click();
+
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
+  await expect(page).toHaveURL(/\/deck$/);
+  const count = recs.getByRole("status").getByText(/^\d+ \/ 100$/).first();
+  await expect(count).toHaveText("100 / 100", { timeout: RECS_WAIT_MS });
+  await recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).first().click({ timeout: RECS_WAIT_MS });
+  await expect(count).toHaveText("101 / 100");
+
+  await page.reload();
+  const ask = page.getByRole("dialog", { name: /^Continue with / });
+  await ask.getByRole("button", { name: "Yes" }).click();
+  await expect(count).toHaveText("101 / 100", { timeout: RECS_WAIT_MS });
+});
