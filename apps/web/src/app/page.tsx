@@ -103,7 +103,7 @@ export default function Home() {
         <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority />
 
         {/* The fan's column stretches, so its credit sits at the hero's foot; the headline centres against the fan. */}
-        <div className="page-column grid gap-6 pt-4 pb-8 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] md:gap-4 md:py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+        <div className="page-column grid gap-4 pt-2 pb-6 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] md:gap-4 md:py-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
           {/* Cards come first on a phone: they say what this is faster than any sentence. */}
           <div className="order-first flex flex-col md:order-last">
             <div className="flex flex-1 items-center justify-center">
@@ -114,17 +114,20 @@ export default function Home() {
           </div>
 
           <div className="relative z-20 max-w-2xl md:self-center">
-            <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
-              Build better decks.
-              {/* The buddy's voice: the page's one italic headline phrase. */}
-              <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
-                Spend less on singles.
-              </span>
-            </h1>
-            {/* Phones: the credit shares this line; from md up it sits under the fan, level with it. */}
-            <div className="mt-4 flex items-end justify-between gap-3">
-              <p className="shrink-0 text-sm leading-5 text-muted-foreground">No account necessary</p>
-              <ArtCredit vista={HERO_VISTA} className="text-right text-xs leading-5 text-muted-foreground md:hidden" />
+            {/* Phones: the credit rides the foot of the headline, so it costs no line of its own. From md up it sits
+                under the fan, level with it. */}
+            <div className="flex items-end justify-between gap-3">
+              <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
+                Build better decks.
+                {/* The buddy's voice: the page's one italic headline phrase. */}
+                <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
+                  Spend less.
+                </span>
+              </h1>
+              <ArtCredit
+                vista={HERO_VISTA}
+                className="shrink-0 text-right text-xs leading-5 text-muted-foreground md:hidden"
+              />
             </div>
           </div>
         </div>
