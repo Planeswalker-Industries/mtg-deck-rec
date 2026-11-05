@@ -316,8 +316,6 @@ export interface BuildFeasibility {
   filledByValue: number;
   /** Slots still open. */
   open: number;
-  /** Roles the finished build is still short of against the commander's targets, most short first. */
-  roleShortfalls: { role: TagRef; short: number }[];
 }
 
 /** The value fill's running total: estimates, shown with their date. */

@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
-import { CircleCheck, CircleHelp, TriangleAlert } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleHelp, LoaderCircle, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
-import { deckDiff } from "@mtg/core/journey";
+import { cardsShort, deckDiff, shortOfTarget, type StatLine } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
+import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { DeckViewToggle, useDeckView, type DeckView } from "@/components/decks/deck-view";
@@ -18,7 +19,7 @@ import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { ShuffleDeck } from "../shuffle-deck";
-import { BuildCardSheet } from "./build-card-sheet";
+import { ScoreExplainer } from "../score-explainer";
 import {
   buildCards,
   buildDecklist,
@@ -27,17 +28,18 @@ import {
   type BuildRequest,
   type BuildState,
 } from "./use-deck-build";
+import { useBuildStats } from "./use-build-stats";
 
 /** What the open slots panel says, inline from sm up and behind its (?) on phones. */
 const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue and we'll fill the missing pieces together.";
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** What the build managed, in a sentence: how many slots the collection filled (the open ones get their own panel). */
+/** What the build managed, in a few words: how many slots the collection filled (the open ones get their own panel). */
 function summary(result: BuildResult, fromCollection: boolean): string {
   const { slots, filled } = result.feasibility;
   if (!fromCollection) return `All ${slots} cards picked from every card in print.`;
-  return `${filled}/${slots} matched from collection.`;
+  return count(filled, "match", "matches");
 }
 
 /**
@@ -62,7 +64,7 @@ function CommanderArt({ commanders }: { commanders: CardSummary[] }) {
 }
 
 /** The roles the build is still short of, by how many cards. Two equal columns on phones, a row from sm up. */
-function RoleShortfalls({ shortfalls }: { shortfalls: BuildResult["feasibility"]["roleShortfalls"] }) {
+function RoleShortfalls({ lines }: { lines: readonly StatLine[] }) {
   return (
     <div className="flex flex-col gap-2">
       <p className="flex items-start gap-2">
@@ -70,15 +72,15 @@ function RoleShortfalls({ shortfalls }: { shortfalls: BuildResult["feasibility"]
         Adjustments needed:
       </p>
       <ul aria-label="Roles the deck is short of" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:pl-7">
-        {shortfalls.map(({ role, short }) => (
+        {lines.map((line) => (
           <li
-            key={role.id}
+            key={line.key}
             className="flex min-w-0 items-center justify-between gap-2 rounded-full border border-warning/40 bg-warning/10 px-3 py-1 text-sm"
           >
-            <span className="truncate">{role.label}</span>
+            <span className="truncate">{line.label}</span>
             <span className="shrink-0 font-mono text-warning">
-              −{short}
-              <span className="sr-only"> {short === 1 ? "card" : "cards"} short</span>
+              −{cardsShort(line)}
+              <span className="sr-only"> {cardsShort(line) === 1 ? "card" : "cards"} short</span>
             </span>
           </li>
         ))}
@@ -109,7 +111,7 @@ function BracketEstimate({ asked, estimated }: { asked: Bracket; estimated: Brac
   return (
     <p className="flex items-center gap-2">
       <Icon aria-hidden className={cn("size-5 shrink-0", fits ? "text-success" : "text-destructive")} />
-      {fits ? "Fits" : "Over"} bracket {asked}
+      {fits ? `Bracket ${asked}` : `Over bracket ${asked}`}
       <span className="text-xs text-muted-foreground">Estimated</span>
     </p>
   );
@@ -132,7 +134,7 @@ function BuildCards({
   entries: readonly { card: CardSummary; quantity: number }[];
   mark?: "cut" | "add";
   alwaysCount?: boolean;
-  /** Opens a card's detail: its score and where it came from. */
+  /** Opens a card's zoom with its score. */
   onSelect?: (cardId: CardId) => void;
 }) {
   if (view === "plates") {
@@ -146,7 +148,8 @@ function BuildCards({
   }
   return (
     <PocketGrid
-      zoomable
+      // A pocket that opens the zoom with its score doesn't need the magnifier.
+      zoomable={!onSelect}
       label={label}
       {...(onSelect ? { onSelect: (card: CardSummary) => onSelect(card.id) } : {})}
       items={entries.map(({ card, quantity }) => ({
@@ -161,6 +164,23 @@ function BuildCards({
 }
 
 /** The list's cards and the build's, side by side as what went out and what came in. */
+/** A section of the built deck that folds from its heading; every one starts open. */
+function BuildSection({ id, title, className, children }: { id: string; title: ReactNode; className?: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby={id}>
+      <details open className="group/section">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 marker:content-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+          <h2 id={id} className={cn("font-heading text-xl leading-none font-semibold", className)}>
+            {title}
+          </h2>
+          <ChevronDown aria-hidden className="size-5 shrink-0 text-primary transition-transform group-open/section:rotate-180" />
+        </summary>
+        <div className="mt-2">{children}</div>
+      </details>
+    </section>
+  );
+}
+
 function FitChanges({ request, result, view }: { request: BuildRequest; result: BuildResult; view: DeckView }) {
   const list = request.list;
   const diff = fitDiff(request, result);
@@ -179,20 +199,14 @@ function FitChanges({ request, result, view }: { request: BuildRequest; result: 
   return (
     <>
       {out.length > 0 && (
-        <section aria-labelledby="fit-out" className="flex flex-col gap-2">
-          <h2 id="fit-out" className="font-heading text-xl leading-none font-semibold text-cut">
-            Out: not in your collection
-          </h2>
+        <BuildSection id="fit-out" className="text-cut" title="Out: not in your collection">
           {grid(out, "Cards from the list you don't own", "cut")}
-        </section>
+        </BuildSection>
       )}
       {into.length > 0 && (
-        <section aria-labelledby="fit-in" className="flex flex-col gap-2">
-          <h2 id="fit-in" className="font-heading text-xl leading-none font-semibold text-add">
-            In: from your collection
-          </h2>
+        <BuildSection id="fit-in" className="text-add" title="In: from your collection">
           {grid(into, "Cards from your collection that took their place", "add")}
-        </section>
+        </BuildSection>
       )}
     </>
   );
@@ -216,12 +230,41 @@ export function BuildView({
   collectionImportHref: Route;
   onBracket: (bracket: Bracket) => void;
   /** Takes the built decklist into the deck tool's Upgrade round, or into the Deckbuilder to save it. */
-  onUpgrade: (decklist: string) => void;
-  onSave: (decklist: string) => void;
+  onUpgrade: (decklist: string) => Promise<void>;
+  onSave: (decklist: string) => Promise<void>;
   onPickAnother: () => void;
 }) {
   const [view, setView] = useDeckView("build");
   const [detail, setDetail] = useState<CardId | null>(null);
+  const [opening, setOpening] = useState<"upgrade" | "save" | null>(null);
+  /** Set at once, so a second tap before the re-render can't open the deck twice. */
+  const openingNow = useRef(false);
+  // The built deck graded by Deck stats, the report Add reads after Continue; shown once the analysis is in.
+  const ready = state.status === "ready" ? state : null;
+  const builtList = useMemo(() => (ready ? buildDecklist(ready.result) : null), [ready]);
+  const stats = useBuildStats(ready?.result ?? null, builtList, state.request.bracket);
+  const shortRoles = stats?.stats.filter((s) => s.group === "roles" && shortOfTarget(s)) ?? [];
+  /** One open at a time: the deck tool reads the list first, which takes a moment on a phone. */
+  async function openDeck(kind: "upgrade" | "save", run: (decklist: string) => Promise<void>, decklist: string) {
+    if (openingNow.current) return;
+    openingNow.current = true;
+    setOpening(kind);
+    try {
+      await run(decklist);
+    } finally {
+      openingNow.current = false;
+      setOpening(null);
+    }
+  }
+  const busy = (kind: "upgrade" | "save", label: string) =>
+    opening === kind ? (
+      <>
+        <LoaderCircle aria-hidden className="motion-safe:animate-spin" />
+        Opening…
+      </>
+    ) : (
+      label
+    );
   const { request } = state;
   const fitting = request.list !== undefined;
   const commanderName = request.commanders.map((c) => c.name).join(" and ");
@@ -287,10 +330,11 @@ export function BuildView({
   }
 
   const { result, fromCollection } = state;
-  const decklist = buildDecklist(result);
-  const { open, roleShortfalls } = result.feasibility;
+  const decklist = builtList ?? buildDecklist(result);
+  const { open } = result.feasibility;
   const basicCount = result.basics.reduce((n, b) => n + b.quantity, 0);
   const builtCards = new Map(result.groups.flatMap((g) => g.cards).map((c) => [c.card.id, c]));
+  const detailCard = detail === null ? null : (builtCards.get(detail) ?? null);
   const fit = fitDiff(request, result);
 
   return (
@@ -309,19 +353,36 @@ export function BuildView({
 
       <div className="flex flex-col gap-4 rounded-panel border border-seam bg-sleeve p-4 sm:p-5">
         {request.list && fit && <p>{fitSummary(copies(request.list.entries), copies(fit.removed), copies(fit.added))}</p>}
-        <p className={cn("flex items-start gap-2", request.list && "text-sm text-muted-foreground")}>
-          {fromCollection && <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />}
-          {summary(result, fromCollection)}
-        </p>
-        <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
-        {roleShortfalls.length > 0 && <RoleShortfalls shortfalls={roleShortfalls} />}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <p className={cn("flex items-center gap-2", request.list && "text-sm text-muted-foreground")}>
+            {fromCollection && <CircleCheck aria-hidden className="size-5 shrink-0 text-success" />}
+            {summary(result, fromCollection)}
+          </p>
+          <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
+        </div>
+        {shortRoles.length > 0 && <RoleShortfalls lines={shortRoles} />}
         {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
         <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
-          <Button type="button" size="lg" className="lit" onClick={() => onUpgrade(decklist)}>
-            Continue
+          <Button
+            type="button"
+            size="lg"
+            className="lit"
+            disabled={opening !== null}
+            aria-busy={opening === "upgrade"}
+            onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
+          >
+            {busy("upgrade", "Continue")}
           </Button>
-          <Button type="button" size="lg" variant="outline" className="px-2" onClick={() => onSave(decklist)}>
-            Save for Later
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            className="px-2"
+            disabled={opening !== null}
+            aria-busy={opening === "save"}
+            onClick={() => void openDeck("save", onSave, decklist)}
+          >
+            {busy("save", "Save for Later")}
           </Button>
         </div>
       </div>
@@ -368,27 +429,42 @@ export function BuildView({
       <FitChanges request={request} result={result} view={view} />
 
       {result.groups.map((group) => (
-        <section key={group.category} aria-labelledby={`build-${group.category}`} className="flex flex-col gap-2">
-          <h2 id={`build-${group.category}`} className="font-heading text-xl leading-none font-semibold">
-            {cardCategoryLabel[group.category]} <span className="font-mono text-base font-normal text-muted-foreground">{group.cards.length}</span>
-          </h2>
+        <BuildSection
+          key={group.category}
+          id={`build-${group.category}`}
+          title={
+            <>
+              {cardCategoryLabel[group.category]} <span className="font-mono text-base font-normal text-muted-foreground">{group.cards.length}</span>
+            </>
+          }
+        >
           <BuildCards
             view={view}
             label={cardCategoryLabel[group.category]}
             entries={group.cards.map((c) => ({ card: c.card, quantity: 1 }))}
             onSelect={setDetail}
           />
-        </section>
+        </BuildSection>
       ))}
       {result.basics.length > 0 && (
-        <section aria-labelledby="build-basics" className="flex flex-col gap-2">
-          <h2 id="build-basics" className="font-heading text-xl leading-none font-semibold">
-            Basic Lands <span className="font-mono text-base font-normal text-muted-foreground">{basicCount}</span>
-          </h2>
+        <BuildSection
+          id="build-basics"
+          title={
+            <>
+              Basic Lands <span className="font-mono text-base font-normal text-muted-foreground">{basicCount}</span>
+            </>
+          }
+        >
           <BuildCards view={view} label="Basic Lands" entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))} alwaysCount />
-        </section>
+        </BuildSection>
       )}
-      <BuildCardSheet card={detail === null ? null : (builtCards.get(detail) ?? null)} onClose={() => setDetail(null)} />
+      {detailCard && (
+        <CardZoomLayer
+          card={detailCard.card}
+          onClose={() => setDetail(null)}
+          footer={<ScoreExplainer score={detailCard.score} className="mt-0 bg-sleeve" />}
+        />
+      )}
     </section>
   );
 }

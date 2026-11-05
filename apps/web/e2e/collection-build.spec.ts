@@ -37,7 +37,7 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
-  await expect(built.getByText(/^\d+\/99 matched from collection\.$/)).toBeVisible();
+  await expect(built.getByText(/^\d+ match(es)?$/)).toBeVisible();
   await built.getByRole("button", { name: "Continue" }).click();
 
   const recs = page.getByRole("region", { name: "Recommendations" });
@@ -108,18 +108,50 @@ test("owned suggestions carry the corner marker where they mix with cards to buy
   await expect(adds.getByRole("img", { name: "Owned" })).toHaveCount(0);
 });
 
-test("a built deck shows its bracket estimate, and a card's origin and score on tap", async ({ page }) => {
+test("a built deck shows its bracket estimate, and a card's score on tap", async ({ page }) => {
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
-  await expect(built.getByText(/^(Fits|Over) bracket \d/)).toBeVisible();
+  await expect(built.getByText(/^(Over bracket|Bracket) \d\s*Estimated$/)).toBeVisible();
   await expect(built.getByText("Estimated", { exact: true })).toBeVisible();
 
   await built.getByRole("list", { name: "Creatures" }).getByRole("button").first().click();
-  const detail = page.getByRole("dialog");
-  await expect(detail.getByText("Picked for this deck")).toBeVisible();
+  const zoom = page.getByRole("dialog", { name: /, enlarged$/ });
+  await expect(zoom).toBeVisible();
+  await expect(zoom.getByRole("button", { name: "Close" })).toHaveCount(0);
+  await zoom.getByText("Why this card").click();
+  await expect(zoom.getByText(/of the score$/).first()).toBeVisible();
+  await expect(zoom.getByText(/^Not counted/)).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await expect(detail).toBeHidden();
+  await expect(zoom).toBeHidden();
+});
+
+test("a refresh after Continue offers the deck back with its choices", async ({ page }) => {
+  await page.goto("/deck?start=build");
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
+  await built.getByRole("button", { name: "Continue" }).click();
+
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
+  await expect(page).toHaveURL(/\/deck$/);
+  const count = recs.getByRole("status").getByText(/^\d+ \/ 100$/).first();
+  // The real catalog deals a card to add; the mocks' build is short and has none, so it offers basics for the holes.
+  const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).first();
+  const fill = recs.getByRole("button", { name: /^Add \d+ basics?$/ });
+  await expect(addIt.or(fill).first()).toBeVisible({ timeout: RECS_WAIT_MS });
+  const before = Number((await count.innerText()).split(" / ")[0]);
+  const viaFill = await fill.isVisible();
+  const after = viaFill ? "100 / 100" : `${before + 1} / 100`;
+  await (viaFill ? fill : addIt).click();
+  await expect(count).toHaveText(after, { timeout: RECS_WAIT_MS });
+
+  await page.reload();
+  const ask = page.getByRole("dialog", { name: /^Continue with / });
+  await ask.getByRole("button", { name: "Yes" }).click();
+  await expect(count).toHaveText(after, { timeout: RECS_WAIT_MS });
 });

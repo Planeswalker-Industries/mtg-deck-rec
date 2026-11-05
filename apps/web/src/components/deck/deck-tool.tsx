@@ -249,7 +249,7 @@ function DeckToolSession() {
   const [resumeAnswered, setResumeAnswered] = useState(false);
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
   const { analysis, context } = tool;
-  const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut });
+  const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut, resume: tool.resumed });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
   const coverage = useDeckCoverage(journey.deck, source, tool.openDeck?.deckId, coverageEnabled && !collectionRefreshing);
   const hasWorkingDeck = journey.deck !== null;
@@ -559,6 +559,8 @@ function DeckToolSession() {
     const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null }, { recs: next === "upgrade" });
     if (!outcome.parsed) return false;
     deckBuild.reset();
+    // Off the picker's address: a refresh now offers this deck back, instead of the commander picker.
+    if (buildStart) router.replace("/deck" as Route, { scroll: false });
     setEditing(false);
     setMode(next);
     checkLookup(outcome.analysis);
@@ -660,13 +662,13 @@ function DeckToolSession() {
           onBracket={(bracket) => {
             if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
           }}
-          onUpgrade={(text) => {
+          onUpgrade={async (text) => {
             deckBuild.accept();
-            void openBuilt(text, "upgrade");
+            await openBuilt(text, "upgrade");
           }}
-          onSave={(text) => {
+          onSave={async (text) => {
             deckBuild.accept();
-            void saveBuilt(text);
+            await saveBuilt(text);
           }}
           onPickAnother={() => {
             // Back from a fitted list goes to the list; back from a build goes to the commander picker.

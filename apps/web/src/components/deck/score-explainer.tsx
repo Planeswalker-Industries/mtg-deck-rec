@@ -1,6 +1,7 @@
 "use client";
 
 import type { ScoreBreakdown, ScoreComponent } from "@mtg/core/contract";
+import { cn } from "cn";
 
 /**
  * What each component means, in the player's words rather than the scorer's.
@@ -25,25 +26,6 @@ const ORDER: readonly ScoreComponent[] = ["tag", "corpus", "deck", "role", "curv
 const percent = (n: number) => `${Math.round(n * 100)}%`;
 
 /**
- * Why a component didn't count. "No data" is a poor answer when we know the real one, and two of these are not
- * missing data at all: votes ramp up from nothing with the vote count, and role is only scored for cards to add.
- */
-function absentReason(component: ScoreComponent, value: number | null): string {
-  switch (component) {
-    case "votes":
-      return "nobody has voted on this swap yet";
-    case "role":
-      return "only used for cards to add";
-    case "corpus":
-      return "no deck data for this commander yet";
-    case "tag":
-      return "we don't know what this card does yet";
-    default:
-      return value === null ? "no data" : "not used here";
-  }
-}
-
-/**
  * Shows how a suggestion's score was arrived at.
  *
  * Every number here already crosses the wire in `ScoreBreakdown` — this renders what the scorer was always
@@ -51,7 +33,7 @@ function absentReason(component: ScoreComponent, value: number | null): string {
  * because "mostly its play rate" and "mostly its job match" are different answers and the player deserves the real
  * one.
  */
-export function ScoreExplainer({ score }: { score: ScoreBreakdown }) {
+export function ScoreExplainer({ score, className }: { score: ScoreBreakdown; className?: string }) {
   const rows = ORDER.map((component) => {
     const value = score.components[component];
     const weight = score.effectiveWeights[component];
@@ -59,13 +41,12 @@ export function ScoreExplainer({ score }: { score: ScoreBreakdown }) {
   });
 
   const counted = rows.filter((r) => r.weight > 0).sort((a, b) => b.contribution - a.contribution);
-  const ignored = rows.filter((r) => r.weight <= 0);
   if (counted.length === 0) return null;
 
   const lead = counted[0];
 
   return (
-    <details className="mt-4 rounded-lg border border-seam bg-sleeve/40">
+    <details className={cn("mt-4 rounded-lg border border-seam bg-sleeve/40", className)}>
       <summary className="cursor-pointer list-none p-3 text-sm font-semibold marker:content-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
         <span className="text-primary">Why this card</span>
         {lead && (
@@ -99,14 +80,6 @@ export function ScoreExplainer({ score }: { score: ScoreBreakdown }) {
             );
           })}
         </ul>
-
-        {ignored.length > 0 && (
-          <p className="mt-3 border-t border-seam pt-3 text-xs text-muted-foreground">
-            Not counted:{" "}
-            {ignored.map(({ component, value }) => `${LABELS[component].name.toLowerCase()} — ${absentReason(component, value)}`).join("; ")}
-            .
-          </p>
-        )}
       </div>
     </details>
   );

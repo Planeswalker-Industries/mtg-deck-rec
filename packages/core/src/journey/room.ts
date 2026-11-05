@@ -1,5 +1,5 @@
 import type { CardId } from '../contract';
-import { withinTolerance } from './deck-tally';
+import { shortOfTarget, withinTolerance } from './deck-tally';
 
 /** A card the deck holds, as trimming the deck reads it. */
 export interface RoomCard {
@@ -35,7 +35,6 @@ export interface TrimInput {
 const UNLISTED_CUT_SCORE = -1;
 
 const overTarget = (r: RoomRole) => r.value > r.target && !withinTolerance(r.value, r.target);
-const shortOfTarget = (r: RoomRole) => r.value < r.target && !withinTolerance(r.value, r.target);
 
 /**
  * The cards to offer when the deck has to come back down to 100, in the order to offer them. Ranked without weights,
