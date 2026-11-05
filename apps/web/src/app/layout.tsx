@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, DM_Mono, Newsreader } from "next/font/google";
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { impactLoaderScript } from "@/lib/affiliate";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -43,8 +44,15 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  const affiliateScript = impactLoaderScript();
   return (
     <html lang="en" className={`dark ${body.variable} ${drama.variable} ${mono.variable} h-full`}>
+      <head>
+        {/* A plain tag, not next/script: Next queues an inline beforeInteractive script at the end of <body>. The
+            loader only queues calls and adds an async script, so it doesn't block rendering. Its content is built
+            from a validated id only (lib/affiliate.ts). */}
+        {affiliateScript && <script id="impact-affiliate" dangerouslySetInnerHTML={{ __html: affiliateScript }} />}
+      </head>
       <body className="flex min-h-full flex-col">
         <SiteHeader />
         <AdSlot slot="leaderboard" />
