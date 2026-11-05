@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { LayoutGrid, List } from "lucide-react";
 import { cn } from "cn";
-import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { PHONE_HIT_AREA, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 
 /** How a deck's cards show: whole card images, or one plate per card. */
 export type DeckView = "images" | "plates";
@@ -68,11 +68,12 @@ export function DeckViewToggle({ view, onChange, className }: { view: DeckView; 
           aria-pressed={view === v}
           onClick={() => onChange(v)}
           className={cn(
-            "inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors sm:min-h-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            PHONE_HIT_AREA,
+            "inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             view === v ? TOGGLE_ON : TOGGLE_OFF,
           )}
         >
-          <Icon aria-hidden className="size-4" />
+          <Icon aria-hidden className="size-3.5" />
           {label}
         </button>
       ))}

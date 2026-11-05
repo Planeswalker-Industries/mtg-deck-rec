@@ -193,6 +193,8 @@ export function useDeckTool(
   const [analyzedText, setAnalyzedText] = useState<string | null>(null);
   /** Counts analyses, so whatever builds on one (the journey) can tell a new deck from new settings for the same one. */
   const [round, setRound] = useState(0);
+  /** The round that replays the remembered deck untouched (the resume dialog's Yes): its journey may pick up its choices. */
+  const [resumedRound, setResumedRound] = useState<number | null>(null);
   const [bracketOverride, setBracketOverride] = useState<Bracket | null>(null);
   const [cut, setCut] = useState<Async<CutResult>>({ status: "idle" });
   const [importedFrom, setImportedFrom] = useState<ImportedFrom | null>(null);
@@ -348,6 +350,7 @@ export function useDeckTool(
   ): Promise<SubmitOutcome> {
     // Analyzing the remembered deck untouched keeps the choices it was saved with.
     const replay = restore ?? (restored !== null && restored.text === text ? restored : undefined);
+    const resuming = restore === undefined && replay !== undefined;
     setRestored(null);
     setParse({ status: "loading" });
     const deckText = replay?.text ?? text;
@@ -367,6 +370,7 @@ export function useDeckTool(
 
     recsRequest.current++;
     setRound((n) => n + 1);
+    setResumedRound(resuming ? round + 1 : null);
     setText(finalText);
     setAnalyzedText(finalText);
     if (!keepOrigin) {
@@ -552,6 +556,8 @@ export function useDeckTool(
     restoreLastDeck,
     /** The remembered deck put back in the box on this visit, until it is analyzed or cleared. */
     restoredDeck: restored,
+    /** True when the current round replays the remembered deck from the last visit: its journey picks up where it was. */
+    resumed: resumedRound === round,
     /** True while the box holds the remembered deck, untouched, and it has not been analyzed yet. */
     showsRestoredDeck: restored !== null && restored.text === text,
     refreshRecommendations,

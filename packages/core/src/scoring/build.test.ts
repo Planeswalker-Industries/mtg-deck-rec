@@ -209,7 +209,6 @@ describe('buildDeck', () => {
     // 63 nonland slots: by play rate alone the build would stop at Spell 63, but Spell 66 fills a role it is short of.
     expect(ids).toContain(66);
     expect(ids.filter((id) => roles.get(id)?.includes(RAMP))).toHaveLength(7);
-    expect(result.feasibility.roleShortfalls).toEqual([{ role: roleTag, short: 3 }]);
   });
 
   it('keeps the cards it is given and scores them against the rest', () => {

@@ -38,6 +38,7 @@ import {
 } from "@mtg/core/journey";
 import { byStaple, isFrontLand, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
+import { loadJourney, saveJourney } from "@/lib/saved-deck";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import type { Async, ContextChange } from "../use-deck-tool";
 import type { Candidates } from "../use-swipe-rater";
@@ -173,6 +174,7 @@ export function useDeckJourney({
   context,
   lines,
   cut,
+  resume,
 }: {
   analysis: DeckAnalysis | null;
   /** The tool's analysis count: a new value is a new deck, and a new round. */
@@ -181,6 +183,8 @@ export function useDeckJourney({
   lines: readonly ResolvedLine[];
   /** The tool's cut suggestions for the round's starting deck: Cut deals the mandatory ones and trims with the scores. */
   cut: Async<CutResult>;
+  /** This round replays the remembered deck: it starts from the choices stored for it, if any. */
+  resume: boolean;
 }) {
   const [round, setRound] = useState<Round | null>(null);
   // Each list remembers the round it was asked for, so a round's lists never show in the next one.
@@ -226,7 +230,8 @@ export function useDeckJourney({
   // lookup). Adjusted during render rather than in an effect, so no frame shows the old round.
   let current = round;
   if (analysis && round?.id !== roundId) {
-    current = { id: roundId, analysis, state: startJourney(analysis.deck), check: null, past: [] };
+    const stored = resume ? loadJourney(analysis.deck) : null;
+    current = { id: roundId, analysis, state: stored ?? startJourney(analysis.deck), check: null, past: [] };
     setRound(current);
   } else if (analysis && round && round.analysis !== analysis) {
     current = { ...round, analysis };
@@ -241,6 +246,10 @@ export function useDeckJourney({
     latest.current = current;
   });
   const state = current?.state ?? null;
+  // Every choice is kept with the remembered deck, so a refresh can pick the round up again.
+  useEffect(() => {
+    if (state) saveJourney(state);
+  }, [state]);
   const idle: Async<never> = { status: "idle" };
   const add = current && addFor?.round === current.id ? addFor.value : idle;
   const replace = current && replaceFor?.round === current.id ? replaceFor.value : idle;
@@ -361,14 +370,19 @@ export function useDeckJourney({
     replaceFor.value.status !== "error";
 
   /**
-   * A round opens on Add, so its list is asked for as the round starts (once per round, once the settings are known).
-   * The other lists are asked for by the handlers that open their steps.
+   * A round opens on Add, or on the step a resumed round was on, so that step's list is asked for as the round starts
+   * (once per round, once the settings are known). The other lists are asked for by the handlers that open their steps.
    */
   const startedRound = useRef<number | null>(null);
   useEffect(() => {
     if (!current || !context || startedRound.current === current.id) return;
     startedRound.current = current.id;
     const opening = current.state;
+    // A round restored on Swap asks for its targets as the stepper would; Cut deals from the tool's list, Finish needs none.
+    if (opening.phase === "replace") {
+      queueMicrotask(() => void loadReplaceTargets(opening, context));
+      return;
+    }
     if (opening.phase !== "add" || roomToAdd(opening) === 0 || addFresh(opening)) return;
     // Queued rather than called here: the request sets state, which an effect body must not do synchronously.
     queueMicrotask(() => void loadAdds(opening, context));

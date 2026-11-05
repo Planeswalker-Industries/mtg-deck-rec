@@ -114,7 +114,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             <span className="font-heading text-base font-semibold">Deck stats</span>
           )}
           <span className="flex shrink-0 items-center gap-3">
-            <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />
+            <LevelBadge level={report.level} okCount={report.okCount} total={report.total} compact />
             <ChevronUp aria-hidden className="size-5 text-muted-foreground" />
           </span>
         </button>
@@ -125,13 +125,14 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
           side="bottom"
           showCloseButton={false}
           aria-describedby={undefined}
-          className="mx-auto max-h-[75lvh] w-full max-w-xl gap-0 overflow-y-auto rounded-t-2xl border-seam bg-sleeve px-4 pt-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+          // A fixed header row over a body that scrolls on its own: a sticky header let the readout show above and
+          // behind it, and the body's scroll never chains to the page.
+          className="mx-auto flex max-h-[75lvh] w-full max-w-xl flex-col gap-0 overflow-hidden rounded-t-2xl border-seam bg-sleeve p-0"
         >
           <button
             type="button"
             aria-label="Close deck stats"
-            // Sticky, so the handle stays in reach while the readout scrolls under it.
-            className="sticky top-0 z-10 mx-auto -mt-2 flex min-h-11 w-full cursor-pointer touch-none items-center justify-between gap-3 bg-sleeve pt-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+            className="mx-auto flex min-h-11 w-full shrink-0 cursor-pointer touch-none items-center justify-between gap-3 bg-sleeve px-4 pt-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
             onPointerDown={(e) => {
               e.currentTarget.setPointerCapture(e.pointerId);
               startY.current = e.clientY;
@@ -151,7 +152,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
               <ChevronDown aria-hidden className="size-5 text-muted-foreground" />
             </span>
           </button>
-          <div className="pt-2">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
             <DeckStatsPanel {...panel} {...actions} />
           </div>
         </SheetContent>

@@ -1,4 +1,5 @@
-import type { Bracket } from "@mtg/core/contract";
+import type { Bracket, DeckInput } from "@mtg/core/contract";
+import { JOURNEY_PHASES, deckKey, type JourneyState } from "@mtg/core/journey";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import type { ImportedFrom } from "@/components/deck/use-deck-tool";
 
@@ -84,5 +85,65 @@ export function clearSavedDeck(): void {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Storage is blocked; there's nothing saved to clear.
+  }
+  clearJourney();
+}
+
+const JOURNEY_KEY = "mtg-deck-rec:last-journey";
+/** A round's choices are tens of kilobytes; one past this isn't kept rather than push the deck out of the quota. */
+const MAX_JOURNEY_CHARS = 500_000;
+
+interface StoredJourney {
+  state: JourneyState;
+  savedAt: number;
+}
+
+/** The round's lists of choices; each must be an array in a stored journey. */
+const LIST_FIELDS = ["cuts", "kept", "adds", "declinedAdds", "swaps", "keptInReplace", "declinedSwaps"] as const;
+
+function isStoredJourney(value: unknown): value is StoredJourney {
+  if (typeof value !== "object" || value === null) return false;
+  const { state, savedAt } = value as Record<string, unknown>;
+  if (typeof savedAt !== "number" || typeof state !== "object" || state === null) return false;
+  const s = state as Record<string, unknown>;
+  const base = s.base as Record<string, unknown> | null | undefined;
+  return (
+    JOURNEY_PHASES.includes(s.phase as never) &&
+    JOURNEY_PHASES.includes(s.reached as never) &&
+    typeof base === "object" &&
+    base !== null &&
+    Array.isArray(base.commanders) &&
+    Array.isArray(base.cards) &&
+    LIST_FIELDS.every((field) => Array.isArray(s[field]))
+  );
+}
+
+/** Keeps the round's choices with the remembered deck, so a refresh can pick the round up again. */
+export function saveJourney(state: JourneyState): void {
+  try {
+    const json = JSON.stringify({ state, savedAt: Date.now() } satisfies StoredJourney);
+    if (json.length > MAX_JOURNEY_CHARS) localStorage.removeItem(JOURNEY_KEY);
+    else localStorage.setItem(JOURNEY_KEY, json);
+  } catch {
+    // Storage is blocked or full; a refresh will start the round over.
+  }
+}
+
+/** The stored choices for a round starting from `base`, or null when none were kept for that deck. */
+export function loadJourney(base: DeckInput): JourneyState | null {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(JOURNEY_KEY) ?? "null");
+    if (!isStoredJourney(value) || Date.now() - value.savedAt > MAX_AGE_MS) return null;
+    return deckKey(value.state.base) === deckKey(base) ? value.state : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearJourney(): void {
+  try {
+    localStorage.removeItem(JOURNEY_KEY);
+  } catch {
+    // Storage is blocked; there's nothing stored to clear.
   }
 }

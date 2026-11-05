@@ -133,5 +133,7 @@
  * colours of lands it can put onto the battlefield) and `findsBasicOnly`, absent when empty, and optional `layout`
  * (Scryfall's), which tells a spell/land MDFC from a card that transforms into a land. Deck stats reads them for colour
  * sources and on-curve odds. Additive.
+ *
+ * v33 (2026-11-04): BuildFeasibility.roleShortfalls removed; the build page grades the built deck with Deck stats (T084).
  */
-export const CONTRACT_VERSION = 32;
+export const CONTRACT_VERSION = 33;
