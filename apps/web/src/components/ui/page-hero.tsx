@@ -22,8 +22,8 @@ export function PageHero({
   /** The heading's id, for the section's accessible name. */
   id: string;
   heading: string;
-  /** The buddy's voice, one short line in `font-drama` under the heading. */
-  aside: string;
+  /** The buddy's voice, one short line in `font-drama` under the heading. Omitted, the heading stands alone. */
+  aside?: string;
   /** What the screen does, and any notes (a restored deck, the collection). */
   intro: ReactNode;
   /** The form, set on the panel. */
@@ -41,9 +41,11 @@ export function PageHero({
         <div className="flex max-w-xl flex-col gap-4">
           <h1 id={id} className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             {heading}
-            <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85 max-sm:text-xl">
-              {aside}
-            </span>
+            {aside && (
+              <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85 max-sm:text-xl">
+                {aside}
+              </span>
+            )}
           </h1>
           <div className="flex flex-col gap-3 text-foreground/80">{intro}</div>
           <ArtCredit vista={vista} className="hidden text-xs text-muted-foreground lg:block" />

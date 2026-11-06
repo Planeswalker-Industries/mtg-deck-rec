@@ -81,6 +81,8 @@ export function useCollectionSource() {
     return () => {
       mounted.current = false;
       window.removeEventListener(CHANGED_EVENT, onChange);
+      // A page hidden behind another route reads the collection again when it shows; until then it may be stale.
+      setRefreshing(true);
     };
   }, [refresh]);
 

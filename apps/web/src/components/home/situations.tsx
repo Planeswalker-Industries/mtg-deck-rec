@@ -1,101 +1,39 @@
-"use client";
-
-import { useState, type MouseEvent } from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { Plus } from "lucide-react";
 import { cn } from "cn";
+import { Button } from "@/components/ui/button";
 import { BUILD_DECK_HREF } from "@/lib/constants";
 
 /**
- * Where players start from, in their own words, and what to bring. Each cell is a link, filled blue on both faces like
- * the site's primary button. It turns over on hover (or keyboard focus) to show the action, marked with the deck
- * tool's Add symbol. A commander opens the deck tool's commander picker, which builds a deck for it.
+ * The two ways in, as the site's own buttons so they read as pressable. A commander opens the deck tool's commander
+ * picker, which builds a deck for it; a decklist opens the deck tool to paste one.
  */
-const SITUATIONS: { said: string; action: string; href: Route }[] = [
-  { said: "Found a great deck online!", action: "Decklist", href: "/deck" },
-  { said: "Just pulled a cool new Commander!", action: "Commander", href: BUILD_DECK_HREF as Route },
-  { said: "How do I improve my deck?", action: "Decklist", href: "/deck" },
-  { said: "Just want a frame to build from", action: "Collection", href: "/collection/import" },
+const STARTS: { label: string; href: Route; variant: "default" | "outline" }[] = [
+  { label: "Choose Commander", href: BUILD_DECK_HREF as Route, variant: "default" },
+  { label: "Improve Decklist", href: "/deck", variant: "outline" },
 ];
 
-/** Both faces fill the same cell, so the cell is as tall as its taller face and the turn never jumps. */
-const FACE = "flex items-center justify-center px-4 text-center backface-hidden [grid-area:1/1]";
-
-/**
- * One cell of the ribbon. A mouse or keyboard focus turns it over (CSS, after a short pause so passing across the row
- * doesn't set every cell spinning); a click goes straight to the action. Touch has no hover, so the first tap turns
- * it over and the second follows the link.
- */
-function SituationCell({ said, action, href, className }: (typeof SITUATIONS)[number] & { className?: string }) {
-  const [tapped, setTapped] = useState(false);
-
-  const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
-    const touch = (e.nativeEvent as PointerEvent).pointerType === "touch";
-    if (touch && !tapped) {
-      e.preventDefault();
-      setTapped(true);
-    }
-  };
-
-  return (
-    <li className={cn("perspective-distant", className)}>
-      <Link
-        href={href}
-        aria-label={`${said} Add your ${action.toLowerCase()}`}
-        onClick={onClick}
-        onBlur={() => setTapped(false)}
-        className="group block h-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
-      >
-        <span
-          className={cn(
-            "grid h-full min-h-20 grid-cols-[minmax(0,1fr)] transition-transform duration-450 ease-table transform-3d motion-reduce:transition-none",
-            "group-hover:rotate-y-180 group-hover:[transition-delay:150ms] group-focus-visible:rotate-y-180",
-            tapped && "rotate-y-180",
-          )}
-        >
-          {/* Set like the back face, and like the site's buttons: the turn changes the words, never the type. */}
-          <span aria-hidden className={cn(FACE, "bg-primary text-base font-semibold text-balance text-primary-foreground")}>
-            &ldquo;{said}&rdquo;
-          </span>
-          {/* The back is the action: the whole cell fills blue with dark text, like the site's primary button. */}
-          <span aria-hidden className={cn(FACE, "rotate-y-180 gap-1.5 bg-primary text-base font-semibold text-primary-foreground")}>
-            <Plus className="size-5 shrink-0" strokeWidth={2.5} />
-            {action}
-          </span>
-        </span>
-      </Link>
-    </li>
-  );
-}
-
-/**
- * A thin ribbon across the page: the prompt, then the four starting points, divided by single rules. Five across on
- * wide screens; on a phone the prompt takes the top row and the four sit two by two.
- */
+/** A thin ribbon across the page: the prompt, then the starting points. On a phone the buttons share one row. */
 export function Situations() {
   return (
     <section aria-labelledby="situations" className="relative mx-[calc(50%-50vw)] w-screen border-b border-seam">
-      <ul className="page-column grid grid-cols-2 lg:grid-cols-5">
-        <li className="col-span-2 flex flex-col justify-center py-4 lg:col-span-1 lg:py-0 lg:pr-4">
+      <div className="page-column flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:gap-6">
+        <div>
           <h2 id="situations" className="font-heading text-xl font-semibold tracking-tight">
-            Sound familiar?
+            Start here
           </h2>
           <p className="text-sm text-muted-foreground">Choose your path.</p>
-        </li>
-        {SITUATIONS.map((s, i) => (
-          <SituationCell
-            key={s.said}
-            {...s}
-            className={cn(
-              "border-seam max-lg:border-t",
-              i % 2 === 0 ? "max-lg:border-r" : "",
-              "lg:border-l",
-              i === SITUATIONS.length - 1 && "lg:border-r",
-            )}
-          />
-        ))}
-      </ul>
+        </div>
+        <ul className="grid grid-cols-2 gap-2 sm:flex">
+          {STARTS.map((s) => (
+            <li key={s.label}>
+              <Button asChild size="lg" variant={s.variant} className={cn("h-12 w-full px-3 text-base sm:px-6 font-semibold sm:w-auto", s.variant === "default" && "lit")}>
+                <Link href={s.href}>{s.label}</Link>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }

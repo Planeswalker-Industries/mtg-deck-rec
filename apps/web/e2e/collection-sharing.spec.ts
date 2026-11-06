@@ -10,7 +10,7 @@ test("a shared collection is read-only to others, sends its owner home and 404s 
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
   await signIn(page, request, `e2e-share-collection-${Date.now()}@example.com`, "/collection/import");
-  await page.getByLabel("Collection export").fill("3 Sol Ring");
+  await page.getByLabel("Collection import").fill("3 Sol Ring");
   await page.getByRole("button", { name: /Import collection|Replace collection/ }).click();
   await expect(page.getByRole("region", { name: "Saved collection" }).getByText(/Saved to your account/)).toBeVisible({ timeout: SYNC_WAIT_MS });
 

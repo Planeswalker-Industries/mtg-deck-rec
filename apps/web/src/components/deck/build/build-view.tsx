@@ -173,7 +173,7 @@ function BuildSection({ id, title, className, children }: { id: string; title: R
           <h2 id={id} className={cn("font-heading text-xl leading-none font-semibold", className)}>
             {title}
           </h2>
-          <ChevronDown aria-hidden className="size-5 shrink-0 text-primary transition-transform group-open/section:rotate-180" />
+          <ChevronDown aria-hidden className="size-5 shrink-0 text-primary rotate-180 transition-transform group-open/section:rotate-0" />
         </summary>
         <div className="mt-2">{children}</div>
       </details>

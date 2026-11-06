@@ -94,7 +94,8 @@ export function FileDrop({
         className={cn(
           // Phones don't drag files: there it is a compact row with the picker.
           "rounded-xl border border-dashed p-6 text-center transition-colors max-sm:p-3",
-          over ? "border-primary bg-primary/5" : "border-seam",
+          // Blue at rest like an outline button: the whole box takes a file.
+          over ? "border-primary bg-primary/5" : "border-primary/55",
           disabled && "opacity-60",
         )}
       >

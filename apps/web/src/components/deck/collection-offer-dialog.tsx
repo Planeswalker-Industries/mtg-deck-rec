@@ -6,9 +6,9 @@ import { Dialog } from "radix-ui";
 import { Button } from "@/components/ui/button";
 
 /**
- * Offered once to a signed-in player whose account holds no collection, on the deck tool's opening screens: tell us
- * what you own and the suggestions come from your shelf first. Dismissing it leaves the page as it was; the import
- * links in the page say the same thing from then on.
+ * Offered on every visit to a player with no collection, signed in or not, on the deck tool's opening screens: tell us
+ * what you own and the suggestions come from your shelf first. Dismissing it leaves the page as it was for this visit;
+ * the import links in the page say the same thing until the next one.
  */
 export function CollectionOfferDialog({ importHref, onDismiss }: { importHref: Route; onDismiss: () => void }) {
   return (
