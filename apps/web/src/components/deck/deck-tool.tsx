@@ -19,9 +19,11 @@ import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { DeckBar } from "./deck-bar";
 import { DeckCoverage } from "./deck-coverage";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
+import { collectionOffered, rememberCollectionOffered } from "@/lib/collection-prompt";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
 import { ResumeDeckDialog } from "./resume-deck-dialog";
+import { CollectionOfferDialog } from "./collection-offer-dialog";
 import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
@@ -248,6 +250,12 @@ function DeckToolSession() {
    */
   const [resumeAnswered, setResumeAnswered] = useState(false);
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
+  /** The import offer below is made once per browser; answering or waving it away settles it for this visit too. */
+  const [collectionOfferAnswered, setCollectionOfferAnswered] = useState(collectionOffered);
+  function answerCollectionOffer() {
+    setCollectionOfferAnswered(true);
+    rememberCollectionOffered();
+  }
   const { analysis, context } = tool;
   const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut, resume: tool.resumed });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
@@ -1124,6 +1132,17 @@ function DeckToolSession() {
           onDismiss={() => setResumeAnswered(true)}
         />
       )}
+      {/* Only on the opening screens, and never stacked on the resume question. */}
+      {source.kind === "none" &&
+        source.signedIn &&
+        !collectionOfferAnswered &&
+        (showPicker || showInput) &&
+        !(tool.restoredDeck && tool.showsRestoredDeck && !resumeAnswered && !analysis) && (
+          <CollectionOfferDialog
+            importHref={(showPicker ? buildImportHref : collectionImportHref) as Route}
+            onDismiss={answerCollectionOffer}
+          />
+        )}
     </div>
   );
 }

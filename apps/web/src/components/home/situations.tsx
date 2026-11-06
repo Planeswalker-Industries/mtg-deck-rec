@@ -54,7 +54,8 @@ function SituationCell({ said, action, href, className }: (typeof SITUATIONS)[nu
             tapped && "rotate-y-180",
           )}
         >
-          <span aria-hidden className={cn(FACE, "bg-primary font-drama text-lg text-balance text-primary-foreground italic")}>
+          {/* Set like the back face, and like the site's buttons: the turn changes the words, never the type. */}
+          <span aria-hidden className={cn(FACE, "bg-primary text-base font-semibold text-balance text-primary-foreground")}>
             &ldquo;{said}&rdquo;
           </span>
           {/* The back is the action: the whole cell fills blue with dark text, like the site's primary button. */}
@@ -80,7 +81,7 @@ export function Situations() {
           <h2 id="situations" className="font-heading text-xl font-semibold tracking-tight">
             Sound familiar?
           </h2>
-          <p className="text-sm text-muted-foreground">Choose where to start.</p>
+          <p className="text-sm text-muted-foreground">Choose your path.</p>
         </li>
         {SITUATIONS.map((s, i) => (
           <SituationCell

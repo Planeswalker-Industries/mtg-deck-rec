@@ -143,13 +143,32 @@ export default function PrivacyPage() {
           .
         </p>
       </Section>
+
+      {/* The site footer links straight here, so it can carry one line instead of these paragraphs. */}
+      <Section title="Credits and legal" id="credits">
+        <p>
+          Card data and images come from{" "}
+          <a href="https://scryfall.com" className={TEXT_LINK}>
+            Scryfall
+          </a>
+          . Card roles come from the Scryfall Tagger project. Prices are estimates and may be out of date.
+        </p>
+        <p>
+          MTG Deck Rec is unofficial Fan Content permitted under the{" "}
+          <a href="https://company.wizards.com/en/legal/fancontentpolicy" className={TEXT_LINK}>
+            Fan Content Policy
+          </a>
+          . Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast.
+          ©Wizards of the Coast LLC.
+        </p>
+      </Section>
     </article>
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section id={id} className="flex flex-col gap-2 scroll-mt-20">
       <h2 className="font-heading text-xl font-semibold">{title}</h2>
       {children}
     </section>
