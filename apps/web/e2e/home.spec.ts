@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("ring aria-label names every category", async ({ page }) => {
   await page.goto("/");
@@ -39,6 +39,6 @@ test("clicking a tile selects that commander", async ({ page }) => {
 
 test("the Commander starting point opens the commander picker", async ({ page }) => {
   await page.goto("/");
-  const commander = page.getByRole("link", { name: /pulled a cool new Commander!.*Add your commander/ });
+  const commander = page.getByRole("link", { name: "Choose Commander", exact: true });
   await expect(commander).toHaveAttribute("href", "/deck?start=build");
 });

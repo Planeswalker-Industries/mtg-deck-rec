@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, fillDecklist, test, type Page } from "./fixtures";
 
 const DECK = [
   "Commander",
@@ -56,14 +56,14 @@ async function expectPersistedSolRingQuantity(page: Page) {
 
 async function importCollection(page: Page) {
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("1 Chulane, Teller of Tales\n1 Sol Ring");
+  await page.getByLabel("Collection import").fill("1 Chulane, Teller of Tales\n1 Sol Ring");
   await page.getByRole("button", { name: "Import collection" }).click();
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: 30_000 });
 }
 
 async function analyze(page: Page) {
   await page.goto("/deck");
-  await page.getByRole("textbox", { name: "Decklist" }).fill(DECK);
+  await fillDecklist(page, DECK);
   await page.getByRole("button", { name: "Analyze deck" }).click();
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });

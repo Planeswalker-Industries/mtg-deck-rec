@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, fillDecklist, test, type Locator, type Page } from "./fixtures";
 
 /** Collection parsing and catalog loading may take this long in the production mock build. */
 const COLLECTION_WAIT_MS = 30_000;
@@ -27,7 +27,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 
 test("a short collection build: Add runs out, offers singles, then basics for the holes (T076)", async ({ page }) => {
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill(SMALL_COLLECTION);
+  await page.getByLabel("Collection import").fill(SMALL_COLLECTION);
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
 
@@ -80,7 +80,7 @@ test("a short collection build: Add runs out, offers singles, then basics for th
 
 test("owned suggestions carry the corner marker where they mix with cards to buy, and none in Owned only", async ({ page }) => {
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill(
+  await page.getByLabel("Collection import").fill(
     // Creatures near the top of Chulane's Add list in the mocks and the real catalog alike, and no Game Changers,
     // which a low bracket leaves out.
     ["1 Chulane, Teller of Tales", "1 Birds of Paradise", "1 Llanowar Elves", "1 Elvish Mystic", "1 Beast Whisperer"].join("\n"),
@@ -89,7 +89,7 @@ test("owned suggestions carry the corner marker where they mix with cards to buy
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
 
   await page.goto("/deck");
-  await page.getByRole("textbox", { name: "Decklist" }).fill(["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Command Tower"].join("\n"));
+  await fillDecklist(page, ["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Command Tower"].join("\n"));
   await page.getByRole("button", { name: "Analyze deck" }).click();
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });

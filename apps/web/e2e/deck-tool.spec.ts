@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { test as withoutOfferSkip } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 
 /** Tailwind's `lg` breakpoint, where the deckbuilder shows search beside the deck instead of its own tab. */
 const LG_BREAKPOINT_PX = 1024;
@@ -266,7 +267,7 @@ test("builds a deck for a picked commander, then goes through it card by card", 
 test("fits a pasted list to the collection: owned cards stay, the rest comes from the collection", async ({ page }) => {
   test.skip(!process.env.E2E_LOCAL_DATA, "matching a collection needs the synced catalog (E2E_LOCAL_DATA)");
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("1 Liesa, Forgotten Archangel\n1 Arcane Signet\n1 Swords to Plowshares");
+  await page.getByLabel("Collection import").fill("1 Liesa, Forgotten Archangel\n1 Arcane Signet\n1 Swords to Plowshares");
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: 30_000 });
 
@@ -292,4 +293,22 @@ test("Add may take a full deck past 100, and Cut then owes what was added", asyn
   await sitting.getByRole("button", { name: /^Add / }).click({ timeout: 60_000 });
   await page.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click();
   await expect(page.getByText(/^Cut 1 to get back to 100/)).toBeVisible();
+});
+
+// The plain Playwright test: the fixture's handler would answer the offer before this check could see it.
+withoutOfferSkip("offers a collection import on every visit until there is one", async ({ page }) => {
+  const offer = page.getByRole("dialog", { name: "Hold up — got cards already?" });
+  await page.goto("/deck?start=build");
+  await expect(offer).toBeVisible({ timeout: 30_000 });
+  await offer.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(offer).toBeHidden();
+  await expect(page.getByRole("combobox", { name: "Commander", exact: true })).toBeVisible();
+
+  // Going to the import and back without importing anything asks again.
+  await page.reload();
+  await expect(offer).toBeVisible({ timeout: 30_000 });
+  await offer.getByRole("link", { name: "Add collection" }).click();
+  await expect(page).toHaveURL(/\/collection\/import\?next=/);
+  await page.goBack();
+  await expect(offer).toBeVisible({ timeout: 30_000 });
 });

@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 /** Real local catalog and account actions can take half a minute to finish. */
@@ -33,7 +33,7 @@ test("a collection imported before signing in moves to the account and drives ow
   const copies = summary.locator("dd").nth(1);
 
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("3 Sol Ring");
+  await page.getByLabel("Collection import").fill("3 Sol Ring");
   await page.getByRole("button", { name: "Import collection" }).click();
   await expect(summary.getByText(/Saved in this browser until/)).toBeVisible({ timeout: 30_000 });
 
@@ -74,14 +74,14 @@ test("a collection imported before signing in moves to the account and drives ow
   await summary.getByRole("button", { name: "Clear collection" }).click();
   await expect(summary).toBeHidden();
   await page.reload();
-  await expect(page.getByLabel("Collection export")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByLabel("Collection import")).toBeVisible({ timeout: 30_000 });
   await expect(summary).toBeHidden();
 });
 
 test("edits an account collection by hand, and the edits stay", async ({ page, request }) => {
   test.skip(!mailpit, "needs the local mail catcher (E2E_MAILPIT_URL)");
   await signIn(page, request, `e2e-edit-collection-${Date.now()}@example.com`, "/collection/import");
-  await page.getByLabel("Collection export").fill("2 Sol Ring");
+  await page.getByLabel("Collection import").fill("2 Sol Ring");
   await page.getByRole("button", { name: /Import collection|Replace collection/ }).click();
   const summary = page.getByRole("region", { name: "Saved collection" });
   await expect(summary.getByText(/Saved to your account/)).toBeVisible({ timeout: 30_000 });
@@ -104,7 +104,7 @@ test("an old browser sync cannot restore rows after an explicit account replacem
   test.skip(!mailpit, "needs the local mail catcher (E2E_MAILPIT_URL)");
   test.setTimeout(SYNC_TEST_TIMEOUT_MS);
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill(`${STALE_BROWSER_COPIES} Sol Ring`);
+  await page.getByLabel("Collection import").fill(`${STALE_BROWSER_COPIES} Sol Ring`);
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: SYNC_WAIT_MS });
 
@@ -161,7 +161,7 @@ test("a failed move to the account says so, keeps the browser copy, and the next
   test.setTimeout(SYNC_TEST_TIMEOUT_MS);
   const summary = page.getByRole("region", { name: "Saved collection" });
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill(`${STALE_BROWSER_COPIES} Sol Ring`);
+  await page.getByLabel("Collection import").fill(`${STALE_BROWSER_COPIES} Sol Ring`);
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   await expect(summary).toBeVisible({ timeout: SYNC_WAIT_MS });
 
@@ -193,11 +193,11 @@ test("Upload a collection's return: an account with a collection goes straight b
   // signIn waits for a bare path, so it lands on the import page and the return path is opened from there.
   await signIn(page, request, `e2e-ifempty-${Date.now()}@example.com`, "/collection/import");
   await page.goto(returnPath);
-  await expect(page.getByLabel("Collection export")).toBeVisible({ timeout: SYNC_WAIT_MS });
+  await expect(page.getByLabel("Collection import")).toBeVisible({ timeout: SYNC_WAIT_MS });
   expect(new URL(page.url()).pathname).toBe("/collection/import");
 
   // Importing here stays to show how it went, even with ifEmpty.
-  await page.getByLabel("Collection export").fill("1 Sol Ring");
+  await page.getByLabel("Collection import").fill("1 Sol Ring");
   await page.getByRole("button", { name: "Import collection" }).click();
   const summary = page.getByRole("region", { name: "Saved collection" });
   await expect(summary.getByText(/Saved to your account/)).toBeVisible({ timeout: SYNC_WAIT_MS });

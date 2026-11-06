@@ -316,7 +316,7 @@ export function CollectionTool() {
         }}
       >
         <Label htmlFor={textHidden ? undefined : "collection-text"} className="font-semibold">
-          {hasCollection ? mode === "merge" ? "Add a new export" : "Replace with a new export" : "Collection export"}
+          {hasCollection ? mode === "merge" ? "Add a new export" : "Replace with a new export" : "Collection import"}
         </Label>
         {fileName !== null ? (
           <LoadedFile
@@ -397,7 +397,13 @@ export function CollectionTool() {
           </fieldset>
         )}
         <div>
-          <Button type="submit" size="lg" variant="outline" disabled={!text.trim() || importing || source.kind === "loading"}>
+          {/* Solid once a file is loaded: importing it is the one thing left to do. */}
+          <Button
+            type="submit"
+            size="lg"
+            variant={fileName !== null ? "default" : "outline"}
+            disabled={!text.trim() || importing || source.kind === "loading"}
+          >
             {importing ? "Importing…" : hasCollection ? mode === "merge" ? "Add to collection" : "Replace collection" : isLink ? "Import from link" : "Import collection"}
           </Button>
         </div>

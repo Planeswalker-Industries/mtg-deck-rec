@@ -93,7 +93,7 @@ function StepCard({ step, className, role }: { step: Step; className?: string; r
         <StepRecording media={step.media} />
       </div>
       {/* Always one line, centred in whatever height the card is given, so no card grows a gap under its caption. The
-          size of the "Sound familiar?" heading where the card has room for "SWAP in your collection", a step or two
+          size of the "Start here" heading where the card has room for "SWAP in your collection", a step or two
           down the scale where it doesn't (the three cards are always the same width, so they always match). */}
       <h3 className="flex min-w-0 flex-1 items-center justify-center px-2 py-2 font-heading text-base leading-tight font-semibold tracking-tight @[14rem]:text-lg @[18rem]:px-3 @[18rem]:text-xl">
         <span className="truncate">
