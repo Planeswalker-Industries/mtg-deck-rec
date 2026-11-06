@@ -56,7 +56,7 @@ async function expectPersistedSolRingQuantity(page: Page) {
 
 async function importCollection(page: Page) {
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("1 Chulane, Teller of Tales\n1 Sol Ring");
+  await page.getByLabel("Collection import").fill("1 Chulane, Teller of Tales\n1 Sol Ring");
   await page.getByRole("button", { name: "Import collection" }).click();
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: 30_000 });
 }

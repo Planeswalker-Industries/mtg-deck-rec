@@ -267,7 +267,7 @@ test("builds a deck for a picked commander, then goes through it card by card", 
 test("fits a pasted list to the collection: owned cards stay, the rest comes from the collection", async ({ page }) => {
   test.skip(!process.env.E2E_LOCAL_DATA, "matching a collection needs the synced catalog (E2E_LOCAL_DATA)");
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("1 Liesa, Forgotten Archangel\n1 Arcane Signet\n1 Swords to Plowshares");
+  await page.getByLabel("Collection import").fill("1 Liesa, Forgotten Archangel\n1 Arcane Signet\n1 Swords to Plowshares");
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: 30_000 });
 

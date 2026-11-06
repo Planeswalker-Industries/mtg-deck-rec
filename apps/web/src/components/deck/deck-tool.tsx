@@ -692,20 +692,10 @@ function DeckToolSession() {
       ) : showPicker ? (
         <PageHero
           id="deck-build-heading"
-          heading="Build a deck"
-          aside={tool.ownedOnly ? "Pick a commander. Your cards do the rest." : "Pick a commander. We'll deal you a deck."}
+          heading="Choose commander"
+          aside="We'll deal you a deck."
           intro={
             <>
-              <p>
-                {tool.ownedOnly
-                  ? "Pick a commander and we'll build a deck for it from your collection, then you can go through it card by card."
-                  : "Pick a commander and we'll build a deck for it, then you can go through it card by card."}{" "}
-                Have a list already?{" "}
-                <Link href="/deck" className={cn(TEXT_LINK, "font-semibold")}>
-                  Paste a decklist
-                </Link>
-                .
-              </p>
               {source.kind === "none" && (
                 <p className="text-sm text-muted-foreground">
                   <Link href={buildImportHref} className={cn(TEXT_LINK, "font-semibold")}>
@@ -729,8 +719,9 @@ function DeckToolSession() {
                 onChange={setPickFrom}
               />
             )}
+            {/* The collection offer takes focus while it is up; off again, the cursor goes back into the box. */}
             <CommanderPicker
-              autoFocus
+              autoFocus={!offersCollection}
               ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
               onPick={(card) => void deckBuild.build({ commanders: [card], bracket: BUILD_DEFAULT_BRACKET })}
             />

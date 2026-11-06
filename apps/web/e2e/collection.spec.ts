@@ -40,7 +40,7 @@ test("starts an empty browser collection by name without storing an empty collec
 
 test("adds imports by default, preserves unmatched lines, and replaces only when chosen", async ({ page }) => {
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("2 Sol Ring\n1 Old Unknown Card");
+  await page.getByLabel("Collection import").fill("2 Sol Ring\n1 Old Unknown Card");
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   const summary = page.getByRole("region", { name: "Saved collection" });
   await expect(summary).toBeVisible({ timeout: COLLECTION_WAIT_MS });
@@ -78,7 +78,7 @@ test("returns to the initiating deck only after a successful import and rejects 
   const barLink = page.getByRole("link", { name: "Add collection", exact: true });
   await expect(barLink).toHaveAttribute("href", "/collection/import?next=%2Fdeck", { timeout: COLLECTION_WAIT_MS });
   await barLink.click();
-  await page.getByLabel("Collection export").fill("1 Sol Ring");
+  await page.getByLabel("Collection import").fill("1 Sol Ring");
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   const back = page.getByRole("link", { name: "Back to your deck" });
   await expect(back).toHaveAttribute("href", "/deck", { timeout: COLLECTION_WAIT_MS });
@@ -98,7 +98,7 @@ test("returns to the initiating deck only after a successful import and rejects 
 
 test("imports a collection and limits suggestions to owned cards", async ({ page }) => {
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("1 Sol Ring\n1 Definitely Not A Real Card");
+  await page.getByLabel("Collection import").fill("1 Sol Ring\n1 Definitely Not A Real Card");
   await page.getByRole("button", { name: "Import collection" }).click();
 
   const summary = page.getByRole("region", { name: "Saved collection" });
@@ -137,12 +137,12 @@ test("imports a collection and limits suggestions to owned cards", async ({ page
 // tests must never do. The Archidekt path is covered by the parser tests in @mtg/core and checked by hand.
 test("a link the app can't read says how to export instead", async ({ page }) => {
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("https://manabox.app/binders/example");
+  await page.getByLabel("Collection import").fill("https://manabox.app/binders/example");
   await page.getByRole("button", { name: "Import from link" }).click();
   await expect(page.getByText(/ManaBox links can't be imported yet\..*export a CSV/)).toBeVisible({ timeout: 30_000 });
 
   // Changing the text clears the old problem, and a plain export gets the usual button back.
-  await page.getByLabel("Collection export").fill("1 Sol Ring");
+  await page.getByLabel("Collection import").fill("1 Sol Ring");
   await expect(page.getByText(/ManaBox links can't be imported/)).toBeHidden();
   await expect(page.getByRole("button", { name: /Import collection|Replace collection/ })).toBeVisible();
 });
@@ -181,7 +181,7 @@ test("browses a collection by name, color and type", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "No collection yet" })).toBeVisible({ timeout: 30_000 });
 
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("2 Sol Ring\n1 Chulane, Teller of Tales");
+  await page.getByLabel("Collection import").fill("2 Sol Ring\n1 Chulane, Teller of Tales");
   await page.getByRole("button", { name: "Import collection" }).click();
   const summary = page.getByRole("region", { name: "Saved collection" });
   await summary.getByRole("link", { name: "Browse your collection" }).click({ timeout: 30_000 });
@@ -221,7 +221,7 @@ test("browses a collection by name, color and type", async ({ page }) => {
 
 test("edits a browser collection by hand, and the edits stay", async ({ page }) => {
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("2 Sol Ring\n1 Chulane, Teller of Tales");
+  await page.getByLabel("Collection import").fill("2 Sol Ring\n1 Chulane, Teller of Tales");
   await page.getByRole("button", { name: "Import collection" }).click();
   await page.getByRole("region", { name: "Saved collection" }).getByRole("link", { name: "Browse your collection" }).click({ timeout: 30_000 });
 

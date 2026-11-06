@@ -256,7 +256,7 @@ test("saving asks to add the cards the collection lacks, and explicit add adds t
   await signIn(page, request, email, "/decks");
 
   await page.goto("/collection/import");
-  await page.getByLabel("Collection export").fill("1 Arcane Signet");
+  await page.getByLabel("Collection import").fill("1 Arcane Signet");
   await page.getByRole("button", { name: "Import collection" }).click();
   const summary = page.getByRole("region", { name: "Saved collection" });
   await expect(summary.getByText(/Saved to your account/)).toBeVisible({ timeout: 30_000 });
@@ -281,7 +281,7 @@ test("saving asks to add the cards the collection lacks, and explicit add adds t
 
 test("a saved deck shows its owner's collection coverage, on its page and in its deckbuilder, and strangers none", async ({ page, request, browser }) => {
   await signIn(page, request, `deckcoverage-${Date.now()}@test.invalid`, "/collection/import");
-  await page.getByLabel("Collection export").fill("1 Sol Ring\n1 Command Tower");
+  await page.getByLabel("Collection import").fill("1 Sol Ring\n1 Command Tower");
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
   await expect(page.getByText(/Saved to your account/)).toBeVisible({ timeout: 30_000 });
 
