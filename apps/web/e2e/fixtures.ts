@@ -1,6 +1,22 @@
-import { test as base, type Page } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 
 export * from "@playwright/test";
+
+/** How long one fill waits for "Analyze deck" to enable before filling again. */
+const FILL_SETTLE_MS = 2_000;
+
+/**
+ * Fills the deck tool's Decklist box until "Analyze deck" takes it. A fill that lands before the tool has hydrated, or
+ * while it is still restoring its state, is dropped and leaves the button disabled, so fill again until it sticks.
+ */
+export async function fillDecklist(page: Page, text: string) {
+  const box = page.getByRole("textbox", { name: "Decklist" });
+  const analyze = page.getByRole("button", { name: "Analyze deck", exact: true });
+  await expect(async () => {
+    await box.fill(text);
+    await expect(analyze).toBeEnabled({ timeout: FILL_SETTLE_MS });
+  }).toPass();
+}
 
 /** The deck tool's import offer, made on every visit by a player with no collection. */
 const COLLECTION_OFFER = { name: "Hold up — got cards already?" } as const;

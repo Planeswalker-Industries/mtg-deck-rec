@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./fixtures";
+import { expect, fillDecklist, test, type Page } from "./fixtures";
 
 const DECK = [
   "Commander",
@@ -63,7 +63,7 @@ async function importCollection(page: Page) {
 
 async function analyze(page: Page) {
   await page.goto("/deck");
-  await page.getByRole("textbox", { name: "Decklist" }).fill(DECK);
+  await fillDecklist(page, DECK);
   await page.getByRole("button", { name: "Analyze deck" }).click();
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });

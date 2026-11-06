@@ -1,4 +1,4 @@
-import { expect, skipCollectionOffer, test, type Locator, type Page } from "./fixtures";
+import { expect, fillDecklist, skipCollectionOffer, test, type Locator, type Page } from "./fixtures";
 
 /** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
 const CUT_CARD = /^Cut (?!the rest and move on$)/;
@@ -31,7 +31,7 @@ const DECK = [
 
 async function analyzeDeck(page: Page) {
   await page.goto("/deck");
-  await page.getByRole("textbox", { name: "Decklist" }).fill(DECK);
+  await fillDecklist(page, DECK);
   await page.getByRole("button", { name: "Analyze deck" }).click();
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });

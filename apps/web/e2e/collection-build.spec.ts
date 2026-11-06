@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./fixtures";
+import { expect, fillDecklist, test, type Locator, type Page } from "./fixtures";
 
 /** Collection parsing and catalog loading may take this long in the production mock build. */
 const COLLECTION_WAIT_MS = 30_000;
@@ -89,7 +89,7 @@ test("owned suggestions carry the corner marker where they mix with cards to buy
   await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
 
   await page.goto("/deck");
-  await page.getByRole("textbox", { name: "Decklist" }).fill(["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Command Tower"].join("\n"));
+  await fillDecklist(page, ["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Command Tower"].join("\n"));
   await page.getByRole("button", { name: "Analyze deck" }).click();
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
