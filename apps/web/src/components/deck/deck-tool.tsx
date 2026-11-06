@@ -103,7 +103,7 @@ function Segmented<T extends string>({
           className={cn(
             "rounded-md px-4 py-1 text-sm font-normal transition-colors",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-            // The chosen option reads as pressed: the primary fill with dark text. The others are blue text: pressable.
+            // The chosen option reads as pressed: a thick blue edge. The others are blue text: pressable.
             value === o.value ? TOGGLE_ON : TOGGLE_OFF,
           )}
         >

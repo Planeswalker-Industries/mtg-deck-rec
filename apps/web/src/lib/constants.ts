@@ -45,11 +45,19 @@ export const TEXT_LINK =
   "text-primary underline decoration-primary/50 underline-offset-2 transition-colors hover:decoration-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 /**
- * A toggle pill or segment (a filter, a grouping, a tab): blue text while off, because it can be pressed, and the solid
- * primary when on. Callers add shape and size.
+ * A link that credits an artist: muted white, not blue, so it never competes with the page's priority actions. Still
+ * underlined, so it reads as a link.
+ */
+export const CREDIT_LINK =
+  "text-muted-foreground underline decoration-muted-foreground/50 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+/**
+ * A toggle pill or segment (a filter, a grouping, a tab): blue text while off, because it can be pressed. On, it keeps
+ * the same look with a thick blue edge; the solid primary fill is kept for primary action buttons. The edge is an inset
+ * ring, so it costs no layout and works on segments that have no border of their own. Callers add shape and size.
  */
 export const TOGGLE_OFF = "text-primary hover:bg-primary/10";
-export const TOGGLE_ON = "bg-primary text-primary-foreground";
-/** A toggle pill's outline: blue while off, filled when on. */
+export const TOGGLE_ON = `${TOGGLE_OFF} ring-3 ring-inset ring-primary`;
+/** A toggle pill's outline: a thin blue border while off; on, the full border plus the ring makes the same thick edge. */
 export const PILL_OFF = `border-primary/45 ${TOGGLE_OFF}`;
-export const PILL_ON = `border-primary ${TOGGLE_ON}`;
+export const PILL_ON = `border-primary ${TOGGLE_OFF} ring-2 ring-inset ring-primary`;
