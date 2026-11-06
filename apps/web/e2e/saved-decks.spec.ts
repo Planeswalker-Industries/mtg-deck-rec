@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 /** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */

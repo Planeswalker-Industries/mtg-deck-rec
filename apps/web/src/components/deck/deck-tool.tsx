@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -19,7 +19,6 @@ import { CommanderLookupBar, CommanderLookupSheet } from "./commander-lookup";
 import { DeckBar } from "./deck-bar";
 import { DeckCoverage } from "./deck-coverage";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
-import { collectionOffered, rememberCollectionOffered } from "@/lib/collection-prompt";
 import { PanelError } from "./panel-state";
 import { ResolutionIssues } from "./resolution-issues";
 import { ResumeDeckDialog } from "./resume-deck-dialog";
@@ -250,12 +249,13 @@ function DeckToolSession() {
    */
   const [resumeAnswered, setResumeAnswered] = useState(false);
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
-  /** The import offer below is made once per browser; answering or waving it away settles it for this visit too. */
-  const [collectionOfferAnswered, setCollectionOfferAnswered] = useState(collectionOffered);
-  function answerCollectionOffer() {
-    setCollectionOfferAnswered(true);
-    rememberCollectionOffered();
-  }
+  /**
+   * The import offer below comes back on every visit while the player has no collection: the suggestions lean on it.
+   * Answering or waving it away settles it for this visit only. Next keeps a page's state while it is hidden behind
+   * another route, so leaving the page (to the import, say) asks again on the way back.
+   */
+  const [collectionOfferAnswered, setCollectionOfferAnswered] = useState(false);
+  useLayoutEffect(() => () => setCollectionOfferAnswered(false), []);
   const { analysis, context } = tool;
   const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut, resume: tool.resumed });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
@@ -489,6 +489,11 @@ function DeckToolSession() {
   const showInput = editing || !analysis;
   // Building from nothing asks for a commander in place of the decklist box, until there is a deck to build on.
   const showPicker = buildStart && !analysis;
+  // On the opening screens a player with no collection is offered an import first; the resume question waits for the
+  // collection to load and the offer to be answered, so the two never stack and the offer never pops up mid-analysis.
+  const offersCollection = source.kind === "none" && !collectionRefreshing && !collectionOfferAnswered && (showPicker || showInput);
+  const asksResume =
+    tool.restoredDeck !== null && tool.showsRestoredDeck && !resumeAnswered && !analysis && !collectionRefreshing && !offersCollection;
   // The chip stands for the file only while the box still holds what the file put there: an edit, the sample deck or
   // Clear all make it a plain decklist again.
   const fileInBox = deckFile !== null && deckFile.text === tool.text ? deckFile : null;
@@ -1118,7 +1123,7 @@ function DeckToolSession() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {tool.restoredDeck && tool.showsRestoredDeck && !resumeAnswered && !analysis && (
+      {tool.restoredDeck && asksResume && (
         <ResumeDeckDialog
           name={tool.restoredDeck.deckName ?? tool.restoredDeck.commanderName ?? null}
           onYes={() => {
@@ -1132,17 +1137,12 @@ function DeckToolSession() {
           onDismiss={() => setResumeAnswered(true)}
         />
       )}
-      {/* Only on the opening screens, and never stacked on the resume question. */}
-      {source.kind === "none" &&
-        source.signedIn &&
-        !collectionOfferAnswered &&
-        (showPicker || showInput) &&
-        !(tool.restoredDeck && tool.showsRestoredDeck && !resumeAnswered && !analysis) && (
-          <CollectionOfferDialog
-            importHref={(showPicker ? buildImportHref : collectionImportHref) as Route}
-            onDismiss={answerCollectionOffer}
-          />
-        )}
+      {offersCollection && (
+        <CollectionOfferDialog
+          importHref={(showPicker ? buildImportHref : collectionImportHref) as Route}
+          onDismiss={() => setCollectionOfferAnswered(true)}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./fixtures";
 
 /** Footer button of the docked readout; its name reads "Deck stats Mild, 5 of 17 in line". */
 const FOOTER_NAME = /^Deck stats/;

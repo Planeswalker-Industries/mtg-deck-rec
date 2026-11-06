@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./fixtures";
 
 /** Collection parsing and catalog loading may take this long in the production mock build. */
 const COLLECTION_WAIT_MS = 30_000;

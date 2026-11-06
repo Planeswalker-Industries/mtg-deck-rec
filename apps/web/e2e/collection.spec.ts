@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 /** Collection parsing and catalog loading may take this long in the production mock build. */
 const COLLECTION_WAIT_MS = 30_000;

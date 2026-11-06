@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, skipCollectionOffer, test, type Locator, type Page } from "./fixtures";
 
 /** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
 const CUT_CARD = /^Cut (?!the rest and move on$)/;
@@ -317,7 +317,9 @@ test("Swap never deals a piece of a combo the deck holds", async ({ page, browse
   test.skip(!without.some((t) => t.includes("Counterspell")), "Swap doesn't deal Counterspell in this data, so there's nothing to hold back");
   // A fresh visitor, so the deck tool doesn't offer the last deck back.
   const fresh = await browser.newContext({ viewport: page.viewportSize() });
-  const withCombo = await swapTargets(await fresh.newPage(), true);
+  const freshPage = await fresh.newPage();
+  await skipCollectionOffer(freshPage);
+  const withCombo = await swapTargets(freshPage, true);
   await fresh.close();
   expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
 });

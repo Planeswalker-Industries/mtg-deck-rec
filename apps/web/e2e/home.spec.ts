@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("ring aria-label names every category", async ({ page }) => {
   await page.goto("/");

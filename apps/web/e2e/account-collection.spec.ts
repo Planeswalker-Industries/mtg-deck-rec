@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 /** Real local catalog and account actions can take half a minute to finish. */
