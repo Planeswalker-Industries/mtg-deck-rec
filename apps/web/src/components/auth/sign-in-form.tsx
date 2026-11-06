@@ -13,8 +13,8 @@ import { safeNextPath } from "@/lib/safe-path";
 import { TEXT_LINK } from "@/lib/constants";
 
 const RETURN_ERRORS: Record<string, string> = {
-  link: "That sign-in link didn't work or has expired. Send yourself a new code.",
-  google: "Google sign-in didn't finish. Try again, or use your email.",
+  link: "That sign-in link didn't work or has expired. Sign in again.",
+  google: "Google sign-in didn't finish. Try again.",
 };
 
 export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
@@ -22,6 +22,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   const params = useSearchParams();
   const next = safeNextPath(params.get("next"));
   const [step, setStep] = useState<"email" | "code">("email");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the commented-out email form sets it; keep it for when that returns.
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
@@ -116,9 +117,17 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
     );
   }
 
+  // Google is the only way in for now. The emailed-code form stays below, commented out, so it can come back as is; the
+  // code step above still serves anyone mid-way through a code sent before the switch.
   return (
     <div className="flex flex-col gap-4">
-      <form
+      {googleEnabled && (
+        <Button type="button" size="lg" disabled={pending} onClick={() => void continueWithGoogle()} className="w-full">
+          {pending ? "Opening Google…" : "Continue with Google"}
+        </Button>
+      )}
+      {errorAlert}
+      {/* <form
         className="flex flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
@@ -143,12 +152,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
             {pending ? "Sending…" : "Email me a code"}
           </Button>
         </div>
-      </form>
-      {googleEnabled && (
-        <Button type="button" size="lg" variant="outline" disabled={pending} onClick={() => void continueWithGoogle()} className="self-start">
-          Continue with Google
-        </Button>
-      )}
+      </form> */}
     </div>
   );
 }

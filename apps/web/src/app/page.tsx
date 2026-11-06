@@ -64,7 +64,7 @@ function FeaturedCommandersSkeleton() {
  */
 function StrongestDecks() {
   return (
-    <section className="relative isolate border-t border-seam py-8 md:py-10 lg:border-t-0 lg:border-l lg:pl-8">
+    <section className="relative isolate flex flex-col border-t border-seam py-8 md:py-10 lg:border-t-0 lg:border-l lg:pl-8">
       <div aria-hidden className="absolute inset-y-0 -left-4 lg:left-0" style={{ right: CLOSING_ART_RIGHT }}>
         <ArtBackdrop src={CLOSING_VISTA.src} wash="left" sizes={CLOSING_ART_SIZES} position={CLOSING_VISTA.position} />
       </div>
@@ -83,9 +83,7 @@ function StrongestDecks() {
       >
         Get started
       </Link>
-      {CLOSING_VISTA.src !== HERO_VISTA.src && (
-        <ArtCredit vista={CLOSING_VISTA} className="mt-4 text-xs text-muted-foreground" />
-      )}
+      {CLOSING_VISTA.src !== HERO_VISTA.src && <ArtCredit vista={CLOSING_VISTA} className="mt-4" />}
     </section>
   );
 }
@@ -109,27 +107,21 @@ export default function Home() {
             <div className="flex flex-1 items-center justify-center">
               <HeroFan />
             </div>
-            {/* Clear of the passed card, which hangs below the fan's box. */}
-            <ArtCredit vista={HERO_VISTA} className="hidden pt-10 text-right text-xs leading-5 text-muted-foreground md:block" />
           </div>
 
           <div className="relative z-20 max-w-2xl md:self-center">
-            {/* Phones: the credit rides the foot of the headline, so it costs no line of its own. From md up it sits
-                under the fan, level with it. */}
-            <div className="flex items-end justify-between gap-3">
-              <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
-                Build better decks.
-                {/* The buddy's voice: the page's one italic headline phrase. */}
-                <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
-                  Spend less.
-                </span>
-              </h1>
-              <ArtCredit
-                vista={HERO_VISTA}
-                className="shrink-0 text-right text-xs leading-5 text-muted-foreground md:hidden"
-              />
-            </div>
+            <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
+              Build better decks.
+              {/* The buddy's voice: the page's one italic headline phrase. */}
+              <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
+                Spend less.
+              </span>
+            </h1>
           </div>
+
+          {/* The hero's bottom right corner, on every width. `order-last` keeps it after the fan, which is ordered last
+              from md up. There the passed card hangs below the fan's box, so the credit keeps clear of it. */}
+          <ArtCredit vista={HERO_VISTA} className="order-last md:col-span-2 md:pt-6" />
         </div>
       </section>
 
