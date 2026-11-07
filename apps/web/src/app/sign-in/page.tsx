@@ -16,8 +16,8 @@ export default function SignInPage() {
       aside="Your cards and decks, on every device."
       intro={
         <p>
-          We&apos;ll email you a 6-digit code. There&apos;s no password to remember. Signing in keeps your collection and
-          saved decks with your account instead of this browser.
+          Sign in with your Google account. Signing in keeps your collection and saved decks with your account instead of this
+          browser.
         </p>
       }
     >

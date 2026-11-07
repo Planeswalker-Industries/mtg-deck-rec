@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
-import { TEXT_LINK } from "@/lib/constants";
+import { CREDIT_LINK } from "@/lib/constants";
 
 /**
  * A card's art behind a page header, with the credit Scryfall's guidelines ask for.
@@ -47,11 +47,12 @@ export function ArtBackdrop({
       <div aria-hidden className="absolute inset-0 bg-background/30" />
       <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-background/85 via-background/55 to-background/30" />
 
-      <div className="relative p-4 sm:p-6">
+      {/* A flex column, so the credit sits in the art's bottom right corner. */}
+      <div className="relative flex flex-col p-4 sm:p-6">
         {children}
-        <p className="mt-4 text-xs text-muted-foreground">
+        <p className="mt-4 self-end text-right text-xs text-muted-foreground">
           Art from{" "}
-          <Link href={`/card/${cardSlug}` as Route} className={TEXT_LINK}>
+          <Link href={`/card/${cardSlug}` as Route} className={CREDIT_LINK}>
             {cardName}
           </Link>{" "}
           by {artist}

@@ -34,26 +34,26 @@ export function PageHero({
   return (
     <section
       aria-labelledby={id}
-      className="relative isolate mx-[calc(50%-50vw)] w-[100vw] overflow-hidden border-b border-seam first:-mt-4 last:-mb-10 last:border-b-0 lg:min-h-[70svh]"
+      className="relative isolate mx-[calc(50%-50vw)] flex w-[100vw] flex-col overflow-hidden border-b border-seam first:-mt-4 last:-mb-10 last:border-b-0 lg:min-h-[70svh]"
     >
       <ArtBackdrop src={vista.src} wash="left" sizes="100vw" position={vista.position} priority />
-      <div className="page-column grid items-start gap-6 pt-6 pb-8 md:py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)] lg:gap-12 lg:py-16">
-        <div className="flex max-w-xl flex-col gap-4">
-          <h1 id={id} className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
-            {heading}
-            {aside && (
-              <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85 max-sm:text-xl">
-                {aside}
-              </span>
-            )}
-          </h1>
-          <div className="flex flex-col gap-3 text-foreground/80">{intro}</div>
-          <ArtCredit vista={vista} className="hidden text-xs text-muted-foreground lg:block" />
-        </div>
-        <div className="flex flex-col gap-3">
+      {/* The column fills the section, so the credit at its foot sits in the art's bottom right corner. */}
+      <div className="page-column flex flex-1 flex-col gap-6 pt-6 pb-4 md:pt-12 md:pb-6 lg:pt-16">
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)] lg:gap-12">
+          <div className="flex max-w-xl flex-col gap-4">
+            <h1 id={id} className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+              {heading}
+              {aside && (
+                <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85 max-sm:text-xl">
+                  {aside}
+                </span>
+              )}
+            </h1>
+            <div className="flex flex-col gap-3 text-foreground/80">{intro}</div>
+          </div>
           <div className="rounded-panel border border-seam bg-sleeve/90 p-4 backdrop-blur-sm sm:p-5">{children}</div>
-          <ArtCredit vista={vista} className="text-xs text-muted-foreground lg:hidden" />
         </div>
+        <ArtCredit vista={vista} className="mt-auto" />
       </div>
     </section>
   );
