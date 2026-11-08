@@ -2,6 +2,8 @@ import { defineConfig } from "@playwright/test";
 
 const port = Number(process.env.E2E_PORT ?? 3300);
 const externalServer = process.env.E2E_BASE_URL;
+/** The read-only production smoke run (`yarn smoke`, T082) runs only e2e/smoke; the normal run skips that folder. */
+const smoke = Boolean(process.env.E2E_SMOKE);
 
 /**
  * End-to-end checks at phone width. CI builds the app with mock recommendations against a fresh local Supabase
@@ -10,7 +12,8 @@ const externalServer = process.env.E2E_BASE_URL;
  * which enables the checks that need real cards.
  */
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: smoke ? "./e2e/smoke" : "./e2e",
+  testIgnore: smoke ? undefined : "smoke/**",
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["github"]] : "list",
