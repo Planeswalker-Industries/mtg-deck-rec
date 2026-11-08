@@ -25,6 +25,7 @@ supabase gen types typescript --local            # → apps/web/src/lib/server/d
 docker exec -i supabase_db_mtg_deck_rec psql -X -U postgres -d postgres -v ON_ERROR_STOP=1 -q < supabase/tests/<file>.sql   # SQL checks; each rolls back
 
 yarn workspace @mtg/web e2e [spec]               # Playwright on a production build at :3300: build first. E2E_LOCAL_DATA=1 with the real catalog, E2E_MAILPIT_URL=http://127.0.0.1:56324 for sign-in tests
+yarn workspace @mtg/web smoke                    # read-only Playwright check of production (E2E_BASE_URL for another deploy); no sign-in, fails on writes
 yarn workspace @mtg/web regress [dir]            # recommendation fixtures (default $MTG_DATA_DIR/regression; never in the repo)
 yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts anon   # from apps/web: sign-in link for a local account
 

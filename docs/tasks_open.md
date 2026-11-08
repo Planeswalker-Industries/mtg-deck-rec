@@ -27,14 +27,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] An admin list beside `/admin/crawls` (`noindex`, `no-store`): newest first, mark resolved, filter to open; platform admins see an open-report count badge in the header
 - [ ] `/privacy` says what a report stores and who reads it
 
-## T080: Google-only sign-in until T033
-
-**MEDIUM** · Auth · Owner, 2026-10-23
-
-Supabase's built-in SMTP sends a couple of emails an hour, so an emailed code may never arrive.
-
-- [ ] `/sign-in` offers Google only, with the email code behind a flag that T033 turns back on
-
 ## T068: Recommendation latency (PR #139 review)
 
 **MEDIUM** · Backend / Performance
@@ -58,13 +50,6 @@ A migration drops `rec_add_candidates` (both overloads), `rec_swap_candidates`, 
 - [ ] `analyzeDeck` in `deck-journey.spec.ts` waits for the recommendations or the lookup sheet before dismissing (Chulane has no local corpus, so the sheet opens late and blocks the page)
 - [ ] The specs pass with `E2E_LOCAL_DATA=1` and in CI
 
-## T082: Launch checks
-
-**HIGH** · QA · Last before inviting anyone
-
-- [ ] The owner walks paste → Add → Cut → Swap → Finish → save on a real iPhone (Safari) and Android phone
-- [ ] A scripted, read-only smoke run against production (no sign-in, no writes)
-
 ---
 
 ## T033: Custom domain and SMTP
@@ -76,7 +61,7 @@ Moxfield's whitelist also wants a production domain (T044).
 1. Point a domain at the app. Move the URL settings to it: Supabase Site URL and redirect allow list, Vercel `NEXT_PUBLIC_SITE_URL`, the Google OAuth client's redirect URIs.
 2. Resend (free tier) or equivalent: verify the sending domain, set it in Supabase → Authentication → SMTP, and raise Rate Limits → emails per hour.
 
-- [ ] Sign-in emails arrive at a production rate on the domain, and the email code is back on `/sign-in` (T080)
+- [ ] Sign-in emails arrive at a production rate on the domain, and the emailed-code form in `apps/web/src/components/auth/sign-in-form.tsx` is uncommented (closed T080 commented it out)
 - [ ] The share-link kill switch activates on 403/409 on hosted (`scripts/share-kill-switch-check.ts` covers it locally)
 
 ## T043: A crawl database role that is not `service_role`
