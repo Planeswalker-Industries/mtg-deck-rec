@@ -22,6 +22,8 @@ const componentWeightsSchema = z.object({
   role: share,
   curve: share,
   deck: share,
+  /** How much a land fixes the deck's short colours (null for nonlands). */
+  mana: share,
 });
 
 /** Whether a result class compiles, so a typo fails when the config loads rather than on the first request. */
@@ -123,6 +125,11 @@ export const scoringConfigSchema = z.object({
     landCounts: z.array(positive).length(COLOUR_COUNTS),
     /** Basic lands per deck by colour count (index 0–5: Wastes for colourless), likewise. */
     basicLandCounts: z.array(z.number().min(0)).length(COLOUR_COUNTS),
+    /**
+     * The most sources Deck stats' colour rows ask for, by colour count (index 0–5); null for no cap. Karsten's numbers
+     * suit one and two colours; three or more can't reach them, so their rows cap at what typical decks reach.
+     */
+    colourSourceCaps: z.array(positive.nullable()).length(COLOUR_COUNTS),
   }),
   /** "Complete a combo" (T060): what a combo does decides its place, then the missing card's add score. */
   combos: z.object({

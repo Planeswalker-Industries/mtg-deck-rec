@@ -18,6 +18,7 @@ import type {
   ParseDeckResult,
   ResolvedLine,
   ResolveVia,
+  StatTargets,
 } from "@mtg/core/contract";
 import { normalizeName, parseDecklist } from "@mtg/core/parse";
 import { resultWeigher, statTargetsFor, type ScoringConfig } from "@mtg/core/scoring";
@@ -132,6 +133,30 @@ async function loadDeckBracket(db: PublicClient, deck: DeckInput): Promise<DeckB
   return { ...basics, combos, comboSettings: scoring.combos };
 }
 
+/**
+ * Deck stats' targets for these commanders: what Deck stats grades a deck against, and what a build aims for, so the
+ * two never disagree.
+ */
+export function deckStatTargets(
+  corpus: CommanderCorpus | null,
+  stats: StatInputs,
+  commanderLabel: string,
+  colourCount: number,
+  bracketRules: BracketRules,
+): StatTargets {
+  return statTargetsFor({
+    corpus,
+    genericRoles: stats.genericRoles,
+    typicalCurve: stats.typicalCurve,
+    typicalTypes: stats.typicalTypes,
+    commanderTypes: corpus ? sourcesProfile(corpus.sources, corpus.effectiveDeckCount, (keyId) => stats.keyTypeProfiles.get(keyId)) : {},
+    build: stats.build,
+    colourCount,
+    bracketRules,
+    commanderLabel,
+  });
+}
+
 /** Commander analysis for a resolved deck. Without corpus data, the commander key reports no decks. */
 export function analyzeDeck(
   deck: DeckInput,
@@ -172,22 +197,7 @@ export function analyzeDeck(
     combos: bracket.combos
       .filter((c) => c.missing === null)
       .map((c) => deckCombo(c, bracket.comboSettings ? resultWeigher(bracket.comboSettings) : undefined)),
-    statTargets:
-      stats && commanderRows.length > 0
-        ? statTargetsFor({
-            corpus,
-            genericRoles: stats.genericRoles,
-            typicalCurve: stats.typicalCurve,
-            typicalTypes: stats.typicalTypes,
-            commanderTypes: corpus
-              ? sourcesProfile(corpus.sources, corpus.effectiveDeckCount, (keyId) => stats.keyTypeProfiles.get(keyId))
-              : {},
-            build: stats.build,
-            colourCount,
-            bracketRules: bracket.rules,
-            commanderLabel,
-          })
-        : null,
+    statTargets: stats && commanderRows.length > 0 ? deckStatTargets(corpus, stats, commanderLabel, colourCount, bracket.rules) : null,
     cardRoles: stats ? Object.fromEntries(stats.cardRoles) : {},
     issues: validateCommanderDeck(commanders, entries, estimatedBracket),
   };

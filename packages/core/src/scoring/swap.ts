@@ -4,7 +4,7 @@ import type { ScoreBreakdown, ScoreComponent } from '../contract';
 export type ComponentValues = Partial<Record<ScoreComponent, number | null>>;
 export type ComponentWeights = Record<ScoreComponent, number>;
 
-const COMPONENTS: readonly ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'];
+const COMPONENTS: readonly ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck', 'mana'];
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 

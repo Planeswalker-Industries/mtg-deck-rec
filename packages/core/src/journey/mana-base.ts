@@ -50,6 +50,8 @@ export interface ManaDeck {
   main: readonly ManaEntry[];
   commanders: readonly ManaCard[];
   deckColours: string;
+  /** Deck stats' cap on the colour rows' targets (`StatTargets.colourSourceCap`); absent or null: no cap. */
+  colourSourceCap?: number | null;
 }
 
 /** Lands in the deck that make {C}: a land search finds colourless mana only when there is one to find. */
@@ -366,4 +368,32 @@ export function manaBase(main: readonly ManaEntry[], commanders: readonly ManaCa
     hardToCast,
     byTurn: MANA_BY_TURN_CHECKS.map((turn) => ({ turn, chance: landsByTurnChance(library, Math.round(credited('', turn)), turn) })),
   };
+}
+
+/** A colour row's target: its Karsten number, at most the cap for the deck's colour count (null: no cap). */
+export const colourTarget = (needed: number, cap: number | null): number => (cap === null ? needed : Math.min(needed, cap));
+
+/** A deck colour still short of sources: its hardest card's mana value, and how many sources it lacks. */
+export interface ColourShortfall {
+  colour: string;
+  manaValue: number;
+  short: number;
+}
+
+/** The deck's colours short of their (capped) source targets, in WUBRG order. */
+export function shortColours(main: readonly ManaEntry[], commanders: readonly ManaCard[], deckColours: string, cap: number | null): ColourShortfall[] {
+  return manaBase(main, commanders, deckColours).colours.flatMap((need) => {
+    const short = colourTarget(need.needed, cap) - need.sources;
+    return deckColours.includes(need.colour) && short > 0 ? [{ colour: need.colour, manaValue: need.manaValue, short }] : [];
+  });
+}
+
+/**
+ * The add score's mana component: for a land, the share of the deck's short colours it makes or finds (0 for a land
+ * that helps none of them); null for a nonland, or when no colour is short.
+ */
+export function colourFix(card: ManaCard, short: readonly ColourShortfall[], deckColours: string): number | null {
+  if (!isFrontLand(card.typeLine) || short.length === 0) return null;
+  const fixed = short.filter((s) => sourceCredit(card, s.colour, s.manaValue, deckColours) > 0).length;
+  return fixed / short.length;
 }

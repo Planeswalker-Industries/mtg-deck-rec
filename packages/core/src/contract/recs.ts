@@ -47,7 +47,7 @@ export interface RecContext {
  * mana value against the commander's learned curve (cards to add; weight 0 until the evaluation passes it). `deck`:
  * how strongly the card connects to the cards already in the deck, from which cards decks run together (T064).
  */
-export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes' | 'role' | 'curve' | 'deck';
+export type ScoreComponent = 'tag' | 'manaValue' | 'staple' | 'corpus' | 'votes' | 'role' | 'curve' | 'deck' | 'mana';
 
 export interface ScoreBreakdown {
   /** 0..1 */
@@ -316,6 +316,11 @@ export interface BuildFeasibility {
   filledByValue: number;
   /** Slots still open. */
   open: number;
+  /**
+   * Deck stats lines a collection build left out of line because the collection had nothing more for them, by key: a
+   * role id, a card type, 'curve', 'basicLands' or a colour's 'sources:B'. Empty without a collection.
+   */
+  collectionGaps: string[];
 }
 
 /** The value fill's running total: estimates, shown with their date. */
