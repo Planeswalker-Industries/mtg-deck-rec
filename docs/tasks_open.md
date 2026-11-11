@@ -1,12 +1,57 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T085.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T089.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
 State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `20261022000100` (current). Hosted `corpus.decks` 212,606, last collated and precomputed by hand 2026-10-21.
 
 ---
+
+## T086: Fix on the server: contract v35, `POST /api/recs/fix`, buying per line, stat choices
+
+**HIGH** · Contract / Backend / Database · Owner approved the contract and schema 2026-11-11 · Builds on T085 (`@mtg/core/journey` `fix.ts`)
+
+The owner's Gwen Stacy walkthrough (2026-11-11, Owned only) changed 15 cards and moved no Deck stats line. Fix pairs one card in with one out until every line is in its band (`nextFixMove`, `planFixes`); this ticket gives it its pool and the player's choices a home.
+
+- [ ] Contract v35: `recs.fix`, `FixResult`, `FixPool`, `FixCard` (moved from `journey/fix.ts`), `RecContext.buyFor`, saved deck `statChoices`; zod schemas and `createMockApis` follow
+- [ ] The pool holds every main-deck card, basic lands included: `rankCuts` returns only cards with a reason to cut, so a card it leaves out gets the best fit score (the first eval run offered no out card for most lines until this was done), and the well-played cards need an order finer than their names
+- [ ] `getFix` in `lib/server/recs.ts`: `loadServedAdds` and `loadServedCuts` in one `Promise.all`, scored by the existing add and cut scoring, the per-line in cards picked in TypeScript (`FIX_INS_PER_LINE`), basic lands of the deck's colours always in; no `next/cache` import. In cards the bracket excludes, or that complete a combo over it, are left out
+- [ ] Route Handler `POST /api/recs/fix` through `handleRecsRequest`, its own bucket in `app_config.rate_limits`
+- [ ] `buyFor`: in Owned only, a card that helps a `buyFor` line counts as supplied up to the line's target and shows "Not owned" with price and date; `rankCuts` doesn't flag `NOT_OWNED` on it; the builder fills a `buyFor` line from unowned cards once the owned ones run out; `collectionGaps` reports only lines left under their band
+- [ ] Migration: `decks.stat_choices jsonb not null default '{}'` (`{ "<line key>": "ignore" | "buy" }`), `save_deck(p_stat_choices)` validated (known values, at most 32 keys), explicit grants, types regenerated, `supabase/tests`
+- [ ] `gradeDeck` takes the choices: an ignored line is `state: 'ignored'` and leaves `okCount` and `total`
+- [ ] New SQL for the pool only if the add pool proves too narrow for a line, measured on the fixtures first; latency no worse than Add at p95
+- [ ] `regress` fixtures in `$MTG_DATA_DIR/regression`: Gwen Stacy 2.0 as pasted with the hosted collection of 2026-11-11 (auto-fix brings Ramp and Card advantage into their bands, every line left has a reason), and Gwen Stacy built from `ManaBox_Collection.csv` (Fix offers no move)
+- [ ] Release: the migration reaches hosted before the code serves requests
+
+Fix logs no `rec_events` (owner, 2026-11-11): automated picks are not player feedback, and a new event mode needs a stated use first.
+
+## T087: Fix screens: the step, auto-fix preview, footer, Finish, build page prompts
+
+**HIGH** · Frontend · Builds on T086
+
+- [ ] Journey: `JourneyPhase` gains `fix`; `phasesFor(deckSize)` by the round's starting deck (under 100 Add, Fix, Swap, Finish; over 100 Cut, Fix, Swap, Finish; at 100 Fix, Swap, Finish). Add stops at 100 (`ADD_OVERFLOW_MAX` goes) and deals no card that pushes an in-line stat out of its band (`bandsBroken`). Actions `fix` and `declineFix`; an auto-fix batch is one Undo entry. A bracket change sends the round to Fix. A deck with no valid move skips Fix
+- [ ] Fix step, phone first: header `Ramp 10/14 · line 1 of 4`, Out left and In right, chips for every line the move changes (full labels, icon and colour by direction), Skip and Swap, "Fix the rest for me". A card that is not legal or outside the commander's colours is Fix's first line (owner, 2026-11-11)
+- [ ] Auto-fix preview: a bottom sheet, moves grouped by line, each a row of two selectable Card Plates (Out → In, selected by default, tap to deselect), the header score recomputed from the selected moves, Cancel and `Apply 14` (the one solid blue button)
+- [ ] Deck stats footer: closed it reads `Deck stats ⚠ 3/11`, and `→ 4/11` while a card is on screen (the tally graded with the card in and out); no per-line text. The same chips show by the card in Add, Cut and Swap
+- [ ] Build page (collection builds): each "Not in your collection" gap has Ignore and Allow buying; Continue waits for every answer; Allow buying rebuilds with `buyFor`; the answers go into the deck tool and are saved with the deck
+- [ ] Finish: lines in line as a count; each leftover with its reason (Skipped by you with "Fix", Ignored, Not in your collection with Ignore / Allow buying, No safe card to take out). A line the collection can't fix counts as off until the player answers (owner, 2026-11-11). Colour rows read "needs 20"
+- [ ] Retired: the land swaps inside Swap (`land-swaps.tsx`, `land-swap.ts`), the "Find ramp" / "Swap basics" / "Trim protection" links (they open Fix at that line), Finish's "Still off" box
+- [ ] At 390×844 nothing in the footer or the Fix step is truncated and ✓ and ✕ are on screen; `shot.mjs` recipes `fix` and `fix-auto`, `finish` and `build-collection` updated; the journey e2e spec follows the new step order
+
+## T088: Swap ladder
+
+**HIGH** · Backend / Frontend · After T087, its own plan and PR · Contract `SwapSuggestion.match` (owner approved 2026-11-11; v35 or v36)
+
+Swap dead-ends today: "We don't know what this card does yet" for a card with no functional tags (3,408 of 32,104 legal cards), and "Nothing in your collection does a similar job" when the stored substitutes cut down to the collection leave nothing.
+
+- [ ] Rungs: 1 similar tags (today), 2 same job (shares a tracked role), 3 same card type and a mana value within 1; rungs 2 and 3 rank by play rate with the commander, mana value closeness and the staple score. A lower rung is read only when those above give fewer than `swap.ladderMinSuggestions` (`app_config.scoring`, starting at 3)
+- [ ] In Owned only, rungs 2 and 3 read the collection directly, not the stored substitute list
+- [ ] `serving_swap_candidates` returns the rung with each row, in one round; `create or replace` with the grants repeated
+- [ ] `SwapSuggestion.match: 'tags' | 'role' | 'slot'`; every suggestion says its rung ("Same job: ramp", "Similar slot: 5-mana creature"); `NO_TAGS_ON_TARGET` stays in the type and is no longer returned
+- [ ] The Swap step fetches the next card's replacements ahead and steps over a card with none on any rung; the two e2e specs that expect "Nothing in your collection does a similar job." change
+- [ ] Gate: `eval:holdout` swap metrics do not drop; rung 1 results unchanged wherever rung 1 has enough. Doc Ock, Sinister Scientist and Resonating Lute each show labelled replacements from the owner's collection
 
 ## T074: Archidekt answers the daily crawl with 429s
 
@@ -114,6 +159,7 @@ Storage (8 GB disk):
 - [ ] The global pair lift barely shrinks rare cards (a third of kept pairs have under 10 decks) and isn't release-aware: fix it or record why
 - [ ] Owned twins: copies a built deck holds are matched per card, not pooled across the twin group (`availability.ts`)
 - [ ] The per-key pair pass picks keys by `commander_stats.computed_at`; drive it from the keys the commander pass merged
+- [ ] The evaluation builds decks from card rows without mana data (`produced_mana`, `fetchable_mana`), so the builder never sees a colour short of sources and its land picks go ungraded (found 2026-11-11; the repair check loads the mana fields for itself). Loading them moves the build numbers: do it as its own baseline change
 
 ## T014: Swap votes: blind eval, then scoring
 

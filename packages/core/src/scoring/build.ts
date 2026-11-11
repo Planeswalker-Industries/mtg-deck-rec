@@ -27,8 +27,18 @@ import { commanderShare, corpusComponent, neutralCorpusValue } from './corpus';
 import { bracketExclusions, overBracket, type DeckBracketFacts } from './combos';
 import type { RoleTarget } from './cut';
 import { curveBucket, curveShortfall, deckCurve, isFrontLand, statCardType } from './curve';
-import { STAT_TOLERANCE_MIN_CARDS, STAT_TOLERANCE_SHARE } from '../journey/deck-tally';
-import { colourTarget, creditedSources, manaBase, manaLetters, sourceCredit, type ManaCard, type ManaEntry } from '../journey/mana-base';
+import { manaLetters, type ManaCard, type ManaEntry } from '../journey/mana-base';
+import {
+  bandsBroken as cardBandsBroken,
+  colourDeficits,
+  colourNeeds,
+  fixesShortColour as cardFixesShortColour,
+  lowerEdge,
+  tolerance,
+  upperEdge,
+  type BandCounts,
+  type BandTargets,
+} from './bands';
 import {
   ADD_CATEGORIES,
   completeACombo,
@@ -126,13 +136,6 @@ export function splitBasics(count: number, identityMask: number, symbols: Readon
 
 /** Colours in an identity mask. */
 const colourCount = (mask: number) => COLOURS.filter((_, i) => (mask & (1 << i)) !== 0).length;
-
-/** How far a line may sit from its target and still be in line: Deck stats' band (`withinTolerance`). */
-const tolerance = (target: number) => Math.max(target * STAT_TOLERANCE_SHARE, STAT_TOLERANCE_MIN_CARDS);
-/** The most a line may hold and stay in its band. */
-const upperEdge = (target: number) => target + tolerance(target);
-/** The fewest a line may hold and stay in its band. */
-const lowerEdge = (target: number) => target - tolerance(target);
 
 /**
  * Lands and basic lands to aim for: the commanders' decks as they earn a share (`commanderShare`, as role targets
@@ -370,19 +373,11 @@ export function buildDeck(input: BuildInput): BuildRanking {
    * How many lines a card would push above the top of their band: its roles (a cycling land draws cards too), and for a
    * nonland its card type and its curve bar.
    */
+  const bandCounts: BandCounts = { roles: roleCounts, types: typeCounts, curveAt: (bar) => curveCounts.get(curveBucket(bar)) ?? 0 };
+  const bandTargets: BandTargets = { roles: roleTargetOf, types: typeTargets, curve: curveBars };
   const bandsBroken = (id: number) => {
     const card = cards.get(id);
-    if (!card) return 0;
-    const over = (held: number, target: number | undefined) => (target !== undefined && held + 1 > upperEdge(target) ? 1 : 0);
-    const broken = (roles.get(id) ?? []).reduce((n, role) => n + over(roleCounts.get(role) ?? 0, roleTargetOf.get(role)), 0);
-    if (isFrontLand(card.summary.typeLine)) return broken;
-    const type = statCardType(card.summary.typeLine);
-    const bucket = curveBucket(card.summary.manaValue);
-    return (
-      broken +
-      (type ? over(typeCounts.get(type) ?? 0, typeTargets.get(type)) : 0) +
-      (curveBars !== null ? over(curveCounts.get(bucket) ?? 0, curveBars[Number(bucket)]) : 0)
-    );
+    return card ? cardBandsBroken(card.summary, roles.get(id) ?? [], bandCounts, bandTargets) : 0;
   };
 
   /**
@@ -495,18 +490,13 @@ export function buildDeck(input: BuildInput): BuildRanking {
     }),
     ...extra,
   ];
-  const needs = manaBase(mainEntries(), commanderMana, deckColours)
-    .colours.filter((n) => deckColours.includes(n.colour))
-    .map((n) => ({ colour: n.colour, manaValue: n.manaValue, target: colourTarget(n.needed, colourCap) }));
+  const needs = colourNeeds(mainEntries(), commanderMana, deckColours, colourCap);
   /** Each colour's sources short of its target, with `extra` (basics so far) in the deck. */
-  const deficits = (extra: readonly ManaEntry[] = []) => {
-    const main = mainEntries(extra);
-    return new Map(needs.map((n) => [n.colour, n.target - creditedSources(main, n.colour, n.manaValue, deckColours)]));
-  };
+  const deficits = (extra: readonly ManaEntry[] = []) => colourDeficits(needs, mainEntries(extra), deckColours);
   /** Whether a land makes (or finds) a colour still short of its target. */
   const fixesShortColour = (id: number, short: ReadonlyMap<string, number>) => {
     const card = manaCard(id);
-    return card !== null && needs.some((n) => (short.get(n.colour) ?? 0) > 0 && sourceCredit(card, n.colour, n.manaValue, deckColours) > 0);
+    return card !== null && cardFixesShortColour(card, needs, short, deckColours);
   };
 
   // Nonbasic lands: while a colour is short, the best land that helps it; then the best land. A land that would push
