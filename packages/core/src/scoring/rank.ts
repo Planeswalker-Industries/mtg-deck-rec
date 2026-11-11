@@ -25,6 +25,8 @@ import type {
 } from '../contract';
 import { isOwnedStatus, type Availability } from '../collection/availability';
 import { fitsIdentity, gameChangerLimit } from '../formats/commander';
+import { maskToIdentity } from '../formats/commander/color-identity';
+import { colourFix, manaLetters, shortColours, type ManaCard, type ManaEntry } from '../journey/mana-base';
 import { comboRef, type ComboFacts } from '../formats/commander/bracket';
 import { cardCategory, roleGap, roleShortfalls } from './add';
 import type { CorpusSettings, ScoringConfig } from './config';
@@ -368,6 +370,33 @@ export const stapleOf = (staples: ReadonlyMap<number, number> | null | undefined
 export const byStaple = (a: Pick<ScoreBreakdown, 'components'>, b: Pick<ScoreBreakdown, 'components'>): number =>
   (b.components.staple ?? 0) - (a.components.staple ?? 0);
 
+/**
+ * The add score's mana component for a deck (`colourFix`): how much a land fixes the colours the deck is short of,
+ * against Deck stats' capped source targets. Always null while `weights.add.mana` is 0.
+ */
+function manaFixer(
+  context: RecContext,
+  cards: ReadonlyMap<number, RankCard>,
+  deckCards: ReadonlyMap<number, RankCard>,
+  scoring: ScoringConfig,
+): (card: RankCard) => number | null {
+  if (scoring.weights.add.mana <= 0) return () => null;
+  const rowOf = (id: number) => deckCards.get(id) ?? cards.get(id);
+  const mask = identityMaskOf(context, new Map([...cards, ...deckCards]));
+  const deckColours = manaLetters(maskToIdentity(mask));
+  const main = context.deck.cards.flatMap((e): ManaEntry[] => {
+    const row = e.section === 'main' ? rowOf(e.cardId) : undefined;
+    return row ? [{ card: row.summary as ManaCard, quantity: e.quantity }] : [];
+  });
+  const commanders = context.deck.commanders.flatMap((id) => rowOf(id)?.summary ?? []) as ManaCard[];
+  const cap = scoring.build.colourSourceCaps[deckColours.length] ?? null;
+  const short = shortColours(main, commanders, deckColours, cap);
+  return (card) => {
+    const fix = colourFix(card.summary as ManaCard, short, deckColours);
+    return fix === null ? null : round2(fix);
+  };
+}
+
 export function rankAdds({
   context,
   poolIds,
@@ -429,6 +458,8 @@ export function rankAdds({
   const curveFor = (card: RankCard) =>
     curve && deckBuckets && !isFrontLand(card.summary.typeLine) ? round2(curveShortfall(curve, deckBuckets, card.summary.manaValue)) : null;
   const roleLabels = new Map(roleTargets.map((t) => [t.roleId, t.label]));
+  // The mana component: read only while it has a weight, so a request doesn't pay for the mana base otherwise.
+  const manaFixFor = manaFixer(context, cards, deckCards, scoring);
 
   const corpusOf = (cardId: number) => {
     const r = rates.get(cardId);
@@ -485,6 +516,7 @@ export function rankAdds({
           role: round2(gap),
           curve: curveFor(card),
           deck: deck ? round2(deck.value) : null,
+          mana: manaFixFor(card),
         },
         scoring.weights.add,
       ),

@@ -28,6 +28,7 @@ const targets: StatTargets = {
   ],
   curve: [0, 8, 12, 10, 8, 6, 3, 2],
   types: [],
+  colourSourceCap: null,
   bracketLimits: { massLandDenialFromBracket: 4, maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 }, extraTurnLoopResults: ['Infinite turns'], extraTurnLoopFromBracket: 4 },
 };
 
@@ -322,6 +323,15 @@ describe('mana base in the report', () => {
     expect(report.total).toBe(report.stats.length + 2);
     expect(report.mana.hardToCast.length).toBeGreaterThan(0);
     expect(report.mana.byTurn.map((b) => b.turn)).toEqual([3, 4, 6]);
+  });
+
+  it('caps a colour row at the targets’ colour source cap, in the row and in the preview', () => {
+    const capped = { ...targets, colourSourceCap: 12 };
+    const report = gradeDeck(buildTally(deck(), [liesa]), capped, bracket());
+    expect(report.stats.find((s) => s.key === 'sources:B')).toMatchObject({ value: 12, target: 12, ok: true });
+    // A {B}{B}{B} 3-drop would raise the Karsten number, but the capped target stays 12: no target in the preview.
+    const triple = card({ typeLine: 'Sorcery', manaValue: 3, manaCost: '{B}{B}{B}' });
+    expect(statDeltas(report.stats, triple, null, report.mana.deck).get('sources:B')?.target).toBeUndefined();
   });
 
   it('adds no rows without commanders or coloured costs', () => {

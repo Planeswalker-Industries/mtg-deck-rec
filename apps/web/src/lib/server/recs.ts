@@ -19,7 +19,10 @@ import { loadBracketBasics } from "./brackets";
 import { rankCardOf, toCardSummary, type CardRow } from "./cards";
 import { availabilityFor, loadStandIns } from "./collection-availability";
 import { cachedConfig } from "./config-cache";
+import { maskToIdentity } from "@mtg/core/commander";
 import { commanderKeyCounts } from "./corpus";
+import { deckStatTargets } from "./deck";
+import { loadStatInputs } from "./deck-stats";
 import { loadScoringConfig } from "./scoring-config";
 import { loadDeckAffinity, loadServedAdds, loadServedBuild, loadServedCuts, loadServedSwapPool } from "./serving";
 import type { PublicClient } from "./supabase";
@@ -298,7 +301,7 @@ export async function getBuild(
   { context, collection = null, fill = "none" }: { context: RecContext; collection?: CollectionCopies | null; fill?: BuildFill | undefined },
 ): Promise<BuildResult> {
   const available = await availabilityFor(db, collection);
-  const [served, standIns, roleTargets, roleTags, scoring, bracket] = await Promise.all([
+  const [served, standIns, roleTargets, roleTags, scoring, bracket, statInputs] = await Promise.all([
     loadServedBuild(db, {
       commanderIds: context.deck.commanders,
       keptIds: mainDeckIds(context),
@@ -311,8 +314,12 @@ export async function getBuild(
     loadRoleTags(db),
     loadScoringConfig(),
     loadBracketBasics(db),
+    // Deck stats' inputs, so the build meets the check the build page and the journey grade it with.
+    loadStatInputs(db, context.deck.commanders, []),
   ]);
   const { corpus } = served;
+  const colourCount = maskToIdentity([...served.commanderRows.values()].reduce((mask, row) => mask | row.color_identity, 0)).length;
+  const statTargets = statInputs ? deckStatTargets(corpus, statInputs, "", colourCount, bracket.rules) : null;
   const commanderKey: BuildResult["commanderKey"] = {
     id: corpus.keyId as CommanderKeyId | null,
     slug: corpus.slug,
@@ -340,6 +347,7 @@ export async function getBuild(
     basics: served.basics,
     fill,
     staples: served.cards.staples,
+    statTargets,
   });
   return {
     mode: modeOf(context),

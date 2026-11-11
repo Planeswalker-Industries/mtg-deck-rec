@@ -149,7 +149,7 @@ const voteContextSchema: InputSchema<VoteContext> = z.object(
 
 /** The most cards one recorded list holds: a build's 99 and then some. */
 export const MAX_REC_EVENT_CARDS = 120;
-const SCORE_COMPONENTS = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'] as const satisfies readonly ScoreComponent[];
+const SCORE_COMPONENTS = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck', 'mana'] as const satisfies readonly ScoreComponent[];
 
 export const recEventInputSchema: InputSchema<RecEvent> = z
   .object(

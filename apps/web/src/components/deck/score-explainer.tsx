@@ -19,9 +19,10 @@ const LABELS: Record<ScoreComponent, { name: string; blurb: string }> = {
   votes: { name: "What other players picked", blurb: "Votes on this exact swap" },
   curve: { name: "Fits the curve", blurb: "The deck is short of cards at this mana value" },
   deck: { name: "Goes with your cards", blurb: "Decks that run your cards run this one too" },
+  mana: { name: "Fixes your colours", blurb: "A land that makes a colour the deck is short of" },
 };
 
-const ORDER: readonly ScoreComponent[] = ["tag", "corpus", "deck", "role", "curve", "manaValue", "staple", "votes"];
+const ORDER: readonly ScoreComponent[] = ["tag", "corpus", "deck", "role", "curve", "mana", "manaValue", "staple", "votes"];
 
 const percent = (n: number) => `${Math.round(n * 100)}%`;
 

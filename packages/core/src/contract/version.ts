@@ -135,5 +135,10 @@
  * sources and on-curve odds. Additive.
  *
  * v33 (2026-11-04): BuildFeasibility.roleShortfalls removed; the build page grades the built deck with Deck stats (T084).
+ *
+ * v34 (2026-11-09): builds meet Deck stats. StatTargets.colourSourceCap caps the colour rows for decks in three or more
+ * colours. BuildFeasibility.collectionGaps names the Deck stats lines a collection build couldn't bring in line from
+ * owned cards, so the build page can say so instead of warning. ScoreComponent gains 'mana': how much a land fixes the
+ * deck's short colours (null for nonlands), shipped at weight 0.
  */
-export const CONTRACT_VERSION = 33;
+export const CONTRACT_VERSION = 34;

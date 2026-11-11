@@ -90,6 +90,7 @@ const MOCK_STAT_TARGETS: StatTargets = {
     { cardType: 'enchantment', label: 'Enchantments', target: 6 },
     { cardType: 'planeswalker', label: 'Planeswalkers', target: 1 },
   ],
+  colourSourceCap: null,
   bracketLimits: {
     massLandDenialFromBracket: 4,
     maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 },
@@ -122,8 +123,8 @@ const MOCK_COMBOS = [
   { id: 'mock-combo-1', pieces: ['Sol Ring', 'Guardian Project'], results: ['Draw cards'], minBracket: 2 as Bracket },
   { id: 'mock-combo-2', pieces: ['Counterspell', 'Swan Song'], results: ['Win the game', 'Infinite colorless mana'], minBracket: 2 as Bracket },
 ];
-const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0 };
-const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'];
+const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0, mana: 0 };
+const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck', 'mana'];
 
 const byId = new Map<number, CardSummary>(mockCards.map((c) => [c.id, c]));
 const byName = new Map<string, CardSummary>(
@@ -562,7 +563,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           ),
           estimatedBracket: gameChangerCount === 0 ? 2 : gameChangerCount <= 3 ? 3 : 4,
           bracketSignals: { gameChangerCount, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
-          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed },
+          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed, collectionGaps: [] },
           ...(owned && fill === 'value'
             ? {
                 fillCost: {

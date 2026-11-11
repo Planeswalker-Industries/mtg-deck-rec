@@ -4,7 +4,7 @@ import { fitsBracket, type BracketRules } from '../formats/commander/bracket';
 import { curveBucket, isFrontLand, isStatCardType, statCardType } from '../scoring/curve';
 import { isBasicLand } from './builder';
 import { CURVE_TOP_MANA_VALUE } from './deck-stats';
-import { creditedSources, manaBase, manaLetters, type ManaBaseReport, type ManaDeck, type ManaEntry } from './mana-base';
+import { colourTarget, creditedSources, manaBase, manaLetters, type ManaBaseReport, type ManaDeck, type ManaEntry } from './mana-base';
 
 /** Colour row labels. */
 const COLOUR_NAMES: Readonly<Record<string, string>> = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green', C: 'Colourless' };
@@ -251,17 +251,18 @@ const deckColoursOf = (tally: DeckTally) => manaLetters(tally.commanders.flatMap
 const colourKey = (colour: string) => `sources:${colour}`;
 
 /** The colour rows. The start tick is the start deck measured against today's requirement, so the two compare. */
-function colourLines(mana: ManaBaseReport, start: readonly ManaEntry[] | null, deckColours: string): StatLine[] {
+function colourLines(mana: ManaBaseReport, start: readonly ManaEntry[] | null, deckColours: string, cap: number | null): StatLine[] {
   return mana.colours.map((need) => {
     const value = Math.floor(need.sources);
+    const target = colourTarget(need.needed, cap);
     return {
       key: colourKey(need.colour),
       group: 'colours' as const,
       label: `${COLOUR_NAMES[need.colour] ?? need.colour} sources`,
       value,
-      target: need.needed,
+      target,
       // A minimum, not a band: more sources are never a problem.
-      ok: need.sources >= need.needed,
+      ok: need.sources >= target,
       start: start ? Math.floor(creditedSources(start, need.colour, need.manaValue, deckColours)) : value,
     };
   });
@@ -273,11 +274,16 @@ function colourLines(mana: ManaBaseReport, start: readonly ManaEntry[] | null, d
  */
 export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: BracketInput, start: DeckTally = tally): DeckStatsReport {
   const startLines = new Map(statLines(start, targets).map((s) => [s.key, s.value]));
-  const deck: ManaDeck = { main: [...tally.main.values()], commanders: [...tally.commanders], deckColours: deckColoursOf(tally) };
+  const deck: ManaDeck = {
+    main: [...tally.main.values()],
+    commanders: [...tally.commanders],
+    deckColours: deckColoursOf(tally),
+    colourSourceCap: targets.colourSourceCap ?? null,
+  };
   const mana = manaBase(deck.main, deck.commanders, deck.deckColours);
   const stats = [
     ...statLines(tally, targets).map((s) => ({ ...s, start: startLines.get(s.key) ?? s.value })),
-    ...colourLines(mana, start === tally ? null : [...start.main.values()], deck.deckColours),
+    ...colourLines(mana, start === tally ? null : [...start.main.values()], deck.deckColours, deck.colourSourceCap ?? null),
   ];
   const bars = targets.curve.map((target, manaValue) => {
     const value = tally.curve[manaValue] ?? 0;
@@ -394,7 +400,9 @@ export function statDeltas(
     const next = after.colours.find((n) => n.colour === need.colour);
     if (!next || !lines.some((l) => l.key === key)) continue;
     const delta = Math.round((next.sources - need.sources) * DELTA_TENTHS) / DELTA_TENTHS;
-    if (next.needed !== need.needed) deltas.set(key, { delta, target: next.needed });
+    const cap = deck.colourSourceCap ?? null;
+    const [targetBefore, targetAfter] = [colourTarget(need.needed, cap), colourTarget(next.needed, cap)];
+    if (targetAfter !== targetBefore) deltas.set(key, { delta, target: targetAfter });
     else if (delta !== 0) deltas.set(key, { delta });
   }
   return deltas;

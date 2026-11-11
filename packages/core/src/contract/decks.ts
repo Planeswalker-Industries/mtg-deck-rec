@@ -126,6 +126,11 @@ export interface StatTargets {
    * order. Empty until typical decks have a type profile; Deck stats then leaves the group out.
    */
   types: { cardType: string; label: string; target: number }[];
+  /**
+   * The most sources a colour row asks for, whatever its Karsten number (`app_config.scoring.build.colourSourceCaps`
+   * for the deck's colour count): decks in three or more colours can't reach the one- and two-colour numbers. Null: no cap.
+   */
+  colourSourceCap: number | null;
   bracketLimits: BracketLimits;
 }
 

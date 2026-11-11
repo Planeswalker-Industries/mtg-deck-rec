@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
-import { ChevronDown, CircleCheck, CircleHelp, LoaderCircle, TriangleAlert } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleHelp, Info, LoaderCircle, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
 import { cardsShort, deckDiff, shortOfTarget, type StatLine } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
@@ -82,6 +82,41 @@ function RoleShortfalls({ lines }: { lines: readonly StatLine[] }) {
               −{cardsShort(line)}
               <span className="sr-only"> {cardsShort(line) === 1 ? "card" : "cards"} short</span>
             </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A gap the collection left: a role it had too few cards for (how many short), or its nonbasic lands (basics filled in). */
+interface CollectionGap {
+  key: string;
+  label: string;
+  short: number | null;
+}
+
+/**
+ * What the build couldn't do from the collection, said as a fact rather than a warning: there was nothing more to
+ * pick. Muted, with its icon; Continue offers cards to buy for these in Add.
+ */
+function CollectionGaps({ gaps }: { gaps: readonly CollectionGap[] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="flex items-start gap-2 text-muted-foreground">
+        <Info aria-hidden className="mt-0.5 size-5 shrink-0" />
+        Not in your collection:
+      </p>
+      <ul aria-label="What your collection ran out of" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:pl-7">
+        {gaps.map((gap) => (
+          <li key={gap.key} className="flex min-w-0 items-center justify-between gap-2 rounded-full border border-seam px-3 py-1 text-sm text-muted-foreground">
+            <span className="truncate">{gap.label}</span>
+            {gap.short !== null && (
+              <span className="shrink-0 font-mono">
+                −{gap.short}
+                <span className="sr-only"> {gap.short === 1 ? "card" : "cards"} short</span>
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -243,7 +278,14 @@ export function BuildView({
   const ready = state.status === "ready" ? state : null;
   const builtList = useMemo(() => (ready ? buildDecklist(ready.result) : null), [ready]);
   const stats = useBuildStats(ready?.result ?? null, builtList, state.request.bracket);
-  const shortRoles = stats?.stats.filter((s) => s.group === "roles" && shortOfTarget(s)) ?? [];
+  // A role the collection had nothing more for is a fact about the collection, not an adjustment to make.
+  const gapKeys = new Set(ready?.result.feasibility.collectionGaps ?? []);
+  const shortRolesAll = stats?.stats.filter((s) => s.group === "roles" && shortOfTarget(s)) ?? [];
+  const shortRoles = shortRolesAll.filter((s) => !gapKeys.has(s.key));
+  const collectionGaps: CollectionGap[] = [
+    ...shortRolesAll.filter((s) => gapKeys.has(s.key)).map((s) => ({ key: s.key, label: s.label, short: cardsShort(s) })),
+    ...(gapKeys.has("basicLands") ? [{ key: "basicLands", label: "Nonbasic lands", short: null }] : []),
+  ];
   /** One open at a time: the deck tool reads the list first, which takes a moment on a phone. */
   async function openDeck(kind: "upgrade" | "save", run: (decklist: string) => Promise<void>, decklist: string) {
     if (openingNow.current) return;
@@ -361,6 +403,7 @@ export function BuildView({
           <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
         </div>
         {shortRoles.length > 0 && <RoleShortfalls lines={shortRoles} />}
+        {collectionGaps.length > 0 && <CollectionGaps gaps={collectionGaps} />}
         {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
         <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
           <Button
