@@ -58,6 +58,7 @@ const input = (over: Partial<FixPoolInput> = {}): FixPoolInput => ({
   deckColours: 'G',
   buyLines: null,
   only: false,
+  ownedBoost: 0,
   perLine: 2,
   ...over,
 });
@@ -96,6 +97,20 @@ describe('fixPool in cards', () => {
     expect(names(pool.ins)).toEqual(['Bought Rock', 'Creature 0', 'Creature 1', 'Rock 0', 'Rock 1', 'Forest']);
     expect(pool.ins[0]?.buyFor).toEqual([RAMP]);
     expect(pool.ins.slice(1).every((c) => c.buyFor === undefined)).toBe(true);
+  });
+
+  it("moves an owned card up by the boost in 'first' mode: ahead of an unowned card that scores a little higher, behind one that scores far higher", () => {
+    const near = add(summary(31, 'Unowned Near', 'Creature — Elf'), 0.93, { owned: null });
+    const far = add(summary(32, 'Unowned Far', 'Creature — Elf'), 0.99, { owned: null });
+    const mine = creatures[0]!;
+    // Without a boost the order is by score alone.
+    expect(names(fixPool(input({ adds: [near, far, mine], perLine: 3 })).ins).slice(0, 3)).toEqual(['Unowned Far', 'Unowned Near', 'Creature 0']);
+    // 0.90 + 0.05 passes 0.93, not 0.99.
+    expect(names(fixPool(input({ adds: [near, far, mine], perLine: 3, ownedBoost: 0.05 })).ins).slice(0, 3)).toEqual(['Unowned Far', 'Creature 0', 'Unowned Near']);
+    // The same order decides what a line keeps: with room for two, the owned card stays and the near one goes.
+    expect(names(fixPool(input({ adds: [near, far, mine], perLine: 2, ownedBoost: 0.05 })).ins)).toEqual(['Unowned Far', 'Creature 0', 'Forest']);
+    // The score sent is the card's own.
+    expect(fixPool(input({ adds: [mine], ownedBoost: 0.05 })).ins[0]?.score).toBe(0.9);
   });
 
   it("treats an unowned card like any other outside 'only' mode", () => {

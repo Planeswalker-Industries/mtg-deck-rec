@@ -25,7 +25,6 @@ Swap dead-ends today: "We don't know what this card does yet" for a card with no
 
 **MEDIUM** · Frontend / Decision · Left over from T087
 
-- [ ] Owned first: Fix orders the cards to bring in by score alone, so an owned card gets no head start there. Decide whether it should (the design covers Owned only)
 - [ ] The mocks' build returns no `collectionGaps`, so CI never sees the build page's Ignore / Allow buying prompts or Finish's "Not in your collection" row: give the mock build a gap when the collection is short, then cover Allow buying (the rebuild with `buyFor`, the "Not owned" note and cost line), Ignore (the line grey and out of the score), and the answers surviving a save and a reopen
 - [ ] A bracket change during Swap or Finish that the deck no longer fits sends the round to Fix at the bracket line: no e2e covers it
 - [ ] `AddFilter`'s `lands` kind and `trimCuts`' `focusRoleId` have no caller left since Deck stats' Find and Trim links became Fix: remove them

@@ -16,7 +16,8 @@ import { colourlessLandsIn, colourTarget, manaBase, manaLetters, sourceCredit, t
  *   in its band out of it.
  * - Lines are taken in order: not legal, bracket, lands, basic lands, colour sources, roles, card types, curve; inside
  *   a group the largest gap first.
- * - A line under its band: the in cards that help it, best score first, each against the out cards, weakest first. A
+ * - A line under its band: the in cards that help it, in the pool's order (best first), each against the out cards,
+ *   weakest first. A
  *   line over it: the out cards on the line, weakest first, each against the in cards that help a short line, then
  *   the rest, best first. The first valid pair is the move.
  * - An in card the collection doesn't supply (`FixCard.buyFor`) comes in only for a line the player opened to buying,
@@ -121,7 +122,7 @@ interface Work {
   bracket: BracketInput;
   choices: StatChoices;
   deckColours: string;
-  /** In cards, best first. */
+  /** In cards, in the order they are tried: as the pool lists them, the cards to buy after the rest. */
   ins: Candidate[];
   /** Deck cards, weakest first. */
   outs: Candidate[];
@@ -411,8 +412,9 @@ function start(input: FixInput): Work {
     bracket: input.bracket,
     choices: input.choices,
     deckColours: manaLetters(input.tally.commanders.flatMap((c) => [...(c.colorIdentity ?? '')])),
-    // What the collection supplies first, then what would be bought; best score first in each.
-    ins: once(input.pool.ins).sort((a, b) => bought(a) - bought(b) || b.fix.score - a.fix.score || byName(a, b)),
+    // What the collection supplies first, then what would be bought; each as the pool lists them. The pool comes best
+    // first, and in Owned first with an owned card ahead of an unowned one that scores a little higher (`fixPool`).
+    ins: once(input.pool.ins).sort((a, b) => bought(a) - bought(b)),
     outs: once(input.pool.deck).sort((a, b) => a.fix.score - b.fix.score || byName(a, b)),
     skipped: new Set(input.skipped.map((p) => pairKey(p.inId, p.outId))),
     added: new Set(input.addedIds),

@@ -2,6 +2,7 @@ import type { AddSuggestion, CutSuggestion, FixCard, FixPool, OwnedInfo } from '
 import { linesBoughtFor, type BuyLines } from '../journey/buy-for';
 import { CURVE_LINE, toTallyCard } from '../journey/deck-tally';
 import { curveBucket, isFrontLand, STAT_CARD_TYPES } from './curve';
+import { rankKey } from './owned';
 import { byStaple, type RankCard } from './rank';
 
 /**
@@ -11,7 +12,9 @@ import { byStaple, type RankCard } from './rank';
  * - In: the best `perLine` adds for each Deck stats line (every tracked role, card type, curve bar, lands and colour),
  *   and the best `perLine` whatever they do, so a line over its band has cards to bring in that break nothing. The
  *   basic lands of the deck's colours are always in. With lines opened to buying, the best `perLine` unowned cards for
- *   each opened line come too, marked with those lines.
+ *   each opened line come too, marked with those lines. The in cards come in the order Fix tries them: best first, and
+ *   in 'first' mode an owned card ahead of an unowned one that scores less than `ownedBoost` higher, as adds are
+ *   ranked. The same order decides which cards a line keeps, so an owned card is not crowded out of the pool.
  * - Out: every main-deck card by how well it fits, 1 minus its cut score. `rankCuts` scores only cards with a reason to
  *   cut, so the rest sit above all of those, ordered by how much the commander's decks play them.
  */
@@ -54,6 +57,8 @@ export interface FixPoolInput {
   buyLines: BuyLines | null;
   /** Whether a collection limits the adds to what it supplies ('only' mode). */
   only: boolean;
+  /** How far an owned card moves up in 'first' mode (`app_config.ownership.firstBoost`); 0 in every other mode. */
+  ownedBoost: number;
   perLine?: number;
 }
 
@@ -94,7 +99,13 @@ export function fixPool(input: FixPoolInput): FixPool {
         },
       ];
     })
-    .sort((a, b) => b.fix.score - a.fix.score || byStaple(a.staple, b.staple) || a.fix.card.name.localeCompare(b.fix.card.name) || a.fix.card.id - b.fix.card.id);
+    .sort(
+      (a, b) =>
+        rankKey(b.fix.score, b.fix.owned !== null, input.ownedBoost) - rankKey(a.fix.score, a.fix.owned !== null, input.ownedBoost) ||
+        byStaple(a.staple, b.staple) ||
+        a.fix.card.name.localeCompare(b.fix.card.name) ||
+        a.fix.card.id - b.fix.card.id,
+    );
 
   // Best first, a card is kept while a line it counts on has room; supplied cards and cards to buy are counted apart.
   const kept = new Set<In>();

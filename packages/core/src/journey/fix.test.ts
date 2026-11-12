@@ -314,6 +314,17 @@ describe('the Fix screens (T087)', () => {
   });
 });
 
+describe('the order of the cards to bring in', () => {
+  it("tries the in cards in the pool's order, so an owned card the server put first comes in first", () => {
+    const built = deck({ ramp: 6 });
+    const [best, second] = [ins[0]!, ins[1]!];
+    // Owned first: the server lists the owned card ahead of one that scores a little higher.
+    const owned: FixCard = { ...second, owned: { quantity: 1 } };
+    const moves = planFixes(input(built, { pool: { ins: [owned, best, forest], deck: built.cards } }));
+    expect(moves.map((m) => m.in.name)).toEqual([second.card.name, best.card.name]);
+  });
+});
+
 describe('cards for lines opened to buying (T086)', () => {
   const bought = (id: number, score: number, buyFor: string[]): FixCard => ({
     ...fixCard(summary(id, `Bought ${id}`, 'Creature — Elf'), score, [RAMP]),
