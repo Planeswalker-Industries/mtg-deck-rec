@@ -68,7 +68,7 @@ import {
   sourceDeckTotals,
   sourcesConfidence,
   stableUnit,
-  weightedSample,
+  weightedSampler,
   type AffinityInput,
   type BaselineCounts,
   type BasicColour,
@@ -87,6 +87,7 @@ import {
   type RowSums,
   type ScoringConfig,
   type SourceDeckTotals,
+  type WeightedSampler,
 } from '@mtg/core/scoring';
 import { DATA_DIR } from '../lib/config';
 import { loadCatalog, loadCorpusConfig, loadCorpusDecks, resolveDeck, type CatalogCard, type CorpusConfig } from '../lib/corpus';
@@ -110,6 +111,10 @@ import { edhrecProfiles, loadEdhrecPages, loadPairPoolDepth, type PageRows } fro
  *   is graded on the Deck stats lines it brings back in line, reported only;
  * - agreement with EDHREC's lists and with authors' declared brackets, reported only.
  *
+ * A plain run grades adds (all the gate reads), cuts and collection mode. The simulation, builds and repair are most of
+ * a full run's time and are reported only: `--full` runs them too, `--only builds,repair` picks sections (adds always
+ * run). The report says how long each part took.
+ *
  * With `--candidate <file.json>` (`{ "scoring": {...}, "corpus": {...} }`, merged over today's settings) it runs both
  * on the same split and applies the gate. `--time-split` holds out every deck updated after the EDHREC snapshot instead
  * of a random share, which is how anything EDHREC touches must be tested (its numbers already include many of our
@@ -129,6 +134,18 @@ const REPAIR_SALT = 'repair';
 const REPAIR_REMOVED_CARDS = 5;
 /** Decks repaired per commander: one keeps the check to a small share of the run's time. */
 const REPAIR_DECKS_PER_COMMANDER = 1;
+/**
+ * Held-out decks graded per simulated commander at each deck count. The table is a mean over commanders, so a few
+ * decks each place it; grading all of them was most of the run's add rankings.
+ */
+const SIMULATED_DECKS_PER_COMMANDER = 5;
+/** The sections a run may leave out. Adds are not one: the gate reads them, so every run grades them. */
+const OPTIONAL_SECTIONS = ['cuts', 'collection', 'simulate', 'builds', 'repair'] as const;
+type EvalSection = (typeof OPTIONAL_SECTIONS)[number];
+/** A plain run's sections: the ones a ranking change moves, at a fraction of a full run's time. */
+const QUICK_SECTIONS: readonly EvalSection[] = ['cuts', 'collection'];
+/** `--only` may name adds too, which always run. */
+const ALWAYS_SECTION = 'adds';
 /** The repair check asks for the top bracket, so no bracket rule is in play: the damage doesn't touch one. */
 const REPAIR_BRACKET: Bracket = 5;
 /** Every candidate is ranked when grading, not a display-sized slice. */
@@ -238,7 +255,38 @@ interface Settings {
   eval: EvalConfig;
   /** app_config.precompute.pairPoolDepth: a derived pair's pool stops there, as the stored one does (T070). */
   pairPoolDepth: number;
+  /** The sections this run grades besides adds. */
+  sections: ReadonlySet<EvalSection>;
 }
+
+/** Time spent per part of a run, so a slow run shows where it went. */
+interface Clock {
+  ms: Record<string, number>;
+  time<T>(part: string, work: () => T): T;
+}
+
+function startClock(): Clock {
+  const ms: Record<string, number> = {};
+  return {
+    ms,
+    time(part, work) {
+      const from = performance.now();
+      try {
+        return work();
+      } finally {
+        ms[part] = (ms[part] ?? 0) + performance.now() - from;
+      }
+    },
+  };
+}
+
+/** For a caller whose time is counted as a whole (the simulation). */
+const NO_CLOCK: Clock = { ms: {}, time: (_part, work) => work() };
+
+const timings = (ms: Record<string, number>) =>
+  Object.entries(ms)
+    .map(([part, t]) => `${part} ${Math.round(t / MS_PER_SECOND)} s`)
+    .join(', ');
 
 /** Play rates rebuilt from a set of training decks: per key, and the baseline over all of them. */
 interface Training {
@@ -250,6 +298,8 @@ interface Training {
   identityMonths: Map<number, Record<string, number>>;
   /** Baseline candidates per colour identity, best first, built on first use. */
   baselineOrder: Map<number, number[]>;
+  /** The cards the cut and collection tests draw from per colour identity, by popularity, built on first use. */
+  plantable: Map<number, WeightedSampler<number>>;
   /** Card pairs from the training decks (T064): the corpus's, and each key's on first use. */
   pairs?: { global: PmiIndex; ownFor: (key: string) => PmiIndex };
 }
@@ -423,9 +473,13 @@ function aggregate(decks: readonly EvalDeck[], data: Data): Map<string, KeyAggre
 
 /**
  * Keys and the baseline from per-key counts. A simulation that changes one commander's decks passes the full training's
- * baseline (one commander's decks barely move it), which skips the costly part.
+ * baseline (one commander's decks barely move it) and what was sorted from it, which skips the costly part.
  */
-function buildTraining(aggregates: Map<string, KeyAggregate>, data: Data, reuse?: Pick<Training, 'baseline' | 'identityMonths'>): Training {
+function buildTraining(
+  aggregates: Map<string, KeyAggregate>,
+  data: Data,
+  reuse?: Pick<Training, 'baseline' | 'identityMonths' | 'baselineOrder' | 'plantable'>,
+): Training {
   const keys: CorpusKey[] = [];
   const keyByIndex = new Map<number, string>();
   const keysByCommander = new Map<number, CorpusKey[]>();
@@ -444,7 +498,10 @@ function buildTraining(aggregates: Map<string, KeyAggregate>, data: Data, reuse?
     for (const id of a.commanders.map((c) => c.id)) keysByCommander.set(id, [...(keysByCommander.get(id) ?? []), k]);
     if (!reuse) for (const [card, n] of a.cards) decksWith.set(card, (decksWith.get(card) ?? 0) + n);
   }
-  if (reuse) return { aggregates, keys, keyByIndex, keysByCommander, ...reuse, baselineOrder: new Map() };
+  if (reuse) {
+    const { baseline, identityMonths: months, baselineOrder: order, plantable } = reuse;
+    return { aggregates, keys, keyByIndex, keysByCommander, baseline, identityMonths: months, baselineOrder: order, plantable };
+  }
   const monthsList = identityMonths(aggregates);
   const baseline = new Map(
     globalStatRows(decksWith, monthsList, data.catalog).map((r) => [
@@ -460,6 +517,7 @@ function buildTraining(aggregates: Map<string, KeyAggregate>, data: Data, reuse?
     baseline,
     identityMonths: new Map(monthsList.map((m, identity) => [identity, m])),
     baselineOrder: new Map(),
+    plantable: new Map(),
   };
 }
 
@@ -477,6 +535,23 @@ function baselineOrder(training: Training, mask: number, data: Data): number[] {
     training.baselineOrder.set(mask, order);
   }
   return order;
+}
+
+/**
+ * Popular nonland cards inside a colour identity, drawn by how many training decks run them: what the cut test plants
+ * and the collection test's player owns besides the hidden cards. One list per identity, each deck's own cards left out
+ * at the draw.
+ */
+function plantableFor(training: Training, mask: number, data: Data): WeightedSampler<number> {
+  let sampler = training.plantable.get(mask);
+  if (!sampler) {
+    sampler = weightedSampler(
+      [...training.baseline.keys()].filter((id) => data.nonland.has(id) && eligibleCandidate(data.cards.get(id), mask)),
+      (id) => training.baseline.get(id)?.decksWith ?? 0,
+    );
+    training.plantable.set(mask, sampler);
+  }
+  return sampler;
 }
 
 /**
@@ -690,10 +765,18 @@ interface DeckResult {
 }
 
 /**
- * Grades one held-out deck: adds, cuts and collection mode (adds alone for a simulation). Null when it has too few
- * nonland cards to hide.
+ * Grades one held-out deck: adds, then cuts and collection mode where the run asks for them (adds alone for a
+ * simulation). Null when it has too few nonland cards to hide.
  */
-function gradeDeck(deck: EvalDeck, model: SetModel, training: Training, settings: Settings, data: Data, addsOnly = false): DeckResult | null {
+function gradeDeck(
+  deck: EvalDeck,
+  model: SetModel,
+  training: Training,
+  settings: Settings,
+  data: Data,
+  addsOnly = false,
+  clock: Clock = NO_CLOCK,
+): DeckResult | null {
   const e = settings.eval;
   const nonland = deck.cardIds.filter((id) => data.nonland.has(id));
   if (nonland.length < e.hiddenCards) return null;
@@ -701,54 +784,53 @@ function gradeDeck(deck: EvalDeck, model: SetModel, training: Training, settings
   const hiddenSet = new Set(hidden);
   const visible = deck.cardIds.filter((id) => !hiddenSet.has(id));
 
-  const adds = rankedAdds(deck, visible, model, settings, data);
+  const adds = clock.time('adds', () => rankedAdds(deck, visible, model, settings, data));
   const top = adds.slice(0, e.recallAt);
   const hits = top.filter((id) => hiddenSet.has(id));
   const stapleHits = hits.filter((id) => (training.baseline.get(id)?.rate ?? 0) >= e.stapleBaselineRate).length;
   const addRecall = recallAt(adds, hiddenSet, e.recallAt);
-  if (addsOnly) return { commanderKey: deck.key, addRecall, addHits: hits.length, stapleHits, cutPrecision: 0, collectionRecall: 0 };
+  const wantCuts = !addsOnly && settings.sections.has('cuts');
+  const wantCollection = !addsOnly && settings.sections.has('collection');
 
-  // Cuts: plant popular cards from other commanders' decks, inside the identity, that this deck doesn't run.
-  const inDeck = new Set([...deck.commanderIds, ...deck.cardIds]);
-  const plantable = [...training.baseline.keys()].filter(
-    (id) => !inDeck.has(id) && data.nonland.has(id) && eligibleCandidate(data.cards.get(id), model.mask),
-  );
-  const planted = weightedSample(
-    plantable,
-    (id) => training.baseline.get(id)?.decksWith ?? 0,
-    e.injectedCuts,
-    seededRandom(seedFor(e.seed, PLANT_SALT, deck.id)),
-  );
-  const cutDeck = [...deck.cardIds, ...planted];
-  const cutCards = new Map(cutDeck.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : [])));
-  for (const id of deck.commanderIds) if (data.cards.has(id)) cutCards.set(id, data.cards.get(id) as RankCard);
-  const cuts = rankCuts({
-    context: contextFor(deck, cutDeck),
-    cards: cutCards,
-    rates: new Map(cutDeck.map((id) => [id, model.rates(id)])),
-    roles: new Map(cutDeck.map((id) => [id, data.roles.get(id) ?? []])),
-    corpus: model.corpus,
-    roleTargets: data.roleTargets,
-    scoring: settings.scoring,
-    availability: null,
-    affinity: settings.scoring.affinity.lowAffinityCuts ? model.affinityFor(cutDeck, 0, () => false) : null,
-    limit: e.cutPrecisionAt,
-  });
-  const cutPrecision = precisionAt(
-    cuts.suggestions.map((s) => s.card.id as number),
-    new Set(planted),
-    e.cutPrecisionAt,
-  );
+  // Popular cards from other commanders' decks, inside the identity, that this deck doesn't run.
+  const inDeck = [...deck.commanderIds, ...deck.cardIds];
+  const drawPopular = (count: number, salt: string) =>
+    plantableFor(training, model.mask, data).draw(inDeck, count, seededRandom(seedFor(e.seed, salt, deck.id)));
+
+  // Cuts: plant some of them.
+  const cutPrecision = !wantCuts
+    ? 0
+    : clock.time('cuts', () => {
+        const planted = drawPopular(e.injectedCuts, PLANT_SALT);
+        const cutDeck = [...deck.cardIds, ...planted];
+        const cutCards = new Map(cutDeck.flatMap((id) => (data.cards.has(id) ? [[id, data.cards.get(id) as RankCard] as const] : [])));
+        for (const id of deck.commanderIds) if (data.cards.has(id)) cutCards.set(id, data.cards.get(id) as RankCard);
+        const cuts = rankCuts({
+          context: contextFor(deck, cutDeck),
+          cards: cutCards,
+          rates: new Map(cutDeck.map((id) => [id, model.rates(id)])),
+          roles: new Map(cutDeck.map((id) => [id, data.roles.get(id) ?? []])),
+          corpus: model.corpus,
+          roleTargets: data.roleTargets,
+          scoring: settings.scoring,
+          availability: null,
+          affinity: settings.scoring.affinity.lowAffinityCuts ? model.affinityFor(cutDeck, 0, () => false) : null,
+          limit: e.cutPrecisionAt,
+        });
+        return precisionAt(
+          cuts.suggestions.map((s) => s.card.id as number),
+          new Set(planted),
+          e.cutPrecisionAt,
+        );
+      });
 
   // Collection mode: the player owns the hidden cards and a popular sample of others.
-  const extra = weightedSample(
-    plantable,
-    (id) => training.baseline.get(id)?.decksWith ?? 0,
-    e.collectionExtraCards,
-    seededRandom(seedFor(e.seed, OWN_SALT, deck.id)),
-  );
-  const owned = new Set([...hidden, ...extra]);
-  const collectionRecall = recallAt(rankedAdds(deck, visible, model, settings, data, owned), hiddenSet, e.recallAt);
+  const collectionRecall = !wantCollection
+    ? 0
+    : clock.time('collection', () => {
+        const owned = new Set([...hidden, ...drawPopular(e.collectionExtraCards, OWN_SALT)]);
+        return recallAt(rankedAdds(deck, visible, model, settings, data, owned), hiddenSet, e.recallAt);
+      });
 
   return {
     commanderKey: deck.key,
@@ -1009,6 +1091,8 @@ interface RunResult {
   buildEdhrecOverlap: number[];
   /** The repair check's decks (T085), up to REPAIR_DECKS_PER_COMMANDER per graded commander. */
   repairs: RepairGrade[];
+  /** Milliseconds per part of the run. */
+  ms: Record<string, number>;
 }
 
 function run(
@@ -1020,6 +1104,8 @@ function run(
   brackets: BracketData,
 ): RunResult {
   const e = settings.eval;
+  const clock = startClock();
+  const heldByKey = groupBy(heldOut, (d) => d.key);
   // Commander by commander, each model dropped once its decks are graded and built: holding a model per commander at
   // once ran a 212k-deck corpus out of heap (T083). Every deck is still graded with its commander's model, so the
   // results don't change.
@@ -1033,10 +1119,12 @@ function run(
   let decksGraded = 0;
   let addHits = 0;
   let stapleHits = 0;
-  for (const [key, decks] of groupBy(heldOut, (d) => d.key)) {
-    const model = setModel(decks[0]?.commanderIds ?? [], training, settings, data);
+  for (const [key, decks] of heldByKey) {
+    const model = clock.time('models', () => setModel(decks[0]?.commanderIds ?? [], training, settings, data));
+    // The commander's own pairs are counted on first use: here, so their time shows apart from the rankings'.
+    if (training.pairs && training.aggregates.has(key)) clock.time('own pairs', () => training.pairs?.ownFor(key));
     for (const deck of decks) {
-      const result = gradeDeck(deck, model, training, settings, data);
+      const result = gradeDeck(deck, model, training, settings, data, false, clock);
       if (!result) continue;
       decksGraded++;
       addHits += result.addHits;
@@ -1045,24 +1133,34 @@ function run(
     }
     if (!byCommander.has(key)) continue;
     oursTop.set(key, model.ordered.slice(0, e.edhrecTop));
-    let repairedDecks = 0;
-    for (const deck of decks) {
-      if (repairedDecks >= REPAIR_DECKS_PER_COMMANDER) break;
-      const repair = repairDeck(deck, model, settings, data, brackets);
-      if (!repair) continue;
-      repairs.push(repair);
-      repairedDecks++;
+    if (settings.sections.has('repair')) {
+      clock.time('repair', () => {
+        let repairedDecks = 0;
+        for (const deck of decks) {
+          if (repairedDecks >= REPAIR_DECKS_PER_COMMANDER) break;
+          const repair = repairDeck(deck, model, settings, data, brackets);
+          if (!repair) continue;
+          repairs.push(repair);
+          repairedDecks++;
+        }
+      });
     }
-    const built = new Map<string, Built>();
-    for (const deck of decks) {
-      const bracket = estimateDeck(deck, data, brackets);
-      let b = built.get(String(bracket));
-      if (!b) {
-        b = buildFor(deck.commanderIds, bracket, model, settings, data, brackets);
-        built.set(String(bracket), b);
-      }
-      if (!firstBuild.has(key)) firstBuild.set(key, b);
-      buildGrades.set(key, [...(buildGrades.get(key) ?? []), gradeBuild(b, deck, data)]);
+    if (settings.sections.has('builds')) {
+      clock.time('builds', () => {
+        const built = new Map<string, Built>();
+        const grades: BuildGrade[] = [];
+        for (const deck of decks) {
+          const bracket = estimateDeck(deck, data, brackets);
+          let b = built.get(String(bracket));
+          if (!b) {
+            b = buildFor(deck.commanderIds, bracket, model, settings, data, brackets);
+            built.set(String(bracket), b);
+          }
+          if (!firstBuild.has(key)) firstBuild.set(key, b);
+          grades.push(gradeBuild(b, deck, data));
+        }
+        buildGrades.set(key, grades);
+      });
     }
   }
 
@@ -1077,30 +1175,36 @@ function run(
     });
   }
 
-  // Simulated small commanders: the same held-out decks, graded with only a few of the commander's training decks.
+  // Simulated small commanders: some of the same held-out decks (the same ones at every deck count), graded with only a
+  // few of the commander's training decks.
   const simulated = new Map<number, number[]>(e.simulatedDecks.map((n) => [n, []]));
-  for (const [key, held] of groupBy(heldOut, (d) => d.key)) {
-    const own = trainingDecks.get(key) ?? [];
-    if (own.length < e.simulateFromDecks) continue;
-    for (const n of e.simulatedDecks) {
-      const kept = sample(own, n, seededRandom(seedFor(e.seed, SIMULATE_SALT, `${key}:${n}`)));
-      const aggregates = new Map(training.aggregates);
-      if (kept.length === 0) aggregates.delete(key);
-      else aggregates.set(key, aggregate(kept, data).get(key) as KeyAggregate);
-      const reduced = buildTraining(aggregates, data, { baseline: training.baseline, identityMonths: training.identityMonths });
-      if (training.pairs) {
-        const keptPairs = pmiOf(keyPairs(kept, (id) => data.facts.get(id)?.releaseMonth ?? null, settings.pairs));
-        const all = training.pairs;
-        reduced.pairs = { global: all.global, ownFor: (k) => (k === key ? keptPairs : all.ownFor(k)) };
+  if (settings.sections.has('simulate')) {
+    clock.time('simulate', () => {
+      for (const [key, held] of heldByKey) {
+        const own = trainingDecks.get(key) ?? [];
+        if (own.length < e.simulateFromDecks) continue;
+        const graded = sample(held, SIMULATED_DECKS_PER_COMMANDER, seededRandom(seedFor(e.seed, SIMULATE_SALT, `${key}:held`)));
+        for (const n of e.simulatedDecks) {
+          const kept = sample(own, n, seededRandom(seedFor(e.seed, SIMULATE_SALT, `${key}:${n}`)));
+          const aggregates = new Map(training.aggregates);
+          if (kept.length === 0) aggregates.delete(key);
+          else aggregates.set(key, aggregate(kept, data).get(key) as KeyAggregate);
+          const reduced = buildTraining(aggregates, data, training);
+          if (training.pairs) {
+            const keptPairs = pmiOf(keyPairs(kept, (id) => data.facts.get(id)?.releaseMonth ?? null, settings.pairs));
+            const all = training.pairs;
+            reduced.pairs = { global: all.global, ownFor: (k) => (k === key ? keptPairs : all.ownFor(k)) };
+          }
+          const commanderIds = held[0]?.commanderIds ?? [];
+          const model = setModel(commanderIds, reduced, settings, data);
+          const recalls = graded.flatMap((deck) => {
+            const r = gradeDeck(deck, model, reduced, settings, data, true);
+            return r ? [r.addRecall] : [];
+          });
+          if (recalls.length > 0) simulated.get(n)?.push(mean(recalls));
+        }
       }
-      const commanderIds = held[0]?.commanderIds ?? [];
-      const model = setModel(commanderIds, reduced, settings, data);
-      const recalls = held.flatMap((deck) => {
-        const r = gradeDeck(deck, model, reduced, settings, data, true);
-        return r ? [r.addRecall] : [];
-      });
-      if (recalls.length > 0) simulated.get(n)?.push(mean(recalls));
-    }
+    });
   }
 
   // EDHREC agreement: our pool's top against EDHREC's top by inclusion, for commanders with a page.
@@ -1139,13 +1243,27 @@ function run(
     if (top.length > 0) buildEdhrecOverlap.push(top.filter((id) => b.nonbasic.has(id)).length / top.length);
   }
 
-  return { commanders, decksGraded, addHits, stapleHits, simulated, edhrecOverlap, builds, buildEdhrecOverlap, repairs };
+  return { commanders, decksGraded, addHits, stapleHits, simulated, edhrecOverlap, builds, buildEdhrecOverlap, repairs, ms: clock.ms };
 }
 
 function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string, T[]> {
   const out = new Map<string, T[]>();
-  for (const item of items) out.set(keyOf(item), [...(out.get(keyOf(item)) ?? []), item]);
+  for (const item of items) {
+    const key = keyOf(item);
+    const group = out.get(key);
+    if (group) group.push(item);
+    else out.set(key, [item]);
+  }
   return out;
+}
+
+/** The sections a run grades besides adds: `--only`'s when given, every one with `--full`, else the quick ones. */
+function sectionsFor(full: boolean, only: readonly string[] | undefined): Set<EvalSection> {
+  if (!only) return new Set(full ? OPTIONAL_SECTIONS : QUICK_SECTIONS);
+  const known = (name: string): name is EvalSection => (OPTIONAL_SECTIONS as readonly string[]).includes(name);
+  const unknown = only.filter((name) => name !== ALWAYS_SECTION && !known(name));
+  if (unknown.length > 0) throw new Error(`--only takes ${[ALWAYS_SECTION, ...OPTIONAL_SECTIONS].join(', ')}; got ${unknown.join(', ')}.`);
+  return new Set(only.filter(known));
 }
 
 /** Deep merge of plain objects; arrays and values in `over` replace. */
@@ -1170,9 +1288,13 @@ interface Summary {
   build: { commanders: number; overlap: Interval; landError: number; basicError: number; roleError: number; edhrecOverlap: number };
   /** The repair check (T085): shares of its decks, and means over them. */
   repair: { decks: number; inLine: number; restored: number; offBefore: number; offDamaged: number; offAfter: number; moves: number; cameBack: number };
+  /** The sections the run graded besides adds: the numbers of the others are empty, not zero. */
+  sections: EvalSection[];
+  /** Milliseconds per part of the run. */
+  ms: Record<string, number>;
 }
 
-function summarize(label: string, result: RunResult, order: readonly string[], e: EvalConfig): Summary {
+function summarize(label: string, result: RunResult, order: readonly string[], e: EvalConfig, sections: ReadonlySet<EvalSection>): Summary {
   const rows = order.flatMap((k) => (result.commanders.has(k) ? [result.commanders.get(k)!] : []));
   const buckets = [...groupBy(rows, (r) => r.bucket)].map(([bucket, rs]) => ({
     bucket,
@@ -1217,6 +1339,8 @@ function summarize(label: string, result: RunResult, order: readonly string[], e
       moves: mean(result.repairs.map((r) => r.moves)),
       cameBack: mean(result.repairs.map((r) => r.cameBack)),
     },
+    sections: OPTIONAL_SECTIONS.filter((section) => sections.has(section)),
+    ms: result.ms,
   };
 }
 
@@ -1244,30 +1368,44 @@ function markdown(summaries: readonly Summary[], extras: string[]): string {
   for (const s of summaries) {
     lines.push(`## ${s.label}`, '', `${s.commanders} commanders, ${s.decksGraded} held-out decks graded.`, '');
     lines.push('| Test | Mean (95% interval) |', '|---|---|');
+    const ran = (section: EvalSection) => s.sections.includes(section);
     lines.push(`| Adds recall@k | ${interval(s.addRecall)} |`);
-    lines.push(`| Cuts precision@k | ${interval(s.cutPrecision)} |`);
-    lines.push(`| Collection-mode recall@k | ${interval(s.collectionRecall)} |`);
+    if (ran('cuts')) lines.push(`| Cuts precision@k | ${interval(s.cutPrecision)} |`);
+    if (ran('collection')) lines.push(`| Collection-mode recall@k | ${interval(s.collectionRecall)} |`);
     lines.push(`| Sol Ring rate (hits that are staples) | ${pct(s.stapleRate)} |`, '');
     lines.push('| Size bucket | Commanders | Adds recall@k |', '|---|---|---|');
     for (const b of s.buckets) lines.push(`| ${b.bucket} | ${b.commanders} | ${interval(b.addRecall)} |`);
-    lines.push('', '| Simulated: training decks kept | Commanders | Adds recall@k |', '|---|---|---|');
-    for (const sim of s.simulated) lines.push(`| ${sim.decksKept} | ${sim.commanders} | ${pct(sim.addRecall)} |`);
+    if (ran('simulate')) {
+      lines.push(
+        '',
+        `| Simulated: training decks kept (up to ${SIMULATED_DECKS_PER_COMMANDER} held-out decks per commander) | Commanders | Adds recall@k |`,
+        '|---|---|---|',
+      );
+      for (const sim of s.simulated) lines.push(`| ${sim.decksKept} | ${sim.commanders} | ${pct(sim.addRecall)} |`);
+    }
     lines.push('', `EDHREC agreement: ${pct(s.edhrecOverlap.mean)} of EDHREC's top cards in our pool's top, over ${s.edhrecOverlap.commanders} commanders with a page.`, '');
     const b = s.build;
-    lines.push(
-      `Builds (${b.commanders} commanders, every card available): ${interval(b.overlap)} of a held-out deck's cards in the build; ` +
-        `off by ${b.landError.toFixed(1)} lands, ${b.basicError.toFixed(1)} basic lands and ${b.roleError.toFixed(1)} cards per role on average; ` +
-        `${pct(b.edhrecOverlap)} of EDHREC's top cards in the build.`,
-      '',
-    );
+    if (ran('builds')) {
+      lines.push(
+        `Builds (${b.commanders} commanders, every card available): ${interval(b.overlap)} of a held-out deck's cards in the build; ` +
+          `off by ${b.landError.toFixed(1)} lands, ${b.basicError.toFixed(1)} basic lands and ${b.roleError.toFixed(1)} cards per role on average; ` +
+          `${pct(b.edhrecOverlap)} of EDHREC's top cards in the build.`,
+        '',
+      );
+    }
     const r = s.repair;
-    lines.push(
-      `Repair (${r.decks} decks, ${REPAIR_REMOVED_CARDS} role cards each swapped for basic lands, then Fix's plan): ` +
-        `${pct(r.inLine)} end with every Deck stats line in line and ${pct(r.restored)} with no more lines off than before the damage; ` +
-        `lines off ${r.offBefore.toFixed(1)} before, ${r.offDamaged.toFixed(1)} damaged, ${r.offAfter.toFixed(1)} after; ` +
-        `${r.moves.toFixed(1)} moves on average; ${pct(r.cameBack)} of the removed cards came back.`,
-      '',
-    );
+    if (ran('repair')) {
+      lines.push(
+        `Repair (${r.decks} decks, ${REPAIR_REMOVED_CARDS} role cards each swapped for basic lands, then Fix's plan): ` +
+          `${pct(r.inLine)} end with every Deck stats line in line and ${pct(r.restored)} with no more lines off than before the damage; ` +
+          `lines off ${r.offBefore.toFixed(1)} before, ${r.offDamaged.toFixed(1)} damaged, ${r.offAfter.toFixed(1)} after; ` +
+          `${r.moves.toFixed(1)} moves on average; ${pct(r.cameBack)} of the removed cards came back.`,
+        '',
+      );
+    }
+    const skipped = OPTIONAL_SECTIONS.filter((section) => !ran(section));
+    if (skipped.length > 0) lines.push(`Not run: ${skipped.join(', ')} (\`--full\` runs every section, \`--only\` picks them).`, '');
+    lines.push(`Time: ${timings(s.ms)}.`, '');
   }
   return lines.join('\n');
 }
@@ -1276,7 +1414,11 @@ export async function evalHoldout({
   candidatePath,
   timeSplit = false,
   snapshotMonth,
-}: { candidatePath?: string; timeSplit?: boolean; snapshotMonth?: string } = {}): Promise<void> {
+  full = false,
+  only,
+}: { candidatePath?: string; timeSplit?: boolean; snapshotMonth?: string; full?: boolean; only?: readonly string[] } = {}): Promise<void> {
+  const sections = sectionsFor(full, only);
+  const setup = startClock();
   const sql = connect();
   const started = Date.now();
   try {
@@ -1293,9 +1435,12 @@ export async function evalHoldout({
       scoring: parseScoringConfig(scoringRow?.value),
       eval: parseEvalConfig(scoringRow?.value.eval),
       pairPoolDepth,
+      sections,
     };
     const e = baseSettings.eval;
+    const loadFrom = performance.now();
     const data = await loadData(sql, config);
+    setup.ms.load = performance.now() - loadFrom;
     // The time split holds out every deck updated after the EDHREC snapshot; otherwise a seeded share. The snapshot's
     // month is pinned with --snapshot-month: the live one moves with every EDHREC fetch, and after a fetch this month
     // nothing is newer, so recorded runs couldn't be repeated.
@@ -1303,22 +1448,23 @@ export async function evalHoldout({
     const snapshot = snapshotMonth ?? data.edhrecMonth;
     if (timeSplit && !snapshot) throw new Error('--time-split needs an EDHREC snapshot (corpus.edhrec_commanders is empty).');
     const split = timeSplit ? `time split: decks updated after ${snapshot}` : `seeded ${e.holdoutShare * 100}% split (seed ${e.seed})`;
-    console.log(`eval:holdout: ${split}`);
+    console.log(`eval:holdout: ${split}; sections: ${[ALWAYS_SECTION, ...sections].join(', ')}`);
     const held = (d: EvalDeck) => (timeSplit ? d.month > (snapshot ?? '') : isHeldOut(d.id, e.seed, e.holdoutShare));
     const heldOut = data.decks.filter(held);
     const train = data.decks.filter((d) => !held(d));
-    const training = buildTraining(aggregate(train, data), data);
+    const training = setup.time('training', () => buildTraining(aggregate(train, data), data));
     const trainingDecks = groupBy(train, (d) => d.key);
-    training.pairs = trainingPairs(train, trainingDecks, data, baseSettings.pairs);
+    training.pairs = setup.time('corpus pairs', () => trainingPairs(train, trainingDecks, data, baseSettings.pairs));
     console.log(`eval:holdout: ${data.decks.length} decks, ${train.length} training, ${heldOut.length} held out.`);
 
     const brackets = await loadBracketData(sql);
     const baseline = run(baseSettings, data, training, trainingDecks, heldOut, brackets);
     const order = [...baseline.commanders.keys()].sort();
-    const summaries = [summarize('Today\'s settings', baseline, order, e)];
+    const summaries = [summarize('Today\'s settings', baseline, order, e, sections)];
     const extras: string[] = [
       `Run ${new Date().toISOString()}: seed ${e.seed}, ${timeSplit ? `every deck updated after the EDHREC snapshot (${snapshot}) held out` : `${pct(e.holdoutShare)} held out`}, ${e.hiddenCards} cards hidden, recall@${e.recallAt}, ` +
         `${e.injectedCuts} planted, precision@${e.cutPrecisionAt}, ${e.bootstrapResamples} resamples.`,
+      `Setup time: ${timings(setup.ms)}.`,
     ];
 
     // Authors' declared brackets against our estimate: a check on the estimator only, never a score. Declared 1 and 5
@@ -1351,7 +1497,7 @@ export async function evalHoldout({
         scoring: parseScoringConfig(merge(baseSettings.scoring, overrides.scoring)),
       };
       const candidate = run(candidateSettings, data, training, trainingDecks, heldOut, brackets);
-      const candidateSummary = summarize('Candidate', candidate, order, e);
+      const candidateSummary = summarize('Candidate', candidate, order, e, sections);
       summaries.push(candidateSummary);
       const keys = order.filter((k) => candidate.commanders.has(k));
       const gate = evaluateGate({

@@ -10,6 +10,7 @@ import {
   seededRandom,
   sizeBucket,
   weightedSample,
+  weightedSampler,
 } from './evaluate';
 
 describe('evaluation helpers', () => {
@@ -39,6 +40,24 @@ describe('evaluation helpers', () => {
     }
     expect(counts.get(1) ?? 0).toBeGreaterThan((counts.get(2) ?? 0) * 4);
     expect(weightedSample([1, 2], () => 0, 1, random)).toEqual([]);
+  });
+
+  it('draws from a reused list exactly what weightedSample draws from the list without the excluded items', () => {
+    const random = seededRandom(11);
+    for (const size of [0, 1, 2, 7, 8, 9, 64, 200]) {
+      const items = Array.from({ length: size }, (_, i) => i);
+      // Whole-number weights as deck counts are, some of them none.
+      const weights = items.map(() => Math.floor(random() * 40) - 5);
+      const weight = (i: number) => weights[i] ?? 0;
+      const sampler = weightedSampler(items, weight);
+      for (let round = 0; round < 20; round++) {
+        const excluded = new Set(items.filter(() => random() < 0.3));
+        const count = Math.floor(random() * (size + 3));
+        const seed = Math.floor(random() * 1e9);
+        const left = items.filter((i) => !excluded.has(i));
+        expect(sampler.draw([...excluded, -1, ...excluded], count, seededRandom(seed))).toEqual(weightedSample(left, weight, count, seededRandom(seed)));
+      }
+    }
   });
 
   it('grades recall and precision on the top k', () => {
