@@ -14,6 +14,7 @@ const line = (key: string, value: number, target: number): StatLine => ({
   value,
   target,
   ok: false,
+  state: 'off',
   start: value,
 });
 

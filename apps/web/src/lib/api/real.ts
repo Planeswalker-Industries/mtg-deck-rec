@@ -58,6 +58,7 @@ const notYet = async (): Promise<Result<never>> => ({
 export const realRecs: RecsApi = {
   swap: (input) => post("/api/recs/swap", input),
   add: (input) => post("/api/recs/add", input),
+  fix: (input) => post("/api/recs/fix", input),
   cut: (input) => post("/api/recs/cut", input),
   build: (input) => post("/api/recs/build", input),
 };

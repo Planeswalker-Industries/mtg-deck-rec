@@ -1,4 +1,4 @@
-import type { Bracket, CardId, CardSummary, ComboRef, OwnedInfo, StatTargets } from '../contract';
+import type { Bracket, CardId, CardSummary, ComboRef, FixCard, FixPool, StatChoices, StatTargets } from '../contract';
 import { gameChangerLimit } from '../formats/commander/bracket';
 import { COMMANDER_DECK_SIZE } from '../formats/commander/validate';
 import { cardsOutsideBand } from '../scoring/bands';
@@ -19,25 +19,14 @@ import { colourlessLandsIn, colourTarget, manaBase, manaLetters, sourceCredit, t
  * - A line under its band: the in cards that help it, best score first, each against the out cards, weakest first. A
  *   line over it: the out cards on the line, weakest first, each against the in cards that help a short line, then
  *   the rest, best first. The first valid pair is the move.
+ * - An in card the collection doesn't supply (`FixCard.buyFor`) comes in only for a line the player opened to buying,
+ *   and after every card the collection supplies: buying is for what the collection can't do.
  *
  * Every move lowers the distance, so a plan ends. Pure: the scores are those the pool was fetched with.
  */
 
-/** A card Fix may bring in or take out, with what the engine needs to judge it. */
-export interface FixCard {
-  card: CardSummary;
-  roles: readonly string[];
-  /** In cards: the add score m(c | deck). Deck cards: how well the card fits (1 − cut score). */
-  score: number;
-  owned: OwnedInfo | null;
-}
-
-export interface FixPool {
-  /** Candidates to bring in, each line's best first. Basic lands of the deck's colours are always here. */
-  ins: FixCard[];
-  /** The deck's main cards. */
-  deck: FixCard[];
-}
+// The pool's shapes are the contract's (v35): the server sends them, and the engine reads them as sent.
+export type { FixCard, FixPool, StatChoice, StatChoices } from '../contract';
 
 export interface FixMove {
   /** The line this move is for: 'legal', 'bracket', 'lands', 'basicLands', 'sources:U', a role id, a card type, 'curve'. */
@@ -46,10 +35,6 @@ export interface FixMove {
   out: CardSummary;
 }
 
-/** What the player chose for a line the deck can't bring in line: leave it out of the score, or allow unowned cards for it. */
-export type StatChoice = 'ignore' | 'buy';
-/** The player's choices by line key ('lands', a role id, 'curve', 'sources:B'). */
-export type StatChoices = Readonly<Record<string, StatChoice>>;
 
 /** A pair the player passed on. */
 export interface FixPair {
@@ -159,6 +144,8 @@ interface Snapshot {
 }
 
 const pairKey = (inId: CardId, outId: CardId) => `${inId}>${outId}`;
+/** 1 for an in card the collection doesn't supply, which sorts after those it does. */
+const bought = (c: Candidate) => (c.fix.buyFor === undefined ? 0 : 1);
 const byName = (a: Candidate, b: Candidate) => a.fix.card.name.localeCompare(b.fix.card.name) || a.fix.card.id - b.fix.card.id;
 
 const cloneTally = (tally: DeckTally): DeckTally => ({
@@ -314,9 +301,16 @@ function onLine(c: Candidate, key: string, work: Work, snap: Snapshot): boolean 
 const brokenLines = (snap: Snapshot): Line[] =>
   [...snap.lines.values()].filter((l) => l.gap > GAP_EPSILON).sort((a, b) => a.group - b.group || b.gap - a.gap);
 
-/** In cards that may go in now: not in the deck and not taken out by this plan (a basic land always may). */
-const liveIns = (work: Work): Candidate[] =>
-  work.ins.filter((c) => isBasicLand(c.card) || (!inDeck(work.tally, c.card.id) && !work.removed.has(c.card.id)));
+/**
+ * In cards that may go in now for a line: not in the deck and not taken out by this plan (a basic land always may),
+ * and, for a card the collection doesn't supply, only a line the player opened to buying that it helps.
+ */
+const liveIns = (work: Work, line: Line): Candidate[] =>
+  work.ins.filter(
+    (c) =>
+      (isBasicLand(c.card) || (!inDeck(work.tally, c.card.id) && !work.removed.has(c.card.id))) &&
+      (c.fix.buyFor === undefined || c.fix.buyFor.includes(line.line)),
+  );
 
 /** Deck cards that may come out now: still in the deck, not added this round, not a kept combo piece. */
 const liveOuts = (work: Work): Candidate[] =>
@@ -383,7 +377,7 @@ function valid(work: Work, snap: Snapshot, line: Line, cardIn: Candidate, cardOu
 
 /** The first valid pair for a line; with `withSkipped`, the pairs the player passed on count too. */
 function moveFor(work: Work, snap: Snapshot, line: Line, withSkipped = false): { in: Candidate; out: Candidate } | null {
-  const ins = liveIns(work);
+  const ins = liveIns(work, line);
   const outs = liveOuts(work);
   const allowed = (cardIn: Candidate, cardOut: Candidate) => withSkipped || !work.skipped.has(pairKey(cardIn.card.id, cardOut.card.id));
   if (line.over) {
@@ -425,7 +419,8 @@ function start(input: FixInput): Work {
     bracket: input.bracket,
     choices: input.choices,
     deckColours: manaLetters(input.tally.commanders.flatMap((c) => [...(c.colorIdentity ?? '')])),
-    ins: once(input.pool.ins).sort((a, b) => b.fix.score - a.fix.score || byName(a, b)),
+    // What the collection supplies first, then what would be bought; best score first in each.
+    ins: once(input.pool.ins).sort((a, b) => bought(a) - bought(b) || b.fix.score - a.fix.score || byName(a, b)),
     outs: once(input.pool.deck).sort((a, b) => a.fix.score - b.fix.score || byName(a, b)),
     skipped: new Set(input.skipped.map((p) => pairKey(p.inId, p.outId))),
     added: new Set(input.addedIds),
@@ -479,7 +474,7 @@ export function fixLines(input: FixInput): FixLine[] {
     if (!moveFor(work, snap, line)) {
       if (moveFor(work, snap, line, true)) blocked = 'skipped';
       else if (line.over) blocked = liveOuts(work).some((c) => onLine(c, line.key, work, snap)) ? 'noCardIn' : 'noCardOut';
-      else blocked = liveIns(work).some((c) => onLine(c, line.key, work, snap)) ? 'noCardOut' : 'noCardIn';
+      else blocked = liveIns(work, line).some((c) => onLine(c, line.key, work, snap)) ? 'noCardOut' : 'noCardIn';
     }
     const known = out.get(line.line);
     // The curve's bars read as one line: open while any bar has a move left.

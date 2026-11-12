@@ -77,7 +77,7 @@ APIs differ from older versions. Read `node_modules/next/dist/docs/` before writ
 
 - `cacheComponents: true`: request-time reads (`useSearchParams`, `params`, cookies) sit inside `<Suspense>`. Pair every `use cache` with `cacheLife`. `revalidateTag` takes a profile argument. `proxy.ts` replaces `middleware.ts`. `export const dynamic` is a build error only `build` catches.
 - `notFound()` or `redirect()` inside `<Suspense>` runs after the shell streamed (200, or a stranded loading page). Real 404s and redirects happen in `proxy.ts`.
-- Recommendations are Route Handlers (`POST /api/recs/{swap,add,cut,build}`) because Server Actions dispatch serially; everything else is a Server Action. Keep `next/cache` imports out of `lib/server/recs.ts` and `serving.ts` so `regress` runs outside Next.
+- Recommendations are Route Handlers (`POST /api/recs/{swap,add,cut,build,fix}`) because Server Actions dispatch serially; everything else is a Server Action. Keep `next/cache` imports out of `lib/server/recs.ts` and `serving.ts` so `regress` runs outside Next.
 - Cron routes are authorized by `CRON_SECRET` only, never by `x-vercel-cron-schedule` or the user agent.
 - Production builds need a reachable Supabase (`next build` prerenders `/sitemap.xml`). Keep build-time prerendering away from queries that grow with the catalog.
 

@@ -6,6 +6,7 @@ import {
   MAX_DECKLIST_CHARS,
   MAX_OWNED_CARDS,
   MAX_CARD_COPIES,
+  MAX_STAT_CHOICES,
   MAX_VOTE_CANDIDATES_SHOWN,
   addInputSchema,
   castVoteInputSchema,
@@ -16,7 +17,9 @@ import {
   recEventInputSchema,
   buildInputSchema,
   deckCoverageInputSchema,
+  fixInputSchema,
   saveCollectionBatchInputSchema,
+  saveDeckInputSchema,
   swapInputSchema,
 } from './schemas';
 
@@ -238,5 +241,31 @@ describe('buildInputSchema (T063)', () => {
   it('takes a context and an optional fill', () => {
     expect(parseInput(buildInputSchema, { context: context(), fill: 'value' }).ok).toBe(true);
     expect(parseInput(buildInputSchema, { context: context(), fill: 'everything' }).ok).toBe(false);
+  });
+});
+
+describe('fix, buyFor and stat choices (v35)', () => {
+  const manyLines = Array.from({ length: MAX_STAT_CHOICES + 1 }, (_, i) => `line-${i}`);
+
+  it('accepts a fix request, with or without lines opened to buying', () => {
+    expect(parseInput(fixInputSchema, { context: context() }).ok).toBe(true);
+    const buying = parseInput(fixInputSchema, { context: context({ buyFor: ['creature', 'sources:U'] }) });
+    expect(buying.ok && buying.data.context.buyFor).toEqual(['creature', 'sources:U']);
+    expect(parseInput(fixInputSchema, {}).ok).toBe(false);
+  });
+
+  it('refuses empty, long or too many line keys', () => {
+    expect(parseInput(recContextSchema, context({ buyFor: [''] })).ok).toBe(false);
+    expect(parseInput(recContextSchema, context({ buyFor: ['x'.repeat(65)] })).ok).toBe(false);
+    expect(parseInput(recContextSchema, context({ buyFor: manyLines })).ok).toBe(false);
+  });
+
+  it("saves a deck with the player's choices, or without any", () => {
+    const deck = { name: 'Deck', deck: { commanders: [1], cards: [] }, isPublic: true };
+    expect(parseInput(saveDeckInputSchema, deck).ok).toBe(true);
+    const chosen = parseInput(saveDeckInputSchema, { ...deck, statChoices: { curve: 'ignore', 'sources:B': 'buy' } });
+    expect(chosen.ok && chosen.data.statChoices).toEqual({ curve: 'ignore', 'sources:B': 'buy' });
+    expect(parseInput(saveDeckInputSchema, { ...deck, statChoices: { curve: 'skip' } }).ok).toBe(false);
+    expect(parseInput(saveDeckInputSchema, { ...deck, statChoices: Object.fromEntries(manyLines.map((l) => [l, 'ignore'])) }).ok).toBe(false);
   });
 });

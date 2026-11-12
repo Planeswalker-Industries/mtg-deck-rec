@@ -273,3 +273,26 @@ describe('nextFixMove and planFixes', () => {
     expect(after.ok).toBe(true);
   });
 });
+
+describe('cards for lines opened to buying (T086)', () => {
+  const bought = (id: number, score: number, buyFor: string[]): FixCard => ({
+    ...fixCard(summary(id, `Bought ${id}`, 'Creature — Elf'), score, [RAMP]),
+    buyFor,
+  });
+
+  it('brings in an unowned card only after every card the collection supplies', () => {
+    // Ramp is 6 against 10: two short of the low edge of its band.
+    const built = deck({ ramp: 6 });
+    const pool = { ins: [ins[0]!, bought(400, 0.99, [RAMP]), bought(401, 0.98, [RAMP]), forest], deck: built.cards };
+    const moves = planFixes(input(built, { pool }));
+    expect(moves.map((m) => m.in.name)).toEqual(['Ramp In 0', 'Bought 400']);
+    expect(moves.every((m) => m.line === RAMP)).toBe(true);
+  });
+
+  it('leaves an unowned card out of a line it was not opened for', () => {
+    const built = deck({ ramp: 6 });
+    const given = input(built, { pool: { ins: [bought(400, 0.99, [DRAW]), forest], deck: built.cards } });
+    expect(planFixes(given)).toEqual([]);
+    expect(fixLines(given)).toEqual([{ line: RAMP, gap: 2, blocked: 'noCardIn' }]);
+  });
+});

@@ -36,6 +36,12 @@ export interface RecContext {
   ownership: OwnershipInput | null;
   /** How `ownership` applies. Omitted means 'only', which is what every client before v13 meant. */
   ownershipMode?: OwnershipMode;
+  /**
+   * The Deck stats lines the player opened to unowned cards (v35), by key: a role id, a card type, 'curve',
+   * 'basicLands' or a colour's 'sources:B'. Read in 'only' mode alone: a card the collection doesn't supply counts as
+   * supplied for such a line while the line is short, and shows as not owned with its price.
+   */
+  buyFor?: string[];
 }
 
 /**
@@ -292,7 +298,10 @@ export interface AddResult {
  */
 export type BuildFill = 'none' | 'value';
 
-/** Where a card in a build came from: the cards the player kept, the build's own picks, or the value fill. */
+/**
+ * Where a card in a build came from: the cards the player kept, the build's own picks, or an unowned card (the value
+ * fill, or a card for a line the player opened to buying, `RecContext.buyFor`).
+ */
 export type BuildOrigin = 'kept' | 'pick' | 'fill';
 
 /** A card in a build: scored as a card to add at the moment it was picked (kept cards against the rest of the build). */
@@ -312,13 +321,15 @@ export interface BuildFeasibility {
   slots: number;
   /** Slots filled from the collection (or from every card without one): kept cards, picks and basic lands. */
   filled: number;
-  /** Slots the value fill filled with unowned cards. */
+  /** Slots filled with unowned cards: the value fill's, and those bought for a line in `RecContext.buyFor`. */
   filledByValue: number;
   /** Slots still open. */
   open: number;
   /**
-   * Deck stats lines a collection build left out of line because the collection had nothing more for them, by key: a
-   * role id, a card type, 'curve', 'basicLands' or a colour's 'sources:B'. Empty without a collection.
+   * Deck stats lines a collection build left short because the collection had nothing more for them, by key: a role
+   * id, a card type, 'curve' (a bar under its band), a colour's 'sources:B', or 'basicLands' when too few nonbasic
+   * lands left basics over their band. A line over its band for any other reason is not a gap (v35). Empty without a
+   * collection.
    */
   collectionGaps: string[];
 }
@@ -349,8 +360,43 @@ export interface BuildResult {
   estimatedBracket: Bracket;
   bracketSignals: BracketSignals;
   feasibility: BuildFeasibility;
-  /** With `fill: 'value'`: what the value fill's cards cost. */
+  /** With `fill: 'value'` or lines in `buyFor`: what the unowned cards in the build cost. */
   fillCost?: BuildCost;
+}
+
+/** A card Fix may bring in or take out (v35), with what the engine (`@mtg/core/journey` `fix.ts`) needs to judge it. */
+export interface FixCard {
+  /** Carries its tracked roles (`CardSummary.roles`), so Deck stats counts it the moment it moves. */
+  card: CardSummary;
+  roles: readonly string[];
+  /** In cards: the add score m(c | deck). Deck cards: how well the card fits (1 minus its cut score). 0..1. */
+  score: number;
+  owned: OwnedInfo | null;
+  /**
+   * Set on an in card the collection doesn't supply: the lines in `RecContext.buyFor` it helps. Fix brings it in for
+   * those lines only, after every card the collection supplies. Shown as not owned, with its price and date.
+   */
+  buyFor?: readonly string[];
+}
+
+/** What Fix pairs its moves from. */
+export interface FixPool {
+  /** Candidates to bring in: each Deck stats line's best. Basic lands of the deck's colours are always here. */
+  ins: FixCard[];
+  /** Every main-deck card, basic lands included. */
+  deck: FixCard[];
+}
+
+/**
+ * Fix's pool for a deck (v35). The client pairs the moves itself (`nextFixMove`, `planFixes`) against its live deck,
+ * so one read serves a whole round; the scores are those of this read.
+ */
+export interface FixResult {
+  mode: RecMode;
+  confidence: CorpusConfidence;
+  pool: FixPool;
+  /** Main-deck cards no deck under these commanders may hold (not legal, outside their colours): Fix's first line. */
+  illegalIds: CardId[];
 }
 
 export type CutReason =

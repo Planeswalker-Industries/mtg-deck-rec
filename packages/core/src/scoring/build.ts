@@ -27,6 +27,7 @@ import { commanderShare, corpusComponent, neutralCorpusValue } from './corpus';
 import { bracketExclusions, overBracket, type DeckBracketFacts } from './combos';
 import type { RoleTarget } from './cut';
 import { curveBucket, curveShortfall, deckCurve, isFrontLand, statCardType } from './curve';
+import { CURVE_LINE } from '../journey/deck-tally';
 import { manaLetters, type ManaCard, type ManaEntry } from '../journey/mana-base';
 import {
   bandsBroken as cardBandsBroken,
@@ -34,7 +35,6 @@ import {
   colourNeeds,
   fixesShortColour as cardFixesShortColour,
   lowerEdge,
-  tolerance,
   upperEdge,
   type BandCounts,
   type BandTargets,
@@ -73,9 +73,14 @@ import { blendScore } from './swap';
  *    `colourSourceCaps`), leaving the basic land count; each basic goes to the colour furthest under its target, the
  *    rest split by the spells' mana symbols.
  * 5. From a collection, nonland picks go on while the collection has cards left (a weak owned card beats an empty slot),
- *    but nonbasic lands stop once the best one left scores under `qualityFloor`, leaving those slots to basics. What
- *    stays open is the feasibility report, with the Deck stats lines the collection couldn't bring in line, and
+ *    but nonbasic lands stop once the best one left scores under `qualityFloor`, leaving those slots to basics, unless
+ *    basics can't finish the mana base: a land under the floor still goes in while a colour would stay short of its
+ *    sources or the basics would sit over their band, the two lines Fix would otherwise repair with the same lands. What
+ *    stays open is the feasibility report, with the Deck stats lines the collection left short, and
  *    `fill: 'value'` fills the open slots with unowned cards by score above the floor per dollar.
+ * 6. A line the player opened to buying (`context.buyFor`) goes on from unowned cards, best score first, once the
+ *    collection has no more for it: a role up to its target, a card type or curve bar up to the low edge of its band,
+ *    a colour's sources from lands that make it, and nonbasic lands for 'basicLands'.
  */
 
 /** A basic land's colour: one of WUBRG, or C for Wastes. */
@@ -92,6 +97,9 @@ export const BASIC_LAND_NAMES: Readonly<Record<BasicColour, string>> = {
 };
 
 const COLOURS = [...COLOR_ORDER] as ('W' | 'U' | 'B' | 'R' | 'G')[];
+/** Deck stats line keys a build reports as gaps and reads from `buyFor`, beside role ids and card types. */
+const BASIC_LANDS_LINE = 'basicLands';
+const SOURCES_PREFIX = 'sources:';
 const MANA_SYMBOL = /\{([^}]+)\}/g;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -215,6 +223,8 @@ export function buildDeck(input: BuildInput): BuildRanking {
   const slots = COMMANDER_DECK_SIZE - commanders.length;
   const mask = identityMaskOf(context, cards);
   const fromCollection = availability !== null;
+  // The Deck stats lines the player opened to unowned cards.
+  const buyFor: ReadonlySet<string> = new Set(fromCollection ? (context.buyFor ?? []) : []);
   const floor = scoring.build.qualityFloor;
   const excluded = bracketExclusions(bracketFacts, bracket);
   const gcLimit = context.includeGameChangers ? gameChangerLimit(bracket) : 0;
@@ -387,6 +397,8 @@ export function buildDeck(input: BuildInput): BuildRanking {
   interface PhaseRule {
     only?: (id: number) => boolean;
     anyBand: boolean;
+    /** The value fill: by score above the floor per dollar, priced cards only. */
+    byValue?: boolean;
   }
   type Pick = { id: number; key: number; broken: number; scored: ReturnType<typeof marginal> };
   /** Whether a candidate goes ahead of the best so far: fewer bands broken, higher key, then staple score, name and id. */
@@ -411,7 +423,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
         if (!allowed(id)) continue;
         const scored = marginal(id, tracker?.of(id) ?? null, shortfalls, curveCounts);
         let key = scored.score.total;
-        if (origin === 'fill') {
+        if (rule.byValue) {
           const usd = cards.get(id)?.summary.price?.usd;
           if (usd === undefined || key <= floor) continue;
           key = (key - floor) / Math.max(usd, scoring.collection.priceFloorUsd);
@@ -438,6 +450,10 @@ export function buildDeck(input: BuildInput): BuildRanking {
 
   const nonlandRoom = () => nonlandCount() < nonlandSlots && deck.length < slots;
   const nonlandPool = pool.filter((id) => !isLand(id));
+  // What the collection doesn't supply: the value fill's cards, and those for a line opened to buying.
+  const openPool = fromCollection ? (input.fillIds ?? []).filter((id) => cards.has(id) && !supplied(id)) : [];
+  const openNonland = openPool.filter((id) => !isLand(id));
+  const openLands = openPool.filter(isLand);
 
   // Role quotas, the role furthest under its target first; a role nothing left can fill is done.
   const done = new Set<string>();
@@ -449,35 +465,33 @@ export function buildDeck(input: BuildInput): BuildRanking {
     const role = short[0];
     if (!role || !nonlandRoom()) break;
     const before = deck.length;
+    const once = () => nonlandRoom() && deck.length === before;
     // A role matters more than a card type's band: an over-band card still fills it when nothing else can.
-    phase(nonlandPool, () => nonlandRoom() && deck.length === before, 'pick', null, {
-      only: (id) => (roles.get(id) ?? []).includes(role.roleId),
-      anyBand: true,
-    });
+    const rule: PhaseRule = { only: (id) => (roles.get(id) ?? []).includes(role.roleId), anyBand: true };
+    phase(nonlandPool, once, 'pick', null, rule);
+    // A role opened to buying goes on from unowned cards once the collection has no more.
+    if (deck.length === before && buyFor.has(role.roleId)) phase(openNonland, once, 'fill', null, rule);
     if (deck.length === before) done.add(role.roleId);
   }
   // Card types up to the low edge of their bands, without pushing anything over its own.
   for (const [type, target] of typeTargets) {
     const aim = Math.ceil(lowerEdge(target));
-    phase(nonlandPool, () => nonlandRoom() && (typeCounts.get(type) ?? 0) < aim, 'pick', null, {
-      only: (id) => statCardType(cards.get(id)?.summary.typeLine ?? '') === type,
-      anyBand: false,
-    });
+    const room = () => nonlandRoom() && (typeCounts.get(type) ?? 0) < aim;
+    const rule: PhaseRule = { only: (id) => statCardType(cards.get(id)?.summary.typeLine ?? '') === type, anyBand: false };
+    phase(nonlandPool, room, 'pick', null, rule);
+    if (buyFor.has(type)) phase(openNonland, room, 'fill', null, rule);
   }
   // Curve bars up to the low edge of theirs, the same way.
   (curveBars ?? []).forEach((target, bar) => {
     const bucket = curveBucket(bar);
     const aim = Math.ceil(lowerEdge(target));
-    phase(nonlandPool, () => nonlandRoom() && (curveCounts.get(bucket) ?? 0) < aim, 'pick', null, {
-      only: (id) => curveBucket(cards.get(id)?.summary.manaValue ?? -1) === bucket,
-      anyBand: false,
-    });
+    const room = () => nonlandRoom() && (curveCounts.get(bucket) ?? 0) < aim;
+    const rule: PhaseRule = { only: (id) => curveBucket(cards.get(id)?.summary.manaValue ?? -1) === bucket, anyBand: false };
+    phase(nonlandPool, room, 'pick', null, rule);
+    if (buyFor.has(CURVE_LINE)) phase(openNonland, room, 'fill', null, rule);
   });
   phase(nonlandPool, nonlandRoom, 'pick', null, { anyBand: true });
-  if (fill === 'value' && fromCollection) {
-    const open = (input.fillIds ?? []).filter((id) => !isLand(id) && !supplied(id));
-    phase(open, nonlandRoom, 'fill', null, { anyBand: true });
-  }
+  if (fill === 'value' && fromCollection) phase(openNonland, nonlandRoom, 'fill', null, { anyBand: true, byValue: true });
 
   // The mana base: each colour's source target is its hardest card's Karsten number, capped for the colour count.
   const deckColours = manaLetters(COLOURS.filter((_, i) => (mask & (1 << i)) !== 0));
@@ -499,8 +513,52 @@ export function buildDeck(input: BuildInput): BuildRanking {
     return card !== null && cardFixesShortColour(card, needs, short, deckColours);
   };
 
+  // Basic lands make up the land count: each to the colour furthest under its source target, the rest split by the
+  // mana symbols of the spells and the commanders (every nonland card is picked by now).
+  const symbols = new Map<string, number>();
+  for (const id of [...commanders, ...deck]) {
+    if (isLand(id)) continue;
+    for (const [colour, n] of manaSymbols(cards.get(id)?.summary.manaCost ?? '')) symbols.set(colour, (symbols.get(colour) ?? 0) + n);
+  }
+  const colourOrder = (c: string) => COLOURS.indexOf(c as (typeof COLOURS)[number]);
+  const basicEntries = (counts: ReadonlyMap<BasicColour, number>) =>
+    [...counts].flatMap(([colour, quantity]): ManaEntry[] => {
+      const card = input.basics.get(colour);
+      return card && quantity > 0 ? [{ card: card.summary as ManaCard, quantity }] : [];
+    });
+  const placeBasics = (count: number): Map<BasicColour, number> => {
+    const toDeficit = new Map<BasicColour, number>();
+    let unplaced = count;
+    while (unplaced > 0) {
+      const short = deficits(basicEntries(toDeficit));
+      const worst = needs
+        .filter((n) => input.basics.has(n.colour as BasicColour) && (short.get(n.colour) ?? 0) > 0)
+        .sort((a, b) => (short.get(b.colour) ?? 0) - (short.get(a.colour) ?? 0) || colourOrder(a.colour) - colourOrder(b.colour))[0];
+      if (!worst) break;
+      const colour = worst.colour as BasicColour;
+      toDeficit.set(colour, (toDeficit.get(colour) ?? 0) + 1);
+      unplaced--;
+    }
+    const placed = new Map(toDeficit);
+    for (const [colour, n] of splitBasics(unplaced, mask, symbols)) placed.set(colour, (placed.get(colour) ?? 0) + n);
+    return placed;
+  };
+  /** The land slots basics would take if no more nonbasic land went in. */
+  const basicSlots = () => Math.max(0, Math.min(landTarget - landCount(), slots - deck.length));
+  /**
+   * The mana base if basics took every land slot left: the colours still short of their sources, and whether the
+   * basics would sit over their band. Fix reads the same two lines, so a build that stops here leaves it a move.
+   */
+  const withBasicsOnly = () => {
+    const placed = placeBasics(basicSlots());
+    const total = [...placed.values()].reduce((sum, n) => sum + n, 0);
+    return { short: deficits(basicEntries(placed)), basicsOver: total > upperEdge(basicTarget) };
+  };
+
   // Nonbasic lands: while a colour is short, the best land that helps it; then the best land. A land that would push
-  // a role over its band (a cycling land once card draw is full) leaves its slot to a basic.
+  // a role over its band (a cycling land once card draw is full) leaves its slot to a basic. A colour opened to buying
+  // takes an unowned land that makes it once no owned one does, and 'basicLands' opened to buying takes unowned lands
+  // above the floor rather than leave their slots to basics.
   const landPool = pool.filter(isLand);
   const landRoom = () => landCount() < landTarget - basicTarget && deck.length < slots;
   while (landRoom()) {
@@ -509,39 +567,25 @@ export function buildDeck(input: BuildInput): BuildRanking {
     const once = () => landRoom() && deck.length === before;
     if ([...short.values()].some((d) => d > 0)) {
       phase(landPool, once, 'pick', landStop, { only: (id) => fixesShortColour(id, short), anyBand: false });
+      const toBuy = new Map([...short].filter(([colour, d]) => d > 0 && buyFor.has(`${SOURCES_PREFIX}${colour}`)));
+      if (deck.length === before && toBuy.size > 0) {
+        phase(openLands, once, 'fill', null, { only: (id) => fixesShortColour(id, toBuy), anyBand: false });
+      }
     }
     if (deck.length === before) phase(landPool, once, 'pick', landStop, { anyBand: false });
+    // Under the floor a land still earns its slot when basics can't finish the mana base without it.
+    if (deck.length === before && landStop !== null) {
+      const ahead = withBasicsOnly();
+      if ([...ahead.short.values()].some((d) => d > 0)) {
+        phase(landPool, once, 'pick', null, { only: (id) => fixesShortColour(id, ahead.short), anyBand: false });
+      }
+      if (deck.length === before && ahead.basicsOver) phase(landPool, once, 'pick', null, { anyBand: false });
+    }
+    if (deck.length === before && buyFor.has(BASIC_LANDS_LINE)) phase(openLands, once, 'fill', floor, { anyBand: false });
     if (deck.length === before) break;
   }
 
-  // Basic lands make up the land count: each to the colour furthest under its source target, the rest split by the
-  // mana symbols of the spells and the commanders.
-  const basicCount = Math.max(0, Math.min(landTarget - landCount(), slots - deck.length));
-  const symbols = new Map<string, number>();
-  for (const id of [...commanders, ...deck]) {
-    if (isLand(id)) continue;
-    for (const [colour, n] of manaSymbols(cards.get(id)?.summary.manaCost ?? '')) symbols.set(colour, (symbols.get(colour) ?? 0) + n);
-  }
-  const colourOrder = (c: string) => COLOURS.indexOf(c as (typeof COLOURS)[number]);
-  const toDeficit = new Map<BasicColour, number>();
-  const basicEntries = (counts: ReadonlyMap<BasicColour, number>) =>
-    [...counts].flatMap(([colour, quantity]): ManaEntry[] => {
-      const card = input.basics.get(colour);
-      return card && quantity > 0 ? [{ card: card.summary as ManaCard, quantity }] : [];
-    });
-  let unplaced = basicCount;
-  while (unplaced > 0) {
-    const short = deficits(basicEntries(toDeficit));
-    const worst = needs
-      .filter((n) => input.basics.has(n.colour as BasicColour) && (short.get(n.colour) ?? 0) > 0)
-      .sort((a, b) => (short.get(b.colour) ?? 0) - (short.get(a.colour) ?? 0) || colourOrder(a.colour) - colourOrder(b.colour))[0];
-    if (!worst) break;
-    const colour = worst.colour as BasicColour;
-    toDeficit.set(colour, (toDeficit.get(colour) ?? 0) + 1);
-    unplaced--;
-  }
-  const split = new Map(toDeficit);
-  for (const [colour, n] of splitBasics(unplaced, mask, symbols)) split.set(colour, (split.get(colour) ?? 0) + n);
+  const split = placeBasics(basicSlots());
   const basics: BuildBasics[] = [...split]
     .sort(([a], [b]) => colourOrder(a) - colourOrder(b))
     .flatMap(([colour, quantity]) => {
@@ -550,16 +594,17 @@ export function buildDeck(input: BuildInput): BuildRanking {
     });
   const basicTotal = basics.reduce((sum, b) => sum + b.quantity, 0);
 
-  // A collection build names the Deck stats lines it couldn't bring in line: the collection had nothing more for them.
+  // A collection build names the Deck stats lines it left short: the collection had nothing more for them. A line over
+  // its band is not a gap (more cards wouldn't help), except basic lands: too many of them means too few nonbasic lands.
   const collectionGaps: string[] = [];
   if (fromCollection) {
-    const outOfBand = (held: number, target: number) => Math.abs(held - target) > tolerance(target);
-    for (const t of targets) if (outOfBand(roleCounts.get(t.roleId) ?? 0, t.target)) collectionGaps.push(t.roleId);
-    for (const [type, target] of typeTargets) if (outOfBand(typeCounts.get(type) ?? 0, target)) collectionGaps.push(type);
-    if (curveBars?.some((target, bar) => outOfBand(curveCounts.get(curveBucket(bar)) ?? 0, target))) collectionGaps.push('curve');
-    if (basicTotal > upperEdge(basicTarget)) collectionGaps.push('basicLands');
+    const under = (held: number, target: number) => held < lowerEdge(target);
+    for (const t of targets) if (under(roleCounts.get(t.roleId) ?? 0, t.target)) collectionGaps.push(t.roleId);
+    for (const [type, target] of typeTargets) if (under(typeCounts.get(type) ?? 0, target)) collectionGaps.push(type);
+    if (curveBars?.some((target, bar) => under(curveCounts.get(curveBucket(bar)) ?? 0, target))) collectionGaps.push(CURVE_LINE);
+    if (basicTotal > upperEdge(basicTarget)) collectionGaps.push(BASIC_LANDS_LINE);
     const finalShort = deficits(basicEntries(split));
-    for (const n of needs) if ((finalShort.get(n.colour) ?? 0) > 0) collectionGaps.push(`sources:${n.colour}`);
+    for (const n of needs) if ((finalShort.get(n.colour) ?? 0) > 0) collectionGaps.push(`${SOURCES_PREFIX}${n.colour}`);
   }
 
   // Kept cards are scored against the rest of the build, as cuts measure a card: m(c | deck − c).
@@ -630,7 +675,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
     estimatedBracket: estimateBracket(signals, rules),
     bracketSignals: signals,
     feasibility,
-    ...(fill === 'value' && fromCollection
+    ...((fill === 'value' || buyFor.size > 0) && fromCollection
       ? { fillCost: { usd: round2(fillPrices.reduce((sum, p) => sum + (p?.usd ?? 0), 0)), cards: filledByValue, asOf } }
       : {}),
   };

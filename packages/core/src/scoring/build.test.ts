@@ -426,14 +426,61 @@ describe('buildDeck', () => {
       expect(deckIds(result).filter((id) => id === 200)).toHaveLength(1);
     });
 
-    it('fills spell slots past the quality floor, but leaves weak nonbasic lands to basics', () => {
+    it('fills spell slots past the quality floor, but leaves weak nonbasic lands to basics while basics stay in their band', () => {
       const scoring = { ...TEST_SCORING, build: { ...TEST_SCORING.build, qualityFloor: 1 } };
-      const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, scoring }));
+      // These decks run 34 basics: 36 of them is inside the band.
+      const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, scoring, corpus: { ...corpus, basicLandCount: 34 } }));
       const ids = deckIds(result);
       expect(ids.filter((id) => id < 200)).toHaveLength(30);
       expect(ids.filter((id) => id >= 200)).toHaveLength(0);
       expect(basicCount(result)).toBe(result.landTarget);
+      expect(result.feasibility.collectionGaps).not.toContain('basicLands');
+    });
+
+    it('takes owned lands under the floor rather than push basics over their band, as Fix would', () => {
+      const scoring = { ...TEST_SCORING, build: { ...TEST_SCORING.build, qualityFloor: 1 } };
+      // 20 basics is the target and 24 the top of the band: every owned land goes in, and five are not enough.
+      const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, scoring }));
+      expect(deckIds(result).filter((id) => id >= 200)).toHaveLength(5);
+      expect(basicCount(result)).toBe(31);
       expect(result.feasibility.collectionGaps).toContain('basicLands');
+    });
+
+    it('takes an owned land under the floor that makes a colour basics leave short', () => {
+      const scoring = { ...TEST_SCORING, build: { ...TEST_SCORING.build, qualityFloor: 1, colourSourceCaps: [null, null, 25] } };
+      // 34 basics are fine by their band, but 36 land slots can't give white and blue 25 sources each without duals.
+      const duals = lands.slice(0, 5).map((c) => ({ ...c, summary: { ...c.summary, producedMana: 'WU' } }));
+      const withDuals = new Map([...cards, ...duals.map((c) => [c.summary.id as number, c] as const)]);
+      const result = buildDeck(
+        input({ context: collection, availability: available, poolIds: ownedPool, scoring, cards: withDuals, corpus: { ...corpus, basicLandCount: 34 } }),
+      );
+      expect(deckIds(result).filter((id) => id >= 200).length).toBeGreaterThan(0);
+    });
+
+    it('buys for a line the player opened once the owned cards run out, best first', () => {
+      const buying = context({ ownership: { kind: 'account' }, ownershipMode: 'only', buyFor: [RAMP] });
+      const result = buildDeck(input({ context: buying, availability: available, poolIds: ownedPool, fillIds: openPool }));
+      const bought = result.groups.flatMap((g) => g.cards).filter((c) => c.origin === 'fill');
+      // Three of the eight ramp spells are owned; the other five are bought, and nothing else is.
+      expect(bought.map((c) => c.card.id as number).sort((a, b) => a - b)).toEqual([36, 46, 56, 66, 76]);
+      expect(bought.every((c) => c.owned === null)).toBe(true);
+      expect(result.feasibility.collectionGaps).not.toContain(RAMP);
+      expect(result.feasibility.filledByValue).toBe(5);
+      expect(result.fillCost).toEqual({ usd: 5, cards: 5, asOf: '2026-10-06T00:00:00Z' });
+    });
+
+    it('buys nothing for a line the collection fills, or without the open pool', () => {
+      const buying = context({ ownership: { kind: 'account' }, ownershipMode: 'only', buyFor: [RAMP] });
+      const filled = buildDeck(input({ context: buying, availability: available, poolIds: ownedPool, fillIds: openPool, corpus: { ...corpus, roleProfile: { [RAMP]: 3 } } }));
+      expect(filled.feasibility.filledByValue).toBe(0);
+      expect(buildDeck(input({ context: buying, availability: available, poolIds: ownedPool })).feasibility.filledByValue).toBe(0);
+    });
+
+    it('does not call a line over its band a gap: more cards would not help', () => {
+      // A target of one ramp card; the collection's spells all go in, three ramp cards among them.
+      const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, corpus: { ...corpus, roleProfile: { [RAMP]: 1 } } }));
+      expect(deckIds(result).filter((id) => (roles.get(id) ?? []).includes(RAMP))).toHaveLength(3);
+      expect(result.feasibility.collectionGaps).not.toContain(RAMP);
     });
 
     it('fills the open slots with unowned cards by value, with a running total', () => {
