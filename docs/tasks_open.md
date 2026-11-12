@@ -8,25 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T086: Fix on the server: contract v35, `POST /api/recs/fix`, buying per line, stat choices
-
-**HIGH** · Contract / Backend / Database · Owner approved the contract and schema 2026-11-11 · Builds on T085 (`@mtg/core/journey` `fix.ts`)
-
-The owner's Gwen Stacy walkthrough (2026-11-11, Owned only) changed 15 cards and moved no Deck stats line. Fix pairs one card in with one out until every line is in its band (`nextFixMove`, `planFixes`); this ticket gives it its pool and the player's choices a home.
-
-- [ ] Contract v35: `recs.fix`, `FixResult`, `FixPool`, `FixCard` (moved from `journey/fix.ts`), `RecContext.buyFor`, saved deck `statChoices`; zod schemas and `createMockApis` follow
-- [ ] The pool holds every main-deck card, basic lands included: `rankCuts` returns only cards with a reason to cut, so a card it leaves out gets the best fit score (the first eval run offered no out card for most lines until this was done), and the well-played cards need an order finer than their names
-- [ ] `getFix` in `lib/server/recs.ts`: `loadServedAdds` and `loadServedCuts` in one `Promise.all`, scored by the existing add and cut scoring, the per-line in cards picked in TypeScript (`FIX_INS_PER_LINE`), basic lands of the deck's colours always in; no `next/cache` import. In cards the bracket excludes, or that complete a combo over it, are left out
-- [ ] Route Handler `POST /api/recs/fix` through `handleRecsRequest`, its own bucket in `app_config.rate_limits`
-- [ ] `buyFor`: in Owned only, a card that helps a `buyFor` line counts as supplied up to the line's target and shows "Not owned" with price and date; `rankCuts` doesn't flag `NOT_OWNED` on it; the builder fills a `buyFor` line from unowned cards once the owned ones run out; `collectionGaps` reports only lines left under their band
-- [ ] Migration: `decks.stat_choices jsonb not null default '{}'` (`{ "<line key>": "ignore" | "buy" }`), `save_deck(p_stat_choices)` validated (known values, at most 32 keys), explicit grants, types regenerated, `supabase/tests`
-- [ ] `gradeDeck` takes the choices: an ignored line is `state: 'ignored'` and leaves `okCount` and `total`
-- [ ] New SQL for the pool only if the add pool proves too narrow for a line, measured on the fixtures first; latency no worse than Add at p95
-- [ ] `regress` fixtures in `$MTG_DATA_DIR/regression`: Gwen Stacy 2.0 as pasted with the hosted collection of 2026-11-11 (auto-fix brings Ramp and Card advantage into their bands, every line left has a reason), and Gwen Stacy built from `ManaBox_Collection.csv` (Fix offers no move)
-- [ ] Release: the migration reaches hosted before the code serves requests
-
-Fix logs no `rec_events` (owner, 2026-11-11): automated picks are not player feedback, and a new event mode needs a stated use first.
-
 ## T087: Fix screens: the step, auto-fix preview, footer, Finish, build page prompts
 
 **HIGH** · Frontend · Builds on T086
@@ -38,6 +19,8 @@ Fix logs no `rec_events` (owner, 2026-11-11): automated picks are not player fee
 - [ ] Build page (collection builds): each "Not in your collection" gap has Ignore and Allow buying; Continue waits for every answer; Allow buying rebuilds with `buyFor`; the answers go into the deck tool and are saved with the deck
 - [ ] Finish: lines in line as a count; each leftover with its reason (Skipped by you with "Fix", Ignored, Not in your collection with Ignore / Allow buying, No safe card to take out). A line the collection can't fix counts as off until the player answers (owner, 2026-11-11). Colour rows read "needs 20"
 - [ ] Retired: the land swaps inside Swap (`land-swaps.tsx`, `land-swap.ts`), the "Find ramp" / "Swap basics" / "Trim protection" links (they open Fix at that line), Finish's "Still off" box
+- [ ] Release (from T086): migration `20261111000100_fix_journey.sql` reaches hosted before the code serves requests; then compare Fix's hosted p95 with Add's (T068). Locally Fix runs within about 10% of Add (64–69 ms against 59–61 ms) and sends about 30 KB gzipped
+- [ ] Owned first: Fix orders the cards to bring in by score alone, so an owned card gets no head start there. Decide whether it should (the design covers Owned only)
 - [ ] At 390×844 nothing in the footer or the Fix step is truncated and ✓ and ✕ are on screen; `shot.mjs` recipes `fix` and `fix-auto`, `finish` and `build-collection` updated; the journey e2e spec follows the new step order
 
 ## T088: Swap ladder

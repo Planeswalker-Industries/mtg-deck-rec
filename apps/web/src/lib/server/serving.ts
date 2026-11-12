@@ -259,6 +259,11 @@ export interface ServedAdds {
   deckCards: Map<number, RankCard>;
   /** Card pairs for the deck (T064); the cards they point to are in `pool`. */
   affinity: AffinityInput;
+  /**
+   * With `deckRates`: the deck's main cards and its commanders with their play rates and roles, as cuts read them
+   * (`loadServedCuts`). Fix scores the deck's cards from this, in the round adds already make. Null otherwise.
+   */
+  deck: ServedCards | null;
 }
 
 export async function loadServedAdds(
@@ -270,6 +275,8 @@ export async function loadServedAdds(
     allowGameChangers: boolean;
     owned: readonly number[] | null;
     limit: number;
+    /** Also read the main cards' play rates, in the call that reads the commanders (Fix). */
+    deckRates?: boolean;
   },
 ): Promise<ServedAdds> {
   const commanderIds = [...input.commanderIds];
@@ -304,7 +311,7 @@ export async function loadServedAdds(
       ? db.from("card_roles").select("card_id, role_id").in("card_id", [...input.mainIds])
       : Promise.resolve({ data: [] as { card_id: number; role_id: string }[], error: null }),
     fetchCardsById(db, input.mainIds),
-    db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: commanderIds }),
+    db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: input.deckRates ? [...commanderIds, ...input.mainIds] : commanderIds }),
     loadIdentityMonths(db),
     pricesCheckedAt(db),
   ]);
@@ -337,9 +344,11 @@ export async function loadServedAdds(
 
   const deckRoles = new Map<number, string[]>();
   for (const { card_id, role_id } of deckRolesResult.data ?? []) deckRoles.set(card_id, [...(deckRoles.get(card_id) ?? []), role_id]);
+  const commandersAndDeck = servedCards(asCards(commandersResult.data), corpus, identityMonths, checkedAt);
   return {
     corpus,
-    commanderRows: servedCards(asCards(commandersResult.data), corpus, identityMonths, checkedAt).rows,
+    commanderRows: new Map([...commandersAndDeck.rows].filter(([id]) => commanderIds.includes(id))),
+    deck: input.deckRates ? commandersAndDeck : null,
     poolIds: poolCards.flatMap((c) => (c.card_id === null ? [] : [c.card_id])),
     pool: servedCards(
       [...poolCards, ...[...missingCards, ...neighbourCards].filter((c) => !seen.has(c.card_id ?? 0))],

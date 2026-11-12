@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { DeckInput } from './decks';
+import type { DeckInput, StatChoices } from './decks';
 import type { ApiError, Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
 import type { OwnershipInput, RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
@@ -18,6 +18,10 @@ export const MAX_OWNED_CARDS = 60_000;
 /** Cards an add request may leave out: a round can pass on at most as many cards as a deck can list. */
 export const MAX_ADD_EXCLUDE = MAX_DECK_ENTRIES;
 const MAX_URL_CHARS = 2_000;
+/** Deck stats lines a deck can hold a choice for, or open to buying. Mirrors save_deck's check: about twice the lines Deck stats shows. */
+export const MAX_STAT_CHOICES = 32;
+/** A line key is a role's tag id (a UUID), a card type, 'curve', 'lands', 'basicLands' or 'sources:B'. */
+const MAX_STAT_LINE_KEY_CHARS = 64;
 /** Most copies of one card a collection can hold, matching collection_items.quantity's check. */
 export const MAX_CARD_COPIES = 100_000;
 const MAX_COPIES = 250;
@@ -72,6 +76,13 @@ const ownershipSchema: InputSchema<OwnershipInput> = z.discriminatedUnion(
   { error: 'Invalid collection.' },
 );
 
+const statLineKey = z.string({ error: 'Invalid Deck stats line.' }).min(1, 'Invalid Deck stats line.').max(MAX_STAT_LINE_KEY_CHARS, 'Invalid Deck stats line.');
+
+/** The player's choices per Deck stats line (v35). */
+export const statChoicesSchema: InputSchema<StatChoices> = z
+  .record(statLineKey, z.enum(['ignore', 'buy'], { error: 'A Deck stats choice is ignore or buy.' }), { error: 'Invalid Deck stats choices.' })
+  .refine((choices) => Object.keys(choices).length <= MAX_STAT_CHOICES, { error: `At most ${MAX_STAT_CHOICES} Deck stats choices.` });
+
 export const recContextSchema: InputSchema<RecContext> = z.object(
   {
     deck: deckInputSchema,
@@ -81,6 +92,7 @@ export const recContextSchema: InputSchema<RecContext> = z.object(
     /** Omitted means collection-less. */
     ownership: ownershipSchema.nullable().default(null),
     ownershipMode: z.enum(['only', 'first'], { error: 'Invalid collection setting.' }).optional(),
+    buyFor: z.array(statLineKey).max(MAX_STAT_CHOICES, 'Too many Deck stats lines.').optional(),
   },
   { error: 'Missing deck.' },
 );
@@ -106,6 +118,8 @@ export const addInputSchema = z.object(
 export const cutInputSchema = z.object({ context: recContextSchema, limit }, request);
 /** A build (v24): the context's main cards are cards to keep; `fill` says what fills slots the collection can't. */
 export const buildInputSchema = z.object({ context: recContextSchema, fill: z.enum(['none', 'value']).optional() }, request);
+/** Fix's pool (v35): the deck, its bracket and its collection, as for adds and cuts. */
+export const fixInputSchema = z.object({ context: recContextSchema }, request);
 
 export const parseDeckInputSchema = z.object(
   {
@@ -370,6 +384,7 @@ export const saveDeckInputSchema = z.object(
     isPublic: z.boolean({ error: 'Choose whether the deck is public.' }),
     bracket: z.literal([1, 2, 3, 4, 5], { error: 'Pick a bracket from 1 to 5.' }).optional(),
     original: deckInputSchema.optional(),
+    statChoices: statChoicesSchema.optional(),
   },
   request,
 );

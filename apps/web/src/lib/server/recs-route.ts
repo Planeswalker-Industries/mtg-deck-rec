@@ -3,7 +3,7 @@ import type { ApiError, CardId, DeckId, RecContext, Result } from "@mtg/core/con
 import { parseInput, type InputSchema } from "@mtg/core/schemas";
 import { accountCollectionCopies, accountOwnedCardIds } from "./account-collection";
 import { createAuthClient } from "./auth";
-import { checkRateLimit, knownRateLimit } from "./rate-limit";
+import { checkRateLimit, knownRateLimit, type RateLimitBucket } from "./rate-limit";
 import { NotFoundError } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
 import { visitorKey } from "./visitor";
@@ -51,19 +51,21 @@ async function accountCopies(deckId: DeckId | undefined): Promise<CollectionCopi
  *
  * The budget check goes out together with the request's own reads rather than ahead of them, so it costs no round trip
  * of its own (T055). A request over budget throws away what it read, and from then on this instance answers that
- * visitor without the database until the budget renews (`knownRateLimit`). Invalid bodies still count.
+ * visitor without the database until the budget renews (`knownRateLimit`). Invalid bodies still count. `bucket` names
+ * the budget in `app_config.rate_limits`: the shared one for recommendations unless a route has its own.
  */
 export async function handleRecsRequest<I extends { context: RecContext }, T>(
   request: Request,
   schema: InputSchema<I>,
   run: (db: PublicClient, input: I, collection: CollectionCopies | null) => Promise<T>,
   unavailableMessage: string,
+  bucket: RateLimitBucket = "recs",
 ): Promise<Response> {
   const visitor = visitorKey(request.headers);
-  const known = knownRateLimit("recs", visitor);
+  const known = knownRateLimit(bucket, visitor);
   if (known) return errorResponse(known);
   const db = createPublicClient();
-  const limit = checkRateLimit(db, "recs", visitor);
+  const limit = checkRateLimit(db, bucket, visitor);
 
   const input = parseInput(schema, await request.json().catch(() => null));
   if (!input.ok) return errorResponse((await limit) ?? input.error);

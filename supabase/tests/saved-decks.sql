@@ -19,6 +19,8 @@ select
   (select id from public.cards where slug = 'arcane-signet' and deleted_at is null) as c2
 \gset
 select chk('fixtures resolve', :cmd is not null and :c1 is not null and :c2 is not null);
+select chk('fix has its own request budget (T086)',
+  (select (value -> 'fix' ->> 'limit')::int > 0 from public.app_config where key = 'rate_limits'));
 
 -- === user A ===
 set local role authenticated;
@@ -64,6 +66,47 @@ select chk('re-save leaves card rows identical',
   ) diff));
 select chk('bracket kept when null passed', (select bracket = 3 from public.decks where id = :'deck_a'));
 
+-- Deck stats choices (T086): saved with the deck, kept when a save leaves them out, refused when malformed.
+select jsonb_build_array(
+  jsonb_build_object('cardId', :cmd, 'quantity', 1, 'section', 'commander'),
+  jsonb_build_object('cardId', :c1, 'quantity', 1, 'section', 'main'),
+  jsonb_build_object('cardId', :c2, 'quantity', 1, 'section', 'main')
+)::text as cards_a
+\gset
+select chk('a deck starts with no stat choices', (select stat_choices = '{}'::jsonb from public.decks where id = :'deck_a'));
+select public.save_deck(:'deck_a', 'Renamed On Save', :'cards_a'::jsonb, null, '{"curve": "ignore", "sources:B": "buy"}'::jsonb);
+select chk('stat choices saved',
+  (select stat_choices = '{"curve": "ignore", "sources:B": "buy"}'::jsonb from public.decks where id = :'deck_a'),
+  (select stat_choices::text from public.decks where id = :'deck_a'));
+select public.save_deck(:'deck_a', 'Renamed On Save', :'cards_a'::jsonb, null);
+select chk('stat choices kept when a save leaves them out',
+  (select stat_choices = '{"curve": "ignore", "sources:B": "buy"}'::jsonb from public.decks where id = :'deck_a'));
+select public.save_deck(:'deck_a', 'Renamed On Save', :'cards_a'::jsonb, null, '{}'::jsonb);
+select chk('an empty object clears the stat choices', (select stat_choices = '{}'::jsonb from public.decks where id = :'deck_a'));
+select public.save_deck(:'deck_a', 'Renamed On Save', :'cards_a'::jsonb, null, '{"curve": "ignore"}'::jsonb);
+
+do $$ begin
+  perform public.save_deck(null, 'Bad Choice', '[]'::jsonb, null, '{"curve": "skip"}'::jsonb);
+  insert into t values ('unknown stat choice refused', false, 'no error raised');
+exception when others then
+  insert into t values ('unknown stat choice refused', sqlerrm like '%INVALID_STAT_CHOICES%', sqlerrm);
+end $$;
+do $$ begin
+  perform public.save_deck(null, 'Bad Shape', '[]'::jsonb, null, '["curve"]'::jsonb);
+  insert into t values ('stat choices must be an object', false, 'no error raised');
+exception when others then
+  insert into t values ('stat choices must be an object', sqlerrm like '%INVALID_STAT_CHOICES%', sqlerrm);
+end $$;
+do $$ begin
+  perform public.save_deck(null, 'Too Many Choices', '[]'::jsonb, null,
+    (select jsonb_object_agg('line-' || g, 'ignore') from generate_series(1, 33) g));
+  insert into t values ('more than 32 stat choices refused', false, 'no error raised');
+exception when others then
+  insert into t values ('more than 32 stat choices refused', sqlerrm like '%INVALID_STAT_CHOICES%', sqlerrm);
+end $$;
+select chk('a refused save leaves no deck behind',
+  (select count(*) = 1 from public.decks where user_id = '11111111-1111-1111-1111-111111111111'));
+
 select public.save_deck(:'deck_a', 'Fewer Cards',
   jsonb_build_array(
     jsonb_build_object('cardId', :cmd, 'quantity', 1, 'section', 'commander'),
@@ -108,6 +151,9 @@ select public.duplicate_deck(:'deck_a', null) as deck_copy \gset
 select chk('duplicate creates a second deck', (select count(*) = 2 from public.decks where user_id = '11111111-1111-1111-1111-111111111111'));
 select chk('duplicate copies the cards',
   (select count(*) from public.deck_cards where deck_id = :'deck_copy') = (select count(*) from public.deck_cards where deck_id = :'deck_a'));
+select chk('duplicate copies the stat choices',
+  (select stat_choices = '{"curve": "ignore"}'::jsonb from public.decks where id = :'deck_copy'),
+  (select stat_choices::text from public.decks where id = :'deck_copy'));
 select chk('duplicate is named a copy', (select name like '%(copy)' from public.decks where id = :'deck_copy'),
   (select name from public.decks where id = :'deck_copy'));
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { availability, type BuiltDeck } from '../collection/availability';
 import type { CardId, CardSummary, DeckId, IsoDateTime, OracleId, RecContext } from '../contract';
+import { buyLines, type BuyLines } from '../journey/buy-for';
 import { rankAdds, rankCuts, rankSwaps, type CardPlayRates, type RankCard, type RankCorpus, type SwapPool } from './rank';
 import { comboResultWeight } from './combos';
 import { TEST_CORPUS_SETTINGS, TEST_SCORING } from './test-config';
@@ -415,5 +416,86 @@ describe('comboResultWeight', () => {
     expect(weight(['Infinite colorless mana'])).toBe(0.8);
     expect(weight(['Infinite lifegain'])).toBe(0.5);
     expect(weight([], ['Infinite lifegain triggers'])).toBe(0.2);
+  });
+});
+
+describe('lines opened to buying (T086)', () => {
+  // The player owns the Signet alone and opened the artifact line to unowned cards.
+  const artifacts = buyLines(['artifact'], 'W');
+  const adds = (lines: BuyLines | null) =>
+    rankAdds({
+      context: context('only'),
+      poolIds: [1, 2, 3, 4, 10, 11],
+      cards,
+      rates: playRates,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: TEST_SCORING,
+      availability: availability({ owned: new Map([[2, 1]]), builtDecks: [] }, twins),
+      standIns: cards,
+      buyLines: lines,
+      limitPerCategory: 10,
+    });
+
+  it("lists an unowned card for an opened line with the collection's, as not owned, and keeps it off the buy list", () => {
+    const result = adds(artifacts);
+    const listed = result.groups.find((g) => g.category === 'artifact')?.suggestions ?? [];
+    expect(listed.map((s) => s.card.name).sort()).toEqual(['Orzhov Signet', 'Sol Ring', 'Talisman of Hierarchy', 'Thought Vessel']);
+    expect(listed.find((s) => s.card.name === 'Sol Ring')?.owned).toBeNull();
+    expect(listed.find((s) => s.card.name === 'Orzhov Signet')?.owned).toEqual({ quantity: 1 });
+    // Lands weren't opened: an unowned land is still only a card to buy.
+    expect(result.groups.some((g) => g.category === 'land')).toBe(false);
+    expect((result.buyList ?? []).some((s) => s.category === 'artifact')).toBe(false);
+  });
+
+  it('changes nothing without an opened line', () => {
+    expect(adds(null)).toEqual(addsWith([[2, 1]]));
+  });
+
+  it("never opens a line outside 'only' mode", () => {
+    const first = rankAdds({
+      context: context('first'),
+      poolIds: [1, 2],
+      cards,
+      rates: playRates,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: TEST_SCORING,
+      availability: availability({ owned: new Map([[2, 1]]), builtDecks: [] }, twins),
+      buyLines: artifacts,
+      limitPerCategory: 10,
+    });
+    expect(first.buyList).toBeUndefined();
+    expect(first.groups.flatMap((g) => g.suggestions)).toHaveLength(2);
+  });
+
+  it('does not flag a card for an opened line as not owned', () => {
+    const cuts = (lines: BuyLines | null) =>
+      rankCuts({
+        context: context('only', [3, 10]),
+        cards,
+        rates: new Map([
+          [3, rates(0.01)],
+          [10, rates(0.01)],
+        ]),
+        roles: new Map(),
+        corpus,
+        roleTargets: [],
+        scoring: TEST_SCORING,
+        availability: availability({ owned: new Map(), builtDecks: [] }, twins),
+        buyLines: lines,
+        limit: 10,
+      });
+    const reasons = (lines: BuyLines | null) => new Map(cuts(lines).suggestions.map((s) => [s.card.name, s.reasons]));
+    expect(reasons(null).get('Thought Vessel')).toContain('NOT_OWNED');
+    expect(reasons(artifacts).get('Thought Vessel')).not.toContain('NOT_OWNED');
+    // The land is on no opened line.
+    expect(reasons(artifacts).get('Evolving Wilds')).toContain('NOT_OWNED');
   });
 });

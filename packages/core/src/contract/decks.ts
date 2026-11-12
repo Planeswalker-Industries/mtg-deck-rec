@@ -134,6 +134,15 @@ export interface StatTargets {
   bracketLimits: BracketLimits;
 }
 
+/**
+ * What the player chose for a Deck stats line the deck can't bring in line (v35). ignore: the line is left out of the
+ * score. buy: unowned cards may be suggested for it (`RecContext.buyFor`), and it stays in the score.
+ */
+export type StatChoice = 'ignore' | 'buy';
+
+/** The player's choices by line key: 'lands', 'basicLands', a role id, a card type, 'curve' or a colour's 'sources:B'. */
+export type StatChoices = Readonly<Record<string, StatChoice>>;
+
 export interface DeckAnalysis {
   deck: DeckInput;
   colorIdentity: ColorIdentity;
@@ -178,6 +187,8 @@ export interface SavedDeckContents {
   bracket?: Bracket;
   /** Decklist text, commanders first, in the format the tool's box takes. */
   text: string;
+  /** The player's choices for Deck stats lines (v35); empty when they made none. */
+  statChoices: StatChoices;
 }
 
 export interface SavedDeckSummary {

@@ -319,3 +319,38 @@ describe('mock combos', () => {
     expect(owned.ok && owned.data.combos?.[0]?.owned).toEqual({ quantity: 1 });
   });
 });
+
+describe('mock fix and stat choices (v35)', () => {
+  it('hands Fix every main-deck card and cards to bring in that the deck does not hold', async () => {
+    const { apis, analysis, context } = await setup();
+    const result = await apis.recs.fix({ context: context() });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const main = analysis.deck.cards.filter((c) => c.section === 'main').map((c) => c.cardId);
+    expect(result.data.pool.deck.map((c) => c.card.id).sort()).toEqual([...new Set(main)].sort());
+    const held = new Set<number>([...analysis.deck.commanders, ...main]);
+    expect(result.data.pool.ins.every((c) => !held.has(c.card.id) || c.card.typeLine.startsWith('Basic Land'))).toBe(true);
+    expect(result.data.pool.ins.every((c) => c.score >= 0 && c.score <= 1 && c.card.roles !== undefined)).toBe(true);
+  });
+
+  it("limits the cards to bring in to the collection in 'only' mode", async () => {
+    const { apis, context } = await setup();
+    const result = await apis.recs.fix({ context: context({ ownership: { kind: 'account' } }) });
+    expect(result.ok && result.data.pool.ins.every((c) => c.owned !== null || c.card.typeLine.startsWith('Basic Land'))).toBe(true);
+  });
+
+  it("keeps a saved deck's choices until a save replaces them", async () => {
+    const { apis, analysis } = await setup();
+    const saved = await apis.actions.saveDeck({ name: 'Deck', deck: analysis.deck, isPublic: true, statChoices: { curve: 'ignore' } });
+    if (!saved.ok) throw new Error('save failed');
+    const { deckId, code } = saved.data;
+    const opened = await apis.actions.openSavedDeck({ code });
+    expect(opened.ok && opened.data.statChoices).toEqual({ curve: 'ignore' });
+    await apis.actions.saveDeck({ deckId, name: 'Deck', deck: analysis.deck, isPublic: true });
+    const kept = await apis.actions.openSavedDeck({ code });
+    expect(kept.ok && kept.data.statChoices).toEqual({ curve: 'ignore' });
+    await apis.actions.saveDeck({ deckId, name: 'Deck', deck: analysis.deck, isPublic: true, statChoices: {} });
+    const cleared = await apis.actions.openSavedDeck({ code });
+    expect(cleared.ok && cleared.data.statChoices).toEqual({});
+  });
+});

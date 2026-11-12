@@ -26,6 +26,8 @@ import type {
 import { isOwnedStatus, type Availability } from '../collection/availability';
 import { fitsIdentity, gameChangerLimit } from '../formats/commander';
 import { maskToIdentity } from '../formats/commander/color-identity';
+import { linesBoughtFor, type BuyLines } from '../journey/buy-for';
+import { toTallyCard } from '../journey/deck-tally';
 import { colourFix, manaLetters, shortColours, type ManaCard, type ManaEntry } from '../journey/mana-base';
 import { comboRef, type ComboFacts } from '../formats/commander/bracket';
 import { cardCategory, roleGap, roleShortfalls } from './add';
@@ -238,6 +240,25 @@ export function costDelta(target: CardSummary, replacement: CardSummary, owns: (
 export const identityMaskOf = (ctx: RecContext, cards: ReadonlyMap<number, RankCard>) =>
   ctx.deck.commanders.reduce((mask, id) => mask | (cards.get(id)?.colorIdentity ?? 0), 0);
 
+/**
+ * A card's play rates when the commander's own decks can judge it: enough of them could have run the card (updated
+ * since its release). Null otherwise: broad popularity says little about fit, and new cards aren't judged by older decks.
+ */
+export function commanderPlayRates(rates: ReadonlyMap<number, CardPlayRates>, cardId: number, corpus: RankCorpus): CardPlayRates | null {
+  const r = rates.get(cardId);
+  return r?.commanderRate && commanderShare(r.commanderDeckCount, corpus.settings) > 0 ? r : null;
+}
+
+/** Copies of a deck card the collection holds under its own name (a twin standing in is not this card's copy). */
+export function ownCopies(availability: Availability | null, card: RankCard): number {
+  const a = availability?.of(card.summary.id, card.isBasicLand) ?? null;
+  return a && a.status !== 'unowned' && (a.status === 'basic' || a.cardId === card.summary.id) ? a.owned : 0;
+}
+
+/** Whether a card the collection doesn't supply helps a line the player opened to buying (`RecContext.buyFor`). */
+const boughtFor = (card: RankCard, roles: readonly string[], lines: BuyLines | null): boolean =>
+  lines !== null && linesBoughtFor(toTallyCard(card.summary, roles), lines).length > 0;
+
 /** Cuts for a deck: rule problems first, then the cards the commander's decks run least. */
 export function rankCuts({
   context,
@@ -250,6 +271,7 @@ export function rankCuts({
   availability,
   bracketFacts = null,
   affinity = null,
+  buyLines = null,
   limit,
 }: {
   context: RecContext;
@@ -267,6 +289,8 @@ export function rankCuts({
   bracketFacts?: DeckBracketFacts | null;
   /** Card pairs for the deck (T064): LOW_AFFINITY, once switched on, for commanders with enough decks of their own. */
   affinity?: AffinityInput | null;
+  /** The lines the player opened to buying (`buyLines`): a card that helps one is not flagged NOT_OWNED. */
+  buyLines?: BuyLines | null;
   limit: number;
 }): CutResult {
   const mainIds = mainDeckIds(context);
@@ -285,12 +309,8 @@ export function rankCuts({
     curve && deckBuckets && curveMean !== null
       ? { highOnCurve: manaValue >= curveMean && curveOverloaded(curve, deckBuckets, manaValue, scoring.skeleton.curveOverloadRatio) }
       : {};
-  // Play rates judge a cut only once enough of the commander's decks could have run the card (updated since its
-  // release); broad popularity says little about fit, and new cards aren't judged by older decks.
-  const commanderRateFor = (id: number) => {
-    const r = rates.get(id);
-    return r?.commanderRate && commanderShare(r.commanderDeckCount, corpus.settings) > 0 ? r : null;
-  };
+  // Play rates judge a cut only once the commander's own decks can (`commanderPlayRates`).
+  const commanderRateFor = (id: number) => commanderPlayRates(rates, id, corpus);
   const identityMask = identityMaskOf(context, cards);
   const scored = scoreCuts(
     mainIds.flatMap((id) => {
@@ -328,10 +348,10 @@ export function rankCuts({
     const card = cards.get(s.cardId);
     if (!card) return [];
     const a = availability?.of(s.cardId, card.isBasicLand) ?? null;
-    // Only 'only' mode flags unowned cards: in 'first' mode the collection is a preference, not a rule. A basic land, or
-    // a card an owned twin can stand in for, is never unowned.
-    const notOwned = a?.status === 'unowned' && ownedOnly(context);
-    const ownCopies = a && a.status !== 'unowned' && (a.status === 'basic' || a.cardId === s.cardId) ? a.owned : 0;
+    // Only 'only' mode flags unowned cards: in 'first' mode the collection is a preference, not a rule. A basic land, a
+    // card an owned twin can stand in for, or a card for a line the player opened to buying is never unowned.
+    const notOwned = a?.status === 'unowned' && ownedOnly(context) && !boughtFor(card, roles.get(s.cardId) ?? [], buyLines);
+    const copies = ownCopies(availability, card);
     return [
       {
         card: card.summary,
@@ -339,7 +359,7 @@ export function rankCuts({
         reasons: notOwned ? [...s.reasons, 'NOT_OWNED'] : s.reasons,
         severity: s.severity,
         corpus: commanderRateFor(s.cardId)?.evidence ?? null,
-        owned: ownCopies > 0 ? { quantity: ownCopies } : null,
+        owned: copies > 0 ? { quantity: copies } : null,
       },
     ];
   });
@@ -414,6 +434,7 @@ export function rankAdds({
   deckCards = NO_STAND_INS,
   affinity = null,
   staples = null,
+  buyLines = null,
   limitPerCategory,
 }: {
   context: RecContext;
@@ -445,6 +466,11 @@ export function rankAdds({
   affinity?: AffinityInput | null;
   /** Each card's global staple score (`card_stats`), 0..1 (T083): breaks ties between equal scores (`stapleOf`). */
   staples?: ReadonlyMap<number, number> | null;
+  /**
+   * 'only' mode: the lines the player opened to buying that are still short (`openBuyLines`). A card the collection
+   * doesn't supply that helps one is listed with the collection's cards, not owned, and stays off the buy list.
+   */
+  buyLines?: BuyLines | null;
   limitPerCategory: number;
 }): AddRanking {
   const only = availability !== null && ownedOnly(context);
@@ -530,10 +556,11 @@ export function rankAdds({
       ...(overCombos.has(cardId) ? { completesOverBracket: overCombos.get(cardId) } : {}),
       ...(deck && deck.pairedWith.length > 0 ? { pairedWith: deck.pairedWith.map((id) => id as CardId) } : {}),
     };
-    return [{ suggestion, supplied: owning.supplied }];
+    const bought = only && !owning.supplied && boughtFor(card, roles.get(cardId) ?? [], buyLines);
+    return [{ suggestion, supplied: owning.supplied, bought }];
   };
   const scored = scoredPool.flatMap(scoreOne);
-  const listed = (only ? scored.filter((s) => s.supplied) : scored).map((s) => s.suggestion);
+  const listed = (only ? scored.filter((s) => s.supplied || s.bought) : scored).map((s) => s.suggestion);
   const combos = bracketFacts ? completeACombo(bracketFacts, context.bracket, excluded, (id) => scoreOne(corpusOf(id))[0], only, scoring) : undefined;
 
   const groups = ADD_CATEGORIES.map((category) => ({
@@ -548,9 +575,10 @@ export function rankAdds({
   })).filter((g) => g.suggestions.length > 0);
   if (!only) return { groups, ...(combos ? { combos } : {}) };
 
+  // The buy list measures against what the collection supplies, and leaves out the cards already listed as bought.
   const best = new Map<CardCategory, number>();
-  for (const s of listed) best.set(s.category, Math.max(best.get(s.category) ?? 0, s.score.total));
-  const candidates = scored.filter((s) => !s.supplied).map((s) => s.suggestion);
+  for (const { suggestion: s, supplied } of scored) if (supplied) best.set(s.category, Math.max(best.get(s.category) ?? 0, s.score.total));
+  const candidates = scored.filter((s) => !s.supplied && !s.bought).map((s) => s.suggestion);
   return { groups, buyList: buyList(candidates, (c) => best.get(c.category) ?? 0, scoring.collection), ...(combos ? { combos } : {}) };
 }
 
