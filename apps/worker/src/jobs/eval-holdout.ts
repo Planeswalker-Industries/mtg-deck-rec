@@ -5,13 +5,27 @@ import {
   bracketSignals,
   defaultIncludeGameChangers,
   estimateBracket,
+  COMMANDER_DECK_SIZE,
   maskToIdentity,
   parseBracketRules,
   type BracketCards,
   type BracketRules,
   type ComboFacts,
 } from '@mtg/core/commander';
-import type { Bracket, CardId, CardSummary, OracleId, RecContext } from '@mtg/core/contract';
+import type { AddSuggestion, Bracket, CardId, CardSummary, OracleId, RecContext, StatTargets } from '@mtg/core/contract';
+import {
+  applyCard,
+  buildTally,
+  CURVE_TOP_MANA_VALUE,
+  gradeDeck as gradeStats,
+  manaLetters,
+  planFixes,
+  toTallyCard,
+  type BracketInput,
+  type DeckTally,
+  type FixCard,
+  type TallyEntry,
+} from '@mtg/core/journey';
 import {
   ADD_POOL_SIZE,
   addPoolScore,
@@ -21,6 +35,7 @@ import {
   cardPrior,
   commanderShare,
   countsFromTotals,
+  curveTargetsFor,
   decksSinceRelease,
   evaluateGate,
   globalPairs,
@@ -28,6 +43,8 @@ import {
   isDerivedPair,
   isHeldOut,
   keyPairs,
+  landTargets,
+  manaSymbols,
   pageEvidence,
   pairNeighbours,
   parseCorpusSettings,
@@ -42,10 +59,12 @@ import {
   rankAdds,
   rankCuts,
   recallAt,
+  roleTargetsFor,
   sample,
   seededRandom,
   servedCardRates,
   sizeBucket,
+  splitBasics,
   sourceDeckTotals,
   sourcesConfidence,
   stableUnit,
@@ -87,6 +106,8 @@ import { edhrecProfiles, loadEdhrecPages, loadPairPoolDepth, type PageRows } fro
  * - small commanders, simulated: commanders with plenty of decks keep only a few of their training decks;
  * - builds (T063): a deck built for each held-out deck's commander and estimated bracket, every card available,
  *   against the held-out decks: the share of their cards it holds, and how far its lands, basics and roles are off;
+ * - repair (T085): a held-out deck per commander loses some role cards for basic lands, and Fix's plan (`planFixes`)
+ *   is graded on the Deck stats lines it brings back in line, reported only;
  * - agreement with EDHREC's lists and with authors' declared brackets, reported only.
  *
  * With `--candidate <file.json>` (`{ "scoring": {...}, "corpus": {...} }`, merged over today's settings) it runs both
@@ -100,6 +121,16 @@ const HIDE_SALT = 'hide';
 const PLANT_SALT = 'plant';
 const OWN_SALT = 'own';
 const SIMULATE_SALT = 'simulate';
+const REPAIR_SALT = 'repair';
+/**
+ * Role cards a repaired deck loses, each for a basic land: about the hole the owner's walkthrough of 2026-11-11 left
+ * (Ramp 4 under its target, Card advantage 7).
+ */
+const REPAIR_REMOVED_CARDS = 5;
+/** Decks repaired per commander: one keeps the check to a small share of the run's time. */
+const REPAIR_DECKS_PER_COMMANDER = 1;
+/** The repair check asks for the top bracket, so no bracket rule is in play: the damage doesn't touch one. */
+const REPAIR_BRACKET: Bracket = 5;
 /** Every candidate is ranked when grading, not a display-sized slice. */
 const ALL_CATEGORIES = ADD_POOL_SIZE;
 const UINT32_RANGE = 2 ** 32;
@@ -138,7 +169,14 @@ interface Data {
   basics: Map<BasicColour, RankCard>;
   /** Each card's global staple score (card_stats, from printings, not the corpus), as the app serves it (T083). */
   staples: Map<number, number>;
+  /**
+   * The mana each card makes or finds, as the app's card summaries carry it. Only the repair check reads it: the other
+   * tests' cards stay as they were graded before, without it.
+   */
+  mana: Map<number, ManaFields>;
 }
+
+type ManaFields = Pick<CardSummary, 'producedMana' | 'findsMana' | 'findsBasicOnly' | 'layout'>;
 
 /** The bracket rules, the cards they watch and every collated combo by card, for the estimator check (T060). */
 interface BracketData {
@@ -241,8 +279,22 @@ const mean = (xs: readonly number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) 
 async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
   const catalog = await loadCatalog(sql);
   const [details, roleRows, targetsRow, pages, snapshot, declaredRows, stapleRows] = await Promise.all([
-    sql<{ id: number; oracle_id: string; type_line: string; mana_value: number; mana_cost: string | null; game_changer: boolean }[]>`
-      select id, oracle_id, type_line, mana_value, mana_cost, game_changer from public.cards where deleted_at is null
+    sql<
+      {
+        id: number;
+        oracle_id: string;
+        type_line: string;
+        mana_value: number;
+        mana_cost: string | null;
+        game_changer: boolean;
+        produced_mana: string[] | null;
+        fetchable_mana: string[] | null;
+        fetchable_basic_only: boolean | null;
+        layout: string | null;
+      }[]
+    >`
+      select id, oracle_id, type_line, mana_value, mana_cost, game_changer, produced_mana, fetchable_mana, fetchable_basic_only, layout
+      from public.cards where deleted_at is null
     `,
     sql<{ card_id: number; role_id: string }[]>`select card_id, role_id::text as role_id from public.card_roles`,
     sql<{ value: { roles?: { tagId?: unknown; label?: unknown; target?: unknown }[] } }[]>`
@@ -261,9 +313,18 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
   const nonland = new Set<number>();
   const gameChangers = new Set<number>();
   const facts = new Map<number, CardFacts>();
+  const mana = new Map<number, ManaFields>();
   for (const d of details) {
     const c = catalog.get(d.id);
     if (!c) continue;
+    const producedMana = manaLetters(d.produced_mana ?? []);
+    const findsMana = manaLetters(d.fetchable_mana ?? []);
+    mana.set(d.id, {
+      ...(producedMana ? { producedMana } : {}),
+      ...(findsMana ? { findsMana } : {}),
+      ...(findsMana && d.fetchable_basic_only ? { findsBasicOnly: true } : {}),
+      ...(d.layout ? { layout: d.layout } : {}),
+    });
     const summary: CardSummary = {
       id: d.id as CardId,
       oracleId: d.oracle_id as OracleId,
@@ -322,7 +383,7 @@ async function loadData(sql: Sql, config: CorpusConfig): Promise<Data> {
       basicLands: deck.basicLands,
     });
   }
-  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets, basics, staples };
+  return { catalog, cards, nonland, gameChangers, facts, roles, roleTargets, decks, pages, edhrecMonth: snapshot[0]?.month ?? null, declaredBrackets, basics, staples, mana };
 }
 
 /** Per-key counts from these decks, as `tallyDecks` makes them. */
@@ -580,8 +641,12 @@ const contextFor = (deck: EvalDeck, cards: readonly number[], owned?: readonly n
   ...(owned ? { ownershipMode: 'only' as const } : {}),
 });
 
+/** The adds for a deck as one list of card ids, best first, every category together. */
+const rankedAdds = (deck: EvalDeck, visible: readonly number[], model: SetModel, settings: Settings, data: Data, owned?: ReadonlySet<number>): number[] =>
+  suggestedAdds(deck, visible, model, settings, data, owned).map((s) => s.card.id as number);
+
 /** The adds for a deck as one list, best first, every category together. */
-function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel, settings: Settings, data: Data, owned?: ReadonlySet<number>): number[] {
+function suggestedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel, settings: Settings, data: Data, owned?: ReadonlySet<number>): AddSuggestion[] {
   const taken = new Set([...deck.commanderIds, ...visible]);
   const pick = (order: readonly number[]) => order.filter((id) => !taken.has(id) && (!owned || owned.has(id))).slice(0, ADD_POOL_SIZE);
   // A collection's pool is the commander's cards it holds and then the colours' cards it holds, as serving_add_pool
@@ -612,8 +677,7 @@ function rankedAdds(deck: EvalDeck, visible: readonly number[], model: SetModel,
   return groups
     .flatMap((g) => g.suggestions)
     // As the journey deals them: equal scores, the wider staple first (T083).
-    .sort((a, b) => b.score.total - a.score.total || byStaple(a.score, b.score))
-    .map((s) => s.card.id as number);
+    .sort((a, b) => b.score.total - a.score.total || byStaple(a.score, b.score));
 }
 
 interface DeckResult {
@@ -783,6 +847,153 @@ function gradeBuild(built: Built, deck: EvalDeck, data: Data): BuildGrade {
   };
 }
 
+/** One damaged deck after Fix's plan (T085). */
+interface RepairGrade {
+  /** Deck stats lines out of line: the deck as held out, with the damage, and after the plan. */
+  offBefore: number;
+  offDamaged: number;
+  offAfter: number;
+  moves: number;
+  /** Share of the removed cards the plan brought back. */
+  cameBack: number;
+}
+
+/**
+ * Deck stats' targets for a commander set as the evaluation knows them: the lands, roles and curve a build aims for.
+ * The app blends them toward typical decks and adds card types; the training decks hold neither.
+ */
+function repairTargets(model: SetModel, settings: Settings, data: Data, brackets: BracketData): StatTargets {
+  const { lands, basics } = landTargets(model.corpus, model.mask, settings.scoring);
+  const curve = curveTargetsFor(model.corpus, settings.scoring);
+  const { massLandDenialFromBracket, maxExtraTurnCards, extraTurnLoopResults, extraTurnLoopFromBracket } = brackets.rules;
+  return {
+    source: 'commander',
+    label: 'Training decks',
+    lands,
+    basicLands: basics,
+    roles: roleTargetsFor(data.roleTargets, model.corpus, settings.scoring.skeleton.edhrecPrior).map((t) => ({ roleId: t.roleId, label: t.label, target: t.target })),
+    curve: curve ? Array.from({ length: CURVE_TOP_MANA_VALUE + 1 }, (_, bar) => curve[String(bar)] ?? 0) : [],
+    types: [],
+    colourSourceCap: settings.scoring.build.colourSourceCaps[maskToIdentity(model.mask).length] ?? null,
+    bracketLimits: {
+      massLandDenialFromBracket: massLandDenialFromBracket as Bracket,
+      maxExtraTurnCards,
+      extraTurnLoopResults,
+      extraTurnLoopFromBracket: extraTurnLoopFromBracket as Bracket,
+    },
+  };
+}
+
+/**
+ * The repair check for one held-out deck (T085): some of its role cards go out for basic lands, Fix plans its moves
+ * from the pool the app would read (the adds for the damaged deck, its cards by cut score), and the Deck stats lines
+ * are counted before the damage, with it and after the plan. Null for a deck that isn't a full 100, or holds too few
+ * role cards to damage.
+ */
+function repairDeck(deck: EvalDeck, model: SetModel, settings: Settings, data: Data, brackets: BracketData): RepairGrade | null {
+  if (deck.commanderIds.length + deck.cardIds.length + deck.basicLands !== COMMANDER_DECK_SIZE) return null;
+  if (![...deck.commanderIds, ...deck.cardIds].every((id) => data.cards.has(id))) return null;
+  const tracked = new Set(data.roleTargets.map((t) => t.roleId));
+  const rolesOf = (id: number) => data.roles.get(id) ?? [];
+  const roleCards = deck.cardIds.filter((id) => data.nonland.has(id) && rolesOf(id).some((r) => tracked.has(r)));
+  if (roleCards.length < REPAIR_REMOVED_CARDS) return null;
+  const removed = new Set(sample(roleCards, REPAIR_REMOVED_CARDS, seededRandom(seedFor(settings.eval.seed, REPAIR_SALT, deck.id))));
+  const kept = deck.cardIds.filter((id) => !removed.has(id));
+
+  // Cards as the app's summaries carry them, with the mana they make or find: the colour rows read it.
+  const summaryOf = (id: number): CardSummary => ({ ...(data.cards.get(id) as RankCard).summary, ...data.mana.get(id) });
+  const tallyCard = (id: number) => toTallyCard(summaryOf(id), rolesOf(id));
+  const fixCard = (id: number, score: number): FixCard => ({ card: summaryOf(id), roles: rolesOf(id), score, owned: null });
+  /** A deck's basic lands, split by its spells' mana symbols as a build splits them. */
+  const basicsFor = (count: number, cardIds: readonly number[]) => {
+    const symbols = new Map<string, number>();
+    for (const id of [...deck.commanderIds, ...cardIds]) {
+      if (frontIsLand(summaryOf(id).typeLine)) continue;
+      for (const [colour, n] of manaSymbols(summaryOf(id).manaCost)) symbols.set(colour, (symbols.get(colour) ?? 0) + n);
+    }
+    return [...splitBasics(count, model.mask, symbols)].flatMap(([colour, quantity]) => {
+      const card = data.basics.get(colour);
+      return card ? [{ card, quantity }] : [];
+    });
+  };
+  const entriesOf = (cardIds: readonly number[], basics: ReturnType<typeof basicsFor>): TallyEntry[] => [
+    ...cardIds.map((id) => ({ card: tallyCard(id), quantity: 1 })),
+    ...basics.map((b) => ({ card: tallyCard(b.card.summary.id), quantity: b.quantity })),
+  ];
+  const commanders = deck.commanderIds.map(tallyCard);
+  const damagedBasics = basicsFor(deck.basicLands + removed.size, kept);
+  const damaged = buildTally(entriesOf(kept, damagedBasics), commanders);
+  const targets = repairTargets(model, settings, data, brackets);
+  const bracket: BracketInput = {
+    chosen: REPAIR_BRACKET,
+    signals: { gameChangerCount: 0, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
+    combos: [],
+    overBracketAdds: new Map(),
+  };
+  const linesOff = (tally: DeckTally) => {
+    const report = gradeStats(tally, targets, bracket);
+    return report.total - report.okCount;
+  };
+
+  // The pool as the app reads it for Fix: the adds for the damaged deck and the basic lands of its colours to bring in,
+  // and every card of the deck to take out, by cut score (a card with no reason to cut fits best).
+  const ins: FixCard[] = [
+    ...suggestedAdds(deck, kept, model, settings, data).map((s) => fixCard(s.card.id, s.score.total)),
+    ...[...data.basics.values()]
+      .filter((b) => (model.mask === 0 ? b.colorIdentity === 0 : b.colorIdentity !== 0 && (b.colorIdentity & ~model.mask) === 0))
+      .map((b) => fixCard(b.summary.id, 0)),
+  ];
+  const mainIds = [...kept, ...damagedBasics.map((b) => b.card.summary.id as number)];
+  const cutCards = new Map<number, RankCard>(damagedBasics.map((b) => [b.card.summary.id as number, b.card]));
+  for (const id of [...deck.commanderIds, ...kept]) cutCards.set(id, data.cards.get(id) as RankCard);
+  const cuts = rankCuts({
+    context: {
+      ...contextFor(deck, kept),
+      bracket: REPAIR_BRACKET,
+      deck: {
+        commanders: deck.commanderIds as CardId[],
+        cards: [
+          ...kept.map((cardId) => ({ cardId: cardId as CardId, quantity: 1, section: 'main' as const })),
+          ...damagedBasics.map((b) => ({ cardId: b.card.summary.id, quantity: b.quantity, section: 'main' as const })),
+        ],
+      },
+    },
+    cards: cutCards,
+    rates: new Map(kept.map((id) => [id, model.rates(id)])),
+    roles: new Map(mainIds.map((id) => [id, rolesOf(id)])),
+    corpus: model.corpus,
+    roleTargets: data.roleTargets,
+    scoring: settings.scoring,
+    availability: null,
+    affinity: settings.scoring.affinity.lowAffinityCuts ? model.affinityFor(kept, 0, () => false) : null,
+    limit: mainIds.length,
+  });
+  const cutScores = new Map(cuts.suggestions.map((s) => [s.card.id as number, s.cutScore]));
+  const moves = planFixes({
+    tally: damaged,
+    targets,
+    bracket,
+    pool: { ins, deck: mainIds.map((id) => fixCard(id, 1 - (cutScores.get(id) ?? 0))) },
+    skipped: [],
+    choices: {},
+    addedIds: [],
+    protectedIds: [],
+    illegalIds: [],
+  });
+  const repaired = buildTally([...damaged.main.values()], commanders);
+  for (const move of moves) {
+    applyCard(repaired, tallyCard(move.in.id), 1);
+    applyCard(repaired, repaired.main.get(move.out.id)?.card ?? tallyCard(move.out.id), -1);
+  }
+  return {
+    offBefore: linesOff(buildTally(entriesOf(deck.cardIds, basicsFor(deck.basicLands, deck.cardIds)), commanders)),
+    offDamaged: linesOff(damaged),
+    offAfter: linesOff(repaired),
+    moves: moves.length,
+    cameBack: moves.filter((m) => removed.has(m.in.id)).length / removed.size,
+  };
+}
+
 interface RunResult {
   /** Per commander key with at least one graded deck: mean add recall, cut precision, collection recall. */
   commanders: Map<string, { bucket: string; addRecall: number; cutPrecision: number; collectionRecall: number; decks: number }>;
@@ -796,6 +1007,8 @@ interface RunResult {
   builds: Map<string, BuildGrade>;
   /** Share of EDHREC's top cards in the build, per commander with a page. */
   buildEdhrecOverlap: number[];
+  /** The repair check's decks (T085), up to REPAIR_DECKS_PER_COMMANDER per graded commander. */
+  repairs: RepairGrade[];
 }
 
 function run(
@@ -816,6 +1029,7 @@ function run(
   // Builds (T063): one per commander and estimated bracket, graded against each held-out deck asking for it.
   const buildGrades = new Map<string, BuildGrade[]>();
   const firstBuild = new Map<string, Built>();
+  const repairs: RepairGrade[] = [];
   let decksGraded = 0;
   let addHits = 0;
   let stapleHits = 0;
@@ -831,6 +1045,14 @@ function run(
     }
     if (!byCommander.has(key)) continue;
     oursTop.set(key, model.ordered.slice(0, e.edhrecTop));
+    let repairedDecks = 0;
+    for (const deck of decks) {
+      if (repairedDecks >= REPAIR_DECKS_PER_COMMANDER) break;
+      const repair = repairDeck(deck, model, settings, data, brackets);
+      if (!repair) continue;
+      repairs.push(repair);
+      repairedDecks++;
+    }
     const built = new Map<string, Built>();
     for (const deck of decks) {
       const bracket = estimateDeck(deck, data, brackets);
@@ -917,7 +1139,7 @@ function run(
     if (top.length > 0) buildEdhrecOverlap.push(top.filter((id) => b.nonbasic.has(id)).length / top.length);
   }
 
-  return { commanders, decksGraded, addHits, stapleHits, simulated, edhrecOverlap, builds, buildEdhrecOverlap };
+  return { commanders, decksGraded, addHits, stapleHits, simulated, edhrecOverlap, builds, buildEdhrecOverlap, repairs };
 }
 
 function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string, T[]> {
@@ -946,6 +1168,8 @@ interface Summary {
   simulated: { decksKept: number; commanders: number; addRecall: number }[];
   edhrecOverlap: { commanders: number; mean: number };
   build: { commanders: number; overlap: Interval; landError: number; basicError: number; roleError: number; edhrecOverlap: number };
+  /** The repair check (T085): shares of its decks, and means over them. */
+  repair: { decks: number; inLine: number; restored: number; offBefore: number; offDamaged: number; offAfter: number; moves: number; cameBack: number };
 }
 
 function summarize(label: string, result: RunResult, order: readonly string[], e: EvalConfig): Summary {
@@ -983,6 +1207,16 @@ function summarize(label: string, result: RunResult, order: readonly string[], e
     simulated: [...result.simulated].map(([decksKept, recalls]) => ({ decksKept, commanders: recalls.length, addRecall: mean(recalls) })),
     edhrecOverlap: { commanders: result.edhrecOverlap.length, mean: mean(result.edhrecOverlap) },
     build: summarizeBuilds(result, order, e),
+    repair: {
+      decks: result.repairs.length,
+      inLine: mean(result.repairs.map((r) => (r.offAfter === 0 ? 1 : 0))),
+      restored: mean(result.repairs.map((r) => (r.offAfter <= r.offBefore ? 1 : 0))),
+      offBefore: mean(result.repairs.map((r) => r.offBefore)),
+      offDamaged: mean(result.repairs.map((r) => r.offDamaged)),
+      offAfter: mean(result.repairs.map((r) => r.offAfter)),
+      moves: mean(result.repairs.map((r) => r.moves)),
+      cameBack: mean(result.repairs.map((r) => r.cameBack)),
+    },
   };
 }
 
@@ -1024,6 +1258,14 @@ function markdown(summaries: readonly Summary[], extras: string[]): string {
       `Builds (${b.commanders} commanders, every card available): ${interval(b.overlap)} of a held-out deck's cards in the build; ` +
         `off by ${b.landError.toFixed(1)} lands, ${b.basicError.toFixed(1)} basic lands and ${b.roleError.toFixed(1)} cards per role on average; ` +
         `${pct(b.edhrecOverlap)} of EDHREC's top cards in the build.`,
+      '',
+    );
+    const r = s.repair;
+    lines.push(
+      `Repair (${r.decks} decks, ${REPAIR_REMOVED_CARDS} role cards each swapped for basic lands, then Fix's plan): ` +
+        `${pct(r.inLine)} end with every Deck stats line in line and ${pct(r.restored)} with no more lines off than before the damage; ` +
+        `lines off ${r.offBefore.toFixed(1)} before, ${r.offDamaged.toFixed(1)} damaged, ${r.offAfter.toFixed(1)} after; ` +
+        `${r.moves.toFixed(1)} moves on average; ${pct(r.cameBack)} of the removed cards came back.`,
       '',
     );
   }

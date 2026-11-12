@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { availability } from '../collection/availability';
 import type { CardId, CardSummary, IsoDateTime, OracleId, RecContext, StatTargets, TagId } from '../contract';
 import { buildTally, gradeDeck, STAT_TOLERANCE_SHARE, toTallyCard } from '../journey/deck-tally';
+import { planFixes, type FixCard } from '../journey/fix';
 import { affinityTracker, deckAffinity, pmiIndex } from './affinity';
 import { buildDeck, landTargets, manaSymbols, splitBasics, type BasicColour, type BuildInput } from './build';
 import type { CardPlayRates, RankCard, RankCorpus } from './rank';
@@ -353,6 +354,38 @@ describe('buildDeck', () => {
     });
     const off = report.stats.filter((line) => line.group !== 'mana' && !line.ok).map((line) => `${line.key} ${line.value}/${line.target}`);
     expect(off).toEqual([]);
+  });
+
+  it('leaves Fix nothing to do: a fresh build is in line on every line Fix counts', () => {
+    const duals = new Map(cards);
+    for (const l of lands.slice(0, 15)) duals.set(l.summary.id as number, card(l.summary.id as number, l.summary.name, 'Land', { manaCost: '', identity: WU, producedMana: 'WU' }));
+    const targets = statTargets({ creature: 30, instant: 30 }, [0, 11, 11, 11, 10, 10, 10, 0]);
+    const result = buildDeck(input({ cards: duals, statTargets: targets }));
+    const picked = result.groups.flatMap((g) => g.cards);
+    const fixCard = (summary: CardSummary, score: number): FixCard => ({ card: summary, roles: roles.get(summary.id) ?? [], score, owned: null });
+    const deck = [...picked.map((c) => fixCard(c.card, c.score.total)), ...result.basics.map((b) => fixCard(b.card, 0))];
+    const inDeck = new Set(deck.map((c) => c.card.id as number));
+    const main = [
+      ...picked.map((c) => ({ card: toTallyCard(c.card, roles.get(c.card.id) ?? []), quantity: 1 })),
+      ...result.basics.map((b) => ({ card: toTallyCard(b.card, []), quantity: b.quantity })),
+    ];
+    // Every card the build passed over may come in, and so may the basic lands.
+    const ins = [
+      ...[...spells, ...lands].filter((c) => !inDeck.has(c.summary.id)).map((c) => fixCard(duals.get(c.summary.id)!.summary, playRates.get(c.summary.id)?.commanderRate?.inclusion ?? 0)),
+      ...[plains, island].map((c) => fixCard(c.summary, 0)),
+    ];
+    const moves = planFixes({
+      tally: buildTally(main, [toTallyCard(commander.summary, [])]),
+      targets,
+      bracket: { chosen: 3, signals: result.bracketSignals, combos: [], overBracketAdds: new Map() },
+      pool: { ins, deck },
+      skipped: [],
+      choices: {},
+      addedIds: [],
+      protectedIds: [],
+      illegalIds: [],
+    });
+    expect(moves.map((m) => `${m.line}: ${m.in.name} for ${m.out.name}`)).toEqual([]);
   });
 
   it('counts a land that draws cards toward the role: the role stays inside its band', () => {
