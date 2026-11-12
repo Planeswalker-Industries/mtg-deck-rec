@@ -2,21 +2,31 @@ import type { CardId, CardSummary, DeckCardEntry, DeckInput } from '../contract'
 import { COMMANDER_DECK_SIZE } from '../formats/commander/validate';
 import { decklistText, type DeckExportEntry } from '../parse/decklist-export';
 import { isBasicLand } from './builder';
+import type { FixMove, FixPair } from './fix';
 
 /**
- * The deck journey: add what the deck is short of (it may go past 100), cut back to 100 starting with what it has too
- * much of, replace weaker fits, then review the result. Each phase can be revisited; nothing touches the decklist until
- * the player commits the result.
+ * The deck journey: bring the deck to 100 (Add fills a short deck, Cut trims a long one), fix the Deck stats lines
+ * with paired moves, replace weaker fits, then review the result. Each phase can be revisited; nothing touches the
+ * decklist until the player commits the result.
  */
-export type JourneyPhase = 'add' | 'cut' | 'replace' | 'review';
+export type JourneyPhase = 'add' | 'cut' | 'fix' | 'replace' | 'review';
 
-export const JOURNEY_PHASES: readonly JourneyPhase[] = ['add', 'cut', 'replace', 'review'];
+/** Every step, in the order a round can meet them. A round runs only the steps its starting deck needs (`phasesFor`). */
+export const JOURNEY_PHASES: readonly JourneyPhase[] = ['add', 'cut', 'fix', 'replace', 'review'];
+
+/** The steps every round runs, once the deck is at 100. */
+const SHARED_PHASES: readonly JourneyPhase[] = ['fix', 'replace', 'review'];
+const SHORT_DECK_PHASES: readonly JourneyPhase[] = ['add', ...SHARED_PHASES];
+const LONG_DECK_PHASES: readonly JourneyPhase[] = ['cut', ...SHARED_PHASES];
 
 /**
- * How far past a full deck Add may go. A round adds a handful of cards for the roles the deck is short of (about five)
- * and Cut trims back to 100 after; ten leaves room for that without the deck ballooning.
+ * The steps of a round, by the size of the deck it starts from (commanders included): Add only under 100, Cut only over
+ * it, neither at 100. Fixed for the round, so the steps don't change under the player as the deck does.
  */
-export const ADD_OVERFLOW_MAX = 10;
+export function phasesFor(size: number): readonly JourneyPhase[] {
+  if (size < COMMANDER_DECK_SIZE) return SHORT_DECK_PHASES;
+  return size > COMMANDER_DECK_SIZE ? LONG_DECK_PHASES : SHARED_PHASES;
+}
 
 export interface JourneySwap {
   target: CardSummary;
@@ -51,6 +61,10 @@ export interface JourneyState {
   keptInReplace: CardId[];
   /** Replacements the player passed on in the Replace phase. */
   declinedSwaps: DeclinedSwap[];
+  /** Fix's moves, one card in and one out each, in the order they were made. */
+  fixes: FixMove[];
+  /** Fix pairs the player skipped, so they aren't offered again this round. */
+  declinedFixes: FixPair[];
 }
 
 export type JourneyAction =
@@ -64,15 +78,44 @@ export type JourneyAction =
   | { type: 'unswap'; targetId: CardId }
   | { type: 'keepInReplace'; cardId: CardId }
   | { type: 'declineSwap'; targetId: CardId; replacementId: CardId }
+  /** One Fix move: a card in and a card out, as one choice. */
+  | { type: 'fix'; move: FixMove }
+  | { type: 'declineFix'; inId: CardId; outId: CardId }
+  /** Forgets the skipped Fix pairs, so a line the player skipped can be offered again (Finish's "Fix"). */
+  | { type: 'retryFixes' }
   | { type: 'goto'; phase: JourneyPhase }
   | { type: 'reset'; base: DeckInput };
 
 export function startJourney(base: DeckInput): JourneyState {
-  return { phase: 'add', reached: 'add', base, cuts: [], kept: [], adds: [], declinedAdds: [], swaps: [], keptInReplace: [], declinedSwaps: [] };
+  const phase = phasesFor(deckSize(base))[0] ?? 'fix';
+  return {
+    phase,
+    reached: phase,
+    base,
+    cuts: [],
+    kept: [],
+    adds: [],
+    declinedAdds: [],
+    swaps: [],
+    keptInReplace: [],
+    declinedSwaps: [],
+    fixes: [],
+    declinedFixes: [],
+  };
 }
 
-/** A phase's place in the journey: 0 for Add through 3 for Review. */
+/** A phase's place among every step, for telling earlier from later: a round's own steps keep this order. */
 export const phaseIndex = (phase: JourneyPhase): number => JOURNEY_PHASES.indexOf(phase);
+
+/** The steps of the round `state` is in. */
+export const roundPhases = (state: JourneyState): readonly JourneyPhase[] => phasesFor(deckSize(state.base));
+
+/** The step after `phase` in the round, or null on the last one (or on a step the round doesn't run). */
+export function nextPhase(state: JourneyState, phase: JourneyPhase = state.phase): JourneyPhase | null {
+  const phases = roundPhases(state);
+  const at = phases.indexOf(phase);
+  return at < 0 ? null : (phases[at + 1] ?? null);
+}
 
 const without = <T>(list: readonly T[], value: T) => list.filter((v) => v !== value);
 const withValue = <T>(list: readonly T[], value: T) => (list.includes(value) ? [...list] : [...list, value]);
@@ -87,10 +130,6 @@ export function openSlots(state: JourneyState): number {
   return Math.max(0, COMMANDER_DECK_SIZE - deckSize(workingDeck(state)));
 }
 
-/** How many more cards Add may put in: up to ADD_OVERFLOW_MAX past a full deck. */
-export function roomToAdd(state: JourneyState): number {
-  return Math.max(0, COMMANDER_DECK_SIZE + ADD_OVERFLOW_MAX - deckSize(workingDeck(state)));
-}
 
 /** How many cards Cut must take out to bring the deck back to 100: 0 at or below a full deck. */
 export function cutsNeeded(state: JourneyState): number {
@@ -113,6 +152,8 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
       const id = action.card.id;
       const alreadyCut = state.cuts.filter((c) => c.id === id).length;
       if (alreadyCut >= baseCopies(state.base, id)) return state;
+      // A copy a Fix move already took out is not there to cut.
+      if ((countsBeforeSwaps(state).get(id) ?? 0) <= 0) return state;
       return { ...state, cuts: [...state.cuts, action.card], kept: without(state.kept, id) };
     }
     case 'uncut': {
@@ -125,7 +166,8 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
       return { ...state, cuts, kept: withValue(state.kept, action.cardId) };
     }
     case 'add': {
-      if (roomToAdd(state) === 0) return state;
+      // Add stops at 100: past it a card only comes in for one going out (Fix, Swap).
+      if (openSlots(state) === 0) return state;
       if (!isBasicLand(action.card) && state.adds.some((c) => c.id === action.card.id)) return state;
       return { ...state, adds: [...state.adds, action.card], declinedAdds: without(state.declinedAdds, action.card.id) };
     }
@@ -157,6 +199,19 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
       if (state.declinedSwaps.some((d) => d.targetId === targetId && d.replacementId === replacementId)) return state;
       return { ...state, declinedSwaps: [...state.declinedSwaps, { targetId, replacementId }] };
     }
+    case 'fix': {
+      const { move } = action;
+      if ((countsBeforeSwaps(state).get(move.out.id) ?? 0) <= 0) return state;
+      if (!isBasicLand(move.in) && copiesInDeck(state, move.in.id) > 0) return state;
+      return { ...state, fixes: [...state.fixes, move] };
+    }
+    case 'declineFix': {
+      const { inId, outId } = action;
+      if (state.declinedFixes.some((d) => d.inId === inId && d.outId === outId)) return state;
+      return { ...state, declinedFixes: [...state.declinedFixes, { inId, outId }] };
+    }
+    case 'retryFixes':
+      return state.declinedFixes.length === 0 ? state : { ...state, declinedFixes: [] };
     case 'goto': {
       if (state.phase === action.phase) return state;
       const reached = phaseIndex(action.phase) > phaseIndex(state.reached) ? action.phase : state.reached;
@@ -191,17 +246,25 @@ function addCopies(counts: Map<CardId, number>, cardId: CardId, quantity: number
   counts.set(cardId, (counts.get(cardId) ?? 0) + quantity);
 }
 
-/** Main-deck copies before any swap: the base deck without its cuts, with the additions. */
+/**
+ * Main-deck copies before any swap: the base deck without its cuts, with the additions and Fix's moves. A Fix move
+ * whose out card is no longer there is skipped, as a swap is.
+ */
 function countsBeforeSwaps(state: JourneyState): Map<CardId, number> {
   const main = new Map<CardId, number>();
   for (const entry of state.base.cards) if (entry.section === 'main') addCopies(main, entry.cardId, entry.quantity);
   for (const cut of state.cuts) addCopies(main, cut.id, -1);
   for (const card of state.adds) addCopies(main, card.id, 1);
+  for (const move of state.fixes) {
+    if ((main.get(move.out.id) ?? 0) <= 0) continue;
+    addCopies(main, move.out.id, -1);
+    addCopies(main, move.in.id, 1);
+  }
   return main;
 }
 
 /**
- * The deck before any swap: the base deck without its cuts, with the additions. The Swap phase deals its weaker fits
+ * The deck before any swap: the base deck without its cuts, with the additions and Fix's moves. The Swap phase deals its weaker fits
  * from this deck, so a card the player already swapped out stays on the list, marked with its replacement, and the
  * list stays the same however many swaps are picked from it.
  */
@@ -238,29 +301,22 @@ export function copiesInDeck(state: JourneyState, cardId: CardId): number {
   return Math.max(0, mainCounts(state).get(cardId) ?? 0);
 }
 
+/** The deck with Fix's moves taken back: what Fix's pool is asked for, so one pool serves the moves made from it. */
+export function deckBeforeFixes(state: JourneyState): DeckInput {
+  return workingDeck({ ...state, fixes: [] });
+}
+
 /**
- * The choices that take one copy of a card out of the deck as it stands, wherever it came from: an addition is taken
- * back, a swap is undone and the card it replaced cut too (the slot stays open), and a card from the deck the round
- * started with is cut. Nothing when the card isn't in the deck.
+ * The cards this round brought in, which Fix never takes out again: additions, Fix's own in cards and swap
+ * replacements. Basic lands are left out: their copies are all alike.
  */
-export function removeFromDeck(state: JourneyState, card: CardSummary): JourneyAction[] {
-  if (copiesInDeck(state, card.id) === 0) return [];
-  if (state.adds.some((a) => a.id === card.id)) return [{ type: 'unadd', cardId: card.id }];
-  const swap = state.swaps.find((s) => s.replacement.id === card.id);
-  if (swap) {
-    const undo: JourneyAction = { type: 'unswap', targetId: swap.target.id };
-    return [undo, ...removeFromDeck(journeyReducer(state, undo), swap.target)];
-  }
-  return [{ type: 'cut', card }];
-}
-
-/** The state with one copy of each card taken out of the deck (see removeFromDeck). */
-export function withoutCards(state: JourneyState, cards: readonly CardSummary[]): JourneyState {
-  return cards.reduce((current, card) => removeFromDeck(current, card).reduce(journeyReducer, current), state);
+export function roundAddedIds(state: JourneyState): CardId[] {
+  const cards = [...state.adds, ...state.fixes.map((f) => f.in), ...state.swaps.map((s) => s.replacement)];
+  return [...new Set(cards.filter((c) => !isBasicLand(c)).map((c) => c.id))];
 }
 
 /**
- * The deck as it stands: the base deck without its cuts, with the additions, and with each swapped card replaced.
+ * The deck as it stands: the base deck without its cuts, with the additions and Fix's moves, and with each swapped card replaced.
  * Sections other than main pass through untouched.
  */
 export function workingDeck(state: JourneyState): DeckInput {

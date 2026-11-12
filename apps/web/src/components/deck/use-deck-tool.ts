@@ -16,6 +16,8 @@ import type {
   ResolvedLine,
   Result,
   SavedDeckContents,
+  StatChoice,
+  StatChoices,
   SwapResult,
 } from "@mtg/core/contract";
 import { deckDiff } from "@mtg/core/journey";
@@ -111,12 +113,24 @@ interface CollectionUse {
   mode: OwnershipMode;
 }
 
+/** No choices: a deck starts with every Deck stats line counted and none opened to buying. */
+const NO_CHOICES: StatChoices = {};
+
+/** The lines the player opened to unowned cards, in a stable order. */
+const buyLinesOf = (choices: StatChoices): string[] =>
+  Object.entries(choices)
+    .filter(([, choice]) => choice === "buy")
+    .map(([line]) => line)
+    .sort();
+
 function buildContext(
   analysis: DeckAnalysis,
   bracketOverride: Bracket | null,
   collection: CollectionUse | null,
+  choices: StatChoices,
 ): RecContext {
   const bracket = bracketOverride ?? analysis.estimatedBracket;
+  const buyFor = buyLinesOf(choices);
   return {
     deck: analysis.deck,
     bracket,
@@ -124,6 +138,8 @@ function buildContext(
     includeGameChangers: defaultIncludeGameChangers(bracket),
     ownership: collection?.ownership ?? null,
     ...(collection ? { ownershipMode: collection.mode } : {}),
+    // Read only where suggestions keep to the collection; sent whenever the player opened a line.
+    ...(buyFor.length > 0 ? { buyFor } : {}),
   };
 }
 
@@ -212,6 +228,17 @@ export function useDeckTool(
    */
   const [deckName, setDeckName] = useState<string | null>(null);
   /**
+   * The player's choices for Deck stats lines the deck can't bring in line (ignore it, or allow buying for it): kept
+   * with the remembered deck in this browser, and written to an open account deck. A ref beside the state, like the
+   * open deck: submit() and the writes read it in the handler that may have just set it.
+   */
+  const [statChoices, setStatChoices] = useState<StatChoices>(NO_CHOICES);
+  const statChoicesRef = useRef<StatChoices>(NO_CHOICES);
+  function trackStatChoices(next: StatChoices) {
+    statChoicesRef.current = next;
+    setStatChoices(next);
+  }
+  /**
    * The same deck as analyzed, for saving beside the result. A ref, like the open deck: submit() persists in the same
    * handler that may have just set it.
    */
@@ -257,7 +284,10 @@ export function useDeckTool(
   const ownership = ownershipFor(collectionMode);
   const ownershipKey = collectionKey(ownership);
 
-  const context = analysis ? buildContext(analysis, bracketOverride, ownership) : null;
+  /** The settings suggestions are made with, with the choices as of this handler (see `statChoicesRef`). */
+  const contextFor = (deck: DeckAnalysis, bracket: Bracket | null, collection: CollectionUse | null): RecContext =>
+    buildContext(deck, bracket, collection, statChoicesRef.current);
+  const context = analysis ? buildContext(analysis, bracketOverride, ownership, statChoices) : null;
 
   async function loadCuts(ctx: RecContext, collection: CollectionUse | null) {
     const id = ++recsRequest.current;
@@ -286,7 +316,7 @@ export function useDeckTool(
    */
   useEffect(() => {
     if (!analysis || suggestedWith.current === null || suggestedWith.current === ownershipKey) return;
-    reloadFor(buildContext(analysis, bracketOverride, ownership), ownership, { kind: "collection" });
+    reloadFor(contextFor(analysis, bracketOverride, ownership), ownership, { kind: "collection" });
     // Keyed on the collection and the analysis: the bracket has a handler of its own that reloads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownershipKey, analysis]);
@@ -316,6 +346,7 @@ export function useDeckTool(
       isPublic: true,
       ...(bracket === null ? {} : { bracket }),
       ...(original ? { original } : {}),
+      statChoices: statChoicesRef.current,
     });
     if (id !== saveRequest.current) return;
     const current = openDeckRef.current;
@@ -330,12 +361,12 @@ export function useDeckTool(
   async function openSavedDeck(code: string): Promise<Result<SubmitOutcome>> {
     const r = await getApis().actions.openSavedDeck({ code });
     if (!r.ok) return r;
-    const { deckId, name, bracket, text: deckText } = r.data;
+    const { deckId, name, bracket, text: deckText, statChoices: choices } = r.data;
     trackOpenDeck({ deckId, code: r.data.code, name, status: "saved" });
     setText(deckText);
     return {
       ok: true,
-      data: await submit({ text: deckText, bracketOverride: bracket ?? null, importedFrom: null }, { persist: false }),
+      data: await submit({ text: deckText, bracketOverride: bracket ?? null, importedFrom: null, statChoices: choices }, { persist: false }),
     };
   }
 
@@ -383,14 +414,19 @@ export function useDeckTool(
     setLines(r.data.lines);
     setAnalysis(r.data.analysis);
     setBracketOverride(bracket);
-    // The same deck carries its name through a journey's result and a replay of the remembered deck; a new paste is a new deck.
+    // The same deck carries its name and its stat choices through a journey's result and a replay of the remembered
+    // deck; a new paste is a new deck.
     const name = keepOrigin ? deckName : (replay?.deckName ?? null);
     setDeckName(name);
+    // A list analyzed over an open account deck is still that deck: its choices stay with it.
+    const sameDeck = keepOrigin || (replay === undefined && openDeckRef.current !== null);
+    const choices = sameDeck ? statChoicesRef.current : (replay?.statChoices ?? NO_CHOICES);
+    trackStatChoices(choices);
     const commanders = r.data.analysis?.commanderKey.commanders ?? [];
     const commanderName = commanders.length > 0 ? commanders.map(displayName).join(" and ") : null;
-    saveDeck({ text: finalText, bracketOverride: bracket, importedFrom: source, commanderName, deckName: name });
+    saveDeck({ text: finalText, bracketOverride: bracket, importedFrom: source, commanderName, deckName: name, statChoices: choices });
     if (r.data.analysis) {
-      if (recs) void loadCuts(buildContext(r.data.analysis, bracket, ownership), ownership);
+      if (recs) void loadCuts(contextFor(r.data.analysis, bracket, ownership), ownership);
       else {
         suggestedWith.current = ownershipKey;
         setCut({ status: "idle" });
@@ -440,7 +476,7 @@ export function useDeckTool(
     // A newer deck or setting change owns the panels now; the analysis still tells the caller what the lookup found.
     if (id !== recsRequest.current) return analyzed.data;
     setAnalysis(analyzed.data);
-    const ctx = buildContext(analyzed.data, bracketOverride, ownership);
+    const ctx = contextFor(analyzed.data, bracketOverride, ownership);
     suggestedWith.current = ownershipKey;
     setCut({ status: "loading" });
     const [cutResult] = await Promise.all([recs.cut({ context: ctx }), onStage("cuts")]);
@@ -462,6 +498,7 @@ export function useDeckTool(
     clearSavedDeck();
     setRestored(null);
     setDeckName(null);
+    trackStatChoices(NO_CHOICES);
     setOriginText(null);
     originDeckRef.current = null;
     setOriginDeck(null);
@@ -485,7 +522,7 @@ export function useDeckTool(
     setBracketOverride(bracket);
     updateSavedDeck({ bracketOverride: bracket });
     if (!analysis) return;
-    reloadFor(buildContext(analysis, bracket, ownership), ownership, { kind: "bracket", previous: bracketOverride });
+    reloadFor(contextFor(analysis, bracket, ownership), ownership, { kind: "bracket", previous: bracketOverride });
     // The bracket is stored on the deck, so it is a change to write back; the cards are unchanged. Tracked like any
     // other write, so leaving for the deck's editor waits for it.
     if (openDeckRef.current) pendingSave.current = persist(analysis, bracket);
@@ -496,20 +533,28 @@ export function useDeckTool(
     setCollectionMode(mode);
     writeCollectionMode(mode);
     const collection = ownershipFor(mode);
-    if (analysis) reloadFor(buildContext(analysis, bracketOverride, collection), collection, { kind: "collection" });
+    if (analysis) reloadFor(contextFor(analysis, bracketOverride, collection), collection, { kind: "collection" });
   }
 
   /**
-   * Puts back the bracket from before a change the player then took back (the journey's Revert). Only the cuts reload:
-   * whatever builds on the tool kept its lists from before the change, so it isn't told.
+   * The player's choice for a Deck stats line the deck can't bring in line: ignore it (it leaves the score), allow
+   * buying for it (suggestions for it may be cards they don't own), or null to take the choice back. Kept with the
+   * remembered deck and written to an open account deck. Opening or closing a line to buying changes what is suggested,
+   * so the lists reload.
    */
-  function restoreBracket(bracket: Bracket | null) {
-    setBracketOverride(bracket);
-    updateSavedDeck({ bracketOverride: bracket });
+  function setStatChoice(line: string, choice: StatChoice | null) {
+    const before = statChoicesRef.current;
+    if ((before[line] ?? null) === choice) return;
+    const next: Record<string, StatChoice> = { ...before };
+    if (choice === null) delete next[line];
+    else next[line] = choice;
+    trackStatChoices(next);
+    updateSavedDeck({ statChoices: next });
     if (!analysis) return;
-    if (cut.status !== "idle") void loadCuts(buildContext(analysis, bracket, ownership), ownership);
-    // An estimated bracket has nothing to write: the deck keeps the one the change stored until the player picks again.
-    if (openDeckRef.current && bracket !== null) pendingSave.current = persist(analysis, bracket);
+    if (buyLinesOf(before).join() !== buyLinesOf(next).join()) {
+      reloadFor(contextFor(analysis, bracketOverride, ownership), ownership, { kind: "collection" });
+    }
+    if (openDeckRef.current) pendingSave.current = persist(analysis, bracketOverride);
   }
 
   /** Stops editing the account deck but keeps the decklist on screen: Clear is what empties the tool. */
@@ -581,7 +626,9 @@ export function useDeckTool(
     /** The player's own bracket choice; null while the bracket is estimated. */
     bracketOverride,
     changeBracket,
-    restoreBracket,
+    /** The player's choices for Deck stats lines (ignore, or allow buying), by line key. */
+    statChoices,
+    setStatChoice,
     /** null when there's no collection to apply. */
     collectionMode: hasCollection ? collectionMode : null,
     /** The collection as a build or an owned-only search takes it; null without one. */

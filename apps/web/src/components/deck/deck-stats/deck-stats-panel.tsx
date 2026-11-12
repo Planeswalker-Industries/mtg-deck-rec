@@ -2,8 +2,8 @@
 
 import { useId, useState, type ReactNode } from "react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
-import { KARSTEN_ARTICLE_URL, towardTarget, type DeckStatsReport, type StatDelta, type StatLine } from "@mtg/core/journey";
-import { ArrowDown, ArrowUp, Check, CircleHelp, TriangleAlert } from "lucide-react";
+import { KARSTEN_ARTICLE_URL, towardTarget, type DeckStatsReport, type StatDelta, type StatLine, type StatState } from "@mtg/core/journey";
+import { ArrowDown, ArrowUp, Check, CircleHelp, EyeOff, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { Button } from "@/components/ui/button";
@@ -34,8 +34,10 @@ function offBy(value: number, target: number): string {
   return delta < 0 ? `${-delta} short` : `${delta} over`;
 }
 
-function Mark({ ok }: { ok: boolean }) {
-  return ok ? (
+/** A line's mark: in line, off, or left out of the score because the player chose to ignore it (grey, with its own icon). */
+function Mark({ state }: { state: StatState }) {
+  if (state === "ignored") return <EyeOff role="img" aria-label="Ignored" className="size-4 shrink-0 text-muted-foreground" />;
+  return state === "ok" ? (
     <Check role="img" aria-label="In line" className="size-4 shrink-0 text-muted-foreground" />
   ) : (
     <TriangleAlert role="img" aria-label="Off" className="size-4 shrink-0 text-warning" />
@@ -86,11 +88,13 @@ export function PreviewDelta({
 function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | null; preview: StatDelta | undefined }) {
   const moved = stat.value - stat.start;
   const minimum = stat.group === "colours";
+  const off = stat.state === "off";
   return (
     <li className={cn("flex flex-col gap-1 rounded-md", preview && "-mx-1.5 bg-foreground/5 px-1.5 py-1")}>
-      <div className="flex items-center gap-2 text-sm">
-        <Mark ok={stat.ok} />
+      <div className={cn("flex items-center gap-2 text-sm", stat.state === "ignored" && "text-muted-foreground")}>
+        <Mark state={stat.state} />
         <span className="min-w-0 truncate">{stat.label}</span>
+        {stat.state === "ignored" && <span className="shrink-0 text-xs">Ignored</span>}
         {action && <ActionLink action={action} className="shrink-0 text-xs" />}
         <span className="ml-auto flex shrink-0 items-baseline gap-2">
           {moved !== 0 && (
@@ -101,7 +105,7 @@ function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | n
           )}
           {preview && <PreviewDelta value={stat.value} target={stat.target} preview={preview} minimum={minimum} />}
           <span className="font-mono">
-            <span className={cn(!stat.ok && "text-warning")}>{stat.value}</span>
+            <span className={cn(off && "text-warning")}>{stat.value}</span>
             <span className="text-muted-foreground"> / {Math.round(stat.target)}</span>
           </span>
         </span>
@@ -110,12 +114,12 @@ function Row({ stat, action, preview }: { stat: StatLine; action: StatAction | n
         value={stat.value}
         target={stat.target}
         start={stat.start}
-        ok={stat.ok}
+        ok={!off}
         preview={preview?.delta ?? 0}
         targetAfter={preview?.target}
         minimum={minimum}
       />
-      {!stat.ok && <span className="sr-only">{offBy(stat.value, stat.target)}</span>}
+      {off && <span className="sr-only">{offBy(stat.value, stat.target)}</span>}
     </li>
   );
 }
@@ -136,25 +140,29 @@ const barLabel = (manaValue: number, last: boolean) => (last ? `${manaValue}+` :
  * Curve bars as small columns: the deck's count with the target as a tick, a fainter, narrower tick where the bar stood
  * when the round started, mana value under each.
  */
-function CurveRows({ report }: { report: DeckStatsReport }) {
+function CurveRows({ report, action }: { report: DeckStatsReport; action: StatAction | null }) {
   const bars = report.curve.bars;
   const lastIndex = bars.length - 1;
   const scale = Math.max(1, ...bars.flatMap((b) => [b.value, b.target, b.start])) * COLUMN_HEADROOM;
   const off = bars.filter((b) => !b.ok).map((b) => barLabel(b.manaValue, b.manaValue === lastIndex));
+  const ignored = report.curve.state === "ignored";
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2 text-sm">
-        <Mark ok={report.curve.ok} />
-        <span className="flex-1">Mana curve</span>
+      <div className={cn("flex items-center gap-2 text-sm", ignored && "text-muted-foreground")}>
+        <Mark state={report.curve.state} />
+        <span className="flex-1">
+          Mana curve
+          {action && <ActionLink action={action} className="ml-2 text-xs" />}
+        </span>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {report.curve.ok ? "In line" : `Off at ${off.join(", ")}`}
+          {report.curve.ok ? "In line" : `${ignored ? "Ignored · off" : "Off"} at ${off.join(", ")}`}
         </span>
       </div>
       <div aria-hidden className="flex h-12 items-end gap-1 border-b border-seam">
         {bars.map((b) => (
           <div key={b.manaValue} className="relative flex h-full flex-1 items-end">
             <div
-              className={cn("w-full rounded-t-sm", b.ok ? "bg-muted-foreground/60" : "bg-warning/80")}
+              className={cn("w-full rounded-t-sm", b.ok || ignored ? "bg-muted-foreground/60" : "bg-warning/80")}
               style={{ height: columnPct(b.value, scale) }}
             />
             <div className="absolute inset-x-0 h-0.5 bg-foreground/70" style={{ bottom: columnPct(b.target, scale) }} />
@@ -256,6 +264,7 @@ export function DeckStatsPanel({
   report,
   cards,
   actionFor,
+  curveAction,
   bracketAction,
   combosAction,
   preview,
@@ -263,7 +272,9 @@ export function DeckStatsPanel({
   report: DeckStatsReport;
   /** Names for combo pieces. */
   cards: ReadonlyMap<CardId, CardSummary>;
+  /** What an off line offers: "Fix", opening Fix at that line. */
   actionFor?: (stat: StatLine) => StatAction | null;
+  curveAction?: StatAction | null;
   bracketAction?: StatAction | null;
   /** "Find combos": opens Add's Combos, in the deck tool when it has any. */
   combosAction?: StatAction | null;
@@ -297,7 +308,7 @@ export function DeckStatsPanel({
           </div>
           <ul className="flex flex-col gap-2.5">
             {colours.map((s) => (
-              <Row key={s.key} stat={s} action={null} preview={preview?.get(s.key)} />
+              <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} />
             ))}
           </ul>
           <p className="text-xs text-muted-foreground">
@@ -319,7 +330,7 @@ export function DeckStatsPanel({
         </ul>
       </Group>
       <Group title="Curve">
-        <CurveRows report={report} />
+        <CurveRows report={report} action={curveAction ?? null} />
       </Group>
       {types.length > 0 && (
         <Group title="Types">
@@ -332,7 +343,7 @@ export function DeckStatsPanel({
       )}
       <Group title="Bracket">
         <div className="flex items-center gap-2 text-sm">
-          <Mark ok={report.bracket.ok} />
+          <Mark state={report.bracket.ok ? "ok" : "off"} />
           <span className="flex-1">
             {report.bracket.ok ? "Fits" : "Over"} bracket {report.bracket.chosen}
           </span>

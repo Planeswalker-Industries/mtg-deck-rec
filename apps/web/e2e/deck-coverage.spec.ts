@@ -1,4 +1,4 @@
-import { expect, fillDecklist, test, type Page } from "./fixtures";
+import { FIX_MOVE, expect, fillDecklist, openFix, test, type Page } from "./fixtures";
 
 const DECK = [
   "Commander",
@@ -83,8 +83,9 @@ test("browser quantities and a live round update the two-line summary and the ke
   const recs = await analyze(page);
   const trigger = recs.getByRole("button", { name: /available:.*owned/ });
   await expect(trigger).toHaveText("2/9 available", { timeout: 60_000 });
-  const cutControl = recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: "Cut Lightning Bolt", exact: true });
-  const keepControl = recs.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: "Keep Lightning Bolt", exact: true });
+  const move = recs.getByRole("region", FIX_MOVE);
+  const swapControl = move.getByRole("button", { name: /^Swap Lightning Bolt for / });
+  const skipControl = move.getByRole("button", { name: /^Skip swapping Lightning Bolt for / });
   await trigger.focus();
   await page.keyboard.press("Enter");
   const sheet = page.getByRole("dialog", { name: "Your collection and this deck" });
@@ -109,32 +110,33 @@ test("browser quantities and a live round update the two-line summary and the ke
   await expect(trigger).toHaveText("3/9 available", { timeout: 60_000 });
   await expect(trigger).toHaveAttribute("aria-label", /3 owned, 0 stand-in, 0 basic lands, 0 conflicts, 6 missing/);
 
-  // Check desktop swipe controls while Bolt is still queued in Cut, before keeping it in the round.
-  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
-  await steps.getByRole("button", { name: "Cut" }).click();
-  // The deck is short of 100, so leaving Add asks first.
-  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
+  // Check desktop controls on Fix, where the off-colour Bolt is the first card out. The deck is short of 100, so
+  // leaving Add asks first.
+  await openFix(page);
   await page.setViewportSize({ width: DESKTOP_VIEWPORT_WIDTH_PX, height: DESKTOP_VIEWPORT_HEIGHT_PX });
-  await recs.getByRole("group", { name: "How to review cards" }).getByRole("button", { name: "Swipe" }).click();
-  await expect(cutControl).toBeVisible({ timeout: 60_000 });
-  await expect(cutControl).toBeInViewport();
-  await expect(keepControl).toBeVisible();
-  await expect(keepControl).toBeInViewport();
+  await expect(swapControl).toBeVisible({ timeout: 60_000 });
+  await expect(swapControl).toBeInViewport();
+  await expect(skipControl).toBeVisible();
+  await expect(skipControl).toBeInViewport();
   await trigger.focus();
   await page.keyboard.press("Space");
   await expect(sheet).toBeVisible();
+  await expect(sheet.getByText("1× Lightning Bolt").first()).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   await page.setViewportSize({ width: PHONE_VIEWPORT_WIDTH_PX, height: PHONE_VIEWPORT_HEIGHT_PX });
 
-  await recs.getByRole("button", { name: "Show as a list" }).click();
-  const bolt = recs.getByRole("region", { name: "Your deck" }).getByRole("button", { name: /^Lightning Bolt Off-color(,|$)/ });
-  await expect(bolt).toHaveAttribute("aria-pressed", "true", { timeout: 60_000 });
-  // Moving on to Swap applies the marked cut.
-  await steps.getByRole("button", { name: "Swap" }).click();
-  await expect(trigger).toHaveText("3/8 available", { timeout: 60_000 });
-  await steps.getByRole("button", { name: "Cut" }).click();
-  await bolt.click();
+  // A Fix move changes the deck the summary reads: Bolt goes out for a card that is legal here, one for one.
+  await swapControl.click();
+  await expect(swapControl).toBeHidden({ timeout: 60_000 });
+  await expect(trigger).toHaveText(/^\d\/9 available$/, { timeout: 60_000 });
+  await trigger.click();
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText("1× Lightning Bolt")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  // Undo puts Bolt back, and the summary with it.
+  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
   await expect(trigger).toHaveText("3/9 available", { timeout: 60_000 });
 
   await recs.getByRole("button", { name: "Deckbuilder" }).click();

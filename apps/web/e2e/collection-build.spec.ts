@@ -1,4 +1,4 @@
-import { expect, fillDecklist, test, type Locator, type Page } from "./fixtures";
+import { expect, fillDecklist, ignoreBuildGaps, openSwap, test, type Locator, type Page } from "./fixtures";
 
 /** Collection parsing and catalog loading may take this long in the production mock build. */
 const COLLECTION_WAIT_MS = 30_000;
@@ -38,6 +38,8 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
   await expect(built.getByText(/^\d+ match(es)?$/)).toBeVisible();
+  // A line the collection couldn't fill asks for an answer before Continue opens.
+  await ignoreBuildGaps(page);
   await built.getByRole("button", { name: "Continue" }).click();
 
   const recs = page.getByRole("region", { name: "Recommendations" });
@@ -51,9 +53,9 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await expect(recs.getByText("Insufficient Collection")).toBeVisible({ timeout: RECS_WAIT_MS });
   await expect(recs.getByText("You don't have a large enough collection.")).toBeVisible();
 
-  // Leaving for Cut under 100 asks first; keeping on stays in Add.
+  // Leaving for Fix under 100 asks first; keeping on stays in Add.
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
-  await steps.getByRole("button", { name: "Cut" }).click();
+  await steps.getByRole("button", { name: "Fix" }).click();
   const leave = page.getByRole("dialog", { name: "Deck Under 100" });
   await expect(leave).toBeVisible();
   await leave.getByRole("button", { name: "Keep adding" }).click();
@@ -139,8 +141,25 @@ test("a refresh after Continue offers the deck back with its choices", async ({ 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
   await expect(page).toHaveURL(/\/deck$/);
+  const ask = page.getByRole("dialog", { name: /^Continue with / });
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  if ((await steps.getByRole("button").first().innerText()).trim() !== "Add") {
+    // The real catalog's build is a full deck, so its round has no Add: the choice to bring back is a swap.
+    await openSwap(page);
+    const swapIn = recs.getByRole("region", { name: "Swipe through cards to replace" }).getByRole("button", { name: /^Swap in / });
+    const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
+    await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: RECS_WAIT_MS });
+    test.skip(await nothingLeft.isVisible(), "no replacements in this data, so no choice to bring back");
+    await swapIn.click();
+    const swaps = recs.getByRole("list", { name: "Swaps picked" }).getByRole("button");
+    await expect(swaps).toHaveCount(1);
+    await page.reload();
+    await ask.getByRole("button", { name: "Yes" }).click();
+    await expect(swaps).toHaveCount(1, { timeout: RECS_WAIT_MS });
+    return;
+  }
   const count = recs.getByRole("status").getByText(/^\d+ \/ 100$/).first();
-  // The real catalog deals a card to add; the mocks' build is short and has none, so it offers basics for the holes.
+  // The mocks' build is short and has no card to add, so it offers basics for the holes.
   const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / }).first();
   const fill = recs.getByRole("button", { name: /^Add \d+ basics?$/ });
   await expect(addIt.or(fill).first()).toBeVisible({ timeout: RECS_WAIT_MS });
@@ -151,7 +170,6 @@ test("a refresh after Continue offers the deck back with its choices", async ({ 
   await expect(count).toHaveText(after, { timeout: RECS_WAIT_MS });
 
   await page.reload();
-  const ask = page.getByRole("dialog", { name: /^Continue with / });
   await ask.getByRole("button", { name: "Yes" }).click();
   await expect(count).toHaveText(after, { timeout: RECS_WAIT_MS });
 });

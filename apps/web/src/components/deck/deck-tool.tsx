@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
-import type { CardId, CardSummary, DeckAnalysis } from "@mtg/core/contract";
+import type { CardId, CardSummary, DeckAnalysis, StatChoices } from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import { LAND_SWAP_LINE, landSwapMode, phaseIndex, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
+import { CURVE_LINE, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -36,17 +36,18 @@ import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
 import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
+import { statChips } from "./deck-stats/stat-chips";
 import { StatPreviewProvider, type StatPreview } from "./deck-stats/stat-preview";
 import { AddPhase } from "./journey/add-phase";
-import { BracketCheckPanel } from "./journey/bracket-check-panel";
 import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
-import { CutPhase, type TrimFocus } from "./journey/cut-phase";
-import type { LandSwapNeed } from "./journey/land-swaps";
+import { CutPhase } from "./journey/cut-phase";
+import { FixPhase } from "./journey/fix-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase } from "./journey/review-phase";
 import { RoundBar, type CopyState, type RoundSave } from "./journey/round-bar";
-import { useDeckJourney, type AddFilter, type DeckJourney } from "./journey/use-deck-journey";
+import { useDeckJourney, type DeckJourney } from "./journey/use-deck-journey";
+import { useFix } from "./journey/use-fix";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useCommanderLookup } from "./use-commander-lookup";
 import { useDeckGroups } from "./use-deck-groups";
@@ -74,8 +75,10 @@ const BASIC_TYPE_PREFIX = "Basic ";
 /** Tall enough to show a commander, the deck heading and a few cards of the placeholder before it scrolls. */
 const DECKLIST_ROWS = 9;
 
-/** The journey's steps column, which "Pick cuts" scrolls back to when Cut is already open. */
+/** The journey's steps column, which Deck stats' "Fix" scrolls back to. */
 const STEPS_ID = "deck-journey-steps";
+/** The lines Fix names that Deck stats shows under Bracket. */
+const BRACKET_LINE = "bracket";
 
 /**
  * A segmented control: one of a few options, pressed state on the chosen one. Used for the tool's mode (upgrade or
@@ -149,6 +152,9 @@ const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-sta
 /** "upgrade" walks the deck through the journey; "edit" is the deckbuilder. */
 type ToolMode = "upgrade" | "edit";
 
+/** The steps with a swipe view and a list view: Fix deals one pair at a time, and Finish is a summary. */
+const hasViews = (phase: JourneyPhase) => phase !== "fix" && phase !== "review";
+
 /** A deck's commanders as one comparable value, to tell whether the deck lookup offer needs checking again. */
 const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join(",");
 
@@ -187,7 +193,7 @@ function DeckToolSession() {
    */
   const journeyRef = useRef<DeckJourney | null>(null);
   const tool = useDeckTool(source, {
-    onContextChange: (ctx, change) => journeyRef.current?.reload(ctx, change) ?? Promise.resolve(),
+    onContextChange: (ctx) => journeyRef.current?.reload(ctx) ?? Promise.resolve(),
   });
   const lookup = useCommanderLookup(tool.refreshRecommendations);
   const collectionDeckCode = tool.openDeck?.code ?? openCode;
@@ -208,14 +214,11 @@ function DeckToolSession() {
     if (path === "online") tool.changeCollectionMode("off");
     else if (tool.collectionMode === "off") tool.changeCollectionMode("only");
   }
-  /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu. */
+  /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu; a new deck starts without one. */
   const [copy, setCopy] = useState<CopyState>({ status: "idle" });
-  /** The role Deck stats asked Cut to trim; a new deck starts without one. */
-  const [trimFor, setTrimFor] = useState<TrimFocus | null>(null);
-  const [trimRound, setTrimRound] = useState(tool.round);
-  if (trimRound !== tool.round) {
-    setTrimRound(tool.round);
-    setTrimFor(null);
+  const [copyRound, setCopyRound] = useState(tool.round);
+  if (copyRound !== tool.round) {
+    setCopyRound(tool.round);
     setCopy({ status: "idle" });
   }
   /** The commanders the deck lookup offer was last checked for; a deckbuilder edit that changes them checks again. */
@@ -257,7 +260,15 @@ function DeckToolSession() {
   const [collectionOfferAnswered, setCollectionOfferAnswered] = useState(false);
   useLayoutEffect(() => () => setCollectionOfferAnswered(false), []);
   const { analysis, context } = tool;
-  const journey = useDeckJourney({ analysis, round: tool.round, context, lines: tool.lines, cut: tool.cut, resume: tool.resumed });
+  const journey = useDeckJourney({
+    analysis,
+    round: tool.round,
+    context,
+    lines: tool.lines,
+    cut: tool.cut,
+    resume: tool.resumed,
+    choices: tool.statChoices,
+  });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
   const coverage = useDeckCoverage(journey.deck, source, tool.openDeck?.deckId, coverageEnabled && !collectionRefreshing);
   const hasWorkingDeck = journey.deck !== null;
@@ -279,104 +290,45 @@ function DeckToolSession() {
     overBracketAdds: journey.overBracketAdds,
     // The round's starting deck, so a deck lookup finishing mid-round (a new analysis of the same deck) keeps the ticks.
     start: journey.before,
+    choices: tool.statChoices,
   });
-  /** Leaving Cut for Swap with too few lands waits for the player to confirm; this is the move they confirm. */
-  const [confirmLands, setConfirmLands] = useState<(() => void) | null>(null);
-  const landsLine = deckStats?.stats.find((stat) => stat.key === "lands");
-  /**
-   * Leaves Cut, asking first when a complete deck would go on to Swap with fewer lands than its commander's decks run:
-   * the typical count as Deck stats shows it, not its tolerance band, since the player is choosing to go below it. A
-   * partial list is short of lands as of everything else, so it isn't asked.
-   */
-  function leaveCut(go: () => void) {
-    if (journey.cut.full && landsLine && landsLine.value < Math.round(landsLine.target)) setConfirmLands(() => go);
-    else go();
-  }
-  /** A step chosen in the stepper; one past Cut, while in Cut, goes through the land check. */
-  function selectStep(phase: JourneyPhase) {
-    if (journey.state?.phase === "cut" && phaseIndex(phase) > phaseIndex("cut")) leaveCut(() => journey.stepper.select(phase));
-    else journey.stepper.select(phase);
-  }
-  const openStep =
-    (phase: "cut" | "add", filter: AddFilter | null = null): StatAction["onSelect"] =>
-    () => {
-      // The step opens first, so the journey records the Add list under the filter as the player will see it. Add from
-      // Cut takes the pending cuts with it, or the deck would still be over 100 with no room to add.
-      if (phase === "add" && journey.state?.phase === "cut") journey.cut.toAdd();
-      else journey.stepper.select(phase);
-      journey.add.setFilter(filter);
-    };
-  /**
-   * What an off stat offers: "Trim" (Cut, narrowed to that role) when it's over its target, "Find" (Add, narrowed to
-   * it) when it's short. Adding may take the deck past 100; Cut brings it back.
-   */
-  const inCut = journey.state?.phase === "cut";
+  // ── Fix (T087) ─────────────────────────────────────────────────────────────────────────────────────────────────
+  const fix = useFix({
+    journey,
+    analysis,
+    context,
+    report: deckStats,
+    choices: tool.statChoices,
+    overBracketAdds: journey.overBracketAdds,
+  });
   const toSteps = () => document.getElementById(STEPS_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
   /**
-   * "Pick cuts" opens Cut; in Cut already, or with nothing owed (the swipe would have nothing to deal), it shows Cut's
-   * list from the top, to cut any card by hand.
+   * What a line that is off offers: "Fix", which opens Fix at that line. Offered once the deck may go on to Fix (Cut
+   * keeps it shut while the deck is over 100).
    */
-  const pickCuts: StatAction = {
-    label: "Pick cuts",
-    onSelect: () => {
-      if (!inCut) openStep("cut")();
-      if (inCut || journey.cutsNeeded === 0) changeView("list");
-      if (inCut) toSteps();
-    },
-  };
-  /**
-   * Too many lands or basics at 100 or under (T083): traded one for one, first thing in Swap, or in Cut once nothing
-   * else is owed. Over 100, Cut's own land step takes lands out instead.
-   */
-  const landMode = deckStats && journey.cutsNeeded === 0 && journey.openSlots === 0 ? landSwapMode(deckStats.stats) : null;
-  const landLine = landMode ? deckStats?.stats.find((stat) => stat.key === LAND_SWAP_LINE[landMode]) : undefined;
-  const landSwap: LandSwapNeed | null = landMode && landLine ? { mode: landMode, line: landLine } : null;
-  const swapLands: StatAction | null = landSwap
-    ? {
-        label: landSwap.mode === "spells" ? "Swap lands" : "Swap basics",
-        onSelect: () => {
-          const phase = journey.state?.phase;
-          if (phase === "replace") toSteps();
-          else if (journey.stepper.canOpen("replace")) selectStep("replace");
-          else journey.stepper.select("cut");
-        },
-      }
-    : null;
-  const statAction = (stat: StatLine): StatAction | null => {
-    if (stat.ok || !journey.state) return null;
-    if (stat.value > Math.round(stat.target)) {
-      if (swapLands && (stat.key === "lands" || stat.key === "basicLands")) return swapLands;
-      if (!journey.stepper.canOpen("cut")) return null;
-      if (stat.group !== "roles") return pickCuts;
-      return {
-        label: `Trim ${stat.label.toLowerCase()}`,
-        onSelect: () => {
-          journey.stepper.select("cut");
-          setTrimFor({ roleId: stat.key, label: stat.label });
-        },
-      };
-    }
-    // From Cut, Add opens with the pending cuts taken, so the room counted is the room after them.
-    if ((inCut ? journey.cut.roomToAdd : journey.roomToAdd) === 0 || !journey.stepper.canOpen("add")) return null;
-    if (stat.group === "roles") {
-      return {
-        label: `Find ${stat.label.toLowerCase()}`,
-        onSelect: openStep("add", { kind: "role", roleId: stat.key, label: stat.label }),
-      };
-    }
-    if (stat.key === "lands") return { label: "Find lands", onSelect: openStep("add", { kind: "lands" }) };
-    return null;
-  };
-  const bracketAction: StatAction | null = journey.stepper.canOpen("cut") ? pickCuts : null;
+  const canFix = journey.state !== null && journey.stepper.canOpen("fix");
+  const fixAction = (line: string): StatAction | null =>
+    canFix
+      ? {
+          label: "Fix",
+          onSelect: () => {
+            fix.openAt(line);
+            toSteps();
+          },
+        }
+      : null;
+  const statAction = (stat: StatLine): StatAction | null => (stat.state === "off" ? fixAction(stat.key) : null);
+  const curveAction = deckStats?.curve.state === "off" ? fixAction(CURVE_LINE) : null;
+  const bracketAction = deckStats && !deckStats.bracket.ok ? fixAction(BRACKET_LINE) : null;
   const comboCount = journey.add.combos.length;
-  /** "Find combos" under Bracket: Add's Combos part, when the last Add list had any. */
+  /** "Find combos" under Bracket: Add's Combos part, in a round that runs Add, when the last Add list had any. */
   const combosAction: StatAction | null =
     comboCount > 0 && journey.stepper.canOpen("add")
       ? {
           label: `Find combos (${comboCount})`,
           onSelect: () => {
             journey.add.openCombos();
-            document.getElementById(STEPS_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
+            toSteps();
           },
         }
       : null;
@@ -387,8 +339,25 @@ function DeckToolSession() {
     deckStats && statPreview
       ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove), deckStats.mana.deck)
       : null;
+  /** The score with the card on screen answered: the deck graded again with it in and out, for the footer. */
+  const previewScore = useMemo(
+    () => (statPreview ? fix.scoreWith([{ in: statPreview.add, out: statPreview.remove }]) : null),
+    // scoreWith is rebuilt every render; it reads the deck's tally, the bracket and the choices, which are what move it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statPreview, journey.tally, context?.bracket, tool.statChoices, journey.overBracketAdds],
+  );
+  /** The Deck stats lines a card in and a card out would move: the chips shown by the card on screen. */
+  const chipsFor = (add: CardSummary | null, remove: CardSummary | null) => (deckStats ? statChips(deckStats, tallyOf(add), tallyOf(remove)) : []);
   const statsPanel = deckStats
-    ? { report: deckStats, cards: journey.cards, actionFor: statAction, bracketAction, combosAction, preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null }
+    ? {
+        report: deckStats,
+        cards: journey.cards,
+        actionFor: statAction,
+        curveAction,
+        bracketAction,
+        combosAction,
+        preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null,
+      }
     : null;
 
   /** Offers a deck lookup when the deck's commander has no play data, remembering which commanders it checked. */
@@ -476,6 +445,7 @@ function DeckToolSession() {
             isPublic: true,
             ...(pending.bracket === null ? {} : { bracket: pending.bracket }),
             ...(pending.original ? { original: pending.original } : {}),
+            ...(pending.statChoices ? { statChoices: pending.statChoices } : {}),
           })
         : Promise.resolve(null)
     ).then((r) => {
@@ -562,14 +532,15 @@ function DeckToolSession() {
 
   /**
    * Takes a built deck into the tool: Upgrade goes through it card by card, the Deckbuilder edits it. It is a new deck,
-   * so an open account deck is let go first rather than overwritten.
+   * so an open account deck is let go first rather than overwritten. The answers the build page took for the lines the
+   * collection couldn't fill (ignore, or allow buying) go with it.
    */
-  async function openBuilt(text: string, next: ToolMode): Promise<boolean> {
+  async function openBuilt(text: string, next: ToolMode, statChoices: StatChoices): Promise<boolean> {
     if (deckBuild.state.status !== "ready") return false;
     editorHandle.current?.discard();
     if (tool.openDeck) tool.closeSavedDeck();
     const bracket = deckBuild.state.request.bracket;
-    const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null }, { recs: next === "upgrade" });
+    const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null, statChoices }, { recs: next === "upgrade" });
     if (!outcome.parsed) return false;
     deckBuild.reset();
     // Off the picker's address: a refresh now offers this deck back, instead of the commander picker.
@@ -581,8 +552,8 @@ function DeckToolSession() {
   }
 
   /** Save for Later: the built deck in the Deckbuilder with the name form open, as Upgrade's Save does. */
-  async function saveBuilt(text: string) {
-    if (await openBuilt(text, "edit")) setSaveAsked(true);
+  async function saveBuilt(text: string, statChoices: StatChoices) {
+    if (await openBuilt(text, "edit", statChoices)) setSaveAsked(true);
   }
 
   /**
@@ -649,6 +620,7 @@ function DeckToolSession() {
       isPublic: true,
       ...(tool.bracketOverride === null ? {} : { bracket: tool.bracketOverride }),
       original: analysis.deck,
+      statChoices: tool.statChoices,
     });
     setCopy(result.ok ? { status: "saved", name, href: editorUrl(result.data.code) } : { status: "error", message: result.error.message });
   }
@@ -675,13 +647,14 @@ function DeckToolSession() {
           onBracket={(bracket) => {
             if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
           }}
-          onUpgrade={async (text) => {
+          onChoice={deckBuild.choose}
+          onUpgrade={async (text, statChoices) => {
             deckBuild.accept();
-            await openBuilt(text, "upgrade");
+            await openBuilt(text, "upgrade", statChoices);
           }}
-          onSave={async (text) => {
+          onSave={async (text, statChoices) => {
             deckBuild.accept();
-            await saveBuilt(text);
+            await saveBuilt(text, statChoices);
           }}
           onPickAnother={() => {
             // Back from a fitted list goes to the list; back from a build goes to the commander picker.
@@ -916,6 +889,7 @@ function DeckToolSession() {
                   beforeSave={async () => (editorHandle.current ? editorHandle.current.flush() : null)}
                   collection={source}
                   defaultName={tool.deckName}
+                  statChoices={tool.statChoices}
                 />
               ) : undefined
             }
@@ -932,7 +906,7 @@ function DeckToolSession() {
               onChange={(next) => void changeMode(next)}
             />
             {/* Phones get the same choice as one icon beside the steps (`ViewToggle`), to save this row's height. */}
-            {mode === "upgrade" && journey.state?.phase !== "review" && (
+            {mode === "upgrade" && journey.state && hasViews(journey.state.phase) && (
               <div className="max-sm:hidden">
                 <Segmented
                   label="How to review cards"
@@ -948,44 +922,27 @@ function DeckToolSession() {
           </div>
           {mode === "upgrade" ? (
             journey.state && (
-              <StatPreviewProvider onChange={setStatPreview}>
+              <StatPreviewProvider onChange={setStatPreview} chipsFor={chipsFor}>
               <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
                 {/* scroll-mt clears the sticky deck bar when "Pick cuts" brings the steps back into view. */}
                 <div id={STEPS_ID} className="flex min-w-0 scroll-mt-24 flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
-                      <JourneyStepper phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={selectStep} />
+                      <JourneyStepper phases={journey.phases} phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
                     </div>
-                    {journey.state.phase !== "review" && <ViewToggle view={view} onChange={changeView} />}
+                    {hasViews(journey.state.phase) && <ViewToggle view={view} onChange={changeView} />}
                   </div>
                   <RoundBar canUndo={journey.canUndo} onUndo={journey.undo} onStartOver={journey.restart} save={roundSave} busy={committing || tool.stale} showSave={journey.state.phase !== "review"} />
-                  {journey.state.phase === "cut" &&
-                    (journey.bracketCheck ? (
-                      // A bracket change part way through made cards must-cuts: the step's Next becomes a choice.
-                      <BracketCheckPanel
-                        check={journey.bracketCheck}
-                        onCutAndContinue={journey.cutAndContinue}
-                        onRevert={() => {
-                          const previous = journey.revertCheck();
-                          if (previous !== undefined) tool.restoreBracket(previous);
-                        }}
-                      />
-                    ) : (
-                      <CutPhase
-                        journey={journey}
-                        cutState={tool.cut}
-                        view={view}
-                        deckGroups={deckGroups}
-                        trim={
-                          deckStats && analysis
-                            ? { stats: deckStats.stats, cardRoles: analysis.cardRoles, focus: trimFor, setFocus: setTrimFor }
-                            : undefined
-                        }
-                        onShowList={() => changeView("list")}
-                        onFinish={() => leaveCut(journey.cut.finish)}
-                        landSwap={landSwap}
-                      />
-                    ))}
+                  {journey.state.phase === "cut" && (
+                    <CutPhase
+                      journey={journey}
+                      cutState={tool.cut}
+                      view={view}
+                      deckGroups={deckGroups}
+                      trim={deckStats && analysis ? { stats: deckStats.stats, cardRoles: analysis.cardRoles } : undefined}
+                      onShowList={() => changeView("list")}
+                    />
+                  )}
                   {journey.state.phase === "add" && (
                     <AddPhase
                       journey={journey}
@@ -999,9 +956,8 @@ function DeckToolSession() {
                       }
                     />
                   )}
-                  {journey.state.phase === "replace" && (
-                    <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} landSwap={landSwap} />
-                  )}
+                  {journey.state.phase === "fix" && <FixPhase journey={journey} fix={fix} hasCollection={journey.add.hasCollection} />}
+                  {journey.state.phase === "replace" && <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />}
                   {/* Players who came with only a list are offered their collection at every step (Done has its own). */}
                   {source.kind === "none" && journey.state.phase !== "review" && (
                     <CollectionNudge href={collectionImportHref} step={journey.state.phase} />
@@ -1014,7 +970,10 @@ function DeckToolSession() {
                       stale={tool.stale}
                       save={roundSave}
                       onReanalyze={() => void commitJourney("reanalyze")}
-                      actionFor={statAction}
+                      fix={fix}
+                      choices={tool.statChoices}
+                      onChoice={tool.setStatChoice}
+                      collectionOnly={journey.add.collectionOnly}
                     >
                       {source.kind === "none" ? (
                         <CollectionNudge href={collectionImportHref} step="review" />
@@ -1033,7 +992,7 @@ function DeckToolSession() {
                 {statsPanel && (
                   <>
                     <DeckStatsRail className="hidden lg:flex" {...statsPanel} />
-                    <DeckStatsFooter className="lg:hidden" dock="lg" {...statsPanel} />
+                    <DeckStatsFooter className="lg:hidden" dock="lg" previewScore={previewScore} {...statsPanel} />
                   </>
                 )}
               </div>
@@ -1061,36 +1020,6 @@ function DeckToolSession() {
       )}
 
       <CommanderLookupSheet lookup={lookup} />
-      <Dialog open={confirmLands !== null} onOpenChange={(open) => !open && setConfirmLands(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <TriangleAlert aria-hidden className="size-5 text-warning" />
-              Low Land Count
-            </DialogTitle>
-            <DialogDescription>
-              This commander normally runs around {Math.round(landsLine?.target ?? 0)} lands.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Cancel
-              </Button>
-            </DialogClose>
-            <Button
-              type="button"
-              onClick={() => {
-                const go = confirmLands;
-                setConfirmLands(null);
-                go?.();
-              }}
-            >
-              Continue
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <Dialog open={journey.stepper.leaving !== null} onOpenChange={(open) => !open && journey.stepper.cancelLeave()}>
         <DialogContent>
           <DialogHeader>

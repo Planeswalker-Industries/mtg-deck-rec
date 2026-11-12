@@ -1,10 +1,10 @@
 import type { Bracket, CardId, CardSummary, ComboRef, FixCard, FixPool, StatChoices, StatTargets } from '../contract';
 import { gameChangerLimit } from '../formats/commander/bracket';
 import { COMMANDER_DECK_SIZE } from '../formats/commander/validate';
-import { cardsOutsideBand } from '../scoring/bands';
+import { cardsOutsideBand, upperEdge } from '../scoring/bands';
 import { curveBucket, isFrontLand, statCardType } from '../scoring/curve';
 import { isBasicLand } from './builder';
-import { applyCard, toTallyCard, type BracketInput, type DeckTally, type TallyCard } from './deck-tally';
+import { applyCard, cloneTally, toTallyCard, type BracketInput, type DeckTally, type TallyCard } from './deck-tally';
 import { colourlessLandsIn, colourTarget, manaBase, manaLetters, sourceCredit, type ColourlessLands } from './mana-base';
 
 /**
@@ -57,6 +57,8 @@ export interface FixInput {
   protectedIds: readonly CardId[];
   /** Main-deck cards no deck under these commanders may hold (not legal, outside their colours): the first line. */
   illegalIds: readonly CardId[];
+  /** A line `nextFixMove` tries before the others (Deck stats' "Fix" on that line). Plans keep their own order. */
+  focusLine?: string | undefined;
 }
 
 /** Why a line that is out of its band has no move left. */
@@ -147,16 +149,6 @@ const pairKey = (inId: CardId, outId: CardId) => `${inId}>${outId}`;
 /** 1 for an in card the collection doesn't supply, which sorts after those it does. */
 const bought = (c: Candidate) => (c.fix.buyFor === undefined ? 0 : 1);
 const byName = (a: Candidate, b: Candidate) => a.fix.card.name.localeCompare(b.fix.card.name) || a.fix.card.id - b.fix.card.id;
-
-const cloneTally = (tally: DeckTally): DeckTally => ({
-  ...tally,
-  roles: new Map(tally.roles),
-  curve: [...tally.curve],
-  types: new Map(tally.types),
-  main: new Map(tally.main),
-  commanderIds: new Set(tally.commanderIds),
-  commanders: [...tally.commanders],
-});
 
 const inDeck = (tally: DeckTally, id: CardId) => tally.main.has(id) || tally.commanderIds.has(id);
 
@@ -430,18 +422,43 @@ function start(input: FixInput): Work {
   };
 }
 
-function nextMove(work: Work): { move: FixMove; in: Candidate; out: Candidate } | null {
+function nextMove(work: Work, focusLine?: string): { move: FixMove; in: Candidate; out: Candidate } | null {
   const snap = snapshot(work);
-  for (const line of brokenLines(snap)) {
+  const broken = brokenLines(snap);
+  const lines = focusLine === undefined ? broken : [...broken.filter((l) => l.line === focusLine), ...broken.filter((l) => l.line !== focusLine)];
+  for (const line of lines) {
     const pair = moveFor(work, snap, line);
     if (pair) return { move: { line: line.line, in: pair.in.fix.card, out: pair.out.fix.card }, ...pair };
   }
   return null;
 }
 
-/** The next move: the first line, in order, that has a valid pair. Null when no line has one. */
+/** The next move: the first line, in order (`focusLine` first), that has a valid pair. Null when no line has one. */
 export function nextFixMove(input: FixInput): FixMove | null {
-  return nextMove(start(input))?.move ?? null;
+  return nextMove(start(input), input.focusLine)?.move ?? null;
+}
+
+/**
+ * Whether one more copy of a card would leave a line above its band: lands and basic lands, its roles, and for a
+ * nonland its card type and curve bar. Add deals no such card, so it never breaks a line that was in line. A line the
+ * player ignores doesn't count.
+ */
+export function addBreaksBand(tally: DeckTally, targets: StatTargets, card: TallyCard, choices: StatChoices = {}): boolean {
+  const roleTargets = new Map(targets.roles.map((r) => [r.roleId, r.target]));
+  const typeTargets = new Map(targets.types.map((t) => [t.cardType, t.target]));
+  const over = (line: string, held: number, target: number | undefined) =>
+    target !== undefined && choices[line] !== 'ignore' && held + 1 > upperEdge(target);
+  return bandKeys(card).some((key) => {
+    if (key === LANDS) return over(LANDS, tally.lands, targets.lands);
+    if (key === BASIC_LANDS) return over(BASIC_LANDS, tally.basicLands, targets.basicLands);
+    if (key.startsWith(CURVE_PREFIX)) {
+      const bar = Number(key.slice(CURVE_PREFIX.length));
+      return over(CURVE, tally.curve[bar] ?? 0, targets.curve[bar]);
+    }
+    const role = roleTargets.get(key);
+    if (role !== undefined) return over(key, tally.roles.get(key) ?? 0, role);
+    return over(key, tally.types.get(key) ?? 0, typeTargets.get(key));
+  });
 }
 
 /** Every move, each found on the deck as the moves before it leave it: what "Fix the rest for me" previews. */

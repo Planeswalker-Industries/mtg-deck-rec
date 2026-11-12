@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
-import type { Bracket, CardId, DeckAnalysis, DeckId, DeckInput } from "@mtg/core/contract";
+import type { Bracket, CardId, DeckAnalysis, DeckId, DeckInput, StatChoices } from "@mtg/core/contract";
 import { collectionShortfall, type CollectionShortfall } from "@mtg/core/collection";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import type { CollectionSource } from "@/components/collection/use-collection-source";
@@ -48,7 +48,10 @@ export function SaveDeckButton({
   beforeSave,
   collection,
   defaultName,
+  statChoices,
 }: {
+  /** The player's choices for Deck stats lines, saved with the deck. */
+  statChoices?: StatChoices | undefined;
   analysis: DeckAnalysis;
   /**
    * The bracket the player chose, stored with the deck so reopening it comes back the same. Null while the bracket is
@@ -80,7 +83,7 @@ export function SaveDeckButton({
 
   /** Keeps the deck for after sign-in and goes there. */
   function signInToSave(deckName: string, deck: DeckInput) {
-    stashPendingSave({ name: deckName, deck, bracket, original });
+    stashPendingSave({ name: deckName, deck, bracket, original, statChoices });
     router.push(signInToSaveHref() as Route);
   }
 
@@ -105,6 +108,7 @@ export function SaveDeckButton({
       isPublic: true,
       ...(bracket === null ? {} : { bracket }),
       ...(original ? { original } : {}),
+      ...(statChoices ? { statChoices } : {}),
     });
     setBusy(false);
     if (result.ok) {

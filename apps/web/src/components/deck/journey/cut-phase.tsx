@@ -6,9 +6,7 @@ import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, CutReason, CutResult } from "@mtg/core/contract";
 import { lastResortCuts, trimCuts, type RoomCard, type StatLine } from "@mtg/core/journey";
 import { isFrontLand } from "@mtg/core/scoring";
-import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { cutReasonLabel, cutReasonShortLabel } from "@/lib/labels";
 import { DeckGroupsPanel } from "../deck-groups-panel";
 import { PanelError } from "../panel-state";
@@ -17,7 +15,6 @@ import type { DeckGroups } from "../use-deck-groups";
 import type { Async } from "../use-deck-tool";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
 import { LandCuts, type LandCount } from "./land-cuts";
-import { LandSwaps, type LandSwapNeed } from "./land-swaps";
 import { SingleSwipe, SwipeDone } from "./single-swipe";
 import type { DeckJourney } from "./use-deck-journey";
 
@@ -36,18 +33,10 @@ function reasonText(reasons: readonly CutReason[]): string {
   return shownReasons(reasons).map((reason) => cutReasonLabel[reason]).join(". ");
 }
 
-/** The role Deck stats asked Cut to trim ("Trim removal"). */
-export interface TrimFocus {
-  roleId: string;
-  label: string;
-}
-
 /** What trimming reads from Deck stats: every stat line (lands too), and each analyzed card's tracked roles. */
 export interface TrimInputs {
   stats: readonly StatLine[];
   cardRoles: Readonly<Record<number, readonly string[]>>;
-  focus: TrimFocus | null;
-  setFocus: (focus: TrimFocus | null) => void;
 }
 
 const s = (n: number) => (n === 1 ? "" : "s");
@@ -63,15 +52,14 @@ function ComboWarning({ result }: { result: string }) {
 }
 
 /**
- * Cut, after Add: bring the deck back to 100. Cards that break a rule come first (the cut list's mandatory ones); then
- * the trim (`trimCuts`): cards in the roles the deck has too much of, weakest first, never one filling a role it is short
- * of. Swiping deals them one at a time (✂ cut, ✓ keep). While the deck is still over 100 after that, Cut offers its lands
- * together, as −/+ counts, and then (or once the player passes on lands) deals the rest of the deck (`lastResortCuts`)
- * until it is at 100. The round can't go on to Swap over 100, and goes back to Add below it. The list shows the whole
+ * Cut, the first step of a deck over 100: bring it back to 100, and no further. Cards that break a rule come first
+ * (the cut list's mandatory ones); then the trim (`trimCuts`): cards in the roles the deck has too much of, weakest
+ * first, never one filling a role it is short of. Swiping deals them one at a time (✂ cut, ✓ keep). While the deck is
+ * still over 100 after that, Cut offers its lands together, as −/+ counts, and then (or once the player passes on lands)
+ * deals the rest of the deck (`lastResortCuts`) until it is at 100. The round can't go on to Fix over 100; what is still
+ * off at 100 (a rule break left in, a line out of its band) is Fix's to trade one card for one. The list shows the whole
  * deck with the cuts crossed out; tapping a card cuts it (a copy a tap for basic lands, which also get −/+ counts), and
  * tapping a crossed-out one puts it back.
- *
- * "Trim …" in Deck stats narrows the trim to one role, until that role is back on target.
  */
 export function CutPhase({
   journey,
@@ -80,8 +68,6 @@ export function CutPhase({
   deckGroups,
   trim,
   onShowList,
-  onFinish,
-  landSwap = null,
 }: {
   journey: DeckJourney;
   cutState: Async<CutResult>;
@@ -91,13 +77,8 @@ export function CutPhase({
   trim?: TrimInputs;
   /** Switches to the list view, to cut any card by hand. */
   onShowList: () => void;
-  /** Leaves Cut (to Swap, or back to Add below 100); the deck tool checks the land count first. */
-  onFinish: () => void;
-  /** The deck runs too many lands or basics: at 100, Cut offers to trade them rather than saying nothing needs cutting (T083). */
-  landSwap?: LandSwapNeed | null;
 }) {
-  const { recommended, undecided, isMarked, cutCopies, owed: owedAfterRuleBreaks, open, restore, toggle } = journey.cut;
-  const focus = trim?.focus ?? null;
+  const { recommended, undecided, isMarked, cutCopies, owed: owedAfterRuleBreaks, restore, toggle, take, finish } = journey.cut;
   /** The player passed on cutting lands, so Cut deals the rest of the deck instead. */
   const [landsPassed, setLandsPassed] = useState(false);
 
@@ -119,7 +100,7 @@ export function CutPhase({
   const mandatoryIds = new Set<number>(recommended.map((sug) => sug.card.id));
   // Combo pieces are never trimmed or dealt as a last resort: cutting one is the player's call, with a warning.
   const pieces = journey.protectedPieces;
-  const spared = new Set<CardId>([...state.kept, ...state.adds.map((c) => c.id), ...pieces.keys()]);
+  const spared = new Set<CardId>([...state.kept, ...pieces.keys()]);
   const withWarning = (card: CardSummary, text: string) => {
     const result = pieces.get(card.id);
     return result ? (
@@ -158,22 +139,17 @@ export function CutPhase({
         landsOver: landsLine ? !landsLine.ok && landsLine.value > landsLine.target : false,
         cutScores,
         spared,
-        focusRoleId: focus?.roleId ?? null,
+        focusRoleId: null,
       })
     : [];
   // Once the trim runs out, lands are offered together (the land step); after them, or when the player passes on them,
-  // the rest of the deck is dealt until it is at 100. Trimming one role stops when the role is on target instead.
-  const landStep = !focus && !landsPassed && lands.some((land) => land.left > 0);
-  const lastResortIds = focus || landStep ? [] : lastResortCuts({ cards: roomCards, roles: roleRows, cutScores, spared });
+  // the rest of the deck is dealt until it is at 100.
+  const landStep = !landsPassed && lands.some((land) => land.left > 0);
+  const lastResortIds = landStep ? [] : lastResortCuts({ cards: roomCards, roles: roleRows, cutScores, spared });
   const fromTrim = new Set<CardId>(trimIds);
   const trimQueue: CardSummary[] = [...new Set([...trimIds, ...lastResortIds])]
     .map((id) => journey.cards.get(id))
     .filter((card): card is CardSummary => card !== undefined);
-
-  const focusRow = focus ? roles.find((r) => r.key === focus.roleId) : undefined;
-  // Deck stats re-tallies as cards go, so what the focus role is still over by is read live.
-  const focusLeft = focusRow ? Math.max(0, Math.floor(focusRow.value - focusRow.target)) : 0;
-  const trimsToDeal = focus ? focusLeft : trimOwed;
 
   /**
    * Why a trimmed card is offered: its cut reasons when it has them, else the over-full role it fills. A last-resort
@@ -188,48 +164,26 @@ export function CutPhase({
     return over ? `The deck runs ${over.value} ${over.label.toLowerCase()}; about ${Math.round(over.target)} is typical.` : "Its job is one the deck already has plenty of.";
   }
 
-  /** Where leaving Cut goes: back to Add while the deck is below 100 (Swap trades one for one), else on to Swap. */
-  const finishLabel = open > 0 ? `Back to Add: ${open} to fill` : "Next";
+  const finishLabel = "Next: fix";
   const landsTally = landsLine ? `${landsLine.value} lands; about ${Math.round(landsLine.target)} is typical.` : "";
 
-  const status = focus
-    ? `Trimming ${focus.label.toLowerCase()}: ${focusRow?.value ?? 0} in the deck, about ${Math.round(focusRow?.target ?? 0)} is typical.`
-    : owed > 0
+  const status =
+    owed > 0
       ? `Cut ${owed} to get back to 100${undecided.length > 0 ? `, starting with ${undecided.length} that break${undecided.length === 1 ? "s" : ""} a rule` : ""}.`
-      : undecided.length > 0
-        ? `${undecided.length} card${s(undecided.length)} here break${undecided.length === 1 ? "s" : ""} a rule for this deck.`
-        : open > 0
-          ? `The deck is ${COMMANDER_DECK_SIZE - size} below 100. Add fills the open slots before Swap.`
-          : size < COMMANDER_DECK_SIZE
-            ? `The deck is ${COMMANDER_DECK_SIZE - size} below 100. Nothing needs cutting.`
-          : state.cuts.length > 0
-            ? "Back at 100."
-            : "The deck is at 100. Nothing needs cutting.";
-  const statusLine = (
-    <StepStatus count={`${size} / ${COMMANDER_DECK_SIZE}`}>
-      {status}
-      {focus && (
-        <>
-          {" "}
-          <button type="button" className={cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer")} onClick={() => trim?.setFocus(null)}>
-            Stop trimming
-          </button>
-        </>
-      )}
-    </StepStatus>
-  );
-  const landCuts = (shown: readonly LandCount[], label: string) => (
-    <LandCuts lands={shown} label={label} onCut={(card) => journey.dispatch({ type: "cut", card })} onRestore={restore} />
-  );
+      : state.cuts.length > 0
+        ? "Back at 100."
+        : "The deck is at 100. Nothing needs cutting.";
+  const statusLine = <StepStatus count={`${size} / ${COMMANDER_DECK_SIZE}`}>{status}</StepStatus>;
+  const landCuts = (shown: readonly LandCount[], label: string) => <LandCuts lands={shown} label={label} onCut={take} onRestore={restore} />;
 
   if (view === "list") {
     // The first trims the deck owes are captioned, so the list says where to start.
-    const suggested = new Set<number>(trimQueue.slice(0, trimsToDeal).map((c) => c.id));
+    const suggested = new Set<number>(trimQueue.slice(0, trimOwed).map((c) => c.id));
     return (
       <div className="flex flex-col gap-3">
         <PhaseIntro title="Cut">
           Crossed-out cards break a rule for this deck. Tap any card to cut it, or a crossed-out one to keep it. Basic
-          lands count down with − and +.
+          lands count down with − and +. Cut stops at 100.
         </PhaseIntro>
         {statusLine}
         {basics.length > 0 && (
@@ -268,11 +222,7 @@ export function CutPhase({
             return suggested.has(card.id) && !isMarked(card) ? <span className="font-semibold">Suggested trim</span> : undefined;
           }}
         />
-        <NextBar
-          label={owedAfterRuleBreaks > 0 ? `Cut ${owedAfterRuleBreaks} more first` : finishLabel}
-          onNext={onFinish}
-          disabled={owedAfterRuleBreaks > 0}
-        >
+        <NextBar label={owedAfterRuleBreaks > 0 ? `Cut ${owedAfterRuleBreaks} more first` : finishLabel} onNext={finish} disabled={owedAfterRuleBreaks > 0}>
           {size} / {COMMANDER_DECK_SIZE}
         </NextBar>
       </div>
@@ -280,21 +230,21 @@ export function CutPhase({
   }
 
   const mandatoryNext = undecided[0];
-  const trimNext = trimsToDeal > 0 ? trimQueue[0] : undefined;
+  const trimNext = trimOwed > 0 ? trimQueue[0] : undefined;
   const next = mandatoryNext?.card ?? trimNext;
   const cutCount = state.cuts.length;
 
   return (
     <div className="flex flex-col gap-3">
       <PhaseIntro title="Cut" brief="Swipe right to cut, left to keep.">
-        Cards that break a rule, then the weakest cards in the roles the deck has too much of.
+        Cards that break a rule, then the weakest cards in the roles the deck has too much of, until the deck is at 100.
       </PhaseIntro>
       {statusLine}
       {next ? (
         <SingleSwipe
           card={next}
           position={cutCount + 1}
-          total={cutCount + undecided.length + Math.min(trimsToDeal, trimQueue.length)}
+          total={cutCount + undecided.length + Math.min(trimOwed, trimQueue.length)}
           label="Cards to cut"
           tone="cut"
           previewAs="remove"
@@ -307,13 +257,13 @@ export function CutPhase({
           acceptWord="Cut"
           passWord="Keep"
           caption={withWarning(next, mandatoryNext ? reasonText(mandatoryNext.reasons) : trimCaption(next))}
-          onAccept={() => journey.dispatch({ type: "cut", card: next })}
+          onAccept={() => take(next)}
           onPass={() => journey.dispatch({ type: "keep", cardId: next.id })}
           footer={
             // Moving on needs the deck at 100, so the way out appears once the cuts on the table get it there.
             owedAfterRuleBreaks === 0 ? (
-              <Button type="button" size="sm" variant="link" onClick={onFinish}>
-                {undecided.length > 0 ? "Cut the rest and move on" : "Done cutting: go to swaps"}
+              <Button type="button" size="sm" variant="link" onClick={finish}>
+                {undecided.length > 0 ? "Cut the rest and move on" : "Done cutting: go to Fix"}
               </Button>
             ) : undefined
           }
@@ -334,43 +284,25 @@ export function CutPhase({
           </Button>
           {landCuts(lands, "Lands")}
         </section>
-      ) : owed > 0 && !focus ? (
+      ) : owed > 0 ? (
         <SwipeDone
           title="You kept every card left"
-          message={`The deck is at ${size}. Swap trades one card for one, so the deck has to be at 100 first: pick ${owed} more from the list.`}
+          message={`The deck is at ${size}. Fix and Swap trade one card for one, so the deck has to be at 100 first: pick ${owed} more from the list.`}
         >
           <Button type="button" size="lg" onClick={onShowList}>
             Pick from the list
           </Button>
         </SwipeDone>
-      ) : open > 0 && !focus ? (
-        <SwipeDone
-          title={`The deck is at ${size}`}
-          message={`Swap trades one card for one, so fill the ${open} open slot${s(open)} in Add first.`}
-        >
-          <Button type="button" size="lg" onClick={onFinish}>
-            Back to Add
-          </Button>
-          <Button type="button" size="lg" variant="outline" onClick={onShowList}>
-            Put cards back from the list
-          </Button>
-        </SwipeDone>
-      ) : landSwap && !focus && size === COMMANDER_DECK_SIZE ? (
-        <LandSwaps journey={journey} need={landSwap} doneLabel="Done: go to swaps" onDone={onFinish} />
       ) : (
         <SwipeDone
-          title={focus ? `${focus.label} trimmed` : size > COMMANDER_DECK_SIZE ? `The deck is at ${size}` : cutCount > 0 ? "Looks good." : "Nothing needs cutting"}
+          title={cutCount > 0 ? "Back at 100" : "Nothing needs cutting"}
           message={
-            focus
-              ? "Add something the deck is short of with the cards that opened, or go on to swaps."
-              : cutCount > 0
-                ? `${cutCount} card${s(cutCount)} cut. Next, swap weaker cards for better ones.`
-                : recommended.length === 0
-                  ? "Every card is legal here and the deck isn't over 100. Next, swap weaker cards for better ones."
-                  : "Next, swap weaker cards for better ones."
+            cutCount > 0
+              ? `${cutCount} card${s(cutCount)} cut. Next, fix the lines Deck stats shows as off.`
+              : "The deck is at 100. Next, fix the lines Deck stats shows as off."
           }
         >
-          <Button type="button" size="lg" onClick={onFinish}>
+          <Button type="button" size="lg" onClick={finish}>
             {finishLabel}
           </Button>
         </SwipeDone>

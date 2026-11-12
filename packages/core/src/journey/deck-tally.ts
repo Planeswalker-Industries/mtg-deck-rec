@@ -119,6 +119,17 @@ export function applyCard(tally: DeckTally, card: TallyCard, quantity: number): 
   if (card.gameChanger) tally.gameChangers += quantity;
 }
 
+/** A copy of a tally that can be moved without touching the original. */
+export const cloneTally = (tally: DeckTally): DeckTally => ({
+  ...tally,
+  roles: new Map(tally.roles),
+  curve: [...tally.curve],
+  types: new Map(tally.types),
+  main: new Map(tally.main),
+  commanderIds: new Set(tally.commanderIds),
+  commanders: [...tally.commanders],
+});
+
 /** A full count: only when the deck the round starts from changes (a new analysis). */
 export function buildTally(main: readonly TallyEntry[], commanders: readonly TallyCard[]): DeckTally {
   const tally = emptyTally();
@@ -330,6 +341,33 @@ export function gradeDeck(
     level,
     mana: { hardToCast: mana.hardToCast, byTurn: mana.byTurn, deck },
   };
+}
+
+/** One copy of a card in, one out, or both: a card on screen answered, or a Fix move. */
+export interface TallyMove {
+  in: TallyCard | null;
+  out: TallyCard | null;
+}
+
+/**
+ * The score with `moves` made, on a copy of the tally: what the Deck stats footer shows for the card on screen and the
+ * auto-fix preview for the moves selected. Graded in full, so the curve and the colour rows count exactly.
+ */
+export function scoreWithMoves(
+  tally: DeckTally,
+  targets: StatTargets,
+  bracket: BracketInput,
+  choices: StatChoices,
+  moves: readonly TallyMove[],
+): Pick<DeckStatsReport, 'okCount' | 'total' | 'level'> {
+  const next = cloneTally(tally);
+  for (const move of moves) {
+    if (move.in) applyCard(next, move.in, 1);
+    // The deck's own copy goes out, so its roles are the ones it was counted with.
+    if (move.out) applyCard(next, next.main.get(move.out.id)?.card ?? move.out, -1);
+  }
+  const { okCount, total, level } = gradeDeck(next, targets, bracket, next, choices);
+  return { okCount, total, level };
 }
 
 /**
