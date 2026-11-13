@@ -45,6 +45,13 @@ export const TEXT_LINK =
   "text-primary underline decoration-primary/50 underline-offset-2 transition-colors hover:decoration-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 /**
+ * A word that opens its own explanation (a switch's "Public"): the text stays white, a blue dotted underline says it can
+ * be pressed and that it explains rather than goes somewhere. Tapped or clicked, never hover-only: phones have no hover.
+ */
+export const HINT_TEXT =
+  "underline decoration-primary decoration-dotted decoration-2 underline-offset-4 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+/**
  * A link that credits an artist: muted white, not blue, so it never competes with the page's priority actions. Still
  * underlined, so it reads as a link.
  */
