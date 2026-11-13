@@ -1,4 +1,5 @@
 import type { CommanderLegality } from "@mtg/core/contract";
+import { swapMatchLabel } from "@mtg/core/scoring";
 import { cn } from "cn";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -153,16 +154,21 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
           <PocketGrid
             zoomable
             label={`Cards that do the same job as ${name}`}
-            items={alternatives.suggestions.map((s) => ({
-              card: s.card,
-              href: `/card/${s.card.slug}`,
-              caption: (
-                <span className="flex flex-col items-start gap-0.5">
-                  {s.card.gameChanger && <GameChangerBadge />}
-                  <span className="text-muted-foreground font-mono">{describeCostDelta(s.costDelta)}</span>
-                </span>
-              ),
-            }))}
+            items={alternatives.suggestions.map((s) => {
+              // A looser rung of the swap ladder says which one it is (T088).
+              const rungLabel = swapMatchLabel(s, card);
+              return {
+                card: s.card,
+                href: `/card/${s.card.slug}`,
+                caption: (
+                  <span className="flex flex-col items-start gap-0.5">
+                    {s.card.gameChanger && <GameChangerBadge />}
+                    <span className="text-muted-foreground font-mono">{describeCostDelta(s.costDelta)}</span>
+                    {rungLabel && <span className="text-muted-foreground">{rungLabel}</span>}
+                  </span>
+                ),
+              };
+            })}
           />
         )}
       </section>

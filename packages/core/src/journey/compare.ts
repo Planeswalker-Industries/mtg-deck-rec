@@ -1,7 +1,7 @@
 /**
- * How a replacement compares with the card it would replace, as a few better/worse marks the Swap step shows under the
- * pair ("1 cheaper to cast", "Popular"). Pure: the panel supplies what it knows about each card, and a
- * fact either card lacks makes no mark rather than a guess.
+ * How a card coming in compares with the card going out, as a few short marks shown under the pair in Fix and Swap
+ * ("Cost" up, "Speed" up, "Popular"). The arrow says which way the thing moves, the tone whether that is good. Pure:
+ * the caller supplies what it knows about each card, and a fact either card lacks makes no mark rather than a guess.
  */
 
 /** What comparing reads from each card. */
@@ -10,29 +10,27 @@ export interface CompareCard {
   /** The front face's type line decides speed: an instant or a card with flash beats one cast at sorcery speed. */
   typeLine: string;
   keywords: readonly string[];
-  /** Estimated price in USD, null when unpriced. */
-  priceUsd: number | null;
   /** Share of this commander's decks that run the card (0..1), null without play data. */
   inclusionRate: number | null;
-  /** Printed power and toughness, null for a non-creature; "*" and the like make no mark. */
+  /** Printed power and toughness, null for a non-creature or when unknown; "*" and the like make no mark. */
   power: string | null;
   toughness: string | null;
-  /** The player owns this card: what it costs to buy doesn't matter, so it makes no price mark. */
-  owned?: boolean;
 }
 
 export type CompareTone = 'better' | 'worse';
 
 export interface CompareMark {
   /** Stable key per kind of mark, for lists. */
-  key: 'cost' | 'price' | 'play' | 'speed' | 'body';
+  key: 'cost' | 'play' | 'speed' | 'body';
   tone: CompareTone;
-  /** Short and plain: "1 cheaper to cast", "$2.10 dearer", "Instant speed". */
+  /** Which way the thing moves: more (a higher cost, a bigger body) is up. */
+  direction: 'up' | 'down';
+  /** One or two words: "Cost", "Speed", "Body", "Popular", "Rarely played". */
   label: string;
+  /** The specifics, for screen readers: "1 more to cast", "6/6 body". */
+  detail: string;
 }
 
-/** Price gaps under this many dollars are noise on an estimate and make no mark. */
-export const PRICE_MARK_MIN_USD = 0.5;
 /** Play-rate gaps under this share (five points) are noise and make no mark. */
 export const PLAY_MARK_MIN_SHARE = 0.05;
 
@@ -46,10 +44,9 @@ function speedOf(card: CompareCard): Speed {
   return 1;
 }
 
-const usd = (n: number) => `$${n.toFixed(2)}`;
 const whole = (s: string | null): number | null => (s !== null && /^\d+$/.test(s) ? Number(s) : null);
 
-/** The marks for putting `incoming` in place of `outgoing`, in a fixed order: cost, speed, body, play, price. */
+/** The marks for putting `incoming` in place of `outgoing`, in a fixed order: cost, speed, body, play. Price makes no mark. */
 export function compareCards(outgoing: CompareCard, incoming: CompareCard): CompareMark[] {
   const marks: CompareMark[] = [];
 
@@ -59,31 +56,32 @@ export function compareCards(outgoing: CompareCard, incoming: CompareCard): Comp
     const cost = incoming.manaValue - outgoing.manaValue;
     if (cost !== 0) {
       const n = Math.abs(cost);
-      marks.push(cost < 0 ? { key: 'cost', tone: 'better', label: `${n} cheaper to cast` } : { key: 'cost', tone: 'worse', label: `${n} more to cast` });
+      marks.push(
+        cost < 0
+          ? { key: 'cost', tone: 'better', direction: 'down', label: 'Cost', detail: `${n} cheaper to cast` }
+          : { key: 'cost', tone: 'worse', direction: 'up', label: 'Cost', detail: `${n} more to cast` },
+      );
     }
     const speed = speedOf(incoming) - speedOf(outgoing);
-    if (speed > 0) marks.push({ key: 'speed', tone: 'better', label: 'Instant speed' });
-    else if (speed < 0) marks.push({ key: 'speed', tone: 'worse', label: 'Sorcery speed' });
+    if (speed > 0) marks.push({ key: 'speed', tone: 'better', direction: 'up', label: 'Speed', detail: 'instant speed' });
+    else if (speed < 0) marks.push({ key: 'speed', tone: 'worse', direction: 'down', label: 'Speed', detail: 'sorcery speed' });
   }
 
   const [op, ot, ip, it] = [whole(outgoing.power), whole(outgoing.toughness), whole(incoming.power), whole(incoming.toughness)];
   if (op !== null && ot !== null && ip !== null && it !== null && (ip !== op || it !== ot)) {
-    const label = `${ip}/${it} body`;
-    if (ip >= op && it >= ot) marks.push({ key: 'body', tone: 'better', label: `Bigger: ${label}` });
-    else if (ip <= op && it <= ot) marks.push({ key: 'body', tone: 'worse', label: `Smaller: ${label}` });
+    const detail = `${ip}/${it} body`;
+    if (ip >= op && it >= ot) marks.push({ key: 'body', tone: 'better', direction: 'up', label: 'Body', detail });
+    else if (ip <= op && it <= ot) marks.push({ key: 'body', tone: 'worse', direction: 'down', label: 'Body', detail });
   }
 
   if (outgoing.inclusionRate !== null && incoming.inclusionRate !== null) {
     const gap = incoming.inclusionRate - outgoing.inclusionRate;
     if (Math.abs(gap) >= PLAY_MARK_MIN_SHARE) {
-      marks.push(gap > 0 ? { key: 'play', tone: 'better', label: 'Popular' } : { key: 'play', tone: 'worse', label: 'Rarely played' });
-    }
-  }
-
-  if (!incoming.owned && outgoing.priceUsd !== null && incoming.priceUsd !== null) {
-    const gap = incoming.priceUsd - outgoing.priceUsd;
-    if (Math.abs(gap) >= PRICE_MARK_MIN_USD) {
-      marks.push(gap < 0 ? { key: 'price', tone: 'better', label: `${usd(-gap)} cheaper` } : { key: 'price', tone: 'worse', label: `${usd(gap)} dearer` });
+      marks.push(
+        gap > 0
+          ? { key: 'play', tone: 'better', direction: 'up', label: 'Popular', detail: 'played more with this commander' }
+          : { key: 'play', tone: 'worse', direction: 'down', label: 'Rarely played', detail: 'rarely played with this commander' },
+      );
     }
   }
 

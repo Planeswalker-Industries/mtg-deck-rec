@@ -53,7 +53,7 @@ export const HARD_CUT_REASONS: ReadonlySet<CutReason> = new Set([
 
 export const emptySwapMessage: Record<NonNullable<SwapResult["emptyReason"]>, string> = {
   NO_TAGS_ON_TARGET: "We don't know what this card does yet, so we can't suggest replacements for it.",
-  NOTHING_OWNED_FITS: "Nothing in your collection does a similar job.",
+  NOTHING_OWNED_FITS: "No valid swaps right now.",
   NO_CANDIDATES: "No legal replacements fit this deck.",
 };
 

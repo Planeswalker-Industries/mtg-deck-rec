@@ -60,7 +60,9 @@ export function useSwipeRater({
   startAt,
   preferred,
   cache,
+  skipEmpty = mode === "rater",
   onFinish,
+  onNothingDealt,
 }: {
   targets: readonly RaterTarget[];
   context: RecContext;
@@ -89,7 +91,17 @@ export function useSwipeRater({
    * sitting reopened on the same list (the player went back a step and returned) asks for nothing it already has.
    */
   cache?: Map<CardId, Candidates> | undefined;
+  /**
+   * Step over a card whose replacements came back empty. The rater always does (nothing to rate); the deck tool's
+   * swipe sitting asks for it (T088), its list view doesn't: a tapped card says why it has none.
+   */
+  skipEmpty?: boolean | undefined;
   onFinish: () => void;
+  /**
+   * The sitting ran out of cards without ever dealing a replacement (every card was stepped over). Called in place of
+   * `onFinish` when given, so the host can say so rather than move on.
+   */
+  onNothingDealt?: (() => void) | undefined;
 }) {
   const [targetIndex, setTargetIndex] = useState(() =>
     startAt === undefined ? 0 : Math.max(0, targets.findIndex((t) => t.card.id === startAt)),
@@ -102,9 +114,12 @@ export function useSwipeRater({
   const sessionId = useRef<string | null>(null);
   /** Deck tool: each card's replacements as recorded for the accept rate (T065), once per sitting. */
   const batches = useRef(new Map<number, RecBatch>());
+  /** Whether this sitting has put a replacement in front of the player. */
+  const dealt = useRef(false);
 
   // Cards to step over come off the list as their turn comes, rather than out of it: the list is dealt by position.
-  // The rater also passes over cards that turn out to have no replacements: there's nothing to rate.
+  // A sitting that skips empties also passes over cards that turn out to have no replacements: there's nothing to
+  // rate, or to swap in.
   let index = targetIndex;
   while (index < targets.length) {
     const card = targets[index]!.card;
@@ -112,7 +127,7 @@ export function useSwipeRater({
       index++;
       continue;
     }
-    if (mode !== "rater") break;
+    if (!skipEmpty) break;
     const r = results.get(card.id);
     if (r?.status !== "ready" || r.suggestions.length > 0) break;
     index++;
@@ -120,8 +135,10 @@ export function useSwipeRater({
   const allSkipped = targets.length > 0 && index >= targets.length;
 
   useEffect(() => {
-    if (allSkipped) onFinish();
-  }, [allSkipped, onFinish]);
+    if (!allSkipped) return;
+    if (!dealt.current && onNothingDealt) onNothingDealt();
+    else onFinish();
+  }, [allSkipped, onFinish, onNothingDealt]);
 
   useEffect(() => {
     for (const { card } of targets.slice(index, index + PRELOAD)) {
@@ -155,6 +172,10 @@ export function useSwipeRater({
   const first = target?.card.id === startAt ? offered.find((s) => s.card.id === preferred) : undefined;
   const candidates = first ? [first, ...offered.filter((s) => s !== first)] : offered;
   const candidate = candidates[candidateIndex] ?? null;
+  const dealing = candidate !== null;
+  useEffect(() => {
+    if (dealing) dealt.current = true;
+  }, [dealing]);
 
   // The deck tool records a card's replacements the first time this sitting deals them (the rater has votes instead).
   const dealtIds = candidates.map((c) => c.card.id).join(",");

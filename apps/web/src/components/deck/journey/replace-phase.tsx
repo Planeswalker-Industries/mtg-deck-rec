@@ -7,7 +7,7 @@ import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
 import type { JourneySwap } from "@mtg/core/journey";
 import { displayName } from "@/lib/cards";
-import { cutReasonShortLabel } from "@/lib/labels";
+import { cutReasonShortLabel, emptySwapMessage } from "@/lib/labels";
 import { PanelError } from "../panel-state";
 import { ShuffleDeck } from "../shuffle-deck";
 import { SwipeRater } from "../swipe-rater";
@@ -53,6 +53,8 @@ export function ReplacePhase({
   const [focus, setFocus] = useState<CardId | null>(null);
   /** A picked swap the player tapped to take back: the sitting reopens on its card. Belongs to one version of the list. */
   const [reopened, setReopened] = useState<{ targetId: CardId; replacementId: CardId; version: number; n: number } | null>(null);
+  /** The list version whose swipe sitting ended without dealing a replacement: no open card had one on any rung (T088). */
+  const [nothingDealt, setNothingDealt] = useState<number | null>(null);
   const sitting = useRef<HTMLDivElement>(null);
   const toReview = () => journey.goTo("review");
   const context = journey.workingContext;
@@ -146,8 +148,18 @@ export function ReplacePhase({
       </section>
     ) : null;
 
+  // A sitting that dealt nothing says there was nothing to deal, not that the player has seen every card.
+  const noSwaps = nothingDealt === journey.replace.version && open.length > 0;
   const nothingLeft = (
-    <SwipeDone message={targets.length === 0 ? "Nothing left that something else does clearly better." : "That's every card worth a second look."}>
+    <SwipeDone
+      message={
+        targets.length === 0
+          ? "Nothing left that something else does clearly better."
+          : noSwaps
+            ? emptySwapMessage.NOTHING_OWNED_FITS
+            : "That's every card worth a second look."
+      }
+    >
       <Button type="button" size="lg" onClick={toReview}>
         Next: finish
       </Button>
@@ -212,7 +224,7 @@ export function ReplacePhase({
   return (
     <div className="flex flex-col gap-4" style={SWIPE_CHROME}>
       {intro}
-      {open.length === 0 ? (
+      {open.length === 0 || nothingDealt === journey.replace.version ? (
         nothingLeft
       ) : (
         // Keyed by the targets' version: new settings ask for new targets, and replacements already fetched were made
@@ -232,7 +244,11 @@ export function ReplacePhase({
             onDecline={onDecline}
             declined={declined}
             skipTarget={skipTarget}
+            // A card with no replacement on any rung is stepped over, never dealt empty; when that is every card, the
+            // step says so and waits rather than move on to Finish by itself.
+            skipEmpty
             onFinish={toReview}
+            onNothingDealt={() => setNothingDealt(journey.replace.version)}
           />
         </div>
       )}

@@ -1,10 +1,10 @@
 import { test as withoutOfferSkip } from "@playwright/test";
-import { expect, openSwap, test, type Page } from "./fixtures";
+import { expect, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
 
 /** Tailwind's `lg` breakpoint, where the deckbuilder shows search beside the deck instead of its own tab. */
 const LG_BREAKPOINT_PX = 1024;
 
-/** Analyzes the sample deck and switches to the deckbuilder. Returns the recommendations region. */
+/** Analyzes the sample deck and opens the deckbuilder through Save deck. Returns the recommendations region. */
 async function openDeckbuilder(page: Page) {
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
@@ -13,8 +13,7 @@ async function openDeckbuilder(page: Page) {
   await expect(recs).toBeVisible({ timeout: 60_000 });
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  await recs.getByRole("button", { name: "Deckbuilder" }).click();
-  return recs;
+  return toDeckbuilder(page);
 }
 
 /** Opens the deckbuilder's card search: its own tab on a phone, beside the deck on a wide screen. */
@@ -32,14 +31,15 @@ test("analyzes the sample deck, and the deckbuilder swaps a card for a replaceme
 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
-  // The upgrade journey is what opens; the deckbuilder is the other mode.
-  await expect(recs.getByRole("button", { name: "Upgrade" })).toHaveAttribute("aria-pressed", "true");
+  // The upgrade journey is what opens, with no control to switch to the deckbuilder; Save deck opens it.
+  await expect(recs.getByRole("navigation", { name: "Deck upgrade steps" })).toBeVisible({ timeout: 60_000 });
+  await expect(recs.getByRole("button", { name: "Deckbuilder" })).toHaveCount(0);
 
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
   const notNow = page.getByRole("dialog").getByRole("button", { name: "Not now" });
   await notNow.click({ timeout: 3_000 }).catch(() => undefined);
 
-  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  await toDeckbuilder(page);
   const deckList = recs.getByRole("region", { name: "Deck list" });
   const replace = deckList.getByRole("button", { name: /^Replace / }).first();
   await expect(replace).toBeVisible({ timeout: 60_000 });
@@ -50,7 +50,7 @@ test("analyzes the sample deck, and the deckbuilder swaps a card for a replaceme
   await expect(sheet.getByRole("heading", { name: `Replace ${target}` })).toBeVisible();
   await expect(sheet.getByText("Cards that do the same job, best fit first.")).toBeVisible();
   const swapIn = sheet.getByRole("button", { name: /^Swap in / });
-  const nothing = sheet.getByText(/can't suggest replacements|No legal replacements|Nothing in your collection/);
+  const nothing = sheet.getByText(/No legal replacements|No valid swaps right now/);
   await expect(swapIn.or(nothing)).toBeVisible({ timeout: 60_000 });
   if (await nothing.isVisible()) return;
 

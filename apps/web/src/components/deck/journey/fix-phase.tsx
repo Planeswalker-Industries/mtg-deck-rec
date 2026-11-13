@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, Minus, Plus } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
-import type { FixMove } from "@mtg/core/journey";
+import { compareCards, type FixMove } from "@mtg/core/journey";
 import { cn } from "cn";
 import { DecisionButtons } from "@/components/cards/card-panel";
 import { CardImage } from "@/components/cards/card-image";
@@ -12,7 +12,7 @@ import { OwnedCorner } from "@/components/cards/owned-corner";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { formatAsOf, formatUsd } from "@/lib/format";
-import { StatChips } from "../deck-stats/stat-chips";
+import { StatChips, compareCardOf } from "../deck-stats/stat-chips";
 import { useStatPreview } from "../deck-stats/stat-preview";
 import { PanelError } from "../panel-state";
 import { ShuffleDeck } from "../shuffle-deck";
@@ -174,7 +174,7 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
             note={notOwned ? `Not owned · ${price ? `about ${formatUsd(price.usd)}` : "no price"}` : null}
           />
         </div>
-        <StatChips add={move.in} remove={move.out} all className="justify-center" />
+        <StatChips add={move.in} remove={move.out} marks={compareCards(compareCardOf(move.out), compareCardOf(move.in))} all className="justify-center" />
         <DecisionButtons
           tone="primary"
           pass={{ word: "Skip", label: `Skip swapping ${outName} for ${inName}`, onClick: () => act(false) }}

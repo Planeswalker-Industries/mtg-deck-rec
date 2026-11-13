@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { CardSummary, SwapSuggestion, TagMatch } from "@mtg/core/contract";
+import { swapMatchLabel } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { CardImage } from "@/components/cards/card-image";
@@ -114,6 +115,8 @@ function SwapBody({
 function Comparison({ target, selected, commanderCount }: { target: CardSummary; selected: SwapSuggestion; commanderCount: number }) {
   const saves = selected.costDelta.usd !== null && selected.costDelta.usd < 0;
   const jobs = jobLabels(selected.matchedTags);
+  // A looser rung of the swap ladder says which one it is (T088), in place of the tag matches it doesn't have.
+  const rungLabel = swapMatchLabel(selected, target);
 
   return (
     <div>
@@ -161,6 +164,8 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
         <p className="mt-2 font-drama text-base text-foreground/85 italic">
           Same rules as {displayName(target)}, under a different name. You can run both in one deck.
         </p>
+      ) : rungLabel ? (
+        <p className="mt-2 text-sm">{rungLabel}</p>
       ) : (
         jobs.length > 0 && <p className="mt-2 text-sm">Does the same job: {jobs.join(", ")}</p>
       )}

@@ -149,5 +149,10 @@
  * `filledByValue` and `fillCost`). BuildFeasibility.collectionGaps no longer names a line over its band, 'basicLands'
  * apart. Saved decks carry the player's choices per line: StatChoices on SavedDeckContents and on saveDeck's input
  * (`decks.stat_choices`). Additive for readers; a v34 client never sends `buyFor` or `statChoices`.
+ *
+ * v36 (2026-11-13): the swap ladder (T088; owner approved 2026-11-11). SwapSuggestion gains `match` (SwapMatch), the
+ * rung that found it: similar tags, a shared tracked role ('role': matchedTags names the roles), or the same card type
+ * at a close mana value ('slot': matchedTags empty). SwapResult.emptyReason no longer takes 'NO_TAGS_ON_TARGET'.
+ * A v35 reader ignores `match` and shows a lower rung without its label.
  */
-export const CONTRACT_VERSION = 35;
+export const CONTRACT_VERSION = 36;
