@@ -76,6 +76,80 @@ export function weightedSample<T>(items: readonly T[], weight: (item: T) => numb
   return out;
 }
 
+/** Weighted draws from one list, many times over, each time leaving some of its items out. */
+export interface WeightedSampler<T> {
+  /** `count` distinct items not in `excluded`, drawn as `weightedSample` draws them from the list without those. */
+  draw(excluded: Iterable<T>, count: number, random: () => number): T[];
+}
+
+/**
+ * `weightedSample` for a list that is drawn from again and again (the evaluation draws from the same few thousand
+ * cards for every held-out deck). The weights sit in a prefix-sum tree, so a draw costs a few steps where
+ * `weightedSample` walks and splices the whole list. `items` are distinct. With whole-number weights (deck counts) the
+ * sums are exact and every draw is the one `weightedSample` makes from the same generator.
+ */
+export function weightedSampler<T>(items: readonly T[], weight: (item: T) => number): WeightedSampler<T> {
+  const kept: T[] = [];
+  const weights: number[] = [];
+  for (const item of items) {
+    const w = Math.max(0, weight(item));
+    if (w > 0) {
+      kept.push(item);
+      weights.push(w);
+    }
+  }
+  const n = kept.length;
+  const position = new Map(kept.map((item, i) => [item, i]));
+  // A Fenwick tree, 1-based: tree[p] holds the weights of the (p & -p) items ending at p.
+  const tree = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) tree[i + 1] = weights[i] as number;
+  for (let p = 1; p <= n; p++) {
+    const parent = p + (p & -p);
+    if (parent <= n) tree[parent] = (tree[parent] as number) + (tree[p] as number);
+  }
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  let topStep = 1;
+  while (topStep * 2 <= n) topStep *= 2;
+
+  return {
+    draw(excluded, count, random) {
+      const sums = tree.slice();
+      const gone = new Uint8Array(n);
+      let remaining = total;
+      let left = n;
+      const remove = (i: number) => {
+        const w = weights[i] as number;
+        for (let p = i + 1; p <= n; p += p & -p) sums[p] = (sums[p] as number) - w;
+        gone[i] = 1;
+        remaining -= w;
+        left--;
+      };
+      for (const item of excluded) {
+        const i = position.get(item);
+        if (i !== undefined && gone[i] === 0) remove(i);
+      }
+      const out: T[] = [];
+      while (out.length < count && left > 0 && remaining > 0) {
+        // The first item whose running weight passes r: the most leading items whose weights sum to r or less.
+        let r = random() * remaining;
+        let i = 0;
+        for (let step = topStep; step > 0; step >>= 1) {
+          const next = i + step;
+          if (next <= n && (sums[next] as number) <= r) {
+            i = next;
+            r -= sums[next] as number;
+          }
+        }
+        // Past the end only when rounding left r at the whole weight: the last item still in, as weightedSample takes.
+        if (i >= n) for (i = n - 1; i > 0 && gone[i] === 1; i--);
+        out.push(kept[i] as T);
+        remove(i);
+      }
+      return out;
+    },
+  };
+}
+
 /** Share of the hidden cards found among the first `k` suggestions. */
 export function recallAt(ranked: readonly number[], hidden: ReadonlySet<number>, k: number): number {
   if (hidden.size === 0) return 0;
