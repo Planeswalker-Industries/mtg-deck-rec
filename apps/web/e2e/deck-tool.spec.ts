@@ -1,5 +1,5 @@
 import { test as withoutOfferSkip } from "@playwright/test";
-import { expect, test, type Page } from "./fixtures";
+import { expect, openSwap, test, type Page } from "./fixtures";
 
 /** Tailwind's `lg` breakpoint, where the deckbuilder shows search beside the deck instead of its own tab. */
 const LG_BREAKPOINT_PX = 1024;
@@ -127,6 +127,11 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  // Swipe or list is a choice on Add, Cut and Swap. The mocks' sample is short and opens on Add; the real catalog's is
+  // at 100 and opens on Fix, which has one view, so the choice is made (and looked for again) on Swap.
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  const opensOnAdd = (await steps.getByRole("button").first().innerText()).trim() === "Add";
+  if (!opensOnAdd) await openSwap(page);
   await recs.getByRole("button", { name: "Show as a list" }).click();
 
   // A reload brings the deck back into the box and asks whether to carry on: opening the tool never analyzes an old
@@ -155,9 +160,9 @@ test("puts the last decklist back in the box without analyzing it, and remembers
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await expect(recs).toBeVisible({ timeout: 60_000 });
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  // On a phone the view toggle now offers the swipe view back.
-  await expect(recs.getByRole("button", { name: "Swipe one card at a time" })).toBeVisible();
-  await expect(recs.getByRole("list", { name: "Cards to add" })).toBeVisible({ timeout: 60_000 });
+  // On a phone the view toggle now offers the swipe view back. The round picks up on the step it was left on.
+  await expect(recs.getByRole("button", { name: "Swipe one card at a time" })).toBeVisible({ timeout: 60_000 });
+  if (opensOnAdd) await expect(recs.getByRole("list", { name: "Cards to add" })).toBeVisible({ timeout: 60_000 });
 
   // Clearing the box forgets it, and the note goes with it.
   await page.getByRole("button", { name: "Edit decklist" }).click();
@@ -283,16 +288,14 @@ test("fits a pasted list to the collection: owned cards stay, the rest comes fro
   await expect(page.getByLabel("Decklist")).toBeVisible();
 });
 
-test("Add may take a full deck past 100, and Cut then owes what was added", async ({ page }) => {
-  test.skip(!process.env.E2E_LOCAL_DATA, "Deck stats' role targets need the synced corpus (E2E_LOCAL_DATA)");
+test("a full deck has nothing to add or cut: the round opens on Fix", async ({ page }) => {
+  test.skip(!process.env.E2E_LOCAL_DATA, "The 100-card sample deck is the real catalog's (E2E_LOCAL_DATA)");
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
-  const sitting = page.getByRole("region", { name: "Cards to add" });
-  await sitting.getByRole("button", { name: /^Add / }).click({ timeout: 60_000 });
-  await page.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click();
-  await expect(page.getByText(/^Cut 1 to get back to 100/)).toBeVisible();
+  const steps = page.getByRole("navigation", { name: "Deck upgrade steps" });
+  await expect(steps.getByRole("button")).toHaveText(["Fix", "Swap", "Finish"], { timeout: 60_000 });
 });
 
 // The plain Playwright test: the fixture's handler would answer the offer before this check could see it.

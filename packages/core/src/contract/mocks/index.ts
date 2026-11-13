@@ -620,6 +620,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       try {
         const owned = ownedIds(context.ownership);
         const only = owned !== null && ownedOnly(context);
+        const boost = ownedFirst(context) ? MOCK_OWNED_FIRST_BOOST : 0;
         const identity = deckIdentity(context.deck);
         const inDeck = deckCardIds(context.deck);
         const fixCard = (c: CardSummary, score: number): FixCard => {
@@ -633,7 +634,8 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           .filter((c) => context.includeGameChangers || !c.gameChanger)
           .filter((c) => !only || owned.has(c.id))
           .map((c) => fixCard(c, corpusScore(corpusFor(c.id))))
-          .sort((a, b) => b.score - a.score || a.card.name.localeCompare(b.card.name));
+          // Best first; in 'first' mode an owned card moves up, as the mock adds do.
+          .sort((a, b) => rankKey(b.score, b.owned !== null, boost) - rankKey(a.score, a.owned !== null, boost) || a.card.name.localeCompare(b.card.name));
         const basics = mockCards.filter((c) => isBasicLand(c) && withinIdentity(c, identity)).map((c) => fixCard(c, 0));
         const result: FixResult = {
           mode: modeOf(context),

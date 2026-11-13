@@ -26,14 +26,16 @@ const PREFETCH_CARDS = 4;
 /**
  * The roles a suggestion fills, as the counts it moves: "protection: 3 → 4 of 8". Read from the card's tracked roles
  * against Deck stats' lines, for the lines still short of their target (the ones the server picked it for); without the
- * card's roles, the role names the server gave.
+ * card's roles, the role names the server gave. `counts: false` names the roles only: the swipe view shows the counts
+ * as chips under the card.
  */
-function fills({ card, fillsRoles }: AddSuggestion, roles: readonly StatLine[]): string | null {
-  const moved = card.roles
-    ? roles
-        .filter((role) => card.roles?.includes(role.key) && role.value < role.target)
-        .map((role) => `${role.label.toLowerCase()}: ${role.value} → ${role.value + 1} of ${Math.round(role.target)}`)
-    : [];
+function fills({ card, fillsRoles }: AddSuggestion, roles: readonly StatLine[], counts: boolean): string | null {
+  const moved =
+    counts && card.roles
+      ? roles
+          .filter((role) => card.roles?.includes(role.key) && role.value < role.target)
+          .map((role) => `${role.label.toLowerCase()}: ${role.value} → ${role.value + 1} of ${Math.round(role.target)}`)
+      : [];
   const named = moved.length > 0 ? moved : fillsRoles.map((r) => r.label.toLowerCase());
   return named.length > 0 ? `Adds ${named.join(", ")}` : null;
 }
@@ -42,9 +44,20 @@ function fills({ card, fillsRoles }: AddSuggestion, roles: readonly StatLine[]):
  * Why a suggestion is here, in one or two short lines. With a collection, an owned card shows as owned and only the
  * others show a price, so a price reads as a card to buy.
  */
-function Why({ suggestion, roles, hasCollection }: { suggestion: AddSuggestion; roles: readonly StatLine[]; hasCollection: boolean }) {
+function Why({
+  suggestion,
+  roles,
+  hasCollection,
+  counts = true,
+}: {
+  suggestion: AddSuggestion;
+  roles: readonly StatLine[];
+  hasCollection: boolean;
+  /** False where the counts show as chips under the card (the swipe view). */
+  counts?: boolean;
+}) {
   const { card, corpus, owned } = suggestion;
-  const adds = fills(suggestion, roles);
+  const adds = fills(suggestion, roles, counts);
   return (
     <span className="flex flex-col items-start gap-0.5">
       {adds && <span className="font-semibold text-add">{adds}</span>}
@@ -63,13 +76,13 @@ function Why({ suggestion, roles, hasCollection }: { suggestion: AddSuggestion; 
 function RunOut({
   journey,
   open,
-  onCut,
+  onNext,
   nextLabel,
   onShowUnowned,
 }: {
   journey: DeckJourney;
   open: number;
-  onCut: () => void;
+  onNext: () => void;
   nextLabel: string;
   /** Allow Singles: switches the collection setting to Owned first, so Add suggests cards the player doesn't own too. */
   onShowUnowned: () => void;
@@ -106,7 +119,7 @@ function RunOut({
           Allow Singles
         </Button>
       )}
-      <Button type="button" size="lg" variant="link" onClick={onCut}>
+      <Button type="button" size="lg" variant="link" onClick={onNext}>
         {nextLabel}
       </Button>
       {basicsFill.status === "error" && <ErrorText className="w-full justify-center">{basicsFill.message}</ErrorText>}
@@ -143,12 +156,12 @@ function RolePills({ short, filter, onChange }: { short: readonly StatLine[]; fi
 }
 
 /**
- * Add, the first step: cards decks like this one run and it doesn't, best first, led by the roles it is short of.
- * Adding may take the deck past 100 (up to ADD_OVERFLOW_MAX); Cut then trims it back, starting with what it has too
- * much of. Adding one asks for the list again, because the card just added may fill the gap the next ones were
- * suggested for. Skipping just moves on.
+ * Add, the first step of a deck under 100: cards decks like this one run and it doesn't, best first, led by the roles
+ * it is short of, until the deck is at 100. It deals no card that would put a Deck stats line above its band. Adding
+ * one asks for the list again, because the card just added may fill the gap the next ones were suggested for. Skipping
+ * just moves on.
  *
- * The role pills (and "Find …" in Deck stats) narrow the list to one short role; "All" puts the whole list back.
+ * The role pills narrow the list to one short role; "All" puts the whole list back.
  */
 export function AddPhase({
   journey,
@@ -168,21 +181,19 @@ export function AddPhase({
   const onClearFilter = () => setFilter(null);
   const adds = journey.state?.adds ?? [];
   const open = journey.openSlots;
-  const room = journey.roomToAdd;
-  const cutsOwed = journey.cutsNeeded;
-  const size = COMMANDER_DECK_SIZE - open + cutsOwed;
-  // The bottom prompt on to Cut shows once the deck is full (100 or more).
-  const full = size >= COMMANDER_DECK_SIZE;
+  // Add stops at 100: the room left is the slots still open.
+  const room = open;
+  const size = COMMANDER_DECK_SIZE - open;
   // This round's additions plus the holes a short deck came in with.
   const slots = open + adds.length;
   const short = roles.filter(shortOfTarget);
-  // Through the stepper, so a deck under 100 asks before it goes.
-  // Add's own way on: through Combos when there are any (the stepper's Cut jumps straight there).
-  const toCut = journey.add.next;
-  const cutLabel = cutsOwed > 0 ? `Next: cut ${cutsOwed}` : "Next: cut";
+  // Add's own way on: through Combos when there are any (the stepper's next step jumps straight there). A deck still
+  // under 100 asks before it goes.
+  const toNext = journey.add.next;
+  const fixLabel = "Next: fix";
   const combos = journey.add.combos;
   // Next goes through Combos when there are any.
-  const nextLabel = combos.length > 0 ? "Next: combos" : cutLabel;
+  const nextLabel = combos.length > 0 ? "Next: combos" : fixLabel;
   const hasCollection = journey.add.hasCollection;
   // Owned cards are marked only where they mix with cards to buy: in Owned only every card is owned.
   const markOwned = hasCollection && !journey.add.collectionOnly;
@@ -190,7 +201,7 @@ export function AddPhase({
   const asOf = queue.find((s) => s.card.price && !(hasCollection && s.owned))?.card.price?.asOf;
   const filterName = filter ? (filter.kind === "lands" ? "lands" : filter.label.toLowerCase()) : null;
 
-  if (journey.add.part === "combos") return <CombosPhase journey={journey} uploadHref={uploadHref} nextLabel={cutLabel} />;
+  if (journey.add.part === "combos") return <CombosPhase journey={journey} uploadHref={uploadHref} nextLabel={fixLabel} />;
 
   const intro = (
     <PhaseIntro title="Add" brief={view === "swipe" && room > 0 ? "Swipe right to add, left to skip." : undefined}>
@@ -202,8 +213,8 @@ export function AddPhase({
   const body = (() => {
     if (room === 0) {
       return (
-        <SwipeDone title="That's plenty for one round" message={`The deck is at ${size}. Next, cut it back to 100, starting with what it has too much of.`}>
-          <Button type="button" size="lg" onClick={toCut}>
+        <SwipeDone title="The deck is at 100" message="Next, fix the lines Deck stats shows as off.">
+          <Button type="button" size="lg" onClick={toNext}>
             {nextLabel}
           </Button>
         </SwipeDone>
@@ -211,16 +222,7 @@ export function AddPhase({
     }
     if (addState.status === "loading" || addState.status === "idle") return <PanelLoading label="Finding cards to add" />;
     if (addState.status === "error") return <PanelError message={addState.message} />;
-    if (queue.length === 0) {
-      if (open > 0) return <RunOut journey={journey} open={open} onCut={toCut} nextLabel={nextLabel} onShowUnowned={onShowUnowned} />;
-      return (
-        <SwipeDone title="That's every suggestion for now" message="Go on to Cut, or come back after a swap or two for fresh ideas.">
-          <Button type="button" size="lg" onClick={toCut}>
-            {nextLabel}
-          </Button>
-        </SwipeDone>
-      );
-    }
+    if (queue.length === 0) return <RunOut journey={journey} open={open} onNext={toNext} nextLabel={nextLabel} onShowUnowned={onShowUnowned} />;
     if (shown.length === 0) {
       return (
         <SwipeDone title={`No ${filterName} to suggest right now`} message="Every suggestion for it is already in the deck or skipped.">
@@ -258,17 +260,10 @@ export function AddPhase({
         passLabel={`Skip ${next.card.name}`}
         acceptWord="Add"
         passWord="Skip"
-        caption={<Why suggestion={next} roles={roles} hasCollection={hasCollection} />}
+        caption={<Why suggestion={next} roles={roles} hasCollection={hasCollection} counts={false} />}
         owned={markOwned && next.owned !== null}
         onAccept={() => accept(next.card)}
         onPass={() => pass(next.card)}
-        footer={
-          full && (
-            <Button type="button" size="sm" variant="link" onClick={toCut}>
-              Done adding: {nextLabel.replace("Next: ", "")}
-            </Button>
-          )
-        }
       />
     );
   })();
@@ -287,8 +282,8 @@ export function AddPhase({
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}
       {asOf && room > 0 && <p className="text-xs text-muted-foreground">Prices are Scryfall estimates from {formatAsOf(asOf)}.</p>}
-      {view === "list" && full && (
-        <NextBar label={nextLabel} onNext={toCut}>
+      {view === "list" && room > 0 && (
+        <NextBar label={nextLabel} onNext={toNext}>
           {adds.length} added
         </NextBar>
       )}

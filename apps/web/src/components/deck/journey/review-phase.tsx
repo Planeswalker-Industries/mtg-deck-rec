@@ -1,10 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { TriangleAlert } from "lucide-react";
+import { EyeOff, TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import type { CardId, CardSummary } from "@mtg/core/contract";
-import { deckDiff, deckStats, type DeckStatsReport, type StatLine } from "@mtg/core/journey";
+import type { CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
+import { CURVE_LINE, deckDiff, deckStats, type DeckStatsReport, type FixBlock } from "@mtg/core/journey";
 import { groupDeck, type DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
@@ -14,10 +14,11 @@ import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
-import type { StatAction } from "../deck-stats/deck-stats-panel";
+import { LevelBadge } from "../deck-stats/level";
 import type { RoundSave } from "./round-bar";
 import { judge, Move, RoundMoves } from "./round-moves";
 import type { DeckJourney } from "./use-deck-journey";
+import type { Fix, FixLineLabel } from "./use-fix";
 
 /** Average mana value is shown to one decimal: finer than that is noise at deck scale. */
 const MANA_VALUE_DECIMALS = 1;
@@ -35,14 +36,46 @@ function Figure({ label, children, note }: { label: string; children: ReactNode;
   );
 }
 
-/** A change the round made: a swap (out and in), a cut alone, or an add alone. */
+/** A change the round made: a Fix move or a swap (out and in), a cut alone, or an add alone. */
 interface Change {
   key: string;
   out?: { card: CardSummary; quantity: number };
   into?: { card: CardSummary; quantity: number };
 }
 
-/** The round's changes as pairs: each swap with its replacement, then the cuts and the adds left over. */
+/** The lines the player can't choose to ignore: they are rules, not typical counts. */
+const RULE_LINES: ReadonlySet<string> = new Set(["legal", "bracket"]);
+
+/** Why a line is still off at Finish: Fix's reason for having no move, a move still on offer, or the player's choice. */
+type LeftoverReason = FixBlock | "open" | "ignored";
+
+interface Leftover {
+  line: string;
+  label: FixLineLabel;
+  reason: LeftoverReason;
+}
+
+/** "Blue sources: 14, needs 20" for a colour row, "Ramp: 10, about 14 is typical" for a count, the name alone for a rule. */
+function leftoverText({ line, label }: Leftover): string {
+  if (label.value === undefined || label.target === undefined) return label.label;
+  const aim = Math.round(label.target);
+  return line.startsWith("sources:") ? `${label.label}: ${label.value}, needs ${aim}` : `${label.label}: ${label.value}, about ${aim} is typical`;
+}
+
+/**
+ * Every Deck stats line the round ends with out of line, each with its reason: the lines Fix still counts (`fix.lines`)
+ * and the ones the player chose to ignore.
+ */
+function leftoversOf(fix: Fix, report: DeckStatsReport | null, choices: StatChoices): Leftover[] {
+  const counted: Leftover[] = fix.lines.map((l) => ({ line: l.line, label: fix.lineLabel(l.line), reason: l.blocked ?? "open" }));
+  const offKeys = new Set([...(report?.stats ?? []).filter((s) => !s.ok).map((s) => s.key), ...(report && !report.curve.ok ? [CURVE_LINE] : [])]);
+  const ignored: Leftover[] = Object.entries(choices)
+    .filter(([line, choice]) => choice === "ignore" && offKeys.has(line))
+    .map(([line]) => ({ line, label: fix.lineLabel(line), reason: "ignored" }));
+  return [...counted, ...ignored];
+}
+
+/** The round's changes as pairs: each Fix move and each swap with its replacement, then the cuts and the adds left over. */
 function changesOf(journey: DeckJourney): Change[] {
   const state = journey.state;
   if (!state) return [];
@@ -52,6 +85,11 @@ function changesOf(journey: DeckJourney): Change[] {
     return [...byId.values()];
   };
   return [
+    ...state.fixes.map((move, i) => ({
+      key: `fix-${i}`,
+      out: { card: move.out, quantity: 1 },
+      into: { card: move.in, quantity: 1 },
+    })),
     ...state.swaps.map((s) => ({
       key: `swap-${s.target.id}-${s.replacement.id}`,
       out: { card: s.target, quantity: 1 },
@@ -63,9 +101,10 @@ function changesOf(journey: DeckJourney): Change[] {
 }
 
 /**
- * Finish: the round's result, shown rather than told. Cards, mana value and price on one line, then each stat line as a
- * track from where the round started to where it ends against its aim (green toward it, red away), every change as
- * card plates, Out beside In, and the finished
+ * Finish: the round's result, shown rather than told. How many Deck stats lines are in line, and each one that isn't
+ * with its reason and what the player can do about it (T087); cards, mana value and price on one line, then each stat
+ * line as a track from where the round started to where it ends against its aim (green toward it, red away), every
+ * change as card plates, Out beside In, and the finished
  * decklist laid out by type on the plates the deck editor uses. From here the player saves, copies or downloads the
  * result (or a copy, from an open saved deck), or runs it through the journey again. Undo and Start over are in the
  * round's bar above, as on every step.
@@ -77,9 +116,19 @@ export function ReviewPhase({
   stale = false,
   save,
   onReanalyze,
-  actionFor,
+  fix,
+  choices,
+  onChoice,
+  collectionOnly,
   children,
 }: {
+  /** Fix, for the lines still off and why, and to open it at one of them. */
+  fix: Fix;
+  /** The player's choices for Deck stats lines, and how one is made or taken back (null). */
+  choices: StatChoices;
+  onChoice: (line: string, choice: StatChoice | null) => void;
+  /** Suggestions keep to the collection's cards: a line with nothing to bring in is a gap in the collection. */
+  collectionOnly: boolean;
   journey: DeckJourney;
   /** Deck stats for the deck as it stands, with each line's value when the round started; null without targets. */
   report: DeckStatsReport | null;
@@ -93,8 +142,6 @@ export function ReviewPhase({
   /** What saving does: write back to the open saved deck (or save a copy), or save a new deck. */
   save: RoundSave;
   onReanalyze: () => void;
-  /** What Deck stats offers for a line still off target (Trim, Find, Swap lands), to fix it from here. */
-  actionFor?: (line: StatLine) => StatAction | null;
   /** Shown after the changes, e.g. the offer to import a collection. */
   children?: ReactNode;
 }) {
@@ -103,8 +150,63 @@ export function ReviewPhase({
   if (!state || !deck) return null;
 
   const overBy = journey.cutsNeeded;
-  // A finished deck can still be off on what decks like it run: each line is named, with its fix (T083).
-  const offLines = (report?.stats ?? []).filter((line) => !line.ok);
+  // A finished deck can still be off on what decks like it run: each line is named, with its reason.
+  const leftovers = leftoversOf(fix, report, choices);
+  const linkClass = cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer font-semibold");
+  /** What a leftover says about itself, and what the player can do about it. */
+  const leftoverRow = (leftover: Leftover) => {
+    const { line, reason } = leftover;
+    const canIgnore = !RULE_LINES.has(line);
+    const fixLink = (
+      <button type="button" className={linkClass} onClick={() => fix.openAt(line)}>
+        Fix
+      </button>
+    );
+    const ignore = canIgnore && (
+      <Button type="button" size="sm" variant="outline" onClick={() => onChoice(line, "ignore")}>
+        Ignore
+      </Button>
+    );
+    const bought = choices[line] === "buy";
+    const [why, actions]: [string, ReactNode] =
+      reason === "ignored"
+        ? [
+            "Ignored",
+            <button key="count" type="button" className={linkClass} onClick={() => onChoice(line, null)}>
+              Count it
+            </button>,
+          ]
+        : reason === "open"
+          ? ["Can be fixed", fixLink]
+          : reason === "skipped"
+            ? ["Skipped by you", fixLink]
+            : reason === "noCardOut"
+              ? ["No safe card to take out", null]
+              : collectionOnly && !bought
+                ? [
+                    "Not in your collection",
+                    <span key="choice" className="flex flex-wrap gap-2">
+                      {ignore}
+                      <Button type="button" size="sm" variant="outline" onClick={() => onChoice(line, "buy")}>
+                        Allow buying
+                      </Button>
+                    </span>,
+                  ]
+                : [bought ? "No card to buy for it" : "No card to bring in", ignore];
+    const Icon = reason === "ignored" ? EyeOff : TriangleAlert;
+    return (
+      <li key={`${line}:${reason}`} className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="flex min-w-0 flex-1 basis-48 items-start gap-2">
+          <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", reason === "ignored" ? "text-muted-foreground" : "text-warning")} />
+          <span className={cn(reason === "ignored" && "text-muted-foreground")}>
+            {leftoverText(leftover)}
+            <span className="block text-xs text-muted-foreground">{why}</span>
+          </span>
+        </span>
+        {actions}
+      </li>
+    );
+  };
   const before = deckStats(journey.before);
   const after = deckStats(journey.after);
   const asOf = after.priceAsOf ?? before.priceAsOf;
@@ -132,37 +234,35 @@ export function ReviewPhase({
         <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
           <span>
-            The deck is {overBy} over 100.{" "}
-            <button type="button" className={cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer font-semibold")} onClick={() => journey.goTo("cut")}>
-              Back to Cut
-            </button>
+            The deck is {overBy} over 100.
+            {journey.phases.includes("cut") && (
+              <>
+                {" "}
+                <button type="button" className={linkClass} onClick={() => journey.goTo("cut")}>
+                  Back to Cut
+                </button>
+              </>
+            )}
           </span>
         </p>
       )}
-      {offLines.length > 0 && (
-        <section aria-labelledby="review-still-off" className="flex flex-col gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-          <h3 id="review-still-off" className="flex items-center gap-2 font-semibold">
-            <TriangleAlert aria-hidden className="size-4 shrink-0 text-warning" />
-            Still off
+      {report && (
+        <section aria-labelledby="review-deck-stats" className="flex flex-col gap-2 rounded-lg border border-seam bg-sleeve px-3 py-2.5 text-sm">
+          <h3 id="review-deck-stats" className="flex items-center justify-between gap-3 font-semibold">
+            Deck stats
+            <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />
           </h3>
-          <ul className="flex flex-col gap-1">
-            {offLines.map((line) => {
-              const action = actionFor?.(line) ?? null;
-              return (
-                <li key={line.key}>
-                  {line.label}: {line.value}, about {Math.round(line.target)} is typical.
-                  {action && (
-                    <>
-                      {" "}
-                      <button type="button" className={cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer font-semibold")} onClick={action.onSelect}>
-                        {action.label}
-                      </button>
-                    </>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          {!fix.ready ? (
+            <p role="status" className="text-muted-foreground">
+              Checking what is left to fix…
+            </p>
+          ) : leftovers.length === 0 ? (
+            <p className="text-muted-foreground">Every line is in line.</p>
+          ) : (
+            <ul aria-label="Lines still off" className="flex flex-col gap-2.5">
+              {leftovers.map(leftoverRow)}
+            </ul>
+          )}
         </section>
       )}
       <div className="flex flex-wrap gap-2">

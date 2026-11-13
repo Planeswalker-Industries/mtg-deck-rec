@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AddResult,
   AddSuggestion,
-  Bracket,
   CardId,
   CardSummary,
   ComboRef,
@@ -15,23 +14,26 @@ import type {
   DeckInput,
   RecContext,
   ResolvedLine,
+  StatChoices,
 } from "@mtg/core/contract";
 import {
-  bracketMustCuts,
+  addBreaksBand,
+  buildTally,
   copiesInDeck,
   cutsNeeded,
   deckBeforeSwaps,
   deckKey,
   decklistFor,
   journeyReducer,
+  nextPhase,
   openSlots,
   phaseIndex,
   pushUndo,
-  roomToAdd,
+  roundPhases,
   startJourney,
-  withoutCards,
+  toTallyCard,
   workingDeck,
-  type BracketMustCut,
+  type DeckTally,
   type JourneyAction,
   type JourneyPhase,
   type JourneyState,
@@ -40,39 +42,19 @@ import { byStaple, isFrontLand, ownedOnly, type DeckEntry } from "@mtg/core/scor
 import { getApis } from "@/lib/api/client";
 import { loadJourney, saveJourney } from "@/lib/saved-deck";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
-import type { Async, ContextChange } from "../use-deck-tool";
+import type { Async } from "../use-deck-tool";
 import type { Candidates } from "../use-swipe-rater";
 import { basicsToFill } from "./fill-basics";
-
-/**
- * Cut suggestions asked for when checking a deck against a new bracket: the cut route's cap (MAX_CUT_LIMIT), so every
- * Game Changer in the deck comes back even behind a long list of other must-cuts.
- */
-const BRACKET_CHECK_CUT_LIMIT = 40;
-
-/**
- * A bracket change part way through the round made cards must-cuts. The round went back to Cut to show them, with
- * every choice kept, and waits for the player to cut them and go on, or to put the old bracket back.
- */
-export interface BracketCheck {
-  /** The step the change interrupted, where Revert goes back to. */
-  from: JourneyPhase;
-  /** The bracket before the change (null: it was estimated), which Revert restores. */
-  previousBracket: Bracket | null;
-  bracket: Bracket;
-  mustCuts: BracketMustCut[];
-}
 
 interface Round {
   id: number;
   analysis: DeckAnalysis;
   state: JourneyState;
-  check: BracketCheck | null;
   /** The states before each choice this round, newest last: what Undo steps back to. */
   past: JourneyState[];
 }
 
-/** What "Find …" in Deck stats narrowed Add to (T045). */
+/** What Add's role pills narrowed it to (T045). */
 export type AddFilter = { kind: "role"; roleId: string; label: string } | { kind: "lands" };
 
 /** Whether a card fits the filter: one of its tracked roles, or a land on its front face. */
@@ -144,6 +126,24 @@ const entriesFor = (deck: DeckInput | null, cards: ReadonlyMap<CardId, CardSumma
 const toAsync = <T,>(r: { ok: true; data: T } | { ok: false; error: { message: string } }): Async<T> =>
   r.ok ? { status: "ready", data: r.data } : { status: "error", message: r.error.message };
 
+/** Every card a round's choices name, so a deck one choice ahead of the render can still be counted. */
+const choiceCards = (s: JourneyState): CardSummary[] => [
+  ...s.cuts,
+  ...s.adds,
+  ...s.swaps.flatMap((swap) => [swap.target, swap.replacement]),
+  ...s.fixes.flatMap((move) => [move.in, move.out]),
+];
+
+/** A deck's counts for Deck stats' lines: the main deck as entries, the commanders apart. */
+function tallyOf(analysis: DeckAnalysis, entries: readonly DeckEntry[]): DeckTally {
+  const rolesOf = (card: CardSummary) => card.roles ?? analysis.cardRoles[card.id] ?? [];
+  const commanderIds = new Set<CardId>(analysis.deck.commanders);
+  return buildTally(
+    entries.filter((e) => !commanderIds.has(e.card.id)).map((e) => ({ card: toTallyCard(e.card, rolesOf(e.card)), quantity: e.quantity })),
+    analysis.commanderKey.commanders.map((c) => toTallyCard(c, rolesOf(c))),
+  );
+}
+
 /**
  * The order Add deals its cards in: best score first, the wider staple first between equal scores (T083), except that a
  * deck a cut left short of lands gets lands first, since ranking by score alone would fill the slot with spells.
@@ -158,7 +158,7 @@ function addOrder(suggestions: readonly AddSuggestion[], landsShort: boolean): A
 }
 
 /**
- * The deck journey on top of the deck tool: Add, Cut, Replace, Review.
+ * The deck journey on top of the deck tool: Add or Cut (by the deck's size), Fix, Swap, Finish.
  *
  * The tool's analysis is the round's starting deck. Every choice lives in the journey's state and the recommendations
  * are asked for against the deck as it stands (`workingDeck`), so nothing is re-parsed until the player commits the
@@ -175,7 +175,10 @@ export function useDeckJourney({
   lines,
   cut,
   resume,
+  choices,
 }: {
+  /** The player's choices for Deck stats lines: an ignored line never holds a card back from Add. */
+  choices: StatChoices;
   analysis: DeckAnalysis | null;
   /** The tool's analysis count: a new value is a new deck, and a new round. */
   round: number;
@@ -207,7 +210,6 @@ export function useDeckJourney({
   const addPending = useRef(false);
   const cutBatch = useRef<{ from: CutResult; batch: RecBatch } | null>(null);
   const replaceRequest = useRef(0);
-  const checkRequest = useRef(0);
   /**
    * Cards added this round whose suggestion would complete a combo above the bracket (T045), with those combos: Deck
    * stats counts them against the bracket while they are in the deck and a combo is still over the bracket chosen. Kept
@@ -231,7 +233,7 @@ export function useDeckJourney({
   let current = round;
   if (analysis && round?.id !== roundId) {
     const stored = resume ? loadJourney(analysis.deck) : null;
-    current = { id: roundId, analysis, state: stored ?? startJourney(analysis.deck), check: null, past: [] };
+    current = { id: roundId, analysis, state: stored ?? startJourney(analysis.deck), past: [] };
     setRound(current);
   } else if (analysis && round && round.analysis !== analysis) {
     current = { ...round, analysis };
@@ -279,9 +281,7 @@ export function useDeckJourney({
     const seen = new Map<CardId, CardSummary>();
     for (const { resolution } of lines) if (resolution.status === "resolved") seen.set(resolution.card.id, resolution.card);
     for (const c of analysis?.commanderKey.commanders ?? []) seen.set(c.id, c);
-    if (state) {
-      for (const c of [...state.cuts, ...state.adds, ...state.swaps.flatMap((s) => [s.target, s.replacement])]) seen.set(c.id, c);
-    }
+    if (state) for (const c of choiceCards(state)) seen.set(c.id, c);
     return seen;
   }, [lines, analysis, state]);
 
@@ -303,6 +303,18 @@ export function useDeckJourney({
   const after = useMemo(() => [...commanders, ...entriesFor(deck, cards)], [commanders, deck, cards]);
   /** The round's starting deck the same way: Deck stats draws its round-start ticks from it. */
   const before = useMemo(() => [...commanders, ...entriesFor(analysis?.deck ?? null, cards)], [commanders, analysis, cards]);
+  /** The deck as it stands, counted for Deck stats' lines: what Fix pairs its moves on and Add checks its cards against. */
+  const tally = useMemo(() => (analysis ? tallyOf(analysis, after) : null), [analysis, after]);
+
+  /**
+   * Whether one more copy of a card would leave a Deck stats line above its band in the deck `counts` holds: Add deals
+   * no such card (T087). Without targets nothing is held back.
+   */
+  const breaksBand = (counts: DeckTally | null, card: CardSummary): boolean => {
+    const targets = analysis?.statTargets;
+    if (!analysis || !targets || !counts) return false;
+    return addBreaksBand(counts, targets, toTallyCard(card, card.roles ?? analysis.cardRoles[card.id] ?? []), choices);
+  };
 
   /** Cards to add for the deck as `next` leaves it, leaving out the ones the player passed on this round. */
   async function loadAdds(next: JourneyState, ctx: RecContext | null = context): Promise<void> {
@@ -321,7 +333,12 @@ export function useDeckJourney({
       // Recorded in the order the player sees it, filter applied, so an accept's position is the place it was dealt from.
       const shortOfLands = analysis ? lands(deck) < lands(analysis.deck) : false;
       const filter = addFilterRef.current;
-      const shown = filtered(addOrder(r.data.groups.flatMap((g) => g.suggestions), shortOfLands), filter).map((s) => s.card.id);
+      // The deck may be a choice ahead of this render: its cards are read from the choices, too.
+      const seen = new Map(cards);
+      for (const c of choiceCards(next)) seen.set(c.id, c);
+      const counts = analysis ? tallyOf(analysis, entriesFor(deck, seen)) : null;
+      const dealt = r.data.groups.flatMap((g) => g.suggestions).filter((s) => !breaksBand(counts, s.card));
+      const shown = filtered(addOrder(dealt, shortOfLands), filter).map((s) => s.card.id);
       addBatch.current = { batch: recordShown("add", shown, { ...ctx, deck }), filter };
       comboBatch.current = recordShown("add", (r.data.combos ?? []).map((c) => c.card.id), { ...ctx, deck });
     }
@@ -348,8 +365,8 @@ export function useDeckJourney({
       setReplace({ round, key, candidates, value: toAsync(r) });
       return;
     }
-    // Additions were chosen just now, so they aren't dealt as weaker fits; combo pieces are never dealt.
-    const added = new Set<number>(next.adds.map((c) => c.id));
+    // Additions and Fix's cards were chosen just now, so they aren't dealt as weaker fits; combo pieces are never dealt.
+    const added = new Set<number>([...next.adds.map((c) => c.id), ...next.fixes.map((move) => move.in.id)]);
     const pieces = protectedPiecesOf(next, roundCombos);
     const listed = r.data.suggestions.filter((s) => !added.has(s.card.id) && !pieces.has(s.card.id));
     const named = new Set<number>(listed.map((s) => s.card.id));
@@ -370,8 +387,9 @@ export function useDeckJourney({
     replaceFor.value.status !== "error";
 
   /**
-   * A round opens on Add, or on the step a resumed round was on, so that step's list is asked for as the round starts
-   * (once per round, once the settings are known). The other lists are asked for by the handlers that open their steps.
+   * A round opens on its first step, or on the step a resumed round was on, so that step's list is asked for as the
+   * round starts (once per round, once the settings are known). The other lists are asked for by the handlers that open
+   * their steps; Fix asks for its own pool (`useFix`).
    */
   const startedRound = useRef<number | null>(null);
   useEffect(() => {
@@ -383,7 +401,7 @@ export function useDeckJourney({
       queueMicrotask(() => void loadReplaceTargets(opening, context));
       return;
     }
-    if (opening.phase !== "add" || roomToAdd(opening) === 0 || addFresh(opening)) return;
+    if (opening.phase !== "add" || openSlots(opening) === 0 || addFresh(opening)) return;
     // Queued rather than called here: the request sets state, which an effect body must not do synchronously.
     queueMicrotask(() => void loadAdds(opening, context));
   });
@@ -397,68 +415,15 @@ export function useDeckJourney({
   /**
    * The settings suggestions are made with changed (bracket, collection, play rates): asks again for the list on
    * screen, with the context given rather than this render's, which may predate the change. Resolves once it is in.
-   *
-   * A bracket change after the Cut step first checks the deck as it stands against the new bracket. When that makes
-   * cards must-cuts, the round goes back to Cut to show them (see BracketCheck) and the list is left as it was, so
-   * Revert finds it unchanged. A second change while that is on screen checks again from the same starting point.
+   * A bracket the deck no longer fits sends the round to Fix, which reads the new settings itself (`useFix`).
    */
-  async function reload(ctx: RecContext, change: ContextChange): Promise<void> {
+  async function reload(ctx: RecContext): Promise<void> {
     const now = latest.current;
     if (!now) return;
-    const pending = now.check;
-    const phase = pending?.from ?? now.state.phase;
-    if (change.kind === "bracket" && phaseIndex(phase) > phaseIndex("cut")) {
-      const previousBracket = pending ? pending.previousBracket : change.previous;
-      const roundAt = now.id;
-      const id = ++checkRequest.current;
-      const r = await getApis().recs.cut({ context: { ...ctx, deck: workingDeck(now.state) }, limit: BRACKET_CHECK_CUT_LIMIT });
-      if (id !== checkRequest.current || latest.current?.id !== roundAt) return;
-      // A failed check leaves the round where it is: the list reload below reports the failure where the player looks.
-      const mustCuts = r.ok ? bracketMustCuts(r.data.suggestions, ctx.bracket) : [];
-      if (mustCuts.length > 0) {
-        const check: BracketCheck = { from: phase, previousBracket, bracket: ctx.bracket, mustCuts };
-        setRound((prev) =>
-          prev?.id === roundAt ? { ...prev, check, state: journeyReducer(prev.state, { type: "goto", phase: "cut" }) } : prev,
-        );
-        return;
-      }
-      if (pending) {
-        setRound((prev) =>
-          prev?.id === roundAt ? { ...prev, check: null, state: journeyReducer(prev.state, { type: "goto", phase }) } : prev,
-        );
-      }
-    }
     invalidateLists();
-    const choices = latest.current?.state ?? now.state;
-    if (phase === "add" && roomToAdd(choices) > 0) return loadAdds(choices, ctx);
-    if (phase === "replace") return loadReplaceTargets(choices, ctx);
-  }
-
-  /**
-   * Cut & Continue: takes the bracket's must-cuts out of the deck as it stands (wherever each came from, see
-   * removeFromDeck) and goes on to Swap, asking for its list at the new bracket. A check only interrupts Swap or Review,
-   * which both come after Add and Cut.
-   */
-  function cutAndContinue() {
-    if (!current?.check) return;
-    checkRequest.current++;
-    const mustCuts = current.check.mustCuts.map((m): JourneyAction => ({ type: "cut", card: m.card }));
-    const cut = withoutCards(current.state, current.check.mustCuts.map((m) => m.card));
-    const next = journeyReducer(cut, { type: "goto", phase: "replace" });
-    setRound({ ...current, check: null, state: next, past: pushUndo(current.past, current.state, next, mustCuts) });
-    void loadReplaceTargets(next);
-  }
-
-  /**
-   * Revert: back to the step the bracket change interrupted, with every choice and its list as they were. Returns the
-   * bracket to put back (undefined when there was no check), which is the tool's to restore.
-   */
-  function revertCheck(): Bracket | null | undefined {
-    if (!current?.check) return undefined;
-    checkRequest.current++;
-    const { from, previousBracket } = current.check;
-    setRound({ ...current, check: null, state: journeyReducer(current.state, { type: "goto", phase: from }) });
-    return previousBracket;
+    const { state: chosen } = now;
+    if (chosen.phase === "add" && openSlots(chosen) > 0) return loadAdds(chosen, ctx);
+    if (chosen.phase === "replace") return loadReplaceTargets(chosen, ctx);
   }
 
   /**
@@ -478,31 +443,26 @@ export function useDeckJourney({
 
   /** Asks for the list of the step `s` is on, unless the one on hand was made for the same deck. */
   function refreshStep(s: JourneyState) {
-    if (s.phase === "add" && roomToAdd(s) > 0 && !addFresh(s)) void loadAdds(s);
+    if (s.phase === "add" && openSlots(s) > 0 && !addFresh(s)) void loadAdds(s);
     if (s.phase === "replace" && !replaceFresh(s)) void loadReplaceTargets(s);
   }
 
-  /**
-   * Undo: back to the state before the last choice, on the step it was made on, wherever the player is now. A waiting
-   * bracket check goes with it: it was about the deck as it stood.
-   */
+  /** Undo: back to the state before the last choice, on the step it was made on, wherever the player is now. */
   function undo() {
     const from = latest.current ?? current;
     const previous = from?.past.at(-1);
     if (!from || !previous) return;
-    checkRequest.current++;
-    const round = { ...from, state: previous, past: from.past.slice(0, -1), check: null };
+    const round = { ...from, state: previous, past: from.past.slice(0, -1) };
     latest.current = round;
     setRound(round);
     setUndoCount((n) => n + 1);
     refreshStep(previous);
   }
 
-  /** Start over: the round's starting deck with no choices, back on Add. Undo can bring the choices back. */
+  /** Start over: the round's starting deck with no choices, back on its first step. Undo can bring the choices back. */
   function restart() {
     const from = latest.current ?? current;
     if (!from) return;
-    checkRequest.current++;
     const next = apply({ type: "reset", base: from.analysis.deck });
     if (next) refreshStep(next);
   }
@@ -517,9 +477,9 @@ export function useDeckJourney({
     setCombosRound(null);
     if (leaving === "cut" && phase !== "cut") recordCuts(next);
     // The Add and Replace lists depend on everything chosen before them, so they are asked for on the way in, unless
-    // the one on hand was made for the same deck: then the player picks up where they left off. A deck at its overflow
-    // limit has no room to add, so Add asks for nothing.
-    if (phase === "add" && roomToAdd(next) > 0 && !addFresh(next)) void loadAdds(next);
+    // the one on hand was made for the same deck: then the player picks up where they left off. A full deck has no
+    // room to add, so Add asks for nothing.
+    if (phase === "add" && openSlots(next) > 0 && !addFresh(next)) void loadAdds(next);
     if (phase === "replace" && !replaceFresh(next)) void loadReplaceTargets(next);
   }
 
@@ -528,9 +488,13 @@ export function useDeckJourney({
     cut.status === "ready" ? cut.data.suggestions.filter((s) => s.severity === "mandatory") : [];
   const isCut = (id: CardId) => state?.cuts.some((c) => c.id === id) ?? false;
   const isKept = (id: CardId) => state?.kept.includes(id) ?? false;
-  /** Recommended cuts not yet decided either way: dealt in the swipe view, pre-marked in the list. */
-  const undecidedCuts = recommendedCuts.filter((s) => !isCut(s.card.id) && !isKept(s.card.id));
+  /**
+   * Recommended cuts not yet decided either way, as many as the deck is over 100: dealt in the swipe view, pre-marked
+   * in the list. Cut only takes the deck back to 100; a card that breaks a rule past that is Fix's first line.
+   */
+  const undecidedCuts = recommendedCuts.filter((s) => !isCut(s.card.id) && !isKept(s.card.id)).slice(0, state ? cutsNeeded(state) : 0);
   const recommendedIds = new Set(recommendedCuts.map((s) => s.card.id as number));
+  const undecidedIds = new Set(undecidedCuts.map((s) => s.card.id as number));
 
   /**
    * The accept rate (T065): leaving Cut records the recommended cuts as shown, once per cut list, and each one cut or
@@ -549,19 +513,25 @@ export function useDeckJourney({
   }
 
   /**
-   * List view: a card is marked when every copy is cut, or it is recommended and not kept. A card with several copies
-   * (basic lands) stays unmarked while copies are left, so each tap cuts one more.
+   * List view: a card is marked when every copy is cut, or it is a recommended cut still waiting. A card with several
+   * copies (basic lands) stays unmarked while copies are left, so each tap cuts one more.
    */
   const isMarkedForCut = (card: CardSummary) =>
-    (isCut(card.id) && state !== null && copiesInDeck(state, card.id) === 0) || (recommendedIds.has(card.id) && !isKept(card.id));
+    (isCut(card.id) && state !== null && copiesInDeck(state, card.id) === 0) || undecidedIds.has(card.id);
   /** Copies of a card cut this round. */
   const cutCopies = (id: CardId) => state?.cuts.filter((c) => c.id === id).length ?? 0;
+
+  /** Cuts one copy of a card, while the deck is over 100: Cut never takes it below. */
+  function takeCut(card: CardSummary) {
+    const from = latest.current?.state ?? state;
+    if (from && cutsNeeded(from) > 0) apply({ type: "cut", card });
+  }
 
   /** A tap in the list: cuts one more copy while any are left; on a marked card, puts every copy back. */
   function toggleCut(card: CardSummary) {
     if (!state) return;
     if (!isMarkedForCut(card)) {
-      apply({ type: "cut", card });
+      takeCut(card);
       return;
     }
     const copies = state.cuts.filter((c) => c.id === card.id).length;
@@ -573,25 +543,20 @@ export function useDeckJourney({
   const pendingCuts = undecidedCuts.map((s): JourneyAction => ({ type: "cut", card: s.card }));
 
   /**
-   * Cuts still owed once the undecided recommended cuts go: Swap and Done trade one card for one, so the deck has to be
-   * at 100 or below before the round goes past Cut.
+   * Cuts still owed once the undecided recommended cuts go: Fix and Swap trade one card for one, so the deck has to be
+   * at 100 before the round goes past Cut.
    */
   const afterPendingCuts = state ? pendingCuts.reduce(journeyReducer, state) : null;
   const cutsOwed = afterPendingCuts ? cutsNeeded(afterPendingCuts) : 0;
-  /**
-   * Slots this round's cuts opened below 100, once the undecided recommended cuts go: a deck cut below 100 goes back to
-   * Add to fill them. A deck that was short of 100 before any cut (a partial list) goes on as it is.
-   */
-  const cutsOpen =
-    afterPendingCuts && openSlots({ ...afterPendingCuts, cuts: [] }) === 0 ? openSlots(afterPendingCuts) : 0;
 
   /**
-   * Leaves Cut: on to Swap at 100, back to Add below it. Recommended cuts nobody decided on go as marked, which is what
-   * "accept the cuts as is" means. Nothing happens while the deck is still over 100.
+   * Leaves Cut for the next step once the deck is at 100. Recommended cuts nobody decided on go as marked, which is
+   * what "accept the cuts as is" means. Nothing happens while the deck is still over 100.
    */
   function finishCuts() {
-    if (cutsOwed > 0) return;
-    goTo(cutsOpen > 0 ? "add" : "replace", ...pendingCuts);
+    const next = state ? nextPhase(state, "cut") : null;
+    if (cutsOwed > 0 || !next) return;
+    goTo(next, ...pendingCuts);
   }
 
   /** Puts back one copy of a card cut this round. */
@@ -606,7 +571,7 @@ export function useDeckJourney({
       ? addOrder(
           add.data.groups
             .flatMap((g) => g.suggestions)
-            .filter((s) => !state.declinedAdds.includes(s.card.id) && !state.adds.some((a) => a.id === s.card.id)),
+            .filter((s) => !state.declinedAdds.includes(s.card.id) && !state.adds.some((a) => a.id === s.card.id) && !breaksBand(tally, s.card)),
           landsShort,
         )
       : [];
@@ -666,7 +631,7 @@ export function useDeckJourney({
       setOverBracket((prev) => ({ round: roundId, adds: new Map([...(prev?.round === roundId ? prev.adds : []), [card.id, overCombos]]) }));
     }
     const next = apply({ type: "add", card });
-    if (next && roomToAdd(next) > 0) void loadAdds(next);
+    if (next && openSlots(next) > 0) void loadAdds(next);
   }
 
   /** A card taken from "Complete a combo": added like any other, recorded against the combo list. */
@@ -677,7 +642,7 @@ export function useDeckJourney({
     }
     noteCompleted(card);
     const next = apply({ type: "add", card });
-    if (next && roomToAdd(next) > 0) void loadAdds(next);
+    if (next && openSlots(next) > 0) void loadAdds(next);
   }
 
   /**
@@ -687,7 +652,7 @@ export function useDeckJourney({
   function passAdd(card: CardSummary) {
     recordAddDecision(card, false);
     const next = apply({ type: "declineAdd", cardId: card.id });
-    if (next && roomToAdd(next) > 0 && addQueue.every((s) => s.card.id === card.id)) void loadAdds(next);
+    if (next && openSlots(next) > 0 && addQueue.every((s) => s.card.id === card.id)) void loadAdds(next);
   }
 
   function undoAdd(card: CardSummary) {
@@ -723,13 +688,16 @@ export function useDeckJourney({
     }
     setBasicsFill(null);
     const next = apply(...lands.map((card): JourneyAction => ({ type: "add", card })));
-    if (next && roomToAdd(next) > 0) void loadAdds(next);
+    if (next && openSlots(next) > 0) void loadAdds(next);
   }
 
   // ── Stepper ────────────────────────────────────────────────────────────────────────────────────────────────────
+  /** The steps this round runs, by the deck it started from. */
+  const phases = state ? roundPhases(state) : [];
+
   /**
-   * Leaving Add for a later step while the deck is under 100 asks first, since Cut has nothing to take out of a short
-   * deck. True when it asked instead of going.
+   * Leaving Add for a later step while the deck is under 100 asks first, since Fix and Swap trade one card for one and
+   * leave it short. True when it asked instead of going.
    */
   function askBeforeLeavingShort(phase: JourneyPhase): boolean {
     if (!current || !state || state.phase !== "add" || openSlots(state) === 0) return false;
@@ -740,44 +708,41 @@ export function useDeckJourney({
   /** Add's part on screen: its cards, or the combos after them. */
   const addPart: "cards" | "combos" = current !== null && state?.phase === "add" && combosRound === current.id ? "combos" : "cards";
 
-  /** Opens Add's Combos part, from Add or from a later step (Deck stats' link). */
+  /** Opens Add's Combos part, from Add or from a later step (Deck stats' link), in a round that runs Add. */
   function openCombos() {
-    if (!state || !current) return;
-    // From Cut, Add takes the pending cuts with it, as Deck stats' Find links do.
-    if (state.phase === "cut") goTo("add", ...pendingCuts);
-    else if (state.phase !== "add") goTo("add");
+    if (!state || !current || !phases.includes("add")) return;
+    if (state.phase !== "add") goTo("add");
     setCombosRound(current.id);
-  }
-
-  /** Add's own Next (not the stepper's Cut, which jumps): through Combos when there are any, then on to Cut. */
-  function addNext() {
-    if (addPart === "cards" && addCombos.length > 0) openCombos();
-    else select("cut");
   }
 
   /** The current step's Next: what its own button does. */
   function nextStep() {
     if (!state) return;
-    if (state.phase === "add") {
-      if (!askBeforeLeavingShort("cut")) goTo("cut");
-    } else if (state.phase === "cut") finishCuts();
-    else if (state.phase === "replace") goTo("review");
+    const next = nextPhase(state);
+    if (!next) return;
+    if (state.phase === "cut") finishCuts();
+    else if (!(state.phase === "add" && askBeforeLeavingShort(next))) goTo(next);
+  }
+
+  /** Add's own Next (not the stepper's, which jumps): through Combos when there are any, then on to the next step. */
+  function addNext() {
+    if (addPart === "cards" && addCombos.length > 0) openCombos();
+    else nextStep();
   }
 
   /**
    * Whether the stepper may open a step. Earlier steps always; the next one, as its Next; one further on only when
    * the round has been there and the deck is unchanged since its Swap list was made, so going back to look changes
-   * nothing. A bracket check waiting in Cut keeps the way on to its own buttons.
+   * nothing. Cut keeps the way on shut while the deck is over 100.
    */
   function canOpen(phase: JourneyPhase): boolean {
-    if (!state) return false;
-    const at = phaseIndex(state.phase);
-    const to = phaseIndex(phase);
+    if (!state || !phases.includes(phase)) return false;
+    const at = phases.indexOf(state.phase);
+    const to = phases.indexOf(phase);
     if (to <= at) return true;
-    if (current?.check) return false;
-    if (state.phase === "cut" && (cutsOwed > 0 || cutsOpen > 0)) return false;
+    if (state.phase === "cut" && cutsOwed > 0) return false;
     if (to === at + 1) return true;
-    if (to > phaseIndex(state.reached)) return false;
+    if (phaseIndex(phase) > phaseIndex(state.reached)) return false;
     return replaceFresh(state.phase === "cut" ? pendingCuts.reduce(journeyReducer, state) : state);
   }
 
@@ -786,8 +751,8 @@ export function useDeckJourney({
     if (!state || !canOpen(phase)) return;
     // Add in the stepper from Add's Combos goes back to its cards.
     if (phase === "add" && state.phase === "add") setCombosRound(null);
-    const at = phaseIndex(state.phase);
-    const to = phaseIndex(phase);
+    const at = phases.indexOf(state.phase);
+    const to = phases.indexOf(phase);
     if (to === at + 1) nextStep();
     else if (!(to > at && askBeforeLeavingShort(phase))) goTo(phase, ...(state.phase === "cut" && to > at ? pendingCuts : []));
   }
@@ -809,10 +774,15 @@ export function useDeckJourney({
 
   return {
     state,
-    dispatch: (action: JourneyAction) => void apply(action),
-    /** A land swap (T083): one copy of a basic out and a card in, as one choice Undo takes back, so the deck stays at its size. */
-    swapLand: (basic: CardSummary, card: CardSummary) => void apply({ type: "cut", card: basic }, { type: "add", card }),
+    /** One choice, or several as one: Undo takes the lot back together (an auto-fix batch). */
+    dispatch: (...actions: JourneyAction[]) => void apply(...actions),
     goTo,
+    /** The steps this round runs, in order. */
+    phases,
+    /** The current step's own way on. */
+    nextStep,
+    /** The deck as it stands, counted for Deck stats' lines; null before an analysis. */
+    tally,
     stepper: {
       canOpen,
       select,
@@ -834,9 +804,8 @@ export function useDeckJourney({
     protectedPieces: state ? protectedPiecesOf(state, roundCombos) : NO_PIECES,
     /** Cards added this round that complete a combo above the bracket; Deck stats counts the ones still in the deck. */
     overBracketAdds,
-    /** How far the deck is below 100, how many more cards Add may put in, and how many Cut must take out. */
+    /** How far the deck is below 100 (the cards Add may still put in), and how many Cut must take out. */
     openSlots: state ? openSlots(state) : 0,
-    roomToAdd: state ? roomToAdd(state) : 0,
     cutsNeeded: state ? cutsNeeded(state) : 0,
     cut: {
       recommended: recommendedCuts,
@@ -845,17 +814,11 @@ export function useDeckJourney({
       cutCopies,
       /** Cuts the deck still owes before the round may go past Cut. */
       owed: cutsOwed,
-      /** Slots open below 100: Cut's way on goes back to Add instead of to Swap. */
-      open: cutsOpen,
-      /** Whether the deck is exactly 100 once the undecided recommended cuts go: a complete deck, not a partial list. */
-      full: afterPendingCuts !== null && cutsOwed === 0 && openSlots(afterPendingCuts) === 0,
-      /** How many cards Add may put in once the undecided recommended cuts go. */
-      roomToAdd: afterPendingCuts ? roomToAdd(afterPendingCuts) : 0,
+      /** Cuts one copy of a card, while the deck is over 100. */
+      take: takeCut,
       restore: restoreCut,
       toggle: toggleCut,
       finish: finishCuts,
-      /** Back to Add with the undecided recommended cuts taken as marked, as Cut's way on takes them. */
-      toAdd: () => goTo("add", ...pendingCuts),
     },
     add: {
       state: add,
@@ -875,10 +838,10 @@ export function useDeckJourney({
       openCombos,
       /** Back from Combos to Add's cards. */
       showCards: () => setCombosRound(null),
-      /** Add's Next: Combos first when there are any, then Cut. */
+      /** Add's Next: Combos first when there are any, then the next step. */
       next: addNext,
-      /** Straight on to Cut, as Combos' own Next does. */
-      toCut: () => select("cut"),
+      /** Straight on to the next step, as Combos' own Next does. */
+      toNext: nextStep,
       undo: undoAdd,
       /** A collection is applied, so owned cards show as owned and the rest show what they'd cost. */
       hasCollection: context !== null && context.ownership !== null,
@@ -911,20 +874,12 @@ export function useDeckJourney({
       /** Replacements passed on this round, which aren't offered for that card again. */
       declined: state?.declinedSwaps ?? [],
       decline: (targetId: CardId, replacementId: CardId) => void apply({ type: "declineSwap", targetId, replacementId }),
-      /** Asks for the weaker fits again when the deck changed under them in Swap (land swaps, T083). */
-      refresh: () => {
-        if (state?.phase === "replace" && !replaceFresh(state)) void loadReplaceTargets(state);
-      },
     },
-    /** A bracket change that made cards must-cuts, waiting for Cut & Continue or Revert. */
-    bracketCheck: current?.check ?? null,
     undo,
     canUndo: (current?.past.length ?? 0) > 0,
     /** Changes with every Undo. */
     undoCount,
     restart,
-    cutAndContinue,
-    revertCheck,
     reload,
     resultText,
   };

@@ -1,6 +1,6 @@
-import type { Bracket, DeckInput } from "@mtg/core/contract";
+import type { Bracket, DeckInput, StatChoices } from "@mtg/core/contract";
 import { JOURNEY_PHASES, deckKey, type JourneyState } from "@mtg/core/journey";
-import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
+import { MAX_DECK_NAME_CHARS, statChoicesSchema } from "@mtg/core/schemas";
 import type { ImportedFrom } from "@/components/deck/use-deck-tool";
 
 /** The deck from the player's last visit, kept in this browser only, so the tool opens where they left off. */
@@ -12,6 +12,8 @@ export interface SavedDeck {
   commanderName?: string | null;
   /** A name the player gave a deck not saved to an account yet; null keeps the commanders' names. */
   deckName?: string | null;
+  /** The player's choices for Deck stats lines (ignore, or allow buying), until the deck is saved to an account. */
+  statChoices?: StatChoices;
 }
 
 interface StoredDeck extends SavedDeck {
@@ -48,6 +50,7 @@ function readStored(): StoredDeck | null {
       (v.bracketOverride === null || isBracket(v.bracketOverride)) &&
       isOptionalText(v.commanderName, MAX_TEXT_CHARS) &&
       isOptionalText(v.deckName, MAX_DECK_NAME_CHARS) &&
+      (v.statChoices === undefined || statChoicesSchema.safeParse(v.statChoices).success) &&
       importedOk;
     return valid ? (v as unknown as StoredDeck) : null;
   } catch {
@@ -61,8 +64,8 @@ export function loadSavedDeck(): SavedDeck | null {
     clearSavedDeck();
     return null;
   }
-  const { text, bracketOverride, importedFrom, commanderName = null, deckName = null } = stored;
-  return { text, bracketOverride, importedFrom, commanderName, deckName };
+  const { text, bracketOverride, importedFrom, commanderName = null, deckName = null, statChoices } = stored;
+  return { text, bracketOverride, importedFrom, commanderName, deckName, ...(statChoices ? { statChoices } : {}) };
 }
 
 export function saveDeck(deck: SavedDeck): void {
@@ -74,8 +77,8 @@ export function saveDeck(deck: SavedDeck): void {
   }
 }
 
-/** Keeps a bracket choice or a deck name for the saved deck, if there is one. */
-export function updateSavedDeck(changes: Partial<Pick<SavedDeck, "bracketOverride" | "deckName">>): void {
+/** Keeps a bracket choice, a deck name or the stat choices for the saved deck, if there is one. */
+export function updateSavedDeck(changes: Partial<Pick<SavedDeck, "bracketOverride" | "deckName" | "statChoices">>): void {
   const stored = loadSavedDeck();
   if (stored) saveDeck({ ...stored, ...changes });
 }
@@ -99,7 +102,7 @@ interface StoredJourney {
 }
 
 /** The round's lists of choices; each must be an array in a stored journey. */
-const LIST_FIELDS = ["cuts", "kept", "adds", "declinedAdds", "swaps", "keptInReplace", "declinedSwaps"] as const;
+const LIST_FIELDS = ["cuts", "kept", "adds", "declinedAdds", "swaps", "keptInReplace", "declinedSwaps", "fixes", "declinedFixes"] as const;
 
 function isStoredJourney(value: unknown): value is StoredJourney {
   if (typeof value !== "object" || value === null) return false;

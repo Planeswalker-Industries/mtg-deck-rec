@@ -13,6 +13,10 @@ const COPY = {
     title: "Add cards you already own",
     body: "These come from every card in print. Import your collection and Add deals the cards you own instead of ones to buy.",
   },
+  fix: {
+    title: "Fix it with cards you already own",
+    body: "Fix picks from every card in print. Import your collection to bring the deck in line with cards you own.",
+  },
   replace: {
     title: "Swap in cards you already own",
     body: "Swap looks through every card in print. Import your collection and it puts the cards you own first.",

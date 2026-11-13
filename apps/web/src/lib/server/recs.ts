@@ -64,8 +64,7 @@ export const MAX_CUT_LIMIT = 40;
 export const MAX_ADD_PER_CATEGORY = 30;
 /** Fix reads every add the pool scored, then keeps each Deck stats line's best (`fixPool`). */
 const EVERY_ADD = Number.POSITIVE_INFINITY;
-/** Fix puts every card in order by score alone: in 'first' mode an owned card gets no head start there. */
-const NO_OWNED_BOOST = 0;
+
 /** The colour a colourless deck's basic land (Wastes) is filed under. */
 const COLOURLESS: BasicColour = "C";
 
@@ -483,7 +482,7 @@ export async function getFix(
   const deckIds = [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])];
   const available = await availabilityFor(db, collection);
   const only = available !== null && ownedOnly(context);
-  const [adds, basicLands, standIns, roleTargets, roleTags, scoring, bracket] = await Promise.all([
+  const [adds, basicLands, standIns, roleTargets, roleTags, scoring, bracket, ownedBoost] = await Promise.all([
     loadServedAdds(db, {
       commanderIds: context.deck.commanders,
       mainIds,
@@ -499,6 +498,8 @@ export async function getFix(
     loadRoleTags(db),
     loadScoringConfig(),
     loadBracketBasics(db),
+    // In 'first' mode Fix brings an owned card in ahead of an unowned one that scores a little higher, as Add does.
+    loadOwnedBoost(db, context),
   ]);
   const { corpus } = adds;
   const cuts = adds.deck;
@@ -535,7 +536,7 @@ export async function getFix(
         corpus,
         roleTargets,
         roleTags,
-        ownedBoost: NO_OWNED_BOOST,
+        ownedBoost,
         scoring,
         availability: available,
         standIns,
@@ -574,6 +575,7 @@ export async function getFix(
     deckColours,
     buyLines: lines,
     only,
+    ownedBoost,
   });
   return {
     mode: modeOf(context),

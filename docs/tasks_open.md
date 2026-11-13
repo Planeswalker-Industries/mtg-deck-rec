@@ -1,27 +1,12 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T089.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T090.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
 State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `20261022000100` (current). Hosted `corpus.decks` 212,606, last collated and precomputed by hand 2026-10-21.
 
 ---
-
-## T087: Fix screens: the step, auto-fix preview, footer, Finish, build page prompts
-
-**HIGH** · Frontend · Builds on T086
-
-- [ ] Journey: `JourneyPhase` gains `fix`; `phasesFor(deckSize)` by the round's starting deck (under 100 Add, Fix, Swap, Finish; over 100 Cut, Fix, Swap, Finish; at 100 Fix, Swap, Finish). Add stops at 100 (`ADD_OVERFLOW_MAX` goes) and deals no card that pushes an in-line stat out of its band (`bandsBroken`). Actions `fix` and `declineFix`; an auto-fix batch is one Undo entry. A bracket change sends the round to Fix. A deck with no valid move skips Fix
-- [ ] Fix step, phone first: header `Ramp 10/14 · line 1 of 4`, Out left and In right, chips for every line the move changes (full labels, icon and colour by direction), Skip and Swap, "Fix the rest for me". A card that is not legal or outside the commander's colours is Fix's first line (owner, 2026-11-11)
-- [ ] Auto-fix preview: a bottom sheet, moves grouped by line, each a row of two selectable Card Plates (Out → In, selected by default, tap to deselect), the header score recomputed from the selected moves, Cancel and `Apply 14` (the one solid blue button)
-- [ ] Deck stats footer: closed it reads `Deck stats ⚠ 3/11`, and `→ 4/11` while a card is on screen (the tally graded with the card in and out); no per-line text. The same chips show by the card in Add, Cut and Swap
-- [ ] Build page (collection builds): each "Not in your collection" gap has Ignore and Allow buying; Continue waits for every answer; Allow buying rebuilds with `buyFor`; the answers go into the deck tool and are saved with the deck
-- [ ] Finish: lines in line as a count; each leftover with its reason (Skipped by you with "Fix", Ignored, Not in your collection with Ignore / Allow buying, No safe card to take out). A line the collection can't fix counts as off until the player answers (owner, 2026-11-11). Colour rows read "needs 20"
-- [ ] Retired: the land swaps inside Swap (`land-swaps.tsx`, `land-swap.ts`), the "Find ramp" / "Swap basics" / "Trim protection" links (they open Fix at that line), Finish's "Still off" box
-- [ ] Release (from T086): migration `20261111000100_fix_journey.sql` reaches hosted before the code serves requests; then compare Fix's hosted p95 with Add's (T068). Locally Fix runs within about 10% of Add (64–69 ms against 59–61 ms) and sends about 30 KB gzipped
-- [ ] Owned first: Fix orders the cards to bring in by score alone, so an owned card gets no head start there. Decide whether it should (the design covers Owned only)
-- [ ] At 390×844 nothing in the footer or the Fix step is truncated and ✓ and ✕ are on screen; `shot.mjs` recipes `fix` and `fix-auto`, `finish` and `build-collection` updated; the journey e2e spec follows the new step order
 
 ## T088: Swap ladder
 
@@ -35,6 +20,14 @@ Swap dead-ends today: "We don't know what this card does yet" for a card with no
 - [ ] `SwapSuggestion.match: 'tags' | 'role' | 'slot'`; every suggestion says its rung ("Same job: ramp", "Similar slot: 5-mana creature"); `NO_TAGS_ON_TARGET` stays in the type and is no longer returned
 - [ ] The Swap step fetches the next card's replacements ahead and steps over a card with none on any rung; the two e2e specs that expect "Nothing in your collection does a similar job." change
 - [ ] Gate: `eval:holdout` swap metrics do not drop; rung 1 results unchanged wherever rung 1 has enough. Doc Ock, Sinister Scientist and Resonating Lute each show labelled replacements from the owner's collection
+
+## T089: Fix follow-ups
+
+**MEDIUM** · Frontend / Decision · Left over from T087
+
+- [ ] The mocks' build returns no `collectionGaps`, so CI never sees the build page's Ignore / Allow buying prompts or Finish's "Not in your collection" row: give the mock build a gap when the collection is short, then cover Allow buying (the rebuild with `buyFor`, the "Not owned" note and cost line), Ignore (the line grey and out of the score), and the answers surviving a save and a reopen
+- [ ] A bracket change during Swap or Finish that the deck no longer fits sends the round to Fix at the bracket line: no e2e covers it
+- [ ] `AddFilter`'s `lands` kind and `trimCuts`' `focusRoleId` have no caller left since Deck stats' Find and Trim links became Fix: remove them
 
 ## T074: Archidekt answers the daily crawl with 429s
 
@@ -62,6 +55,8 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 2026-10-07: adds 212/243 → 306/400 ms at p50/p95; card pairs cost most, `serving_deck_affinity` 174 ms and 253 KB for an add.
 
 - [ ] Skip the card-pairs read for cuts while `affinity.lowAffinityCuts` is off, and for swaps while their `deck` weight is 0
+- [ ] After T086 reaches `main`: compare Fix's hosted p95 with Add's. Locally Fix runs within about 10% of Add (64–69 ms against 59–61 ms) and sends about 30 KB gzipped
+- [ ] The deck tool still asks for cuts on every analysis; only a deck over 100 has a Cut step (T087), so a deck at or under 100 can skip that read
 - [ ] Skip `serving_commander_profile` while `skeleton.edhrecPrior` is off
 - [ ] Send an add only the pairs that point at its pool and neighbours, each card's row once; or cache each card's corpus pairs for days
 

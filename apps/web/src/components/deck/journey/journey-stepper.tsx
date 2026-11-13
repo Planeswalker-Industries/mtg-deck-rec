@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Check, ClipboardList, Plus, Repeat2, Scissors } from "lucide-react";
-import { JOURNEY_PHASES, type JourneyPhase } from "@mtg/core/journey";
+import { Check, ClipboardList, Plus, Repeat2, Scissors, Wrench } from "lucide-react";
+import type { JourneyPhase } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
@@ -11,9 +11,13 @@ import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors }> = {
   cut: { name: "Cut", Icon: Scissors },
   add: { name: "Add", Icon: Plus },
+  fix: { name: "Fix", Icon: Wrench },
   replace: { name: "Swap", Icon: Repeat2 },
   review: { name: "Finish", Icon: ClipboardList },
 };
+
+/** A round runs three steps (a deck at 100) or four (Add or Cut first): the row's columns, spelled out for Tailwind. */
+const STEP_COLUMNS: Readonly<Record<number, string>> = { 3: "grid-cols-3", 4: "grid-cols-4" };
 
 /**
  * Where the player is in the journey. Earlier steps can be revisited, and the next step does what the current one's
@@ -21,19 +25,22 @@ const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors }> = {
  * (`canOpen`), because each step asks for its suggestions against the choices made before it.
  */
 export function JourneyStepper({
+  phases,
   phase,
   canOpen,
   onSelect,
 }: {
+  /** The steps this round runs, in order (`phasesFor`). */
+  phases: readonly JourneyPhase[];
   phase: JourneyPhase;
   canOpen: (phase: JourneyPhase) => boolean;
   onSelect: (phase: JourneyPhase) => void;
 }) {
-  const at = JOURNEY_PHASES.indexOf(phase);
+  const at = phases.indexOf(phase);
   return (
     <nav aria-label="Deck upgrade steps">
-      <ol className="grid grid-cols-4 gap-1 rounded-lg bg-muted p-0.5">
-        {JOURNEY_PHASES.map((step, i) => {
+      <ol className={cn("grid gap-1 rounded-lg bg-muted p-0.5", STEP_COLUMNS[phases.length] ?? "grid-cols-4")}>
+        {phases.map((step, i) => {
           const { name, Icon } = STEPS[step];
           const current = i === at;
           const done = i < at;
@@ -50,7 +57,7 @@ export function JourneyStepper({
                   current ? TOGGLE_ON : done || canOpen(step) ? TOGGLE_OFF : "text-muted-foreground/50",
                 )}
               >
-                {/* Phones drop the icons, so every step's name fits in a quarter of the row; the current step keeps its edge. */}
+                {/* Phones drop the icons, so every step's name fits its share of the row; the current step keeps its edge. */}
                 {done ? (
                   <Check aria-hidden className="size-4 shrink-0 max-sm:hidden" strokeWidth={2.5} />
                 ) : (

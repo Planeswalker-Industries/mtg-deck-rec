@@ -1,4 +1,5 @@
-import type { Bracket, CardId, DeckInput } from "@mtg/core/contract";
+import type { Bracket, CardId, DeckInput, StatChoices } from "@mtg/core/contract";
+import { statChoicesSchema } from "@mtg/core/schemas";
 
 /**
  * A deck a signed-out player asked to save, kept in this browser while they sign in. The deck tool picks it up when
@@ -10,6 +11,8 @@ export interface PendingSave {
   deck: DeckInput;
   bracket: Bracket | null;
   original?: DeckInput | undefined;
+  /** The player's choices for Deck stats lines, saved with the deck. */
+  statChoices?: StatChoices | undefined;
 }
 
 /** Where the deck tool is sent back to after signing in, to finish the save. */
@@ -55,6 +58,7 @@ export function takePendingSave(): PendingSave | null {
       deck: { commanders: v.deck.commanders as CardId[], cards: v.deck.cards },
       bracket: v.bracket ?? null,
       ...(v.original && isDeck(v.original) ? { original: v.original } : {}),
+      ...(v.statChoices !== undefined && statChoicesSchema.safeParse(v.statChoices).success ? { statChoices: v.statChoices } : {}),
     };
   } catch {
     return null;

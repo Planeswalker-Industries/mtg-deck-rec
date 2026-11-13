@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./fixtures";
+import { FIX_MOVE, expect, openFix, openSwap, test, type Page } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 /** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */
@@ -206,7 +206,7 @@ test("saving a journey's result keeps the original, which the deck page compares
   const email = `original-${Date.now()}@test.invalid`;
   await signIn(page, request, email, "/decks");
 
-  // A short Chulane deck with one off-colour card, which the Cut step deals as a mandatory cut.
+  // A short Chulane deck with one off-colour card, which Fix trades out first.
   await page.goto("/deck");
   await page
     .getByRole("textbox", { name: "Decklist" })
@@ -215,11 +215,11 @@ test("saving a journey's result keeps the original, which the deck page compares
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
 
   const recs = page.getByRole("region", { name: "Recommendations" });
-  await recs.getByRole("navigation", { name: "Deck upgrade steps" }).getByRole("button", { name: "Cut" }).click({ timeout: 60_000 });
+  await expect(recs.getByRole("navigation", { name: "Deck upgrade steps" })).toBeVisible({ timeout: 60_000 });
   // The deck is short of 100, so leaving Add asks first.
-  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
-  await recs.getByRole("button", { name: "Cut Lightning Bolt" }).click({ timeout: 60_000 });
-  await recs.getByRole("button", { name: "Next", exact: true }).first().click();
+  await openFix(page);
+  await recs.getByRole("region", FIX_MOVE).getByRole("button", { name: /^Swap Lightning Bolt for / }).click({ timeout: 60_000 });
+  await openSwap(page);
   const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
   const toReview = recs.getByRole("button", { name: "Next: finish" });
   await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });

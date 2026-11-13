@@ -75,8 +75,11 @@ export function CardPlate({
   mark,
   onSelect,
   selected = false,
+  showCost = true,
   className,
 }: {
+  /** False leaves the mana cost off, where the plate is narrow and the name needs the room (a pair of plates on a phone). */
+  showCost?: boolean;
   card: CardSummary;
   quantity: number;
   commander?: boolean;
@@ -132,7 +135,7 @@ export function CardPlate({
         {quantity > 1 && <span className="shrink-0 font-mono text-sm tabular-nums">{quantity}×</span>}
         <span className={cn("truncate text-sm font-semibold", mark === "cut" && "line-through decoration-cut decoration-2")}>{name}</span>
         {commander && <Crown aria-label="Commander" className="size-4 shrink-0 text-foreground/80" />}
-        <ManaCost cost={card.manaCost} className="text-sm" />
+        {showCost && <ManaCost cost={card.manaCost} className="text-sm" />}
         {card.gameChanger && (
           <span title="Game Changer" className="shrink-0 rounded-sm bg-gc-bg px-1 font-mono text-xs text-gc">
             GC<span className="sr-only"> (Game Changer)</span>

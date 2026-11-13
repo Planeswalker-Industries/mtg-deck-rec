@@ -104,13 +104,13 @@ function ComboGrid({ children }: { children: ReactNode }) {
  * Reached from Add's Next, its Combos link and Deck stats; the stepper still says Add.
  */
 export function CombosPhase({ journey, uploadHref, nextLabel }: { journey: DeckJourney; uploadHref: Route; nextLabel: string }) {
-  const { combos, acceptCombo, hasCollection, showCards, toCut } = journey.add;
+  const { combos, acceptCombo, hasCollection, showCards, toNext } = journey.add;
   const [readyOpen, setReadyOpen] = useState(true);
   // Combos only ever render in the browser (after a deck is read), so the window is there to ask.
   const [upgradesOpen, setUpgradesOpen] = useState(() => window.matchMedia(WIDE_QUERY).matches);
   const names = (id: CardId) => journey.cards.get(id)?.name ?? "Unknown card";
-  const room = journey.roomToAdd;
-  const size = COMMANDER_DECK_SIZE - journey.openSlots + journey.cutsNeeded;
+  const room = journey.openSlots;
+  const size = COMMANDER_DECK_SIZE - journey.openSlots;
   const ready = hasCollection ? combos.filter((c) => c.owned !== null) : [];
   const upgrades = hasCollection ? combos.filter((c) => c.owned === null) : combos;
   const asOf = upgrades.find((c) => c.card.price)?.card.price?.asOf;
@@ -144,7 +144,7 @@ export function CombosPhase({ journey, uploadHref, nextLabel }: { journey: DeckJ
           Commander Spellbook
         </a>
       </p>
-      {room === 0 && <p className="text-sm">The deck is at its limit for this round. Cut first, then come back for combos.</p>}
+      {room === 0 && <p className="text-sm">The deck is at 100, so there is no room for another card here.</p>}
 
       {hasCollection ? (
         <ComboSection title="Collection Ready Combos" count={ready.length} open={readyOpen} onToggle={setReadyOpen}>
@@ -171,7 +171,7 @@ export function CombosPhase({ journey, uploadHref, nextLabel }: { journey: DeckJ
         )}
       </ComboSection>
 
-      <NextBar label={nextLabel} onNext={toCut}>
+      <NextBar label={nextLabel} onNext={toNext}>
         {combos.length} {combos.length === 1 ? "combo" : "combos"}
       </NextBar>
     </div>

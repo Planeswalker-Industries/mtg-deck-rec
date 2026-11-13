@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId, CardSummary, ComboRef, DeckCombo, OracleId, StatTargets } from '../contract';
-import { applyCard, buildTally, gradeDeck, toTallyCard, type BracketInput, type DeckTally, type TallyEntry } from './deck-tally';
-import { comboPiecesToKeep, fixLines, MAX_FIX_MOVES, nextFixMove, planFixes, type FixCard, type FixInput, type FixMove } from './fix';
+import { applyCard, buildTally, gradeDeck, scoreWithMoves, toTallyCard, type BracketInput, type DeckTally, type TallyEntry } from './deck-tally';
+import { addBreaksBand, comboPiecesToKeep, fixLines, MAX_FIX_MOVES, nextFixMove, planFixes, type FixCard, type FixInput, type FixMove } from './fix';
 
 const RAMP = 'ramp-role';
 const DRAW = 'draw-role';
@@ -271,6 +271,57 @@ describe('nextFixMove and planFixes', () => {
     expect(moves.every((m) => m.line === 'sources:G' && m.in.name === 'Forest')).toBe(true);
     const after = gradeDeck(applied(given, moves), targets, given.bracket).stats.find((s) => s.key === 'sources:G')!;
     expect(after.ok).toBe(true);
+  });
+});
+
+describe('the Fix screens (T087)', () => {
+  it('tries the focused line first, and the usual order after it', () => {
+    const given = input(deck({ ramp: 5, draw: 5 }));
+    expect(nextFixMove(given)?.line).toBe(RAMP);
+    expect(nextFixMove({ ...given, focusLine: DRAW })?.line).toBe(DRAW);
+    // A line that needs nothing changes nothing.
+    expect(nextFixMove({ ...given, focusLine: 'lands' })?.line).toBe(RAMP);
+    expect(planFixes({ ...given, focusLine: DRAW })[0]?.line).toBe(RAMP);
+  });
+
+  it('scores the deck with the selected moves made, leaving the tally as it was', () => {
+    const given = input(deck({ ramp: 5 }));
+    const moves = planFixes(given).map((m) => ({ in: toTallyCard(m.in, rolesOf(given, m.in.id)), out: toTallyCard(m.out, rolesOf(given, m.out.id)) }));
+    const before = scoreWithMoves(given.tally, targets, given.bracket, {}, []);
+    const after = scoreWithMoves(given.tally, targets, given.bracket, {}, moves);
+    expect(before.okCount).toBe(before.total - 1);
+    expect(after.okCount).toBe(after.total);
+    // Two of the three moves leave ramp at 7, still under its band.
+    expect(scoreWithMoves(given.tally, targets, given.bracket, {}, moves.slice(0, 2)).okCount).toBe(before.okCount);
+    expect(value(given.tally, RAMP)).toBe(5);
+    // A card on screen alone: one in, none out.
+    expect(scoreWithMoves(given.tally, targets, given.bracket, { [RAMP]: 'ignore' }, [{ in: moves[0]!.in, out: null }]).total).toBe(before.total - 1);
+  });
+
+  it('says when one more copy of a card would leave a line above its band', () => {
+    const { tally } = deck({ ramp: 12 });
+    const ramp = toTallyCard(summary(900, 'More Ramp', 'Instant', { manaValue: 2 }), [RAMP]);
+    const plain = toTallyCard(summary(901, 'Plain', 'Instant', { manaValue: 2 }), []);
+    // Ramp is 12 of 10, the top of its band: a thirteenth is over it.
+    expect(addBreaksBand(tally, targets, ramp)).toBe(true);
+    expect(addBreaksBand(tally, targets, ramp, { [RAMP]: 'ignore' })).toBe(false);
+    expect(addBreaksBand(tally, targets, plain)).toBe(false);
+    // The mana value 7 bar holds 3 of 3 with a band of one card: a fifth is over it, a fourth is not.
+    const seven = toTallyCard(summary(902, 'Big', 'Instant', { manaValue: 7 }), []);
+    expect(addBreaksBand(tally, targets, seven)).toBe(false);
+    applyCard(tally, seven, 1);
+    expect(addBreaksBand(tally, targets, toTallyCard(summary(903, 'Bigger', 'Instant', { manaValue: 8 }), []))).toBe(true);
+  });
+});
+
+describe('the order of the cards to bring in', () => {
+  it("tries the in cards in the pool's order, so an owned card the server put first comes in first", () => {
+    const built = deck({ ramp: 6 });
+    const [best, second] = [ins[0]!, ins[1]!];
+    // Owned first: the server lists the owned card ahead of one that scores a little higher.
+    const owned: FixCard = { ...second, owned: { quantity: 1 } };
+    const moves = planFixes(input(built, { pool: { ins: [owned, best, forest], deck: built.cards } }));
+    expect(moves.map((m) => m.in.name)).toEqual([second.card.name, best.card.name]);
   });
 });
 

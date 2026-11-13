@@ -381,7 +381,11 @@ export interface FixCard {
 
 /** What Fix pairs its moves from. */
 export interface FixPool {
-  /** Candidates to bring in: each Deck stats line's best. Basic lands of the deck's colours are always here. */
+  /**
+   * Candidates to bring in: each Deck stats line's best, in the order Fix tries them (best first; in 'first' mode an
+   * owned card ahead of an unowned one that scores a little higher). Basic lands of the deck's colours are always
+   * here, last.
+   */
   ins: FixCard[];
   /** Every main-deck card, basic lands included. */
   deck: FixCard[];
