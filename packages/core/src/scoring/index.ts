@@ -14,3 +14,5 @@ export * from './pairs';
 export * from './affinity';
 export * from './build';
 export * from './stat-targets';
+export * from './bands';
+export * from './fix-pool';

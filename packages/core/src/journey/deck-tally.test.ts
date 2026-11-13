@@ -28,6 +28,7 @@ const targets: StatTargets = {
   ],
   curve: [0, 8, 12, 10, 8, 6, 3, 2],
   types: [],
+  colourSourceCap: null,
   bracketLimits: { massLandDenialFromBracket: 4, maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 }, extraTurnLoopResults: ['Infinite turns'], extraTurnLoopFromBracket: 4 },
 };
 
@@ -324,6 +325,15 @@ describe('mana base in the report', () => {
     expect(report.mana.byTurn.map((b) => b.turn)).toEqual([3, 4, 6]);
   });
 
+  it('caps a colour row at the targets’ colour source cap, in the row and in the preview', () => {
+    const capped = { ...targets, colourSourceCap: 12 };
+    const report = gradeDeck(buildTally(deck(), [liesa]), capped, bracket());
+    expect(report.stats.find((s) => s.key === 'sources:B')).toMatchObject({ value: 12, target: 12, ok: true });
+    // A {B}{B}{B} 3-drop would raise the Karsten number, but the capped target stays 12: no target in the preview.
+    const triple = card({ typeLine: 'Sorcery', manaValue: 3, manaCost: '{B}{B}{B}' });
+    expect(statDeltas(report.stats, triple, null, report.mana.deck).get('sources:B')?.target).toBeUndefined();
+  });
+
   it('adds no rows without commanders or coloured costs', () => {
     const plain = gradeDeck(buildTally([{ card: card(), quantity: 40 }], []), targets, bracket());
     expect(plain.stats.some((s) => s.group === 'colours')).toBe(false);
@@ -370,5 +380,35 @@ describe('mana base in the report', () => {
     const black = report.stats.find((s) => s.key === 'sources:B');
     // The {B}{B} sorcery left; no source did. Against the 4-drop, both decks have 12 Swamps and four Signets.
     expect(black?.start).toBe(black?.value);
+  });
+});
+
+describe('gradeDeck with ignored lines (T086)', () => {
+  // 30 Forests and nothing else: basic lands, both roles and the curve are off.
+  const tally = buildTally([{ card: forest, quantity: 30 }], []);
+
+  it('leaves an ignored line out of the score and keeps grading it', () => {
+    const plain = gradeDeck(tally, targets, bracket());
+    const ignored = gradeDeck(tally, targets, bracket(), tally, { [RAMP]: 'ignore', curve: 'ignore' });
+    const ramp = ignored.stats.find((s) => s.key === RAMP)!;
+    expect(ramp).toMatchObject({ ok: false, state: 'ignored' });
+    expect(ignored.curve).toMatchObject({ ok: false, state: 'ignored' });
+    expect(ignored.total).toBe(plain.total - 2);
+    expect(ignored.okCount).toBe(plain.okCount);
+    expect(ignored.stats.find((s) => s.key === DRAW)?.state).toBe('off');
+    expect(ignored.stats.find((s) => s.key === 'lands')?.state).toBe('ok');
+  });
+
+  it('counts a line opened to buying as before, and never drops the bracket', () => {
+    const plain = gradeDeck(tally, targets, bracket());
+    const buying = gradeDeck(tally, targets, bracket(), tally, { [RAMP]: 'buy', bracket: 'ignore' });
+    expect(buying.total).toBe(plain.total);
+    expect(buying.okCount).toBe(plain.okCount);
+    expect(buying.stats.find((s) => s.key === RAMP)?.state).toBe('off');
+  });
+
+  it('reads ok once the lines left are in line', () => {
+    const report = gradeDeck(tally, targets, bracket(), tally, { [RAMP]: 'ignore', [DRAW]: 'ignore', curve: 'ignore', basicLands: 'ignore' });
+    expect(report).toMatchObject({ okCount: 2, total: 2, level: 'ok' });
   });
 });

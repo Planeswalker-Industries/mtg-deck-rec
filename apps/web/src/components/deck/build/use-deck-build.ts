@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { Bracket, BuildResult, CardId, CardSummary, DeckCardEntry, OwnershipInput, RecContext } from "@mtg/core/contract";
+import type { Bracket, BuildResult, CardId, CardSummary, DeckCardEntry, OwnershipInput, RecContext, StatChoice, StatChoices } from "@mtg/core/contract";
 import { decklistCsv, decklistText, type DeckExportEntry } from "@mtg/core/parse";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
@@ -18,7 +18,19 @@ export interface BuildRequest {
   kept?: DeckCardEntry[];
   /** The list being fitted, by card: its main cards and their copies, with the cards to name and show them. */
   list?: { entries: DeckCardEntry[]; cards: ReadonlyMap<CardId, CardSummary> };
+  /**
+   * The player's answers for the Deck stats lines the collection couldn't fill: ignore the line, or allow buying for
+   * it (the build then fills it with cards they don't own). They go into the deck tool with the deck.
+   */
+  choices?: StatChoices;
 }
+
+/** The lines a request opened to buying, in a stable order. */
+const buyLinesOf = (choices: StatChoices | undefined): string[] =>
+  Object.entries(choices ?? {})
+    .filter(([, choice]) => choice === "buy")
+    .map(([line]) => line)
+    .sort();
 
 export type BuildState =
   | { status: "idle" }
@@ -68,8 +80,8 @@ export function buildDecklistCsv(result: BuildResult): string {
 
 /**
  * Builds a deck for a commander (`RecsApi.build`): from the collection's cards when there is one, from every card
- * when there isn't. Open slots stay open (`fill: 'none'`): the buy side is shelved. A newer build drops the
- * answer of an older one.
+ * when there isn't. Open slots stay open (`fill: 'none'`): the buy side is shelved, apart from the lines the player
+ * opened to buying on the build page (`RecContext.buyFor`). A newer build drops the answer of an older one.
  */
 export function useDeckBuild(ownership: OwnershipInput | null) {
   const [state, setState] = useState<BuildState>({ status: "idle" });
@@ -81,6 +93,7 @@ export function useDeckBuild(ownership: OwnershipInput | null) {
     const id = ++requestId.current;
     shown.current = null;
     setState({ status: "loading", request });
+    const buyFor = buyLinesOf(request.choices);
     const context: RecContext = {
       deck: { commanders: request.commanders.map((c) => c.id), cards: request.kept ?? [] },
       bracket: request.bracket,
@@ -88,6 +101,7 @@ export function useDeckBuild(ownership: OwnershipInput | null) {
       includeGameChangers: defaultIncludeGameChangers(request.bracket),
       ownership,
       ...(ownership ? { ownershipMode: "only" as const } : {}),
+      ...(ownership && buyFor.length > 0 ? { buyFor } : {}),
     };
     const r = await getApis().recs.build({ context, fill: "none" });
     if (id !== requestId.current) return;
@@ -109,6 +123,19 @@ export function useDeckBuild(ownership: OwnershipInput | null) {
     setState({ status: "idle" });
   }
 
+  /**
+   * The player's answer for a line the collection couldn't fill. Allowing buying for it (or taking that back) changes
+   * what the build may pick, so the deck is built again; ignoring it only records the answer.
+   */
+  function choose(line: string, choice: StatChoice) {
+    if (state.status !== "ready") return;
+    const before = state.request.choices ?? {};
+    if (before[line] === choice) return;
+    const request: BuildRequest = { ...state.request, choices: { ...before, [line]: choice } };
+    if (choice === "buy" || before[line] === "buy") void build(request);
+    else setState({ ...state, request });
+  }
+
   /** The build taken on (Continue or Save for Later): every card it picked counts as accepted, once. */
   function accept() {
     const taken = shown.current;
@@ -117,5 +144,5 @@ export function useDeckBuild(ownership: OwnershipInput | null) {
     for (const cardId of taken.batch.cardIds) recordDecision(taken.batch, cardId, true, taken.context);
   }
 
-  return { state, build, reset, accept };
+  return { state, build, reset, accept, choose };
 }

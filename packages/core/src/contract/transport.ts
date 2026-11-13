@@ -21,14 +21,15 @@ import type {
   ParseDeckResult,
   SavedDeckContents,
   SavedDeckSummary,
+  StatChoices,
 } from './decks';
 import type { Result } from './errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
-import type { AddResult, BuildFill, BuildResult, CutResult, RecEvent, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
+import type { AddResult, BuildFill, BuildResult, CutResult, FixResult, RecEvent, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
 import type { OwnershipInput } from './recs';
 
 /**
- * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut}
+ * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut,build,fix}
  * (parallel requests, WAF rate-limited). Not Server Actions — those are dispatched serially.
  */
 export interface RecsApi {
@@ -41,6 +42,11 @@ export interface RecsApi {
    * cards to keep (usually none). `fill` defaults to 'none'.
    */
   build(input: { context: RecContext; fill?: BuildFill }): Promise<Result<BuildResult>>;
+  /**
+   * Fix's pool (v35): the cards to bring in for each Deck stats line and every main-deck card to take out, scored as
+   * adds and cuts are. Read when Fix opens and again after an auto-fix is applied.
+   */
+  fix(input: { context: RecContext }): Promise<Result<FixResult>>;
 }
 
 /**
@@ -128,6 +134,8 @@ export interface ActionsApi {
      * has one keeps it. Leave it out when nothing changed.
      */
     original?: DeckInput;
+    /** The player's choices for Deck stats lines (v35), replacing the stored ones. Leave it out to keep those. */
+    statChoices?: StatChoices;
   }): Promise<Result<{ deckId: DeckId; code: string }>>;
   /** The caller's own saved deck, as decklist text to go on editing. NOT_FOUND for anyone else's. */
   openSavedDeck(input: { code: string }): Promise<Result<SavedDeckContents>>;

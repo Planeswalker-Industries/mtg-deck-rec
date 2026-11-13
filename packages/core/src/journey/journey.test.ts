@@ -1,29 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId, CardSummary, DeckInput, IsoDateTime } from '../contract';
 import { deckStats } from './deck-stats';
-import { bracketMustCuts } from './bracket-check';
 import {
   copiesInDeck,
+  deckBeforeFixes,
   deckBeforeSwaps,
   deckKey,
   decklistFor,
   deckDiff,
   deckSize,
-  ADD_OVERFLOW_MAX,
   cutsNeeded,
   journeyReducer,
+  nextPhase,
   openSlots,
+  phasesFor,
   pushUndo,
-  roomToAdd,
+  roundAddedIds,
+  roundPhases,
   UNDO_DEPTH,
-  removeFromDeck,
   startJourney,
-  withoutCards,
   workingDeck,
   type JourneyAction,
   type JourneyState,
 } from './journey';
-import type { Bracket, CutSuggestion } from '../contract';
 
 const card = (id: number, overrides: Partial<CardSummary> = {}): CardSummary => ({
   id: id as CardId,
@@ -58,15 +57,34 @@ const base: DeckInput = {
   ],
 };
 
+/** The same deck a card short of 100, and a card over it. */
+const short: DeckInput = { ...base, cards: base.cards.filter((c) => c.cardId !== 4) };
+const over: DeckInput = { ...base, cards: [...base.cards, { cardId: 5 as CardId, quantity: 1, section: 'main' }] };
+
 const run = (...actions: JourneyAction[]): JourneyState => actions.reduce(journeyReducer, startJourney(base));
 const mainOf = (deck: DeckInput) =>
   Object.fromEntries(deck.cards.filter((c) => c.section === 'main').map((c) => [c.cardId, c.quantity]));
 
 describe('journey reducer', () => {
-  it('starts in the Add phase with nothing changed', () => {
+  it('starts on the first step its deck needs, with nothing changed', () => {
     const state = startJourney(base);
-    expect(state.phase).toBe('add');
+    expect(state.phase).toBe('fix');
     expect(workingDeck(state)).toEqual({ commanders: [COMMANDER], cards: base.cards });
+    expect(startJourney(short).phase).toBe('add');
+    expect(startJourney(over).phase).toBe('cut');
+  });
+
+  it('runs Add only under 100 cards, Cut only over 100, and keeps the steps for the round', () => {
+    expect(phasesFor(99)).toEqual(['add', 'fix', 'replace', 'review']);
+    expect(phasesFor(100)).toEqual(['fix', 'replace', 'review']);
+    expect(phasesFor(101)).toEqual(['cut', 'fix', 'replace', 'review']);
+    // The round's steps follow the deck it started from, not the deck as it stands.
+    const filled = journeyReducer(startJourney(short), { type: 'add', card: card(10) });
+    expect(deckSize(workingDeck(filled))).toBe(100);
+    expect(roundPhases(filled)).toEqual(['add', 'fix', 'replace', 'review']);
+    expect(nextPhase(filled)).toBe('fix');
+    expect(nextPhase(filled, 'review')).toBeNull();
+    expect(nextPhase(startJourney(base), 'add')).toBeNull();
   });
 
   it('opens a slot per cut in a full deck and never cuts more copies than the deck has', () => {
@@ -85,11 +103,9 @@ describe('journey reducer', () => {
   });
 
   it('counts slots from the deck size: an oversized deck gets none until it is down to 100, a short one has room already', () => {
-    const over: DeckInput = { ...base, cards: [...base.cards, { cardId: 5 as CardId, quantity: 1, section: 'main' }] };
     const cutOne = [{ type: 'cut', card: card(5) } as const].reduce(journeyReducer, startJourney(over));
     expect(openSlots(startJourney(over))).toBe(0);
     expect(openSlots(cutOne)).toBe(0);
-    const short: DeckInput = { ...base, cards: base.cards.filter((c) => c.cardId !== 4) };
     expect(openSlots(startJourney(short))).toBe(1);
   });
 
@@ -100,22 +116,19 @@ describe('journey reducer', () => {
     expect(run({ type: 'keep', cardId: 2 as CardId }, { type: 'cut', card: card(2) }).kept).toEqual([]);
   });
 
-  it('adds once per card, past a full deck up to the overflow limit, and Cut then owes the difference', () => {
-    const state = run({ type: 'add', card: card(10) }, { type: 'add', card: card(10) }, { type: 'add', card: card(11) });
+  it('adds once per card and stops at 100', () => {
+    const open = run({ type: 'cut', card: card(2) }, { type: 'cut', card: card(3) });
+    const state = [card(10), card(10), card(11), card(12)].map((c): JourneyAction => ({ type: 'add', card: c })).reduce(journeyReducer, open);
     expect(state.adds.map((c) => c.id)).toEqual([10, 11]);
     expect(openSlots(state)).toBe(0);
-    expect(cutsNeeded(state)).toBe(2);
-    expect(roomToAdd(state)).toBe(ADD_OVERFLOW_MAX - 2);
-    expect(mainOf(workingDeck(state))).toEqual({ 2: 1, 3: 1, 4: 1, 10: 1, 11: 1, [PLAINS]: FULL_PLAINS });
-
-    const ids = Array.from({ length: ADD_OVERFLOW_MAX + 2 }, (_, i) => 100 + i);
-    const full = ids.map((id): JourneyAction => ({ type: 'add', card: card(id) })).reduce(journeyReducer, startJourney(base));
-    expect(full.adds).toHaveLength(ADD_OVERFLOW_MAX);
-    expect(roomToAdd(full)).toBe(0);
-    expect(cutsNeeded(journeyReducer(full, { type: 'cut', card: card(2) }))).toBe(ADD_OVERFLOW_MAX - 1);
+    expect(cutsNeeded(state)).toBe(0);
+    expect(mainOf(workingDeck(state))).toEqual({ 4: 1, 10: 1, 11: 1, [PLAINS]: FULL_PLAINS });
+    // A full deck takes no addition at all.
+    expect(run({ type: 'add', card: card(10) }).adds).toEqual([]);
   });
 
-  it('owes no cuts at or below a full deck', () => {
+  it('owes a cut per card over 100, and none at or below a full deck', () => {
+    expect(cutsNeeded(startJourney(over))).toBe(1);
     expect(cutsNeeded(startJourney(base))).toBe(0);
     expect(cutsNeeded(run({ type: 'cut', card: card(2) }))).toBe(0);
   });
@@ -182,10 +195,58 @@ describe('journey reducer', () => {
   });
 
   it('remembers the furthest phase opened when going back', () => {
-    const state = run({ type: 'goto', phase: 'replace' }, { type: 'goto', phase: 'add' }, { type: 'goto', phase: 'cut' });
-    expect(state.phase).toBe('cut');
-    expect(state.reached).toBe('replace');
-    expect(startJourney(base).reached).toBe('add');
+    const state = run({ type: 'goto', phase: 'review' }, { type: 'goto', phase: 'fix' }, { type: 'goto', phase: 'replace' });
+    expect(state.phase).toBe('replace');
+    expect(state.reached).toBe('review');
+    expect(startJourney(base).reached).toBe('fix');
+  });
+});
+
+describe('Fix moves', () => {
+  const move = (inId: number, outId: number, line = 'ramp') => ({ type: 'fix' as const, move: { line, in: card(inId), out: card(outId) } });
+
+  it('trades one card for one, so the deck keeps its size, and a batch undoes as one choice', () => {
+    const state = run(move(10, 2), move(11, 3));
+    expect(mainOf(workingDeck(state))).toEqual({ 4: 1, 10: 1, 11: 1, [PLAINS]: FULL_PLAINS });
+    expect(deckSize(workingDeck(state))).toBe(100);
+    expect(mainOf(deckBeforeFixes(state))).toEqual(mainOf(base));
+    const start = startJourney(base);
+    expect(pushUndo([], start, state, [move(10, 2), move(11, 3)])).toEqual([start]);
+  });
+
+  it('ignores a move whose out card is gone or whose in card is already in the deck', () => {
+    const once = run(move(10, 2));
+    expect(journeyReducer(once, move(11, 2))).toBe(once);
+    expect(journeyReducer(once, move(10, 3))).toBe(once);
+    expect(journeyReducer(once, { type: 'cut', card: card(2) })).toBe(once);
+  });
+
+  it('takes out one copy of a basic land per move, and brings one in more than once', () => {
+    const forest = card(60, { typeLine: 'Basic Land — Forest' });
+    const plains = card(PLAINS, { typeLine: 'Basic Land — Plains' });
+    const state = run({ type: 'fix', move: { line: 'sources:G', in: forest, out: plains } }, { type: 'fix', move: { line: 'sources:G', in: forest, out: plains } });
+    expect(mainOf(workingDeck(state))).toEqual({ 2: 1, 3: 1, 4: 1, 60: 2, [PLAINS]: FULL_PLAINS - 2 });
+    expect(copiesInDeck(state, 60 as CardId)).toBe(2);
+  });
+
+  it('keeps the cards the round brought in from going out again, basic lands apart', () => {
+    const forest = card(60, { typeLine: 'Basic Land — Forest' });
+    const state = [
+      { type: 'add', card: card(10) } as const,
+      move(11, 2),
+      { type: 'fix', move: { line: 'lands', in: forest, out: card(PLAINS) } } as const,
+      { type: 'swap', target: card(3), replacement: card(20) } as const,
+    ].reduce(journeyReducer, startJourney(short));
+    expect(roundAddedIds(state).sort((a, b) => a - b)).toEqual([10, 11, 20]);
+  });
+
+  it('remembers each skipped pair once, and forgets them all on a retry', () => {
+    const skip: JourneyAction = { type: 'declineFix', inId: 10 as CardId, outId: 2 as CardId };
+    const skipped = run(skip, skip);
+    expect(skipped.declinedFixes).toEqual([{ inId: 10, outId: 2 }]);
+    expect(journeyReducer(skipped, { type: 'retryFixes' }).declinedFixes).toEqual([]);
+    const start = startJourney(base);
+    expect(journeyReducer(start, { type: 'retryFixes' })).toBe(start);
   });
 });
 
@@ -229,6 +290,7 @@ describe('deck helpers', () => {
       { type: 'add', card: card(10) },
       { type: 'swap', target: card(3), replacement: card(20) },
     );
+    expect(copiesInDeck(state, 20 as CardId)).toBe(1);
     const diff = deckDiff(base, workingDeck(state));
     expect(diff.removed).toEqual(expect.arrayContaining([{ cardId: 2, quantity: 1 }, { cardId: PLAINS, quantity: 1 }, { cardId: 3, quantity: 1 }]));
     expect(diff.added).toEqual(expect.arrayContaining([{ cardId: 10, quantity: 1 }, { cardId: 20, quantity: 1 }]));
@@ -277,52 +339,4 @@ describe('deckStats', () => {
   });
 });
 
-describe('taking cards out of the deck as it stands', () => {
-  it('cuts a card from the starting deck, takes back an addition, and undoes a swap along with the card it replaced', () => {
-    const state = run({ type: 'cut', card: card(2) }, { type: 'add', card: card(10) }, { type: 'swap', target: card(3), replacement: card(20) });
-    expect(removeFromDeck(state, card(4))).toEqual([{ type: 'cut', card: card(4) }]);
-    expect(removeFromDeck(state, card(10))).toEqual([{ type: 'unadd', cardId: 10 }]);
-    expect(removeFromDeck(state, card(20))).toEqual([{ type: 'unswap', targetId: 3 }, { type: 'cut', card: card(3) }]);
-    expect(removeFromDeck(state, card(99))).toEqual([]);
 
-    const after = withoutCards(state, [card(4), card(10), card(20)]);
-    for (const id of [4, 10, 20, 3]) expect(copiesInDeck(after, id as CardId)).toBe(0);
-    expect(openSlots(after)).toBe(3);
-  });
-
-  it('follows a swap of an added card back to the addition', () => {
-    const state = run({ type: 'cut', card: card(2) }, { type: 'add', card: card(10) }, { type: 'swap', target: card(10), replacement: card(21) });
-    const after = withoutCards(state, [card(21)]);
-    expect(after.adds).toEqual([]);
-    expect(after.swaps).toEqual([]);
-    expect(copiesInDeck(after, 21 as CardId)).toBe(0);
-  });
-});
-
-describe('bracketMustCuts', () => {
-  const suggestion = (id: number, reasons: CutSuggestion['reasons'], inclusionRate = 0.5): CutSuggestion => ({
-    card: card(id, { gameChanger: true }),
-    cutScore: 1,
-    reasons,
-    severity: 'mandatory',
-    corpus: { scope: 'commander', decksWith: 1, commanderDeckCount: 2, inclusionRate, synergy: 0, limited: false },
-    owned: null,
-  });
-
-  it('makes every Game Changer a must-cut when the bracket allows none', () => {
-    const cuts = bracketMustCuts([suggestion(1, ['GAME_CHANGER_EXCLUDED']), suggestion(2, ['GAME_CHANGER_EXCLUDED'])], 2 as Bracket);
-    expect(cuts.map((c) => [c.card.id, c.reason])).toEqual([
-      [1, 'GAME_CHANGER_EXCLUDED'],
-      [2, 'GAME_CHANGER_EXCLUDED'],
-    ]);
-  });
-
-  it('cuts only the excess over a limit, least played first', () => {
-    const over = [0.9, 0.1, 0.5, 0.3, 0.7].map((rate, i) => suggestion(i + 1, ['OVER_BRACKET_GC_LIMIT'], rate));
-    expect(bracketMustCuts(over, 3 as Bracket).map((c) => c.card.id)).toEqual([2, 4]);
-  });
-
-  it('ignores rule problems the bracket does not set', () => {
-    expect(bracketMustCuts([suggestion(1, ['NOT_LEGAL'])], 2 as Bracket)).toEqual([]);
-  });
-});

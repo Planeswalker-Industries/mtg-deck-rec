@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
 import { useCardRules } from "@/lib/card-rules";
+import { StatChips } from "./deck-stats/stat-chips";
 import { useStatPreview } from "./deck-stats/stat-preview";
 import { describeCostDelta } from "@/lib/format";
 import { cutReasonShortLabel, emptySwapMessage } from "@/lib/labels";
@@ -233,6 +234,7 @@ export function SwipeRater({
               )}
             </CompactCardPanel>
             <CompareMarks marks={marks} label={`How ${displayName(candidate.card)} compares with ${targetName}`} />
+            <StatChips add={candidate.card} remove={target.card} />
           </div>
           <DecisionButtons
             tone="primary"

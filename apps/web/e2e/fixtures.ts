@@ -18,6 +18,49 @@ export async function fillDecklist(page: Page, text: string) {
   }).toPass();
 }
 
+/** The Fix step's pair on screen: one card out, one card in. */
+export const FIX_MOVE = { name: "Fix: one card out, one card in" } as const;
+/** Fix and Swap wait on a recommendation read, which a cold server takes a while over. */
+const STEP_WAIT_MS = 60_000;
+
+const journeySteps = (page: Page) =>
+  page.getByRole("region", { name: "Recommendations" }).getByRole("navigation", { name: "Deck upgrade steps" });
+
+/** From Add, on to Fix through the stepper. The decks these checks use are short of 100, so leaving Add asks first. */
+export async function openFix(page: Page) {
+  await journeySteps(page).getByRole("button", { name: "Fix" }).click();
+  await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
+}
+
+/**
+ * On to Swap, from Add or from Fix. Fix goes on to Swap by itself when it has no move for the deck; with a pair on
+ * offer (or its end panel up) the stepper goes there.
+ */
+export async function openSwap(page: Page) {
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  const steps = journeySteps(page);
+  const current = steps.locator('button[aria-current="step"]');
+  if ((await current.innerText()).trim() === "Add") await openFix(page);
+  // Fix has its pool once it shows a pair, shows its end panel, or has gone on to Swap.
+  const settled = recs
+    .getByRole("region", FIX_MOVE)
+    .or(recs.getByRole("button", { name: "Next: swap" }))
+    .or(steps.locator('button[aria-current="step"]', { hasText: "Swap" }));
+  await expect(settled.first()).toBeVisible({ timeout: STEP_WAIT_MS });
+  const swap = steps.getByRole("button", { name: "Swap" });
+  if ((await swap.getAttribute("aria-current")) !== "step") await swap.click();
+  await expect(swap).toHaveAttribute("aria-current", "step");
+}
+
+/**
+ * Answers every "Not in your collection" line of a built deck with Ignore, so Continue opens: a collection build
+ * waits for an answer to each line the collection couldn't fill.
+ */
+export async function ignoreBuildGaps(page: Page) {
+  const gaps = page.getByRole("region", { name: "Your built deck" }).getByRole("list", { name: "What your collection ran out of" });
+  for (const ignore of await gaps.getByRole("button", { name: "Ignore", exact: true }).all()) await ignore.click();
+}
+
 /** The deck tool's import offer, made on every visit by a player with no collection. */
 const COLLECTION_OFFER = { name: "Hold up — got cards already?" } as const;
 

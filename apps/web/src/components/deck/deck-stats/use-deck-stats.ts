@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Bracket, CardId, CardSummary, ComboRef, DeckAnalysis } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, ComboRef, DeckAnalysis, StatChoices } from "@mtg/core/contract";
 import { tallyCache, toTallyCard, type DeckStatsReport, type TallyEntry } from "@mtg/core/journey";
 import type { DeckEntry } from "@mtg/core/scoring";
 
@@ -18,7 +18,10 @@ export function useDeckStats({
   bracket,
   overBracketAdds = NO_ADDS,
   start,
+  choices,
 }: {
+  /** The player's choices for the lines: an ignored line is graded as ever and left out of the score. */
+  choices?: StatChoices | undefined;
   analysis: DeckAnalysis | null;
   /** The deck as it stands, commanders included or not: commanders are taken from the analysis. */
   entries: readonly DeckEntry[];
@@ -46,6 +49,7 @@ export function useDeckStats({
       targets,
       { chosen: bracket, signals: analysis.bracketSignals, combos: analysis.combos, overBracketAdds },
       start && tallied(start),
+      choices,
     );
-  }, [cache, analysis, entries, bracket, overBracketAdds, start]);
+  }, [cache, analysis, entries, bracket, overBracketAdds, start, choices]);
 }

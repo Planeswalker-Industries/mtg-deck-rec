@@ -16,7 +16,7 @@ export interface StatInputs {
   typicalTypes: Profile;
   /** Each key either commander leads or shares → its stored type profile (unparsed), for `sourcesProfile`. */
   keyTypeProfiles: Map<number, unknown>;
-  build: { landCounts: readonly number[]; basicLandCounts: readonly number[] };
+  build: { landCounts: readonly number[]; basicLandCounts: readonly number[]; colourSourceCaps: readonly (number | null)[] };
   /** The tracked role ids of the requested cards. */
   cardRoles: Map<number, string[]>;
 }

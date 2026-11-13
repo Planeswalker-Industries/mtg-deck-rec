@@ -25,6 +25,7 @@ supabase gen types typescript --local            # → apps/web/src/lib/server/d
 docker exec -i supabase_db_mtg_deck_rec psql -X -U postgres -d postgres -v ON_ERROR_STOP=1 -q < supabase/tests/<file>.sql   # SQL checks; each rolls back
 
 yarn workspace @mtg/web e2e [spec]               # Playwright on a production build at :3300: build first. E2E_LOCAL_DATA=1 with the real catalog, E2E_MAILPIT_URL=http://127.0.0.1:56324 for sign-in tests
+yarn workspace @mtg/web smoke                    # read-only Playwright check of production (E2E_BASE_URL for another deploy); no sign-in, fails on writes
 yarn workspace @mtg/web regress [dir]            # recommendation fixtures (default $MTG_DATA_DIR/regression; never in the repo)
 yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts anon   # from apps/web: sign-in link for a local account
 
@@ -76,7 +77,7 @@ APIs differ from older versions. Read `node_modules/next/dist/docs/` before writ
 
 - `cacheComponents: true`: request-time reads (`useSearchParams`, `params`, cookies) sit inside `<Suspense>`. Pair every `use cache` with `cacheLife`. `revalidateTag` takes a profile argument. `proxy.ts` replaces `middleware.ts`. `export const dynamic` is a build error only `build` catches.
 - `notFound()` or `redirect()` inside `<Suspense>` runs after the shell streamed (200, or a stranded loading page). Real 404s and redirects happen in `proxy.ts`.
-- Recommendations are Route Handlers (`POST /api/recs/{swap,add,cut,build}`) because Server Actions dispatch serially; everything else is a Server Action. Keep `next/cache` imports out of `lib/server/recs.ts` and `serving.ts` so `regress` runs outside Next.
+- Recommendations are Route Handlers (`POST /api/recs/{swap,add,cut,build,fix}`) because Server Actions dispatch serially; everything else is a Server Action. Keep `next/cache` imports out of `lib/server/recs.ts` and `serving.ts` so `regress` runs outside Next.
 - Cron routes are authorized by `CRON_SECRET` only, never by `x-vercel-cron-schedule` or the user agent.
 - Production builds need a reachable Supabase (`next build` prerenders `/sitemap.xml`). Keep build-time prerendering away from queries that grow with the catalog.
 

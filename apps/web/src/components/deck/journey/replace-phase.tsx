@@ -12,7 +12,6 @@ import { PanelError } from "../panel-state";
 import { ShuffleDeck } from "../shuffle-deck";
 import { SwipeRater } from "../swipe-rater";
 import { NextBar, PhaseIntro } from "./journey-stepper";
-import { LandSwaps, type LandSwapNeed } from "./land-swaps";
 import { SwipeDone } from "./single-swipe";
 import type { DeckJourney } from "./use-deck-journey";
 
@@ -44,19 +43,14 @@ export function ReplacePhase({
   journey,
   view,
   commanderKeyId,
-  landSwap = null,
 }: {
   journey: DeckJourney;
   view: "swipe" | "list";
   commanderKeyId: CommanderKeyId | null;
-  /** The deck runs too many lands or basics: Swap trades those first (T083). */
-  landSwap?: LandSwapNeed | null;
 }) {
   const { state: replaceState, targets } = journey.replace;
   const swaps = journey.state?.swaps ?? [];
   const [focus, setFocus] = useState<CardId | null>(null);
-  /** The player skipped the land swaps for this visit, on to the weaker fits. */
-  const [landsSkipped, setLandsSkipped] = useState(false);
   /** A picked swap the player tapped to take back: the sitting reopens on its card. Belongs to one version of the list. */
   const [reopened, setReopened] = useState<{ targetId: CardId; replacementId: CardId; version: number; n: number } | null>(null);
   const sitting = useRef<HTMLDivElement>(null);
@@ -64,12 +58,6 @@ export function ReplacePhase({
   const context = journey.workingContext;
   const reopen = reopened?.version === journey.replace.version ? reopened : null;
 
-  // Land swaps change the deck the weaker fits were found in, so once they're over the list is asked for again.
-  const showLands = landSwap !== null && !landsSkipped;
-  const { refresh } = journey.replace;
-  useEffect(() => {
-    if (!showLands) refresh();
-  }, [showLands, refresh]);
 
   // A swap taken back from the list below the sitting: the sitting, which reopened on its card, comes into view.
   useEffect(() => {
@@ -83,16 +71,6 @@ export function ReplacePhase({
     </PhaseIntro>
   );
 
-  if (landSwap && showLands) {
-    return (
-      <div className="flex flex-col gap-4" style={SWIPE_CHROME}>
-        <PhaseIntro title="Swap" brief="Swipe right to swap in, left for the next one.">
-          The deck runs more {landSwap.line.label.toLowerCase()} than decks like it, so a few go first, one at a time.
-        </PhaseIntro>
-        <LandSwaps journey={journey} need={landSwap} doneLabel="Skip lands" onDone={() => setLandsSkipped(true)} />
-      </div>
-    );
-  }
 
   if (replaceState.status === "loading" || replaceState.status === "idle" || !context) {
     return (

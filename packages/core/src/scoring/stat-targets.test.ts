@@ -35,7 +35,7 @@ const input = (c: StatCorpus | null) => ({
   typicalCurve: { '0': 0.1, '1': 8, '2': 12, '3': 11, '4': 8, '5': 6, '6': 3, '7': 2 },
   typicalTypes: { creature: 24, instant: 10, sorcery: 8, artifact: 12, enchantment: 6, planeswalker: 0.4 },
   commanderTypes: { creature: 32, instant: 6 } as Record<string, number>,
-  build: { landCounts: [32, 35, 36, 37, 38, 38], basicLandCounts: [30, 32, 20, 12, 8, 5] },
+  build: { landCounts: [32, 35, 36, 37, 38, 38], basicLandCounts: [30, 32, 20, 12, 8, 5], colourSourceCaps: [null, null, null, 20, 18, 18] },
   colourCount: 2,
   bracketRules: rules,
   commanderLabel: 'Liesa',
@@ -96,6 +96,10 @@ describe('statTargetsFor', () => {
   });
   it('never reads the EDHREC prior', () => {
     expect(statTargetsFor(input(corpus(102))).roles[0]!.target).not.toBe(99);
+  });
+  it('takes the colour source cap for the colour count, none below three colours', () => {
+    expect(statTargetsFor({ ...input(null), colourCount: 2 }).colourSourceCap).toBeNull();
+    expect(statTargetsFor({ ...input(null), colourCount: 4 }).colourSourceCap).toBe(18);
   });
   it('drops the tag ids from the bracket limits', () => {
     expect(statTargetsFor(input(null)).bracketLimits).toEqual({

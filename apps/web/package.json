@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "e2e": "playwright test",
+    "smoke": "E2E_SMOKE=1 E2E_BASE_URL=${E2E_BASE_URL:-https://mtg-app-psi.vercel.app} playwright test",
     "regress": "tsx --env-file=.env.local scripts/rec-regress.ts"
   },
   "dependencies": {

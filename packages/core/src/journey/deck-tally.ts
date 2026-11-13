@@ -1,10 +1,10 @@
 // packages/core/src/journey/deck-tally.ts
-import type { Bracket, BracketSignals, CardId, CardSummary, ComboRef, DeckCombo, StatTargets } from '../contract';
+import type { Bracket, BracketSignals, CardId, CardSummary, ComboRef, DeckCombo, StatChoices, StatTargets } from '../contract';
 import { fitsBracket, type BracketRules } from '../formats/commander/bracket';
 import { curveBucket, isFrontLand, isStatCardType, statCardType } from '../scoring/curve';
 import { isBasicLand } from './builder';
 import { CURVE_TOP_MANA_VALUE } from './deck-stats';
-import { creditedSources, manaBase, manaLetters, type ManaBaseReport, type ManaDeck, type ManaEntry } from './mana-base';
+import { colourTarget, creditedSources, manaBase, manaLetters, type ManaBaseReport, type ManaDeck, type ManaEntry } from './mana-base';
 
 /** Colour row labels. */
 const COLOUR_NAMES: Readonly<Record<string, string>> = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green', C: 'Colourless' };
@@ -119,6 +119,17 @@ export function applyCard(tally: DeckTally, card: TallyCard, quantity: number): 
   if (card.gameChanger) tally.gameChangers += quantity;
 }
 
+/** A copy of a tally that can be moved without touching the original. */
+export const cloneTally = (tally: DeckTally): DeckTally => ({
+  ...tally,
+  roles: new Map(tally.roles),
+  curve: [...tally.curve],
+  types: new Map(tally.types),
+  main: new Map(tally.main),
+  commanderIds: new Set(tally.commanderIds),
+  commanders: [...tally.commanders],
+});
+
 /** A full count: only when the deck the round starts from changes (a new analysis). */
 export function buildTally(main: readonly TallyEntry[], commanders: readonly TallyCard[]): DeckTally {
   const tally = emptyTally();
@@ -160,6 +171,15 @@ export interface BracketInput {
 
 export type StatGroup = 'mana' | 'roles' | 'types' | 'colours';
 
+/**
+ * How a line counts toward the score: in line, off, or left out because the player chose to ignore it (`StatChoices`).
+ * An ignored line shows grey and is in neither `okCount` nor `total`.
+ */
+export type StatState = 'ok' | 'off' | 'ignored';
+
+/** The curve's key in `StatChoices`: its bars read as one line. */
+export const CURVE_LINE = 'curve';
+
 export interface StatLine {
   /** 'lands', 'basicLands', a role id, a card type ('creature') or a colour's sources ('sources:B'). */
   key: string;
@@ -167,7 +187,10 @@ export interface StatLine {
   label: string;
   value: number;
   target: number;
+  /** Whether the value is in line with the target, whatever the player chose for the line. */
   ok: boolean;
+  /** What the score counts: `ok` as it stands, or 'ignored'. */
+  state: StatState;
   /** The value when the round started: the faint tick on the bar. */
   start: number;
 }
@@ -185,7 +208,7 @@ export type DeckStatsLevel = 'ok' | 'mild' | 'urgent';
 export interface DeckStatsReport {
   label: string;
   stats: StatLine[];
-  curve: { ok: boolean; bars: CurveBar[] };
+  curve: { ok: boolean; state: StatState; bars: CurveBar[] };
   bracket: { ok: boolean; chosen: Bracket; combos: DeckCombo[] };
   okCount: number;
   total: number;
@@ -207,6 +230,9 @@ export const towardTarget = (value: number, target: number, delta: number, minim
     : Math.abs(value + delta - targetAfter) < Math.abs(value - target);
 
 const inDeck = (tally: DeckTally, id: CardId) => tally.main.has(id) || tally.commanderIds.has(id);
+
+/** No line ignored. */
+const NO_CHOICES: StatChoices = {};
 
 function bracketFits(tally: DeckTally, targets: StatTargets, input: BracketInput): { ok: boolean; combos: DeckCombo[] } {
   const combos = input.combos.filter((c) => c.pieceIds.every((id) => inDeck(tally, id)));
@@ -230,7 +256,7 @@ function bracketFits(tally: DeckTally, targets: StatTargets, input: BracketInput
   return { ok: fitsBracket(signals, input.chosen, rules) && !overBracketAdd, combos };
 }
 
-function statLines(tally: DeckTally, targets: StatTargets): Omit<StatLine, 'start'>[] {
+function statLines(tally: DeckTally, targets: StatTargets): Omit<StatLine, 'start' | 'state'>[] {
   const line = (key: string, group: StatGroup, label: string, value: number, target: number) => ({
     key,
     group,
@@ -251,17 +277,18 @@ const deckColoursOf = (tally: DeckTally) => manaLetters(tally.commanders.flatMap
 const colourKey = (colour: string) => `sources:${colour}`;
 
 /** The colour rows. The start tick is the start deck measured against today's requirement, so the two compare. */
-function colourLines(mana: ManaBaseReport, start: readonly ManaEntry[] | null, deckColours: string): StatLine[] {
+function colourLines(mana: ManaBaseReport, start: readonly ManaEntry[] | null, deckColours: string, cap: number | null): Omit<StatLine, 'state'>[] {
   return mana.colours.map((need) => {
     const value = Math.floor(need.sources);
+    const target = colourTarget(need.needed, cap);
     return {
       key: colourKey(need.colour),
       group: 'colours' as const,
       label: `${COLOUR_NAMES[need.colour] ?? need.colour} sources`,
       value,
-      target: need.needed,
+      target,
       // A minimum, not a band: more sources are never a problem.
-      ok: need.sources >= need.needed,
+      ok: need.sources >= target,
       start: start ? Math.floor(creditedSources(start, need.colour, need.manaValue, deckColours)) : value,
     };
   });
@@ -269,24 +296,40 @@ function colourLines(mana: ManaBaseReport, start: readonly ManaEntry[] | null, d
 
 /**
  * Grades the tally against the targets. The mana base reads the deck once per report (about a hundred cards; the
- * odds are cached) and the start deck once per colour row; everything else is about twenty comparisons.
+ * odds are cached) and the start deck once per colour row; everything else is about twenty comparisons. A line the
+ * player chose to ignore (`choices`) is graded as ever and left out of the score; the bracket can't be ignored.
  */
-export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: BracketInput, start: DeckTally = tally): DeckStatsReport {
+export function gradeDeck(
+  tally: DeckTally,
+  targets: StatTargets,
+  bracket: BracketInput,
+  start: DeckTally = tally,
+  choices: StatChoices = NO_CHOICES,
+): DeckStatsReport {
+  const stateOf = (key: string, ok: boolean): StatState => (choices[key] === 'ignore' ? 'ignored' : ok ? 'ok' : 'off');
   const startLines = new Map(statLines(start, targets).map((s) => [s.key, s.value]));
-  const deck: ManaDeck = { main: [...tally.main.values()], commanders: [...tally.commanders], deckColours: deckColoursOf(tally) };
+  const deck: ManaDeck = {
+    main: [...tally.main.values()],
+    commanders: [...tally.commanders],
+    deckColours: deckColoursOf(tally),
+    colourSourceCap: targets.colourSourceCap ?? null,
+  };
   const mana = manaBase(deck.main, deck.commanders, deck.deckColours);
-  const stats = [
+  const stats: StatLine[] = [
     ...statLines(tally, targets).map((s) => ({ ...s, start: startLines.get(s.key) ?? s.value })),
-    ...colourLines(mana, start === tally ? null : [...start.main.values()], deck.deckColours),
-  ];
+    ...colourLines(mana, start === tally ? null : [...start.main.values()], deck.deckColours, deck.colourSourceCap ?? null),
+  ].map((s) => ({ ...s, state: stateOf(s.key, s.ok) }));
   const bars = targets.curve.map((target, manaValue) => {
     const value = tally.curve[manaValue] ?? 0;
     return { manaValue, value, target, ok: withinTolerance(value, target), start: start.curve[manaValue] ?? 0 };
   });
-  const curve = { ok: bars.every((b) => b.ok), bars };
+  const curveOk = bars.every((b) => b.ok);
+  const curve = { ok: curveOk, state: stateOf(CURVE_LINE, curveOk), bars };
   const fit = bracketFits(tally, targets, bracket);
-  const okCount = stats.filter((s) => s.ok).length + (curve.ok ? 1 : 0) + (fit.ok ? 1 : 0);
-  const total = stats.length + 2;
+  const counted = [...stats.map((s) => s.state), curve.state].filter((state) => state !== 'ignored');
+  const okCount = counted.filter((state) => state === 'ok').length + (fit.ok ? 1 : 0);
+  // The counted lines, and the bracket.
+  const total = counted.length + 1;
   const level: DeckStatsLevel = okCount === total ? 'ok' : okCount >= total * STAT_MILD_SHARE ? 'mild' : 'urgent';
   return {
     label: targets.label,
@@ -298,6 +341,33 @@ export function gradeDeck(tally: DeckTally, targets: StatTargets, bracket: Brack
     level,
     mana: { hardToCast: mana.hardToCast, byTurn: mana.byTurn, deck },
   };
+}
+
+/** One copy of a card in, one out, or both: a card on screen answered, or a Fix move. */
+export interface TallyMove {
+  in: TallyCard | null;
+  out: TallyCard | null;
+}
+
+/**
+ * The score with `moves` made, on a copy of the tally: what the Deck stats footer shows for the card on screen and the
+ * auto-fix preview for the moves selected. Graded in full, so the curve and the colour rows count exactly.
+ */
+export function scoreWithMoves(
+  tally: DeckTally,
+  targets: StatTargets,
+  bracket: BracketInput,
+  choices: StatChoices,
+  moves: readonly TallyMove[],
+): Pick<DeckStatsReport, 'okCount' | 'total' | 'level'> {
+  const next = cloneTally(tally);
+  for (const move of moves) {
+    if (move.in) applyCard(next, move.in, 1);
+    // The deck's own copy goes out, so its roles are the ones it was counted with.
+    if (move.out) applyCard(next, next.main.get(move.out.id)?.card ?? move.out, -1);
+  }
+  const { okCount, total, level } = gradeDeck(next, targets, bracket, next, choices);
+  return { okCount, total, level };
 }
 
 /**
@@ -318,6 +388,7 @@ export function tallyCache() {
       targets: StatTargets,
       bracket: BracketInput,
       startEntries?: readonly TallyEntry[],
+      choices?: StatChoices,
     ): DeckStatsReport {
       if (nextBase !== base || !tally) {
         base = nextBase;
@@ -326,7 +397,7 @@ export function tallyCache() {
       } else {
         syncTally(tally, main);
       }
-      return gradeDeck(tally, targets, bracket, start ?? tally);
+      return gradeDeck(tally, targets, bracket, start ?? tally, choices);
     },
   };
 }
@@ -394,7 +465,9 @@ export function statDeltas(
     const next = after.colours.find((n) => n.colour === need.colour);
     if (!next || !lines.some((l) => l.key === key)) continue;
     const delta = Math.round((next.sources - need.sources) * DELTA_TENTHS) / DELTA_TENTHS;
-    if (next.needed !== need.needed) deltas.set(key, { delta, target: next.needed });
+    const cap = deck.colourSourceCap ?? null;
+    const [targetBefore, targetAfter] = [colourTarget(need.needed, cap), colourTarget(next.needed, cap)];
+    if (targetAfter !== targetBefore) deltas.set(key, { delta, target: targetAfter });
     else if (delta !== 0) deltas.set(key, { delta });
   }
   return deltas;

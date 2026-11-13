@@ -11,6 +11,7 @@ import type {
   ParsedLine,
   ResolvedLine,
   SavedDeckSummary,
+  StatChoices,
   StatTargets,
 } from '../decks';
 import type { ApiError, Result } from '../errors';
@@ -27,6 +28,8 @@ import type {
   CutReason,
   CutResult,
   CutSuggestion,
+  FixCard,
+  FixResult,
   OwnershipInput,
   RecContext,
   ScoreBreakdown,
@@ -90,6 +93,7 @@ const MOCK_STAT_TARGETS: StatTargets = {
     { cardType: 'enchantment', label: 'Enchantments', target: 6 },
     { cardType: 'planeswalker', label: 'Planeswalkers', target: 1 },
   ],
+  colourSourceCap: null,
   bracketLimits: {
     massLandDenialFromBracket: 4,
     maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 },
@@ -122,8 +126,8 @@ const MOCK_COMBOS = [
   { id: 'mock-combo-1', pieces: ['Sol Ring', 'Guardian Project'], results: ['Draw cards'], minBracket: 2 as Bracket },
   { id: 'mock-combo-2', pieces: ['Counterspell', 'Swan Song'], results: ['Win the game', 'Infinite colorless mana'], minBracket: 2 as Bracket },
 ];
-const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0 };
-const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck'];
+const WEIGHTS: Record<ScoreComponent, number> = { tag: 0.4, manaValue: 0.1, staple: 0.2, corpus: 0.2, votes: 0.1, role: 0, curve: 0, deck: 0, mana: 0 };
+const COMPONENTS: ScoreComponent[] = ['tag', 'manaValue', 'staple', 'corpus', 'votes', 'role', 'curve', 'deck', 'mana'];
 
 const byId = new Map<number, CardSummary>(mockCards.map((c) => [c.id, c]));
 const byName = new Map<string, CardSummary>(
@@ -373,7 +377,10 @@ function mockCombos(
 /** In-memory implementations of the contract for frontend work (NEXT_PUBLIC_USE_MOCKS=1). */
 export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {}): MockApis {
   const delay = <T>(value: T, ms = latencyMs) => wait(value, ms);
-  const decks = new Map<string, { name: string; deck: DeckInput; isPublic: boolean; isBuilt: boolean; bracket?: Bracket; updatedAt: string }>();
+  const decks = new Map<
+    string,
+    { name: string; deck: DeckInput; isPublic: boolean; isBuilt: boolean; bracket?: Bracket; statChoices: StatChoices; updatedAt: string }
+  >();
   /** Mock codes stand in for the database's random ones, and match the shape openSavedDeckInputSchema accepts. */
   const deckCode = (id: string) => `mockdeck${id.replace(/\D/g, '') || '1'}`;
   const favorites = new Set<string>();
@@ -562,7 +569,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           ),
           estimatedBracket: gameChangerCount === 0 ? 2 : gameChangerCount <= 3 ? 3 : 4,
           bracketSignals: { gameChangerCount, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
-          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed },
+          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed, collectionGaps: [] },
           ...(owned && fill === 'value'
             ? {
                 fillCost: {
@@ -603,6 +610,42 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           .sort((a, b) => Number(b.severity === 'mandatory') - Number(a.severity === 'mandatory') || b.cutScore - a.cutScore)
           .slice(0, limit);
         const result: CutResult = { mode: modeOf(context), confidence: confidenceOf(context), suggestions };
+        return delay(ok(result));
+      } catch (e) {
+        return delay(fail('VALIDATION', (e as Error).message));
+      }
+    },
+
+    async fix({ context }) {
+      try {
+        const owned = ownedIds(context.ownership);
+        const only = owned !== null && ownedOnly(context);
+        const boost = ownedFirst(context) ? MOCK_OWNED_FIRST_BOOST : 0;
+        const identity = deckIdentity(context.deck);
+        const inDeck = deckCardIds(context.deck);
+        const fixCard = (c: CardSummary, score: number): FixCard => {
+          const card = withMockRoles(c);
+          return { card, roles: card.roles ?? [], score: round(score), owned: ownedInfo(owned, c.id) };
+        };
+        const main = context.deck.cards.filter((entry) => entry.section === 'main').map((entry) => getCard(entry.cardId));
+        // The mock catalog is small: every eligible card the collection supplies, and the basic lands of the deck's colours.
+        const ins = mockCards
+          .filter((c) => !inDeck.has(c.id) && !isBasicLand(c) && withinIdentity(c, identity))
+          .filter((c) => context.includeGameChangers || !c.gameChanger)
+          .filter((c) => !only || owned.has(c.id))
+          .map((c) => fixCard(c, corpusScore(corpusFor(c.id))))
+          // Best first; in 'first' mode an owned card moves up, as the mock adds do.
+          .sort((a, b) => rankKey(b.score, b.owned !== null, boost) - rankKey(a.score, a.owned !== null, boost) || a.card.name.localeCompare(b.card.name));
+        const basics = mockCards.filter((c) => isBasicLand(c) && withinIdentity(c, identity)).map((c) => fixCard(c, 0));
+        const result: FixResult = {
+          mode: modeOf(context),
+          confidence: confidenceOf(context),
+          pool: {
+            ins: [...ins, ...basics],
+            deck: main.map((c) => fixCard(c, isBasicLand(c) ? 1 : corpusScore(corpusFor(c.id)))),
+          },
+          illegalIds: main.filter((c) => !withinIdentity(c, identity)).map((c) => c.id),
+        };
         return delay(ok(result));
       } catch (e) {
         return delay(fail('VALIDATION', (e as Error).message));
@@ -778,10 +821,13 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       return delay(ok({ cardId, quantity: cardQuantity(collectionRows, cardId) }));
     },
 
-    async saveDeck({ deckId, name, deck, isPublic, bracket }) {
+    async saveDeck({ deckId, name, deck, isPublic, bracket, statChoices }) {
       const id = deckId ?? (`mock-deck-${nextDeckId++}` as DeckId);
-      const isBuilt = (deckId ? decks.get(deckId)?.isBuilt : undefined) ?? false;
-      decks.set(id, { name, deck, isPublic, isBuilt, ...(bracket === undefined ? {} : { bracket }), updatedAt: new Date().toISOString() });
+      const before = deckId ? decks.get(deckId) : undefined;
+      const isBuilt = before?.isBuilt ?? false;
+      // Choices left out keep the stored ones, as save_deck does.
+      const choices = statChoices ?? before?.statChoices ?? {};
+      decks.set(id, { name, deck, isPublic, isBuilt, ...(bracket === undefined ? {} : { bracket }), statChoices: choices, updatedAt: new Date().toISOString() });
       return delay(ok({ deckId: id, code: deckCode(id) }));
     },
 
@@ -804,6 +850,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             ...saved.deck.cards.filter((c) => c.section === 'main').map((c) => line(c.cardId, c.quantity)),
             '',
           ].join('\n'),
+          statChoices: saved.statChoices,
         }),
       );
     },

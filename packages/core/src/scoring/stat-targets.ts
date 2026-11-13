@@ -19,8 +19,8 @@ export interface StatTargetsInput {
   typicalTypes: Profile;
   /** The commander's nonland cards per type over the corpus's source decks at their weights; empty when unknown. */
   commanderTypes: Profile;
-  /** `app_config.scoring.build`'s typical land counts by colour count. */
-  build: { landCounts: readonly number[]; basicLandCounts: readonly number[] };
+  /** `app_config.scoring.build`'s typical land counts and colour source caps by colour count. */
+  build: { landCounts: readonly number[]; basicLandCounts: readonly number[]; colourSourceCaps: readonly (number | null)[] };
   colourCount: number;
   bracketRules: BracketRules;
   /** The commanders as the label names them: "Liesa", "Tymna & Thrasios". */
@@ -69,6 +69,7 @@ export function statTargetsFor(input: StatTargetsInput): StatTargets {
           target: blend(ownTypes ? (ownTypes[t.key] ?? 0) : null, input.typicalTypes[t.key] ?? 0),
         }))
       : [],
+    colourSourceCap: input.build.colourSourceCaps[input.colourCount] ?? null,
     // The rules' schema holds both bracket numbers to 1-5, which is what `Bracket` names.
     bracketLimits: {
       massLandDenialFromBracket: massLandDenialFromBracket as Bracket,

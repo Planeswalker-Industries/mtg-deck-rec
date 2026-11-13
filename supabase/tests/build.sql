@@ -55,6 +55,12 @@ select chk('the build settings are in app_config.scoring',
   (select jsonb_array_length(value -> 'build' -> 'landCounts') = 6 and jsonb_array_length(value -> 'build' -> 'basicLandCounts') = 6
      and (value -> 'build' ->> 'qualityFloor')::numeric = 0.35
    from public.app_config where key = 'scoring'));
+select chk('colour source caps for three colours and up, and the mana component at weight 0 (20261109000100)',
+  (select value -> 'build' -> 'colourSourceCaps' = '[null, null, null, 20, 18, 18]'::jsonb
+     and (value -> 'weights' -> 'add' ->> 'mana')::numeric = 0
+     and (value -> 'weights' -> 'swap' -> 'collection_less' ->> 'mana')::numeric = 0
+     and (value -> 'weights' -> 'swap' -> 'collection_aware' ->> 'mana')::numeric = 0
+   from public.app_config where key = 'scoring'));
 
 set local role anon;
 select chk('anon builds', public.serving_build_pool(array[:cmd], '{}', array[:cmd], true, array['Plains']) is not null);

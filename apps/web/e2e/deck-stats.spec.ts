@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./fixtures";
+import { FIX_MOVE, expect, openFix, openSwap, test, type Locator, type Page } from "./fixtures";
 
 /** Footer button of the docked readout; its name reads "Deck stats Mild, 5 of 17 in line". */
 const FOOTER_NAME = /^Deck stats/;
@@ -8,6 +8,15 @@ const SKIP_CARD = /^Skip /;
 /** The Swap swipe's buttons, "Swap in <card>" and "Pass on <card>". */
 const SWAP_IN = /^Swap in /;
 const PASS_ON = /^Pass on /;
+/** The Fix step's buttons, "Swap <out> for <in>" and "Skip swapping <out> for <in>". */
+const FIX_SWAP = /^Swap .+ for /;
+const FIX_SKIP = /^Skip swapping /;
+
+/** The round's first step: Add for the mocks' short sample, Fix for the real catalog's 100-card one. */
+async function firstStep(page: Page) {
+  const steps = page.getByRole("region", { name: "Recommendations" }).getByRole("navigation", { name: "Deck upgrade steps" });
+  return (await steps.getByRole("button").first().innerText()).trim();
+}
 /** Rounding slack for comparing layout boxes, in CSS pixels. */
 const LAYOUT_SLACK_PX = 1;
 /** How far the touch test drags up the footer: past its SWIPE_OPEN_PX (24) and out of the bar. */
@@ -52,9 +61,23 @@ test.describe("deck stats on a phone", () => {
     await sheet.getByRole("button", { name: "Close deck stats", exact: true }).click();
     await expect(sheet).toBeHidden();
 
-    // Add swipe, the first step. The sample deck is short, so this also covers the open slots it has to fill.
+    // Add swipe, the first step of a short deck (the mocks' sample), which also covers the open slots it has to fill.
+    test.skip((await firstStep(page)) !== "Add", "the sample deck is at 100, so the round has no Add step");
     const sitting = page.getByRole("region", { name: "Cards to add" });
     await expectAboveFooter(page, [sitting.getByRole("button", { name: ADD_CARD }).first(), sitting.getByRole("button", { name: SKIP_CARD }).first()]);
+  });
+
+  test("the Fix step keeps both cards and its buttons above the footer, and the footer shows the score it would give", async ({ page }) => {
+    await analyzeSample(page);
+    const recs = page.getByRole("region", { name: "Recommendations" });
+    if ((await firstStep(page)) === "Add") await openFix(page);
+    const move = recs.getByRole("region", FIX_MOVE);
+    const nothingToFix = recs.getByRole("button", { name: /^Next: (swap|finish)$/ });
+    await expect(move.or(nothingToFix).first()).toBeVisible({ timeout: 60_000 });
+    test.skip(!(await move.isVisible()), "no Fix move in this data");
+    await expectAboveFooter(page, [move.getByRole("button", { name: FIX_SWAP }), move.getByRole("button", { name: FIX_SKIP }), move.getByRole("button", { name: "Fix the rest for me" })]);
+    // Closed, the footer reads the score now and the score the move on screen would give: no per-line text.
+    await expect(page.getByRole("button", { name: FOOTER_NAME })).toContainText(/\d+\/\d+.*\d+\/\d+/s);
   });
 
   test("the readout shows the colours estimate with the hardest cards to cast", async ({ page }) => {
@@ -76,12 +99,8 @@ test.describe("deck stats on a phone", () => {
   test("the Swap step keeps both rows and its buttons above the footer", async ({ page }) => {
     await analyzeSample(page);
     const recs = page.getByRole("region", { name: "Recommendations" });
-    // Swap opens once Cut has been reached; the sample's mandatory cut can stay for this.
-    const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
-    await steps.getByRole("button", { name: "Cut" }).click();
-    // The sample is short of 100, so leaving Add asks first.
-    await page.getByRole("dialog", { name: "Deck Under 100" }).getByRole("button", { name: "Continue" }).click();
-    await steps.getByRole("button", { name: "Swap" }).click();
+    // Swap comes after Fix; a short sample asks before leaving Add.
+    await openSwap(page);
 
     const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
     const swapIn = rater.getByRole("button", { name: SWAP_IN });

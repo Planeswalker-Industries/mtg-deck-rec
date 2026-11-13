@@ -126,8 +126,22 @@ export interface StatTargets {
    * order. Empty until typical decks have a type profile; Deck stats then leaves the group out.
    */
   types: { cardType: string; label: string; target: number }[];
+  /**
+   * The most sources a colour row asks for, whatever its Karsten number (`app_config.scoring.build.colourSourceCaps`
+   * for the deck's colour count): decks in three or more colours can't reach the one- and two-colour numbers. Null: no cap.
+   */
+  colourSourceCap: number | null;
   bracketLimits: BracketLimits;
 }
+
+/**
+ * What the player chose for a Deck stats line the deck can't bring in line (v35). ignore: the line is left out of the
+ * score. buy: unowned cards may be suggested for it (`RecContext.buyFor`), and it stays in the score.
+ */
+export type StatChoice = 'ignore' | 'buy';
+
+/** The player's choices by line key: 'lands', 'basicLands', a role id, a card type, 'curve' or a colour's 'sources:B'. */
+export type StatChoices = Readonly<Record<string, StatChoice>>;
 
 export interface DeckAnalysis {
   deck: DeckInput;
@@ -173,6 +187,8 @@ export interface SavedDeckContents {
   bracket?: Bracket;
   /** Decklist text, commanders first, in the format the tool's box takes. */
   text: string;
+  /** The player's choices for Deck stats lines (v35); empty when they made none. */
+  statChoices: StatChoices;
 }
 
 export interface SavedDeckSummary {

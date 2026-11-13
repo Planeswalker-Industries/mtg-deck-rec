@@ -1,5 +1,6 @@
-import type { Bracket, CardId, CardSummary, DeckId, DeckInput, SavedDeckContents, SavedDeckSummary } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, DeckId, DeckInput, SavedDeckContents, SavedDeckSummary, StatChoices } from "@mtg/core/contract";
 import { deckSaveRows } from "@mtg/core/journey";
+import { statChoicesSchema } from "@mtg/core/schemas";
 import { decklistText } from "@mtg/core/parse";
 import { fetchCardsById, toCardSummary } from "./cards";
 import type { createAuthClient } from "./auth";
@@ -107,10 +108,10 @@ export async function openSavedDeck(db: AuthClient, code: string, userId: string
   if (error) throw new Error(`Loading the deck failed: ${error.message}`);
   if (!deck) throw new DeckRefused("DECK_NOT_FOUND");
 
-  const { data: rows, error: cardsError } = await db
-    .from("deck_cards")
-    .select("card_id, section, quantity")
-    .eq("deck_id", deck.id);
+  const [{ data: rows, error: cardsError }, statChoices] = await Promise.all([
+    db.from("deck_cards").select("card_id, section, quantity").eq("deck_id", deck.id),
+    loadStatChoices(db, deck.id),
+  ]);
   if (cardsError) throw new Error(`Loading the deck's cards failed: ${cardsError.message}`);
 
   const cards = await fetchCardsById(
@@ -129,18 +130,35 @@ export async function openSavedDeck(db: AuthClient, code: string, userId: string
     name: deck.name,
     ...(deck.bracket === null ? {} : { bracket: deck.bracket as Bracket }),
     text: decklistText(entries),
+    statChoices,
   };
+}
+
+/**
+ * The player's choices for the deck's Deck stats lines. Read apart from the deck and empty on failure: a develop
+ * preview runs against main's schema, where the column may not exist yet, and the deck must still open.
+ */
+async function loadStatChoices(db: AuthClient, deckId: string): Promise<StatChoices> {
+  const { data, error } = await db.from("decks").select("stat_choices").eq("id", deckId).maybeSingle();
+  if (error) {
+    console.error("Loading the deck's Deck stats choices failed; the deck opens without them.", error.message);
+    return {};
+  }
+  const parsed = statChoicesSchema.safeParse(data?.stat_choices ?? {});
+  return parsed.success ? parsed.data : {};
 }
 
 export async function saveDeck(
   db: AuthClient,
-  input: { deckId?: DeckId; name: string; deck: DeckInput; isPublic: boolean; bracket?: Bracket; original?: DeckInput },
+  input: { deckId?: DeckId; name: string; deck: DeckInput; isPublic: boolean; bracket?: Bracket; original?: DeckInput; statChoices?: StatChoices },
 ): Promise<{ deckId: DeckId; code: string }> {
   const { data, error } = await db.rpc("save_deck", {
     p_deck_id: input.deckId ?? undefined,
     p_name: input.name,
     p_cards: deckSaveRows(input.deck),
     p_bracket: input.bracket ?? undefined,
+    // Sent only when the player made choices: a save without them keeps the stored ones.
+    ...(input.statChoices === undefined ? {} : { p_stat_choices: input.statChoices }),
   });
   if (error) rethrow(error.message);
   const deckId = data as string;

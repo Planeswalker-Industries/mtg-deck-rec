@@ -1,12 +1,33 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T085.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T090.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
 State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `20261022000100` (current). Hosted `corpus.decks` 212,606, last collated and precomputed by hand 2026-10-21.
 
 ---
+
+## T088: Swap ladder
+
+**HIGH** · Backend / Frontend · After T087, its own plan and PR · Contract `SwapSuggestion.match` (owner approved 2026-11-11; v35 or v36)
+
+Swap dead-ends today: "We don't know what this card does yet" for a card with no functional tags (3,408 of 32,104 legal cards), and "Nothing in your collection does a similar job" when the stored substitutes cut down to the collection leave nothing.
+
+- [ ] Rungs: 1 similar tags (today), 2 same job (shares a tracked role), 3 same card type and a mana value within 1; rungs 2 and 3 rank by play rate with the commander, mana value closeness and the staple score. A lower rung is read only when those above give fewer than `swap.ladderMinSuggestions` (`app_config.scoring`, starting at 3)
+- [ ] In Owned only, rungs 2 and 3 read the collection directly, not the stored substitute list
+- [ ] `serving_swap_candidates` returns the rung with each row, in one round; `create or replace` with the grants repeated
+- [ ] `SwapSuggestion.match: 'tags' | 'role' | 'slot'`; every suggestion says its rung ("Same job: ramp", "Similar slot: 5-mana creature"); `NO_TAGS_ON_TARGET` stays in the type and is no longer returned
+- [ ] The Swap step fetches the next card's replacements ahead and steps over a card with none on any rung; the two e2e specs that expect "Nothing in your collection does a similar job." change
+- [ ] Gate: `eval:holdout` swap metrics do not drop; rung 1 results unchanged wherever rung 1 has enough. Doc Ock, Sinister Scientist and Resonating Lute each show labelled replacements from the owner's collection
+
+## T089: Fix follow-ups
+
+**MEDIUM** · Frontend / Decision · Left over from T087
+
+- [ ] The mocks' build returns no `collectionGaps`, so CI never sees the build page's Ignore / Allow buying prompts or Finish's "Not in your collection" row: give the mock build a gap when the collection is short, then cover Allow buying (the rebuild with `buyFor`, the "Not owned" note and cost line), Ignore (the line grey and out of the score), and the answers surviving a save and a reopen
+- [ ] A bracket change during Swap or Finish that the deck no longer fits sends the round to Fix at the bracket line: no e2e covers it
+- [ ] `AddFilter`'s `lands` kind and `trimCuts`' `focusRoleId` have no caller left since Deck stats' Find and Trim links became Fix: remove them
 
 ## T074: Archidekt answers the daily crawl with 429s
 
@@ -27,14 +48,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] An admin list beside `/admin/crawls` (`noindex`, `no-store`): newest first, mark resolved, filter to open; platform admins see an open-report count badge in the header
 - [ ] `/privacy` says what a report stores and who reads it
 
-## T080: Google-only sign-in until T033
-
-**MEDIUM** · Auth · Owner, 2026-10-23
-
-Supabase's built-in SMTP sends a couple of emails an hour, so an emailed code may never arrive.
-
-- [ ] `/sign-in` offers Google only, with the email code behind a flag that T033 turns back on
-
 ## T068: Recommendation latency (PR #139 review)
 
 **MEDIUM** · Backend / Performance
@@ -42,6 +55,8 @@ Supabase's built-in SMTP sends a couple of emails an hour, so an emailed code ma
 2026-10-07: adds 212/243 → 306/400 ms at p50/p95; card pairs cost most, `serving_deck_affinity` 174 ms and 253 KB for an add.
 
 - [ ] Skip the card-pairs read for cuts while `affinity.lowAffinityCuts` is off, and for swaps while their `deck` weight is 0
+- [ ] After T086 reaches `main`: compare Fix's hosted p95 with Add's. Locally Fix runs within about 10% of Add (64–69 ms against 59–61 ms) and sends about 30 KB gzipped
+- [ ] The deck tool still asks for cuts on every analysis; only a deck over 100 has a Cut step (T087), so a deck at or under 100 can skip that read
 - [ ] Skip `serving_commander_profile` while `skeleton.edhrecPrior` is off
 - [ ] Send an add only the pairs that point at its pool and neighbours, each card's row once; or cache each card's corpus pairs for days
 
@@ -58,13 +73,6 @@ A migration drops `rec_add_candidates` (both overloads), `rec_swap_candidates`, 
 - [ ] `analyzeDeck` in `deck-journey.spec.ts` waits for the recommendations or the lookup sheet before dismissing (Chulane has no local corpus, so the sheet opens late and blocks the page)
 - [ ] The specs pass with `E2E_LOCAL_DATA=1` and in CI
 
-## T082: Launch checks
-
-**HIGH** · QA · Last before inviting anyone
-
-- [ ] The owner walks paste → Add → Cut → Swap → Finish → save on a real iPhone (Safari) and Android phone
-- [ ] A scripted, read-only smoke run against production (no sign-in, no writes)
-
 ---
 
 ## T033: Custom domain and SMTP
@@ -76,7 +84,7 @@ Moxfield's whitelist also wants a production domain (T044).
 1. Point a domain at the app. Move the URL settings to it: Supabase Site URL and redirect allow list, Vercel `NEXT_PUBLIC_SITE_URL`, the Google OAuth client's redirect URIs.
 2. Resend (free tier) or equivalent: verify the sending domain, set it in Supabase → Authentication → SMTP, and raise Rate Limits → emails per hour.
 
-- [ ] Sign-in emails arrive at a production rate on the domain, and the email code is back on `/sign-in` (T080)
+- [ ] Sign-in emails arrive at a production rate on the domain, and the emailed-code form in `apps/web/src/components/auth/sign-in-form.tsx` is uncommented (closed T080 commented it out)
 - [ ] The share-link kill switch activates on 403/409 on hosted (`scripts/share-kill-switch-check.ts` covers it locally)
 
 ## T043: A crawl database role that is not `service_role`
@@ -129,6 +137,7 @@ Storage (8 GB disk):
 - [ ] The global pair lift barely shrinks rare cards (a third of kept pairs have under 10 decks) and isn't release-aware: fix it or record why
 - [ ] Owned twins: copies a built deck holds are matched per card, not pooled across the twin group (`availability.ts`)
 - [ ] The per-key pair pass picks keys by `commander_stats.computed_at`; drive it from the keys the commander pass merged
+- [ ] The evaluation builds decks from card rows without mana data (`produced_mana`, `fetchable_mana`), so the builder never sees a colour short of sources and its land picks go ungraded (found 2026-11-11; the repair check loads the mana fields for itself). Loading them moves the build numbers: do it as its own baseline change
 
 ## T014: Swap votes: blind eval, then scoring
 

@@ -135,5 +135,19 @@
  * sources and on-curve odds. Additive.
  *
  * v33 (2026-11-04): BuildFeasibility.roleShortfalls removed; the build page grades the built deck with Deck stats (T084).
+ *
+ * v34 (2026-11-09): builds meet Deck stats. StatTargets.colourSourceCap caps the colour rows for decks in three or more
+ * colours. BuildFeasibility.collectionGaps names the Deck stats lines a collection build couldn't bring in line from
+ * owned cards, so the build page can say so instead of warning. ScoreComponent gains 'mana': how much a land fixes the
+ * deck's short colours (null for nonlands), shipped at weight 0.
+ *
+ * v35 (2026-11-11): the Fix step (T086; owner approved 2026-11-11). RecsApi.fix (POST /api/recs/fix) returns FixResult:
+ * the pool Fix pairs its moves from (FixPool of FixCard: the in cards per Deck stats line, every main-deck card to
+ * take out) and the main-deck cards that aren't legal. RecContext gains optional `buyFor`, the lines the player opened
+ * to unowned cards in 'only' mode: such a card is listed for the line while it is short, cuts don't flag it NOT_OWNED,
+ * and a build fills the line from unowned cards once the owned ones run out (BuildOrigin 'fill', counted in
+ * `filledByValue` and `fillCost`). BuildFeasibility.collectionGaps no longer names a line over its band, 'basicLands'
+ * apart. Saved decks carry the player's choices per line: StatChoices on SavedDeckContents and on saveDeck's input
+ * (`decks.stat_choices`). Additive for readers; a v34 client never sends `buyFor` or `statChoices`.
  */
-export const CONTRACT_VERSION = 33;
+export const CONTRACT_VERSION = 35;

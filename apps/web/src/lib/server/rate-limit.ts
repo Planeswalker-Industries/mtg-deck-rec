@@ -4,6 +4,7 @@ import type { PublicClient } from "./supabase";
 /** Request budgets per visitor. Limits and windows live in app_config.rate_limits. */
 export type RateLimitBucket =
   | "recs"
+  | "fix"
   | "deck"
   | "deck_write"
   | "import"

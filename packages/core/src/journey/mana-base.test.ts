@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { CardId } from '../contract';
 import {
   castingHalves,
+  colourFix,
+  colourTarget,
   consistencyTarget,
   landsByTurnChance,
   manaBase,
   onCurveChance,
+  shortColours,
   sourceCredit,
   sourcesNeeded,
   type ManaCard,
@@ -209,5 +212,34 @@ describe('manaBase', () => {
     const report = manaBase([many(30, { typeLine: 'Land', producedMana: 'C', manaValue: 0 }), many(10, { manaCost: '{2}', manaValue: 2 })], [], '');
     expect(report.colours).toEqual([]);
     expect(report.hardToCast).toEqual([]);
+  });
+});
+
+describe('colour targets, shortfalls and fixes', () => {
+  const deck = (): ManaEntry[] => [
+    many(20, { typeLine: 'Basic Land — Plains', producedMana: 'W', manaValue: 0 }),
+    many(5, { typeLine: 'Basic Land — Swamp', producedMana: 'B', manaValue: 0 }),
+    many(1, { typeLine: 'Sorcery', manaCost: '{B}{B}', manaValue: 2 }),
+    many(1, { typeLine: 'Sorcery', manaCost: '{W}', manaValue: 1 }),
+    many(60, {}),
+  ];
+
+  it('caps a target only when there is a cap', () => {
+    expect(colourTarget(30, null)).toBe(30);
+    expect(colourTarget(30, 18)).toBe(18);
+    expect(colourTarget(12, 18)).toBe(12);
+  });
+
+  it('lists the colours under their target, and none once the cap is met', () => {
+    expect(shortColours(deck(), [], 'WB', null).map((s) => s.colour)).toEqual(['B']);
+    expect(shortColours(deck(), [], 'WB', 5)).toEqual([]);
+  });
+
+  it('scores a land by the share of short colours it fixes; null for a nonland or nothing short', () => {
+    const short = shortColours(deck(), [], 'WB', null);
+    expect(colourFix(card({ typeLine: 'Land', producedMana: 'WB', manaValue: 0 }), short, 'WB')).toBe(1);
+    expect(colourFix(card({ typeLine: 'Land', producedMana: 'C', manaValue: 0 }), short, 'WB')).toBe(0);
+    expect(colourFix(card({ typeLine: 'Artifact', producedMana: 'B', manaValue: 2 }), short, 'WB')).toBeNull();
+    expect(colourFix(card({ typeLine: 'Land', producedMana: 'B', manaValue: 0 }), [], 'WB')).toBeNull();
   });
 });

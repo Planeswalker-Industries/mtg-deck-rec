@@ -1098,6 +1098,7 @@ export type Database = {
           is_built: boolean
           is_public: boolean
           name: string
+          stat_choices: Json
           updated_at: string
           user_id: string
         }
@@ -1114,6 +1115,7 @@ export type Database = {
           is_built?: boolean
           is_public?: boolean
           name: string
+          stat_choices?: Json
           updated_at?: string
           user_id: string
         }
@@ -1130,6 +1132,7 @@ export type Database = {
           is_built?: boolean
           is_public?: boolean
           name?: string
+          stat_choices?: Json
           updated_at?: string
           user_id?: string
         }
@@ -2235,6 +2238,7 @@ export type Database = {
           p_cards?: Json
           p_deck_id?: string
           p_name?: string
+          p_stat_choices?: Json
         }
         Returns: string
       }

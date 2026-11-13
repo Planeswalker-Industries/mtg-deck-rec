@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, DM_Mono, Newsreader } from "next/font/google";
+import localFont from "next/font/local";
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
@@ -7,29 +7,36 @@ import { impactLoaderScript } from "@/lib/affiliate";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
-// Headings, body, buttons: warm and slightly hand-made. Only 400 and 600 are loaded, the lane's two weights.
-const body = Bricolage_Grotesque({
+// The fonts live in ./fonts (Google Fonts' latin subsets, SIL OFL, licences beside them) rather than next/font/google:
+// that one downloads them on every build, and a failed download fails the Vercel build.
+
+// Headings, body, buttons: warm and slightly hand-made. A variable font; the lane uses only its 400 and 600 weights.
+const body = localFont({
+  src: "./fonts/bricolage-grotesque-latin.woff2",
   variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "600"],
+  weight: "400 600",
+  style: "normal",
   display: "swap",
 });
 
 // The buddy's voice: the friend's asides. Italic only, one weight.
-const drama = Newsreader({
+const drama = localFont({
+  src: "./fonts/newsreader-italic-latin.woff2",
   variable: "--font-drama-face",
-  subsets: ["latin"],
   weight: "400",
   style: "italic",
   display: "swap",
+  adjustFontFallback: "Times New Roman",
 });
 
-// Every number: deck counts, prices, mana value.
-const mono = DM_Mono({
+// Every number: deck counts, prices, mana value. No metric-matched fallback: next/font offers only Arial and Times.
+const mono = localFont({
+  src: "./fonts/dm-mono-400-latin.woff2",
   variable: "--font-mono-face",
-  subsets: ["latin"],
   weight: "400",
+  style: "normal",
   display: "swap",
+  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {

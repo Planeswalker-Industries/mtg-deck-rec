@@ -4,9 +4,9 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
-import { ChevronDown, CircleCheck, CircleHelp, LoaderCircle, TriangleAlert } from "lucide-react";
-import type { Bracket, BuildResult, CardId, CardSummary } from "@mtg/core/contract";
-import { cardsShort, deckDiff, shortOfTarget, type StatLine } from "@mtg/core/journey";
+import { ChevronDown, CircleCheck, CircleHelp, Info, LoaderCircle, TriangleAlert } from "lucide-react";
+import type { Bracket, BuildResult, CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
+import { CURVE_LINE, cardsShort, deckDiff, shortOfTarget, type StatLine } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
 import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -17,7 +17,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
-import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
+import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
+import { formatAsOf, formatUsd } from "@/lib/format";
 import { ShuffleDeck } from "../shuffle-deck";
 import { ScoreExplainer } from "../score-explainer";
 import {
@@ -89,6 +90,77 @@ function RoleShortfalls({ lines }: { lines: readonly StatLine[] }) {
   );
 }
 
+/**
+ * A gap the collection left: a Deck stats line it had too few cards for (how many short, where that is a count), or
+ * its nonbasic lands (basics filled in). `choice` is the player's answer, once given.
+ */
+interface CollectionGap {
+  key: string;
+  label: string;
+  short: number | null;
+  choice: StatChoice | null;
+}
+
+/** Names for the gap keys Deck stats has no row for, and for every key until the deck's stats are in. */
+const GAP_LABEL: Readonly<Record<string, string>> = { basicLands: "Nonbasic lands", [CURVE_LINE]: "Mana curve" };
+const UNNAMED_GAP = "A Deck stats line";
+
+/** The two answers to a gap, in the order shown. */
+const GAP_CHOICES: readonly { choice: StatChoice; label: string }[] = [
+  { choice: "ignore", label: "Ignore" },
+  { choice: "buy", label: "Allow buying" },
+];
+
+/**
+ * What the build couldn't do from the collection, said as a fact rather than a warning: there was nothing more to
+ * pick. Each gap asks for an answer before the deck opens: ignore the line (it leaves the Deck stats score), or allow
+ * buying for it (the deck is built again with cards the player doesn't own for that line).
+ */
+function CollectionGaps({ gaps, onChoice, disabled }: { gaps: readonly CollectionGap[]; onChoice: (line: string, choice: StatChoice) => void; disabled: boolean }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="flex items-start gap-2 text-muted-foreground">
+        <Info aria-hidden className="mt-0.5 size-5 shrink-0" />
+        Not in your collection:
+      </p>
+      <ul aria-label="What your collection ran out of" className="flex flex-col gap-2 sm:pl-7">
+        {gaps.map((gap) => (
+          <li key={gap.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-sm">
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="truncate">{gap.label}</span>
+              {gap.short !== null && gap.short > 0 && (
+                <span className="shrink-0 font-mono text-muted-foreground">
+                  −{gap.short}
+                  <span className="sr-only"> {gap.short === 1 ? "card" : "cards"} short</span>
+                </span>
+              )}
+            </span>
+            <span role="group" aria-label={`${gap.label}: ignore it or allow buying`} className="flex shrink-0 gap-1.5">
+              {GAP_CHOICES.map(({ choice, label }) => (
+                <button
+                  key={choice}
+                  type="button"
+                  aria-pressed={gap.choice === choice}
+                  disabled={disabled}
+                  onClick={() => onChoice(gap.key, choice)}
+                  className={cn(
+                    PHONE_HIT_AREA,
+                    "rounded-full border px-3 py-1 text-sm font-semibold whitespace-nowrap transition-colors disabled:opacity-50",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                    gap.choice === choice ? PILL_ON : PILL_OFF,
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** What a fitted list lost and gained against the build; null when the build fitted no list. */
 function fitDiff(request: BuildRequest, result: BuildResult) {
   if (!request.list) return null;
@@ -131,7 +203,8 @@ function BuildCards({
 }: {
   view: DeckView;
   label: string;
-  entries: readonly { card: CardSummary; quantity: number }[];
+  /** `note`: a line under a card's image, e.g. that it isn't owned and what it costs. */
+  entries: readonly { card: CardSummary; quantity: number; note?: string }[];
   mark?: "cut" | "add";
   alwaysCount?: boolean;
   /** Opens a card's zoom with its score. */
@@ -152,12 +225,14 @@ function BuildCards({
       zoomable={!onSelect}
       label={label}
       {...(onSelect ? { onSelect: (card: CardSummary) => onSelect(card.id) } : {})}
-      items={entries.map(({ card, quantity }) => ({
+      items={entries.map(({ card, quantity, note }) => ({
         card,
         ...(mark ? { mark } : {}),
-        ...(alwaysCount || quantity > 1
-          ? { caption: <span className="font-mono text-muted-foreground">{count(quantity, "copy", "copies")}</span> }
-          : {}),
+        ...(note !== undefined
+          ? { caption: <span className="font-mono text-muted-foreground">{note}</span> }
+          : alwaysCount || quantity > 1
+            ? { caption: <span className="font-mono text-muted-foreground">{count(quantity, "copy", "copies")}</span> }
+            : {}),
       }))}
     />
   );
@@ -217,11 +292,16 @@ function FitChanges({ request, result, view }: { request: BuildRequest; result: 
  * what it couldn't fill. From here the player continues card by card (Upgrade), saves it for later (the Deckbuilder
  * with the name form open), or copies or downloads it. Buying cards for the open slots is shelved: a placeholder
  * says so. A pasted list fitted to the collection also shows what went out of the list and what came in.
+ *
+ * A collection build asks about each Deck stats line the collection couldn't fill before the deck opens (T087): ignore
+ * it, or allow buying for it, which builds the deck again with unowned cards for that line. Continue waits for every
+ * answer, and the answers go into the deck tool with the deck.
  */
 export function BuildView({
   state,
   collectionImportHref,
   onBracket,
+  onChoice,
   onUpgrade,
   onSave,
   onPickAnother,
@@ -229,9 +309,11 @@ export function BuildView({
   state: Exclude<BuildState, { status: "idle" }>;
   collectionImportHref: Route;
   onBracket: (bracket: Bracket) => void;
-  /** Takes the built decklist into the deck tool's Upgrade round, or into the Deckbuilder to save it. */
-  onUpgrade: (decklist: string) => Promise<void>;
-  onSave: (decklist: string) => Promise<void>;
+  /** The player's answer for a line the collection couldn't fill. */
+  onChoice: (line: string, choice: StatChoice) => void;
+  /** Takes the built decklist into the deck tool's Upgrade round, or into the Deckbuilder to save it, with the answers. */
+  onUpgrade: (decklist: string, choices: StatChoices) => Promise<void>;
+  onSave: (decklist: string, choices: StatChoices) => Promise<void>;
   onPickAnother: () => void;
 }) {
   const [view, setView] = useDeckView("build");
@@ -243,14 +325,29 @@ export function BuildView({
   const ready = state.status === "ready" ? state : null;
   const builtList = useMemo(() => (ready ? buildDecklist(ready.result) : null), [ready]);
   const stats = useBuildStats(ready?.result ?? null, builtList, state.request.bracket);
-  const shortRoles = stats?.stats.filter((s) => s.group === "roles" && shortOfTarget(s)) ?? [];
+  // A line the collection had nothing more for is a fact about the collection, not an adjustment to make. The lines
+  // the player answered stay listed after a rebuild fills them, so the answer can still be changed.
+  const choices: StatChoices = state.request.choices ?? {};
+  const gapKeys = [...new Set([...(ready?.result.feasibility.collectionGaps ?? []), ...Object.keys(choices)])];
+  const shortRoles = (stats?.stats.filter((s) => s.group === "roles" && shortOfTarget(s)) ?? []).filter((s) => !gapKeys.includes(s.key));
+  const collectionGaps: CollectionGap[] = gapKeys.map((key) => {
+    const line = stats?.stats.find((s) => s.key === key);
+    return {
+      key,
+      label: GAP_LABEL[key] ?? line?.label ?? UNNAMED_GAP,
+      // Nonbasic lands are a gap because basics stand in for them: nothing is short.
+      short: line && key !== "basicLands" ? cardsShort(line) : null,
+      choice: choices[key] ?? null,
+    };
+  });
+  const unanswered = collectionGaps.some((gap) => gap.choice === null);
   /** One open at a time: the deck tool reads the list first, which takes a moment on a phone. */
-  async function openDeck(kind: "upgrade" | "save", run: (decklist: string) => Promise<void>, decklist: string) {
+  async function openDeck(kind: "upgrade" | "save", run: (decklist: string, choices: StatChoices) => Promise<void>, decklist: string) {
     if (openingNow.current) return;
     openingNow.current = true;
     setOpening(kind);
     try {
-      await run(decklist);
+      await run(decklist, choices);
     } finally {
       openingNow.current = false;
       setOpening(null);
@@ -336,6 +433,10 @@ export function BuildView({
   const builtCards = new Map(result.groups.flatMap((g) => g.cards).map((c) => [c.card.id, c]));
   const detailCard = detail === null ? null : (builtCards.get(detail) ?? null);
   const fit = fitDiff(request, result);
+  // A card bought for a line the player opened says so, with its price; the date is on the summary line.
+  const cost = result.fillCost;
+  const noteFor = (c: (typeof result.groups)[number]["cards"][number]): { note: string } | Record<string, never> =>
+    c.origin === "fill" ? { note: `Not owned · ${c.card.price ? `about ${formatUsd(c.card.price.usd)}` : "no price"}` } : {};
 
   return (
     <section aria-label="Your built deck" className="flex flex-col gap-6">
@@ -361,13 +462,24 @@ export function BuildView({
           <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
         </div>
         {shortRoles.length > 0 && <RoleShortfalls lines={shortRoles} />}
+        {collectionGaps.length > 0 && <CollectionGaps gaps={collectionGaps} onChoice={onChoice} disabled={opening !== null} />}
+        {cost && cost.cards > 0 && (
+          <p className="text-sm text-muted-foreground">
+            {count(cost.cards, "card")} to buy, about {formatUsd(cost.usd)}.{cost.asOf ? ` Scryfall estimates from ${formatAsOf(cost.asOf)}.` : ""}
+          </p>
+        )}
+        {unanswered && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Choose Ignore or Allow buying for each to continue.
+          </p>
+        )}
         {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
         <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
           <Button
             type="button"
             size="lg"
             className="lit"
-            disabled={opening !== null}
+            disabled={opening !== null || unanswered}
             aria-busy={opening === "upgrade"}
             onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
           >
@@ -441,7 +553,7 @@ export function BuildView({
           <BuildCards
             view={view}
             label={cardCategoryLabel[group.category]}
-            entries={group.cards.map((c) => ({ card: c.card, quantity: 1 }))}
+            entries={group.cards.map((c) => ({ card: c.card, quantity: 1, ...noteFor(c) }))}
             onSelect={setDetail}
           />
         </BuildSection>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, type ComponentProps } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
-import { towardTarget, type StatLine } from "@mtg/core/journey";
+import { ArrowDown, ArrowRight, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
+import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { LevelBadge } from "./level";
@@ -12,10 +12,25 @@ import { DeckStatsPanel, type StatAction } from "./deck-stats-panel";
 const SWIPE_OPEN_PX = 24;
 /** A drag this far down the sheet's handle closes it. */
 const SWIPE_CLOSE_PX = 48;
-/** Lines the closed bar names for the card on screen; the sheet has the rest. */
-const PREVIEW_LINES = 2;
 
 type PanelProps = ComponentProps<typeof DeckStatsPanel>;
+
+/** "→ 4/11": the score answering the card on screen would give, green with an up arrow when higher, red when lower. */
+function ScoreAfter({ okCount, total, now }: { okCount: number; total: number; now: number }) {
+  const Icon = okCount > now ? ArrowUp : okCount < now ? ArrowDown : null;
+  const tone = okCount > now ? "text-success" : okCount < now ? "text-destructive" : "text-muted-foreground";
+  return (
+    <span className="inline-flex items-center gap-1 font-mono text-sm">
+      <ArrowRight aria-hidden className="size-3.5 text-muted-foreground" />
+      <span className="sr-only">With this card: </span>
+      <span className={tone}>
+        {okCount}/{total}
+      </span>
+      {Icon && <Icon aria-hidden className={cn("size-3.5", tone)} strokeWidth={2.75} />}
+      <span className="sr-only">{okCount > now ? ", more lines in line" : okCount < now ? ", fewer lines in line" : ", no change"}</span>
+    </span>
+  );
+}
 
 /**
  * Phones and tablets: a docked bar at the foot of the screen with the deck's level, opening the full readout as a
@@ -23,9 +38,22 @@ type PanelProps = ComponentProps<typeof DeckStatsPanel>;
  * (globals.css, `data-deck-stats-dock`), and the host sets --deck-stats-dock so the swipe cards and sticky bars sit
  * above it.
  *
+ * Closed, the bar reads "Deck stats ⚠ 3/11", and "→ 4/11" while a card is on screen: the score answering it would
+ * give. What the card changes line by line sits by the card (`StatChips`) and in the sheet.
+ *
  * The sheet has one close control: its handle row (tap, or swipe down). SheetContent's own corner button is off.
  */
-export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { className?: string; dock: "lg" | "xl" }) {
+export function DeckStatsFooter({
+  className,
+  dock,
+  previewScore = null,
+  ...panel
+}: PanelProps & {
+  className?: string;
+  dock: "lg" | "xl";
+  /** The score with the card on screen answered (the tally graded with it in and out); null with no card on screen. */
+  previewScore?: { okCount: number; total: number } | null;
+}) {
   const { report } = panel;
   const [open, setOpen] = useState(false);
   // An action opens a step under the sheet, so the sheet closes first; left open it would hide what the action did.
@@ -47,12 +75,6 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
   };
   const startY = useRef<number | null>(null);
   const swiped = useRef(false);
-  const previewLines = panel.preview
-    ? report.stats.flatMap((stat) => {
-        const preview = panel.preview?.get(stat.key);
-        return preview ? [{ stat, preview }] : [];
-      }).slice(0, PREVIEW_LINES)
-    : [];
 
   return (
     <>
@@ -91,30 +113,10 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             setOpen((o) => !o);
           }}
         >
-          {previewLines.length > 0 ? (
-            // While a card is on screen the closed bar says what answering it would change, so a phone sees it too.
-            <span className="flex min-w-0 items-center gap-3 text-sm">
-              <span className="sr-only">Deck stats. This card: </span>
-              {previewLines.map(({ stat, preview: { delta, target } }) => {
-                const better = towardTarget(stat.value, stat.target, delta, stat.group === "colours", target);
-                const Icon = better ? ArrowUp : ArrowDown;
-                return (
-                  <span key={stat.key} className="flex min-w-0 items-center gap-1">
-                    <Icon aria-hidden className={cn("size-3.5 shrink-0", better ? "text-success" : "text-destructive")} strokeWidth={2.75} />
-                    <span className="truncate">{stat.label}</span>
-                    <span className="shrink-0 font-mono">
-                      {stat.value}→{stat.value + delta}
-                      {target !== undefined && ` / ${Math.round(target)}`}
-                    </span>
-                  </span>
-                );
-              })}
-            </span>
-          ) : (
-            <span className="font-heading text-base font-semibold">Deck stats</span>
-          )}
-          <span className="flex shrink-0 items-center gap-3">
+          <span className="font-heading text-base font-semibold">Deck stats</span>
+          <span className="flex shrink-0 items-center gap-2">
             <LevelBadge level={report.level} okCount={report.okCount} total={report.total} compact />
+            {previewScore && <ScoreAfter okCount={previewScore.okCount} total={previewScore.total} now={report.okCount} />}
             <ChevronUp aria-hidden className="size-5 text-muted-foreground" />
           </span>
         </button>

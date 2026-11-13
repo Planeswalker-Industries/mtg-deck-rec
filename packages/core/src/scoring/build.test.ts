@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { availability } from '../collection/availability';
-import type { CardId, CardSummary, IsoDateTime, OracleId, RecContext, TagId } from '../contract';
+import type { CardId, CardSummary, IsoDateTime, OracleId, RecContext, StatTargets, TagId } from '../contract';
+import { buildTally, gradeDeck, STAT_TOLERANCE_SHARE, toTallyCard } from '../journey/deck-tally';
+import { planFixes, type FixCard } from '../journey/fix';
 import { affinityTracker, deckAffinity, pmiIndex } from './affinity';
 import { buildDeck, landTargets, manaSymbols, splitBasics, type BasicColour, type BuildInput } from './build';
 import type { CardPlayRates, RankCard, RankCorpus } from './rank';
@@ -70,8 +72,8 @@ const spells = Array.from({ length: 80 }, (_, i) =>
   }),
 );
 const lands = Array.from({ length: 30 }, (_, i) => card(200 + i, `Land ${String(i + 1).padStart(2, '0')}`, 'Land', { manaCost: '', identity: WU }));
-const plains = card(300, 'Plains', 'Basic Land — Plains', { manaCost: '' });
-const island = card(301, 'Island', 'Basic Land — Island', { manaCost: '', identity: 2 });
+const plains = card(300, 'Plains', 'Basic Land — Plains', { manaCost: '', producedMana: 'W' });
+const island = card(301, 'Island', 'Basic Land — Island', { manaCost: '', identity: 2, producedMana: 'U' });
 const all = [commander, ...spells, ...lands, plains, island];
 const cards = new Map(all.map((c) => [c.summary.id as number, c]));
 const playRates = new Map<number, CardPlayRates>([
@@ -109,6 +111,19 @@ const input = (over: Partial<BuildInput> = {}): BuildInput => ({
   affinity: null,
   basics,
   ...over,
+});
+
+/** Deck stats' targets with these card types (and this curve, by mana value). */
+const statTargets = (types: Record<string, number>, curve: number[] = []): StatTargets => ({
+  source: 'commander',
+  label: 'Hanna decks (500)',
+  lands: 36,
+  basicLands: 20,
+  roles: [{ roleId: RAMP, label: 'Ramp', target: 10 }],
+  curve,
+  types: Object.entries(types).map(([cardType, target]) => ({ cardType, label: cardType, target })),
+  colourSourceCap: null,
+  bracketLimits: { massLandDenialFromBracket: 4, maxExtraTurnCards: { '1': 0, '2': 2, '3': 2 }, extraTurnLoopResults: [], extraTurnLoopFromBracket: 4 },
 });
 
 const deckIds = (result: ReturnType<typeof buildDeck>) => result.groups.flatMap((g) => g.cards.map((c) => c.card.id as number));
@@ -178,7 +193,7 @@ describe('buildDeck', () => {
     expect(ids.length + basicCount(result)).toBe(99);
     expect(landIds.length + basicCount(result)).toBe(36);
     expect(landIds.length).toBe(16);
-    expect(result.feasibility).toMatchObject({ slots: 99, filled: 99, filledByValue: 0, open: 0 });
+    expect(result.feasibility).toMatchObject({ slots: 99, filled: 99, filledByValue: 0, open: 0, collectionGaps: [] });
     expect(new Set(ids).size).toBe(ids.length);
     expect(buildDeck(input())).toEqual(result);
   });
@@ -203,12 +218,63 @@ describe('buildDeck', () => {
     expect(plainsCount).toBeGreaterThan(islandCount);
   });
 
-  it('fills ramp first while the deck is short of it', () => {
+  it('fills each role to its target before anything else, as far as the pool allows', () => {
     const result = buildDeck(input());
     const ids = deckIds(result);
-    // 63 nonland slots: by play rate alone the build would stop at Spell 63, but Spell 66 fills a role it is short of.
-    expect(ids).toContain(66);
-    expect(ids.filter((id) => roles.get(id)?.includes(RAMP))).toHaveLength(7);
+    // Ramp's target is 10 and the pool holds 8: every one goes in, Spell 76 too, which play rate alone would leave out.
+    expect(ids).toContain(76);
+    expect(ids.filter((id) => roles.get(id)?.includes(RAMP))).toHaveLength(8);
+  });
+
+  it("keeps each card type inside Deck stats' band, and brings a short one up to it", () => {
+    // Creatures are the even spells, which score higher: by play rate the build would run 32 creatures and 31 instants.
+    const result = buildDeck(input({ statTargets: statTargets({ creature: 20, instant: 40 }) }));
+    const types = deckIds(result).filter((id) => id < 200).map((id) => cards.get(id)!.summary.typeLine);
+    const creatures = types.filter((t) => t.startsWith('Creature')).length;
+    expect(creatures).toBeLessThanOrEqual(24);
+    expect(types.length - creatures).toBeGreaterThanOrEqual(32);
+  });
+
+  it('keeps every curve bar inside its band when the pool allows', () => {
+    // Spells cost 1 to 6, about eleven each; ask for few 1-drops and many 2-drops.
+    const curve = [0, 2, 20, 11, 11, 11, 11, 0];
+    const result = buildDeck(input({ statTargets: statTargets({}, curve) }));
+    const ones = deckIds(result).filter((id) => id < 200 && cards.get(id)!.summary.manaValue === 1).length;
+    expect(ones).toBeLessThanOrEqual(3);
+  });
+
+  it('picks lands that make a colour the deck is short of before better lands that make none', () => {
+    // Land 30 is the worst by play rate but makes blue; the others make nothing.
+    const blueLand = lands[29]!.summary.id as number;
+    const fixing = new Map(cards);
+    fixing.set(blueLand, card(blueLand, 'Land 30', 'Land', { manaCost: '', identity: WU, producedMana: 'U' }));
+    const ids = deckIds(buildDeck(input({ cards: fixing })));
+    expect(ids).toContain(blueLand);
+  });
+
+  it('gives each basic to the colour furthest under its source target', () => {
+    // A blue 1-drop needing {U}{U}{U} sets a blue target far above white's; symbols alone would favour white.
+    const hungry = card(150, 'Blue Hunger', 'Sorcery', { manaCost: '{U}{U}{U}', manaValue: 3, identity: 2 });
+    const withHungry = new Map(cards).set(150, hungry);
+    const result = buildDeck(input({ cards: withHungry, context: context({ deck: { commanders: [COMMANDER as CardId], cards: [{ cardId: 150 as CardId, quantity: 1, section: 'main' }] } }) }));
+    const plainsCount = result.basics.find((b) => b.card.name === 'Plains')?.quantity ?? 0;
+    const islandCount = result.basics.find((b) => b.card.name === 'Island')?.quantity ?? 0;
+    expect(islandCount).toBeGreaterThan(plainsCount);
+  });
+
+  it('caps the colour source targets: past the cap, basics follow the mana symbols', () => {
+    // With a cap of 1, one basic of each colour meets both targets; the rest split by symbols as before.
+    const scoring = { ...TEST_SCORING, build: { ...TEST_SCORING.build, colourSourceCaps: [1, 1, 1, 1, 1, 1] } };
+    const result = buildDeck(input({ scoring }));
+    const symbols = new Map<string, number>();
+    for (const id of [COMMANDER, ...deckIds(result).filter((id) => id < 200)]) {
+      for (const [colour, n] of manaSymbols(cards.get(id)!.summary.manaCost ?? '')) symbols.set(colour, (symbols.get(colour) ?? 0) + n);
+    }
+    const rest = splitBasics(basicCount(result) - 2, WU, symbols);
+    expect(Object.fromEntries(result.basics.map((b) => [b.card.name, b.quantity]))).toEqual({
+      Plains: (rest.get('W') ?? 0) + 1,
+      Island: (rest.get('U') ?? 0) + 1,
+    });
   });
 
   it('keeps the cards it is given and scores them against the rest', () => {
@@ -270,6 +336,70 @@ describe('buildDeck', () => {
     expect(result.combos.map((c) => [c.id, c.card.id])).toEqual([['near', 79]]);
   });
 
+  it('passes Deck stats on roles, card types and colours when every card is available', () => {
+    // Half the lands make both colours, as a real pool's duals do; card types and the curve asked for as Deck stats would.
+    const duals = new Map(cards);
+    for (const l of lands.slice(0, 15)) duals.set(l.summary.id as number, card(l.summary.id as number, l.summary.name, 'Land', { manaCost: '', identity: WU, producedMana: 'WU' }));
+    const targets = statTargets({ creature: 30, instant: 30 }, [0, 11, 11, 11, 10, 10, 10, 0]);
+    const result = buildDeck(input({ cards: duals, statTargets: targets }));
+    const main = [
+      ...deckIds(result).map((id) => ({ card: toTallyCard(duals.get(id)!.summary, roles.get(id) ?? []), quantity: 1 })),
+      ...result.basics.map((b) => ({ card: toTallyCard(b.card, []), quantity: b.quantity })),
+    ];
+    const report = gradeDeck(buildTally(main, [toTallyCard(commander.summary, [])]), targets, {
+      chosen: 3,
+      signals: { gameChangerCount: 0, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
+      combos: [],
+      overBracketAdds: new Map(),
+    });
+    const off = report.stats.filter((line) => line.group !== 'mana' && !line.ok).map((line) => `${line.key} ${line.value}/${line.target}`);
+    expect(off).toEqual([]);
+  });
+
+  it('leaves Fix nothing to do: a fresh build is in line on every line Fix counts', () => {
+    const duals = new Map(cards);
+    for (const l of lands.slice(0, 15)) duals.set(l.summary.id as number, card(l.summary.id as number, l.summary.name, 'Land', { manaCost: '', identity: WU, producedMana: 'WU' }));
+    const targets = statTargets({ creature: 30, instant: 30 }, [0, 11, 11, 11, 10, 10, 10, 0]);
+    const result = buildDeck(input({ cards: duals, statTargets: targets }));
+    const picked = result.groups.flatMap((g) => g.cards);
+    const fixCard = (summary: CardSummary, score: number): FixCard => ({ card: summary, roles: roles.get(summary.id) ?? [], score, owned: null });
+    const deck = [...picked.map((c) => fixCard(c.card, c.score.total)), ...result.basics.map((b) => fixCard(b.card, 0))];
+    const inDeck = new Set(deck.map((c) => c.card.id as number));
+    const main = [
+      ...picked.map((c) => ({ card: toTallyCard(c.card, roles.get(c.card.id) ?? []), quantity: 1 })),
+      ...result.basics.map((b) => ({ card: toTallyCard(b.card, []), quantity: b.quantity })),
+    ];
+    // Every card the build passed over may come in, and so may the basic lands.
+    const ins = [
+      ...[...spells, ...lands].filter((c) => !inDeck.has(c.summary.id)).map((c) => fixCard(duals.get(c.summary.id)!.summary, playRates.get(c.summary.id)?.commanderRate?.inclusion ?? 0)),
+      ...[plains, island].map((c) => fixCard(c.summary, 0)),
+    ];
+    const moves = planFixes({
+      tally: buildTally(main, [toTallyCard(commander.summary, [])]),
+      targets,
+      bracket: { chosen: 3, signals: result.bracketSignals, combos: [], overBracketAdds: new Map() },
+      pool: { ins, deck },
+      skipped: [],
+      choices: {},
+      addedIds: [],
+      protectedIds: [],
+      illegalIds: [],
+    });
+    expect(moves.map((m) => `${m.line}: ${m.in.name} for ${m.out.name}`)).toEqual([]);
+  });
+
+  it('counts a land that draws cards toward the role: the role stays inside its band', () => {
+    // Every land cycles and a fifth of the spells draw: by play rate the lands alone would put 16 more in the role.
+    const DRAW = 'draw-role';
+    const drawSpells = spells.filter((_, i) => i % 5 === 1).map((c) => c.summary.id as number);
+    const landIds = lands.map((c) => c.summary.id as number);
+    const withDraw = new Map<number, readonly string[]>([...roles, ...[...drawSpells, ...landIds].map((id): [number, string[]] => [id, [DRAW]])]);
+    const target = 7;
+    const result = buildDeck(input({ roles: withDraw, roleTargets: [{ roleId: RAMP, label: 'Ramp', target: 10 }, { roleId: DRAW, label: 'Draw', target }] }));
+    const drawing = deckIds(result).filter((id) => withDraw.get(id)?.includes(DRAW)).length;
+    expect(drawing).toBeLessThanOrEqual(target * (1 + STAT_TOLERANCE_SHARE));
+  });
+
   describe('from a collection', () => {
     const owned = new Map([...spells.slice(0, 30), ...lands.slice(0, 5)].map((c) => [c.summary.id as number, 1]));
     const available = availability({ owned, builtDecks: [] }, new Map());
@@ -279,6 +409,8 @@ describe('buildDeck', () => {
 
     it('picks only owned cards and says what stays open', () => {
       const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool }));
+      // The 30 owned spells hold three ramp cards against a target of 10.
+      expect(result.feasibility.collectionGaps).toContain(RAMP);
       const ids = deckIds(result);
       expect(ids.every((id) => owned.has(id))).toBe(true);
       expect(ids.filter((id) => id < 200)).toHaveLength(30);
@@ -294,13 +426,61 @@ describe('buildDeck', () => {
       expect(deckIds(result).filter((id) => id === 200)).toHaveLength(1);
     });
 
-    it('fills spell slots past the quality floor, but leaves weak nonbasic lands to basics', () => {
+    it('fills spell slots past the quality floor, but leaves weak nonbasic lands to basics while basics stay in their band', () => {
       const scoring = { ...TEST_SCORING, build: { ...TEST_SCORING.build, qualityFloor: 1 } };
-      const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, scoring }));
+      // These decks run 34 basics: 36 of them is inside the band.
+      const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, scoring, corpus: { ...corpus, basicLandCount: 34 } }));
       const ids = deckIds(result);
       expect(ids.filter((id) => id < 200)).toHaveLength(30);
       expect(ids.filter((id) => id >= 200)).toHaveLength(0);
       expect(basicCount(result)).toBe(result.landTarget);
+      expect(result.feasibility.collectionGaps).not.toContain('basicLands');
+    });
+
+    it('takes owned lands under the floor rather than push basics over their band, as Fix would', () => {
+      const scoring = { ...TEST_SCORING, build: { ...TEST_SCORING.build, qualityFloor: 1 } };
+      // 20 basics is the target and 24 the top of the band: every owned land goes in, and five are not enough.
+      const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, scoring }));
+      expect(deckIds(result).filter((id) => id >= 200)).toHaveLength(5);
+      expect(basicCount(result)).toBe(31);
+      expect(result.feasibility.collectionGaps).toContain('basicLands');
+    });
+
+    it('takes an owned land under the floor that makes a colour basics leave short', () => {
+      const scoring = { ...TEST_SCORING, build: { ...TEST_SCORING.build, qualityFloor: 1, colourSourceCaps: [null, null, 25] } };
+      // 34 basics are fine by their band, but 36 land slots can't give white and blue 25 sources each without duals.
+      const duals = lands.slice(0, 5).map((c) => ({ ...c, summary: { ...c.summary, producedMana: 'WU' } }));
+      const withDuals = new Map([...cards, ...duals.map((c) => [c.summary.id as number, c] as const)]);
+      const result = buildDeck(
+        input({ context: collection, availability: available, poolIds: ownedPool, scoring, cards: withDuals, corpus: { ...corpus, basicLandCount: 34 } }),
+      );
+      expect(deckIds(result).filter((id) => id >= 200).length).toBeGreaterThan(0);
+    });
+
+    it('buys for a line the player opened once the owned cards run out, best first', () => {
+      const buying = context({ ownership: { kind: 'account' }, ownershipMode: 'only', buyFor: [RAMP] });
+      const result = buildDeck(input({ context: buying, availability: available, poolIds: ownedPool, fillIds: openPool }));
+      const bought = result.groups.flatMap((g) => g.cards).filter((c) => c.origin === 'fill');
+      // Three of the eight ramp spells are owned; the other five are bought, and nothing else is.
+      expect(bought.map((c) => c.card.id as number).sort((a, b) => a - b)).toEqual([36, 46, 56, 66, 76]);
+      expect(bought.every((c) => c.owned === null)).toBe(true);
+      expect(result.feasibility.collectionGaps).not.toContain(RAMP);
+      expect(result.feasibility.filledByValue).toBe(5);
+      expect(result.fillCost).toEqual({ usd: 5, cards: 5, asOf: '2026-10-06T00:00:00Z' });
+    });
+
+    it('buys nothing for a line the collection fills, or without the open pool', () => {
+      const buying = context({ ownership: { kind: 'account' }, ownershipMode: 'only', buyFor: [RAMP] });
+      const filled = buildDeck(input({ context: buying, availability: available, poolIds: ownedPool, fillIds: openPool, corpus: { ...corpus, roleProfile: { [RAMP]: 3 } } }));
+      expect(filled.feasibility.filledByValue).toBe(0);
+      expect(buildDeck(input({ context: buying, availability: available, poolIds: ownedPool })).feasibility.filledByValue).toBe(0);
+    });
+
+    it('does not call a line over its band a gap: more cards would not help', () => {
+      // A target of one ramp card; the collection's spells all go in, three ramp cards among them.
+      const result = buildDeck(input({ context: collection, availability: available, poolIds: ownedPool, corpus: { ...corpus, roleProfile: { [RAMP]: 1 } } }));
+      expect(deckIds(result).filter((id) => (roles.get(id) ?? []).includes(RAMP))).toHaveLength(3);
+      expect(result.feasibility.collectionGaps).not.toContain(RAMP);
     });
 
     it('fills the open slots with unowned cards by value, with a running total', () => {

@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import { CardPanel, DecisionButtons, type DecisionTone } from "@/components/cards/card-panel";
 import { useCardRules } from "@/lib/card-rules";
+import { StatChips } from "../deck-stats/stat-chips";
 import { useStatPreview } from "../deck-stats/stat-preview";
 import { SWIPE_COOLDOWN_MS } from "../swipe-rater";
 
@@ -99,6 +100,8 @@ export function SingleSwipe({
           {caption}
         </CardPanel>
       </div>
+      {/* The Deck stats lines this card moves, under it across the mat: the footer only says what it does to the score. */}
+      <StatChips add={previewAs === "add" ? card : null} remove={previewAs === "remove" ? card : null} />
       <DecisionButtons
         tone={tone}
         pass={{ word: passWord, label: passLabel, icon: passIcon, onClick: () => act(false) }}
