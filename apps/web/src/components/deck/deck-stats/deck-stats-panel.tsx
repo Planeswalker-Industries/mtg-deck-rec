@@ -277,7 +277,7 @@ type Flip = "ok" | "off";
 const PREVIEWED = "-mx-1.5 rounded-md bg-foreground/5 px-1.5 py-1";
 
 /**
- * "→ In line" or "→ Off": the state a line would end in with the card on screen answered, when the card flips it. These are
+ * "→ OK" or "→ Off": the state a line would end in with the card on screen answered, when the card flips it. These are
  * the lines that move the score beside the level badge.
  */
 function FlipTag({ to }: { to: Flip }) {
@@ -288,7 +288,7 @@ function FlipTag({ to }: { to: Flip }) {
       <span className="sr-only">With this card: </span>
       <span className={cn("inline-flex items-center gap-0.5", to === "ok" ? "text-success" : "text-destructive")}>
         <Icon aria-hidden className="size-3" strokeWidth={2.75} />
-        {to === "ok" ? "In line" : "Off"}
+        {to === "ok" ? "OK" : "Off"}
       </span>
     </span>
   );
