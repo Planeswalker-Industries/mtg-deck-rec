@@ -1,11 +1,11 @@
 "use client";
 
 import { useRef, useState, type ComponentProps } from "react";
-import { ArrowDown, ArrowRight, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { LevelBadge } from "./level";
+import { LevelBadge, ScoreAfter } from "./level";
 import { DeckStatsPanel, type StatAction } from "./deck-stats-panel";
 
 /** A drag this far up the footer opens the sheet; shorter is a tap. */
@@ -15,46 +15,21 @@ const SWIPE_CLOSE_PX = 48;
 
 type PanelProps = ComponentProps<typeof DeckStatsPanel>;
 
-/** "→ 4/11": the score answering the card on screen would give, green with an up arrow when higher, red when lower. */
-function ScoreAfter({ okCount, total, now }: { okCount: number; total: number; now: number }) {
-  const Icon = okCount > now ? ArrowUp : okCount < now ? ArrowDown : null;
-  const tone = okCount > now ? "text-success" : okCount < now ? "text-destructive" : "text-muted-foreground";
-  return (
-    <span className="inline-flex items-center gap-1 font-mono text-sm">
-      <ArrowRight aria-hidden className="size-3.5 text-muted-foreground" />
-      <span className="sr-only">With this card: </span>
-      <span className={tone}>
-        {okCount}/{total}
-      </span>
-      {Icon && <Icon aria-hidden className={cn("size-3.5", tone)} strokeWidth={2.75} />}
-      <span className="sr-only">{okCount > now ? ", more lines in line" : okCount < now ? ", fewer lines in line" : ", no change"}</span>
-    </span>
-  );
-}
-
 /**
  * Phones and tablets: a docked bar at the foot of the screen with the deck's level, opening the full readout as a
  * sheet. `dock` is the width from which the host shows a rail instead: below it the page reserves the bar's height
  * (globals.css, `data-deck-stats-dock`), and the host sets --deck-stats-dock so the swipe cards and sticky bars sit
  * above it.
  *
- * Closed, the bar reads "Deck stats ⚠ 3/11", and "→ 4/11" while a card is on screen: the score answering it would
- * give. What the card changes line by line sits by the card (`StatChips`) and in the sheet.
+ * The bar reads "Deck stats ⚠ 3/11", and "→ 4/11" while a card is on screen: the score answering it would give (the
+ * panel's `after`). The sheet's header repeats both, and the sheet marks each line the card moves or flips. What the
+ * card changes also sits by the card (`StatChips`).
  *
  * The sheet has one close control: its handle row (tap, or swipe down). SheetContent's own corner button is off.
  */
-export function DeckStatsFooter({
-  className,
-  dock,
-  previewScore = null,
-  ...panel
-}: PanelProps & {
-  className?: string;
-  dock: "lg" | "xl";
-  /** The score with the card on screen answered (the tally graded with it in and out); null with no card on screen. */
-  previewScore?: { okCount: number; total: number } | null;
-}) {
-  const { report } = panel;
+export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { className?: string; dock: "lg" | "xl" }) {
+  const { report, after } = panel;
+  const scoreAfter = after ? <ScoreAfter okCount={after.okCount} total={after.total} now={report.okCount} /> : null;
   const [open, setOpen] = useState(false);
   // An action opens a step under the sheet, so the sheet closes first; left open it would hide what the action did.
   const closing = (action: StatAction | null | undefined): StatAction | null =>
@@ -116,7 +91,7 @@ export function DeckStatsFooter({
           <span className="font-heading text-base font-semibold">Deck stats</span>
           <span className="flex shrink-0 items-center gap-2">
             <LevelBadge level={report.level} okCount={report.okCount} total={report.total} compact />
-            {previewScore && <ScoreAfter okCount={previewScore.okCount} total={previewScore.total} now={report.okCount} />}
+            {scoreAfter}
             <ChevronUp aria-hidden className="size-5 text-muted-foreground" />
           </span>
         </button>
@@ -151,6 +126,7 @@ export function DeckStatsFooter({
             </SheetTitle>
             <span className="flex items-center gap-3">
               <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />
+              {scoreAfter}
               <ChevronDown aria-hidden className="size-5 text-muted-foreground" />
             </span>
           </button>

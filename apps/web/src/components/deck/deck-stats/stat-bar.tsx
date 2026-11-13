@@ -9,7 +9,7 @@ const FULL_TRACK_PCT = 100;
 const pct = (n: number, scale: number) => `${Math.max(0, Math.min(FULL_TRACK_PCT, (n / scale) * FULL_TRACK_PCT))}%`;
 
 /** The stripes on a previewed piece of the bar: the card on screen would add it, or take it away. */
-const STRIPES = "repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 4px)";
+export const STRIPES = "repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 4px)";
 
 /**
  * A horizontal bar: the shaded band is the target's tolerance, the fill the deck's value (ink in line, amber off), the
