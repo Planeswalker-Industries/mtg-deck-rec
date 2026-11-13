@@ -1,4 +1,21 @@
-import type { ScoreBreakdown, ScoreComponent } from '../contract';
+import type { CardSummary, ScoreBreakdown, ScoreComponent, SwapSuggestion } from '../contract';
+import { cardCategory } from './add';
+
+/** What a replacement from a lower rung says about itself; null for the tags rung, whose matched tags speak for it. */
+export function swapMatchLabel(
+  suggestion: Pick<SwapSuggestion, 'match' | 'matchedTags'>,
+  target: Pick<CardSummary, 'manaValue' | 'typeLine'>,
+): string | null {
+  if (suggestion.match === 'role') {
+    const jobs = [...new Set(suggestion.matchedTags.map((m) => m.candidateTag.label.toLowerCase()))];
+    return jobs.length > 0 ? `Same job: ${jobs.join(', ')}` : 'Same job';
+  }
+  if (suggestion.match === 'slot') {
+    const category = cardCategory(target.typeLine);
+    return category === 'land' ? 'Similar slot: land' : `Similar slot: ${Math.round(target.manaValue)}-mana ${category}`;
+  }
+  return null;
+}
 
 /** A component left out counts as null: no data. */
 export type ComponentValues = Partial<Record<ScoreComponent, number | null>>;

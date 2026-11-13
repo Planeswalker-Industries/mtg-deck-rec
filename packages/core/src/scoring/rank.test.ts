@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { availability, type BuiltDeck } from '../collection/availability';
 import type { CardId, CardSummary, DeckId, IsoDateTime, OracleId, RecContext } from '../contract';
 import { buyLines, type BuyLines } from '../journey/buy-for';
-import { rankAdds, rankCuts, rankSwaps, type CardPlayRates, type RankCard, type RankCorpus, type SwapPool } from './rank';
+import { rankAdds, rankCuts, rankSwaps, type CardPlayRates, type RankCard, type RankCorpus, type SwapPool, type SwapPoolCandidate } from './rank';
 import { comboResultWeight } from './combos';
 import { TEST_CORPUS_SETTINGS, TEST_SCORING } from './test-config';
 
@@ -235,7 +235,6 @@ describe('rankSwaps with a collection (T059)', () => {
   ]);
   const pool = (candidates: RankCard[]): SwapPool => ({
     target,
-    tagCount: 3,
     corpus,
     candidates: candidates.map((c) => candidate(c, similarity.get(c.summary.id) ?? 0.5)),
   });
@@ -266,6 +265,82 @@ describe('rankSwaps with a collection (T059)', () => {
     });
     expect(result.emptyReason).toBe('NOTHING_OWNED_FITS');
     expect(result.buyList?.map((s) => s.card.name)).toEqual(['Sol Ring']);
+  });
+
+  it('keeps the buy list on the tags rung (T088)', () => {
+    const owned: SwapPoolCandidate = { ...candidate(vessel, 0), match: 'role' };
+    const buy: SwapPool = { target, corpus, candidates: [candidate(ring, 0.9), { ...candidate(talisman, 0), match: 'role' }] };
+    const result = rankSwaps(
+      { target, corpus, candidates: [owned] },
+      {
+        context: context('only', [30]),
+        limit: 5,
+        ownedBoost: 0,
+        scoring: { ...TEST_SCORING, collection: { ...TEST_SCORING.collection, buyMargin: 0 } },
+        availability: availability({ owned: new Map([[3, 1]]), builtDecks: [] }, twins),
+        buyPool: buy,
+      },
+    );
+    expect(result.suggestions.map((s) => [s.card.name, s.match])).toEqual([['Thought Vessel', 'role']]);
+    expect((result.buyList ?? []).every((s) => s.match === 'tags')).toBe(true);
+    expect(result.buyList?.map((s) => s.card.name)).not.toContain('Talisman of Hierarchy');
+  });
+});
+
+describe('rankSwaps ladder (T088)', () => {
+  const target = card(30, 'Mind Stone', 'Artifact');
+  const fellwar = card(5, 'Fellwar Stone', 'Artifact');
+  const marble = card(6, 'Marble Diamond', 'Artifact');
+  const candidate = (c: RankCard, match?: 'tags' | 'role' | 'slot', tagSimilarity = match === 'role' || match === 'slot' ? 0 : 0.6): SwapPoolCandidate => ({
+    cardId: c.summary.id,
+    card: c,
+    tagSimilarity,
+    stapleScore: 0.5,
+    functionalTwin: false,
+    matchedTags: [],
+    rates: playRates.get(c.summary.id) ?? null,
+    ...(match ? { match } : {}),
+  });
+  const run = (candidates: SwapPoolCandidate[]) =>
+    rankSwaps({ target, corpus, candidates }, { context: { ...context('only', [30]), ownership: null }, limit: 20, ownedBoost: 0, scoring: TEST_SCORING });
+  const rungs = (candidates: SwapPoolCandidate[]) => run(candidates).suggestions.map((s) => s.match);
+
+  it('leaves the lower rungs out when the tags rung has enough', () => {
+    const tagsOnly = run([candidate(ring, 'tags'), candidate(signet, 'tags'), candidate(vessel, 'tags')]);
+    const withLower = run([candidate(ring, 'tags'), candidate(signet, 'tags'), candidate(vessel, 'tags'), candidate(talisman, 'role'), candidate(fellwar, 'slot')]);
+    expect(withLower.suggestions.map((s) => s.match)).toEqual(['tags', 'tags', 'tags']);
+    // Same cards, same order, same scores as a pool with no lower rung at all.
+    expect(withLower.suggestions).toEqual(tagsOnly.suggestions);
+  });
+
+  it('adds the role rung after a short tags rung, and the slot rung only if still short', () => {
+    expect(rungs([candidate(ring, 'tags'), candidate(talisman, 'role'), candidate(fellwar, 'role'), candidate(marble, 'slot')])).toEqual(['tags', 'role', 'role']);
+    expect(rungs([candidate(ring, 'tags'), candidate(talisman, 'role'), candidate(marble, 'slot')])).toEqual(['tags', 'role', 'slot']);
+    expect(rungs([candidate(marble, 'slot')])).toEqual(['slot']);
+  });
+
+  it('keeps a higher rung first whatever the scores', () => {
+    // Thought Vessel (played in 45%) is on the tags rung; Talisman (95%) on the role rung scores higher and still follows.
+    const result = run([candidate(talisman, 'role'), candidate(vessel, 'tags', 0.3)]);
+    expect(result.suggestions.map((s) => s.card.name)).toEqual(['Thought Vessel', 'Talisman of Hierarchy']);
+  });
+
+  it('scores a lower rung without the tag component', () => {
+    const [s] = run([candidate(talisman, 'role')]).suggestions;
+    expect(s?.score.components.tag).toBeNull();
+    expect(s?.score.effectiveWeights.tag).toBe(0);
+    expect(s?.score.total).toBeGreaterThan(0);
+  });
+
+  it('reads a candidate with no rung as the tags rung, floor applied', () => {
+    expect(rungs([candidate(ring, undefined, 0.6)])).toEqual(['tags']);
+    expect(run([candidate(ring, undefined, 0.1)]).suggestions).toHaveLength(0);
+    // The floor is the tags rung's alone.
+    expect(rungs([candidate(ring, 'slot', 0)])).toEqual(['slot']);
+  });
+
+  it('never says the target has no tags', () => {
+    expect(run([]).emptyReason).toBe('NO_CANDIDATES');
   });
 });
 

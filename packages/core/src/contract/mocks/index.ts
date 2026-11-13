@@ -35,6 +35,7 @@ import type {
   ScoreBreakdown,
   ScoreComponent,
   SwapResult,
+  SwapMatch,
   SwapSuggestion,
   TagMatch,
   VoteSummary,
@@ -113,6 +114,9 @@ const MOCK_ACCOUNT_OWNED = new Set<number>([2, 3, 5, 9, 12, 16, 17]);
 const MOCK_SEVERE_SYNERGY_SCORE = 0.2;
 /** Mock stand-in for app_config.ownership.firstBoost: how far an owned card moves up in 'first' mode. */
 const MOCK_OWNED_FIRST_BOOST = 0.1;
+/** As app_config.scoring.swap.ladderMinSuggestions and slotManaValueRange (T088). */
+const MOCK_LADDER_MIN = 3;
+const MOCK_SLOT_MANA_VALUE_RANGE = 1;
 /** The buy list's settings, as `app_config.scoring.collection` starts them (a shorter list, for the mock catalog). */
 const MOCK_BUY_LIST = { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 5 };
 /** Lands a mock build aims for, about what Commander decks run (`app_config.scoring.build` holds the real counts). */
@@ -419,39 +423,58 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         const boost = ownedFirst(context) ? MOCK_OWNED_FIRST_BOOST : 0;
         const inDeck = deckCardIds(context.deck);
         const identity = deckIdentity(context.deck);
-        const scored = mockCards
+        const suggest = (c: CardSummary, match: SwapMatch): SwapSuggestion => {
+          const matchedTags = match === 'tags' ? tagMatches(target.id, c.id) : [];
+          const corpus = corpusFor(c.id);
+          const votesFor = voteSummary(target.id, c.id);
+          return {
+            card: withMockRoles(c),
+            functionalTwin: false,
+            match,
+            matchedTags,
+            corpus,
+            score: blend(
+              {
+                tag: match === 'tags' ? tagScore(matchedTags) : null,
+                manaValue: round(Math.exp(-Math.abs(c.manaValue - target.manaValue) / 1.5)),
+                staple: null,
+                corpus: corpusScore(corpus),
+                votes: votesFor.score,
+                role: null,
+              },
+              votesFor.voteCount,
+            ),
+            votes: votesFor,
+            costDelta: costDelta(target, c, owned),
+            owned: ownedInfo(owned, c.id),
+          };
+        };
+        const eligible = mockCards
           .filter((c) => c.id !== target.id && !inDeck.has(c.id) && !isBasicLand(c) && withinIdentity(c, identity))
-          .filter((c) => context.includeGameChangers || !c.gameChanger)
-          .map((c): SwapSuggestion => {
-            const matchedTags = tagMatches(target.id, c.id);
-            const corpus = corpusFor(c.id);
-            const votesFor = voteSummary(target.id, c.id);
-            return {
-              card: withMockRoles(c),
-              functionalTwin: false,
-              matchedTags,
-              corpus,
-              score: blend(
-                {
-                  tag: tagScore(matchedTags),
-                  manaValue: round(Math.exp(-Math.abs(c.manaValue - target.manaValue) / 1.5)),
-                  staple: null,
-                  corpus: corpusScore(corpus),
-                  votes: votesFor.score,
-                  role: null,
-                },
-                votesFor.voteCount,
-              ),
-              votes: votesFor,
-              costDelta: costDelta(target, c, owned),
-              owned: ownedInfo(owned, c.id),
-            };
-          })
-          .filter((s) => (s.score.components.tag ?? 0) >= 0.25);
-        const listed = scored.filter((s) => !only || only.has(s.card.id));
-        const suggestions = listed
-          .sort((a, b) => rankKey(b.score.total, b.owned !== null, boost) - rankKey(a.score.total, a.owned !== null, boost))
-          .slice(0, limit);
+          .filter((c) => context.includeGameChangers || !c.gameChanger);
+        // The ladder (T088): similar tags, then a shared role, then the same type at a close mana value.
+        const scored = eligible.map((c) => suggest(c, 'tags')).filter((s) => (s.score.components.tag ?? 0) >= 0.25);
+        const taken = new Set<number>(scored.map((s) => s.card.id));
+        const targetRoles = new Set(withMockRoles(target).roles ?? []);
+        const roleRung = eligible
+          .filter((c) => !taken.has(c.id) && (withMockRoles(c).roles ?? []).some((r) => targetRoles.has(r)))
+          .map((c) => suggest(c, 'role'));
+        for (const s of roleRung) taken.add(s.card.id);
+        const slotRung = eligible
+          .filter(
+            (c) =>
+              !taken.has(c.id) &&
+              categoryOf(c.typeLine) === categoryOf(target.typeLine) &&
+              Math.abs(c.manaValue - target.manaValue) <= MOCK_SLOT_MANA_VALUE_RANGE,
+          )
+          .map((c) => suggest(c, 'slot'));
+        const ranked = (rung: SwapSuggestion[]) =>
+          rung
+            .filter((s) => !only || only.has(s.card.id))
+            .sort((a, b) => rankKey(b.score.total, b.owned !== null, boost) - rankKey(a.score.total, a.owned !== null, boost));
+        const listed: SwapSuggestion[] = [];
+        for (const rung of [scored, roleRung, slotRung]) if (listed.length < MOCK_LADDER_MIN) listed.push(...ranked(rung));
+        const suggestions = listed.slice(0, limit);
 
         const result: SwapResult = { mode: modeOf(context), target, confidence: confidenceOf(context), suggestions };
         if (only) {
@@ -459,8 +482,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           result.buyList = buyList(scored.filter((s) => !only.has(s.card.id)), () => best, MOCK_BUY_LIST);
         }
         if (suggestions.length === 0) {
-          const noTags = (mockCardTags[target.id] ?? []).length === 0;
-          result.emptyReason = noTags ? 'NO_TAGS_ON_TARGET' : only ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
+          result.emptyReason = only ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
         }
         return delay(ok(result));
       } catch (e) {
