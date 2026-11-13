@@ -8,7 +8,6 @@ import { DeckCards } from "@/components/decks/deck-cards";
 import { DeckExport } from "@/components/decks/deck-export";
 import { DeckBuilt } from "@/components/decks/deck-built";
 import { DeckVisibility } from "@/components/decks/deck-visibility";
-import { SavedDeckCoverage } from "@/components/decks/saved-deck-coverage";
 import { buttonVariants } from "@/components/ui/button";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
@@ -92,27 +91,10 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             <Link href={{ pathname: "/deck", query: { deck: deck.code } }} className={buttonVariants({ size: "sm", variant: "outline" })}>
               Upgrade
             </Link>
-            <Link href="/decks" className={buttonVariants({ variant: "outline", size: "sm" })}>
-              My Decks
-            </Link>
           </div>
         )}
 
         <DeckExport text={decklistText(deckExportEntries(deck))} commanderSlug={deck.commanderSlug} code={deck.code} />
-
-        {deck.isOwner && (
-          <div className="-my-2 flex flex-wrap justify-end gap-x-4">
-            <SavedDeckCoverage
-              deckId={deck.id}
-              deck={{
-                commanders: deck.commanders.map((c) => c.id),
-                cards: deck.groups.flatMap((g) => g.cards.map((c) => ({ cardId: c.card.id, quantity: c.quantity, section: "main" as const }))),
-              }}
-            />
-            <DeckVisibility deckId={deck.id} isPublic={deck.isPublic} />
-            <DeckBuilt deckId={deck.id} isBuilt={deck.isBuilt} />
-          </div>
-        )}
       </header>
 
       <DeckCards
@@ -122,6 +104,14 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
         // A stranger sees the comparison only while there is one; the owner also sees that a restored deck matches.
         original={deck.original && (deck.isOwner || deck.original.out.length + deck.original.in.length > 0) ? deck.original : null}
         groups={deck.groups}
+        settings={
+          deck.isOwner && (
+            <>
+              <DeckVisibility deckId={deck.id} isPublic={deck.isPublic} />
+              <DeckBuilt deckId={deck.id} isBuilt={deck.isBuilt} />
+            </>
+          )
+        }
       />
 
       {!deck.isOwner && (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { CardId, CardSummary, ComboRef, DeckCombo, OracleId, StatTargets } from '../contract';
-import { applyCard, buildTally, gradeDeck, scoreWithMoves, toTallyCard, type BracketInput, type DeckTally, type TallyEntry } from './deck-tally';
+import type { CardId, CardSummary, ComboRef, DeckCombo, OracleId, StatChoices, StatTargets } from '../contract';
+import { applyCard, BRACKET_LINE, buildTally, CURVE_LINE, gradeDeck, reportWithMoves, scoreWithMoves, stateFlips, toTallyCard, type BracketInput, type DeckTally, type TallyEntry } from './deck-tally';
 import { addBreaksBand, comboPiecesToKeep, fixLines, MAX_FIX_MOVES, nextFixMove, planFixes, type FixCard, type FixInput, type FixMove } from './fix';
 
 const RAMP = 'ramp-role';
@@ -271,6 +271,50 @@ describe('nextFixMove and planFixes', () => {
     expect(moves.every((m) => m.line === 'sources:G' && m.in.name === 'Forest')).toBe(true);
     const after = gradeDeck(applied(given, moves), targets, given.bracket).stats.find((s) => s.key === 'sources:G')!;
     expect(after.ok).toBe(true);
+  });
+});
+
+describe('the card on screen in Deck stats', () => {
+  /** +1 per line a move brings in line, −1 per line it puts off. */
+  const net = (flips: Map<string, 'ok' | 'off'>) => [...flips.values()].reduce((sum, to) => sum + (to === 'ok' ? 1 : -1), 0);
+  const asMove = (card: CardSummary, roles: readonly string[] = []) => toTallyCard(card, roles);
+
+  it('names the curve when a swap with no line of its own moves the score', () => {
+    const given = deck();
+    // Plain one-drops out, plain seven-drops in: no role, land or type count moves, only the curve.
+    const outs = given.cards.filter((c) => c.card.manaValue === 1 && c.card.typeLine === 'Instant' && c.roles.length === 0).slice(0, 2);
+    expect(outs).toHaveLength(2);
+    const moves = outs.map((c, i) => ({ in: asMove(summary(400 + i, `Seven ${i}`, 'Instant', { manaValue: 7 })), out: asMove(c.card) }));
+    const before = gradeDeck(given.tally, targets, bracket());
+    const after = reportWithMoves(given.tally, targets, bracket(), {}, moves);
+    const flips = stateFlips(before, after);
+    expect(flips.get(CURVE_LINE)).toBe('off');
+    expect(net(flips)).toBe(after.okCount - before.okCount);
+    expect(after.okCount).toBe(before.okCount - 1);
+  });
+
+  it('names the bracket when a game changer would put the deck over it', () => {
+    const given = deck();
+    const out = given.cards.find((c) => c.card.manaValue === 2 && c.card.typeLine === 'Instant' && c.roles.length === 0)!;
+    const moves = [{ in: asMove(summary(410, 'Changer', 'Instant', { gameChanger: true })), out: asMove(out.card) }];
+    const before = gradeDeck(given.tally, targets, bracket({ chosen: 1 }));
+    const after = reportWithMoves(given.tally, targets, bracket({ chosen: 1 }), {}, moves);
+    const flips = stateFlips(before, after);
+    expect(flips.get(BRACKET_LINE)).toBe('off');
+    expect(net(flips)).toBe(after.okCount - before.okCount);
+  });
+
+  it('leaves ignored lines out, so the flips still add up to the score', () => {
+    const given = input(deck({ ramp: 5 }));
+    const moves = planFixes(given).map((m) => ({ in: toTallyCard(m.in, rolesOf(given, m.in.id)), out: toTallyCard(m.out, rolesOf(given, m.out.id)) }));
+    const choiceSets: StatChoices[] = [{}, { [RAMP]: 'ignore' }];
+    for (const choices of choiceSets) {
+      const before = gradeDeck(given.tally, targets, given.bracket, given.tally, choices);
+      const after = reportWithMoves(given.tally, targets, given.bracket, choices, moves);
+      const flips = stateFlips(before, after);
+      expect(flips.has(RAMP)).toBe(!(RAMP in choices));
+      expect(net(flips)).toBe(after.okCount - before.okCount);
+    }
   });
 });
 

@@ -7,6 +7,7 @@ import type { CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { displayName } from "@/lib/cards";
+import { useCloseOnBack } from "@/lib/close-on-back";
 
 /** How long a mouse has to rest on a card before it opens by itself. */
 const HOVER_DELAY_MS = 450;
@@ -216,6 +217,8 @@ export function CardZoomLayer({
       document.body.style.overflow = previousOverflow;
     };
   }, []);
+  // A hover-opened copy follows the mouse; only a pressed-open card is something Back should close.
+  useCloseOnBack(!passThrough, () => close.current(false));
   const dismiss = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     close.current(true);

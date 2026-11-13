@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
 import type { CardId, CardSummary, DeckAnalysis, StatChoices } from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import { CURVE_LINE, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
+import { BRACKET_LINE, CURVE_LINE, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -39,7 +39,7 @@ import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { statChips } from "./deck-stats/stat-chips";
 import { StatPreviewProvider, type StatPreview } from "./deck-stats/stat-preview";
 import { AddPhase } from "./journey/add-phase";
-import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
+import { CollectionNudge } from "./journey/collection-nudge";
 import { CutPhase } from "./journey/cut-phase";
 import { FixPhase } from "./journey/fix-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
@@ -77,8 +77,6 @@ const DECKLIST_ROWS = 9;
 
 /** The journey's steps column, which Deck stats' "Fix" scrolls back to. */
 const STEPS_ID = "deck-journey-steps";
-/** The lines Fix names that Deck stats shows under Bracket. */
-const BRACKET_LINE = "bracket";
 
 /**
  * A segmented control: one of a few options, pressed state on the chosen one. Used for how each journey phase is
@@ -342,10 +340,10 @@ function DeckToolSession() {
     deckStats && statPreview
       ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove), deckStats.mana.deck)
       : null;
-  /** The score with the card on screen answered: the deck graded again with it in and out, for the footer. */
-  const previewScore = useMemo(
-    () => (statPreview ? fix.scoreWith([{ in: statPreview.add, out: statPreview.remove }]) : null),
-    // scoreWith is rebuilt every render; it reads the deck's tally, the bracket and the choices, which are what move it.
+  /** The deck graded again with the card on screen in and out: the score and the lines it would flip, for Deck stats. */
+  const previewReport = useMemo(
+    () => (statPreview ? fix.reportWith([{ in: statPreview.add, out: statPreview.remove }]) : null),
+    // reportWith is rebuilt every render; it reads the deck's tally, the bracket and the choices, which are what move it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [statPreview, journey.tally, context?.bracket, tool.statChoices, journey.overBracketAdds],
   );
@@ -360,6 +358,7 @@ function DeckToolSession() {
         bracketAction,
         combosAction,
         preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null,
+        after: previewReport,
       }
     : null;
 
@@ -552,11 +551,10 @@ function DeckToolSession() {
 
   /**
    * Fits a list to the collection: the list fixes the commander and the bracket, its owned cards (and its
-   * basic lands, assumed owned) are kept, and the build fills the rest from the collection. `text` is a list other
-   * than the box's (Done's result); the box's list is read first either way, for its cards.
+   * basic lands, assumed owned) are kept, and the build fills the rest from the collection.
    */
-  async function fitToCollection(text?: string) {
-    const outcome = await tool.submit(text === undefined ? undefined : { text, bracketOverride: tool.bracketOverride, importedFrom: null }, { recs: false });
+  async function fitToCollection() {
+    const outcome = await tool.submit(undefined, { recs: false });
     if (!outcome.parsed || !outcome.analysis || !outcome.lines) return;
     const commanders = outcome.analysis.commanderKey.commanders;
     if (commanders.length === 0) return;
@@ -945,7 +943,7 @@ function DeckToolSession() {
                   )}
                   {journey.state.phase === "fix" && <FixPhase journey={journey} fix={fix} hasCollection={journey.add.hasCollection} />}
                   {journey.state.phase === "replace" && <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />}
-                  {/* Players who came with only a list are offered their collection at every step (Done has its own). */}
+                  {/* Players who came with only a list are offered their collection at every step (Done has its own, below). */}
                   {source.kind === "none" && journey.state.phase !== "review" && (
                     <CollectionNudge href={collectionImportHref} step={journey.state.phase} />
                   )}
@@ -962,24 +960,15 @@ function DeckToolSession() {
                       onChoice={tool.setStatChoice}
                       collectionOnly={journey.add.collectionOnly}
                     >
-                      {source.kind === "none" ? (
-                        <CollectionNudge href={collectionImportHref} step="review" />
-                      ) : tool.ownedOnly ? (
-                        <CollectionFitOffer
-                          disabled={committing || tool.stale}
-                          onFit={() => {
-                            const text = journey.resultText();
-                            if (text !== null) void fitToCollection(text);
-                          }}
-                        />
-                      ) : null}
+                      {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}
+                      {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}
                     </ReviewPhase>
                   )}
                 </div>
                 {statsPanel && (
                   <>
                     <DeckStatsRail className="hidden lg:flex" {...statsPanel} />
-                    <DeckStatsFooter className="lg:hidden" dock="lg" previewScore={previewScore} {...statsPanel} />
+                    <DeckStatsFooter className="lg:hidden" dock="lg" {...statsPanel} />
                   </>
                 )}
               </div>

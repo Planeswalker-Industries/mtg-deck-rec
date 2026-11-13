@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CardId, CardSummary, ComboRef, DeckAnalysis, FixCard, FixResult, RecContext, StatChoices } from "@mtg/core/contract";
 import {
+  BRACKET_LINE,
   CURVE_LINE,
   comboPiecesToKeep,
   deckBeforeFixes,
@@ -11,8 +12,8 @@ import {
   nextFixMove,
   nextPhase,
   planFixes,
+  reportWithMoves,
   roundAddedIds,
-  scoreWithMoves,
   toTallyCard,
   workingDeck,
   type BracketInput,
@@ -28,7 +29,6 @@ import type { DeckJourney } from "./use-deck-journey";
 
 /** The lines Fix names that Deck stats has no row for. */
 const LEGAL_LINE = "legal";
-const BRACKET_LINE = "bracket";
 
 /** A Deck stats score: lines in line of lines counted. */
 export interface StatScore {
@@ -190,10 +190,19 @@ export function useFix({
   const asTallyMove = (m: { in: CardSummary | null; out: CardSummary | null }): TallyMove => ({ in: tallyCard(m.in), out: tallyCard(m.out) });
 
   /** The score with moves made: the card on screen answered, or the moves selected in the auto-fix preview. */
-  function scoreWith(moves: readonly { in: CardSummary | null; out: CardSummary | null }[]): StatScore | null {
+  /**
+   * The deck graded with moves made: the card on screen answered, for Deck stats. Its lines' `start` values are the
+   * moved deck's own, so only values and states are read from it.
+   */
+  function reportWith(moves: readonly { in: CardSummary | null; out: CardSummary | null }[]): DeckStatsReport | null {
     if (!tally || !targets || !bracket) return null;
-    const { okCount, total } = scoreWithMoves(tally, targets, bracket, choices, moves.map(asTallyMove));
-    return { okCount, total };
+    return reportWithMoves(tally, targets, bracket, choices, moves.map(asTallyMove));
+  }
+
+  /** The score with moves made: the moves selected in the auto-fix preview. */
+  function scoreWith(moves: readonly { in: CardSummary | null; out: CardSummary | null }[]): StatScore | null {
+    const report = reportWith(moves);
+    return report && { okCount: report.okCount, total: report.total };
   }
 
   /** A line's name and count as Deck stats shows them. */
@@ -243,6 +252,7 @@ export function useFix({
       if ((state?.declinedFixes.length ?? 0) > 0) journey.dispatch({ type: "retryFixes" });
       journey.goTo("fix");
     },
+    reportWith,
     scoreWith,
     /** Whether Fix knows what it can do: false while the pool loads. */
     ready,

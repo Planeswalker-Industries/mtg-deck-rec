@@ -180,6 +180,9 @@ export type StatState = 'ok' | 'off' | 'ignored';
 /** The curve's key in `StatChoices`: its bars read as one line. */
 export const CURVE_LINE = 'curve';
 
+/** The bracket's key among the lines a move can flip (`stateFlips`). It can't be ignored. */
+export const BRACKET_LINE = 'bracket';
+
 export interface StatLine {
   /** 'lands', 'basicLands', a role id, a card type ('creature') or a colour's sources ('sources:B'). */
   key: string;
@@ -350,9 +353,27 @@ export interface TallyMove {
 }
 
 /**
- * The score with `moves` made, on a copy of the tally: what the Deck stats footer shows for the card on screen and the
- * auto-fix preview for the moves selected. Graded in full, so the curve and the colour rows count exactly.
+ * The deck graded with `moves` made, on a copy of the tally: what the Deck stats footer and panel preview for the card
+ * on screen, and the auto-fix preview for the moves selected. Graded in full, so the curve and the colour rows count
+ * exactly. Its `start` values are the moved deck itself, not the round's start: read the lines' values and states only.
  */
+export function reportWithMoves(
+  tally: DeckTally,
+  targets: StatTargets,
+  bracket: BracketInput,
+  choices: StatChoices,
+  moves: readonly TallyMove[],
+): DeckStatsReport {
+  const next = cloneTally(tally);
+  for (const move of moves) {
+    if (move.in) applyCard(next, move.in, 1);
+    // The deck's own copy goes out, so its roles are the ones it was counted with.
+    if (move.out) applyCard(next, next.main.get(move.out.id)?.card ?? move.out, -1);
+  }
+  return gradeDeck(next, targets, bracket, next, choices);
+}
+
+/** The score with `moves` made (`reportWithMoves`). */
 export function scoreWithMoves(
   tally: DeckTally,
   targets: StatTargets,
@@ -360,14 +381,28 @@ export function scoreWithMoves(
   choices: StatChoices,
   moves: readonly TallyMove[],
 ): Pick<DeckStatsReport, 'okCount' | 'total' | 'level'> {
-  const next = cloneTally(tally);
-  for (const move of moves) {
-    if (move.in) applyCard(next, move.in, 1);
-    // The deck's own copy goes out, so its roles are the ones it was counted with.
-    if (move.out) applyCard(next, next.main.get(move.out.id)?.card ?? move.out, -1);
-  }
-  const { okCount, total, level } = gradeDeck(next, targets, bracket, next, choices);
+  const { okCount, total, level } = reportWithMoves(tally, targets, bracket, choices, moves);
   return { okCount, total, level };
+}
+
+/**
+ * The lines that count toward the score and change state between two grades of a deck, with the state each ends in:
+ * stat lines by key, the curve as `CURVE_LINE`, the bracket as `BRACKET_LINE`. Ignored lines count in neither, so each
+ * flip to 'ok' is one more in line and each to 'off' one fewer: together they explain `after.okCount - before.okCount`.
+ */
+export function stateFlips(before: DeckStatsReport, after: DeckStatsReport): Map<string, 'ok' | 'off'> {
+  const flips = new Map<string, 'ok' | 'off'>();
+  const note = (key: string, from: StatState, to: StatState) => {
+    if (from !== to && from !== 'ignored' && to !== 'ignored') flips.set(key, to);
+  };
+  const afterStates = new Map(after.stats.map((s) => [s.key, s.state]));
+  for (const stat of before.stats) {
+    const to = afterStates.get(stat.key);
+    if (to) note(stat.key, stat.state, to);
+  }
+  note(CURVE_LINE, before.curve.state, after.curve.state);
+  note(BRACKET_LINE, before.bracket.ok ? 'ok' : 'off', after.bracket.ok ? 'ok' : 'off');
+  return flips;
 }
 
 /**
