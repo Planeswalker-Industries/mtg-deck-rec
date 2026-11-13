@@ -37,6 +37,28 @@ async function analyzeDeck(page: Page, deck = DECK) {
   return recs;
 }
 
+test("swap in Owned only with nothing to offer says so instead of dealing an empty card", async ({ page }) => {
+  // The only owned card (Sol Ring) is in the deck, so no card has a replacement on any rung of the swap ladder (T088).
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection import").fill("1 Sol Ring");
+  await page.getByRole("button", { name: "Import collection" }).click();
+  await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: 30_000 });
+
+  const recs = await analyzeDeck(page, deckWith(FORESTS_TO_100));
+  const collectionMode = page.getByRole("combobox", { name: "My collection" });
+  await collectionMode.click();
+  await page.getByRole("option", { name: "Owned only" }).click();
+  await expect(collectionMode).toHaveText("Owned only");
+
+  await openSwap(page);
+  await expect(recs.getByRole("status").getByText("No valid swaps right now.")).toBeVisible({ timeout: 60_000 });
+  // No card was dealt to keep or swap, and the step did not move on to Finish by itself.
+  await expect(recs.getByRole("button", { name: /^(Keep|Swap in) / })).toHaveCount(0);
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
+  await expect(recs.getByRole("button", { name: "Next: finish" })).toBeVisible();
+});
+
 test("walks a short deck through add, fix, swap and finish, then starts over", async ({ page }) => {
   const recs = await analyzeDeck(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });

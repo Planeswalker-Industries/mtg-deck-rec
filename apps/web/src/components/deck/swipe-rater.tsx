@@ -54,7 +54,9 @@ export function SwipeRater({
   startAt,
   preferred,
   cache,
+  skipEmpty,
   onFinish,
+  onNothingDealt,
   viewRef,
 }: {
   targets: readonly RaterTarget[];
@@ -79,7 +81,11 @@ export function SwipeRater({
   preferred?: CardId;
   /** Deck tool: replacements already fetched for this list, by card (see useSwipeRater). */
   cache?: Map<CardId, Candidates>;
+  /** Deck tool: step over a card with no replacement on any rung instead of showing it empty (see useSwipeRater). */
+  skipEmpty?: boolean;
   onFinish: () => void;
+  /** The sitting ended without dealing a replacement (see useSwipeRater). */
+  onNothingDealt?: () => void;
   /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
   viewRef?: (element: HTMLElement | null) => void;
 }) {
@@ -98,7 +104,9 @@ export function SwipeRater({
     startAt,
     preferred,
     cache,
+    skipEmpty,
     onFinish,
+    onNothingDealt,
   });
   /** When the last answer landed, for SWIPE_COOLDOWN_MS. */
   const lastAt = useRef(0);
