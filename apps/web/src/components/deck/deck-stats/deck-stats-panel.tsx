@@ -13,7 +13,7 @@ import {
   type StatLine,
   type StatState,
 } from "@mtg/core/journey";
-import { ArrowDown, ArrowUp, Check, CircleHelp, EyeOff, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Check, CircleHelp, EyeOff, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { Button } from "@/components/ui/button";
@@ -277,16 +277,19 @@ type Flip = "ok" | "off";
 const PREVIEWED = "-mx-1.5 rounded-md bg-foreground/5 px-1.5 py-1";
 
 /**
- * "In line" or "Off": the state a line would end in with the card on screen answered, when the card flips it. These are
+ * "→ In line" or "→ Off": the state a line would end in with the card on screen answered, when the card flips it. These are
  * the lines that move the score beside the level badge.
  */
 function FlipTag({ to }: { to: Flip }) {
   const Icon = to === "ok" ? Check : TriangleAlert;
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-0.5 text-xs font-semibold", to === "ok" ? "text-success" : "text-destructive")}>
-      <Icon aria-hidden className="size-3" strokeWidth={2.75} />
+    <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-semibold">
+      <ArrowRight aria-hidden className="size-3 text-muted-foreground" />
       <span className="sr-only">With this card: </span>
-      {to === "ok" ? "In line" : "Off"}
+      <span className={cn("inline-flex items-center gap-0.5", to === "ok" ? "text-success" : "text-destructive")}>
+        <Icon aria-hidden className="size-3" strokeWidth={2.75} />
+        {to === "ok" ? "In line" : "Off"}
+      </span>
     </span>
   );
 }
