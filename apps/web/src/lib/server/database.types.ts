@@ -2398,6 +2398,7 @@ export type Database = {
           is_functional_twin: boolean
           match_tags: Json
           matches: Json
+          rung: number
           staple_score: number
           tag_similarity: number
         }[]

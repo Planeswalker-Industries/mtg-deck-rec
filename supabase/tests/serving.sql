@@ -216,16 +216,16 @@ insert into public.card_substitutes (card_id, substitute_id, tag_similarity, is_
 values (:blue1, :blue2, 0.5, false), (:blue1, :plain, 0.4, true), (:blue1, :red, 0.9, false), (:blue1, :white, 0.9, false),
        (:blue1, :banned, 0.9, false);
 select chk('substitutes come twin first, in the colours asked for and legal',
-  (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, '{}', '{}', true, null, 10, 2::smallint)) = array[:plain, :blue2]);
+  (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, '{}', '{}', true, null, 10, 2::smallint) where rung = 1) = array[:plain, :blue2]);
 select chk('cards in the deck stay out of the substitutes',
-  (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, '{}', array[:plain], true, null, 10, 2::smallint)) = array[:blue2]);
+  (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, '{}', array[:plain], true, null, 10, 2::smallint) where rung = 1) = array[:blue2]);
 select chk('without a mask the colours are the commanders''',
   (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, array[:thrasios, :tymna], '{}', true, null, 10))
     @> array[:plain, :blue2, :white]
   and not (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, array[:thrasios, :tymna], '{}', true, null, 10))
     @> array[:red]);
 select chk('and colourless with no commanders',
-  (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, '{}', '{}', true, null, 10)) = array[:plain]);
+  (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, '{}', '{}', true, null, 10) where rung = 1) = array[:plain]);
 select chk('each substitute comes whole, with the commanders'' counts',
   (select (card).decks_with = 10 and (card).name is not null
      from public.serving_swap_candidates(:blue1, array[:c1, :c2], '{}', true, null, 10) where (card).card_id = :plain));
@@ -277,7 +277,7 @@ select chk('read back, the stored list is the first N in pool order inside the d
            order by d.pool_rank limit 60) x)
   = (select array_agg((card).card_id order by ord)
      from public.serving_swap_candidates(:counterspell, array[:thrasios, :tymna], '{}', true, null, 60)
-          with ordinality as s (tag_similarity, staple_score, is_functional_twin, matches, match_tags, card, ord)));
+          with ordinality as s (tag_similarity, staple_score, is_functional_twin, matches, match_tags, card, rung, ord)));
 select chk('every tag a match names comes with its slug and label',
   not exists (
     select 1
@@ -291,6 +291,63 @@ select chk('every tag a match names comes with its slug and label',
       )
   )
   and (select count(*) > 0 from public.serving_swap_candidates(:counterspell, array[:thrasios, :tymna], '{}', true, null, 60) where matches <> '[]'));
+
+-- === swap ladder (T088) ===
+-- blue1 with mask 2 has two rung 1 rows (plain, blue2): under the minimum of 3, so the lower rungs open. Its
+-- substitutes and roles are set here, so the block reads the same whatever ran above.
+delete from public.card_substitutes where card_id = :blue1;
+insert into public.card_substitutes (card_id, substitute_id, tag_similarity, is_functional_twin)
+values (:blue1, :blue2, 0.5, false), (:blue1, :plain, 0.4, true), (:blue1, :red, 0.9, false), (:blue1, :white, 0.9, false),
+       (:blue1, :banned, 0.9, false);
+select (select role_id from public.card_roles order by role_id limit 1) as ladder_role \gset
+delete from public.card_roles where card_id = :blue1;
+insert into public.card_roles (card_id, role_id) values (:blue1, :'ladder_role');
+create temp table ladder as
+  select f.rung, (f.card).card_id as card_id, (f.card).is_basic_land as is_basic_land, (f.card).color_identity as color_identity,
+         f.matches, f.match_tags, f.ord
+  from public.serving_swap_candidates(:blue1, '{}', '{}', true, null, 10, 2::smallint)
+       with ordinality as f (tag_similarity, staple_score, is_functional_twin, matches, match_tags, card, rung, ord);
+select chk('rung 1 comes first and is what it was',
+  (select array_agg(card_id order by ord) from ladder where rung = 1) = array[:plain, :blue2]
+  and not exists (select 1 from ladder a join ladder b on b.ord = a.ord + 1 where b.rung < a.rung));
+select chk('a short rung 1 opens the role rung', (select count(*) > 0 from ladder where rung = 2));
+select chk('role rung cards share the role',
+  not exists (select 1 from ladder l where l.rung = 2
+              and not exists (select 1 from public.card_roles cr where cr.card_id = l.card_id and cr.role_id = :'ladder_role')));
+select chk('and name it in their matches, with its slug and label',
+  not exists (select 1 from ladder where rung = 2
+              and (matches -> 0 ->> 'candidateTagId' is distinct from :'ladder_role'
+                   or match_tags -> 0 ->> 'id' is distinct from :'ladder_role'
+                   or match_tags -> 0 ->> 'label' is null)));
+select chk('no card is on two rungs, and never the target',
+  (select count(*) = count(distinct card_id) from ladder) and not exists (select 1 from ladder where card_id = :blue1));
+select chk('the slot rung stays shut while rungs 1 and 2 reach the minimum', not exists (select 1 from ladder where rung = 3));
+select chk('lower rungs keep the colours and leave basics out',
+  not exists (select 1 from ladder where rung > 1 and (is_basic_land or (color_identity & ~2) <> 0)));
+
+-- Enough on rung 1 (a minimum of 2 against two rows): nothing lower is read.
+update public.app_config set value = jsonb_set(value, '{swap,ladderMinSuggestions}', '2') where key = 'scoring';
+select chk('enough on rung 1 reads no lower rung',
+  (select count(*) filter (where rung > 1) = 0 and count(*) = 2
+     from public.serving_swap_candidates(:blue1, '{}', '{}', true, null, 10, 2::smallint)));
+update public.app_config set value = jsonb_set(value, '{swap,ladderMinSuggestions}', '3') where key = 'scoring';
+
+-- No role: the slot rung opens.
+delete from public.card_roles where card_id = :blue1;
+create temp table slots as
+  select rung, (card).card_id as card_id, (card).mana_value as mana_value, (card).type_line as type_line, (card).is_basic_land as is_basic_land
+  from public.serving_swap_candidates(:blue1, '{}', '{}', true, null, 10, 2::smallint);
+select chk('without a role the slot rung opens', (select count(*) > 0 from slots where rung = 3) and not exists (select 1 from slots where rung = 2));
+select chk('slot rung cards have the target''s type and a mana value within the range, and are not basics',
+  not exists (select 1 from slots s, public.cards t where t.id = :blue1 and s.rung = 3
+              and (public.card_category(s.type_line) <> public.card_category(t.type_line)
+                   or abs(s.mana_value - t.mana_value) > 1 or s.is_basic_land)));
+select (select card_id from slots where rung = 3 order by card_id limit 1) as slot_card \gset
+select chk('owned only limits every rung to the collection',
+  (select array_agg((card).card_id) from public.serving_swap_candidates(:blue1, '{}', '{}', true, array[:slot_card], 10, 2::smallint)) = array[:slot_card]);
+select chk('with no commander and no mask the lower rungs are colourless',
+  not exists (select 1 from public.serving_swap_candidates(:blue1, '{}', '{}', true, null, 10) f where f.rung > 1 and (f.card).color_identity <> 0));
+select chk('the ladder is configured', (select value -> 'swap' ? 'ladderMinSuggestions' and value -> 'swap' ? 'slotManaValueRange' from public.app_config where key = 'scoring'));
 
 -- === access ===
 set local role anon;
