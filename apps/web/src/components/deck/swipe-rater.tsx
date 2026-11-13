@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { compareCards, type CompareCard } from "@mtg/core/journey";
-import { ownedOnly } from "@mtg/core/scoring";
+import { ownedOnly, swapMatchLabel } from "@mtg/core/scoring";
 import { CompactCardPanel, CompareMarks, DecisionButtons } from "@/components/cards/card-panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -140,6 +140,8 @@ export function SwipeRater({
   const jobs = candidate
     ? [...new Set(candidate.matchedTags.map((m) => (m.distance === 0 || !m.via ? m.candidateTag.label : m.via.label)))].slice(0, MAX_JOBS)
     : [];
+  // A looser rung of the swap ladder says which one it is (T088): "Same job: ramp", "Similar slot: 5-mana creature".
+  const rungLabel = candidate ? swapMatchLabel(candidate, target.card) : null;
   const targetRules = rulesFor(target.card.id);
   const candidateRules = candidate ? rulesFor(candidate.card.id) : undefined;
   // Owned replacements are marked only where they mix with cards to buy: in Owned only every one is owned.
@@ -229,6 +231,9 @@ export function SwipeRater({
               </span>
               {candidate.functionalTwin ? (
                 <span className="font-drama text-sm text-foreground/85 italic">Same rules as {targetName}, under a different name.</span>
+              ) : rungLabel ? (
+                // Shown at every width, phones included: it is why this card is offered.
+                <span>{rungLabel}</span>
               ) : (
                 jobs.length > 0 && <span className="max-sm:hidden">Also does: {jobs.join(", ").toLowerCase()}</span>
               )}

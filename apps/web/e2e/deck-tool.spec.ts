@@ -50,7 +50,7 @@ test("analyzes the sample deck, and the deckbuilder swaps a card for a replaceme
   await expect(sheet.getByRole("heading", { name: `Replace ${target}` })).toBeVisible();
   await expect(sheet.getByText("Cards that do the same job, best fit first.")).toBeVisible();
   const swapIn = sheet.getByRole("button", { name: /^Swap in / });
-  const nothing = sheet.getByText(/can't suggest replacements|No legal replacements|Nothing in your collection/);
+  const nothing = sheet.getByText(/No legal replacements|No valid swaps right now/);
   await expect(swapIn.or(nothing)).toBeVisible({ timeout: 60_000 });
   if (await nothing.isVisible()) return;
 
