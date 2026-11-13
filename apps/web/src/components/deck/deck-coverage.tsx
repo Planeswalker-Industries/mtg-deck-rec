@@ -37,7 +37,7 @@ export function DeckCoverage({ status, retry }: { status: CoverageStatus; retry:
   const available = coverage.owned + coverage.standIn + coverage.basic;
   const fullName = `${available} of ${coverage.total} available: ${coverage.owned} owned, ${coverage.standIn} stand-in, ${coverage.basic} basic lands, ${coverage.conflict} conflicts, ${coverage.missing} missing`;
   return (
-    <Sheet>
+    <Sheet closeOnBack>
       <SheetTrigger
         aria-label={fullName}
         title={fullName}

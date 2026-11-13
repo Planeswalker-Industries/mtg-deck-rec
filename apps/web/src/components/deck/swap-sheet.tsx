@@ -41,7 +41,7 @@ export function SwapSheet({
   onSwapIn?: ((replacement: CardSummary) => void) | undefined;
 }) {
   return (
-    <Sheet open={swap !== null} onOpenChange={(open) => !open && onClose()}>
+    <Sheet closeOnBack open={swap !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
         side="bottom"
         // A press on an enlarged card lands outside the sheet, and would otherwise close it along with the card.

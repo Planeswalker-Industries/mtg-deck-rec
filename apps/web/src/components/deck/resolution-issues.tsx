@@ -75,7 +75,7 @@ export function DeckIssuesChip({ issues }: { issues: DeckIssue[] }) {
   if (issues.length === 0) return null;
   const label = issueCount(issues.length);
   return (
-    <Sheet>
+    <Sheet closeOnBack>
       <SheetTrigger
         aria-label={label}
         title={label}

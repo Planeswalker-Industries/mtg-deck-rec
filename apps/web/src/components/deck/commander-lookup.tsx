@@ -93,7 +93,7 @@ export function CommanderLookupSheet({ lookup }: { lookup: CommanderLookup }) {
   const { state } = lookup;
   const commander = sheetCommander(state);
   return (
-    <Sheet open={lookup.open && commander !== null} onOpenChange={(open) => !open && lookup.close()}>
+    <Sheet closeOnBack open={lookup.open && commander !== null} onOpenChange={(open) => !open && lookup.close()}>
       <SheetContent
         side="bottom"
         className="mx-auto max-h-[92dvh] w-full max-w-xl gap-0 overflow-y-auto rounded-t-2xl border-seam bg-sleeve p-0"

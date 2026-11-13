@@ -16,6 +16,8 @@ const SPELLS = ["1 Sol Ring", "1 Arcane Signet", "1 Cultivate", "1 Counterspell"
 /** Forests that bring the deck (a commander and the seven cards above) to exactly 100, and to five over it. */
 const FORESTS_TO_100 = 92;
 const FORESTS_OVER_100 = 97;
+/** Past card-zoom's DISMISS_CLICK_GRACE_MS (400), which ignores a click just after a dismissal. */
+const AFTER_DISMISS_GRACE_MS = 500;
 
 const deckWith = (forests: number) =>
   ["Commander", "1 Chulane, Teller of Tales", "", "Deck", ...SPELLS, ...(forests > 0 ? [`${forests} Forest`] : [])].join("\n");
@@ -288,6 +290,27 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   // innerText, as `before` was read: the counter hides " to replace" on phones with CSS.
   await expect(progress).toHaveText(before, { useInnerText: true });
   await expect(swapIn).toHaveAttribute("aria-label", candidateBefore ?? "");
+
+  // The browser's Back button closes the enlarged card and stays on the page.
+  const url = page.url();
+  await page.waitForTimeout(AFTER_DISMISS_GRACE_MS);
+  await rater.getByRole("button", { name: /^Enlarge / }).last().click();
+  await expect(enlarged).toBeVisible();
+  await page.goBack();
+  await expect(enlarged).toBeHidden();
+  expect(page.url()).toBe(url);
+  await expect(progress).toHaveText(before, { useInnerText: true });
+
+  // Closing it by a tap drops its history entry, so the next Back closes the next card, not the page.
+  await rater.getByRole("button", { name: /^Enlarge / }).last().click();
+  await enlarged.click({ position: { x: 10, y: 10 } });
+  await expect(enlarged).toBeHidden();
+  await page.waitForTimeout(AFTER_DISMISS_GRACE_MS);
+  await rater.getByRole("button", { name: /^Enlarge / }).last().click();
+  await expect(enlarged).toBeVisible();
+  await page.goBack();
+  await expect(enlarged).toBeHidden();
+  expect(page.url()).toBe(url);
 });
 
 test("going back from Swap and returning keeps the swaps, and a picked swap reopens its card", async ({ page }) => {
