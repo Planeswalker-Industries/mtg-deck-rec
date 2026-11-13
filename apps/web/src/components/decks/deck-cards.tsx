@@ -37,8 +37,8 @@ export function DeckCards({
     <>
       {(settings || original || groups.length > 0) && (
         <div className="-my-2 flex flex-wrap items-center justify-between gap-x-2">
-          {settings && <div className="flex flex-wrap items-center gap-x-2">{settings}</div>}
-          {(original || groups.length > 0) && <DeckViewToggle view={view} onChange={setView} className="ml-auto self-center" compact={Boolean(settings)} />}
+          {settings && <div className="flex flex-wrap items-center gap-x-4">{settings}</div>}
+          {(original || groups.length > 0) && <DeckViewToggle view={view} onChange={setView} className="ml-auto self-center" />}
         </div>
       )}
 

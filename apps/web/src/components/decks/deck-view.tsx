@@ -57,21 +57,8 @@ export function useDeckView(page: DeckViewPage = "deck"): [DeckView, (view: Deck
   return [view, (next: DeckView) => writeView(page, next)];
 }
 
-/**
- * Images or List, for every card on a saved deck's page or a built deck. `compact` shows the icons alone on phones (the
- * names stay for screen readers), so the toggle fits beside a saved deck's switches.
- */
-export function DeckViewToggle({
-  view,
-  onChange,
-  className,
-  compact = false,
-}: {
-  view: DeckView;
-  onChange: (view: DeckView) => void;
-  className?: string;
-  compact?: boolean;
-}) {
+/** Images or List, for every card on a saved deck's page or a built deck. */
+export function DeckViewToggle({ view, onChange, className }: { view: DeckView; onChange: (view: DeckView) => void; className?: string }) {
   return (
     <div role="group" aria-label="Show cards as" className={cn("flex gap-1 self-end", className)}>
       {VIEWS.map(({ view: v, label, icon: Icon }) => (
@@ -87,7 +74,7 @@ export function DeckViewToggle({
           )}
         >
           <Icon aria-hidden className="size-3.5" />
-          <span className={compact ? "max-sm:sr-only" : undefined}>{label}</span>
+          {label}
         </button>
       ))}
     </div>
