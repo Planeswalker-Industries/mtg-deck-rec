@@ -19,6 +19,32 @@ const DISMISS_CLICK_GRACE_MS = 400;
 /** When an enlarged card was last dismissed: the click a dismissing tap leaves behind must not open it again. */
 let dismissedAt = 0;
 
+/** Marks the history entry a pressed-open card pushes, so the phone's Back button closes the card, not the page. */
+const ZOOM_HISTORY_KEY = "cardZoom";
+
+/**
+ * How many `history.back()` calls closing a card has made whose popstate hasn't arrived yet. Those popstates undo the
+ * card's own entry and must not close the next card (React's dev Strict Mode mounts a layer twice, back to back).
+ */
+let pendingZoomBacks = 0;
+/** Whether the popstate being handled is one of those, set before any layer's own listener runs. */
+let popIsZoomCleanup = false;
+let zoomPopWatcherInstalled = false;
+
+/** One capture listener for the whole page, so a cleanup's popstate is counted even when no card is open by then. */
+function watchZoomPops() {
+  if (zoomPopWatcherInstalled) return;
+  zoomPopWatcherInstalled = true;
+  window.addEventListener(
+    "popstate",
+    () => {
+      popIsZoomCleanup = pendingZoomBacks > 0;
+      if (popIsZoomCleanup) pendingZoomBacks -= 1;
+    },
+    true,
+  );
+}
+
 /**
  * Marks the enlarged-card layer, so a modal it opens over (the replacement sheet) can tell a press on it from a press
  * outside the modal, which would close the modal. See `isCardZoomEvent`.
@@ -216,6 +242,28 @@ export function CardZoomLayer({
       document.body.style.overflow = previousOverflow;
     };
   }, []);
+  useEffect(() => {
+    // A hover-opened copy follows the mouse; only a pressed-open card is something Back should close.
+    if (passThrough) return;
+    // Same URL, so Next's router keeps its own state on the entry (it copies it over) and nothing navigates.
+    watchZoomPops();
+    window.history.pushState({ [ZOOM_HISTORY_KEY]: true }, "");
+    let poppedByBack = false;
+    function onPopState() {
+      if (popIsZoomCleanup) return;
+      poppedByBack = true;
+      close.current(false);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      // Closed some other way (a tap, Escape, the view moving on): drop the entry this card pushed.
+      if (!poppedByBack && window.history.state?.[ZOOM_HISTORY_KEY] === true) {
+        pendingZoomBacks += 1;
+        window.history.back();
+      }
+    };
+  }, [passThrough]);
   const dismiss = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     close.current(true);
