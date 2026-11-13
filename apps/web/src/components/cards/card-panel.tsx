@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Check, Minus, Plus, X, type LucideIcon } from "lucide-react";
+import { Check, Minus, Plus, X, type LucideIcon } from "lucide-react";
 import type { CardFace, CardRules, CardSummary } from "@mtg/core/contract";
-import type { CompareMark } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
@@ -215,34 +214,6 @@ export function CompactCardPanel({
         {children}
       </CardFacts>
     </div>
-  );
-}
-
-/** How a replacement compares, as loot-style marks: green with an up arrow when better, red with a down arrow when worse. */
-export function CompareMarks({ marks, label }: { marks: readonly CompareMark[]; label: string }) {
-  if (marks.length === 0) return null;
-  return (
-    <ul aria-label={label} className="flex flex-wrap gap-1.5">
-      {marks.map((mark) => {
-        const better = mark.tone === "better";
-        const Icon = better ? ArrowUp : ArrowDown;
-        return (
-          <li
-            key={mark.key}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold",
-              better ? "border-success/40 bg-success/10 text-success" : "border-destructive/40 bg-destructive/10 text-destructive",
-            )}
-          >
-            <Icon aria-hidden className="size-3.5" strokeWidth={2.75} />
-            <span>
-              <span className="sr-only">{better ? "Better: " : "Worse: "}</span>
-              {mark.label}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 

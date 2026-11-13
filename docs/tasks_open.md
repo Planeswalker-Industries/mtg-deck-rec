@@ -8,19 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T088: Swap ladder
-
-**HIGH** · Backend / Frontend · After T087, its own plan and PR · Contract `SwapSuggestion.match` (owner approved 2026-11-11; v35 or v36)
-
-Swap dead-ends today: "We don't know what this card does yet" for a card with no functional tags (3,408 of 32,104 legal cards), and "Nothing in your collection does a similar job" when the stored substitutes cut down to the collection leave nothing.
-
-- [ ] Rungs: 1 similar tags (today), 2 same job (shares a tracked role), 3 same card type and a mana value within 1; rungs 2 and 3 rank by play rate with the commander, mana value closeness and the staple score. A lower rung is read only when those above give fewer than `swap.ladderMinSuggestions` (`app_config.scoring`, starting at 3)
-- [ ] In Owned only, rungs 2 and 3 read the collection directly, not the stored substitute list
-- [ ] `serving_swap_candidates` returns the rung with each row, in one round; `create or replace` with the grants repeated
-- [ ] `SwapSuggestion.match: 'tags' | 'role' | 'slot'`; every suggestion says its rung ("Same job: ramp", "Similar slot: 5-mana creature"); `NO_TAGS_ON_TARGET` stays in the type and is no longer returned
-- [ ] The Swap step fetches the next card's replacements ahead and steps over a card with none on any rung; the two e2e specs that expect "Nothing in your collection does a similar job." change
-- [ ] Gate: `eval:holdout` swap metrics do not drop; rung 1 results unchanged wherever rung 1 has enough. Doc Ock, Sinister Scientist and Resonating Lute each show labelled replacements from the owner's collection
-
 ## T089: Fix follow-ups
 
 **MEDIUM** · Frontend / Decision · Left over from T087
@@ -28,6 +15,7 @@ Swap dead-ends today: "We don't know what this card does yet" for a card with no
 - [ ] The mocks' build returns no `collectionGaps`, so CI never sees the build page's Ignore / Allow buying prompts or Finish's "Not in your collection" row: give the mock build a gap when the collection is short, then cover Allow buying (the rebuild with `buyFor`, the "Not owned" note and cost line), Ignore (the line grey and out of the score), and the answers surviving a save and a reopen
 - [ ] A bracket change during Swap or Finish that the deck no longer fits sends the round to Fix at the bracket line: no e2e covers it
 - [ ] `AddFilter`'s `lands` kind and `trimCuts`' `focusRoleId` have no caller left since Deck stats' Find and Trim links became Fix: remove them
+- [ ] From T088: `eval:holdout` has no swap metric, so the swap ladder's gate was rung 1 staying identical plus `regress`; a swap change that moves rung 1 has nothing to be measured by
 
 ## T074: Archidekt answers the daily crawl with 429s
 
@@ -58,6 +46,7 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] After T086 reaches `main`: compare Fix's hosted p95 with Add's. Locally Fix runs within about 10% of Add (64–69 ms against 59–61 ms) and sends about 30 KB gzipped
 - [ ] The deck tool still asks for cuts on every analysis; only a deck over 100 has a Cut step (T087), so a deck at or under 100 can skip that read
 - [ ] Skip `serving_commander_profile` while `skeleton.edhrecPrior` is off
+- [ ] The swap ladder's slot rung (T088) reads every legal card when there is no collection: about 300 ms locally for a card with no tags (Doc Ock, Sinister Scientist), cached for hours per card and commanders; Owned only takes about 36 ms. An index or a stored card category would bring it down
 - [ ] Send an add only the pairs that point at its pool and neighbours, each card's row once; or cache each card's corpus pairs for days
 
 ## T067: Drop the retired rec functions

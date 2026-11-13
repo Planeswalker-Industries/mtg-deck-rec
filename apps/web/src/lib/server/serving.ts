@@ -1,5 +1,5 @@
 import type { ComboFacts } from "@mtg/core/commander";
-import type { TagId, TagRef } from "@mtg/core/contract";
+import type { SwapMatch, TagId, TagRef } from "@mtg/core/contract";
 import {
   BASIC_LAND_NAMES,
   cardPrior,
@@ -39,6 +39,9 @@ type ServingCard = Database["public"]["CompositeTypes"]["serving_card"];
 const CARD_ROLE_PAGE_ROWS = 1000;
 
 /** One tag match as serving_swap_candidates returns it, by tag id. */
+/** serving_swap_candidates' rung numbers as the contract names them (T088). */
+const SWAP_MATCH_BY_RUNG: Readonly<Record<number, SwapMatch>> = { 1: "tags", 2: "role", 3: "slot" };
+
 interface RawMatch {
   targetTagId: string;
   candidateTagId: string;
@@ -492,8 +495,8 @@ export async function loadServedCuts(
 
 /**
  * Replacement candidates for a card, read in one round: the stored substitutes under the deck's filters, each with its
- * tag matches (names included), card row and play rates, plus the target's row and tag count. Null when the target
- * isn't in the catalog.
+ * tag matches (names included), card row and play rates, then the looser rungs when those are too few (T088), plus the
+ * target's row. Null when the target isn't in the catalog.
  */
 export async function loadServedSwapPool(
   db: PublicClient,
@@ -508,7 +511,7 @@ export async function loadServedSwapPool(
   },
 ): Promise<SwapPool | null> {
   const commanderIds = [...input.commanderIds];
-  const [candidatesResult, tagCountResult, corpus, targetResult, identityMonths, checkedAt] = await Promise.all([
+  const [candidatesResult, corpus, targetResult, identityMonths, checkedAt] = await Promise.all([
     db.rpc("serving_swap_candidates", {
       p_target: input.targetCardId,
       p_commander_ids: commanderIds,
@@ -518,14 +521,12 @@ export async function loadServedSwapPool(
       ...(input.ownedIds ? { p_owned: [...input.ownedIds] } : {}),
       ...(input.identityMask !== undefined ? { p_identity_mask: input.identityMask } : {}),
     }),
-    db.rpc("rec_functional_tag_count", { p_card_id: input.targetCardId }),
     loadCommanderCorpus(db, commanderIds),
     db.rpc("serving_cards", { p_commander_ids: commanderIds, p_card_ids: [input.targetCardId] }),
     loadIdentityMonths(db),
     pricesCheckedAt(db),
   ]);
   if (candidatesResult.error) throw new Error(`Swap candidates failed: ${candidatesResult.error.message}`);
-  if (tagCountResult.error) throw new Error(`Tag count failed: ${tagCountResult.error.message}`);
   if (targetResult.error) throw new Error(`Loading the card failed: ${targetResult.error.message}`);
   const targetRow = servedCards(asCards(targetResult.data), corpus, identityMonths, checkedAt).rows.get(input.targetCardId);
   if (!targetRow) return null;
@@ -545,7 +546,6 @@ export async function loadServedSwapPool(
   );
   return {
     target: rankCardOf(targetRow),
-    tagCount: tagCountResult.data ?? 0,
     corpus,
     candidates: rows.flatMap((r): SwapPoolCandidate[] => {
       const cardId = r.card.card_id;
@@ -559,6 +559,7 @@ export async function loadServedSwapPool(
           tagSimilarity: r.tag_similarity,
           stapleScore: r.staple_score,
           functionalTwin: r.is_functional_twin,
+          match: SWAP_MATCH_BY_RUNG[r.rung] ?? "tags",
           matchedTags: matches.flatMap((m) => {
             const targetTag = tags.get(m.targetTagId);
             const candidateTag = tags.get(m.candidateTagId);

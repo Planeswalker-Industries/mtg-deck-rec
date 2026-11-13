@@ -1,4 +1,4 @@
-import { FIX_MOVE, expect, fillDecklist, openFix, test, type Page } from "./fixtures";
+import { FIX_MOVE, expect, fillDecklist, openFix, test, toDeckbuilder, type Page } from "./fixtures";
 
 const DECK = [
   "Commander",
@@ -139,9 +139,10 @@ test("browser quantities and a live round update the two-line summary and the ke
   await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
   await expect(trigger).toHaveText("3/9 available", { timeout: 60_000 });
 
-  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  // Save deck opens the deckbuilder, which has no summary; cancelling the save goes back to Upgrade, and it returns.
+  await toDeckbuilder(page);
   await expect(trigger).toHaveCount(0);
-  await recs.getByRole("button", { name: "Upgrade" }).click();
+  await recs.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(trigger).toHaveText("3/9 available", { timeout: 60_000 });
 });
 

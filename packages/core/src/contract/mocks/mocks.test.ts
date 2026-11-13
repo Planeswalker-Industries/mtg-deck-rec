@@ -156,12 +156,16 @@ describe('mock swap', () => {
     expect(r.data.mode).toBe('collection_less');
     expect(names).toContain('Path to Exile');
     expect(names).not.toContain('Lightning Bolt'); // outside color identity and already in deck
-    const totals = r.data.suggestions.map((s) => s.score.total);
-    expect(totals).toEqual([...totals].sort((a, b) => b - a));
+    // Best first within a rung: the mock pool is small, so the looser rungs follow the tag matches (T088).
+    for (const rung of ['tags', 'role', 'slot'] as const) {
+      const totals = r.data.suggestions.filter((s) => s.match === rung).map((s) => s.score.total);
+      expect(totals).toEqual([...totals].sort((a, b) => b - a));
+    }
+    expect(r.data.suggestions.find((s) => s.card.name === 'Path to Exile')?.match).toBe('tags');
     for (const s of r.data.suggestions) {
       expect(s.score.total).toBeGreaterThanOrEqual(0);
       expect(s.score.total).toBeLessThanOrEqual(1);
-      expect(s.score.components.tag).toBeGreaterThanOrEqual(0.25);
+      if (s.match === 'tags') expect(s.score.components.tag).toBeGreaterThanOrEqual(0.25);
     }
   });
 
@@ -199,6 +203,20 @@ describe('mock swap', () => {
     if (!r.ok) throw new Error(r.error.message);
     expect(r.data.suggestions).toEqual([]);
     expect(r.data.emptyReason).toBe('NOTHING_OWNED_FITS');
+  });
+
+  it('says which rung found each suggestion, and scores a looser rung without tags (T088)', async () => {
+    const { apis, context } = await setup();
+    const served = await apis.recs.swap({ context: context(), targetCardId: idOf('Swords to Plowshares') });
+    if (!served.ok) throw new Error(served.error.message);
+    expect(served.data.suggestions.length).toBeGreaterThan(0);
+    for (const s of served.data.suggestions) {
+      expect(['tags', 'role', 'slot']).toContain(s.match);
+      if (s.match !== 'tags') expect(s.score.components.tag).toBeNull();
+    }
+    // The tags rung always leads.
+    const order = served.data.suggestions.map((s) => ['tags', 'role', 'slot'].indexOf(s.match));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 });
 

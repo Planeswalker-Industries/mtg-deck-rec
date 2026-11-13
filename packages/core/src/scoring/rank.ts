@@ -18,6 +18,7 @@ import type {
   RecContext,
   RecMode,
   ScoreBreakdown,
+  SwapMatch,
   SwapResult,
   SwapSuggestion,
   TagMatch,
@@ -634,6 +635,8 @@ export interface SwapPoolCandidate {
   tagSimilarity: number;
   stapleScore: number;
   functionalTwin: boolean;
+  /** The rung that found it (T088). Absent on a pool cached before v36: read as 'tags'. */
+  match?: SwapMatch;
   matchedTags: TagMatch[];
   rates: CardPlayRates | null;
   /** The candidate's tracked role ids, for the roles its suggestion card carries (T045). */
@@ -643,7 +646,6 @@ export interface SwapPoolCandidate {
 /** Everything a swap needs that doesn't depend on the rest of the deck, so it can be shared across decks and cached. */
 export interface SwapPool {
   target: RankCard;
-  tagCount: number;
   corpus: RankCorpus;
   candidates: SwapPoolCandidate[];
 }
@@ -654,8 +656,23 @@ function mergeCandidates(first: readonly SwapPoolCandidate[], second: readonly S
   return [...first, ...second.filter((c) => !ids.has(c.cardId))];
 }
 
+/** The swap ladder's rungs, strictest first. */
+const SWAP_RUNGS: readonly SwapMatch[] = ['tags', 'role', 'slot'];
+const rungOf = (c: Pick<SwapPoolCandidate, 'match'>): SwapMatch => (c.match === 'role' || c.match === 'slot' ? c.match : 'tags');
+
+/** Each rung best first; a lower rung joins only while the rungs above give fewer than `min`. */
+function ladder(sorted: readonly SwapSuggestion[], min: number): SwapSuggestion[] {
+  const out: SwapSuggestion[] = [];
+  for (const rung of SWAP_RUNGS) {
+    if (out.length >= min) break;
+    out.push(...sorted.filter((s) => s.match === rung));
+  }
+  return out;
+}
+
 /**
- * Ranks a swap pool for one deck: leaves out the deck's own cards, then blends scores. In 'only' mode the suggestions
+ * Ranks a swap pool for one deck: leaves out the deck's own cards, then blends scores. A looser rung's cards (T088)
+ * score without the tag component and are listed only while the rungs above give too few. In 'only' mode the suggestions
  * are what the collection supplies (the pool read for it) and the unowned cards of `buyPool` (the pool everyone gets)
  * that would do clearly better go to the buy list; in 'first' mode owned cards move up by `ownedBoost`.
  */
@@ -693,7 +710,8 @@ export function rankSwaps(
   const target = pool.target.summary;
   const inDeck = new Set<number>([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)]);
   const candidates = (only && buyPool ? mergeCandidates(pool.candidates, buyPool.candidates) : pool.candidates).filter(
-    (c) => !inDeck.has(c.cardId) && !excluded.has(c.cardId) && c.tagSimilarity >= scoring.swap.tagSimilarityFloor,
+    // The similarity floor is the tags rung's: a looser rung's cards were not found by their tags.
+    (c) => !inDeck.has(c.cardId) && !excluded.has(c.cardId) && (rungOf(c) !== 'tags' || c.tagSimilarity >= scoring.swap.tagSimilarityFloor),
   );
   const owns = ownsWith(availability);
   const deckWithoutTarget = mainDeckIds(context).filter((id) => id !== target.id);
@@ -737,6 +755,7 @@ export function rankSwaps(
     const suggestion: SwapSuggestion = {
       card: owning.summary,
       functionalTwin: c.functionalTwin,
+      match: rungOf(c),
       matchedTags: c.matchedTags,
       corpus: c.rates?.evidence ?? null,
       votes: { score: 0.5, voteCount: 0, myVote: null },
@@ -746,7 +765,7 @@ export function rankSwaps(
       ...(deck && deck.pairedWith.length > 0 ? { pairedWith: deck.pairedWith.map((id) => id as CardId) } : {}),
       score: blendScore(
           {
-            tag: round2(c.tagSimilarity),
+            tag: rungOf(c) === 'tags' ? round2(c.tagSimilarity) : null,
             manaValue: round2(manaValueProximity(card.manaValue, target.manaValue, scoring.swap.manaValueFalloff)),
             staple: round2(c.stapleScore),
             corpus: corpusScore ? round2(corpusScore.value) : null,
@@ -759,20 +778,20 @@ export function rankSwaps(
     };
     return [{ suggestion, supplied: owning.supplied }];
   });
-  const listed = (only ? scored.filter((s) => s.supplied) : scored).map((s) => s.suggestion);
-  const suggestions = onceEach(
-    listed.sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost)),
-  ).slice(0, limit);
+  const sorted = (only ? scored.filter((s) => s.supplied) : scored)
+    .map((s) => s.suggestion)
+    .sort((a, b) => rankKey(b.score.total, b.owned !== null, ownedBoost) - rankKey(a.score.total, a.owned !== null, ownedBoost));
+  const listed = onceEach(ladder(sorted, scoring.swap.ladderMinSuggestions));
+  const suggestions = listed.slice(0, limit);
 
   const result: SwapResult = { mode, target, confidence: pool.corpus.confidence, suggestions };
   if (only) {
     const best = listed.reduce((max, s) => Math.max(max, s.score.total), 0);
-    const unowned: SwapSuggestion[] = scored.filter((s) => !s.supplied).map((s) => s.suggestion);
+    // The buy list stays on the tags rung: a looser match is not worth buying for.
+    const unowned: SwapSuggestion[] = scored.filter((s) => !s.supplied && s.suggestion.match === 'tags').map((s) => s.suggestion);
     const list: BuySwapSuggestion[] = buyList(unowned, () => best, scoring.collection);
     result.buyList = list;
   }
-  if (suggestions.length === 0) {
-    result.emptyReason = pool.tagCount === 0 ? 'NO_TAGS_ON_TARGET' : only ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
-  }
+  if (suggestions.length === 0) result.emptyReason = only ? 'NOTHING_OWNED_FITS' : 'NO_CANDIDATES';
   return result;
 }

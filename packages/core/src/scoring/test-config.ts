@@ -14,7 +14,7 @@ export const TEST_SCORING: ScoringConfig = {
     },
   },
   corpus: { synergyScale: 0.3, synergyShare: 0.6, baselineWeight: 0.5, neutralValue: 0.5 },
-  swap: { tagSimilarityFloor: 0.25, voteHalfWeightCount: 25, manaValueFalloff: 1.5 },
+  swap: { tagSimilarityFloor: 0.25, voteHalfWeightCount: 25, manaValueFalloff: 1.5, ladderMinSuggestions: 3, slotManaValueRange: 1 },
   cuts: {
     roleOverloadRatio: 1.25,
     highManaValue: 6,

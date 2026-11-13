@@ -193,11 +193,19 @@ export interface BuyValue {
   valueScore: number | null;
 }
 
+/**
+ * The rung of the swap ladder that found a replacement (T088): 'tags' similar functional tags, 'role' a shared tracked
+ * role, 'slot' the same card type at a close mana value. A lower rung is read only when those above give too few.
+ */
+export type SwapMatch = 'tags' | 'role' | 'slot';
+
 export interface SwapSuggestion {
   card: CardSummary;
   /** Rules-identical to the target under a different name (e.g. a Universes Beyond rename). */
   functionalTwin: boolean;
+  match: SwapMatch;
   score: ScoreBreakdown;
+  /** 'tags': the tag pairs behind the match. 'role': the shared roles, each as its own target and candidate tag. 'slot': empty. */
   matchedTags: TagMatch[];
   corpus: CorpusEvidence | null;
   votes: VoteSummary;
@@ -218,6 +226,7 @@ export interface SwapResult {
   suggestions: SwapSuggestion[];
   /** 'only' mode: unowned replacements worth buying, best value first. Shown apart from the suggestions, as such. */
   buyList?: BuySwapSuggestion[];
+  /** 'NO_TAGS_ON_TARGET' is no longer returned (v36): a card with no tags gets the slot rung. */
   emptyReason?: 'NO_TAGS_ON_TARGET' | 'NOTHING_OWNED_FITS' | 'NO_CANDIDATES';
 }
 

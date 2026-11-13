@@ -2,14 +2,14 @@
 
 import { useEffect, useRef } from "react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
-import { compareCards, type CompareCard } from "@mtg/core/journey";
-import { ownedOnly } from "@mtg/core/scoring";
-import { CompactCardPanel, CompareMarks, DecisionButtons } from "@/components/cards/card-panel";
+import { compareCards } from "@mtg/core/journey";
+import { ownedOnly, swapMatchLabel } from "@mtg/core/scoring";
+import { CompactCardPanel, DecisionButtons } from "@/components/cards/card-panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
 import { useCardRules } from "@/lib/card-rules";
-import { StatChips } from "./deck-stats/stat-chips";
+import { StatChips, compareCardOf } from "./deck-stats/stat-chips";
 import { useStatPreview } from "./deck-stats/stat-preview";
 import { describeCostDelta } from "@/lib/format";
 import { cutReasonShortLabel, emptySwapMessage } from "@/lib/labels";
@@ -28,11 +28,6 @@ const MAX_REASONS = 2;
 const MAX_JOBS = 4;
 /** Replacements after the one on screen whose rules text is fetched ahead. */
 const PREFETCH_CANDIDATES = 4;
-
-/** What comparing reads from a card, with its printed body and play rate when known, and whether the player owns it. */
-function compareCard(card: CardSummary, power: string | null, toughness: string | null, inclusionRate: number | null, owned = false): CompareCard {
-  return { manaValue: card.manaValue, typeLine: card.typeLine, keywords: card.keywords, priceUsd: card.price?.usd ?? null, inclusionRate, power, toughness, owned };
-}
 
 /**
  * A card to replace and one replacement at a time, both in full: the card in the deck on top, the replacement below,
@@ -54,7 +49,9 @@ export function SwipeRater({
   startAt,
   preferred,
   cache,
+  skipEmpty,
   onFinish,
+  onNothingDealt,
   viewRef,
 }: {
   targets: readonly RaterTarget[];
@@ -79,7 +76,11 @@ export function SwipeRater({
   preferred?: CardId;
   /** Deck tool: replacements already fetched for this list, by card (see useSwipeRater). */
   cache?: Map<CardId, Candidates>;
+  /** Deck tool: step over a card with no replacement on any rung instead of showing it empty (see useSwipeRater). */
+  skipEmpty?: boolean;
   onFinish: () => void;
+  /** The sitting ended without dealing a replacement (see useSwipeRater). */
+  onNothingDealt?: () => void;
   /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
   viewRef?: (element: HTMLElement | null) => void;
 }) {
@@ -98,7 +99,9 @@ export function SwipeRater({
     startAt,
     preferred,
     cache,
+    skipEmpty,
     onFinish,
+    onNothingDealt,
   });
   /** When the last answer landed, for SWIPE_COOLDOWN_MS. */
   const lastAt = useRef(0);
@@ -140,6 +143,8 @@ export function SwipeRater({
   const jobs = candidate
     ? [...new Set(candidate.matchedTags.map((m) => (m.distance === 0 || !m.via ? m.candidateTag.label : m.via.label)))].slice(0, MAX_JOBS)
     : [];
+  // A looser rung of the swap ladder says which one it is (T088): "Same job: ramp", "Similar slot: 5-mana creature".
+  const rungLabel = candidate ? swapMatchLabel(candidate, target.card) : null;
   const targetRules = rulesFor(target.card.id);
   const candidateRules = candidate ? rulesFor(candidate.card.id) : undefined;
   // Owned replacements are marked only where they mix with cards to buy: in Owned only every one is owned.
@@ -147,15 +152,8 @@ export function SwipeRater({
   const marks =
     candidate && targetRules !== undefined && candidateRules !== undefined
       ? compareCards(
-          compareCard(target.card, targetRules?.power ?? null, targetRules?.toughness ?? null, target.corpus?.inclusionRate ?? null),
-          compareCard(
-            candidate.card,
-            candidateRules?.power ?? null,
-            candidateRules?.toughness ?? null,
-            candidate.corpus?.inclusionRate ?? null,
-            // An owned replacement costs nothing to put in, so its price makes no mark.
-            context.ownership !== null && candidate.owned !== null,
-          ),
+          compareCardOf(target.card, targetRules?.power ?? null, targetRules?.toughness ?? null, target.corpus?.inclusionRate ?? null),
+          compareCardOf(candidate.card, candidateRules?.power ?? null, candidateRules?.toughness ?? null, candidate.corpus?.inclusionRate ?? null),
         )
       : [];
   const keepLabel = `${inRater ? "Skip" : "Keep"} ${targetName}`;
@@ -229,12 +227,14 @@ export function SwipeRater({
               </span>
               {candidate.functionalTwin ? (
                 <span className="font-drama text-sm text-foreground/85 italic">Same rules as {targetName}, under a different name.</span>
+              ) : rungLabel ? (
+                // Shown at every width, phones included: it is why this card is offered.
+                <span>{rungLabel}</span>
               ) : (
                 jobs.length > 0 && <span className="max-sm:hidden">Also does: {jobs.join(", ").toLowerCase()}</span>
               )}
             </CompactCardPanel>
-            <CompareMarks marks={marks} label={`How ${displayName(candidate.card)} compares with ${targetName}`} />
-            <StatChips add={candidate.card} remove={target.card} />
+            <StatChips add={candidate.card} remove={target.card} marks={marks} />
           </div>
           <DecisionButtons
             tone="primary"

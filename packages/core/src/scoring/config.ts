@@ -64,6 +64,10 @@ export const scoringConfigSchema = z.object({
     voteHalfWeightCount: positive,
     /** Mana value proximity is exp(−|difference| / this). */
     manaValueFalloff: positive,
+    /** A lower rung of the swap ladder is read only when the rungs above give fewer suggestions than this. */
+    ladderMinSuggestions: positive,
+    /** The slot rung takes cards whose mana value is within this of the target's. */
+    slotManaValueRange: positive,
   }),
   cuts: z.object({
     /** A role is overloaded once the deck runs this many times its target. */
