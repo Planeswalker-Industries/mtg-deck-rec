@@ -226,7 +226,7 @@ test("saving a journey's result keeps the original, which the deck page compares
   // The deck page shows what changed since the original.
   await page.getByRole("link", { name: "Deck page" }).click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
-  const changes = page.getByRole("region", { name: "Changes from the original" });
+  const changes = page.getByRole("region", { name: "Changelog" });
   await expect(changes).toBeVisible({ timeout: 30_000 });
   await expect(changes.getByRole("list", { name: "Cards taken out since the original" }).getByText("Lightning Bolt")).toBeVisible();
 
@@ -270,7 +270,7 @@ test("saving asks to add the cards the collection lacks, and explicit add adds t
   await expect(page.getByText("Sol Ring").first()).toBeVisible({ timeout: 30_000 });
 });
 
-test("a saved deck shows its owner's collection coverage, on its page and in its deckbuilder, and strangers none", async ({ page, request, browser }) => {
+test("a saved deck shows its owner's collection coverage in its deckbuilder, not on its page", async ({ page, request }) => {
   await signIn(page, request, `deckcoverage-${Date.now()}@test.invalid`, "/collection/import");
   await page.getByLabel("Collection import").fill("1 Sol Ring\n1 Command Tower");
   await page.getByRole("button", { name: "Import collection", exact: true }).click();
@@ -290,12 +290,7 @@ test("a saved deck shows its owner's collection coverage, on its page and in its
   await page.goto("/decks");
   await page.getByRole("listitem").getByRole("link").first().click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
-  await expect(page.getByRole("button", { name: /available/ })).toBeVisible({ timeout: 30_000 });
-
-  const stranger = await browser.newContext();
-  const strangerPage = await stranger.newPage();
-  await strangerPage.goto(page.url());
-  await expect(strangerPage.getByRole("heading", { name: "Lands" })).toBeVisible({ timeout: 30_000 });
-  await expect(strangerPage.getByRole("button", { name: /available/ })).toHaveCount(0);
-  await stranger.close();
+  // The deck page's header already gives the card count, so the page leaves the coverage to the deckbuilder.
+  await expect(page.getByRole("heading", { name: "Lands" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: /available/ })).toHaveCount(0);
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { DeckId } from "@mtg/core/contract";
 import { CardPlate } from "@/components/cards/card-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -9,8 +10,9 @@ import type { DeckPageData } from "@/lib/server/deck-page";
 import { cardCategoryLabel } from "@/lib/labels";
 
 /**
- * A saved deck's cards: the changes from the original when there are any, then the 99 by type. One toggle shows them
- * all as whole card images or as plates, and the choice is remembered in this browser.
+ * A saved deck's cards: the 99 by type, then the changes from the original when there are any. One toggle shows them
+ * all as whole card images or as plates, and the choice is remembered in this browser. The owner's deck switches
+ * (`settings`) share its row, on the left.
  */
 export function DeckCards({
   deckId,
@@ -18,6 +20,7 @@ export function DeckCards({
   isOwner,
   original,
   groups,
+  settings,
 }: {
   deckId: DeckId;
   name: string;
@@ -25,14 +28,19 @@ export function DeckCards({
   /** Null when the comparison isn't shown. */
   original: DeckPageData["original"];
   groups: DeckPageData["groups"];
+  /** The owner's switches (Public, Built); nothing for anyone else. */
+  settings?: ReactNode;
 }) {
   const [view, setView] = useDeckView();
 
   return (
     <>
-      {(original || groups.length > 0) && <DeckViewToggle view={view} onChange={setView} />}
-
-      {original && <DeckOriginal deckId={deckId} name={name} isOwner={isOwner} original={original} view={view} />}
+      {(settings || original || groups.length > 0) && (
+        <div className="-my-2 flex flex-wrap items-center justify-between gap-x-2">
+          {settings && <div className="flex flex-wrap items-center gap-x-2">{settings}</div>}
+          {(original || groups.length > 0) && <DeckViewToggle view={view} onChange={setView} className="ml-auto self-center" compact={Boolean(settings)} />}
+        </div>
+      )}
 
       {groups.length === 0 ? (
         <p className="text-muted-foreground">This deck has no cards yet.</p>
@@ -65,6 +73,8 @@ export function DeckCards({
           </section>
         ))
       )}
+
+      {original && <DeckOriginal deckId={deckId} name={name} isOwner={isOwner} original={original} view={view} />}
     </>
   );
 }

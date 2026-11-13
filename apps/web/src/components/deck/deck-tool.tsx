@@ -39,7 +39,7 @@ import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { statChips } from "./deck-stats/stat-chips";
 import { StatPreviewProvider, type StatPreview } from "./deck-stats/stat-preview";
 import { AddPhase } from "./journey/add-phase";
-import { CollectionFitOffer, CollectionNudge } from "./journey/collection-nudge";
+import { CollectionNudge } from "./journey/collection-nudge";
 import { CutPhase } from "./journey/cut-phase";
 import { FixPhase } from "./journey/fix-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
@@ -551,11 +551,10 @@ function DeckToolSession() {
 
   /**
    * Fits a list to the collection: the list fixes the commander and the bracket, its owned cards (and its
-   * basic lands, assumed owned) are kept, and the build fills the rest from the collection. `text` is a list other
-   * than the box's (Done's result); the box's list is read first either way, for its cards.
+   * basic lands, assumed owned) are kept, and the build fills the rest from the collection.
    */
-  async function fitToCollection(text?: string) {
-    const outcome = await tool.submit(text === undefined ? undefined : { text, bracketOverride: tool.bracketOverride, importedFrom: null }, { recs: false });
+  async function fitToCollection() {
+    const outcome = await tool.submit(undefined, { recs: false });
     if (!outcome.parsed || !outcome.analysis || !outcome.lines) return;
     const commanders = outcome.analysis.commanderKey.commanders;
     if (commanders.length === 0) return;
@@ -944,7 +943,7 @@ function DeckToolSession() {
                   )}
                   {journey.state.phase === "fix" && <FixPhase journey={journey} fix={fix} hasCollection={journey.add.hasCollection} />}
                   {journey.state.phase === "replace" && <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />}
-                  {/* Players who came with only a list are offered their collection at every step (Done has its own). */}
+                  {/* Players who came with only a list are offered their collection at every step (Done has its own, below). */}
                   {source.kind === "none" && journey.state.phase !== "review" && (
                     <CollectionNudge href={collectionImportHref} step={journey.state.phase} />
                   )}
@@ -961,17 +960,8 @@ function DeckToolSession() {
                       onChoice={tool.setStatChoice}
                       collectionOnly={journey.add.collectionOnly}
                     >
-                      {source.kind === "none" ? (
-                        <CollectionNudge href={collectionImportHref} step="review" />
-                      ) : tool.ownedOnly ? (
-                        <CollectionFitOffer
-                          disabled={committing || tool.stale}
-                          onFit={() => {
-                            const text = journey.resultText();
-                            if (text !== null) void fitToCollection(text);
-                          }}
-                        />
-                      ) : null}
+                      {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}
+                      {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}
                     </ReviewPhase>
                   )}
                 </div>

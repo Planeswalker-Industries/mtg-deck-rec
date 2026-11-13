@@ -19,7 +19,7 @@ import { ErrorText } from "@/components/ui/error-text";
  *
  * Restoring writes the original's cards over the deck through the same save every edit uses; the original itself
  * stays, so a restored deck can be run through the tool again and the comparison starts from the same place.
- * The heading folds the cards away; the one-line summary stays.
+ * The heading folds the cards away. The out-and-in count is read out only; a deck that matches its original says so.
  */
 export function DeckOriginal({
   deckId,
@@ -85,10 +85,10 @@ export function DeckOriginal({
             className="flex min-h-11 items-center gap-2 rounded-md font-heading text-xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <ChevronDown aria-hidden className={cn("size-5 text-primary transition-transform", !open && "-rotate-90")} />
-            Changes from the original
+            Changelog
           </button>
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={unchanged ? "mt-1 text-sm text-muted-foreground" : "sr-only"}>
           {unchanged
             ? `This deck matches the list it started from on ${formatAsOf(original.savedAt)}.`
             : `${copies(original.out)} out and ${copies(original.in)} in since the list it started from on ${formatAsOf(original.savedAt)}.`}
