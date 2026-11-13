@@ -48,7 +48,7 @@ function offBy(value: number, target: number): string {
 function Mark({ state }: { state: StatState }) {
   if (state === "ignored") return <EyeOff role="img" aria-label="Ignored" className="size-4 shrink-0 text-muted-foreground" />;
   return state === "ok" ? (
-    <Check role="img" aria-label="In line" className="size-4 shrink-0 text-muted-foreground" />
+    <Check role="img" aria-label="OK" className="size-4 shrink-0 text-muted-foreground" />
   ) : (
     <TriangleAlert role="img" aria-label="Off" className="size-4 shrink-0 text-warning" />
   );
@@ -189,7 +189,7 @@ function CurveRows({
           {action && <ActionLink action={action} className="ml-2 text-xs" />}
         </span>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {report.curve.ok ? "In line" : `${ignored ? "Ignored · off" : "Off"} at ${off.join(", ")}`}
+          {report.curve.ok ? "OK" : `${ignored ? "Ignored · off" : "Off"} at ${off.join(", ")}`}
         </span>
         {flip && <FlipTag to={flip} />}
       </div>
