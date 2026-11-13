@@ -121,7 +121,7 @@ export function DeckStatsFooter({
           </span>
         </button>
       </div>
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet closeOnBack open={open} onOpenChange={setOpen}>
         <SheetContent
           id="deck-stats-sheet"
           side="bottom"

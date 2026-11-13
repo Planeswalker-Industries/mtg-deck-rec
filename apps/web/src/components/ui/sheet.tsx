@@ -5,10 +5,28 @@ import { cn } from "cn"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { useCloseOnBack } from "@/lib/close-on-back"
 import { XIcon } from "lucide-react"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+/**
+ * `closeOnBack`: the browser's Back button closes the sheet instead of leaving the page. For card previews and panels
+ * like Deck stats, not for sheets that ask something (save, confirm) or hold links (see `useCloseOnBack`).
+ */
+function Sheet({
+  closeOnBack = false,
+  open: openProp,
+  defaultOpen = false,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root> & { closeOnBack?: boolean }) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen)
+  const open = openProp ?? uncontrolledOpen
+  const setOpen = (next: boolean) => {
+    if (openProp === undefined) setUncontrolledOpen(next)
+    onOpenChange?.(next)
+  }
+  useCloseOnBack(closeOnBack && open, () => setOpen(false))
+  return <SheetPrimitive.Root data-slot="sheet" open={open} onOpenChange={setOpen} {...props} />
 }
 
 function SheetTrigger({

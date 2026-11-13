@@ -61,6 +61,15 @@ test.describe("deck stats on a phone", () => {
     await sheet.getByRole("button", { name: "Close deck stats", exact: true }).click();
     await expect(sheet).toBeHidden();
 
+    // The browser's Back button closes the readout and stays on the page.
+    const url = page.url();
+    await footer.click();
+    await expect(sheet).toBeVisible();
+    await page.goBack();
+    await expect(sheet).toBeHidden();
+    expect(page.url()).toBe(url);
+    await expect(footer).toBeVisible();
+
     // Add swipe, the first step of a short deck (the mocks' sample), which also covers the open slots it has to fill.
     test.skip((await firstStep(page)) !== "Add", "the sample deck is at 100, so the round has no Add step");
     const sitting = page.getByRole("region", { name: "Cards to add" });

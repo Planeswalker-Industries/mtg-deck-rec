@@ -85,7 +85,7 @@ export function AddsCounter({ count, adds, onTakeOut }: { count: string; adds: r
   if (adds.length === 0) return <>{count}</>;
   const keys = copyKeys(adds);
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet closeOnBack open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button type="button" variant="link" className="h-auto px-0 font-mono text-sm">
           <span>{count}</span>
