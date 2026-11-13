@@ -10,7 +10,7 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { sessionCopies, type CollectionCopies } from "@mtg/core/collection";
 import { defaultIncludeGameChangers } from "@mtg/core/commander";
-import type { Bracket, CardId, CardSummary, CutReason, DeckAnalysis, DeckInput, OwnershipInput, RecContext } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, CutReason, DeckAnalysis, DeckInput, OwnershipInput, RecContext, SwapMatch } from "@mtg/core/contract";
 import {
   applyCard,
   buildTally,
@@ -54,7 +54,11 @@ interface FixtureFile {
     cut?: { include?: string[]; exclude?: string[]; notFlagged?: { card: string; reason: CutReason }[] };
     /** `top` counts within the card's category group. */
     add?: { includeTop?: { card: string; top: number }[]; exclude?: string[] };
-    swaps?: { target: string; includeTop?: TopExpectation; excludeTop?: TopExpectation }[];
+    /**
+     * `minSuggestions`: the card gets at least this many replacements (T088: no dead end). `match`: every replacement
+     * comes from one of these rungs of the swap ladder.
+     */
+    swaps?: { target: string; includeTop?: TopExpectation; excludeTop?: TopExpectation; minSuggestions?: number; match?: SwapMatch[] }[];
     /**
      * Fix's whole plan ("Fix the rest for me") on the deck. Always checked: every line still off after the plan has a
      * reason (no move is left for it). `inLine`: Deck stats lines, by label, the plan must leave in line. `noMove`: the
@@ -226,6 +230,15 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
     }
     const result = await getSwapSuggestions(db, { context, collection, targetCardId: line.resolution.card.id, limit: 20 });
     const cards = result.suggestions.map((s) => s.card);
+    if (swap.minSuggestions !== undefined) {
+      check(`${swap.target} has at least ${swap.minSuggestions} replacements`, result.suggestions.length >= swap.minSuggestions, `${result.suggestions.length}`);
+    }
+    if (swap.match) {
+      const rungs = swap.match;
+      const off = result.suggestions.filter((s) => !rungs.includes(s.match)).map((s) => `${s.card.name} (${s.match})`);
+      const found = [...new Set(result.suggestions.map((s) => s.match))].join(", ");
+      check(`${swap.target} replacements come from ${rungs.join(" or ")}`, off.length === 0, off.length === 0 ? found : off.join(", "));
+    }
     const include = swap.includeTop;
     const exclude = swap.excludeTop;
     for (const name of include?.cards ?? []) {
