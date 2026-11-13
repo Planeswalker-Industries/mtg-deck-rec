@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "./fixtures";
+import { expect, test, toDeckbuilder, type Page, type Route } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 /** Real local catalog and account actions can take half a minute to finish. */
@@ -59,7 +59,7 @@ test("a collection imported before signing in moves to the account and drives ow
   await page.getByRole("option", { name: "Owned only" }).click();
   await expect(collectionMode).toHaveText("Owned only");
   // The only owned card (Sol Ring) is already in the sample deck, so nothing owned can replace anything.
-  await recs.getByRole("button", { name: "Deckbuilder" }).click();
+  await toDeckbuilder(page);
   await recs.getByRole("region", { name: "Deck list" }).getByRole("button", { name: /^Replace / }).first().click({ timeout: 60_000 });
   await expect(page.getByRole("dialog").getByText("No valid swaps right now.")).toBeVisible({ timeout: 60_000 });
   await page.keyboard.press("Escape");

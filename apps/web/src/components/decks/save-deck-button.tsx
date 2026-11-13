@@ -49,7 +49,10 @@ export function SaveDeckButton({
   collection,
   defaultName,
   statChoices,
+  onCancel,
 }: {
+  /** Runs when the name form is cancelled, after it closes. */
+  onCancel?: (() => void) | undefined;
   /** The player's choices for Deck stats lines, saved with the deck. */
   statChoices?: StatChoices | undefined;
   analysis: DeckAnalysis;
@@ -139,6 +142,11 @@ export function SaveDeckButton({
     setConfirm({ name: deckName, deck, shortfall, names });
   }
 
+  function cancel() {
+    setOpen(false);
+    onCancel?.();
+  }
+
   if (!open) {
     return (
       <Button type="button" size="sm" onClick={() => setOpen(true)}>
@@ -167,7 +175,7 @@ export function SaveDeckButton({
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+          onKeyDown={(e) => e.key === "Escape" && cancel()}
           aria-label="Deck name"
           maxLength={MAX_DECK_NAME_CHARS}
           className="h-9 w-56 bg-sleeve"
@@ -175,7 +183,7 @@ export function SaveDeckButton({
         <Button type="submit" size="sm" disabled={busy || name.trim() === ""}>
           {busy ? "Saving…" : "Save"}
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        <Button type="button" size="sm" variant="ghost" onClick={cancel}>
           Cancel
         </Button>
         {!signedIn && <p className="w-full text-right text-xs text-muted-foreground">You&apos;ll sign in to save it; the deck comes with you.</p>}

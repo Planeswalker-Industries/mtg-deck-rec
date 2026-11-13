@@ -81,8 +81,8 @@ const STEPS_ID = "deck-journey-steps";
 const BRACKET_LINE = "bracket";
 
 /**
- * A segmented control: one of a few options, pressed state on the chosen one. Used for the tool's mode (upgrade or
- * edit) and for how each journey phase is reviewed (swipe or list).
+ * A segmented control: one of a few options, pressed state on the chosen one. Used for how each journey phase is
+ * reviewed (swipe or list).
  */
 function Segmented<T extends string>({
   label,
@@ -149,7 +149,10 @@ const DECK_STATS_DOCK =
 /** From lg the round and the Deck stats rail sit side by side. */
 const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6";
 
-/** "upgrade" walks the deck through the journey; "edit" is the deckbuilder. */
+/**
+ * "upgrade" walks the deck through the journey; "edit" is the deckbuilder, which only saving opens (Save deck, Save for
+ * Later). No control switches between them: cancelling the save goes back to Upgrade.
+ */
 type ToolMode = "upgrade" | "edit";
 
 /** The steps with a swipe view and a list view: Fix deals one pair at a time, and Finish is a summary. */
@@ -473,23 +476,14 @@ function DeckToolSession() {
   const editorUrl = (code: string) => `/decks/${analysis?.commanderKey.commanders[0]?.slug ?? "deck"}/${code}/edit` as Route;
 
   /**
-   * Edit deck: a saved deck opens in its own editor once its last change has been written; an unsaved one edits here.
-   * Back to Upgrade: the deckbuilder's waiting edit goes in first, with the cuts Upgrade opens on; without one, the cuts
-   * the deckbuilder's edits left waiting are loaded.
+   * Back to Upgrade when the player cancels saving: the deckbuilder's waiting edit goes in first, with the cuts Upgrade
+   * opens on; without one, the cuts the deckbuilder's edits left waiting are loaded.
    */
-  async function changeMode(next: ToolMode) {
-    const open = tool.openDeck;
-    if (next === "edit" && open) {
-      await tool.whenSaved();
-      router.push(editorUrl(open.code));
-      return;
-    }
-    if (next === "upgrade" && mode === "edit") {
-      const handle = editorHandle.current;
-      if (handle?.hasPending()) void handle.flush({ recs: true });
-      else tool.ensureCuts();
-    }
-    setMode(next);
+  function backToUpgrade() {
+    const handle = editorHandle.current;
+    if (handle?.hasPending()) void handle.flush({ recs: true });
+    else tool.ensureCuts();
+    setMode("upgrade");
   }
 
   /**
@@ -869,9 +863,9 @@ function DeckToolSession() {
             collectionMode={tool.collectionMode}
             onCollectionModeChange={tool.changeCollectionMode}
             onEditDecklist={showInput ? undefined : () => void editDecklist()}
-            // Saving is asked for, never automatic: a new deck is public. The Deckbuilder saves from the bar; Upgrade
-            // saves from its Review step, which brings the player here with the name form open. An open deck already
-            // writes back on its own (and edits in its own editor).
+            // Saving is asked for, never automatic: a new deck is public. Upgrade's Save deck (and a build's Save for
+            // Later) brings the player here, in the Deckbuilder with the name form open; Cancel goes back to Upgrade. An
+            // open deck already writes back on its own (and edits in its own editor).
             saveSlot={
               mode === "edit" && !tool.openDeck ? (
                 <SaveDeckButton
@@ -890,36 +884,29 @@ function DeckToolSession() {
                   collection={source}
                   defaultName={tool.deckName}
                   statChoices={tool.statChoices}
+                  onCancel={() => {
+                    setSaveAsked(false);
+                    backToUpgrade();
+                  }}
                 />
               ) : undefined
             }
           />
           <CommanderLookupBar lookup={lookup} />
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <Segmented
-              label="What to do with the deck"
-              options={[
-                { value: "upgrade", label: "Upgrade" },
-                { value: "edit", label: "Deckbuilder" },
-              ]}
-              value={mode}
-              onChange={(next) => void changeMode(next)}
-            />
-            {/* Phones get the same choice as one icon beside the steps (`ViewToggle`), to save this row's height. */}
-            {mode === "upgrade" && journey.state && hasViews(journey.state.phase) && (
-              <div className="max-sm:hidden">
-                <Segmented
-                  label="How to review cards"
-                  options={[
-                    { value: "swipe", label: "Swipe" },
-                    { value: "list", label: "List" },
-                  ]}
-                  value={view}
-                  onChange={changeView}
-                />
-              </div>
-            )}
-          </div>
+          {/* Phones get the same choice as one icon beside the steps (`ViewToggle`), to save this row's height. */}
+          {mode === "upgrade" && journey.state && hasViews(journey.state.phase) && (
+            <div className="max-sm:hidden">
+              <Segmented
+                label="How to review cards"
+                options={[
+                  { value: "swipe", label: "Swipe" },
+                  { value: "list", label: "List" },
+                ]}
+                value={view}
+                onChange={changeView}
+              />
+            </div>
+          )}
           {mode === "upgrade" ? (
             journey.state && (
               <StatPreviewProvider onChange={setStatPreview} chipsFor={chipsFor}>

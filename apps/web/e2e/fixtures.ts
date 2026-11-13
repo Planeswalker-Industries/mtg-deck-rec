@@ -61,6 +61,18 @@ export async function ignoreBuildGaps(page: Page) {
   for (const ignore of await gaps.getByRole("button", { name: "Ignore", exact: true }).all()) await ignore.click();
 }
 
+/**
+ * From Upgrade into the deckbuilder: the round's Save deck is the only way there for a deck that isn't saved yet. It
+ * opens with the deck name form up in the deck bar, which the caller may fill or leave. Returns the recommendations
+ * region.
+ */
+export async function toDeckbuilder(page: Page) {
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Save deck" }).click({ timeout: STEP_WAIT_MS });
+  await expect(page.getByRole("textbox", { name: "Deck name" })).toBeVisible({ timeout: STEP_WAIT_MS });
+  return recs;
+}
+
 /** The deck tool's import offer, made on every visit by a player with no collection. */
 const COLLECTION_OFFER = { name: "Hold up — got cards already?" } as const;
 
