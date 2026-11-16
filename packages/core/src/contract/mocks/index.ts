@@ -77,6 +77,8 @@ const MOCK_ROLES = [
   { roleId: 'mock-removal', label: 'Removal', target: 9 },
   { roleId: 'mock-protection', label: 'Protection', target: 5 },
 ];
+/** The one role the mock app knows its cards for, so the one line a mock collection build can report short (T089). */
+const MOCK_RAMP_ROLE = 'mock-ramp';
 /** Sample cards that count as ramp in the mock app. */
 const MOCK_RAMP_NAMES = new Set(['Sol Ring', 'Arcane Signet', 'Cultivate', "Kodama's Reach", 'Rampant Growth', 'Command Tower']);
 
@@ -575,8 +577,18 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           .sort((a, b) => b.score.total - a.score.total || a.card.name.localeCompare(b.card.name));
         const room = Math.max(0, slots - MOCK_BUILD_LANDS - kept.length);
         const picks = candidates.filter((s) => !owned || owned.has(s.card.id)).slice(0, room);
-        const fills = owned && fill === 'value' ? candidates.filter((s) => !owned.has(s.card.id)).slice(0, room - picks.length) : [];
+        const unownedLeft = owned ? candidates.filter((s) => !owned.has(s.card.id)) : [];
+        const isRamp = (s: BuildCard) => MOCK_RAMP_NAMES.has(s.card.name);
+        // A collection build reports ramp short when cards outside the collection could have filled it; a line opened
+        // to buying (`buyFor`) takes those cards first, as the real build does.
+        const buyingRamp = owned !== null && (context.buyFor ?? []).includes(MOCK_RAMP_ROLE);
+        const bought = buyingRamp ? unownedLeft.filter(isRamp).slice(0, room - picks.length) : [];
+        const fills = [
+          ...bought,
+          ...(owned && fill === 'value' ? unownedLeft.filter((s) => !bought.includes(s)).slice(0, room - picks.length - bought.length) : []),
+        ];
         const cards = [...kept.map((c) => scored(c, 'kept')), ...picks, ...fills.map((s) => ({ ...s, origin: 'fill' as const }))];
+        const collectionGaps = owned && unownedLeft.some((s) => isRamp(s) && !fills.includes(s)) ? [MOCK_RAMP_ROLE] : [];
         const basicCards = mockCards.filter((c) => isBasicLand(c) && withinIdentity(c, identity));
         const basicTotal = Math.min(MOCK_BUILD_LANDS, slots - cards.length);
         const basics = basicCards.map((card, i) => ({
@@ -603,8 +615,8 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           ),
           estimatedBracket: gameChangerCount === 0 ? 2 : gameChangerCount <= 3 ? 3 : 4,
           bracketSignals: { gameChangerCount, massLandDenialIds: [], extraTurnIds: [], comboBracket: null, extraTurnLoop: false },
-          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed, collectionGaps: [] },
-          ...(owned && fill === 'value'
+          feasibility: { slots, filled: placed - fills.length, filledByValue: fills.length, open: slots - placed, collectionGaps },
+          ...(owned && (fill === 'value' || buyingRamp)
             ? {
                 fillCost: {
                   usd: round(fills.reduce((sum, s) => sum + (s.card.price?.usd ?? 0), 0)),

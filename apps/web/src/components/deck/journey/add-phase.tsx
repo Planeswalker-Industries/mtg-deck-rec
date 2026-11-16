@@ -138,7 +138,7 @@ function RolePills({ short, filter, onChange }: { short: readonly StatLine[]; fi
         All
       </button>
       {short.map((role) => {
-        const pressed = filter?.kind === "role" && filter.roleId === role.key;
+        const pressed = filter?.roleId === role.key;
         return (
           <button
             key={role.key}
@@ -199,7 +199,7 @@ export function AddPhase({
   const markOwned = hasCollection && !journey.add.collectionOnly;
   // The as-of date goes with the prices on screen: with a collection, only cards not owned show one.
   const asOf = queue.find((s) => s.card.price && !(hasCollection && s.owned))?.card.price?.asOf;
-  const filterName = filter ? (filter.kind === "lands" ? "lands" : filter.label.toLowerCase()) : null;
+  const filterName = filter ? filter.label.toLowerCase() : null;
 
   if (journey.add.part === "combos") return <CombosPhase journey={journey} uploadHref={uploadHref} nextLabel={fixLabel} />;
 
