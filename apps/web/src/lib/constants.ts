@@ -24,8 +24,12 @@ export const DECK_START_PARAM = "start";
 export const DECK_START_BUILD = "build";
 export const BUILD_DECK_HREF = `/deck?${DECK_START_PARAM}=${DECK_START_BUILD}`;
 
-/** The bracket a build starts at until the player picks another: 3, Upgraded, where most decks at a casual table sit. */
-export const BUILD_DEFAULT_BRACKET = 3;
+/**
+ * The bracket the start form (T091) and a build aim for until the player picks another: 3, Upgraded, where most decks at
+ * a casual table sit.
+ */
+export const DEFAULT_START_BRACKET = 3;
+export const BUILD_DEFAULT_BRACKET = DEFAULT_START_BRACKET;
 
 /**
  * A touch target of at least 44 px on phones, drawn by an invisible pseudo-element centred on the control, so compact

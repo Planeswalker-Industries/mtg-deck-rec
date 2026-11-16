@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { Bracket, BuildResult, CardId, CardSummary, DeckCardEntry, OwnershipInput, RecContext, StatChoice, StatChoices } from "@mtg/core/contract";
+import type { Bracket, BuildResult, CardId, CardSummary, DeckBudget, DeckCardEntry, OwnershipInput, RecContext, StatChoice, StatChoices } from "@mtg/core/contract";
+import { requestBudget } from "@mtg/core/scoring";
 import { decklistCsv, decklistText, type DeckExportEntry } from "@mtg/core/parse";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
@@ -23,6 +24,11 @@ export interface BuildRequest {
    * it (the build then fills it with cards they don't own). They go into the deck tool with the deck.
    */
   choices?: StatChoices;
+  /**
+   * The player's budget (T091). With one the build holds unowned cards to it and fills the collection's gaps within it,
+   * so the Ignore / Allow buying answers aren't asked.
+   */
+  budget?: DeckBudget;
 }
 
 /** The lines a request opened to buying, in a stable order. */
@@ -93,7 +99,9 @@ export function useDeckBuild(ownership: OwnershipInput | null) {
     const id = ++requestId.current;
     shown.current = null;
     setState({ status: "loading", request });
-    const buyFor = buyLinesOf(request.choices);
+    const budget = requestBudget(request.budget);
+    // A budget stands in for the lines opened to buying.
+    const buyFor = budget ? [] : buyLinesOf(request.choices);
     const context: RecContext = {
       deck: { commanders: request.commanders.map((c) => c.id), cards: request.kept ?? [] },
       bracket: request.bracket,
@@ -102,6 +110,7 @@ export function useDeckBuild(ownership: OwnershipInput | null) {
       ownership,
       ...(ownership ? { ownershipMode: "only" as const } : {}),
       ...(ownership && buyFor.length > 0 ? { buyFor } : {}),
+      ...(budget ? { budget } : {}),
     };
     const r = await getApis().recs.build({ context, fill: "none" });
     if (id !== requestId.current) return;

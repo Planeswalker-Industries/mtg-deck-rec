@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CardId, CardSummary, ComboRef, DeckCombo, OracleId, StatChoices, StatTargets } from '../contract';
+import type { CardId, CardSummary, ComboRef, DeckCombo, IsoDateTime, OracleId, StatChoices, StatTargets } from '../contract';
 import { applyCard, BRACKET_LINE, buildTally, CURVE_LINE, gradeDeck, reportWithMoves, scoreWithMoves, stateFlips, toTallyCard, type BracketInput, type DeckTally, type TallyEntry } from './deck-tally';
 import { addBreaksBand, comboPiecesToKeep, fixLines, MAX_FIX_MOVES, nextFixMove, planFixes, type FixCard, type FixInput, type FixMove } from './fix';
 
@@ -389,5 +389,39 @@ describe('cards for lines opened to buying (T086)', () => {
     const given = input(built, { pool: { ins: [bought(400, 0.99, [DRAW]), forest], deck: built.cards } });
     expect(planFixes(given)).toEqual([]);
     expect(fixLines(given)).toEqual([{ line: RAMP, gap: 2, blocked: 'noCardIn' }]);
+  });
+});
+
+describe('a spend budget (T091)', () => {
+  const priced = (c: FixCard, usd: number): FixCard => ({ ...c, card: { ...c.card, price: { usd, finish: 'nonfoil', asOf: '2026-11-15T00:00:00Z' as IsoDateTime, source: 'scryfall' } } });
+  const ramp = ins.slice(0, 10);
+
+  it('auto plan total stays within spend', () => {
+    // Ramp is 5 against 10: three moves. $10 pays for two $4 cards; the third $4 card no longer fits, the $1 one does.
+    const pool = { ins: [priced(ramp[0]!, 4), priced(ramp[1]!, 4), priced(ramp[2]!, 4), priced(ramp[3]!, 1), forest], deck: deck({ ramp: 5 }).cards };
+    const given = input(deck({ ramp: 5 }), { pool, spendLeftUsd: 10 });
+    const moves = planFixes(given);
+    expect(moves.map((m) => m.in.name)).toEqual(['Ramp In 0', 'Ramp In 1', 'Ramp In 3']);
+    expect(moves.reduce((sum, m) => sum + (m.in.price?.usd ?? 0), 0)).toBeLessThanOrEqual(10);
+  });
+
+  it('spent over budget leaves owned and basics', () => {
+    const owned: FixCard = { ...priced(ramp[4]!, 30), owned: { quantity: 1 } };
+    const built = deck({ ramp: 5 });
+    const given = input(built, { pool: { ins: [priced(ramp[0]!, 1), priced(ramp[1]!, 1), owned, forest], deck: built.cards }, spendLeftUsd: 0 });
+    const moves = planFixes(given);
+    expect(moves.map((m) => m.in.name)).toEqual(['Ramp In 4']);
+    expect(nextFixMove(given)?.in.name).toBe('Ramp In 4');
+  });
+
+  it('never brings in an unpriced card to buy under a spend budget', () => {
+    const built = deck({ ramp: 6 });
+    // The test pool's cards carry no price.
+    expect(planFixes(input(built, { spendLeftUsd: 100 })).filter((m) => m.line === RAMP)).toEqual([]);
+  });
+
+  it('no budget is identical', () => {
+    const built = deck({ ramp: 5, draw: 14 });
+    expect(planFixes(input(built, { spendLeftUsd: undefined }))).toStrictEqual(planFixes(input(built)));
   });
 });

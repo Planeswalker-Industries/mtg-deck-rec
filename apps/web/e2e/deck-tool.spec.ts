@@ -315,3 +315,50 @@ withoutOfferSkip("offers a collection import on every visit until there is one",
   await page.goBack();
   await expect(offer).toBeVisible({ timeout: 30_000 });
 });
+
+test("the start form's budget opens and validates", async ({ page }) => {
+  await page.goto("/deck");
+  await expect(page.getByRole("combobox", { name: "Bracket" })).toHaveText("3 Upgraded");
+  const perCard = page.getByRole("textbox", { name: "Max per card" });
+  await expect(perCard).toBeHidden();
+  await page.getByRole("button", { name: "Set a budget" }).click();
+  // By text: Next's route announcer is a role="alert" too.
+  await perCard.fill("-1");
+  await expect(page.getByText("A budget can't be negative.")).toBeVisible();
+  await perCard.fill("abc");
+  await expect(page.getByText("Enter a price per card.")).toBeVisible();
+  await perCard.fill("5");
+  await expect(page.getByText("Enter a price per card.")).toBeHidden();
+  // $0 to spend without a collection can only use cards the player owns: the form says so and offers the import.
+  await page.getByRole("textbox", { name: "Max to spend" }).fill("0");
+  await expect(page.getByText("With $0 we can only use cards you own.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Import collection" })).toBeVisible();
+});
+
+/** Pastes the sample (estimated Bracket 3), asks for Bracket 2 and analyzes. */
+async function analyzeAtBracketTwo(page: Page) {
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("combobox", { name: "Bracket" }).click();
+  await page.getByRole("option", { name: "2 Core" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const warning = page.getByRole("dialog", { name: "Deck Bracket 3" });
+  await expect(warning).toBeVisible({ timeout: 60_000 });
+  await expect(warning.getByText("Your deck is above your selected bracket. We will reduce its power level to your selected Bracket (Bracket 2).")).toBeVisible();
+  return warning;
+}
+
+test("a deck above the chosen bracket warns; Cancel returns to Bracket", async ({ page }) => {
+  const warning = await analyzeAtBracketTwo(page);
+  await warning.getByRole("button", { name: "Cancel" }).click();
+  await expect(warning).toBeHidden();
+  await expect(page.getByRole("combobox", { name: "Bracket" })).toBeFocused();
+  await expect(page.getByRole("navigation", { name: "Deck upgrade steps" })).toBeHidden();
+});
+
+test("Proceed continues to the round", async ({ page }) => {
+  const warning = await analyzeAtBracketTwo(page);
+  await warning.getByRole("button", { name: "Proceed" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  await expect(page.getByRole("navigation", { name: "Deck upgrade steps" })).toBeVisible({ timeout: 60_000 });
+});

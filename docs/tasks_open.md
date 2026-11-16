@@ -8,15 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T091: Budgets
-
-**HIGH** · Frontend / Scoring / Database · Owner, 2026-11-14 · After T090 (on `feat/budgets` from `develop` once T090 merges)
-
-- [ ] Start form (paste and Choose commander): Bracket (default 3) and a collapsed "Set a budget" with Max per card and Max to spend; tiles stay ($0 + Cards I own = owned only); a pasted deck above the chosen bracket gets the "Deck Bracket X" dialog (Proceed, or Cancel to highlight Bracket)
-- [ ] `RecContext.budget` (contract bump): rank, Fix, combos and build drop unowned cards over the effective cap (and unpriced ones); Fix's auto plan and build keep a running spend, so the next card in the same role fills in; over-budget cards are never mentioned; budget replaces the build page's Ignore / Allow buying prompt
-- [ ] Deck stats footer: Deck stats · money spent (`$23/$50`, or `$23` without a budget, hidden at $0) · result-only score preview (`⬇ 8/9`); budget editable in the sheet; re-measure the phone buttons
-- [ ] Budget saved with decks in an owner-only `deck_budgets` table (`save_deck` parameter, `SavedDeckContents.budget` for the owner only) and restored on reopen; never shown on the saved deck page or copied by another user's duplicate
-
 ## T089: Fix follow-ups
 
 **MEDIUM** · Frontend / Decision · Left over from T087

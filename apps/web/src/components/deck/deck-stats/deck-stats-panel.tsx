@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { LevelBadge } from "./level";
+import { BudgetRow, type RoundBudget } from "./budget-row";
 import { STRIPES, StatBar } from "./stat-bar";
 
 /** A whole in percent: a curve column's full height, a chance of 1. */
@@ -339,7 +340,10 @@ export function DeckStatsPanel({
   combosAction,
   preview,
   after = null,
+  money = null,
 }: {
+  /** The round's money and the budget's fields (T091): the Budget row at the top. */
+  money?: RoundBudget | null;
   report: DeckStatsReport;
   /** Names for combo pieces. */
   cards: ReadonlyMap<CardId, CardSummary>;
@@ -367,6 +371,7 @@ export function DeckStatsPanel({
   const coloursHeading = useId();
   return (
     <div className="flex flex-col gap-4">
+      {money && <BudgetRow money={money} />}
       <p className="text-sm text-muted-foreground">Compared with {report.label}</p>
       <Group title="Mana">
         <ul className="flex flex-col gap-2.5">

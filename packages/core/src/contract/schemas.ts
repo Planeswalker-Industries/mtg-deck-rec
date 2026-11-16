@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import type { DeckInput, StatChoices } from './decks';
+import type { DeckBudget, DeckInput, StatChoices } from './decks';
 import type { ApiError, Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
-import type { OwnershipInput, RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
+import type { OwnershipInput, RecBudget, RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
 import type { CardTypeFilter } from './cards';
 import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
 
@@ -83,6 +83,36 @@ export const statChoicesSchema: InputSchema<StatChoices> = z
   .record(statLineKey, z.enum(['ignore', 'buy'], { error: 'A Deck stats choice is ignore or buy.' }), { error: 'Invalid Deck stats choices.' })
   .refine((choices) => Object.keys(choices).length <= MAX_STAT_CHOICES, { error: `At most ${MAX_STAT_CHOICES} Deck stats choices.` });
 
+/**
+ * Largest dollar amount a budget field takes. A budget only narrows results, so this is an input sanity bound, not an
+ * anti-abuse threshold (which would live in app_config): far above any Commander deck's cost.
+ */
+export const MAX_BUDGET_USD = 100_000;
+
+const usd = (message: string) =>
+  z
+    .number({ error: message })
+    .min(0, "A budget can't be negative.")
+    .max(MAX_BUDGET_USD, `A budget is at most $${MAX_BUDGET_USD.toLocaleString('en-US')}.`);
+
+const isEmpty = (budget: object) => Object.values(budget).every((value) => value === undefined);
+
+/** A request's budget (v37). An empty one parses to none. */
+export const budgetSchema: InputSchema<RecBudget | undefined> = z
+  .object(
+    { cardCapUsd: usd('Enter a price per card.').optional(), spendLeftUsd: usd('Enter an amount to spend.').optional() },
+    { error: 'Invalid budget.' },
+  )
+  .transform((budget) => (isEmpty(budget) ? undefined : budget));
+
+const deckBudgetFields: InputSchema<DeckBudget> = z.object(
+  { cardCapUsd: usd('Enter a price per card.').optional(), spendUsd: usd('Enter an amount to spend.').optional() },
+  { error: 'Invalid budget.' },
+);
+
+/** A budget as the player sets it and a saved deck keeps it (v37). An empty one parses to none. */
+export const deckBudgetSchema: InputSchema<DeckBudget | undefined> = deckBudgetFields.transform((budget) => (isEmpty(budget) ? undefined : budget));
+
 export const recContextSchema: InputSchema<RecContext> = z.object(
   {
     deck: deckInputSchema,
@@ -93,6 +123,7 @@ export const recContextSchema: InputSchema<RecContext> = z.object(
     ownership: ownershipSchema.nullable().default(null),
     ownershipMode: z.enum(['only', 'first'], { error: 'Invalid collection setting.' }).optional(),
     buyFor: z.array(statLineKey).max(MAX_STAT_CHOICES, 'Too many Deck stats lines.').optional(),
+    budget: budgetSchema.optional(),
   },
   { error: 'Missing deck.' },
 );
@@ -385,6 +416,8 @@ export const saveDeckInputSchema = z.object(
     bracket: z.literal([1, 2, 3, 4, 5], { error: 'Pick a bracket from 1 to 5.' }).optional(),
     original: deckInputSchema.optional(),
     statChoices: statChoicesSchema.optional(),
+    /** Kept as sent: an empty budget clears the stored one, an absent one keeps it. */
+    budget: deckBudgetFields.optional(),
   },
   request,
 );

@@ -1029,6 +1029,35 @@ export type Database = {
         }
         Relationships: []
       }
+      deck_budgets: {
+        Row: {
+          card_cap_usd: number | null
+          deck_id: string
+          spend_usd: number | null
+          updated_at: string
+        }
+        Insert: {
+          card_cap_usd?: number | null
+          deck_id: string
+          spend_usd?: number | null
+          updated_at?: string
+        }
+        Update: {
+          card_cap_usd?: number | null
+          deck_id?: string
+          spend_usd?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deck_budgets_deck_id_fkey"
+            columns: ["deck_id"]
+            isOneToOne: true
+            referencedRelation: "decks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deck_cards: {
         Row: {
           card_id: number
@@ -2177,6 +2206,7 @@ export type Database = {
       my_collection_entries: { Args: never; Returns: Json }
       my_collection_sharing: { Args: never; Returns: Json }
       my_collection_totals: { Args: never; Returns: Json }
+      my_deck_budget: { Args: { p_deck_id: string }; Returns: Json }
       my_owned_card_ids: { Args: never; Returns: number[] }
       new_deck_code: { Args: never; Returns: string }
       precompute_substitutes: {
@@ -2245,6 +2275,7 @@ export type Database = {
       save_deck: {
         Args: {
           p_bracket?: number
+          p_budget?: Json
           p_cards?: Json
           p_deck_id?: string
           p_name?: string

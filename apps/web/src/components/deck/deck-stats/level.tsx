@@ -37,6 +37,25 @@ export function LevelBadge({
 }
 
 /**
+ * "⬇ 8/9": the footer's score with a card on screen (T091), the result alone: green with an up arrow when higher, red
+ * with a down arrow when lower. No change reads as the level badge, since the score stays.
+ */
+export function ScoreResult({ okCount, total, now, level }: { okCount: number; total: number; now: number; level: DeckStatsLevel }) {
+  if (okCount === now) return <LevelBadge level={level} okCount={now} total={total} compact />;
+  const up = okCount > now;
+  const Icon = up ? ArrowUp : ArrowDown;
+  const tone = up ? "text-success" : "text-destructive";
+  return (
+    <span className={cn("inline-flex items-center gap-1 font-mono text-sm", tone)}>
+      <Icon aria-hidden className="size-4" strokeWidth={2.75} />
+      <span className="sr-only">With this card: </span>
+      {okCount}/{total}
+      <span className="sr-only">{up ? ", more lines in line" : ", fewer lines in line"}</span>
+    </span>
+  );
+}
+
+/**
  * "→ 4/11": the score answering the card on screen would give, beside the level badge: green with an up arrow when
  * higher, red with a down arrow when lower.
  */

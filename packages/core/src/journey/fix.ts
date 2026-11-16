@@ -2,6 +2,7 @@ import type { Bracket, CardId, CardSummary, ComboRef, FixCard, FixPool, StatChoi
 import { gameChangerLimit } from '../formats/commander/bracket';
 import { COMMANDER_DECK_SIZE } from '../formats/commander/validate';
 import { cardsOutsideBand, upperEdge } from '../scoring/bands';
+import { withinBudget } from '../scoring/budget';
 import { curveBucket, isFrontLand, statCardType } from '../scoring/curve';
 import { isBasicLand } from './builder';
 import { applyCard, cloneTally, toTallyCard, type BracketInput, type DeckTally, type TallyCard } from './deck-tally';
@@ -22,6 +23,8 @@ import { colourlessLandsIn, colourTarget, manaBase, manaLetters, sourceCredit, t
  *   the rest, best first. The first valid pair is the move.
  * - An in card the collection doesn't supply (`FixCard.buyFor`) comes in only for a line the player opened to buying,
  *   and after every card the collection supplies: buying is for what the collection can't do.
+ * - With money left to spend (`spendLeftUsd`, T091), an in card the player doesn't own and that isn't a basic land
+ *   comes in only while its price fits, and a plan lowers the money left by each one it brings in.
  *
  * Every move lowers the distance, so a plan ends. Pure: the scores are those the pool was fetched with.
  */
@@ -60,6 +63,8 @@ export interface FixInput {
   illegalIds: readonly CardId[];
   /** A line `nextFixMove` tries before the others (Deck stats' "Fix" on that line). Plans keep their own order. */
   focusLine?: string | undefined;
+  /** Money left to spend this round (T091); absent without a spend budget. An unpriced card to buy never fits it. */
+  spendLeftUsd?: number | undefined;
 }
 
 /** Why a line that is out of its band has no move left. */
@@ -79,6 +84,9 @@ export const MAX_FIX_MOVES = COMMANDER_DECK_SIZE - 1;
 
 /** Colour sources come in fractions (a Signet is 0.75): gaps closer than this are the same. */
 const GAP_EPSILON = 1e-6;
+
+/** Money in whole cents, so a running spend doesn't drift. */
+const roundCents = (usd: number) => Math.round(usd * 100) / 100;
 
 /** The lines the player can't choose to ignore: they are rules, not typical counts. */
 const NEVER_IGNORED: ReadonlySet<string> = new Set(['legal', 'bracket']);
@@ -131,6 +139,8 @@ interface Work {
   removed: Set<CardId>;
   kept: Set<CardId>;
   illegal: Set<CardId>;
+  /** Money left to spend; undefined without a spend budget. */
+  spendLeft: number | undefined;
 }
 
 /** The deck measured once: what a pair is compared against. */
@@ -302,8 +312,15 @@ const liveIns = (work: Work, line: Line): Candidate[] =>
   work.ins.filter(
     (c) =>
       (isBasicLand(c.card) || (!inDeck(work.tally, c.card.id) && !work.removed.has(c.card.id))) &&
-      (c.fix.buyFor === undefined || c.fix.buyFor.includes(line.line)),
+      (c.fix.buyFor === undefined || c.fix.buyFor.includes(line.line)) &&
+      affordable(work, c),
   );
+
+/** Whether the money left pays for a card: always for an owned card, a basic land, or without a spend budget. */
+const affordable = (work: Work, c: Candidate): boolean => withinBudget(c.fix.card, c.fix.owned !== null, isBasicLand(c.card), work.spendLeft ?? null);
+
+/** What bringing a card in costs: its price when the player doesn't own it and it isn't a basic land. */
+const costOf = (c: Candidate): number => (c.fix.owned !== null || isBasicLand(c.card) ? 0 : (c.fix.card.price?.usd ?? 0));
 
 /** Deck cards that may come out now: still in the deck, not added this round, not a kept combo piece. */
 const liveOuts = (work: Work): Candidate[] =>
@@ -421,6 +438,7 @@ function start(input: FixInput): Work {
     removed: new Set(),
     kept: new Set(input.protectedIds),
     illegal: new Set(input.illegalIds),
+    spendLeft: input.spendLeftUsd,
   };
 }
 
@@ -475,6 +493,7 @@ export function planFixes(input: FixInput): FixMove[] {
     // Copies of a basic land are all alike: one coming in doesn't pin the rest, and one going out may come back.
     if (!isBasicLand(next.in.card)) work.added.add(next.in.card.id);
     if (!isBasicLand(next.out.card)) work.removed.add(next.out.card.id);
+    if (work.spendLeft !== undefined) work.spendLeft = roundCents(work.spendLeft - costOf(next.in));
     moves.push(next.move);
   }
   return moves;

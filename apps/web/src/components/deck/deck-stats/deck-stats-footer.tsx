@@ -5,8 +5,9 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { LevelBadge, ScoreAfter } from "./level";
+import { LevelBadge, ScoreAfter, ScoreResult } from "./level";
 import { DeckStatsPanel, type StatAction } from "./deck-stats-panel";
+import { MoneySlot } from "./budget-row";
 
 /** A drag this far up the footer opens the sheet; shorter is a tap. */
 const SWIPE_OPEN_PX = 24;
@@ -21,9 +22,10 @@ type PanelProps = ComponentProps<typeof DeckStatsPanel>;
  * (globals.css, `data-deck-stats-dock`), and the host sets --deck-stats-dock so the swipe cards and sticky bars sit
  * above it.
  *
- * The bar reads "Deck stats ⚠ 3/11", and "→ 4/11" while a card is on screen: the score answering it would give (the
- * panel's `after`). The sheet's header repeats both, and the sheet marks each line the card moves or flips. What the
- * card changes also sits by the card (`StatChips`).
+ * The bar has three slots (T091): "Deck stats", the money the round spent ("$23/$50", once it spends), and the score,
+ * "⚠ 3/11", or the result alone ("⬇ 2/11") while a card is on screen: the score answering it would give (the panel's
+ * `after`). The sheet's header shows both scores, and the sheet marks each line the card moves or flips. What the card
+ * changes also sits by the card (`StatChips`).
  *
  * The sheet has one close control: its handle row (tap, or swipe down). SheetContent's own corner button is off.
  */
@@ -65,7 +67,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
           aria-expanded={open}
           // The sheet is only in the document while open, so the reference is too.
           aria-controls={open ? "deck-stats-sheet" : undefined}
-          className="page-column flex min-h-12 w-full cursor-pointer touch-none items-center justify-between gap-3 px-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+          className="page-column grid min-h-12 w-full cursor-pointer touch-none grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
           onPointerDown={(e) => {
             // Captured, so a mouse drag that leaves the bar still ends here.
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -88,10 +90,14 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             setOpen((o) => !o);
           }}
         >
-          <span className="font-heading text-base font-semibold">Deck stats</span>
-          <span className="flex shrink-0 items-center gap-2">
-            <LevelBadge level={report.level} okCount={report.okCount} total={report.total} compact />
-            {scoreAfter}
+          <span className="justify-self-start font-heading text-base font-semibold">Deck stats</span>
+          {panel.money ? <MoneySlot money={panel.money} /> : <span />}
+          <span className="flex shrink-0 items-center gap-2 justify-self-end">
+            {after ? (
+              <ScoreResult okCount={after.okCount} total={after.total} now={report.okCount} level={report.level} />
+            ) : (
+              <LevelBadge level={report.level} okCount={report.okCount} total={report.total} compact />
+            )}
             <ChevronUp aria-hidden className="size-5 text-muted-foreground" />
           </span>
         </button>
