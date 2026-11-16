@@ -37,7 +37,7 @@ export default function AdminApp({ userId, email }: AdminAppProps) {
   return (
     <BrowserRouter basename="/admin">
       <Admin
-        title="MTG Deck Rec admin"
+        title="Spell Chasm admin"
         dataProvider={adminDataProvider}
         authProvider={createAdminAuthProvider({ id: userId, fullName: email ?? undefined })}
         layout={AdminLayout}

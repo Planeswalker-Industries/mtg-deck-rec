@@ -125,7 +125,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
 
       {!deck.isOwner && (
         <p className="border-t border-seam pt-4 text-sm text-muted-foreground">
-          This deck was shared by someone using MTG Deck Rec.{" "}
+          This deck was shared by someone using Spell Chasm.{" "}
           <Link href={feedbackHref(`/decks/${deck.commanderSlug}/${deck.code}`)} className={TEXT_LINK}>
             Report it
           </Link>{" "}

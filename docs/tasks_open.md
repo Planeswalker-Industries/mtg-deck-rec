@@ -48,14 +48,18 @@ A migration drops `rec_add_candidates` (both overloads), `rec_swap_candidates`, 
 
 ## T033: Custom domain and SMTP
 
-**HIGH** · DevOps / Auth · Absorbs T002, whose dashboard steps are done · No domain bought yet
+**HIGH** · DevOps / Auth · Absorbs T002, whose dashboard steps are done · `spellchasm.com` bought at Namecheap (owner, 2026-11-16); the app is renamed Spell Chasm
 
-Moxfield's whitelist also wants a production domain (T044).
+Moxfield's whitelist also wants a production domain (T044). `www.spellchasm.com` is canonical and the apex redirects to it (Vercel's default, kept by the owner on 2026-11-16).
 
-1. Point a domain at the app. Move the URL settings to it: Supabase Site URL and redirect allow list, Vercel `NEXT_PUBLIC_SITE_URL`, the Google OAuth client's redirect URIs.
-2. Resend (free tier) or equivalent: verify the sending domain, set it in Supabase → Authentication → SMTP, and raise Rate Limits → emails per hour.
-
-- [ ] Sign-in emails arrive at a production rate on the domain, and the emailed-code form in `apps/web/src/components/auth/sign-in-form.tsx` is uncommented (closed T080 commented it out)
+- [x] Vercel (`mtg-app` → Domains) serves `www.spellchasm.com`, the apex redirects to it, and Namecheap DNS holds Vercel's records
+- [ ] Vercel `NEXT_PUBLIC_SITE_URL` = `https://www.spellchasm.com` (Production), then a redeploy: the value is baked in at build (on 2026-11-16 robots.txt still named `mtg-app-psi.vercel.app`)
+- [ ] Supabase → Authentication → URL Configuration: Site URL `https://www.spellchasm.com`, and both `https://www.spellchasm.com/**` and `https://spellchasm.com/**` in the redirect list
+- [x] Google OAuth: consent screen name, home page, privacy link and authorized domain on `spellchasm.com` (owner, 2026-11-16)
+- [ ] The VPS worker's `WEB_APP_URL` is `https://www.spellchasm.com`; Impact's property URL is the new domain; Archidekt is told the crawl's new User-Agent (`SpellChasm/0.1`)
+- [x] `yarn workspace @mtg/web smoke` passes against `https://www.spellchasm.com` (14/14, 2026-11-16)
+- [ ] Resend (free tier) or equivalent verifies the sending domain, Supabase → Authentication → SMTP uses it, and Rate Limits → emails per hour goes up; the hosted sign-in email template and subject say Spell Chasm
+- [ ] Sign-in emails arrive at a production rate, and the emailed-code form in `apps/web/src/components/auth/sign-in-form.tsx` is uncommented (closed T080 commented it out)
 - [ ] The share-link kill switch activates on 403/409 on hosted (`scripts/share-kill-switch-check.ts` covers it locally)
 
 ## T043: A crawl database role that is not `service_role`

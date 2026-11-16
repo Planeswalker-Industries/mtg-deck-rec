@@ -275,7 +275,7 @@ both variables together and keep the container limit at least 1.2 GB above the h
    | `DATABASE_URL` | Supabase → Connect → **Session pooler** (port 5432), the same string as the GitHub secret the daily sync uses |
    | `SEARCH_API_CRON_TOKEN` | the same value as on the search-api app |
    | `SEARCH_API_ADMIN_TOKEN` | the same value as on the search-api app |
-   | `WEB_APP_URL` | `https://mtg-app-psi.vercel.app` |
+   | `WEB_APP_URL` | `https://www.spellchasm.com` |
    | `REVALIDATE_SECRET` | the web app's `REVALIDATE_SECRET` in Vercel (Production) |
 
    `SEARCH_API_URL` is fixed in the compose file (`http://search-api:8080`). Leave `WORKER_MEM_LIMIT` and

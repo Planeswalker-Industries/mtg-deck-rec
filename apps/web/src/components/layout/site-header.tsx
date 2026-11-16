@@ -13,7 +13,7 @@ export function SiteHeader() {
           className="group order-0 mr-auto flex min-h-11 min-w-0 items-center gap-2 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary lg:mr-6"
         >
           <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-primary" />
-          <span className="font-heading text-xl leading-none font-semibold tracking-tight">MTG Deck Rec</span>
+          <span className="font-heading text-xl leading-none font-semibold tracking-tight">Spell Chasm</span>
         </Link>
         <div className="order-2 shrink-0 lg:ml-auto">
           <SiteSearch />

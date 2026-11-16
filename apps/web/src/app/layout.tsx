@@ -40,7 +40,7 @@ const mono = localFont({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "MTG Deck Rec", template: "%s | MTG Deck Rec" },
+  title: { default: "Spell Chasm", template: "%s | Spell Chasm" },
   description:
     "Commander deck recommendations built from the cards you already own. Import your collection, improve a deck, or swap into popular lists and skip the expensive singles.",
 };
