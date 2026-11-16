@@ -103,7 +103,15 @@ export function ReportsView() {
     }
     setProblem(null);
     const resolvedAt = resolved ? new Date().toISOString() : null;
-    setPage((prev) => (prev ? { ...prev, reports: prev.reports.map((r) => (r.id === report.id ? { ...r, resolvedAt } : r)) } : prev));
+    setPage((prev) =>
+      prev
+        ? {
+            reports: prev.reports.map((r) => (r.id === report.id ? { ...r, resolvedAt } : r)),
+            // The Open count follows the change at once; All counts every report either way.
+            total: filter === "open" ? prev.total + (resolved ? -1 : 1) : prev.total,
+          }
+        : prev,
+    );
     router.refresh();
   }
 

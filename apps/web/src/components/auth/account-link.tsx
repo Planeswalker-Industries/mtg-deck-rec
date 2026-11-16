@@ -21,12 +21,13 @@ export async function AccountLink() {
   if (!user) return <SignedOutNav />;
   const openReports = await openFeedbackReportCount(await createAuthClient());
   return (
-    <MainNav signedIn>
+    <MainNav signedIn openReports={openReports ?? 0}>
       <AccountCollectionSync />
+      {/* Wide screens only: a phone's header has no room for it, so there the menu button carries the count. */}
       {openReports !== null && openReports > 0 && (
         <Link
           href="/admin/reports"
-          className={`${LINK} w-auto gap-1 px-2.5`}
+          className={`${LINK} hidden w-auto gap-1 px-2.5 lg:flex`}
           aria-label={`${openReports} open feedback report${openReports === 1 ? "" : "s"}`}
         >
           <Inbox aria-hidden className="size-5" />
