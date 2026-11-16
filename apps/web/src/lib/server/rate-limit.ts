@@ -15,6 +15,7 @@ export type RateLimitBucket =
   | "vote"
   | "events"
   | "search"
+  | "feedback"
   | "admin";
 
 /** How many spent budgets one server instance remembers; past it, the oldest is forgotten (and asks the database again). */

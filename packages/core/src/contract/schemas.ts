@@ -25,6 +25,10 @@ const MAX_STAT_LINE_KEY_CHARS = 64;
 /** Most copies of one card a collection can hold, matching collection_items.quantity's check. */
 export const MAX_CARD_COPIES = 100_000;
 const MAX_COPIES = 250;
+/** A feedback report's length, matching feedback_reports.message's check. */
+export const MAX_FEEDBACK_CHARS = 2_000;
+/** The page a report was sent from, matching feedback_reports.page_path's check. */
+export const MAX_FEEDBACK_PATH_CHARS = 500;
 
 const cardId = (message: string) =>
   z
@@ -465,6 +469,22 @@ export const deckBuiltInputSchema = z.object(
 );
 
 export const deleteDeckInputSchema = z.object({ deckId: deckId('That deck is not valid.') }, request);
+
+/** A report and the path of the page it was sent from: a site path, never a full URL or a query string. */
+export const submitFeedbackInputSchema = z.object(
+  {
+    message: z
+      .string({ error: 'Write what you want to tell us.' })
+      .trim()
+      .min(1, 'Write what you want to tell us.')
+      .max(MAX_FEEDBACK_CHARS, `Keep it to ${MAX_FEEDBACK_CHARS.toLocaleString('en-US')} characters.`),
+    pagePath: z
+      .string({ error: 'That page is not valid.' })
+      .max(MAX_FEEDBACK_PATH_CHARS, 'That page is not valid.')
+      .regex(/^\/[^?#\s]*$/, 'That page is not valid.'),
+  },
+  request,
+);
 
 export function parseInput<T>(schema: InputSchema<T>, value: unknown): Result<T> {
   const parsed = schema.safeParse(value);

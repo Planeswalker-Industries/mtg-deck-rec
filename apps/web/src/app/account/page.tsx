@@ -32,8 +32,8 @@ async function AccountDetails() {
       <p>
         Signed in as <span className="font-semibold">{user.email ?? "your Google account"}</span>.
       </p>
-      {/* The only link to /admin anywhere. It isn't in the header because that would cost every signed-in visitor a
-          membership check on every page, to show a link almost nobody can use. */}
+      {/* The link to /admin itself. The header only links an admin to /admin/reports, and only while reports are
+          open. */}
       {(await isPlatformAdmin()) && (
         <div>
           <Link href="/admin" className={buttonVariants({ variant: "outline", className: "h-10 px-4" })}>
