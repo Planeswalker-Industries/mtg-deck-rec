@@ -395,6 +395,8 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
   const disabledTags = new Map<string, { reason: string; at: string }>();
   let collectionRows: ResolvedCollectionRow[] = [];
   let collectionSharing: CollectionSharing | null = null;
+  /** Feedback reports sent in this session; the mock only counts them for an id. */
+  let feedbackReports = 0;
 
   /** The mock collection folded to one entry per card, like `my_collection_entries`. */
   function collectionEntries(): CollectionEntry[] {
@@ -996,6 +998,11 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         .sort((a, b) => corpusScore(corpusFor(b.id)) - corpusScore(corpusFor(a.id)))
         .slice(0, 40);
       return delay(ok({ commanderKey: commanderKeyRef(ids), cards }), 400);
+    },
+
+    async submitFeedback() {
+      feedbackReports += 1;
+      return delay(ok({ id: feedbackReports }));
     },
   };
 

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: "What MTG Deck Rec collects, why, who else handles it, and how to delete your account.",
 };
 
-const UPDATED = "15 November 2026";
+const UPDATED = "16 November 2026";
 
 // Boilerplate drafted 2026-09-21 from how the app actually stores data; the owner's decisions are the retention of a
 // deleted account's email (abuse prevention) and the use of submitted data (recommendations only, never sold). The
@@ -68,6 +68,11 @@ export default function PrivacyPage() {
           <Item term="A salted hash of your IP address">
             To stop abuse we count requests per visitor. We never store your IP address itself, only a one-way hash of
             it mixed with a secret value. People sharing one network share one hash.
+          </Item>
+          <Item term="Feedback you send">
+            When you send feedback or report a deck, we keep your message, the page you sent it from, your account and the
+            time. Only the site&apos;s admins read it, to fix what it&apos;s about, and they don&apos;t see your email
+            address with it.
           </Item>
           <Item term="Commander deck lookups">
             When you ask us to gather decks for a commander, we keep the request and that salted hash, to apply limits.
@@ -139,7 +144,7 @@ export default function PrivacyPage() {
       <Section title="Deleting your account">
         <p>
           You can delete your account from your <Link href="/account" className={TEXT_LINK}>account page</Link>.
-          That removes your profile, your saved decks (their links stop working) and your collection. It can&apos;t be
+          That removes your profile, your saved decks (their links stop working), your collection and the feedback you sent. It can&apos;t be
           undone.
         </p>
         <p>Some things are kept after deletion:</p>
@@ -159,7 +164,11 @@ export default function PrivacyPage() {
 
       <Section title="Changes and questions">
         <p>
-          If this policy changes, the date at the top will change with it. Questions can go to the project&apos;s{" "}
+          If this policy changes, the date at the top will change with it. Questions can go to us through{" "}
+          <Link href="/feedback?from=/privacy" className={TEXT_LINK}>
+            Send feedback
+          </Link>{" "}
+          when you are signed in, or to the project&apos;s{" "}
           <a href="https://github.com/Planeswalker-Industries/mtg-deck-rec/issues" className={TEXT_LINK}>
             issue tracker
           </a>

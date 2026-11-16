@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { CircleUserRound, UserRound } from "lucide-react";
+import { CircleUserRound, Inbox, UserRound } from "lucide-react";
 import { AccountCollectionSync } from "@/components/collection/account-collection-sync";
-import { getCurrentUser } from "@/lib/server/auth";
+import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
+import { openFeedbackReportCount } from "@/lib/server/feedback";
 import { MainNav } from "@/components/layout/main-nav";
 
 const LINK =
@@ -11,13 +12,29 @@ const LINK =
  * Header navigation that depends on the session: account-only links and the account control. Reads the session, so
  * it sits behind <Suspense> with `SignedOutNav` as its fallback. Signed-in pages also move a collection saved in
  * this browser to the account.
+ *
+ * Platform admins also get the open feedback report count (T077). It costs every signed-in page one small read, which
+ * answers null for anyone else; it streams behind the same <Suspense>, so the page never waits for it.
  */
 export async function AccountLink() {
   const user = await getCurrentUser();
   if (!user) return <SignedOutNav />;
+  const openReports = await openFeedbackReportCount(await createAuthClient());
   return (
     <MainNav signedIn>
       <AccountCollectionSync />
+      {openReports !== null && openReports > 0 && (
+        <Link
+          href="/admin/reports"
+          className={`${LINK} w-auto gap-1 px-2.5`}
+          aria-label={`${openReports} open feedback report${openReports === 1 ? "" : "s"}`}
+        >
+          <Inbox aria-hidden className="size-5" />
+          <span aria-hidden className="font-mono text-sm">
+            {openReports}
+          </span>
+        </Link>
+      )}
       <Link href="/account" className={`${LINK} bg-primary text-primary-foreground hover:bg-primary/90`} aria-label="Your account">
         <UserRound aria-hidden className="size-5" />
       </Link>

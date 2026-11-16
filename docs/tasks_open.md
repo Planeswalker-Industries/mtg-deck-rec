@@ -18,15 +18,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] Three daily runs in a row without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
 - [ ] Run 20 (2026-10-13, still `running`) closed as failed, and a redeploy that kills a run leaves it marked failed
 
-## T077: Feedback reports
-
-**MEDIUM** · Database / Frontend · Owner, 2026-10-23 · Replaces the GitHub Report link until T003
-
-- [ ] A reports table written through a security-definer function keyed on `auth.uid()` (signed-in only), validated by a zod schema, rate-limited in `app_config.rate_limits`; it stores the message, the page URL and the time
-- [ ] "Send feedback" in the site footer or menu, and on deck pages in place of today's Report link (`apps/web/src/app/decks/[commander]/[code]/page.tsx`)
-- [ ] An admin list beside `/admin/crawls` (`noindex`, `no-store`): newest first, mark resolved, filter to open; platform admins see an open-report count badge in the header
-- [ ] `/privacy` says what a report stores and who reads it
-
 ## T068: Recommendation latency (PR #139 review)
 
 **MEDIUM** · Backend / Performance
@@ -218,7 +209,7 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 
 **LOW** · Shelved until the public release (owner, 2026-10-19); don't raise it before then
 
-The Report link on deck pages opens a prefilled GitHub issue until T077 replaces it. Pick the destination for the public release.
+Since T077 the Report link on deck pages opens the signed-in `/feedback` form. Decide whether signed-out visitors need another way to report a deck for the public release.
 
 ---
 
