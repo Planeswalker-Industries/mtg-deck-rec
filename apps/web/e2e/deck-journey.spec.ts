@@ -397,7 +397,7 @@ test("Add's combos: ready and upgrade sections, and Add Combo", async ({ page })
   if (!(await upgrades.getAttribute("open").then((v) => v !== null))) await upgrades.locator("summary").click();
   await expect(upgrades.getByText("Win the game")).toBeVisible();
   await expect(upgrades.getByRole("link", { name: "via Counterspell" })).toHaveAttribute("href", /commanderspellbook\.com\/combo\/mock-combo-2\//);
-  await expect(upgrades.getByText(/^About \$/).first()).toBeVisible();
+  await expect(upgrades.getByText(/^From \$/).first()).toBeVisible();
 
   const before = await deckCount(recs);
   await upgrades.getByRole("button", { name: /^Add Swan Song/ }).click();
