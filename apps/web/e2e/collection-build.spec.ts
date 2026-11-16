@@ -80,6 +80,59 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await expect(sitting.getByText(/^From \$/)).toBeVisible();
 });
 
+test("a collection build asks about each gap: Allow buying adds cards to buy, Ignore leaves the line out (T089)", async ({ page }) => {
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection import").fill(SMALL_COLLECTION);
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+
+  await page.goto("/deck?start=build");
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
+
+  // Continue waits for an answer to every line the collection ran out of.
+  const gaps = built.getByRole("list", { name: "What your collection ran out of" });
+  const answers = gaps.getByRole("group").first();
+  await expect(answers).toBeVisible();
+  const label = (await answers.getAttribute("aria-label"))!.replace(/: ignore it or allow buying$/, "");
+  await expect(built.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await expect(built.getByText("Choose Ignore or Allow buying for each to continue.")).toBeVisible();
+
+  // Allow buying builds again with cards the collection lacks, each marked with its price, and the cost to buy them.
+  await answers.getByRole("button", { name: "Allow buying" }).click();
+  await expect(answers.getByRole("button", { name: "Allow buying" })).toHaveAttribute("aria-pressed", "true", { timeout: RECS_WAIT_MS });
+  await expect(built.getByText(/^Not owned · /).first()).toBeVisible({ timeout: RECS_WAIT_MS });
+  await expect(built.getByText(/^\d+ cards? to buy, about \$/)).toBeVisible();
+
+  // Ignore builds from the collection alone again; the line stays listed so the answer can still change.
+  await answers.getByRole("button", { name: "Ignore", exact: true }).click();
+  await expect(answers.getByRole("button", { name: "Ignore", exact: true })).toHaveAttribute("aria-pressed", "true", { timeout: RECS_WAIT_MS });
+  await expect(built.getByText(/^Not owned · /)).toHaveCount(0, { timeout: RECS_WAIT_MS });
+  await expect(built.getByText(/^\d+ cards? to buy, about \$/)).toHaveCount(0);
+  await ignoreBuildGaps(page);
+  await built.getByRole("button", { name: "Continue" }).click();
+
+  // In Deck stats the ignored line is grey, marked Ignored, and out of the score; a refresh brings the answer back.
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
+  const ignoredLine = async () => {
+    await page.getByRole("button", { name: FOOTER_NAME }).click();
+    const sheet = page.getByRole("dialog", { name: "Deck stats" });
+    const line = sheet.getByRole("listitem").filter({ has: page.getByText(label, { exact: true }) }).first();
+    await expect(line.getByRole("img", { name: "Ignored" })).toBeVisible({ timeout: RECS_WAIT_MS });
+    await expect(line.getByText("Ignored", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sheet).toBeHidden();
+  };
+  await ignoredLine();
+  await page.reload();
+  await page.getByRole("dialog", { name: /^Continue with / }).getByRole("button", { name: "Yes" }).click();
+  await expect(recs).toBeVisible({ timeout: RECS_WAIT_MS });
+  await ignoredLine();
+});
+
 test("owned suggestions carry the corner marker where they mix with cards to buy, and none in Owned only", async ({ page }) => {
   await page.goto("/collection/import");
   await page.getByLabel("Collection import").fill(

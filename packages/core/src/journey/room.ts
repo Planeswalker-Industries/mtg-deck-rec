@@ -27,8 +27,6 @@ export interface TrimInput {
   cutScores: ReadonlyMap<CardId, number>;
   /** Cards never offered: the ones the player chose to keep, and the ones added this round. */
   spared: ReadonlySet<CardId>;
-  /** Only offer cards that fill this role: the player asked to trim it. */
-  focusRoleId?: string | null;
 }
 
 /** Sorts a card off the cut list after every listed one: cut scores run 0..1. */
@@ -45,20 +43,14 @@ const overTarget = (r: RoomRole) => r.value > r.target && !withinTolerance(r.val
  * Never a card that fills a role the deck is short of, and never a land unless the deck has too many. Cards outside
  * every tier are what the deck is built around, so they aren't offered; the list view still cuts anything.
  */
-export function trimCuts({ cards, roles, landsOver, cutScores, spared, focusRoleId = null }: TrimInput): CardId[] {
+export function trimCuts({ cards, roles, landsOver, cutScores, spared }: TrimInput): CardId[] {
   const over = new Set(roles.filter(overTarget).map((r) => r.roleId));
   const short = new Set(roles.filter(shortOfTarget).map((r) => r.roleId));
   const tracked = new Set(roles.map((r) => r.roleId));
   const tracks = (c: RoomCard) => c.roles.filter((r) => tracked.has(r));
   const allOver = (c: RoomCard) => tracks(c).length > 0 && tracks(c).every((r) => over.has(r));
 
-  const offered = cards.filter(
-    (c) =>
-      (landsOver || !c.isLand) &&
-      !spared.has(c.id) &&
-      !c.roles.some((r) => short.has(r)) &&
-      (focusRoleId === null || c.roles.includes(focusRoleId)),
-  );
+  const offered = cards.filter((c) => (landsOver || !c.isLand) && !spared.has(c.id) && !c.roles.some((r) => short.has(r)));
   const byCut = (a: RoomCard, b: RoomCard) => (cutScores.get(b.id) ?? 0) - (cutScores.get(a.id) ?? 0) || a.id - b.id;
   const listed = offered.filter((c) => cutScores.has(c.id));
   const surplusListed = listed.filter(allOver).sort(byCut);
