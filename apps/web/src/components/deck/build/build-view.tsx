@@ -3,15 +3,15 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { ChevronDown, CircleCheck, CircleHelp, Info, LoaderCircle, TriangleAlert } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleHelp, Info, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
-import { CURVE_LINE, cardsShort, deckDiff, shortOfTarget, type StatLine } from "@mtg/core/journey";
+import { CURVE_LINE, cardsShort, deckDiff, shortOfTarget, sortCards, type CardSort, type StatLine } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
 import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { CommanderPlate } from "@/components/cards/commander-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
-import { DeckViewToggle, useDeckView, type DeckView } from "@/components/decks/deck-view";
+import { DeckViewToggle, SortMenu, useCardSort, useDeckView, type DeckView } from "@/components/decks/deck-view";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -33,6 +33,12 @@ import { useBuildStats } from "./use-build-stats";
 
 /** What the open slots panel says, inline from sm up and behind its (?) on phones. */
 const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue and we'll fill the missing pieces together.";
+
+/** What the overlay says while Continue or Save for Later opens the deck. */
+const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }> = {
+  upgrade: { label: "Opening your deck", detail: "Reading the 100 cards and lining up upgrades. A few seconds." },
+  save: { label: "Opening the Deckbuilder", detail: "You'll name the deck next." },
+};
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
@@ -169,18 +175,21 @@ function BracketEstimate({ asked, estimated }: { asked: Bracket; estimated: Brac
 }
 
 /**
- * One group of the build's cards, as whole card images or as plates (the toggle above the groups). In the image grid a
- * card with several copies says how many; `alwaysCount` says it for one copy too (basic lands).
+ * One group of the build's cards, as whole card images or as plates (the toggle above the groups), in the sort chosen
+ * above them. In the image grid a card with several copies says how many; `alwaysCount` says it for one copy too
+ * (basic lands).
  */
 function BuildCards({
   view,
+  sort,
   label,
-  entries,
+  entries: unsorted,
   mark,
   alwaysCount = false,
   onSelect,
 }: {
   view: DeckView;
+  sort: CardSort;
   label: string;
   /** `note`: a line under a card's image, e.g. that it isn't owned and what it costs. */
   entries: readonly { card: CardSummary; quantity: number; note?: string }[];
@@ -189,6 +198,7 @@ function BuildCards({
   /** Opens a card's zoom with its score. */
   onSelect?: (cardId: CardId) => void;
 }) {
+  const entries = sortCards(unsorted, sort, (e) => e.card);
   if (view === "plates") {
     return (
       <ul aria-label={label} className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -243,7 +253,7 @@ function BuildSection({ id, title, className, children }: { id: string; title: R
   );
 }
 
-function FitChanges({ request, result, view }: { request: BuildRequest; result: BuildResult; view: DeckView }) {
+function FitChanges({ request, result, view, sort }: { request: BuildRequest; result: BuildResult; view: DeckView; sort: CardSort }) {
   const list = request.list;
   const diff = fitDiff(request, result);
   if (!list || !diff) return null;
@@ -254,7 +264,7 @@ function FitChanges({ request, result, view }: { request: BuildRequest; result: 
       return card ? [{ card, quantity }] : [];
     });
   const grid = (entries: { card: CardSummary; quantity: number }[], label: string, mark: "cut" | "add") => (
-    <BuildCards view={view} label={label} entries={entries} mark={mark} />
+    <BuildCards view={view} sort={sort} label={label} entries={entries} mark={mark} />
   );
   const out = named(diff.removed, list.cards);
   const into = named(diff.added, built);
@@ -304,6 +314,7 @@ export function BuildView({
   onPickAnother: () => void;
 }) {
   const [view, setView] = useDeckView("build");
+  const [sort, setSort] = useCardSort("build");
   const [detail, setDetail] = useState<CardId | null>(null);
   const [opening, setOpening] = useState<"upgrade" | "save" | null>(null);
   /** Set at once, so a second tap before the re-render can't open the deck twice. */
@@ -341,15 +352,6 @@ export function BuildView({
       setOpening(null);
     }
   }
-  const busy = (kind: "upgrade" | "save", label: string) =>
-    opening === kind ? (
-      <>
-        <LoaderCircle aria-hidden className="motion-safe:animate-spin" />
-        Opening…
-      </>
-    ) : (
-      label
-    );
   const { request } = state;
   const fitting = request.list !== undefined;
   const commanderName = request.commanders.map((c) => c.name).join(" and ");
@@ -427,17 +429,8 @@ export function BuildView({
 
   return (
     <section aria-label="Your built deck" className="flex flex-col gap-6">
-      {/* Taking the list away sits under the plate, apart from the two ways on. */}
-      <div className="flex flex-col gap-2">
-        {header}
-        <div className="flex justify-end">
-          <UnsavedDeckExport
-            text={decklist}
-            csv={buildDecklistCsv(result)}
-            commanders={result.commanderKey.commanders.map((c) => c.name)}
-          />
-        </div>
-      </div>
+      {header}
+      {opening !== null && <ShuffleDeck {...OPENING_COPY[opening]} loader />}
 
       <div className="flex flex-col gap-4 rounded-panel border border-seam bg-sleeve p-4 sm:p-5">
         {request.list && fit && <p>{fitSummary(copies(request.list.entries), copies(fit.removed), copies(fit.added))}</p>}
@@ -470,7 +463,7 @@ export function BuildView({
             aria-busy={opening === "upgrade"}
             onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
           >
-            {busy("upgrade", "Continue")}
+            Continue
           </Button>
           <Button
             type="button"
@@ -481,7 +474,7 @@ export function BuildView({
             aria-busy={opening === "save"}
             onClick={() => void openDeck("save", onSave, decklist)}
           >
-            {busy("save", "Save for Later")}
+            Save for Later
           </Button>
         </div>
       </div>
@@ -495,37 +488,46 @@ export function BuildView({
           to build from the cards you own instead.
         </p>
       )}
-      {/* On phones the open slots panel shares a row with the view toggle, so the cards start higher. */}
-      <div className="flex items-center gap-2 sm:flex-col sm:items-stretch sm:gap-6">
-        {fromCollection && open > 0 && (
-          // The buy side is shelved. The slot it will fill stays visible, honestly empty.
-          <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:py-0">
-            {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
-            <div className="flex items-center justify-between gap-2">
-              <h2 id="build-open-slots" className="font-semibold max-sm:text-sm">
-                {count(open, "open slot")}
-              </h2>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon" className={cn(PHONE_HIT_AREA, "sm:hidden")} aria-label="What open slots mean">
-                    <CircleHelp aria-hidden />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{count(open, "open slot")}</DialogTitle>
-                    <DialogDescription>{OPEN_SLOTS_HELP}</DialogDescription>
-                  </DialogHeader>
-                </DialogContent>
-              </Dialog>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>
-          </aside>
-        )}
-        <DeckViewToggle view={view} onChange={setView} className="ml-auto max-sm:self-center" />
+      {fromCollection && open > 0 && (
+        // The buy side is shelved. The slot it will fill stays visible, honestly empty.
+        <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:px-3 max-sm:py-1">
+          {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="build-open-slots" className="font-semibold max-sm:text-sm">
+              {count(open, "open slot")}
+            </h2>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className={cn(PHONE_HIT_AREA, "sm:hidden")} aria-label="What open slots mean">
+                  <CircleHelp aria-hidden />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{count(open, "open slot")}</DialogTitle>
+                  <DialogDescription>{OPEN_SLOTS_HELP}</DialogDescription>
+                </DialogHeader>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>
+        </aside>
+      )}
+      {/* One toolbar row: taking the list away on the left, how the cards show on the right. */}
+      <div className="flex items-center justify-between gap-2">
+        <UnsavedDeckExport
+          text={decklist}
+          csv={buildDecklistCsv(result)}
+          commanders={result.commanderKey.commanders.map((c) => c.name)}
+          iconOnly
+        />
+        <div className="flex items-center gap-1">
+          <DeckViewToggle view={view} onChange={setView} className="self-center" />
+          <SortMenu sort={sort} onChange={setSort} />
+        </div>
       </div>
 
-      <FitChanges request={request} result={result} view={view} />
+      <FitChanges request={request} result={result} view={view} sort={sort} />
 
       {result.groups.map((group) => (
         <BuildSection
@@ -539,6 +541,7 @@ export function BuildView({
         >
           <BuildCards
             view={view}
+            sort={sort}
             label={cardCategoryLabel[group.category]}
             entries={group.cards.map((c) => ({ card: c.card, quantity: 1, ...noteFor(c) }))}
             onSelect={setDetail}
@@ -554,7 +557,7 @@ export function BuildView({
             </>
           }
         >
-          <BuildCards view={view} label="Basic Lands" entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))} alwaysCount />
+          <BuildCards view={view} sort={sort} label="Basic Lands" entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))} alwaysCount />
         </BuildSection>
       )}
       {detailCard && (

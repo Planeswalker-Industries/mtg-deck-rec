@@ -91,6 +91,18 @@
 
   --shadow-lift: var(--lift);
   --ease-table: cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* An unknown-length job: about 1.4 s a pass reads as working without looking frantic. */
+  --animate-progress-sweep: progress-sweep 1.4s ease-in-out infinite;
+}
+
+/* A third-width pill slides from off the track's left edge to off its right edge (translate is the pill's own width). */
+@keyframes progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
 }
 
 :root {

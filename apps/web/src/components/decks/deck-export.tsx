@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, ClipboardCopy, Download } from "lucide-react";
+import { Check, ChevronDown, ClipboardCopy, Download } from "lucide-react";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { deckFileName, downloadText } from "@/lib/deck-download";
@@ -34,6 +35,7 @@ export function CopyDecklistButton({
   size = "sm",
   disabled = false,
   short = false,
+  iconOnly = false,
 }: {
   /** The decklist, or a function that builds it at the moment of copying. */
   text: string | (() => string | null);
@@ -41,6 +43,8 @@ export function CopyDecklistButton({
   disabled?: boolean;
   /** A clipboard icon and "Copy", for a row of buttons. */
   short?: boolean;
+  /** The clipboard icon alone (a check while "copied"), for a toolbar. */
+  iconOnly?: boolean;
 }) {
   const [copy, setCopy] = useState<CopyState>("idle");
 
@@ -64,10 +68,16 @@ export function CopyDecklistButton({
 
   return (
     <>
-      <Button variant="outline" size={size} onClick={copyText} disabled={disabled} {...(short ? { "aria-label": "Copy decklist" } : {})}>
-        {short && <ClipboardCopy aria-hidden />}
-        {(short ? SHORT_COPY_LABEL : COPY_LABEL)[copy]}
-      </Button>
+      {iconOnly ? (
+        <Button variant="ghost" size="icon" onClick={copyText} disabled={disabled} aria-label="Copy decklist">
+          {copy === "copied" ? <Check aria-hidden /> : <ClipboardCopy aria-hidden />}
+        </Button>
+      ) : (
+        <Button variant="outline" size={size} onClick={copyText} disabled={disabled} {...(short ? { "aria-label": "Copy decklist" } : {})}>
+          {short && <ClipboardCopy aria-hidden />}
+          {(short ? SHORT_COPY_LABEL : COPY_LABEL)[copy]}
+        </Button>
+      )}
       <span role="status" aria-live="polite" className="sr-only">
         {copy === "copied" ? "Decklist copied to the clipboard" : copy === "failed" ? "Couldn't copy the decklist" : ""}
       </span>
@@ -77,15 +87,20 @@ export function CopyDecklistButton({
 
 const CSV_TYPE = "text/csv;charset=utf-8";
 
-/** Copy beside a Download menu of the text file and the CSV, each a link (`href`) or built in the browser (`onSelect`). */
+/**
+ * Copy beside a Download menu of the text file and the CSV, each a link (`href`) or built in the browser (`onSelect`).
+ * `iconOnly` drops the words, for a toolbar row.
+ */
 function ExportRow({
   text,
   txt,
   csv,
+  iconOnly = false,
 }: {
   text: string;
   txt: { href: string } | { onSelect: () => void };
   csv: { href: string } | { onSelect: () => void };
+  iconOnly?: boolean;
 }) {
   const item = (format: { href: string } | { onSelect: () => void }, label: string) =>
     "href" in format ? (
@@ -100,15 +115,21 @@ function ExportRow({
       </DropdownMenuItem>
     );
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <CopyDecklistButton text={text} short />
+    <div className={cn("flex flex-wrap items-center", iconOnly ? "gap-1" : "gap-2")}>
+      <CopyDecklistButton text={text} short iconOnly={iconOnly} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm">
-            <Download aria-hidden />
-            Download
-            <ChevronDown aria-hidden />
-          </Button>
+          {iconOnly ? (
+            <Button type="button" variant="ghost" size="icon" aria-label="Download decklist">
+              <Download aria-hidden />
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" size="sm">
+              <Download aria-hidden />
+              Download
+              <ChevronDown aria-hidden />
+            </Button>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           {item(txt, "Text (.txt)")}
@@ -125,9 +146,10 @@ function ExportRow({
  * The copied text is the same decklist the text download holds, built on the server beside the page, so copying
  * needs no request. Downloads go to the export route, which checks visibility the same way the page does.
  */
-export function DeckExport({ text, commanderSlug, code }: { text: string; commanderSlug: string; code: string }) {
+export function DeckExport({ text, commanderSlug, code, iconOnly = false }: { text: string; commanderSlug: string; code: string; iconOnly?: boolean }) {
   return (
     <ExportRow
+      iconOnly={iconOnly}
       text={text}
       txt={{ href: deckExportHref(commanderSlug, code, "txt") }}
       csv={{ href: deckExportHref(commanderSlug, code, "csv") }}
@@ -136,9 +158,20 @@ export function DeckExport({ text, commanderSlug, code }: { text: string; comman
 }
 
 /** The same Copy and Download for a deck that isn't saved: it has no export route, so the files are built here. */
-export function UnsavedDeckExport({ text, csv, commanders }: { text: string; csv: string; commanders: string[] }) {
+export function UnsavedDeckExport({
+  text,
+  csv,
+  commanders,
+  iconOnly = false,
+}: {
+  text: string;
+  csv: string;
+  commanders: string[];
+  iconOnly?: boolean;
+}) {
   return (
     <ExportRow
+      iconOnly={iconOnly}
       text={text}
       txt={{ onSelect: () => downloadText(text, deckFileName(commanders)) }}
       csv={{ onSelect: () => downloadText(csv, deckFileName(commanders, "csv"), CSV_TYPE) }}
