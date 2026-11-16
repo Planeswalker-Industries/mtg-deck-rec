@@ -81,7 +81,7 @@ export function MainNav({ signedIn, children }: { signedIn: boolean; children: R
           <SheetContent side="top" showCloseButton={false} className="gap-0 border-seam bg-sleeve lg:hidden">
             <div className="flex h-14 items-center justify-between border-b border-seam px-4">
               <SheetTitle className="text-xl font-semibold">Menu</SheetTitle>
-              <SheetDescription className="sr-only">Pages on MTG Deck Rec</SheetDescription>
+              <SheetDescription className="sr-only">Pages on Spell Chasm</SheetDescription>
               <SheetClose className={ICON_BUTTON} aria-label="Close menu">
                 <X aria-hidden className="size-5" />
               </SheetClose>

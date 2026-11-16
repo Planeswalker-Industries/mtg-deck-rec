@@ -5,7 +5,7 @@ import { TEXT_LINK } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "Privacy policy",
-  description: "What MTG Deck Rec collects, why, who else handles it, and how to delete your account.",
+  description: "What Spell Chasm collects, why, who else handles it, and how to delete your account.",
 };
 
 const UPDATED = "15 November 2026";
@@ -23,7 +23,7 @@ export default function PrivacyPage() {
       </header>
 
       <p>
-        MTG Deck Rec is a hobby project that suggests cards for Commander decks. This page explains what we collect when
+        Spell Chasm is a hobby project that suggests cards for Commander decks. This page explains what we collect when
         you use it, what we do with it, how the site pays for itself, and what you can do about it.
       </p>
 
@@ -177,7 +177,7 @@ export default function PrivacyPage() {
           . Card roles come from the Scryfall Tagger project. Prices are estimates and may be out of date.
         </p>
         <p>
-          MTG Deck Rec is unofficial Fan Content permitted under the{" "}
+          Spell Chasm is unofficial Fan Content permitted under the{" "}
           <a href="https://company.wizards.com/en/legal/fancontentpolicy" className={TEXT_LINK}>
             Fan Content Policy
           </a>
