@@ -35,6 +35,7 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  await page.getByRole("button", { name: "Build deck" }).click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
   await expect(built.getByText(/^\d+ match(es)?$/)).toBeVisible();
@@ -89,6 +90,7 @@ test("a collection build asks about each gap: Allow buying adds cards to buy, Ig
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  await page.getByRole("button", { name: "Build deck" }).click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
 
@@ -168,6 +170,7 @@ test("a built deck shows its bracket estimate, and a card's score on tap", async
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  await page.getByRole("button", { name: "Build deck" }).click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
   await expect(built.getByText(/^(Over bracket|Bracket) \d\s*Estimated$/)).toBeVisible();
@@ -188,6 +191,7 @@ test("a refresh after Continue offers the deck back with its choices", async ({ 
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  await page.getByRole("button", { name: "Build deck" }).click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
   await built.getByRole("button", { name: "Continue" }).click();

@@ -258,8 +258,12 @@ test("a name search's next page continues the list rather than repeating it", as
 test("builds a deck for a picked commander, then goes through it card by card", async ({ page }) => {
   await page.goto("/deck?start=build");
   // Chulane is the mock catalog's one commander, and a popular one in the real catalog.
+  const build = page.getByRole("button", { name: "Build deck" });
+  // Nothing to build until a commander is picked; the pick alone builds nothing.
+  await expect(build).toBeDisabled();
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: 30_000 });
+  await build.click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: 90_000 });
   // Without a collection the build draws on every card, and says how to build from owned cards instead.
@@ -316,12 +320,10 @@ withoutOfferSkip("offers a collection import on every visit until there is one",
   await expect(offer).toBeVisible({ timeout: 30_000 });
 });
 
-test("the start form's budget opens and validates", async ({ page }) => {
+test("the start form's budget validates", async ({ page }) => {
   await page.goto("/deck");
   await expect(page.getByRole("combobox", { name: "Bracket" })).toHaveText("3 Upgraded");
   const perCard = page.getByRole("textbox", { name: "Max per card" });
-  await expect(perCard).toBeHidden();
-  await page.getByRole("button", { name: "Set a budget" }).click();
   // By text: Next's route announcer is a role="alert" too.
   await perCard.fill("-1");
   await expect(page.getByText("A budget can't be negative.")).toBeVisible();
