@@ -202,6 +202,8 @@ test("a bracket the deck no longer fits, chosen during Swap or Finish, sends the
   await expect(steps.getByRole("button", { name: "Fix" })).toHaveAttribute("aria-current", "step");
   await expect(bracketLine(2)).toBeVisible({ timeout: 60_000 });
 
+  // From Fix the stepper reaches Finish through Swap.
+  await openSwap(page);
   await steps.getByRole("button", { name: "Finish" }).click();
   await expect(steps.getByRole("button", { name: "Finish" })).toHaveAttribute("aria-current", "step");
   await bracket.click();

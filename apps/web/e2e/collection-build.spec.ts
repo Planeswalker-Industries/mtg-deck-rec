@@ -95,7 +95,8 @@ test("a collection build asks about each gap: Allow buying adds cards to buy, Ig
   // Continue waits for an answer to every line the collection ran out of.
   const gaps = built.getByRole("list", { name: "What your collection ran out of" });
   const answers = gaps.getByRole("group").first();
-  await expect(answers).toBeVisible();
+  // The line's name comes once the built deck's stats are in; until then it reads "A Deck stats line".
+  await expect(answers).not.toHaveAttribute("aria-label", /^A Deck stats line/, { timeout: RECS_WAIT_MS });
   const label = (await answers.getAttribute("aria-label"))!.replace(/: ignore it or allow buying$/, "");
   await expect(built.getByRole("button", { name: "Continue" })).toBeDisabled();
   await expect(built.getByText("Choose Ignore or Allow buying for each to continue.")).toBeVisible();
