@@ -13,7 +13,8 @@
     "./scoring": "./src/scoring/index.ts",
     "./search": "./src/search/index.ts",
     "./collection": "./src/collection/index.ts",
-    "./journey": "./src/journey/index.ts"
+    "./journey": "./src/journey/index.ts",
+    "./shop": "./src/shop/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

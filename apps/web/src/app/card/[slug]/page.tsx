@@ -1,5 +1,6 @@
 import type { CommanderLegality } from "@mtg/core/contract";
 import { swapMatchLabel } from "@mtg/core/scoring";
+import { productUrl, searchUrl } from "@mtg/core/shop";
 import { cn } from "cn";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -12,10 +13,11 @@ import { RulesText } from "@/components/cards/rules-text";
 import { GameChangerBadge } from "@/components/deck/card-label";
 import { buttonVariants } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
-import { describeCostDelta, formatAsOf, formatPercent, formatUsd } from "@/lib/format";
+import { describeCostDelta, formatAsOf, formatPercent, fromPrice } from "@/lib/format";
 import { emptySwapMessage } from "@/lib/labels";
 import { getCardPage } from "@/lib/server/recs-cache";
-import { TEXT_LINK } from "@/lib/constants";
+import { AFFILIATE_DISCLOSURE, TEXT_LINK } from "@/lib/constants";
+import { affiliateOn, cardLink, OUTBOUND } from "@/lib/affiliate";
 
 const LEGALITY: Record<CommanderLegality, string> = {
   legal: "Legal in Commander",
@@ -50,7 +52,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
   const page = await getCardPage(slug);
   if (!page) notFound();
 
-  const { card, alternatives, playedWith, commanderSlug, artist } = page;
+  const { card, alternatives, playedWith, commanderSlug, artist, tcgplayerProductId } = page;
   const name = displayName(card);
   const faces = card.faces ?? [{ name: card.name, manaCost: "", typeLine: card.typeLine, oracleText: card.oracleText ?? "" }];
   const priceAsOf = card.price?.asOf ?? alternatives.suggestions.find((s) => s.costDelta.asOf)?.costDelta.asOf ?? null;
@@ -108,7 +110,19 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
                 <GameChangerBadge />
               </li>
             )}
-            <li className="font-mono">{card.price ? `About ${formatUsd(card.price.usd)}` : "No price"}</li>
+            <li className="font-mono">
+              {card.price ? (
+                <a
+                  href={cardLink(tcgplayerProductId === null ? searchUrl(card.name) : productUrl(tcgplayerProductId))}
+                  {...OUTBOUND}
+                  className={TEXT_LINK}
+                >
+                  {fromPrice(card.price)} on TCGplayer
+                </a>
+              ) : (
+                fromPrice(card.price)
+              )}
+            </li>
           </ul>
 
           {card.tags.length > 0 && (
@@ -184,6 +198,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
 
       <footer className="flex max-w-prose flex-col gap-1 text-xs text-muted-foreground">
         {priceAsOf && <p>Prices are Scryfall estimates from {formatAsOf(priceAsOf)}.</p>}
+        {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
         <p>
           Deck counts come from decks shared publicly on{" "}
           <a href="https://archidekt.com" className={TEXT_LINK}>

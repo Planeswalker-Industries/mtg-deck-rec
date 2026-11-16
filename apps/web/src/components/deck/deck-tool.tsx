@@ -9,6 +9,7 @@ import type { CardId, CardSummary, DeckAnalysis, StatChoices } from "@mtg/core/c
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import { BRACKET_LINE, CURVE_LINE, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
+import { missingFromCoverage } from "@mtg/core/shop";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -272,6 +273,17 @@ function DeckToolSession() {
   });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
   const coverage = useDeckCoverage(journey.deck, source, tool.openDeck?.deckId, coverageEnabled && !collectionRefreshing);
+  // Finish's shopping list: copies the collection doesn't supply. Undefined while the collection loads, refreshes or is
+  // checked, so a collector never sees the no-collection list flash first. Null without a collection, where coverage is
+  // off (build mode, a stale deck) or on an error: the list then offers this round's cards or the whole deck.
+  const coverageData = coverage?.status === "ready" ? coverage.data.coverage : null;
+  const hasCollectionSource = source.kind === "browser" || source.kind === "account";
+  const coverageChecking =
+    coverageEnabled && (source.kind === "loading" || (hasCollectionSource && coverage?.status !== "ready" && coverage?.status !== "error"));
+  const coverageMissing = useMemo(
+    () => (coverageChecking ? undefined : coverageData ? missingFromCoverage(coverageData) : null),
+    [coverageChecking, coverageData],
+  );
   const hasWorkingDeck = journey.deck !== null;
   useEffect(() => {
     if (!coverageEnabled || !hasWorkingDeck) return;
@@ -959,6 +971,7 @@ function DeckToolSession() {
                       choices={tool.statChoices}
                       onChoice={tool.setStatChoice}
                       collectionOnly={journey.add.collectionOnly}
+                      missing={coverageMissing}
                     >
                       {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}
                       {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}

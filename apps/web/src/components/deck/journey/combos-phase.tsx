@@ -11,7 +11,7 @@ import { CardImage } from "@/components/cards/card-image";
 import { ZoomableCard } from "@/components/cards/card-zoom";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
-import { formatAsOf, formatUsd } from "@/lib/format";
+import { formatAsOf, fromPrice } from "@/lib/format";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
 import type { DeckJourney } from "./use-deck-journey";
 
@@ -55,7 +55,7 @@ function ComboEntry({
       >
         {viaLine(combo, names)}
       </a>
-      {priced && <span className="font-mono text-xs">{combo.card.price ? `About ${formatUsd(combo.card.price.usd)}` : "No price"}</span>}
+      {priced && <span className="font-mono text-xs">{fromPrice(combo.card.price)}</span>}
       <Button type="button" size="sm" className="mt-auto w-full" disabled={!canAdd} onClick={onAdd} aria-label={`Add ${combo.card.name}, completes ${result}`}>
         Add Combo
       </Button>

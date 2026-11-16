@@ -1,0 +1,10 @@
+# Generated, vendored or not ours to format.
+apps/web/src/lib/server/database.types.ts
+apps/web/next-env.d.ts
+**/.next/
+**/node_modules/
+.yarn/
+supabase/
+services/
+docs/
+*.md

@@ -1,4 +1,4 @@
-import type { CostDelta } from "@mtg/core/contract";
+import type { CostDelta, PriceEstimate } from "@mtg/core/contract";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const shortDate = new Intl.DateTimeFormat("en-US", {
@@ -16,6 +16,15 @@ export function formatUsd(value: number): string {
 export function formatUsdDelta(value: number): string {
   if (value === 0) return usd.format(0);
   return `${value > 0 ? "+" : "−"}${usd.format(Math.abs(value))}`;
+}
+
+/**
+ * One card's price: "From $1.10" (the cheapest printing's estimate) or "No price". `lower` for mid-sentence use
+ * ("Not owned · from $1.10").
+ */
+export function fromPrice(price: PriceEstimate | null | undefined, { lower = false }: { lower?: boolean } = {}): string {
+  const text = price ? `From ${usd.format(price.usd)}` : "No price";
+  return lower ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 }
 
 export function formatAsOf(iso: string): string {
