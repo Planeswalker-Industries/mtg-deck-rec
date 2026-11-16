@@ -6,6 +6,12 @@ const OVERLAY_DEPTH_KEY = "overlayDepth";
 /** The overlays Back closes that are open now, bottom first. An overlay's depth is its place here plus one. */
 const openOverlays: { close: () => void }[] = [];
 let watchingPops = false;
+/**
+ * A closing overlay drops its entry in a microtask, so an overlay that opens in the same commit takes the entry over
+ * instead. React's dev Strict Mode unmounts and remounts every effect once on mount: an immediate `history.back()` there
+ * lands after the remount's push and closes the overlay it just opened. A microtask still runs before any navigation.
+ */
+let pendingBack: { cancelled: boolean } | null = null;
 
 function depthOf(state: unknown): number {
   const depth = state !== null && typeof state === "object" ? (state as Record<string, unknown>)[OVERLAY_DEPTH_KEY] : undefined;
@@ -42,14 +48,28 @@ export function useCloseOnBack(open: boolean, onClose: () => void) {
     const overlay = { close: () => close.current() };
     openOverlays.push(overlay);
     const depth = openOverlays.length;
-    window.history.pushState({ [OVERLAY_DEPTH_KEY]: depth }, "");
+    if (pendingBack && depthOf(window.history.state) === depth) {
+      // The entry an overlay just let go of sits at this depth: keep it for this one.
+      pendingBack.cancelled = true;
+      pendingBack = null;
+    } else {
+      window.history.pushState({ [OVERLAY_DEPTH_KEY]: depth }, "");
+    }
     return () => {
       const index = openOverlays.indexOf(overlay);
       // Back closed it, and its entry is already gone.
       if (index === -1) return;
       openOverlays.splice(index, 1);
       // Closed some other way (a tap, Escape, the view moving on): drop its entry while it is still the current one.
-      if (depthOf(window.history.state) === depth) window.history.back();
+      if (depthOf(window.history.state) === depth && !pendingBack) {
+        const drop = { cancelled: false };
+        pendingBack = drop;
+        queueMicrotask(() => {
+          if (drop.cancelled) return;
+          pendingBack = null;
+          window.history.back();
+        });
+      }
     };
   }, [open]);
 }

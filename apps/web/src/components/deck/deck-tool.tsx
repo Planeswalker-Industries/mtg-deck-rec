@@ -816,7 +816,7 @@ function DeckToolSession() {
             <Button
               type="button"
               size="lg"
-              className="lit w-full sm:w-auto sm:self-start"
+              className="lit w-full sm:w-auto sm:self-end"
               disabled={picked === null}
               onClick={() => {
                 if (!picked) return;
