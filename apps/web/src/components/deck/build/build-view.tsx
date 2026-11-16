@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
 import { ChevronDown, CircleCheck, CircleHelp, Info, LoaderCircle, TriangleAlert } from "lucide-react";
@@ -9,6 +8,7 @@ import type { Bracket, BuildResult, CardId, CardSummary, StatChoice, StatChoices
 import { CURVE_LINE, cardsShort, deckDiff, shortOfTarget, type StatLine } from "@mtg/core/journey";
 import { CardPlate } from "@/components/cards/card-plate";
 import { CardZoomLayer } from "@/components/cards/card-zoom";
+import { CommanderPlate } from "@/components/cards/commander-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { DeckViewToggle, useDeckView, type DeckView } from "@/components/decks/deck-view";
@@ -41,27 +41,6 @@ function summary(result: BuildResult, fromCollection: boolean): string {
   const { slots, filled } = result.feasibility;
   if (!fromCollection) return `All ${slots} cards picked from every card in print.`;
   return count(filled, "match", "matches");
-}
-
-/**
- * The commanders' art behind the header, fading in from the right like a card plate's; partners share the strip.
- * The left stays clear for the name.
- */
-function CommanderArt({ commanders }: { commanders: CardSummary[] }) {
-  const arts = commanders.flatMap((c) => (c.images?.front.artCrop ? [c.images.front.artCrop] : []));
-  if (arts.length === 0) return null;
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-y-0 right-0 flex w-full [mask-image:linear-gradient(to_right,transparent,black_60%)] sm:w-3/4"
-    >
-      {arts.map((src) => (
-        <span key={src} className="relative flex-1">
-          <Image src={src} alt="" fill unoptimized sizes="(min-width: 640px) 75vw, 100vw" className="object-cover object-[center_30%]" />
-        </span>
-      ))}
-    </div>
-  );
 }
 
 /** The roles the build is still short of, by how many cards. Two equal columns on phones, a row from sm up. */
@@ -381,9 +360,8 @@ export function BuildView({
       ? "Here's a deck to start from."
       : null;
   const header = (
-    <header className="relative isolate overflow-hidden rounded-panel border border-seam bg-sleeve">
-      <CommanderArt commanders={request.commanders} />
-      <div className="relative flex min-h-32 flex-col justify-between gap-4 p-4 sm:min-h-40 sm:p-5">
+    <CommanderPlate commanders={request.commanders}>
+      <div className="flex min-h-32 flex-col justify-between gap-4 p-4 sm:min-h-40 sm:p-5">
         <h1 className="max-w-xl font-heading text-2xl font-semibold tracking-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] sm:text-3xl">
           {commanderName}
           {tagline && (
@@ -410,7 +388,7 @@ export function BuildView({
           </Button>
         </div>
       </div>
-    </header>
+    </CommanderPlate>
   );
 
   if (state.status === "loading") {
