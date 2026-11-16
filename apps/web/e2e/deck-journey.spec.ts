@@ -189,6 +189,29 @@ test("Finish names each line still off with its reason, and its Fix opens Fix at
   await expect(recs.getByRole("status").filter({ hasText: /line \d+ of \d+/ })).toContainText("Lands", { timeout: 60_000 });
 });
 
+test("a bracket the deck no longer fits, chosen during Swap or Finish, sends the round back to Fix at the bracket line (T089)", async ({ page }) => {
+  // Two Game Changers estimate the deck at Bracket 3, the default, so the round starts without a warning.
+  const recs = await analyzeDeck(page, ["Commander", "1 Chulane, Teller of Tales", "", "Deck", ...SPELLS, "1 Rhystic Study", "1 Cyclonic Rift"].join("\n"));
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  const bracket = page.getByRole("combobox", { name: "Bracket" });
+  const bracketLine = (n: number) => recs.getByRole("status").filter({ hasText: /line \d+ of \d+/ }).filter({ hasText: `Bracket ${n}` });
+
+  await openSwap(page);
+  await bracket.click();
+  await page.getByRole("option", { name: "2 Core" }).click();
+  await expect(steps.getByRole("button", { name: "Fix" })).toHaveAttribute("aria-current", "step");
+  await expect(bracketLine(2)).toBeVisible({ timeout: 60_000 });
+
+  // From Fix the stepper reaches Finish through Swap.
+  await openSwap(page);
+  await steps.getByRole("button", { name: "Finish" }).click();
+  await expect(steps.getByRole("button", { name: "Finish" })).toHaveAttribute("aria-current", "step");
+  await bracket.click();
+  await page.getByRole("option", { name: "1 Exhibition" }).click();
+  await expect(steps.getByRole("button", { name: "Fix" })).toHaveAttribute("aria-current", "step");
+  await expect(bracketLine(1)).toBeVisible({ timeout: 60_000 });
+});
+
 test("Undo takes back the last choice, on the step it was made on", async ({ page }) => {
   const recs = await analyzeDeck(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });

@@ -169,6 +169,12 @@ export interface ActionsApi {
   /** Cards to rate replacements for with a commander or partner pair, given by card ids or by commander page slug (exactly one). */
   dealRaterCards(input: { commanderIds?: CardId[]; commanderSlug?: string }): Promise<Result<RaterDeal>>;
 
+  /**
+   * Authenticated (v38). Sends the site's admins a feedback report: the message and the path of the page it came from
+   * (a site path, no query string). UNAUTHENTICATED when signed out.
+   */
+  submitFeedback(input: { message: string; pagePath: string }): Promise<Result<{ id: number }>>;
+
   adminSetTagDisabled(input: {
     tagId: TagId;
     disabled: boolean;

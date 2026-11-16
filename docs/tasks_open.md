@@ -8,15 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T089: Fix follow-ups
-
-**MEDIUM** · Frontend / Decision · Left over from T087
-
-- [ ] The mocks' build returns no `collectionGaps`, so CI never sees the build page's Ignore / Allow buying prompts or Finish's "Not in your collection" row: give the mock build a gap when the collection is short, then cover Allow buying (the rebuild with `buyFor`, the "Not owned" note and cost line), Ignore (the line grey and out of the score), and the answers surviving a save and a reopen
-- [ ] A bracket change during Swap or Finish that the deck no longer fits sends the round to Fix at the bracket line: no e2e covers it
-- [ ] `AddFilter`'s `lands` kind and `trimCuts`' `focusRoleId` have no caller left since Deck stats' Find and Trim links became Fix: remove them
-- [ ] From T088: `eval:holdout` has no swap metric, so the swap ladder's gate was rung 1 staying identical plus `regress`; a swap change that moves rung 1 has nothing to be measured by
-
 ## T074: Archidekt answers the daily crawl with 429s
 
 **HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`
@@ -26,15 +17,6 @@ Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the 
 - [ ] Run 29 (2026-10-22, the first at the slower pace) reads `running` with a `finished_at`, and run 30 sits `queued`: find why, and close stale runs as failed
 - [ ] Three daily runs in a row without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
 - [ ] Run 20 (2026-10-13, still `running`) closed as failed, and a redeploy that kills a run leaves it marked failed
-
-## T077: Feedback reports
-
-**MEDIUM** · Database / Frontend · Owner, 2026-10-23 · Replaces the GitHub Report link until T003
-
-- [ ] A reports table written through a security-definer function keyed on `auth.uid()` (signed-in only), validated by a zod schema, rate-limited in `app_config.rate_limits`; it stores the message, the page URL and the time
-- [ ] "Send feedback" in the site footer or menu, and on deck pages in place of today's Report link (`apps/web/src/app/decks/[commander]/[code]/page.tsx`)
-- [ ] An admin list beside `/admin/crawls` (`noindex`, `no-store`): newest first, mark resolved, filter to open; platform admins see an open-report count badge in the header
-- [ ] `/privacy` says what a report stores and who reads it
 
 ## T068: Recommendation latency (PR #139 review)
 
@@ -66,14 +48,18 @@ A migration drops `rec_add_candidates` (both overloads), `rec_swap_candidates`, 
 
 ## T033: Custom domain and SMTP
 
-**HIGH** · DevOps / Auth · Absorbs T002, whose dashboard steps are done · No domain bought yet
+**HIGH** · DevOps / Auth · Absorbs T002, whose dashboard steps are done · `spellchasm.com` bought at Namecheap (owner, 2026-11-16); the app is renamed Spell Chasm
 
-Moxfield's whitelist also wants a production domain (T044).
+Moxfield's whitelist also wants a production domain (T044). `www.spellchasm.com` is canonical and the apex redirects to it (Vercel's default, kept by the owner on 2026-11-16).
 
-1. Point a domain at the app. Move the URL settings to it: Supabase Site URL and redirect allow list, Vercel `NEXT_PUBLIC_SITE_URL`, the Google OAuth client's redirect URIs.
-2. Resend (free tier) or equivalent: verify the sending domain, set it in Supabase → Authentication → SMTP, and raise Rate Limits → emails per hour.
-
-- [ ] Sign-in emails arrive at a production rate on the domain, and the emailed-code form in `apps/web/src/components/auth/sign-in-form.tsx` is uncommented (closed T080 commented it out)
+- [x] Vercel (`mtg-app` → Domains) serves `www.spellchasm.com`, the apex redirects to it, and Namecheap DNS holds Vercel's records
+- [ ] Vercel `NEXT_PUBLIC_SITE_URL` = `https://www.spellchasm.com` (Production), then a redeploy: the value is baked in at build (on 2026-11-16 robots.txt still named `mtg-app-psi.vercel.app`)
+- [ ] Supabase → Authentication → URL Configuration: Site URL `https://www.spellchasm.com`, and both `https://www.spellchasm.com/**` and `https://spellchasm.com/**` in the redirect list
+- [x] Google OAuth: consent screen name, home page, privacy link and authorized domain on `spellchasm.com` (owner, 2026-11-16)
+- [ ] The VPS worker's `WEB_APP_URL` is `https://www.spellchasm.com`; Impact's property URL is the new domain; Archidekt is told the crawl's new User-Agent (`SpellChasm/0.1`)
+- [x] `yarn workspace @mtg/web smoke` passes against `https://www.spellchasm.com` (14/14, 2026-11-16)
+- [ ] Resend (free tier) or equivalent verifies the sending domain, Supabase → Authentication → SMTP uses it, and Rate Limits → emails per hour goes up; the hosted sign-in email template and subject say Spell Chasm
+- [ ] Sign-in emails arrive at a production rate, and the emailed-code form in `apps/web/src/components/auth/sign-in-form.tsx` is uncommented (closed T080 commented it out)
 - [ ] The share-link kill switch activates on 403/409 on hosted (`scripts/share-kill-switch-check.ts` covers it locally)
 
 ## T043: A crawl database role that is not `service_role`
@@ -227,7 +213,7 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 
 **LOW** · Shelved until the public release (owner, 2026-10-19); don't raise it before then
 
-The Report link on deck pages opens a prefilled GitHub issue until T077 replaces it. Pick the destination for the public release.
+Since T077 the Report link on deck pages opens the signed-in `/feedback` form. Decide whether signed-out visitors need another way to report a deck for the public release.
 
 ---
 

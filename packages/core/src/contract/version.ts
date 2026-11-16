@@ -159,5 +159,8 @@
  * cap and the spend left), which every ranker obeys: an unowned card over the lower of the two, or unpriced, is left
  * out; owned cards and basic lands pass. AddResult gains `unpricedSkipped`. SavedDeckContents gains `budget`
  * (DeckBudget), present only for the deck's owner. Additive: a v36 client sends no budget and gets today's results.
+ *
+ * v38 (2026-11-16): feedback reports (T077; owner approved 2026-11-16). ActionsApi gains `submitFeedback`, signed in
+ * only: a message and the page path it was sent from, stored for the site's admins. Additive.
  */
-export const CONTRACT_VERSION = 37;
+export const CONTRACT_VERSION = 38;

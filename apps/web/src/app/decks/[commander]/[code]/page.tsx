@@ -16,6 +16,7 @@ import { deckExportEntries } from "@/lib/server/deck-export";
 import { loadDeckPage } from "@/lib/server/deck-page";
 import { displayName } from "@/lib/cards";
 import { TEXT_LINK } from "@/lib/constants";
+import { feedbackHref } from "@/lib/feedback";
 
 const WUBRG = "WUBRG";
 
@@ -124,17 +125,10 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
 
       {!deck.isOwner && (
         <p className="border-t border-seam pt-4 text-sm text-muted-foreground">
-          This deck was shared by someone using MTG Deck Rec.{" "}
-          <a
-            href={`https://github.com/Planeswalker-Industries/mtg-deck-rec/issues/new?title=${encodeURIComponent(
-              `Report deck ${deck.id}`,
-            )}&body=${encodeURIComponent(`Deck: ${deck.id}\n\nWhat's wrong with it:`)}`}
-            target="_blank"
-            rel="noreferrer"
-            className={TEXT_LINK}
-          >
+          This deck was shared by someone using Spell Chasm.{" "}
+          <Link href={feedbackHref(`/decks/${deck.commanderSlug}/${deck.code}`)} className={TEXT_LINK}>
             Report it
-          </a>{" "}
+          </Link>{" "}
           if the name or contents are abusive.
         </p>
       )}

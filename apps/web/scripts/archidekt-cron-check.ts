@@ -14,7 +14,7 @@ const check = (label: string, ok: boolean, detail: string) => {
 };
 
 const CRON_PATH = "/cron/archidekt/scrape";
-const ROUTE = "https://mtg-app-psi.vercel.app/api/cron/archidekt-scrape";
+const ROUTE = "https://www.spellchasm.com/api/cron/archidekt-scrape";
 const SECRET = "cron-secret-value";
 
 const save = {

@@ -48,12 +48,6 @@ describe('trimCuts', () => {
     expect(trimCuts({ ...base, cards, cutScores: new Map(), spared })).toEqual([2]);
     expect(trimCuts({ ...base, cards, cutScores: new Map(), spared, landsOver: true })).toEqual([1, 2]);
   });
-
-  it('narrows to one role when the player asks to trim it', () => {
-    const cards = [card(1, { roles: [REMOVAL] }), card(2, { roles: [DRAW] })];
-    const cutScores = new Map<CardId, number>([[2 as CardId, 0.9]]);
-    expect(trimCuts({ ...base, cards, cutScores, focusRoleId: REMOVAL })).toEqual([1]);
-  });
 });
 
 describe('lastResortCuts', () => {

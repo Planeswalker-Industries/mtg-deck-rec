@@ -213,8 +213,16 @@ function BuildCards({
   if (view === "plates") {
     return (
       <ul aria-label={label} className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-        {entries.map(({ card, quantity }) => (
-          <CardPlate key={card.id} card={card} quantity={quantity} mark={mark} onSelect={onSelect ? () => onSelect(card.id) : undefined} />
+        {entries.map(({ card, quantity, note }) => (
+          <CardPlate
+            key={card.id}
+            card={card}
+            quantity={quantity}
+            mark={mark}
+            onSelect={onSelect ? () => onSelect(card.id) : undefined}
+            // The note goes at the end of the row, as the shopping list puts its prices; the mana cost makes room for it.
+            {...(note !== undefined ? { showCost: false, trailing: <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{note}</span> } : {})}
+          />
         ))}
       </ul>
     );

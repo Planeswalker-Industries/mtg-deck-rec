@@ -139,7 +139,6 @@ export function CutPhase({
         landsOver: landsLine ? !landsLine.ok && landsLine.value > landsLine.target : false,
         cutScores,
         spared,
-        focusRoleId: null,
       })
     : [];
   // Once the trim runs out, lands are offered together (the land step); after them, or when the player passes on them,

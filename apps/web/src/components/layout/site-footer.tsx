@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FeedbackLink } from "@/components/feedback/feedback-link";
 import { TEXT_LINK } from "@/lib/constants";
 
 /**
@@ -19,6 +20,7 @@ export function SiteFooter() {
           <Link href="/privacy" className={TEXT_LINK}>
             Privacy policy
           </Link>
+          <FeedbackLink />
         </p>
         <p>Unofficial Fan Content. Not approved/endorsed by Wizards. ©Wizards of the Coast LLC.</p>
       </div>

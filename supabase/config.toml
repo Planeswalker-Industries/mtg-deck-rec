@@ -236,11 +236,11 @@ otp_expiry = 3600
 
 # Sign-in emails carry both the 6-digit code and a link to /auth/confirm. New and returning users get the same email.
 [auth.email.template.magic_link]
-subject = "Your MTG Deck Rec sign-in code"
+subject = "Your Spell Chasm sign-in code"
 content_path = "./supabase/templates/sign-in.html"
 
 [auth.email.template.confirmation]
-subject = "Your MTG Deck Rec sign-in code"
+subject = "Your Spell Chasm sign-in code"
 content_path = "./supabase/templates/sign-in.html"
 
 # Use a production-ready SMTP server

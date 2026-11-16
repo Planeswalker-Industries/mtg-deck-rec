@@ -2,8 +2,9 @@
 
 import { Box } from "@mui/material";
 import { useRouter } from "next/navigation";
-import { Suspense, type MouseEvent } from "react";
+import { Suspense, type MouseEvent, type ReactElement } from "react";
 import { AppBar, Inspector, Loading, Menu, MenuItemLink, Sidebar, SkipNavigationButton, TitlePortal, type LayoutProps } from "react-admin";
+import FeedbackIcon from "@mui/icons-material/Feedback";
 import LayersIcon from "@mui/icons-material/Layers";
 import { ADMIN_TOKENS } from "./theme";
 
@@ -28,20 +29,21 @@ import { ADMIN_TOKENS } from "./theme";
  */
 
 /**
- * The link out of the single-page admin app to /admin/crawls, which is an ordinary Next route rather than a React
- * Admin resource. MenuItemLink renders a react-router link, and react-router knows nothing about that page, so the
- * click is handed to Next's router instead — a client navigation, not a reload, since both live under /admin.
+ * A link out of the single-page admin app to one of the site's own admin pages (/admin/crawls, /admin/reports), which
+ * are ordinary Next routes rather than React Admin resources. MenuItemLink renders a react-router link, and
+ * react-router knows nothing about those pages, so the click is handed to Next's router instead — a client
+ * navigation, not a reload, since both live under /admin.
  */
-const CrawlsMenuItem = () => {
+const SitePageMenuItem = ({ page, label, icon }: { page: "crawls" | "reports"; label: string; icon: ReactElement }) => {
   const router = useRouter();
   return (
     <MenuItemLink
-      to="/crawls"
-      primaryText="Deck crawls"
-      leftIcon={<LayersIcon />}
+      to={`/${page}`}
+      primaryText={label}
+      leftIcon={icon}
       onClick={(e: MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault();
-        router.push("/admin/crawls");
+        router.push(`/admin/${page}`);
       }}
     />
   );
@@ -76,14 +78,15 @@ export const AdminLayout = ({ children }: LayoutProps) => (
       <Box className="RaLayout-contentWithSidebar" sx={{ display: "flex", flexGrow: 1, minWidth: 0, transition: "none" }}>
         <Sidebar>
           {/*
-            The crawls page is not a React Admin resource — it is the site's own page at /admin/crawls, because it is
-            read rather than administered. It still belongs in this menu, which is where someone goes looking for the
-            admin area's parts, so it is added by hand. `to` is an absolute path: the router's basename is /admin, and
-            a relative one would resolve to /admin/admin/crawls.
+            The crawls and reports pages are not React Admin resources — they are the site's own pages under /admin,
+            because they are read rather than administered. They still belong in this menu, which is where someone goes
+            looking for the admin area's parts, so they are added by hand. `to` is an absolute path: the router's
+            basename is /admin, and a relative one would resolve to /admin/admin/crawls.
           */}
           <Menu>
             <Menu.ResourceItems />
-            <CrawlsMenuItem />
+            <SitePageMenuItem page="crawls" label="Deck crawls" icon={<LayersIcon />} />
+            <SitePageMenuItem page="reports" label="Feedback reports" icon={<FeedbackIcon />} />
           </Menu>
         </Sidebar>
         <Box

@@ -40,7 +40,7 @@ import {
   type JourneyPhase,
   type JourneyState,
 } from "@mtg/core/journey";
-import { byStaple, isFrontLand, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
+import { byStaple, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { loadJourney, saveJourney } from "@/lib/saved-deck";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
@@ -57,14 +57,12 @@ interface Round {
 }
 
 /** What Add's role pills narrowed it to (T045). */
-export type AddFilter = { kind: "role"; roleId: string; label: string } | { kind: "lands" };
+export type AddFilter = { kind: "role"; roleId: string; label: string };
 
-/** Whether a card fits the filter: one of its tracked roles, or a land on its front face. */
-export const matchesAddFilter = (filter: AddFilter, card: CardSummary) =>
-  filter.kind === "lands" ? isFrontLand(card.typeLine) : (card.roles ?? []).includes(filter.roleId);
+/** Whether a card fits the filter: one of its tracked roles. */
+export const matchesAddFilter = (filter: AddFilter, card: CardSummary) => (card.roles ?? []).includes(filter.roleId);
 
-const sameFilter = (a: AddFilter | null, b: AddFilter | null) =>
-  a === b || (a?.kind === "role" && b?.kind === "role" ? a.roleId === b.roleId : a?.kind === "lands" && b?.kind === "lands");
+const sameFilter = (a: AddFilter | null, b: AddFilter | null) => a === b || (a !== null && b !== null && a.roleId === b.roleId);
 
 /** The Add suggestions a filter leaves on show, in the order they were dealt. */
 const filtered = (suggestions: AddSuggestion[], filter: AddFilter | null) =>

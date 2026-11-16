@@ -5,6 +5,7 @@ import {
   MAX_COLLECTION_ROWS_PER_CALL,
   MAX_DECK_ENTRIES,
   MAX_DECKLIST_CHARS,
+  MAX_FEEDBACK_CHARS,
   MAX_OWNED_CARDS,
   MAX_CARD_COPIES,
   MAX_STAT_CHOICES,
@@ -22,6 +23,7 @@ import {
   fixInputSchema,
   saveCollectionBatchInputSchema,
   saveDeckInputSchema,
+  submitFeedbackInputSchema,
   swapInputSchema,
 } from './schemas';
 
@@ -304,6 +306,25 @@ describe('budgets (v37)', () => {
       expect(parseInput(recContextSchema, context({ budget: { cardCapUsd: bad } })).ok).toBe(false);
       expect(parseInput(recContextSchema, context({ budget: { spendLeftUsd: bad } })).ok).toBe(false);
       expect(parseInput(deckBudgetSchema, { spendUsd: bad }).ok).toBe(false);
+    }
+  });
+});
+
+describe('submitFeedbackInputSchema', () => {
+  it('takes a message and a site path, trimming the message', () => {
+    const parsed = parseInput(submitFeedbackInputSchema, { message: '  Hello  ', pagePath: '/decks/atraxa/abcd1234' });
+    expect(parsed).toEqual({ ok: true, data: { message: 'Hello', pagePath: '/decks/atraxa/abcd1234' } });
+  });
+
+  it('refuses a blank message and treats a long one as too large', () => {
+    expect(parseInput(submitFeedbackInputSchema, { message: '   ', pagePath: '/' }).ok).toBe(false);
+    const long = parseInput(submitFeedbackInputSchema, { message: 'x'.repeat(MAX_FEEDBACK_CHARS + 1), pagePath: '/' });
+    expect(!long.ok && long.error.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+
+  it('refuses a full URL, a query string or a fragment as the page', () => {
+    for (const pagePath of ['https://example.com/', '/deck?d=abc', '/privacy#credits', 'decks', '/a b']) {
+      expect(parseInput(submitFeedbackInputSchema, { message: 'Hi', pagePath }).ok, pagePath).toBe(false);
     }
   });
 });

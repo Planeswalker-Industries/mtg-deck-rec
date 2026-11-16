@@ -9,7 +9,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle, SheetTri
 import { TEXT_LINK } from "@/lib/constants";
 
 interface NavItem {
-  href: "/deck" | "/decks" | "/collection";
+  href: "/deck" | "/decks" | "/collection" | "/admin/reports";
   label: string;
   /** One line under the label in the phone menu, where there is room to say what the page is for. */
   hint: string;
@@ -40,12 +40,7 @@ function isCurrent(pathname: string | null, href: string) {
 
 function InlineLinks({ items, pathname }: { items: readonly NavItem[]; pathname: string | null }) {
   return items.map((item) => (
-    <Link
-      key={item.href}
-      href={item.href}
-      className={NAV_LINK}
-      aria-current={isCurrent(pathname, item.href) ? "page" : undefined}
-    >
+    <Link key={item.href} href={item.href} className={NAV_LINK} aria-current={isCurrent(pathname, item.href) ? "page" : undefined}>
       {item.label}
     </Link>
   ));
@@ -60,8 +55,30 @@ function InlineLinksAtPath({ items }: { items: readonly NavItem[] }) {
  * they fold into a menu that drops from the top, so the account control (`children`, `order-3`) never gets pushed off
  * a phone screen. Saved decks only show when signed in.
  */
-export function MainNav({ signedIn, children }: { signedIn: boolean; children: ReactNode }) {
+export function MainNav({
+  signedIn,
+  openReports = 0,
+  children,
+}: {
+  signedIn: boolean;
+  /** Open feedback reports, for platform admins (0 for everyone else): a count on the phone menu and an item in it. */
+  openReports?: number;
+  children: ReactNode;
+}) {
   const items = NAV_ITEMS.filter((item) => signedIn || !item.accountOnly);
+  const menuItems: readonly NavItem[] =
+    openReports > 0
+      ? [
+          ...items,
+          {
+            href: "/admin/reports",
+            label: "Feedback reports",
+            hint: `${openReports} open`,
+            accountOnly: true,
+          },
+        ]
+      : items;
+  const reportsLabel = `${openReports} open feedback report${openReports === 1 ? "" : "s"}`;
 
   return (
     <>
@@ -75,19 +92,27 @@ export function MainNav({ signedIn, children }: { signedIn: boolean; children: R
       <div className="order-3 flex shrink-0 items-center gap-1 sm:gap-2">
         {children}
         <Sheet>
-          <SheetTrigger className={cn(ICON_BUTTON, "lg:hidden")} aria-label="Menu">
+          <SheetTrigger className={cn(ICON_BUTTON, "relative lg:hidden")} aria-label={openReports > 0 ? `Menu, ${reportsLabel}` : "Menu"}>
             <Menu aria-hidden className="size-5" />
+            {openReports > 0 && (
+              <span
+                aria-hidden
+                className="absolute top-1 right-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-xs leading-4 text-primary-foreground"
+              >
+                {openReports}
+              </span>
+            )}
           </SheetTrigger>
           <SheetContent side="top" showCloseButton={false} className="gap-0 border-seam bg-sleeve lg:hidden">
             <div className="flex h-14 items-center justify-between border-b border-seam px-4">
               <SheetTitle className="text-xl font-semibold">Menu</SheetTitle>
-              <SheetDescription className="sr-only">Pages on MTG Deck Rec</SheetDescription>
+              <SheetDescription className="sr-only">Pages on Spell Chasm</SheetDescription>
               <SheetClose className={ICON_BUTTON} aria-label="Close menu">
                 <X aria-hidden className="size-5" />
               </SheetClose>
             </div>
             <nav aria-label="Main" className="px-2 py-2">
-              <MenuLinks items={items} />
+              <MenuLinks items={menuItems} />
               {!signedIn && (
                 <p className="mt-1 border-t border-seam px-3 pt-3 pb-2 text-sm text-muted-foreground">
                   <SheetClose asChild>
@@ -122,22 +147,9 @@ function MenuLinks({ items }: { items: readonly NavItem[] }) {
                 className="group flex items-center gap-3 rounded-md px-3 py-3 transition-colors hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
               >
                 {/* The dot from the logo marks the page you are on. */}
-                <span
-                  aria-hidden
-                  className={cn(
-                    "size-2 shrink-0 rounded-full",
-                    current
-                      ? "bg-primary"
-                      : "bg-seam",
-                  )}
-                />
+                <span aria-hidden className={cn("size-2 shrink-0 rounded-full", current ? "bg-primary" : "bg-seam")} />
                 <span className="flex min-w-0 flex-col">
-                  <span
-                    className={cn(
-                      "font-heading text-xl leading-tight font-semibold",
-                      current ? "text-foreground" : "text-primary",
-                    )}
-                  >
+                  <span className={cn("font-heading text-xl leading-tight font-semibold", current ? "text-foreground" : "text-primary")}>
                     {item.label}
                   </span>
                   <span className="text-sm text-muted-foreground">{item.hint}</span>
