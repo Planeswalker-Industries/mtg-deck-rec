@@ -24,6 +24,7 @@ import { cardCategory, roleGap, roleShortfalls } from './add';
 import { affinityTracker, deckAffinity, type DeckCardWeight, type PairLifts } from './affinity';
 import type { ScoringConfig } from './config';
 import { commanderShare, corpusComponent, neutralCorpusValue } from './corpus';
+import { effectiveCapUsd, withinBudget } from './budget';
 import { bracketExclusions, overBracket, type DeckBracketFacts } from './combos';
 import type { RoleTarget } from './cut';
 import { curveBucket, curveShortfall, deckCurve, isFrontLand, statCardType } from './curve';
@@ -81,6 +82,10 @@ import { blendScore } from './swap';
  * 6. A line the player opened to buying (`context.buyFor`) goes on from unowned cards, best score first, once the
  *    collection has no more for it: a role up to its target, a card type or curve bar up to the low edge of its band,
  *    a colour's sources from lands that make it, and nonbasic lands for 'basicLands'.
+ * 7. A budget (`context.budget`, T091) holds every unowned placement to the card cap and to the spend left, which each
+ *    one lowers by its price; unpriced unowned cards stay out. With a collection the budget stands in for `buyFor`:
+ *    every line goes on from unowned cards within it, so a spend of 0 leaves every gap a gap. What the money can't
+ *    fill stays open.
  */
 
 /** A basic land's colour: one of WUBRG, or C for Wastes. */
@@ -223,8 +228,13 @@ export function buildDeck(input: BuildInput): BuildRanking {
   const slots = COMMANDER_DECK_SIZE - commanders.length;
   const mask = identityMaskOf(context, cards);
   const fromCollection = availability !== null;
-  // The Deck stats lines the player opened to unowned cards.
-  const buyFor: ReadonlySet<string> = new Set(fromCollection ? (context.buyFor ?? []) : []);
+  // The Deck stats lines the player opened to unowned cards. A budget opens every line, within it.
+  const budgeted = effectiveCapUsd(context.budget) !== null;
+  const buyFor: ReadonlySet<string> = new Set(fromCollection && !budgeted ? (context.buyFor ?? []) : []);
+  const buys = (line: string) => (fromCollection && budgeted) || buyFor.has(line);
+  const cardCap = context.budget?.cardCapUsd;
+  /** Money left to spend; undefined without a spend budget. Each unowned placement lowers it. */
+  let spendLeft = context.budget?.spendLeftUsd;
   const floor = scoring.build.qualityFloor;
   const excluded = bracketExclusions(bracketFacts, bracket);
   const gcLimit = context.includeGameChangers ? gameChangerLimit(bracket) : 0;
@@ -378,6 +388,14 @@ export function buildDeck(input: BuildInput): BuildRanking {
     const owning = owningOf(cards.get(id) as RankCard, availability, standIns);
     return owning.owned !== null && !owning.conflicts && !shown.has(owning.summary.id);
   };
+  /** Whether a placement costs money: every card without a collection, and those the collection doesn't supply. */
+  const bought = (id: number) => !fromCollection || !supplied(id);
+  /** Whether the budget lets a card in now, against the card cap and the money left. */
+  const affordable = (id: number, free?: boolean) => {
+    if (!budgeted) return true;
+    const card = cards.get(id);
+    return card !== undefined && withinBudget(card.summary, free ?? !bought(id), card.isBasicLand, effectiveCapUsd({ cardCapUsd: cardCap, spendLeftUsd: spendLeft }));
+  };
 
   /**
    * How many lines a card would push above the top of their band: its roles (a cycling land draws cards too), and for a
@@ -420,7 +438,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
       let best: Pick | null = null;
       const shortfalls = roleShortfalls(roleCounts, targets);
       for (const id of live) {
-        if (!allowed(id)) continue;
+        if (!allowed(id) || !affordable(id)) continue;
         const scored = marginal(id, tracker?.of(id) ?? null, shortfalls, curveCounts);
         let key = scored.score.total;
         if (rule.byValue) {
@@ -433,6 +451,8 @@ export function buildDeck(input: BuildInput): BuildRanking {
         if (ahead(best, id, key, broken, scored)) best = { id, key, broken, scored };
       }
       if (!best || (stopBelow !== null && best.scored.score.total < stopBelow)) return;
+      // Read before the card is shown: once shown, its own copy no longer counts as free.
+      if (spendLeft !== undefined && bought(best.id)) spendLeft = round2(spendLeft - (cards.get(best.id)?.summary.price?.usd ?? 0));
       const suggestion = suggestionOf(best.id, best.scored);
       pickScores.set(best.id, suggestion);
       shown.add(suggestion.card.id);
@@ -470,7 +490,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
     const rule: PhaseRule = { only: (id) => (roles.get(id) ?? []).includes(role.roleId), anyBand: true };
     phase(nonlandPool, once, 'pick', null, rule);
     // A role opened to buying goes on from unowned cards once the collection has no more.
-    if (deck.length === before && buyFor.has(role.roleId)) phase(openNonland, once, 'fill', null, rule);
+    if (deck.length === before && buys(role.roleId)) phase(openNonland, once, 'fill', null, rule);
     if (deck.length === before) done.add(role.roleId);
   }
   // Card types up to the low edge of their bands, without pushing anything over its own.
@@ -479,7 +499,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
     const room = () => nonlandRoom() && (typeCounts.get(type) ?? 0) < aim;
     const rule: PhaseRule = { only: (id) => statCardType(cards.get(id)?.summary.typeLine ?? '') === type, anyBand: false };
     phase(nonlandPool, room, 'pick', null, rule);
-    if (buyFor.has(type)) phase(openNonland, room, 'fill', null, rule);
+    if (buys(type)) phase(openNonland, room, 'fill', null, rule);
   }
   // Curve bars up to the low edge of theirs, the same way.
   (curveBars ?? []).forEach((target, bar) => {
@@ -488,7 +508,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
     const room = () => nonlandRoom() && (curveCounts.get(bucket) ?? 0) < aim;
     const rule: PhaseRule = { only: (id) => curveBucket(cards.get(id)?.summary.manaValue ?? -1) === bucket, anyBand: false };
     phase(nonlandPool, room, 'pick', null, rule);
-    if (buyFor.has(CURVE_LINE)) phase(openNonland, room, 'fill', null, rule);
+    if (buys(CURVE_LINE)) phase(openNonland, room, 'fill', null, rule);
   });
   phase(nonlandPool, nonlandRoom, 'pick', null, { anyBand: true });
   if (fill === 'value' && fromCollection) phase(openNonland, nonlandRoom, 'fill', null, { anyBand: true, byValue: true });
@@ -567,7 +587,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
     const once = () => landRoom() && deck.length === before;
     if ([...short.values()].some((d) => d > 0)) {
       phase(landPool, once, 'pick', landStop, { only: (id) => fixesShortColour(id, short), anyBand: false });
-      const toBuy = new Map([...short].filter(([colour, d]) => d > 0 && buyFor.has(`${SOURCES_PREFIX}${colour}`)));
+      const toBuy = new Map([...short].filter(([colour, d]) => d > 0 && buys(`${SOURCES_PREFIX}${colour}`)));
       if (deck.length === before && toBuy.size > 0) {
         phase(openLands, once, 'fill', null, { only: (id) => fixesShortColour(id, toBuy), anyBand: false });
       }
@@ -581,7 +601,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
       }
       if (deck.length === before && ahead.basicsOver) phase(landPool, once, 'pick', null, { anyBand: false });
     }
-    if (deck.length === before && buyFor.has(BASIC_LANDS_LINE)) phase(openLands, once, 'fill', floor, { anyBand: false });
+    if (deck.length === before && buys(BASIC_LANDS_LINE)) phase(openLands, once, 'fill', floor, { anyBand: false });
     if (deck.length === before) break;
   }
 
@@ -647,6 +667,8 @@ export function buildDeck(input: BuildInput): BuildRanking {
       if (!card) return undefined;
       const affinity = input.affinity ? deckAffinity(id, deck, input.affinity.lifts, input.affinity.weights, scoring.affinity) : null;
       const owning = owningOf(card, availability, standIns);
+      // A combo is offered only when the money left after the build pays for its missing card.
+      if (!affordable(id, fromCollection && owning.owned !== null)) return undefined;
       return {
         suggestion: suggestionOf(id, marginal(id, affinity, roleShortfalls(roleCounts, targets), curveCounts)),
         supplied: !fromCollection || owning.owned !== null,
@@ -675,7 +697,7 @@ export function buildDeck(input: BuildInput): BuildRanking {
     estimatedBracket: estimateBracket(signals, rules),
     bracketSignals: signals,
     feasibility,
-    ...((fill === 'value' || buyFor.size > 0) && fromCollection
+    ...((fill === 'value' || buyFor.size > 0 || budgeted) && fromCollection
       ? { fillCost: { usd: round2(fillPrices.reduce((sum, p) => sum + (p?.usd ?? 0), 0)), cards: filledByValue, asOf } }
       : {}),
   };

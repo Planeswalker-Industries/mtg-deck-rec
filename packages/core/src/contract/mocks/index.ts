@@ -44,6 +44,7 @@ import type { CommanderRequest, CommanderRequestStatus } from '../commander-requ
 import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
 import { ownedFirst, ownedOnly, rankKey } from '../../scoring/owned';
 import { buyList } from '../../scoring/rank';
+import { effectiveCapUsd, withinBudget } from '../../scoring/budget';
 import { cardTypes } from '../../scoring/add';
 import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
 import { cardQuantity, setCardQuantity } from '../../collection/edit';
@@ -449,9 +450,12 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
             owned: ownedInfo(owned, c.id),
           };
         };
+        const cap = effectiveCapUsd(context.budget);
         const eligible = mockCards
           .filter((c) => c.id !== target.id && !inDeck.has(c.id) && !isBasicLand(c) && withinIdentity(c, identity))
-          .filter((c) => context.includeGameChangers || !c.gameChanger);
+          .filter((c) => context.includeGameChangers || !c.gameChanger)
+          // The budget (v37): unowned cards over the cap, or unpriced, stay out.
+          .filter((c) => withinBudget(c, owned?.has(c.id) ?? false, false, cap));
         // The ladder (T088): similar tags, then a shared role, then the same type at a close mana value.
         const scored = eligible.map((c) => suggest(c, 'tags')).filter((s) => (s.score.components.tag ?? 0) >= 0.25);
         const taken = new Set<number>(scored.map((s) => s.card.id));
@@ -499,9 +503,16 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
         const identity = deckIdentity(context.deck);
         const groups = new Map<CardCategory, AddSuggestion[]>();
         const unowned: AddSuggestion[] = [];
+        const cap = effectiveCapUsd(context.budget);
+        let unpricedSkipped = 0;
         for (const c of mockCards) {
           if (inDeck.has(c.id) || isBasicLand(c) || !withinIdentity(c, identity)) continue;
           if (!context.includeGameChangers && c.gameChanger) continue;
+          // The budget (v37): unowned cards over the cap, or unpriced, stay out.
+          if (!withinBudget(c, owned?.has(c.id) ?? false, false, cap)) {
+            if (c.price === null) unpricedSkipped++;
+            continue;
+          }
           const corpus = corpusFor(c.id);
           const category = categoryOf(c.typeLine);
           const suggestion: AddSuggestion = {
@@ -528,6 +539,7 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           })),
           ...(only ? { buyList: buyList(unowned, (s) => best.get(s.category) ?? 0, MOCK_BUY_LIST) } : {}),
           combos: mockCombos(deckCardIds(context.deck), new Set(excludeCardIds), identity, context, owned),
+          ...(cap === null ? {} : { unpricedSkipped }),
         };
         return delay(ok(result));
       } catch (e) {

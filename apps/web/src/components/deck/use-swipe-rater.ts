@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CardId, CardSummary, CommanderKeyId, CorpusEvidence, CutReason, RecContext, SwapResult, SwapSuggestion } from "@mtg/core/contract";
+import { isBasicLand } from "@mtg/core/journey";
+import { effectiveCapUsd, withinBudget } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
 import { shuffled } from "@/lib/shuffle";
@@ -159,6 +161,7 @@ export function useSwipeRater({
 
   const target = targets[index] ?? null;
   const loaded = target ? results.get(target.card.id) : undefined;
+  const cap = effectiveCapUsd(context.budget);
   // In the deck tool, a card already swapped in is in the deck now, and one swapped out was just taken out, so neither
   // is offered again; nor is one the player passed on for this card in an earlier sitting.
   const offered =
@@ -166,7 +169,9 @@ export function useSwipeRater({
       ? loaded.suggestions.filter(
           (s) =>
             !picked.some((p) => p.replacement.id === s.card.id || p.target.id === s.card.id) &&
-            !declinedAtStart.has(`${target.card.id}:${s.card.id}`),
+            !declinedAtStart.has(`${target.card.id}:${s.card.id}`) &&
+            // A list read earlier in the round may hold cards the money spent since no longer pays for (T091).
+            withinBudget(s.card, s.owned !== null, isBasicLand(s.card), cap),
         )
       : [];
   const first = target?.card.id === startAt ? offered.find((s) => s.card.id === preferred) : undefined;

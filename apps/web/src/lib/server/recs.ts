@@ -371,7 +371,7 @@ export async function getAddSuggestions(
           statTargetsOf(corpus, served.commanderRows.values(), statInputs, bracket.rules),
         )
       : buyLines(context.buyFor, deckColours);
-  const { groups, buyList, combos } = rankAdds({
+  const { groups, buyList, combos, unpricedSkipped } = rankAdds({
     context,
     poolIds: served.poolIds,
     cards: rankCards(served.pool.rows),
@@ -398,6 +398,7 @@ export async function getAddSuggestions(
     groups: groups.map((g) => ({ ...g, suggestions: withRoles(g.suggestions, roles) })),
     ...(buyList ? { buyList: withRoles(buyList, roles) } : {}),
     ...(combos ? { combos: withRoles(combos, roles) } : {}),
+    ...(unpricedSkipped !== undefined ? { unpricedSkipped } : {}),
   };
 }
 
@@ -476,8 +477,13 @@ export async function getBuild(
  */
 export async function getFix(
   db: PublicClient,
-  { context, collection = null }: { context: RecContext; collection?: CollectionCopies | null },
+  { context: requested, collection = null }: { context: RecContext; collection?: CollectionCopies | null },
 ): Promise<FixResult> {
+  // The pool holds to the card cap alone (v37): the engine keeps the running spend, so one pool serves the whole round.
+  const cardCapUsd = requested.budget?.cardCapUsd;
+  const context: RecContext = { ...requested };
+  delete context.budget;
+  if (cardCapUsd !== undefined) context.budget = { cardCapUsd };
   const mainIds = mainDeckIds(context);
   const deckIds = [...new Set([...context.deck.commanders, ...context.deck.cards.map((c) => c.cardId)])];
   const available = await availabilityFor(db, collection);
@@ -576,6 +582,7 @@ export async function getFix(
     buyLines: lines,
     only,
     ownedBoost,
+    cardCapUsd: cardCapUsd ?? null,
   });
   return {
     mode: modeOf(context),

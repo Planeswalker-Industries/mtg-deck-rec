@@ -328,7 +328,8 @@ export function BuildView({
   // A line the collection had nothing more for is a fact about the collection, not an adjustment to make. The lines
   // the player answered stay listed after a rebuild fills them, so the answer can still be changed.
   const choices: StatChoices = state.request.choices ?? {};
-  const gapKeys = [...new Set([...(ready?.result.feasibility.collectionGaps ?? []), ...Object.keys(choices)])];
+  // With a budget the build filled the gaps within it (or, at $0, left them), so nothing is asked.
+  const gapKeys = state.request.budget ? [] : [...new Set([...(ready?.result.feasibility.collectionGaps ?? []), ...Object.keys(choices)])];
   const shortRoles = (stats?.stats.filter((s) => s.group === "roles" && shortOfTarget(s)) ?? []).filter((s) => !gapKeys.includes(s.key));
   const collectionGaps: CollectionGap[] = gapKeys.map((key) => {
     const line = stats?.stats.find((s) => s.key === key);

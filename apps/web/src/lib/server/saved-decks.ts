@@ -1,6 +1,6 @@
-import type { Bracket, CardId, CardSummary, DeckId, DeckInput, SavedDeckContents, SavedDeckSummary, StatChoices } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, DeckBudget, DeckId, DeckInput, SavedDeckContents, SavedDeckSummary, StatChoices } from "@mtg/core/contract";
 import { deckSaveRows } from "@mtg/core/journey";
-import { statChoicesSchema } from "@mtg/core/schemas";
+import { deckBudgetSchema, statChoicesSchema } from "@mtg/core/schemas";
 import { decklistText } from "@mtg/core/parse";
 import { fetchCardsById, toCardSummary } from "./cards";
 import type { createAuthClient } from "./auth";
@@ -108,9 +108,10 @@ export async function openSavedDeck(db: AuthClient, code: string, userId: string
   if (error) throw new Error(`Loading the deck failed: ${error.message}`);
   if (!deck) throw new DeckRefused("DECK_NOT_FOUND");
 
-  const [{ data: rows, error: cardsError }, statChoices] = await Promise.all([
+  const [{ data: rows, error: cardsError }, statChoices, budget] = await Promise.all([
     db.from("deck_cards").select("card_id, section, quantity").eq("deck_id", deck.id),
     loadStatChoices(db, deck.id),
+    loadBudget(db, deck.id),
   ]);
   if (cardsError) throw new Error(`Loading the deck's cards failed: ${cardsError.message}`);
 
@@ -131,7 +132,23 @@ export async function openSavedDeck(db: AuthClient, code: string, userId: string
     ...(deck.bracket === null ? {} : { bracket: deck.bracket as Bracket }),
     text: decklistText(entries),
     statChoices,
+    ...(budget ? { budget } : {}),
   };
+}
+
+/**
+ * The owner's budget for the deck (v37), through `my_deck_budget`: the table is the owner's alone. Read apart and
+ * absent on failure, like the Deck stats choices: a develop preview runs against main's schema, where the function may
+ * not exist yet, and the deck must still open.
+ */
+async function loadBudget(db: AuthClient, deckId: string): Promise<DeckBudget | undefined> {
+  const { data, error } = await db.rpc("my_deck_budget", { p_deck_id: deckId });
+  if (error) {
+    console.error("Loading the deck's budget failed; the deck opens without it.", error.message);
+    return undefined;
+  }
+  const parsed = deckBudgetSchema.safeParse(data ?? {});
+  return parsed.success ? parsed.data : undefined;
 }
 
 /**
@@ -150,7 +167,16 @@ async function loadStatChoices(db: AuthClient, deckId: string): Promise<StatChoi
 
 export async function saveDeck(
   db: AuthClient,
-  input: { deckId?: DeckId; name: string; deck: DeckInput; isPublic: boolean; bracket?: Bracket; original?: DeckInput; statChoices?: StatChoices },
+  input: {
+    deckId?: DeckId;
+    name: string;
+    deck: DeckInput;
+    isPublic: boolean;
+    bracket?: Bracket;
+    original?: DeckInput;
+    statChoices?: StatChoices;
+    budget?: DeckBudget;
+  },
 ): Promise<{ deckId: DeckId; code: string }> {
   const { data, error } = await db.rpc("save_deck", {
     p_deck_id: input.deckId ?? undefined,
@@ -159,6 +185,8 @@ export async function saveDeck(
     p_bracket: input.bracket ?? undefined,
     // Sent only when the player made choices: a save without them keeps the stored ones.
     ...(input.statChoices === undefined ? {} : { p_stat_choices: input.statChoices }),
+    // The same for the budget: absent keeps the stored one, an empty one clears it.
+    ...(input.budget === undefined ? {} : { p_budget: { ...input.budget } }),
   });
   if (error) rethrow(error.message);
   const deckId = data as string;

@@ -493,3 +493,74 @@ describe('buildDeck', () => {
     });
   });
 });
+
+describe('buildDeck with a budget (T091)', () => {
+  const owned = new Map([...spells.slice(0, 30), ...lands.slice(0, 5)].map((c) => [c.summary.id as number, 1]));
+  const available = availability({ owned, builtDecks: [] }, new Map());
+  const ownedPool = [...owned.keys()];
+  const openPool = [...spells, ...lands].map((c) => c.summary.id as number);
+  const collection = (budget: RecContext['budget'], over: Partial<RecContext> = {}) =>
+    context({ ownership: { kind: 'account' }, ownershipMode: 'first', ...(budget ? { budget } : {}), ...over });
+  const spent = (result: ReturnType<typeof buildDeck>) =>
+    result.groups.flatMap((g) => g.cards).reduce((sum, c) => sum + (c.owned === null ? (c.card.price?.usd ?? 0) : 0), 0);
+
+  it('build spend decrements and total stays within spend', () => {
+    // Every card costs $1 without a collection: $10 places ten cards, basics take the land slots, the rest stays open.
+    const result = buildDeck(input({ context: context({ budget: { spendLeftUsd: 10 } }) }));
+    expect(deckIds(result)).toHaveLength(10);
+    expect(spent(result)).toBe(10);
+    expect(result.feasibility.open).toBeGreaterThan(0);
+    // From a collection, owned cards cost nothing and $3 buys three more.
+    const fromCollection = buildDeck(input({ context: collection({ spendLeftUsd: 3 }), availability: available, poolIds: ownedPool, fillIds: openPool }));
+    expect(fromCollection.feasibility.filledByValue).toBe(3);
+    expect(fromCollection.fillCost).toEqual({ usd: 3, cards: 3, asOf: '2026-10-06T00:00:00Z' });
+  });
+
+  it('build owned over-cap cards stay', () => {
+    const pricey = { ...spells[0]!, summary: { ...spells[0]!.summary, price: { ...spells[0]!.summary.price!, usd: 50 } } };
+    const result = buildDeck(
+      input({ context: collection({ cardCapUsd: 0 }), availability: available, poolIds: ownedPool, fillIds: openPool, cards: new Map([...cards, [1, pricey]]) }),
+    );
+    expect(deckIds(result)).toContain(1);
+    expect(deckIds(result).every((id) => owned.has(id))).toBe(true);
+  });
+
+  it('build with spend 0 places no unowned card', () => {
+    // The budget stands in for the lines opened to buying: with $0, Ramp stays a gap.
+    const result = buildDeck(input({ context: collection({ spendLeftUsd: 0 }, { buyFor: [RAMP] }), availability: available, poolIds: ownedPool, fillIds: openPool }));
+    expect(result.feasibility.filledByValue).toBe(0);
+    expect(result.feasibility.collectionGaps).toContain(RAMP);
+    const none = buildDeck(input({ context: context({ budget: { spendLeftUsd: 0 } }) }));
+    expect(deckIds(none)).toEqual([]);
+    expect(basicCount(none)).toBe(none.landTarget);
+  });
+
+  it('fills the gaps from unowned cards within a card cap', () => {
+    const result = buildDeck(input({ context: collection({ cardCapUsd: 1 }), availability: available, poolIds: ownedPool, fillIds: openPool }));
+    expect(result.feasibility.collectionGaps).not.toContain(RAMP);
+    expect(result.feasibility.filledByValue).toBeGreaterThan(0);
+    const over = buildDeck(input({ context: collection({ cardCapUsd: 0.5 }), availability: available, poolIds: ownedPool, fillIds: openPool }));
+    expect(over.feasibility.filledByValue).toBe(0);
+  });
+
+  it('build combos count against spend', () => {
+    const facts = {
+      rules,
+      cards: { massLandDenial: new Set<number>(), extraTurns: new Set<number>() },
+      combos: [{ variantId: 'near', pieces: [1, 79], minBracket: 2, results: ['Win the game'], contextualResults: [], templateNames: [], missing: 79 }],
+    };
+    const offered = (budget: RecContext['budget']) => buildDeck(input({ context: context(budget ? { budget } : {}), bracketFacts: facts }));
+    expect(offered({ cardCapUsd: 1 }).combos.map((c) => c.card.id)).toEqual([79]);
+    // $10 goes on ten cards, Spell 01 among them; nothing is left for Spell 79.
+    const broke = offered({ spendLeftUsd: 10 });
+    expect(deckIds(broke)).toContain(1);
+    expect(broke.combos).toEqual([]);
+  });
+
+  it('no budget is identical', () => {
+    expect(buildDeck(input({ context: context({ budget: undefined }) }))).toStrictEqual(buildDeck(input()));
+    const buying = context({ ownership: { kind: 'account' }, ownershipMode: 'only', buyFor: [RAMP] });
+    const opened = (ctx: RecContext) => buildDeck(input({ context: ctx, availability: available, poolIds: ownedPool, fillIds: openPool }));
+    expect(opened({ ...buying, budget: undefined })).toStrictEqual(opened(buying));
+  });
+});

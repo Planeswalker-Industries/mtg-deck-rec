@@ -154,5 +154,10 @@
  * rung that found it: similar tags, a shared tracked role ('role': matchedTags names the roles), or the same card type
  * at a close mana value ('slot': matchedTags empty). SwapResult.emptyReason no longer takes 'NO_TAGS_ON_TARGET'.
  * A v35 reader ignores `match` and shows a lower rung without its label.
+ *
+ * v37 (2026-11-16): budgets (T091; owner approved 2026-11-14). RecContext gains optional `budget` (RecBudget: a per-card
+ * cap and the spend left), which every ranker obeys: an unowned card over the lower of the two, or unpriced, is left
+ * out; owned cards and basic lands pass. AddResult gains `unpricedSkipped`. SavedDeckContents gains `budget`
+ * (DeckBudget), present only for the deck's owner. Additive: a v36 client sends no budget and gets today's results.
  */
-export const CONTRACT_VERSION = 36;
+export const CONTRACT_VERSION = 37;

@@ -10,7 +10,7 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { sessionCopies, type CollectionCopies } from "@mtg/core/collection";
 import { defaultIncludeGameChangers } from "@mtg/core/commander";
-import type { Bracket, CardId, CardSummary, CutReason, DeckAnalysis, DeckInput, OwnershipInput, RecContext, SwapMatch } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, CutReason, DeckAnalysis, DeckInput, OwnedInfo, OwnershipInput, RecBudget, RecContext, SwapMatch } from "@mtg/core/contract";
 import {
   applyCard,
   buildTally,
@@ -18,6 +18,7 @@ import {
   fixLines,
   gradeDeck,
   planFixes,
+  isBasicLand,
   toTallyCard,
   type BracketInput,
   type DeckStatsReport,
@@ -47,6 +48,11 @@ interface FixtureFile {
   build?: boolean;
   /** Deck stats lines opened to unowned cards (`RecContext.buyFor`), by key. */
   buyFor?: string[];
+  /**
+   * The player's budget (`RecContext.budget`, T091). With one, every add, swap, build and Fix pool is checked for an
+   * unowned card over the effective cap, or unpriced.
+   */
+  budget?: RecBudget;
   expect: {
     commanders?: string[];
     /** Most unresolved lines allowed (default 0). */
@@ -96,6 +102,13 @@ const sameCard = (card: CardSummary, name: string) => card.name === name || card
 /** 1-based rank, or 0 when absent. */
 const rankOf = (cards: readonly CardSummary[], name: string) => cards.findIndex((c) => sameCard(c, name)) + 1;
 const describeRank = (rank: number) => (rank > 0 ? `#${rank}` : "not suggested");
+
+/** The unowned cards, basics apart, a budget should have kept out: over `cap`, or unpriced. */
+function overBudget(cards: readonly { card: CardSummary; owned: OwnedInfo | null }[], cap: number): string[] {
+  return cards
+    .filter((c) => c.owned === null && !isBasicLand(c.card) && (c.card.price === null || c.card.price.usd > cap))
+    .map((c) => `${c.card.name} (${c.card.price ? `$${c.card.price.usd}` : "no price"})`);
+}
 
 /** A collection file ("N Name" a line) as the request and the server read it, resolved by the app's own import. */
 async function loadCollection(db: PublicClient, file: string): Promise<{ ownership: OwnershipInput; copies: CollectionCopies; unresolved: string[] }> {
@@ -179,8 +192,17 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
     ownership: owned?.ownership ?? null,
     ...(owned ? { ownershipMode: "only" as const } : {}),
     ...(fixture.buyFor ? { buyFor: fixture.buyFor } : {}),
+    ...(fixture.budget ? { budget: fixture.budget } : {}),
   };
   const { cut, add, swaps, fix } = fixture.expect;
+  const caps = [fixture.budget?.cardCapUsd, fixture.budget?.spendLeftUsd].filter((c): c is number => c !== undefined);
+  const cap = caps.length > 0 ? Math.min(...caps) : null;
+  /** With a budget, that a list holds no unowned card it should have kept out. */
+  const budgetHolds = (what: string, cards: readonly { card: CardSummary; owned: OwnedInfo | null }[], limit = cap) => {
+    if (limit === null) return;
+    const over = overBudget(cards, limit);
+    check(`${what} keeps to the $${limit} budget`, over.length === 0, over.length === 0 ? `${cards.length} cards` : over.slice(0, 8).join(", "));
+  };
 
   // A build fixture goes on with the deck the builder makes from the collection.
   let collectionGaps: string[] = [];
@@ -198,6 +220,9 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
     collectionGaps = built.feasibility.collectionGaps;
     const f = built.feasibility;
     check("build", true, `${f.filled} filled, ${f.filledByValue} bought, ${f.open} open; gaps: ${collectionGaps.join(", ") || "none"}`);
+    budgetHolds("build", built.groups.flatMap((g) => g.cards), fixture.budget?.cardCapUsd ?? null);
+    const spend = fixture.budget?.spendLeftUsd;
+    if (spend !== undefined) check(`build spends at most $${spend}`, (built.fillCost?.usd ?? 0) <= spend, `$${built.fillCost?.usd ?? 0} on ${built.fillCost?.cards ?? 0} cards`);
   }
 
   if (cut) {
@@ -220,6 +245,8 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
     }
     const all = result.groups.flatMap((g) => g.suggestions.map((s) => s.card));
     for (const name of add.exclude ?? []) check(`add leaves out ${name}`, rankOf(all, name) === 0, rankOf(all, name) > 0 ? "suggested" : "not suggested");
+    budgetHolds("add", [...result.groups.flatMap((g) => g.suggestions), ...(result.buyList ?? []), ...(result.combos ?? [])]);
+    if (cap !== null) check("add counts the unpriced cards it skipped", result.unpricedSkipped !== undefined, `${result.unpricedSkipped ?? "not"} counted`);
   }
 
   for (const swap of swaps ?? []) {
@@ -230,6 +257,7 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
     }
     const result = await getSwapSuggestions(db, { context, collection, targetCardId: line.resolution.card.id, limit: 20 });
     const cards = result.suggestions.map((s) => s.card);
+    budgetHolds(`${swap.target} replacements`, [...result.suggestions, ...(result.buyList ?? [])]);
     if (swap.minSuggestions !== undefined) {
       check(`${swap.target} has at least ${swap.minSuggestions} replacements`, result.suggestions.length >= swap.minSuggestions, `${result.suggestions.length}`);
     }
@@ -257,6 +285,7 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
       return checks;
     }
     const result = await getFix(db, { context, collection });
+    budgetHolds("fix pool", result.pool.ins, fixture.budget?.cardCapUsd ?? null);
     const deckCards = new Map(result.pool.deck.map((c) => [c.card.id as number, c]));
     const inCards = new Map(result.pool.ins.map((c) => [c.card.id as number, c]));
     const entries: TallyEntry[] = context.deck.cards.flatMap((entry) => {
@@ -276,9 +305,15 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
       addedIds: [],
       protectedIds: comboPiecesToKeep(bracketInput, targets.bracketLimits),
       illegalIds: result.illegalIds,
+      spendLeftUsd: fixture.budget?.spendLeftUsd,
     };
     // "Fix the rest for me": the whole plan, applied.
     const moves = planFixes(input);
+    const spend = fixture.budget?.spendLeftUsd;
+    if (spend !== undefined) {
+      const total = moves.reduce((sum, m) => sum + (inCards.get(m.in.id)?.owned === null && !isBasicLand(m.in) ? (m.in.price?.usd ?? 0) : 0), 0);
+      check(`fix plan spends at most $${spend}`, total <= spend + SCORE_EPSILON, `$${Math.round(total * 100) / 100}`);
+    }
     const fixed = buildTally(entries, commanders);
     for (const move of moves) {
       applyCard(fixed, toTallyCard(move.in, inCards.get(move.in.id)?.roles ?? []), 1);

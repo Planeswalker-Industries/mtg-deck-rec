@@ -30,7 +30,9 @@ import {
   phaseIndex,
   pushUndo,
   roundPhases,
+  roundSpendUsd,
   startJourney,
+  withSpent,
   toTallyCard,
   workingDeck,
   type DeckTally,
@@ -168,6 +170,9 @@ function addOrder(suggestions: readonly AddSuggestion[], landsShort: boolean): A
  * Requests fire from event handlers, like the tool's, and a counter per request drops responses a newer one overtook.
  * When the settings the lists were made with change (bracket, collection, play rates), the tool calls `reload`.
  */
+/** Without a collection nothing is owned. */
+const NOBODY_OWNS = () => false;
+
 export function useDeckJourney({
   analysis,
   round: roundId,
@@ -176,9 +181,15 @@ export function useDeckJourney({
   cut,
   resume,
   choices,
+  owns = NOBODY_OWNS,
 }: {
   /** The player's choices for Deck stats lines: an ignored line never holds a card back from Add. */
   choices: StatChoices;
+  /**
+   * Whether the player owns a card (T091): the round's spend counts only the cards they don't. Without a collection
+   * nothing is owned, so every card brought in counts.
+   */
+  owns?: (cardId: CardId) => boolean;
   analysis: DeckAnalysis | null;
   /** The tool's analysis count: a new value is a new deck, and a new round. */
   round: number;
@@ -286,7 +297,13 @@ export function useDeckJourney({
   }, [lines, analysis, state]);
 
   const deck = useMemo(() => (state ? workingDeck(state) : null), [state]);
-  const workingContext = context && deck ? { ...context, deck } : null;
+  /** What the round has spent on cards the player doesn't own (T091): requests carry the budget less this. */
+  const spentUsd = state ? roundSpendUsd(state, owns) : 0;
+  const ownsRef = useRef(owns);
+  useEffect(() => {
+    ownsRef.current = owns;
+  });
+  const workingContext = context && deck ? { ...withSpent(context, spentUsd), deck } : null;
 
   const entriesOf = (d: typeof deck): DeckEntry[] => entriesFor(d, cards);
   /** Copies of lands in a deck. */
@@ -325,7 +342,8 @@ export function useDeckJourney({
     const key = deckKey(deck);
     setAdd({ round, key, value: { status: "loading" } });
     addPending.current = true;
-    const r = await getApis().recs.add({ context: { ...ctx, deck }, excludeCardIds: next.declinedAdds });
+    // The budget less what the round will have spent once `next` is the deck.
+    const r = await getApis().recs.add({ context: { ...withSpent(ctx, roundSpendUsd(next, ownsRef.current)), deck }, excludeCardIds: next.declinedAdds });
     if (id !== addRequest.current) return;
     addPending.current = false;
     setAdd({ round, key, value: toAsync(r) });
@@ -796,6 +814,8 @@ export function useDeckJourney({
     },
     deck,
     workingContext,
+    /** Money the round has spent on cards the player doesn't own (T091). */
+    spentUsd,
     cards,
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
     before,

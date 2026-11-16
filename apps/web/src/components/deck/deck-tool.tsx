@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
-import type { CardId, CardSummary, DeckAnalysis, StatChoices } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, StatChoices } from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import { BRACKET_LINE, CURVE_LINE, statDeltas, toTallyCard, type JourneyPhase, type StatLine } from "@mtg/core/journey";
+import { BRACKET_LINE, CURVE_LINE, statDeltas, toTallyCard, withSpent, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { missingFromCoverage } from "@mtg/core/shop";
 import { cn } from "cn";
@@ -30,6 +30,7 @@ import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-
 import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
+import { StartSettings } from "./start-settings";
 import { BuildView } from "./build/build-view";
 import { useDeckBuild } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
@@ -56,7 +57,7 @@ import { useDeckTool } from "./use-deck-tool";
 import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
-import { BUILD_DECK_HREF, BUILD_DEFAULT_BRACKET, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { BUILD_DECK_HREF, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 import { collectionCounts } from "@/lib/deck-collection";
 import { getApis } from "@/lib/api/client";
 import { RESUME_PARAM, RESUME_SAVE, takePendingSave } from "@/lib/pending-save";
@@ -210,12 +211,35 @@ function DeckToolSession() {
   const [pathWithoutCollection, setPathWithoutCollection] = useState<UpgradePath>("online");
   const upgradePath: UpgradePath =
     tool.collectionMode === null ? pathWithoutCollection : tool.collectionMode === "off" ? "online" : "owned";
-  /** "Best cards online" sets the collection aside; "Cards I own" applies it, as owned only coming from aside. */
+  /**
+   * "Best cards online" sets the collection aside. "Cards I own" applies it (T091): owned cards only with $0 to spend,
+   * owned cards first otherwise, then cards they don't own within the budget.
+   */
+  const ownedModeFor = (budget: DeckBudget | undefined) => (budget?.spendUsd === 0 ? "only" : "first");
   function choosePath(path: UpgradePath) {
     if (tool.collectionMode === null) return setPathWithoutCollection(path);
     if (path === "online") tool.changeCollectionMode("off");
-    else if (tool.collectionMode === "off") tool.changeCollectionMode("only");
+    else if (tool.collectionMode === "off") tool.changeCollectionMode(ownedModeFor(tool.budget));
   }
+  /** A budget typed on the start form; on "Cards I own", a spend of $0 (or a spend again) moves the collection setting with it. */
+  function chooseBudget(budget: DeckBudget | undefined) {
+    tool.changeBudget(budget);
+    const mode = ownedModeFor(budget);
+    if (upgradePath === "owned" && tool.collectionMode !== null && tool.collectionMode !== "off" && tool.collectionMode !== mode) {
+      tool.changeCollectionMode(mode);
+    }
+  }
+  /** The start form's Bracket; with a deck already analyzed, the round goes on at the new one. */
+  function chooseStartBracket(bracket: Bracket) {
+    tool.setStartBracket(bracket);
+    if (tool.analysis) tool.changeBracket(bracket);
+  }
+  /** The start form's Bracket select, for the above-bracket warning's Cancel. */
+  const bracketSelect = useRef<HTMLButtonElement>(null);
+  /** A pasted deck estimated above the chosen bracket (T091), until the player goes on or goes back to the Bracket. */
+  const [bracketWarning, setBracketWarning] = useState<{ estimated: Bracket; chosen: Bracket; analysis: DeckAnalysis | null } | null>(null);
+  /** The round waits behind the form from that warning until the player goes on: Cancel is back to the form alone. */
+  const [roundHeld, setRoundHeld] = useState(false);
   /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu; a new deck starts without one. */
   const [copy, setCopy] = useState<CopyState>({ status: "idle" });
   const [copyRound, setCopyRound] = useState(tool.round);
@@ -262,6 +286,26 @@ function DeckToolSession() {
   const [collectionOfferAnswered, setCollectionOfferAnswered] = useState(false);
   useLayoutEffect(() => () => setCollectionOfferAnswered(false), []);
   const { analysis, context } = tool;
+  /**
+   * The collection's copies (T091): the round's spend counts only cards the player doesn't own. Read whenever there is
+   * a collection, and again when it changes; until they are in, the money slot stays empty.
+   */
+  const [ownedCopies, setOwnedCopies] = useState<{ source: typeof source; copies: ReadonlyMap<CardId, number> } | null>(null);
+  const wantsOwned = source.kind === "browser" || source.kind === "account";
+  useEffect(() => {
+    if (!wantsOwned) return;
+    let live = true;
+    void collectionCounts(source)
+      .then((copies) => live && setOwnedCopies({ source, copies }))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [wantsOwned, source]);
+  const copies = ownedCopies?.source === source ? ownedCopies.copies : null;
+  /** Whether the spend can be told yet: without a collection every card counts, with one once its copies are in. */
+  const spendKnown = !wantsOwned || copies !== null;
+  const owns = useCallback((cardId: CardId) => (copies?.get(cardId) ?? 0) > 0, [copies]);
   const journey = useDeckJourney({
     analysis,
     round: tool.round,
@@ -270,6 +314,7 @@ function DeckToolSession() {
     cut: tool.cut,
     resume: tool.resumed,
     choices: tool.statChoices,
+    owns,
   });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
   const coverage = useDeckCoverage(journey.deck, source, tool.openDeck?.deckId, coverageEnabled && !collectionRefreshing);
@@ -309,7 +354,8 @@ function DeckToolSession() {
   const fix = useFix({
     journey,
     analysis,
-    context,
+    // Fix keeps a running spend from the money the round has left (T091).
+    context: withSpent(context, journey.spentUsd),
     report: deckStats,
     choices: tool.statChoices,
     overBracketAdds: journey.overBracketAdds,
@@ -371,6 +417,13 @@ function DeckToolSession() {
         combosAction,
         preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null,
         after: previewReport,
+        money: {
+          spentUsd: spendKnown ? journey.spentUsd : 0,
+          budget: tool.budget,
+          unpricedSkipped: journey.add.state.status === "ready" ? journey.add.state.data.unpricedSkipped : undefined,
+          onBudget: tool.changeBudget,
+          importHref: tool.collectionMode === null ? collectionImportHref : null,
+        },
       }
     : null;
 
@@ -460,6 +513,7 @@ function DeckToolSession() {
             ...(pending.bracket === null ? {} : { bracket: pending.bracket }),
             ...(pending.original ? { original: pending.original } : {}),
             ...(pending.statChoices ? { statChoices: pending.statChoices } : {}),
+            ...(pending.budget ? { budget: pending.budget } : {}),
           })
         : Promise.resolve(null)
     ).then((r) => {
@@ -521,9 +575,38 @@ function DeckToolSession() {
     editorHandle.current?.discard();
     const outcome = await tool.submit();
     if (!outcome.parsed) return;
+    // A deck stronger than the bracket asked for is said so first: the round would bring it down (T091).
+    const estimated = outcome.analysis?.estimatedBracket;
+    if (estimated !== undefined && outcome.bracket != null && estimated > outcome.bracket) {
+      setBracketWarning({ estimated, chosen: outcome.bracket, analysis: outcome.analysis });
+      setRoundHeld(true);
+      return;
+    }
+    beginRound(outcome.analysis);
+  }
+
+  /** The analyzed deck's round starts: the decklist box folds away on Upgrade. */
+  function beginRound(analyzed: DeckAnalysis | null) {
+    setRoundHeld(false);
     setEditing(false);
     setMode("upgrade");
-    checkLookup(outcome.analysis);
+    checkLookup(analyzed);
+  }
+
+  /** The above-bracket warning's Cancel: back to the form, at the Bracket select. */
+  function backToBracket() {
+    setBracketWarning(null);
+    returnToBracket.current = true;
+  }
+  /** Set by Cancel, read when the dialog hands focus back: then it goes to the Bracket select instead. */
+  const returnToBracket = useRef(false);
+  function focusBracket(e: Event) {
+    if (!returnToBracket.current) return;
+    returnToBracket.current = false;
+    e.preventDefault();
+    const select = bracketSelect.current;
+    select?.scrollIntoView({ block: "center", behavior: "smooth" });
+    select?.focus({ preventScroll: true });
   }
 
   /** Empties the tool: the decklist box, the deck and everything built on it. */
@@ -532,6 +615,7 @@ function DeckToolSession() {
     tool.clearDeck();
     lookup.reset();
     lookupCheckedFor.current = null;
+    setRoundHeld(false);
     setEditing(true);
   }
 
@@ -580,7 +664,13 @@ function DeckToolSession() {
       return quantity > 0 ? [{ ...entry, quantity }] : [];
     });
     setEditing(false);
-    void deckBuild.build({ commanders, bracket: tool.bracketOverride ?? outcome.analysis.estimatedBracket, kept, list: { entries, cards } });
+    void deckBuild.build({
+      commanders,
+      bracket: outcome.bracket ?? outcome.analysis.estimatedBracket,
+      kept,
+      list: { entries, cards },
+      ...(tool.budget ? { budget: tool.budget } : {}),
+    });
   }
 
   /**
@@ -625,6 +715,7 @@ function DeckToolSession() {
       ...(tool.bracketOverride === null ? {} : { bracket: tool.bracketOverride }),
       original: analysis.deck,
       statChoices: tool.statChoices,
+      ...(tool.budget ? { budget: tool.budget } : {}),
     });
     setCopy(result.ok ? { status: "saved", name, href: editorUrl(result.data.code) } : { status: "error", message: result.error.message });
   }
@@ -700,7 +791,16 @@ function DeckToolSession() {
             <CommanderPicker
               autoFocus={!offersCollection}
               ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
-              onPick={(card) => void deckBuild.build({ commanders: [card], bracket: BUILD_DEFAULT_BRACKET })}
+              onPick={(card) =>
+                void deckBuild.build({ commanders: [card], bracket: tool.startBracket, ...(tool.budget ? { budget: tool.budget } : {}) })
+              }
+            />
+            <StartSettings
+              bracket={tool.startBracket}
+              onBracket={tool.setStartBracket}
+              budget={tool.budget}
+              onBudget={tool.changeBudget}
+              importHref={tool.ownedOnly ? null : buildImportHref}
             />
           </div>
         </PageHero>
@@ -752,6 +852,14 @@ function DeckToolSession() {
                   className={cn(IMPORT_TEXT_BOX, "bg-background/60 max-sm:min-h-0 max-sm:h-36")}
                 />
               )}
+              <StartSettings
+                bracket={tool.startBracket}
+                onBracket={chooseStartBracket}
+                budget={tool.budget}
+                onBudget={chooseBudget}
+                importHref={tool.collectionMode === null ? collectionImportHref : null}
+                bracketRef={bracketSelect}
+              />
               {fileInBox ? (
                 <LoadedFile
                   name={fileInBox.name}
@@ -819,7 +927,15 @@ function DeckToolSession() {
                   </Button>
                 )}
                 {analysis && (
-                  <Button type="button" size="lg" variant="ghost" onClick={() => setEditing(false)}>
+                  <Button
+                    type="button"
+                    size="lg"
+                    variant="ghost"
+                    onClick={() => {
+                      setRoundHeld(false);
+                      setEditing(false);
+                    }}
+                  >
                     Cancel
                   </Button>
                 )}
@@ -856,7 +972,7 @@ function DeckToolSession() {
         issuesInDeckBar={Boolean(analysis && context)}
       />
 
-      {analysis && context && deckBuild.state.status === "idle" && (
+      {analysis && context && deckBuild.state.status === "idle" && !roundHeld && (
         <section aria-label="Recommendations" className="flex flex-col gap-2">
           <DeckBar
             collectionImportHref={collectionImportHref}
@@ -894,6 +1010,7 @@ function DeckToolSession() {
                   collection={source}
                   defaultName={tool.deckName}
                   statChoices={tool.statChoices}
+                  budget={tool.budget}
                   onCancel={() => {
                     setSaveAsked(false);
                     backToUpgrade();
@@ -1028,6 +1145,36 @@ function DeckToolSession() {
             </DialogClose>
             <Button type="button" onClick={journey.stepper.confirmLeave}>
               Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={bracketWarning !== null} onOpenChange={(open) => !open && backToBracket()}>
+        <DialogContent onCloseAutoFocus={focusBracket}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TriangleAlert aria-hidden className="size-5 text-warning" />
+              Deck Bracket {bracketWarning?.estimated}
+            </DialogTitle>
+            <DialogDescription>
+              Your deck is above your selected bracket. We will reduce its power level to your selected Bracket (Bracket{" "}
+              {bracketWarning?.chosen}).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={backToBracket}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="lit"
+              onClick={() => {
+                const analyzed = bracketWarning?.analysis ?? null;
+                setBracketWarning(null);
+                beginRound(analyzed);
+              }}
+            >
+              Proceed
             </Button>
           </DialogFooter>
         </DialogContent>

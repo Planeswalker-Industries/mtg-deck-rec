@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
-import type { Bracket, CardId, DeckAnalysis, DeckId, DeckInput, StatChoices } from "@mtg/core/contract";
+import type { Bracket, CardId, DeckAnalysis, DeckBudget, DeckId, DeckInput, StatChoices } from "@mtg/core/contract";
 import { collectionShortfall, type CollectionShortfall } from "@mtg/core/collection";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import type { CollectionSource } from "@/components/collection/use-collection-source";
@@ -49,8 +49,11 @@ export function SaveDeckButton({
   collection,
   defaultName,
   statChoices,
+  budget,
   onCancel,
 }: {
+  /** The player's budget (T091), saved with the deck for its owner. */
+  budget?: DeckBudget | undefined;
   /** Runs when the name form is cancelled, after it closes. */
   onCancel?: (() => void) | undefined;
   /** The player's choices for Deck stats lines, saved with the deck. */
@@ -86,7 +89,7 @@ export function SaveDeckButton({
 
   /** Keeps the deck for after sign-in and goes there. */
   function signInToSave(deckName: string, deck: DeckInput) {
-    stashPendingSave({ name: deckName, deck, bracket, original, statChoices });
+    stashPendingSave({ name: deckName, deck, bracket, original, statChoices, budget });
     router.push(signInToSaveHref() as Route);
   }
 
@@ -112,6 +115,7 @@ export function SaveDeckButton({
       ...(bracket === null ? {} : { bracket }),
       ...(original ? { original } : {}),
       ...(statChoices ? { statChoices } : {}),
+      ...(budget ? { budget } : {}),
     });
     setBusy(false);
     if (result.ok) {
