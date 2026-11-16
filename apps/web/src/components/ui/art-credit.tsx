@@ -6,8 +6,9 @@ import { CREDIT_LINK } from "@/lib/constants";
 /**
  * The credit a vista's art owes (`lib/landing-art.ts`), as one link to the card the art comes from. The visible word
  * stays short so it never competes with the copy beside it; the card and artist are on the link for screen readers
- * and as its tooltip. It always sits in the bottom right corner of the art it credits: callers place it last in a flex
- * column or grid, and `self-end` (`justify-self-end` in a grid) puts it on the right.
+ * and as its tooltip. It sits in the bottom right corner of the art it credits (callers place it last in a flex column
+ * or grid, and `self-end`, `justify-self-end` in a grid, puts it on the right), or inline at the end of the last line
+ * of copy over that art (callers put it in a flex row with that line and override the `self-*` alignment).
  */
 export function ArtCredit({ vista, className }: { vista: Vista; className?: string }) {
   const credit = `Art from ${vista.cardName} by ${vista.artist}`;
