@@ -206,3 +206,22 @@ export interface AdminCrawledDeckCard {
   typeLine: string | null;
   quantity: number;
 }
+
+/**
+ * Feedback reports, for /admin/reports (T077). The sender is left out on purpose: admins read what was said and where,
+ * not who said it (owner, 2026-11-16).
+ */
+export interface AdminFeedbackReport {
+  id: number;
+  message: string;
+  /** The site path the report was sent from. */
+  pagePath: string;
+  createdAt: string;
+  /** Null while the report is open. */
+  resolvedAt: string | null;
+}
+
+export interface AdminFeedbackReportPage {
+  reports: AdminFeedbackReport[];
+  total: number;
+}

@@ -152,3 +152,23 @@ export interface AdminCrawledDeckCardsInput {
 export const adminCrawledDeckCardsInputSchema: InputSchema<AdminCrawledDeckCardsInput> = z.object({
   deckId: z.int().min(1),
 });
+
+export interface ListAdminFeedbackReportsInput {
+  openOnly: boolean;
+  offset: number;
+  limit: number;
+}
+
+export const listAdminFeedbackReportsInputSchema: InputSchema<ListAdminFeedbackReportsInput> = z.object({
+  openOnly: z.boolean().default(true),
+  offset: z.int().min(0).max(100_000).default(0),
+  limit: z.int().min(1).max(ADMIN_PER_PAGE_MAX).default(25),
+});
+
+export interface UpdateAdminFeedbackReportInput {
+  resolved: boolean;
+}
+
+export const updateAdminFeedbackReportInputSchema: InputSchema<UpdateAdminFeedbackReportInput> = z.object({
+  resolved: z.boolean({ error: "Say whether the report is resolved." }),
+});

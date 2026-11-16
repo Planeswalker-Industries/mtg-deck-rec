@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ListAdminAcceptRatesInput,
   ListAdminCrawledDecksInput,
+  ListAdminFeedbackReportsInput,
   ListAdminSyncRunsInput,
   ListAdminTagsInput,
   ListAdminUsersInput,
@@ -14,6 +15,7 @@ import type {
   AdminCrawledDeckCard,
   AdminCrawledDeckPage,
   AdminCrawlSource,
+  AdminFeedbackReportPage,
   AdminRecMode,
   AdminSyncJob,
   AdminSyncRun,
@@ -387,4 +389,32 @@ export async function getAdminCrawledDeckCards(db: AuthedClient, deckId: number)
     typeLine: row.type_line,
     quantity: row.quantity,
   }));
+}
+
+export async function listAdminFeedbackReports(
+  db: AuthedClient,
+  input: ListAdminFeedbackReportsInput,
+): Promise<AdminFeedbackReportPage> {
+  const { data, error } = await db.rpc("admin_list_feedback_reports", {
+    p_open_only: input.openOnly,
+    p_offset: input.offset,
+    p_limit: input.limit,
+  });
+  if (error) throw asAdminError(error);
+  const rows = data ?? [];
+  return {
+    reports: rows.map((row) => ({
+      id: Number(row.id),
+      message: row.message,
+      pagePath: row.page_path,
+      createdAt: row.created_at,
+      resolvedAt: row.resolved_at,
+    })),
+    total: rows[0] ? Number(rows[0].total_count) : 0,
+  };
+}
+
+export async function setAdminFeedbackReportResolved(db: AuthedClient, id: number, resolved: boolean): Promise<void> {
+  const { error } = await db.rpc("admin_set_feedback_report_resolved", { p_id: id, p_resolved: resolved });
+  if (error) throw asAdminError(error);
 }

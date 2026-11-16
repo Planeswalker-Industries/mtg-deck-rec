@@ -1192,6 +1192,36 @@ export type Database = {
           },
         ]
       }
+      feedback_reports: {
+        Row: {
+          created_at: string
+          id: number
+          message: string
+          page_path: string
+          resolved_at: string | null
+          resolved_by: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          message: string
+          page_path: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          message?: string
+          page_path?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       formats: {
         Row: {
           code: string
@@ -1444,6 +1474,50 @@ export type Database = {
           voter_key?: string
         }
         Relationships: []
+      }
+      rec_timeouts: {
+        Row: {
+          commander_ids: number[]
+          first_seen: string
+          fn: string
+          hits: number
+          id: number
+          identity_mask: number
+          last_seen: string
+          owned_only: boolean
+          target_card_id: number | null
+        }
+        Insert: {
+          commander_ids?: number[]
+          first_seen?: string
+          fn: string
+          hits?: number
+          id?: never
+          identity_mask?: number
+          last_seen?: string
+          owned_only?: boolean
+          target_card_id?: number | null
+        }
+        Update: {
+          commander_ids?: number[]
+          first_seen?: string
+          fn?: string
+          hits?: number
+          id?: never
+          identity_mask?: number
+          last_seen?: string
+          owned_only?: boolean
+          target_card_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rec_timeouts_target_card_id_fkey"
+            columns: ["target_card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       search_index_queue: {
         Row: {
@@ -1940,6 +2014,17 @@ export type Database = {
           total_count: number
         }[]
       }
+      admin_list_feedback_reports: {
+        Args: { p_limit?: number; p_offset?: number; p_open_only?: boolean }
+        Returns: {
+          created_at: string
+          id: number
+          message: string
+          page_path: string
+          resolved_at: string
+          total_count: number
+        }[]
+      }
       admin_list_sync_runs: {
         Args: {
           p_ascending?: boolean
@@ -2018,6 +2103,7 @@ export type Database = {
           total_count: number
         }[]
       }
+      admin_open_feedback_report_count: { Args: never; Returns: number }
       admin_rec_accept_rates: {
         Args: { p_days?: number; p_max_position?: number; p_mode?: string }
         Returns: {
@@ -2030,6 +2116,10 @@ export type Database = {
       }
       admin_set_display_name: {
         Args: { p_display_name: string; p_user_id: string }
+        Returns: undefined
+      }
+      admin_set_feedback_report_resolved: {
+        Args: { p_id: number; p_resolved: boolean }
         Returns: undefined
       }
       admin_set_platform_admin: {
@@ -2202,6 +2292,16 @@ export type Database = {
         Returns: number
       }
       is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
+      log_rec_timeout: {
+        Args: {
+          p_commander_ids?: number[]
+          p_fn: string
+          p_identity_mask?: number
+          p_owned_only?: boolean
+          p_target_card_id?: number
+        }
+        Returns: undefined
+      }
       my_card_availability: { Args: { p_deck_id?: string }; Returns: Json }
       my_collection_entries: { Args: never; Returns: Json }
       my_collection_sharing: { Args: never; Returns: Json }
@@ -2219,7 +2319,66 @@ export type Database = {
       }
       prices_checked_at: { Args: never; Returns: string }
       rebuild_tag_closure: { Args: never; Returns: undefined }
+      rec_add_candidates:
+        | {
+            Args: {
+              p_allow_game_changers: boolean
+              p_alpha: number
+              p_deck_count: number
+              p_exclude: number[]
+              p_identity_mask: number
+              p_key_ids: number[]
+              p_limit?: number
+              p_owned?: number[]
+            }
+            Returns: {
+              baseline: number
+              card_id: number
+              decks_with: number
+            }[]
+          }
+        | {
+            Args: {
+              p_allow_game_changers: boolean
+              p_alpha: number
+              p_exclude: number[]
+              p_identity_mask: number
+              p_key_ids: number[]
+              p_key_weights: number[]
+              p_limit?: number
+              p_owned?: number[]
+            }
+            Returns: {
+              baseline: number
+              card_id: number
+              decks_with: number
+            }[]
+          }
+      rec_card_roles: {
+        Args: { p_card_ids: number[]; p_role_ids: string[] }
+        Returns: {
+          card_id: number
+          role_id: string
+        }[]
+      }
       rec_functional_tag_count: { Args: { p_card_id: number }; Returns: number }
+      rec_swap_candidates: {
+        Args: {
+          p_allow_game_changers: boolean
+          p_exclude: number[]
+          p_identity_mask: number
+          p_limit?: number
+          p_owned?: number[]
+          p_target: number
+        }
+        Returns: {
+          card_id: number
+          is_functional_twin: boolean
+          matches: Json
+          staple_score: number
+          tag_similarity: number
+        }[]
+      }
       record_rec_event: {
         Args: {
           p_batch_id: string
@@ -2461,6 +2620,10 @@ export type Database = {
       sitemap_slugs: { Args: never; Returns: Json }
       start_collection_import: {
         Args: { p_mode: string; p_source_app: string }
+        Returns: number
+      }
+      submit_feedback_report: {
+        Args: { p_message: string; p_page_path: string }
         Returns: number
       }
       typical_deck_profile: { Args: never; Returns: Json }
