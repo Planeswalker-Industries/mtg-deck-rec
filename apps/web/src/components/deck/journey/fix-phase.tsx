@@ -11,7 +11,7 @@ import { ZoomableCard } from "@/components/cards/card-zoom";
 import { OwnedCorner } from "@/components/cards/owned-corner";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
-import { formatAsOf, formatUsd } from "@/lib/format";
+import { formatAsOf, fromPrice } from "@/lib/format";
 import { StatChips, compareCardOf } from "../deck-stats/stat-chips";
 import { useStatPreview } from "../deck-stats/stat-preview";
 import { PanelError } from "../panel-state";
@@ -171,7 +171,7 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
             card={move.in}
             side="in"
             owned={hasCollection && inCard !== null && inCard.owned !== null}
-            note={notOwned ? `Not owned · ${price ? `about ${formatUsd(price.usd)}` : "no price"}` : null}
+            note={notOwned ? `Not owned · ${fromPrice(price, { lower: true })}` : null}
           />
         </div>
         <StatChips add={move.in} remove={move.out} marks={compareCards(compareCardOf(move.out), compareCardOf(move.in))} all className="justify-center" />

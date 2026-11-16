@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import { Crown, Minus, Plus, Repeat2, Trash2 } from "lucide-react";
@@ -22,6 +22,8 @@ const PLATE_AREA = "relative flex h-full min-w-0 items-center gap-2 pr-2 pl-3";
 
 /** A pointer passing over the list shouldn't flicker a card up for every row it crosses. */
 const PREVIEW_DELAY_MS = 120;
+/** A finger dragging a row left this far removes it (`onSwipeAway`): about a third of a phone-width row. */
+const SWIPE_AWAY_PX = 96;
 
 /**
  * Where the preview goes: to the left of the row (the decklist is the right half, so the card lands over the search
@@ -76,8 +78,14 @@ export function CardPlate({
   onSelect,
   selected = false,
   showCost = true,
+  trailing,
+  onSwipeAway,
   className,
 }: {
+  /** Extra content at the end of the row, in the actions cell (a price and a remove button on the shopping list). */
+  trailing?: ReactNode;
+  /** A finger dragging the row left past `SWIPE_AWAY_PX` calls this once; the row follows the finger until then. */
+  onSwipeAway?: (() => void) | undefined;
   /** False leaves the mana cost off, where the plate is narrow and the name needs the room (a pair of plates on a phone). */
   showCost?: boolean;
   card: CardSummary;
@@ -97,6 +105,38 @@ export function CardPlate({
   const row = useRef<HTMLLIElement>(null);
   const timer = useRef<number | null>(null);
   const [preview, setPreview] = useState<{ top: number; left: number } | null>(null);
+  const drag = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const [dragX, setDragX] = useState(0);
+
+  const swipeHandlers = onSwipeAway
+    ? {
+        onPointerDownCapture: (e: ReactPointerEvent) => {
+          if (e.pointerType === "touch") drag.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+        },
+        onPointerMove: (e: ReactPointerEvent) => {
+          const start = drag.current;
+          if (!start || start.pointerId !== e.pointerId) return;
+          const dx = e.clientX - start.x;
+          // A mostly vertical drag is a scroll, not a swipe.
+          if (Math.abs(e.clientY - start.y) > Math.abs(dx)) return;
+          if (dx <= -SWIPE_AWAY_PX) {
+            drag.current = null;
+            setDragX(0);
+            onSwipeAway();
+          } else {
+            setDragX(Math.min(0, dx));
+          }
+        },
+        onPointerUp: () => {
+          drag.current = null;
+          setDragX(0);
+        },
+        onPointerCancel: () => {
+          drag.current = null;
+          setDragX(0);
+        },
+      }
+    : {};
 
   function clearTimer() {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -144,7 +184,7 @@ export function CardPlate({
       </span>
     </>
   );
-  const hasActions = Boolean(onQuantity || onReplace || onRemove);
+  const hasActions = Boolean(onQuantity || onReplace || onRemove || trailing);
 
   return (
     <li
@@ -155,8 +195,11 @@ export function CardPlate({
         selected ? "border-primary ring-1 ring-primary" : "border-seam",
         mark === "cut" && "border-l-4 border-l-cut",
         mark === "add" && "border-l-4 border-l-add",
+        onSwipeAway && "touch-pan-y",
         className,
       )}
+      style={dragX !== 0 ? { transform: `translateX(${dragX}px)` } : undefined}
+      {...swipeHandlers}
       onPointerEnter={(e) => e.pointerType === "mouse" && show(PREVIEW_DELAY_MS)}
       onPointerLeave={hide}
       onPointerDown={hide}
@@ -208,6 +251,7 @@ export function CardPlate({
               <Trash2 aria-hidden className="size-4" />
             </RowButton>
           )}
+          {trailing}
         </div>
       )}
       {preview &&

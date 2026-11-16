@@ -11,7 +11,6 @@ import { displayName } from "@/lib/cards";
 import { useCardRules } from "@/lib/card-rules";
 import { StatChips, compareCardOf } from "./deck-stats/stat-chips";
 import { useStatPreview } from "./deck-stats/stat-preview";
-import { describeCostDelta } from "@/lib/format";
 import { cutReasonShortLabel, emptySwapMessage } from "@/lib/labels";
 import { PanelError } from "./panel-state";
 import { ShuffleDeck } from "./shuffle-deck";
@@ -220,9 +219,8 @@ export function SwipeRater({
         <>
           <div aria-live="polite" className="flex flex-col gap-2">
             <CompactCardPanel card={candidate.card} rules={candidateRules} side="in" owned={markOwned && candidate.owned !== null}>
+              {/* No price in the round: prices and buy links live on Finish and the card page. */}
               <span className="font-mono max-sm:hidden">
-                {/* In Owned only every replacement is owned, so what it would save says nothing. */}
-                {ownedOnly(context) ? "" : `${describeCostDelta(candidate.costDelta)} · `}
                 {rater.candidateIndex + 1} of {rater.candidateCount}
               </span>
               {candidate.functionalTwin ? (

@@ -210,6 +210,7 @@ export type Database = {
         Row: {
           card_id: number
           cheapest_finish: string | null
+          cheapest_printing_id: string | null
           cheapest_usd: number | null
           commander_products: number
           computed_at: string
@@ -221,6 +222,7 @@ export type Database = {
         Insert: {
           card_id: number
           cheapest_finish?: string | null
+          cheapest_printing_id?: string | null
           cheapest_usd?: number | null
           commander_products: number
           computed_at?: string
@@ -232,6 +234,7 @@ export type Database = {
         Update: {
           card_id?: number
           cheapest_finish?: string | null
+          cheapest_printing_id?: string | null
           cheapest_usd?: number | null
           commander_products?: number
           computed_at?: string
@@ -246,6 +249,13 @@ export type Database = {
             columns: ["card_id"]
             isOneToOne: true
             referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_stats_cheapest_printing_id_fkey"
+            columns: ["cheapest_printing_id"]
+            isOneToOne: false
+            referencedRelation: "printings"
             referencedColumns: ["id"]
           },
         ]

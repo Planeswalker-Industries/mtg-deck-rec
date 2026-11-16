@@ -8,11 +8,12 @@ export const metadata: Metadata = {
   description: "What MTG Deck Rec collects, why, who else handles it, and how to delete your account.",
 };
 
-const UPDATED = "21 September 2026";
+const UPDATED = "15 November 2026";
 
 // Boilerplate drafted 2026-09-21 from how the app actually stores data; the owner's decisions are the retention of a
-// deleted account's email (abuse prevention) and the use of submitted data (recommendations only, never sold). Keep
-// it in step with the code: a new table holding personal data, a new processor or a new cookie means an edit here.
+// deleted account's email (abuse prevention) and the use of submitted data (recommendations only, never sold). The
+// TCGplayer affiliate links (2026-11-14) fund the servers only and never steer suggestions. Keep it in step with the
+// code: a new table holding personal data, a new processor, a new cookie or a new tracking script means an edit here.
 export default function PrivacyPage() {
   return (
     <article className="flex max-w-prose flex-col gap-6">
@@ -22,15 +23,18 @@ export default function PrivacyPage() {
       </header>
 
       <p>
-        MTG Deck Rec is a noncommercial hobby project that suggests cards for Commander decks. This page explains what we
-        collect when you use it, what we do with it, and what you can do about it.
+        MTG Deck Rec is a hobby project that suggests cards for Commander decks. This page explains what we collect when
+        you use it, what we do with it, how the site pays for itself, and what you can do about it.
       </p>
 
       <Section title="The short version">
         <ul className="list-disc space-y-1 pl-5">
           <li>You can use the deck tool without an account. Nothing you paste is stored on our servers unless you save it.</li>
           <li>What you submit — decks, collections, votes — is used to run the site and improve its recommendations.</li>
-          <li>We never sell your data, and never use it for anything else. No ads, no advertising or analytics trackers.</li>
+          <li>We never sell your data, and never use it for anything else. No ads and no analytics.</li>
+          <li>
+            Links to TCGplayer are affiliate links. They help pay for the servers and never change which cards we suggest.
+          </li>
           <li>You can delete your account at any time from your account page.</li>
         </ul>
       </Section>
@@ -79,7 +83,22 @@ export default function PrivacyPage() {
           Clear button in the deck tool.
         </p>
         <p>
-          The only cookies we set keep you signed in. There are no advertising, analytics or tracking cookies.
+          The only cookies we set keep you signed in. We use no advertising or analytics cookies, and no third-party
+          script runs on our pages. Our TCGplayer links pass through the tracking link of Impact, the affiliate network
+          TCGplayer uses, which credits the purchase to us. Once you follow one, Impact and TCGplayer handle that visit
+          under their own privacy policies. We don&apos;t send them your decks, your collection or your account details.
+        </p>
+      </Section>
+
+      <Section title="How the site pays for itself">
+        <p>
+          The site costs money to run: the database, the hosting and the server that gathers deck statistics. To cover
+          those costs, links to TCGplayer are affiliate links. If you follow one and buy cards, TCGplayer pays us a small
+          commission. You pay the same price either way. The money goes to running the site.
+        </p>
+        <p>
+          Affiliate links never decide which cards we suggest, how they rank or which ones show a price. Buying is always
+          optional: you can copy your decklist and shop anywhere you like.
         </p>
       </Section>
 
@@ -109,6 +128,10 @@ export default function PrivacyPage() {
           <li>
             When you import a deck or collection by pasting a link, our server fetches that link from the site it points
             to.
+          </li>
+          <li>
+            Impact, TCGplayer&apos;s affiliate network, to credit purchases made through our TCGplayer links. When you
+            follow one, TCGplayer and Impact handle that visit under their own privacy policies.
           </li>
         </ul>
       </Section>
