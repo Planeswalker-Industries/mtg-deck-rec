@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
-import { formatAsOf, formatUsd } from "@/lib/format";
+import { formatAsOf, formatUsd, fromPrice } from "@/lib/format";
 import { ShuffleDeck } from "../shuffle-deck";
 import { ScoreExplainer } from "../score-explainer";
 import {
@@ -328,7 +328,8 @@ export function BuildView({
   // A line the collection had nothing more for is a fact about the collection, not an adjustment to make. The lines
   // the player answered stay listed after a rebuild fills them, so the answer can still be changed.
   const choices: StatChoices = state.request.choices ?? {};
-  const gapKeys = [...new Set([...(ready?.result.feasibility.collectionGaps ?? []), ...Object.keys(choices)])];
+  // With a budget the build filled the gaps within it (or, at $0, left them), so nothing is asked.
+  const gapKeys = state.request.budget ? [] : [...new Set([...(ready?.result.feasibility.collectionGaps ?? []), ...Object.keys(choices)])];
   const shortRoles = (stats?.stats.filter((s) => s.group === "roles" && shortOfTarget(s)) ?? []).filter((s) => !gapKeys.includes(s.key));
   const collectionGaps: CollectionGap[] = gapKeys.map((key) => {
     const line = stats?.stats.find((s) => s.key === key);
@@ -436,7 +437,7 @@ export function BuildView({
   // A card bought for a line the player opened says so, with its price; the date is on the summary line.
   const cost = result.fillCost;
   const noteFor = (c: (typeof result.groups)[number]["cards"][number]): { note: string } | Record<string, never> =>
-    c.origin === "fill" ? { note: `Not owned · ${c.card.price ? `about ${formatUsd(c.card.price.usd)}` : "no price"}` } : {};
+    c.origin === "fill" ? { note: `Not owned · ${fromPrice(c.card.price, { lower: true })}` } : {};
 
   return (
     <section aria-label="Your built deck" className="flex flex-col gap-6">

@@ -8,6 +8,7 @@ import { CURVE_LINE, deckDiff, deckStats, type DeckStatsReport, type FixBlock } 
 import { groupDeck, type DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
+import { ShoppingList } from "@/components/decks/shopping-list";
 import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
@@ -120,8 +121,11 @@ export function ReviewPhase({
   choices,
   onChoice,
   collectionOnly,
+  missing,
   children,
 }: {
+  /** For the shopping list: copies the collection doesn't supply, null without one, undefined while it is checked. */
+  missing: ReadonlyMap<CardId, number> | null | undefined;
   /** Fix, for the lines still off and why, and to open it at one of them. */
   fix: Fix;
   /** The player's choices for Deck stats lines, and how one is made or taken back (null). */
@@ -300,91 +304,110 @@ export function ReviewPhase({
         </p>
       )}
 
-      <section aria-label="Before and after" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4">
-        <dl className="grid grid-cols-3 gap-3">
-          <Figure label="Cards">
-            <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
-          </Figure>
-          <Figure label="Avg mana value">
-            <Move
-              before={rounded(before.averageManaValue)}
-              after={rounded(after.averageManaValue)}
-              verdict={judge(rounded(before.averageManaValue), rounded(after.averageManaValue), null)}
-              format={(n) => n.toFixed(MANA_VALUE_DECIMALS)}
-            />
-          </Figure>
-          {/* Whole dollars: cents are noise on an estimate. */}
-          <Figure
-            label="Price"
-            note={asOf ? `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` : undefined}
-          >
-            <Move
-              before={Math.round(before.priceUsd)}
-              after={Math.round(after.priceUsd)}
-              verdict={judge(Math.round(before.priceUsd), Math.round(after.priceUsd), null)}
-              format={wholeUsd}
-            />
-          </Figure>
-        </dl>
-        {report && report.stats.length > 0 && <RoundMoves lines={report.stats} />}
-      </section>
-
-      {changes.length > 0 && (
-        <section aria-labelledby="review-changes" className="flex flex-col gap-3">
-          <h3 id="review-changes" className="font-heading text-xl leading-none font-semibold">
-            Changes <span className="font-mono text-base font-normal text-muted-foreground">{changes.length}</span>
-          </h3>
-          {/*
-            Out beside In. Swaps come first in both columns, so each sits on one row; the cuts and adds alone follow.
-            Each plate floats its card on hover and enlarges it when pressed.
-          */}
-          <div className="grid grid-cols-2 items-start gap-x-3">
-            <section aria-label="Out" className="flex flex-col gap-1.5">
-              <h4 aria-hidden className="text-xs font-semibold text-cut">Out</h4>
-              <ul className="flex flex-col gap-1.5">
-                {outs.map(({ card, quantity }) => (
-                  <CardPlate key={card.id} card={card} quantity={quantity} mark="cut" />
-                ))}
-              </ul>
-            </section>
-            <section aria-label="In" className="flex flex-col gap-1.5">
-              <h4 aria-hidden className="text-xs font-semibold text-add">In</h4>
-              <ul aria-label="Cards put in" className="flex flex-col gap-1.5">
-                {ins.map(({ card, quantity }) => (
-                  <CardPlate key={card.id} card={card} quantity={quantity} mark="add" />
-                ))}
-              </ul>
-            </section>
-          </div>
+      {/*
+        The round's result. On a phone one column: the numbers, then the shopping list, then the changes and the
+        decklist. From xl (the Deck stats rail already takes a right column from lg) the shopping list is an aside on the right, kept in view while the rest scrolls; the
+        left items name only their column, so auto-placement stacks them in rows 1-3 beside it.
+      */}
+      <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+        <section aria-label="Before and after" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4 xl:col-start-1">
+          <dl className="grid grid-cols-3 gap-3">
+            <Figure label="Cards">
+              <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
+            </Figure>
+            <Figure label="Avg mana value">
+              <Move
+                before={rounded(before.averageManaValue)}
+                after={rounded(after.averageManaValue)}
+                verdict={judge(rounded(before.averageManaValue), rounded(after.averageManaValue), null)}
+                format={(n) => n.toFixed(MANA_VALUE_DECIMALS)}
+              />
+            </Figure>
+            {/* Whole dollars: cents are noise on an estimate. */}
+            <Figure
+              label="Price"
+              note={asOf ? `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` : undefined}
+            >
+              <Move
+                before={Math.round(before.priceUsd)}
+                after={Math.round(after.priceUsd)}
+                verdict={judge(Math.round(before.priceUsd), Math.round(after.priceUsd), null)}
+                format={wholeUsd}
+              />
+            </Figure>
+          </dl>
+          {report && report.stats.length > 0 && <RoundMoves lines={report.stats} />}
         </section>
-      )}
 
-      {children}
+        <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
+          <ShoppingList
+            entries={journey.after}
+            missing={missing}
+            roundIds={[...new Set(ins.map((c) => c.card.id).filter((id) => addedIds.has(id)))]}
+            scopeToggle={missing === null}
+            pinActions
+          />
+        </aside>
 
-      <section aria-labelledby="review-decklist" className="flex flex-col gap-3">
-        <h3 id="review-decklist" className="font-heading text-xl leading-none font-semibold">
-          Decklist <span className="font-mono text-base font-normal text-muted-foreground">{after.cards}</span>
-        </h3>
-        {/* Columns like a decklist site: each type stays whole, and the plates flow into as many columns as fit. */}
-        <div className="columns-1 gap-6 md:columns-2 2xl:columns-3">
-          {commanders.length > 0 && (
-            <section aria-label={commanders.length > 1 ? "Commanders" : "Commander"} className="mb-5 break-inside-avoid">
-              <h4 className="mb-2 text-sm font-semibold text-muted-foreground">{commanders.length > 1 ? "Commanders" : "Commander"}</h4>
-              <ul className="flex flex-col gap-1.5">{plates(commanders, true)}</ul>
-            </section>
-          )}
-          {groups.map((group) => (
-            <section key={group.key} aria-label={groupHeading(group.label)} className="mb-5 break-inside-avoid">
-              <h4 className="mb-2 text-sm font-semibold text-muted-foreground">
-                {groupHeading(group.label)} <span className="font-mono font-normal">{group.count}</span>
-              </h4>
-              <ul aria-label={groupHeading(group.label)} className="flex flex-col gap-1.5">
-                {plates(group.entries)}
-              </ul>
-            </section>
-          ))}
+        {changes.length > 0 && (
+          <section aria-labelledby="review-changes" className="flex flex-col gap-3 xl:col-start-1">
+            <h3 id="review-changes" className="font-heading text-xl leading-none font-semibold">
+              Changes <span className="font-mono text-base font-normal text-muted-foreground">{changes.length}</span>
+            </h3>
+            {/*
+              Out beside In. Swaps come first in both columns, so each sits on one row; the cuts and adds alone follow.
+              Each plate floats its card on hover and enlarges it when pressed.
+            */}
+            <div className="grid grid-cols-2 items-start gap-x-3">
+              <section aria-label="Out" className="flex flex-col gap-1.5">
+                <h4 aria-hidden className="text-xs font-semibold text-cut">Out</h4>
+                <ul className="flex flex-col gap-1.5">
+                  {outs.map(({ card, quantity }) => (
+                    <CardPlate key={card.id} card={card} quantity={quantity} mark="cut" />
+                  ))}
+                </ul>
+              </section>
+              <section aria-label="In" className="flex flex-col gap-1.5">
+                <h4 aria-hidden className="text-xs font-semibold text-add">In</h4>
+                <ul aria-label="Cards put in" className="flex flex-col gap-1.5">
+                  {ins.map(({ card, quantity }) => (
+                    <CardPlate key={card.id} card={card} quantity={quantity} mark="add" />
+                  ))}
+                </ul>
+              </section>
+            </div>
+          </section>
+        )}
+
+        <div className="flex flex-col gap-6 xl:col-start-1">
+          {children}
+
+          <section aria-labelledby="review-decklist" className="flex flex-col gap-3">
+            <h3 id="review-decklist" className="font-heading text-xl leading-none font-semibold">
+              Decklist <span className="font-mono text-base font-normal text-muted-foreground">{after.cards}</span>
+            </h3>
+            {/* Columns like a decklist site: each type stays whole, and the plates flow into as many columns as fit. */}
+            <div className="columns-1 gap-6 md:columns-2 2xl:columns-3">
+              {commanders.length > 0 && (
+                <section aria-label={commanders.length > 1 ? "Commanders" : "Commander"} className="mb-5 break-inside-avoid">
+                  <h4 className="mb-2 text-sm font-semibold text-muted-foreground">{commanders.length > 1 ? "Commanders" : "Commander"}</h4>
+                  <ul className="flex flex-col gap-1.5">{plates(commanders, true)}</ul>
+                </section>
+              )}
+              {groups.map((group) => (
+                <section key={group.key} aria-label={groupHeading(group.label)} className="mb-5 break-inside-avoid">
+                  <h4 className="mb-2 text-sm font-semibold text-muted-foreground">
+                    {groupHeading(group.label)} <span className="font-mono font-normal">{group.count}</span>
+                  </h4>
+                  <ul aria-label={groupHeading(group.label)} className="flex flex-col gap-1.5">
+                    {plates(group.entries)}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

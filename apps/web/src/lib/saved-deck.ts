@@ -1,6 +1,6 @@
-import type { Bracket, DeckInput, StatChoices } from "@mtg/core/contract";
+import type { Bracket, DeckBudget, DeckInput, StatChoices } from "@mtg/core/contract";
 import { JOURNEY_PHASES, deckKey, type JourneyState } from "@mtg/core/journey";
-import { MAX_DECK_NAME_CHARS, statChoicesSchema } from "@mtg/core/schemas";
+import { deckBudgetSchema, MAX_DECK_NAME_CHARS, statChoicesSchema } from "@mtg/core/schemas";
 import type { ImportedFrom } from "@/components/deck/use-deck-tool";
 
 /** The deck from the player's last visit, kept in this browser only, so the tool opens where they left off. */
@@ -14,6 +14,8 @@ export interface SavedDeck {
   deckName?: string | null;
   /** The player's choices for Deck stats lines (ignore, or allow buying), until the deck is saved to an account. */
   statChoices?: StatChoices;
+  /** The player's budget (T091), until the deck is saved to an account. */
+  budget?: DeckBudget;
 }
 
 interface StoredDeck extends SavedDeck {
@@ -51,6 +53,7 @@ function readStored(): StoredDeck | null {
       isOptionalText(v.commanderName, MAX_TEXT_CHARS) &&
       isOptionalText(v.deckName, MAX_DECK_NAME_CHARS) &&
       (v.statChoices === undefined || statChoicesSchema.safeParse(v.statChoices).success) &&
+      (v.budget === undefined || deckBudgetSchema.safeParse(v.budget).success) &&
       importedOk;
     return valid ? (v as unknown as StoredDeck) : null;
   } catch {
@@ -64,8 +67,8 @@ export function loadSavedDeck(): SavedDeck | null {
     clearSavedDeck();
     return null;
   }
-  const { text, bracketOverride, importedFrom, commanderName = null, deckName = null, statChoices } = stored;
-  return { text, bracketOverride, importedFrom, commanderName, deckName, ...(statChoices ? { statChoices } : {}) };
+  const { text, bracketOverride, importedFrom, commanderName = null, deckName = null, statChoices, budget } = stored;
+  return { text, bracketOverride, importedFrom, commanderName, deckName, ...(statChoices ? { statChoices } : {}), ...(budget ? { budget } : {}) };
 }
 
 export function saveDeck(deck: SavedDeck): void {
@@ -77,10 +80,14 @@ export function saveDeck(deck: SavedDeck): void {
   }
 }
 
-/** Keeps a bracket choice, a deck name or the stat choices for the saved deck, if there is one. */
-export function updateSavedDeck(changes: Partial<Pick<SavedDeck, "bracketOverride" | "deckName" | "statChoices">>): void {
+/** Keeps a bracket choice, a deck name, the stat choices or the budget for the saved deck, if there is one. */
+export function updateSavedDeck(changes: Partial<Pick<SavedDeck, "bracketOverride" | "deckName" | "statChoices" | "budget">>): void {
   const stored = loadSavedDeck();
-  if (stored) saveDeck({ ...stored, ...changes });
+  if (!stored) return;
+  const next: SavedDeck = { ...stored, ...changes };
+  // No budget is no key: JSON would drop an undefined one anyway, but the read checks only what is there.
+  if (next.budget === undefined) delete next.budget;
+  saveDeck(next);
 }
 
 export function clearSavedDeck(): void {

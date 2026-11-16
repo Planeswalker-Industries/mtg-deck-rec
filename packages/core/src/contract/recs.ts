@@ -42,6 +42,20 @@ export interface RecContext {
    * supplied for such a line while the line is short, and shows as not owned with its price.
    */
   buyFor?: string[];
+  /**
+   * The player's budget (v37), absent when none is set. An unowned card over the effective cap (the lower of the two)
+   * is left out, and so is an unpriced unowned one; owned cards and basic lands always pass. A build reads
+   * `spendLeftUsd` as the whole deck's spend and lowers it as it places unowned cards.
+   */
+  budget?: RecBudget;
+}
+
+/** A budget as a request carries it (v37). Either field may be absent; an empty budget is sent as none. */
+export interface RecBudget {
+  /** Most an unowned card may cost. */
+  cardCapUsd?: number;
+  /** Money left to spend this round: the player's spend budget minus what the round has spent so far. */
+  spendLeftUsd?: number;
 }
 
 /**
@@ -299,6 +313,8 @@ export interface AddResult {
    * missing card isn't owned come in every mode (`owned` null), so the client can show them apart as upgrades.
    */
   combos?: ComboSuggestion[];
+  /** Unowned candidates left out for having no price (v37). Set only when the request carries a budget. */
+  unpricedSkipped?: number;
 }
 
 /**

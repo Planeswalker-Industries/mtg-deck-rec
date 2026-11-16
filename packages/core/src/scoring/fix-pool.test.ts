@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AddSuggestion, CardId, CardSummary, CutSuggestion, OracleId, ScoreBreakdown } from '../contract';
+import type { AddSuggestion, CardId, CardSummary, CutSuggestion, IsoDateTime, OracleId, ScoreBreakdown } from '../contract';
 import { buyLines } from '../journey/buy-for';
 import { fixPool, type FixPoolInput } from './fix-pool';
 import type { RankCard } from './rank';
@@ -146,5 +146,25 @@ describe('fixPool deck cards', () => {
     // The commander's decks can't judge a basic land: it fits best.
     expect(scores.get('Forest')).toBe(1);
     expect(pool.deck.find((c) => c.card.name === 'Weak')).toMatchObject({ roles: [RAMP], card: { roles: [RAMP] } });
+  });
+});
+
+describe('fixPool under a card cap (T091)', () => {
+  const at = (a: AddSuggestion, usd: number | null, owned: AddSuggestion['owned'] = null): AddSuggestion => ({
+    ...a,
+    owned,
+    card: { ...a.card, price: usd === null ? null : { usd, finish: 'nonfoil', asOf: '2026-11-15T00:00:00Z' as IsoDateTime, source: 'scryfall' } },
+  });
+  const adds = [at(creatures[0]!, 10), at(creatures[1]!, 1), at(creatures[2]!, 50, { quantity: 1 }), at(creatures[3]!, null)];
+
+  it('pool drops over-cap unowned ins', () => {
+    const pool = fixPool(input({ adds, perLine: 5, cardCapUsd: 5 }));
+    // Creature 0 costs over the cap and Creature 3 has no price; the owned Creature 2 stays at any price, and so does the Forest.
+    expect(names(pool.ins)).toEqual(['Creature 1', 'Creature 2', 'Forest']);
+  });
+
+  it('no budget is identical', () => {
+    expect(fixPool(input({ adds, perLine: 5, cardCapUsd: null }))).toStrictEqual(fixPool(input({ adds, perLine: 5 })));
+    expect(names(fixPool(input({ adds, perLine: 5 })).ins)).toEqual(['Creature 0', 'Creature 1', 'Creature 2', 'Creature 3', 'Forest']);
   });
 });

@@ -106,8 +106,8 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   const url = page.url();
 
   // The deck's cards are on the page, grouped by type.
-  await expect(page.getByRole("heading", { name: "Lands" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Creatures" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Lands", level: 2 })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Creatures", level: 2 })).toBeVisible();
   const builtSwitch = page.getByRole("switch", { name: "Built" });
   await expect(builtSwitch).toBeVisible();
   await expect(builtSwitch).not.toBeChecked();
@@ -137,7 +137,7 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   const asPrivate = await strangerPage.goto(url);
   expect(asPrivate?.status()).toBe(404);
   // And the content must not leak either way.
-  await expect(strangerPage.getByRole("heading", { name: "Lands" })).toBeHidden();
+  await expect(strangerPage.getByRole("heading", { name: "Lands", level: 2 })).toBeHidden();
   const leaked = await strangerPage.evaluate(() => document.body.innerText);
   expect(leaked).not.toContain("Sol Ring");
   // The download goes with the page.
@@ -291,6 +291,40 @@ test("a saved deck shows its owner's collection coverage in its deckbuilder, not
   await page.getByRole("listitem").getByRole("link").first().click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
   // The deck page's header already gives the card count, so the page leaves the coverage to the deckbuilder.
-  await expect(page.getByRole("heading", { name: "Lands" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Lands", level: 2 })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: /available/ })).toHaveCount(0);
+});
+
+test("a saved deck page offers its missing cards to buy", async ({ page, request, browser }) => {
+  await signIn(page, request, `deckshop-${Date.now()}@test.invalid`, "/collection/import");
+  await page.getByLabel("Collection import").fill("1 Sol Ring\n1 Command Tower");
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByText(/Saved to your account/)).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/deck");
+  await page.getByRole("button", { name: "Use sample deck" }).click();
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await toDeckbuilder(page);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expectEditor(page);
+  await page.goto("/decks");
+  await page.getByRole("listitem").getByRole("link").first().click();
+  await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
+  const url = page.url();
+
+  // The owner's collection holds Sol Ring, so the list leaves it out; basics are never listed.
+  const missing = page.getByRole("region", { name: /^Buy missing cards · \d+ cards? ~\$/ });
+  await expect(missing).toBeVisible({ timeout: 30_000 });
+  await expect(missing.getByRole("link", { name: "Buy on TCGplayer" })).toHaveAttribute("rel", /sponsored/);
+  await expect(missing.getByText("Sol Ring", { exact: true })).toBeHidden();
+
+  // A stranger with no collection is offered the whole deck.
+  const stranger = await browser.newContext();
+  const strangerPage = await stranger.newPage();
+  await strangerPage.goto(url);
+  const whole = strangerPage.getByRole("region", { name: /^Buy this deck · \d+ cards? ~\$/ });
+  await expect(whole).toBeVisible({ timeout: 30_000 });
+  await expect(whole.getByText("Sol Ring", { exact: true })).toBeVisible();
+  await stranger.close();
 });

@@ -10,7 +10,7 @@ import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
-import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
+import { formatAsOf, formatPercent, fromPrice } from "@/lib/format";
 import { PanelError, PanelLoading } from "../panel-state";
 import { CombosPhase } from "./combos-phase";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
@@ -64,7 +64,7 @@ function Why({
       {corpus && (
         <span className="font-mono">{corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}</span>
       )}
-      {!(hasCollection && owned) && <span className="font-mono">{card.price ? `About ${formatUsd(card.price.usd)}` : "No price"}</span>}
+      {!(hasCollection && owned) && <span className="font-mono">{fromPrice(card.price)}</span>}
     </span>
   );
 }

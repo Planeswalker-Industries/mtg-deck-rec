@@ -189,6 +189,16 @@ export interface SavedDeckContents {
   text: string;
   /** The player's choices for Deck stats lines (v35); empty when they made none. */
   statChoices: StatChoices;
+  /** The owner's budget (v37). Present only when the reader owns the deck and saved one. */
+  budget?: DeckBudget;
+}
+
+/** A budget as the player sets it and a saved deck keeps it (v37). Either field may be absent. */
+export interface DeckBudget {
+  /** Most an unowned card may cost. */
+  cardCapUsd?: number;
+  /** Most the round may spend on unowned cards. */
+  spendUsd?: number;
 }
 
 export interface SavedDeckSummary {

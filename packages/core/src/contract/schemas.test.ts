@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_ADD_EXCLUDE,
+  MAX_BUDGET_USD,
   MAX_COLLECTION_ROWS_PER_CALL,
   MAX_DECK_ENTRIES,
   MAX_DECKLIST_CHARS,
@@ -10,6 +11,7 @@ import {
   MAX_VOTE_CANDIDATES_SHOWN,
   addInputSchema,
   castVoteInputSchema,
+  deckBudgetSchema,
   commanderRequestInputSchema,
   parseDeckInputSchema,
   parseInput,
@@ -267,5 +269,41 @@ describe('fix, buyFor and stat choices (v35)', () => {
     expect(chosen.ok && chosen.data.statChoices).toEqual({ curve: 'ignore', 'sources:B': 'buy' });
     expect(parseInput(saveDeckInputSchema, { ...deck, statChoices: { curve: 'skip' } }).ok).toBe(false);
     expect(parseInput(saveDeckInputSchema, { ...deck, statChoices: Object.fromEntries(manyLines.map((l) => [l, 'ignore'])) }).ok).toBe(false);
+  });
+});
+
+describe('budgets (v37)', () => {
+  it('accepts a card cap, a spend of 0, or both', () => {
+    const cap = parseInput(recContextSchema, context({ budget: { cardCapUsd: 5 } }));
+    expect(cap.ok && cap.data.budget).toEqual({ cardCapUsd: 5 });
+    const spent = parseInput(recContextSchema, context({ budget: { spendLeftUsd: 0 } }));
+    expect(spent.ok && spent.data.budget).toEqual({ spendLeftUsd: 0 });
+    expect(parseInput(deckBudgetSchema, { cardCapUsd: 2.5, spendUsd: MAX_BUDGET_USD }).ok).toBe(true);
+  });
+
+  it('reads an empty budget as none', () => {
+    const empty = parseInput(recContextSchema, context({ budget: {} }));
+    expect(empty.ok && empty.data.budget).toBeUndefined();
+    const none = parseInput(deckBudgetSchema, {});
+    expect(none.ok && none.data).toBeUndefined();
+  });
+
+  it('saves a deck with a budget, keeps an empty one to clear the stored one, and leaves an absent one out', () => {
+    const deck = { name: 'Deck', deck: { commanders: [1], cards: [] }, isPublic: true };
+    const set = parseInput(saveDeckInputSchema, { ...deck, budget: { cardCapUsd: 5 } });
+    expect(set.ok && set.data.budget).toEqual({ cardCapUsd: 5 });
+    const cleared = parseInput(saveDeckInputSchema, { ...deck, budget: {} });
+    expect(cleared.ok && cleared.data.budget).toEqual({});
+    const kept = parseInput(saveDeckInputSchema, deck);
+    expect(kept.ok && 'budget' in kept.data).toBe(false);
+    expect(parseInput(saveDeckInputSchema, { ...deck, budget: { spendUsd: -1 } }).ok).toBe(false);
+  });
+
+  it('refuses negative, non-finite or over-bound amounts', () => {
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY, MAX_BUDGET_USD + 1, '5']) {
+      expect(parseInput(recContextSchema, context({ budget: { cardCapUsd: bad } })).ok).toBe(false);
+      expect(parseInput(recContextSchema, context({ budget: { spendLeftUsd: bad } })).ok).toBe(false);
+      expect(parseInput(deckBudgetSchema, { spendUsd: bad }).ok).toBe(false);
+    }
   });
 });

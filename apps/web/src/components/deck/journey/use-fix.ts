@@ -54,7 +54,15 @@ function settingsKey(context: RecContext): string {
       : ownership.kind === "session"
         ? `session:${ownership.catalogEpoch}:${ownership.ownedCardIds.length}`
         : `${ownership.kind}:${ownership.deckId ?? ""}`;
-  return [context.bracket, context.includeGameChangers, collection, context.ownershipMode ?? "", (context.buyFor ?? []).join(",")].join("|");
+  // The card cap shapes the pool; the spend left doesn't (the engine reads it on every move, T091).
+  return [
+    context.bracket,
+    context.includeGameChangers,
+    collection,
+    context.ownershipMode ?? "",
+    (context.buyFor ?? []).join(","),
+    context.budget?.cardCapUsd ?? "",
+  ].join("|");
 }
 
 /**
@@ -136,6 +144,7 @@ export function useFix({
     [analysis, chosenBracket, overBracketAdds],
   );
   const protectedPieces = journey.protectedPieces;
+  const spendLeftUsd = context?.budget?.spendLeftUsd;
 
   const input = useMemo((): FixInput | null => {
     if (!result || !state || !tally || !targets || !bracket) return null;
@@ -149,8 +158,9 @@ export function useFix({
       addedIds: roundAddedIds(state),
       protectedIds: [...new Set([...comboPiecesToKeep(bracket, targets.bracketLimits), ...protectedPieces.keys()])],
       illegalIds: result.illegalIds,
+      spendLeftUsd,
     };
-  }, [result, state, tally, targets, bracket, choices, protectedPieces]);
+  }, [result, state, tally, targets, bracket, choices, protectedPieces, spendLeftUsd]);
 
   const move = useMemo(() => (input ? nextFixMove(focus === null ? input : { ...input, focusLine: focus }) : null), [input, focus]);
   const lines = useMemo((): FixLine[] => (input ? fixLines(input) : []), [input]);

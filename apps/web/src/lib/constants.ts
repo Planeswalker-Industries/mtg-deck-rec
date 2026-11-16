@@ -24,8 +24,12 @@ export const DECK_START_PARAM = "start";
 export const DECK_START_BUILD = "build";
 export const BUILD_DECK_HREF = `/deck?${DECK_START_PARAM}=${DECK_START_BUILD}`;
 
-/** The bracket a build starts at until the player picks another: 3, Upgraded, where most decks at a casual table sit. */
-export const BUILD_DEFAULT_BRACKET = 3;
+/**
+ * The bracket the start form (T091) and a build aim for until the player picks another: 3, Upgraded, where most decks at
+ * a casual table sit.
+ */
+export const DEFAULT_START_BRACKET = 3;
+export const BUILD_DEFAULT_BRACKET = DEFAULT_START_BRACKET;
 
 /**
  * A touch target of at least 44 px on phones, drawn by an invisible pseudo-element centred on the control, so compact
@@ -43,6 +47,13 @@ export const PHONE_HIT_AREA_BEFORE =
  */
 export const TEXT_LINK =
   "text-primary underline decoration-primary/50 underline-offset-2 transition-colors hover:decoration-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+/** Disclosure beside TCGplayer links, shown only when the deploy has a tracking link (`affiliateOn()`). */
+export const AFFILIATE_DISCLOSURE = "TCGplayer links help pay for the servers.";
+/** How long a shopping list removal can be undone: the floor a phone user can still catch (owner may tune). */
+export const SHOPPING_UNDO_MS = 5000;
+/** How long an armed remove button (first tap on a phone) waits for the confirming tap before it disarms. */
+export const REMOVE_ARM_MS = 3000;
 
 /**
  * A word that opens its own explanation (a switch's "Public"): the text stays white, a blue dotted underline says it can

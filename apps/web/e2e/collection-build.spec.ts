@@ -77,7 +77,7 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await expect(page.getByRole("combobox", { name: "My collection" })).toHaveText(/Owned first/);
   const sitting = recs.getByRole("region", { name: "Cards to add" });
   await expectAboveFooter(page, [sitting.getByRole("button", { name: /^Add / }).first(), sitting.getByRole("button", { name: /^Skip / }).first()]);
-  await expect(sitting.getByText(/^About \$/)).toBeVisible();
+  await expect(sitting.getByText(/^From \$/)).toBeVisible();
 });
 
 test("owned suggestions carry the corner marker where they mix with cards to buy, and none in Owned only", async ({ page }) => {

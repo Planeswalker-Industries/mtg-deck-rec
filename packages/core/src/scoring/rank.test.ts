@@ -574,3 +574,178 @@ describe('lines opened to buying (T086)', () => {
     expect(reasons(artifacts).get('Evolving Wilds')).toContain('NOT_OWNED');
   });
 });
+
+describe('budgets (T091)', () => {
+  const budgetAdds = (owned: [number, number][] | null, budget: RecContext['budget'], mode: 'only' | 'first' = 'first') =>
+    rankAdds({
+      context: { ...context(mode), ...(owned === null ? { ownership: null } : {}), ...(budget === undefined ? {} : { budget }) },
+      poolIds: [1, 2, 3, 4, 10, 11, 20],
+      cards,
+      rates: playRates,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: TEST_SCORING,
+      availability: owned === null ? null : availability({ owned: new Map(owned), builtDecks: [] }, twins),
+      standIns: cards,
+      limitPerCategory: 10,
+    });
+  const names = (r: ReturnType<typeof budgetAdds>) => r.groups.flatMap((g) => g.suggestions.map((s) => s.card.name));
+
+  it('cap filters unowned only', () => {
+    // Sol Ring ($2) is owned, Orzhov Signet ($0.50) and Thought Vessel ($0.05) aren't; the lands cost $1.
+    const shown = names(budgetAdds([[1, 1]], { cardCapUsd: 0.5 }));
+    expect(shown).toEqual(expect.arrayContaining(['Sol Ring', 'Orzhov Signet', 'Thought Vessel']));
+    expect(shown).not.toContain('Evolving Wilds');
+    expect(shown).not.toContain('Terramorphic Expanse');
+  });
+
+  it('owned over-cap cards stay', () => {
+    const owned = budgetAdds([[1, 1]], { cardCapUsd: 0 }).groups.flatMap((g) => g.suggestions).find((s) => s.card.name === 'Sol Ring');
+    expect(owned?.owned).toEqual({ quantity: 1 });
+  });
+
+  it('keeps basic lands under any budget', () => {
+    expect(names(budgetAdds(null, { spendLeftUsd: 0 }))).toEqual(['Plains']);
+  });
+
+  it('unpriced dropped only with a budget', () => {
+    const none = budgetAdds(null, undefined);
+    expect(names(none)).toContain('Talisman of Hierarchy');
+    expect(none.unpricedSkipped).toBeUndefined();
+    const capped = budgetAdds(null, { cardCapUsd: 100 });
+    expect(names(capped)).not.toContain('Talisman of Hierarchy');
+    expect(capped.unpricedSkipped).toBe(1);
+  });
+
+  it('takes the lower of the card cap and the spend left', () => {
+    expect(names(budgetAdds(null, { cardCapUsd: 5, spendLeftUsd: 0.5 }))).not.toContain('Sol Ring');
+    expect(names(budgetAdds(null, { cardCapUsd: 5, spendLeftUsd: 2 }))).toContain('Sol Ring');
+  });
+
+  it('next same-role card fills', () => {
+    // Talisman (unpriced) leads the artifacts, then Sol Ring ($2), then Orzhov Signet ($0.50).
+    const lead = (budget: RecContext['budget']) => budgetAdds(null, budget).groups.find((g) => g.category === 'artifact')?.suggestions[0]?.card.name;
+    expect(lead(undefined)).toBe('Talisman of Hierarchy');
+    expect(lead({ cardCapUsd: 2 })).toBe('Sol Ring');
+    expect(lead({ cardCapUsd: 1 })).toBe('Orzhov Signet');
+  });
+
+  it('filters the buy list too', () => {
+    const buying = (budget: RecContext['budget']) => budgetAdds([[2, 1]], budget, 'only').buyList?.map((s) => s.card.name);
+    expect(buying(undefined)).toEqual(['Sol Ring', 'Talisman of Hierarchy']);
+    expect(buying({ cardCapUsd: 2 })).toEqual(['Sol Ring']);
+  });
+
+  it('combo with an over-cap missing piece is not offered', () => {
+    const oracle = card(52, 'Thassa’s Oracle', 'Creature — Merfolk Wizard');
+    const consult = card(53, 'Demonic Consultation', 'Instant', 30);
+    const comboCards = new Map([...cards, [52, oracle], [53, consult]]);
+    const combos = (budget: RecContext['budget']) =>
+      rankAdds({
+        context: { ...context('first', [52]), ownership: null, ...(budget ? { budget } : {}) },
+        poolIds: [1, 2],
+        cards: comboCards,
+        rates: playRates,
+        roles: new Map(),
+        corpus,
+        roleTargets: [],
+        roleTags: new Map(),
+        ownedBoost: 0,
+        scoring: TEST_SCORING,
+        availability: null,
+        bracketFacts: {
+          rules: {
+            massLandDenialTagIds: [],
+            extraTurnTagIds: [],
+            massLandDenialFromBracket: 4,
+            maxExtraTurnCards: {},
+            extraTurnLoopResults: [],
+            extraTurnLoopFromBracket: 4,
+          },
+          cards: { massLandDenial: new Set(), extraTurns: new Set() },
+          combos: [{ variantId: '52-53', pieces: [52, 53], minBracket: 3, results: ['Win the game'], contextualResults: [], templateNames: [], missing: 53 }],
+        },
+        limitPerCategory: 10,
+      }).combos?.map((c) => c.card.name);
+    expect(combos(undefined)).toEqual(['Demonic Consultation']);
+    expect(combos({ cardCapUsd: 30 })).toEqual(['Demonic Consultation']);
+    expect(combos({ cardCapUsd: 29.99 })).toEqual([]);
+  });
+
+  it('no budget is identical', () => {
+    const without = budgetAdds([[2, 1]], undefined, 'only');
+    const explicit = rankAdds({
+      context: { ...context('only'), budget: undefined },
+      poolIds: [1, 2, 3, 4, 10, 11, 20],
+      cards,
+      rates: playRates,
+      roles: new Map(),
+      corpus,
+      roleTargets: [],
+      roleTags: new Map(),
+      ownedBoost: 0,
+      scoring: TEST_SCORING,
+      availability: availability({ owned: new Map([[2, 1]]), builtDecks: [] }, twins),
+      standIns: cards,
+      limitPerCategory: 10,
+    });
+    expect(explicit).toStrictEqual(without);
+  });
+
+  describe('in swaps', () => {
+    const target = card(30, 'Mind Stone', 'Artifact');
+    const candidate = (c: RankCard, tagSimilarity: number): SwapPoolCandidate => ({
+      cardId: c.summary.id,
+      card: c,
+      tagSimilarity,
+      stapleScore: 0.5,
+      functionalTwin: false,
+      matchedTags: [],
+      rates: playRates.get(c.summary.id) ?? null,
+    });
+    const pool: SwapPool = { target, corpus, candidates: [candidate(ring, 0.9), candidate(signet, 0.6), candidate(vessel, 0.5), candidate(talisman, 0.6)] };
+    const swaps = (budget: RecContext['budget'], owned: [number, number][] | null = null) =>
+      rankSwaps(pool, {
+        context: { ...context(owned ? 'first' : 'only', [30]), ...(owned ? {} : { ownership: null }), ...(budget === undefined ? {} : { budget }) },
+        limit: 10,
+        ownedBoost: 0,
+        scoring: TEST_SCORING,
+        availability: owned ? availability({ owned: new Map(owned), builtDecks: [] }, twins) : null,
+      });
+
+    it('leaves out unowned cards over the cap and unpriced ones, and the next card leads', () => {
+      expect(swaps(undefined).suggestions[0]?.card.name).toBe('Sol Ring');
+      const capped = swaps({ cardCapUsd: 1 }).suggestions.map((s) => s.card.name);
+      expect(capped[0]).toBe('Orzhov Signet');
+      expect(capped).not.toContain('Sol Ring');
+      expect(capped).not.toContain('Talisman of Hierarchy');
+    });
+
+    it('keeps an owned card over the cap', () => {
+      expect(swaps({ cardCapUsd: 0 }, [[1, 1]]).suggestions.map((s) => s.card.name)).toEqual(['Sol Ring']);
+    });
+
+    it('filters the buy pool', () => {
+      const result = rankSwaps(
+        { target, corpus, candidates: [candidate(vessel, 0.4)] },
+        {
+          context: { ...context('only', [30]), budget: { cardCapUsd: 1 } },
+          limit: 5,
+          ownedBoost: 0,
+          scoring: TEST_SCORING,
+          availability: availability({ owned: new Map([[3, 1]]), builtDecks: [] }, twins),
+          buyPool: pool,
+        },
+      );
+      expect(result.buyList?.map((s) => s.card.name)).not.toContain('Sol Ring');
+    });
+
+    it('no budget is identical', () => {
+      const explicit = rankSwaps(pool, { context: { ...context('only', [30]), ownership: null, budget: undefined }, limit: 10, ownedBoost: 0, scoring: TEST_SCORING });
+      expect(explicit).toStrictEqual(swaps(undefined));
+    });
+  });
+});

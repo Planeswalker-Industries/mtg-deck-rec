@@ -6,6 +6,7 @@ import type {
   CardId,
   CutResult,
   DeckAnalysis,
+  DeckBudget,
   DeckId,
   DeckInput,
   ImportDeckUrlResult,
@@ -21,11 +22,13 @@ import type {
   SwapResult,
 } from "@mtg/core/contract";
 import { deckDiff } from "@mtg/core/journey";
+import { requestBudget } from "@mtg/core/scoring";
 import { ownedCounts } from "@mtg/core/collection";
 import { mockDecklistText } from "@mtg/core/mocks";
 import type { CollectionSource } from "@/components/collection/use-collection-source";
 import { getApis } from "@/lib/api/client";
 import { displayName } from "@/lib/cards";
+import { DEFAULT_START_BRACKET } from "@/lib/constants";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 import { clearSavedDeck, loadSavedDeck, saveDeck, updateSavedDeck, type SavedDeck } from "@/lib/saved-deck";
 import { SAMPLE_DECKLIST } from "@/lib/sample-deck";
@@ -61,6 +64,8 @@ export interface SubmitOutcome {
   analysis: DeckAnalysis | null;
   /** The decklist's lines as read, on a parse that succeeded. */
   lines?: ResolvedLine[];
+  /** The bracket the round aims for, when the player or the start form set one; null while it is estimated. */
+  bracket?: Bracket | null;
 }
 
 /**
@@ -128,9 +133,12 @@ function buildContext(
   bracketOverride: Bracket | null,
   collection: CollectionUse | null,
   choices: StatChoices,
+  deckBudget: DeckBudget | undefined,
 ): RecContext {
   const bracket = bracketOverride ?? analysis.estimatedBracket;
   const buyFor = buyLinesOf(choices);
+  // The whole spend: the journey takes off what the round has spent when it asks (`withSpent`).
+  const budget = requestBudget(deckBudget);
   return {
     deck: analysis.deck,
     bracket,
@@ -140,6 +148,7 @@ function buildContext(
     ...(collection ? { ownershipMode: collection.mode } : {}),
     // Read only where suggestions keep to the collection; sent whenever the player opened a line.
     ...(buyFor.length > 0 ? { buyFor } : {}),
+    ...(budget ? { budget } : {}),
   };
 }
 
@@ -162,7 +171,10 @@ export type CollectionMode = "off" | OwnershipMode;
  * Why the settings suggestions are made with changed. A bracket change says what the bracket was, so a journey part
  * way through can check the deck against the new one and offer to go back.
  */
-export type ContextChange = { kind: "bracket"; previous: Bracket | null } | { kind: "collection" } | { kind: "playRates" };
+export type ContextChange = { kind: "bracket"; previous: Bracket | null } | { kind: "collection" } | { kind: "playRates" } | { kind: "budget" };
+
+/** Two budgets as one comparable value. */
+const budgetKey = (budget: DeckBudget | undefined) => `${budget?.cardCapUsd ?? ""}|${budget?.spendUsd ?? ""}`;
 
 /**
  * The player's last choice, remembered in this browser. The key predates "owned first", when "1" meant owned-only and
@@ -239,6 +251,23 @@ export function useDeckTool(
     setStatChoices(next);
   }
   /**
+   * The start form's Bracket (T091): the bracket a pasted deck aims for, 3 until the player picks another, in place of
+   * the estimated one.
+   */
+  const [startBracket, setStartBracket] = useState<Bracket>(DEFAULT_START_BRACKET);
+  /**
+   * The player's budget (T091), from the start form or the Deck stats sheet: kept with the remembered deck and, for its
+   * owner, with an account deck. A ref beside the state, like the choices.
+   */
+  const [budget, setBudget] = useState<DeckBudget | undefined>(undefined);
+  const budgetRef = useRef<DeckBudget | undefined>(undefined);
+  /** The budget the open account deck has stored, so an auto-save sends one only when it changed. */
+  const storedBudget = useRef<string | null>(null);
+  function trackBudget(next: DeckBudget | undefined) {
+    budgetRef.current = next;
+    setBudget(next);
+  }
+  /**
    * The same deck as analyzed, for saving beside the result. A ref, like the open deck: submit() persists in the same
    * handler that may have just set it.
    */
@@ -286,8 +315,8 @@ export function useDeckTool(
 
   /** The settings suggestions are made with, with the choices as of this handler (see `statChoicesRef`). */
   const contextFor = (deck: DeckAnalysis, bracket: Bracket | null, collection: CollectionUse | null): RecContext =>
-    buildContext(deck, bracket, collection, statChoicesRef.current);
-  const context = analysis ? buildContext(analysis, bracketOverride, ownership, statChoices) : null;
+    buildContext(deck, bracket, collection, statChoicesRef.current, budgetRef.current);
+  const context = analysis ? buildContext(analysis, bracketOverride, ownership, statChoices, budget) : null;
 
   async function loadCuts(ctx: RecContext, collection: CollectionUse | null) {
     const id = ++recsRequest.current;
@@ -339,6 +368,11 @@ export function useDeckTool(
     const id = ++saveRequest.current;
     trackOpenDeck({ ...deck, status: "saving" });
     const original = changedOriginal(originDeckRef.current, analysis.deck);
+    // The budget goes only when it changed: an empty one clears the stored one.
+    const changedBudget = storedBudget.current !== budgetKey(budgetRef.current) ? (budgetRef.current ?? {}) : undefined;
+    // Counted as stored once sent, so a later save compares against it; a failed write puts the old value back.
+    const storedBefore = storedBudget.current;
+    if (changedBudget) storedBudget.current = budgetKey(changedBudget);
     const r = await getApis().actions.saveDeck({
       deckId: deck.deckId,
       name: deck.name,
@@ -347,7 +381,9 @@ export function useDeckTool(
       ...(bracket === null ? {} : { bracket }),
       ...(original ? { original } : {}),
       statChoices: statChoicesRef.current,
+      ...(changedBudget ? { budget: changedBudget } : {}),
     });
+    if (!r.ok && changedBudget && storedBudget.current === budgetKey(changedBudget)) storedBudget.current = storedBefore;
     if (id !== saveRequest.current) return;
     const current = openDeckRef.current;
     if (!current || current.deckId !== deck.deckId) return;
@@ -361,8 +397,12 @@ export function useDeckTool(
   async function openSavedDeck(code: string): Promise<Result<SubmitOutcome>> {
     const r = await getApis().actions.openSavedDeck({ code });
     if (!r.ok) return r;
-    const { deckId, name, bracket, text: deckText, statChoices: choices } = r.data;
+    const { deckId, name, bracket, text: deckText, statChoices: choices, budget: saved } = r.data;
     trackOpenDeck({ deckId, code: r.data.code, name, status: "saved" });
+    // The owner's budget comes back with the deck; a deck saved without one opens with none.
+    storedBudget.current = budgetKey(saved);
+    trackBudget(saved);
+    if (bracket) setStartBracket(bracket);
     setText(deckText);
     return {
       ok: true,
@@ -397,7 +437,8 @@ export function useDeckTool(
     const wasImported = "sourceUrl" in r.data;
     const source = "sourceUrl" in r.data ? { source: r.data.source, url: r.data.sourceUrl } : (replay?.importedFrom ?? null);
     const finalText = wasImported ? decklistText(r.data.lines) : deckText;
-    const bracket = replay?.bracketOverride ?? null;
+    // A deck from the box aims for the start form's Bracket; a deck the tool replays keeps the one it had.
+    const bracket = replay !== undefined ? replay.bracketOverride : startBracket;
 
     recsRequest.current++;
     setRound((n) => n + 1);
@@ -424,7 +465,8 @@ export function useDeckTool(
     trackStatChoices(choices);
     const commanders = r.data.analysis?.commanderKey.commanders ?? [];
     const commanderName = commanders.length > 0 ? commanders.map(displayName).join(" and ") : null;
-    saveDeck({ text: finalText, bracketOverride: bracket, importedFrom: source, commanderName, deckName: name, statChoices: choices });
+    const kept = budgetRef.current;
+    saveDeck({ text: finalText, bracketOverride: bracket, importedFrom: source, commanderName, deckName: name, statChoices: choices, ...(kept ? { budget: kept } : {}) });
     if (r.data.analysis) {
       if (recs) void loadCuts(contextFor(r.data.analysis, bracket, ownership), ownership);
       else {
@@ -437,7 +479,7 @@ export function useDeckTool(
       suggestedWith.current = null;
       setCut({ status: "idle" });
     }
-    return { parsed: true, analysis: r.data.analysis, lines: r.data.lines };
+    return { parsed: true, analysis: r.data.analysis, lines: r.data.lines, bracket };
   }
 
   /**
@@ -457,6 +499,8 @@ export function useDeckTool(
     if (!saved) return null;
     setText(saved.text);
     setRestored(saved);
+    if (saved.bracketOverride !== null) setStartBracket(saved.bracketOverride);
+    trackBudget(saved.budget);
     return saved;
   }
 
@@ -520,12 +564,26 @@ export function useDeckTool(
 
   function changeBracket(bracket: Bracket) {
     setBracketOverride(bracket);
+    setStartBracket(bracket);
     updateSavedDeck({ bracketOverride: bracket });
     if (!analysis) return;
     reloadFor(contextFor(analysis, bracket, ownership), ownership, { kind: "bracket", previous: bracketOverride });
     // The bracket is stored on the deck, so it is a change to write back; the cards are unchanged. Tracked like any
     // other write, so leaving for the deck's editor waits for it.
     if (openDeckRef.current) pendingSave.current = persist(analysis, bracket);
+  }
+
+  /**
+   * The player's budget changed (the start form, the Deck stats sheet): kept with the remembered deck and the open
+   * account deck, and the lists on screen are asked for again within it.
+   */
+  function changeBudget(next: DeckBudget | undefined) {
+    if (budgetKey(next) === budgetKey(budgetRef.current)) return;
+    trackBudget(next);
+    updateSavedDeck({ budget: next });
+    if (!analysis) return;
+    reloadFor(contextFor(analysis, bracketOverride, ownership), ownership, { kind: "budget" });
+    if (openDeckRef.current) pendingSave.current = persist(analysis, bracketOverride);
   }
 
   /** Changes what the collection does to suggestions and reloads them with it. */
@@ -583,6 +641,8 @@ export function useDeckTool(
 
   /** Remembers the deck a fresh save created, so later edits update it instead of making another one. */
   function trackSavedDeck(saved: Pick<SavedDeckContents, "deckId" | "code" | "name">) {
+    // The save that made it carried the budget, so the account deck has it.
+    storedBudget.current = budgetKey(budgetRef.current);
     trackOpenDeck({ ...saved, status: "saved" });
   }
 
@@ -629,6 +689,12 @@ export function useDeckTool(
     /** The player's choices for Deck stats lines (ignore, or allow buying), by line key. */
     statChoices,
     setStatChoice,
+    /** The start form's Bracket: what a pasted deck aims for (T091). */
+    startBracket,
+    setStartBracket,
+    /** The player's budget; undefined without one (T091). */
+    budget,
+    changeBudget,
     /** null when there's no collection to apply. */
     collectionMode: hasCollection ? collectionMode : null,
     /** The collection as a build or an owned-only search takes it; null without one. */

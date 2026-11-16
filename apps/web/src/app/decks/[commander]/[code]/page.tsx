@@ -8,6 +8,7 @@ import { DeckCards } from "@/components/decks/deck-cards";
 import { DeckExport } from "@/components/decks/deck-export";
 import { DeckBuilt } from "@/components/decks/deck-built";
 import { DeckVisibility } from "@/components/decks/deck-visibility";
+import { SavedDeckShopping } from "@/components/decks/saved-deck-shopping";
 import { buttonVariants } from "@/components/ui/button";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
@@ -112,6 +113,13 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             </>
           )
         }
+      />
+
+      <SavedDeckShopping
+        deckId={deck.id}
+        isOwner={deck.isOwner}
+        commanders={deck.commanders}
+        cards={deck.groups.flatMap((g) => g.cards.map(({ card, quantity }) => ({ card, quantity })))}
       />
 
       {!deck.isOwner && (

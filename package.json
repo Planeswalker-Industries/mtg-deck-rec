@@ -14,6 +14,11 @@
     "build": "yarn workspaces foreach -Apt run build",
     "lint": "yarn workspaces foreach -Apt run lint",
     "typecheck": "yarn workspaces foreach -Apt run typecheck",
-    "test": "yarn workspaces foreach -Apt run test"
+    "test": "yarn workspaces foreach -Apt run test",
+    "format": "prettier --write",
+    "format:check": "prettier --check"
+  },
+  "devDependencies": {
+    "prettier": "3.10.1"
   }
 }

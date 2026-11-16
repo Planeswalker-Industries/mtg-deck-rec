@@ -1,6 +1,8 @@
 import type { AddSuggestion, CutSuggestion, FixCard, FixPool, OwnedInfo } from '../contract';
 import { linesBoughtFor, type BuyLines } from '../journey/buy-for';
 import { CURVE_LINE, toTallyCard } from '../journey/deck-tally';
+import { isBasicLand } from '../journey/builder';
+import { withinBudget } from './budget';
 import { curveBucket, isFrontLand, STAT_CARD_TYPES } from './curve';
 import { rankKey } from './owned';
 import { byStaple, type RankCard } from './rank';
@@ -60,6 +62,12 @@ export interface FixPoolInput {
   /** How far an owned card moves up in 'first' mode (`app_config.ownership.firstBoost`); 0 in every other mode. */
   ownedBoost: number;
   perLine?: number;
+  /**
+   * The budget's card cap (T091): an in card the player doesn't own, other than a basic land, comes only at or under
+   * it, and never unpriced. Null or absent: no cap. The spend left is the engine's (`FixInput.spendLeftUsd`), so the
+   * pool stays the same all round.
+   */
+  cardCapUsd?: number | null;
 }
 
 interface In {
@@ -81,6 +89,7 @@ export function fixPool(input: FixPoolInput): FixPool {
   const candidates = input.adds
     // A card that would complete a combo above the bracket breaks the bracket line it would be judged on.
     .filter((add) => !add.completesOverBracket?.length)
+    .filter((add) => withinBudget(add.card, add.owned !== null, isBasicLand(add.card), input.cardCapUsd ?? null))
     .flatMap((add): In[] => {
       const roles = [...input.rolesOf(add)];
       const card = toTallyCard(add.card, roles);

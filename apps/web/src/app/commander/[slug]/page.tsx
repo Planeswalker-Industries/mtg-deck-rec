@@ -10,7 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { GameChangerBadge } from "@/components/deck/card-label";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { displayName } from "@/lib/cards";
-import { formatAsOf, formatPercent, formatUsd } from "@/lib/format";
+import { formatAsOf, formatPercent, fromPrice } from "@/lib/format";
 import { cardCategoryLabel, commanderDecksPhrase, fewDecksPhrase, formatDeckCount } from "@/lib/labels";
 import { getCommanderPage } from "@/lib/server/recs-cache";
 import { TEXT_LINK } from "@/lib/constants";
@@ -125,7 +125,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
                 <span className="flex flex-col items-start gap-0.5">
                   {s.card.gameChanger && <GameChangerBadge />}
                   {s.corpus && <span className="text-muted-foreground font-mono">In {formatPercent(s.corpus.inclusionRate)} of decks</span>}
-                  <span className="text-muted-foreground font-mono">{s.card.price ? `About ${formatUsd(s.card.price.usd)}` : "No price"}</span>
+                  <span className="text-muted-foreground font-mono">{fromPrice(s.card.price)}</span>
                 </span>
               ),
             }))}

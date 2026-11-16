@@ -47,6 +47,7 @@ import {
   type Profile,
   type ProfilePrior,
 } from './curve';
+import { effectiveCapUsd, withinBudget } from './budget';
 import { ownedOnly, rankKey } from './owned';
 import { blendScore, manaValueProximity } from './swap';
 
@@ -372,6 +373,8 @@ export interface AddRanking {
   groups: { category: CardCategory; suggestions: AddSuggestion[] }[];
   buyList?: BuyAddSuggestion[];
   combos?: ComboSuggestion[];
+  /** Unowned candidates the budget left out for having no price; set only under a budget (v37). */
+  unpricedSkipped?: number;
 }
 
 /**
@@ -522,6 +525,9 @@ export function rankAdds({
     overCombos.set(c.missing, [...(overCombos.get(c.missing) ?? []), comboRef(c, resultWeigher(scoring.combos))]);
   }
 
+  const cap = effectiveCapUsd(context.budget);
+  /** The unowned cards the budget left out for having no price, for the Deck stats sheet. */
+  const unpriced = new Set<number>();
   const scoreOne = ({ cardId, rates: r, corpusScore }: ReturnType<typeof corpusOf>) => {
     const card = cards.get(cardId);
     if (!card) return [];
@@ -529,6 +535,11 @@ export function rankAdds({
     const owning = owningOf(card, availability, standIns);
     // An owned twin the deck already holds can't stand in: the one copy is in use here.
     if (deckIds.has(owning.summary.id)) return [];
+    // The budget (v37) leaves out unowned cards over the cap, and unpriced ones; the role queue's next card fills in.
+    if (!withinBudget(owning.summary, owning.supplied, card.isBasicLand, cap)) {
+      if (owning.summary.price === null) unpriced.add(cardId);
+      return [];
+    }
     const deck = affinityOf(cardId);
     const suggestion: AddSuggestion = {
       card: owning.summary,
@@ -574,13 +585,14 @@ export function rankAdds({
         ),
     ).slice(0, limitPerCategory),
   })).filter((g) => g.suggestions.length > 0);
-  if (!only) return { groups, ...(combos ? { combos } : {}) };
+  const skipped = cap === null ? {} : { unpricedSkipped: unpriced.size };
+  if (!only) return { groups, ...(combos ? { combos } : {}), ...skipped };
 
   // The buy list measures against what the collection supplies, and leaves out the cards already listed as bought.
   const best = new Map<CardCategory, number>();
   for (const { suggestion: s, supplied } of scored) if (supplied) best.set(s.category, Math.max(best.get(s.category) ?? 0, s.score.total));
   const candidates = scored.filter((s) => !s.supplied && !s.bought).map((s) => s.suggestion);
-  return { groups, buyList: buyList(candidates, (c) => best.get(c.category) ?? 0, scoring.collection), ...(combos ? { combos } : {}) };
+  return { groups, buyList: buyList(candidates, (c) => best.get(c.category) ?? 0, scoring.collection), ...(combos ? { combos } : {}), ...skipped };
 }
 
 /**
@@ -743,12 +755,15 @@ export function rankSwaps(
   // The collection-aware weights are for choosing among owned cards alone. 'first' ranks every card, so it keeps the
   // everyday weights and differs from a collection-less ranking only by the owned boost.
   const baseWeights = scoring.weights.swap[only ? 'collection_aware' : 'collection_less'];
+  const cap = effectiveCapUsd(context.budget);
 
   const scored = candidates.flatMap((c) => {
     const card = c.card.summary;
     const owning = owningOf(c.card, availability, standIns);
     // An owned twin the deck already holds can't stand in: the one copy is in use here.
     if (inDeck.has(owning.summary.id)) return [];
+    // The budget (v37) leaves out unowned cards over the cap, and unpriced ones; the ladder fills from what is left.
+    if (!withinBudget(owning.summary, owning.supplied, c.card.isBasicLand, cap)) return [];
     const deck = affinity ? deckAffinity(c.cardId, deckWithoutTarget, affinity.lifts, affinity.weights, scoring.affinity) : null;
     const known = corpusScores.get(c.cardId);
     const corpusScore = known === null ? { value: neutralCorpus, weightScale: scoring.corpus.baselineWeight } : (known ?? null);

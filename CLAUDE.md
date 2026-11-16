@@ -15,6 +15,7 @@ Yarn 4 workspaces (`nodeLinker: node-modules`), Node ≥ 24. TypeScript is pinne
 yarn install
 yarn dev                                         # apps/web on :3000 against local Supabase (NEXT_PUBLIC_USE_MOCKS=1 for mocks)
 yarn typecheck | yarn lint | yarn test | yarn build   # all workspaces
+yarn format <files>                              # Prettier (.prettierrc.json): format the files you add or rewrite; the repo is not formatted wholesale yet
 yarn workspace @mtg/web typecheck                # next typegen + tsc
 yarn workspace @mtg/core vitest run <file> | -t "<name>"
 
@@ -111,12 +112,13 @@ APIs differ from older versions. Read `node_modules/next/dist/docs/` before writ
 
 - **No bot-detection circumvention:** no cloudscraper-class libraries, fingerprint spoofing, UA rotation, proxies or challenge solvers. Every outbound request sends an accurate, descriptive `User-Agent` (and `Accept` for Scryfall).
 - **Fetching public data:** obey robots.txt, one limiter per host at about one request a second (slower if the host pushes back), an honest User-Agent. A 403 or bot challenge switches that source off and is reported to the owner, never worked around.
-  - **Archidekt:** active, through the Go crawl's adapter only (staff allowed API reads).
+  - **Archidekt:** active, through the Go crawl's adapter only. Archidekt gave written permission by email (2026-11-14) for the crawl and for commercial use of its aggregates.
   - **EDHREC:** commander pages as JSON (`sync:edhrec`). Individual decklists (`/deckpreview/`) are never fetched.
   - **Commander Spellbook:** only the daily export on `json.commanderspellbook.com`. Never call `backend.commanderspellbook.com`.
   - **Moxfield:** off (Cloudflare block). **MTGGoldfish:** allowed, not started; its deck downloads are disallowed.
 - **Share-link imports:** a deck or collection link a user pastes may be fetched, one request per user action (a large Archidekt collection's paged export excepted: up to 20 requests a second apart, four per server call). On a block, show the paste-text fallback.
 - **Third-party decklists are used for aggregates only and never shown to visitors.** The one exception is `/admin/crawls`, for platform admins, `noindex` and `no-store`, read through `admin_*` security-definer functions. EDHREC's numbers and Spellbook's popularity are never displayed. Credit Archidekt and Commander Spellbook with a link wherever their data shows.
+- **Affiliate links pay for the servers, nothing more.** TCGplayer approved the app for its affiliate program (through Impact) on 2026-11-14. Affiliate links never influence which cards are suggested, how they rank or which show a price, and `/privacy` says so. No ads. A new affiliate partner or tracking script means an edit to `/privacy`.
 
 ## Local data
 

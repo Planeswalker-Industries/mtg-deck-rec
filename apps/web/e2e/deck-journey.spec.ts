@@ -397,7 +397,7 @@ test("Add's combos: ready and upgrade sections, and Add Combo", async ({ page })
   if (!(await upgrades.getAttribute("open").then((v) => v !== null))) await upgrades.locator("summary").click();
   await expect(upgrades.getByText("Win the game")).toBeVisible();
   await expect(upgrades.getByRole("link", { name: "via Counterspell" })).toHaveAttribute("href", /commanderspellbook\.com\/combo\/mock-combo-2\//);
-  await expect(upgrades.getByText(/^About \$/).first()).toBeVisible();
+  await expect(upgrades.getByText(/^From \$/).first()).toBeVisible();
 
   const before = await deckCount(recs);
   await upgrades.getByRole("button", { name: /^Add Swan Song/ }).click();
@@ -435,4 +435,72 @@ test("Swap never deals a piece of a combo the deck holds", async ({ page, browse
   const withCombo = await swapTargets(freshPage, true);
   await fresh.close();
   expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
+});
+
+/** Finish's shopping list; its heading reads "Shopping list · 8 cards ~$12.34". */
+const SHOPPING_LIST = { name: /^Shopping list · \d+ cards? ~\$/ };
+
+/** Straight to Finish from a deck at 100: no changes, so the list offers the whole deck. */
+async function finishAt100(page: Page) {
+  const recs = await analyzeDeck(page, deckWith(FORESTS_TO_100));
+  const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
+  await expect(recs.getByRole("region", FIX_MOVE)).toBeVisible({ timeout: 60_000 });
+  await steps.getByRole("button", { name: "Swap" }).click();
+  await steps.getByRole("button", { name: "Finish" }).click();
+  const list = recs.getByRole("region", SHOPPING_LIST);
+  await expect(list).toBeVisible({ timeout: 60_000 });
+  return list;
+}
+
+/** Remove a line: one click with a mouse, or a tap that arms the button and a second that confirms on a touch screen. */
+async function removeLine(list: Locator, name: string | RegExp) {
+  await list.getByRole("button", { name, exact: typeof name === "string" }).first().click();
+  const armed = list.getByRole("button", { name: /, tap again to confirm$/ });
+  if (await armed.isVisible()) await armed.click();
+}
+
+test("Finish shows a shopping list by type, removes and undoes", async ({ page }) => {
+  const list = await finishAt100(page);
+
+  // No collection: the toggle shows, and with no cards put in this round the whole deck is chosen.
+  const scope = list.getByRole("group", { name: "Cards to list" });
+  await expect(scope.getByRole("button", { name: "Whole deck" })).toHaveAttribute("aria-pressed", "true");
+  await scope.getByRole("button", { name: "This round's cards" }).click();
+  await expect(list.getByText("This round put in no cards to buy.")).toBeVisible();
+  await scope.getByRole("button", { name: "Whole deck" }).click();
+
+  // Grouped by type; basics never listed.
+  await expect(list.getByRole("list", { name: "Instants to buy" }).getByText("Counterspell", { exact: true })).toBeVisible();
+  await expect(list.getByRole("list", { name: "Lands to buy" }).getByText("Command Tower", { exact: true })).toBeVisible();
+  await expect(list.getByText("Forest", { exact: true })).toBeHidden();
+
+  // Remove a line, then Undo brings it back.
+  await removeLine(list, "Remove Sol Ring");
+  await expect(list.getByText("Sol Ring", { exact: true })).toBeHidden();
+  // The Undo toast sits over the page (portalled to <body>), not inside the list.
+  const undo = page.getByRole("status").filter({ hasText: "Removed Sol Ring." });
+  await undo.getByRole("button", { name: "Undo" }).click();
+  await expect(list.getByText("Sol Ring", { exact: true })).toBeVisible();
+
+  // No copy button of its own: Finish already offers Copy decklist at the top.
+  await expect(list.getByRole("button", { name: /^Copy/ })).toHaveCount(0);
+
+  // Buy goes to TCGplayer's Mass Entry as a paid outbound link.
+  const buy = list.getByRole("link", { name: "Buy on TCGplayer" });
+  await expect(buy).toHaveAttribute("rel", /sponsored/);
+  await expect(buy).toHaveAttribute("href", /massentry/);
+});
+
+test("remove all then undo", async ({ page }) => {
+  const list = await finishAt100(page);
+  const removeButtons = list.getByRole("button", { name: /^Remove / });
+  while ((await removeButtons.count()) > 0) await removeLine(list, /^Remove /);
+
+  await expect(list.getByRole("heading", { level: 3 })).toContainText("0 cards");
+  await expect(list.getByRole("link", { name: /^Buy on TCGplayer/ })).toHaveCount(0);
+  await expect(list.getByText("Buy on TCGplayer")).toHaveAttribute("aria-disabled", "true");
+
+  await expect(list.getByText("You removed every card.")).toBeVisible();
+  await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
+  await expect(list.getByRole("heading", { level: 3 })).toContainText("1 card ");
 });

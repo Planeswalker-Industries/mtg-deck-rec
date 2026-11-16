@@ -1,16 +1,28 @@
-// Impact (TCGplayer's affiliate network) universal tracking tag. The account's tag id comes from the environment so
-// the public repo carries none, and each deploy can turn it on or off. The root layout renders the result in <head>.
-const IMPACT_TAG_ID_PATTERN = /^A[0-9a-f-]+$/i;
-const IMPACT_CDN = "https://utt.impactcdn.com";
+import { MAX_CART_URL_CHARS, splitIntoCarts, tcgplayerLink, trackingBase, type CartLine } from "@mtg/core/shop";
 
-/**
- * Impact's loader, verbatim apart from the script URL; `transformLinks` rewrites TCGplayer links into affiliate links.
- * Null when NEXT_PUBLIC_IMPACT_TAG_ID is unset or malformed: the id lands inside an inline script, so anything but the
- * expected shape is refused rather than escaped.
- */
-export function impactLoaderScript(): string | null {
-  const tagId = process.env.NEXT_PUBLIC_IMPACT_TAG_ID?.trim();
-  if (!tagId || !IMPACT_TAG_ID_PATTERN.test(tagId)) return null;
-  const src = JSON.stringify(`${IMPACT_CDN}/P-${tagId}.js`);
-  return `(function(i,m,p,a,c,t){c.ire_o=p;c[p]=c[p]||function(){(c[p].a=c[p].a||[]).push(arguments)};t=a.createElement(m);var z=a.getElementsByTagName(m)[0];t.async=1;t.src=i;z.parentNode.insertBefore(t,z)})(${src},'script','impactStat',document,window);impactStat('transformLinks');impactStat('trackImpression');`;
+// TCGplayer affiliate links (Impact). The owner's tracking link comes from the environment, so the public repo carries
+// none and each deploy can turn links on or off; without it, links go straight to TCGplayer. No script runs on our
+// pages: Impact credits the deep link itself. Links never decide which cards are suggested or how they rank.
+
+/** The validated tracking link, or null when NEXT_PUBLIC_TCGPLAYER_AFFILIATE_URL is unset or malformed. */
+export function affiliateBase(): string | null {
+  return trackingBase(process.env.NEXT_PUBLIC_TCGPLAYER_AFFILIATE_URL);
 }
+
+/** Whether TCGplayer links earn a commission on this deploy; the disclosure shows only then. */
+export function affiliateOn(): boolean {
+  return affiliateBase() !== null;
+}
+
+/** A TCGplayer page (product or search) as an outbound link. */
+export function cardLink(target: string): string {
+  return tcgplayerLink(target, affiliateBase());
+}
+
+/** Mass Entry carts for the lines, split so no link is too long for TCGplayer. */
+export function cartLinks(lines: readonly CartLine[]): string[] {
+  return splitIntoCarts(lines, affiliateBase(), MAX_CART_URL_CHARS);
+}
+
+/** Every outbound TCGplayer link opens in a new tab and is marked as paid. */
+export const OUTBOUND = { target: "_blank", rel: "sponsored noopener" } as const;

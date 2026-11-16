@@ -85,8 +85,10 @@ test.describe("deck stats on a phone", () => {
     await expect(move.or(nothingToFix).first()).toBeVisible({ timeout: 60_000 });
     test.skip(!(await move.isVisible()), "no Fix move in this data");
     await expectAboveFooter(page, [move.getByRole("button", { name: FIX_SWAP }), move.getByRole("button", { name: FIX_SKIP }), move.getByRole("button", { name: "Fix the rest for me" })]);
-    // Closed, the footer reads the score now and the score the move on screen would give: no per-line text.
-    await expect(page.getByRole("button", { name: FOOTER_NAME })).toContainText(/\d+\/\d+.*\d+\/\d+/s);
+    // Closed, the footer reads one score (T091): the result the move on screen would give, or the score now when it
+    // changes nothing. No per-line text.
+    await expect(page.getByRole("button", { name: FOOTER_NAME })).toContainText(/\d+\/\d+/);
+    await expect(page.getByRole("button", { name: FOOTER_NAME })).not.toContainText(/\d+\/\d+.*\d+\/\d+/s);
   });
 
   test("the readout shows the colours estimate with the hardest cards to cast", async ({ page }) => {
@@ -127,5 +129,40 @@ test.describe("deck stats on a desktop", () => {
     await analyzeSample(page);
     await expect(page.getByRole("complementary", { name: "Deck stats" })).toBeVisible();
     await expect(page.getByRole("button", { name: FOOTER_NAME })).toBeHidden();
+  });
+});
+
+test.describe("the round's budget (T091)", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("the money slot appears after the first priced add", async ({ page }) => {
+    await analyzeSample(page);
+    test.skip((await firstStep(page)) !== "Add", "the sample deck is at 100, so the round has no Add step");
+    const footer = page.getByRole("button", { name: FOOTER_NAME });
+    await expect(footer).not.toContainText("$");
+    const sitting = page.getByRole("region", { name: "Cards to add" });
+    const add = sitting.getByRole("button", { name: ADD_CARD }).first();
+    await expect(add).toBeVisible({ timeout: 60_000 });
+    await add.click();
+    // Without a collection every card brought in is bought; the mocks' cards are priced.
+    await expect(footer).toContainText(/\$\d/, { timeout: 30_000 });
+  });
+
+  test("editing the budget in the sheet re-ranks", async ({ page }) => {
+    await analyzeSample(page);
+    test.skip((await firstStep(page)) !== "Add", "the sample deck is at 100, so the round has no Add step");
+    const sitting = page.getByRole("region", { name: "Cards to add" });
+    const add = sitting.getByRole("button", { name: ADD_CARD }).first();
+    await expect(add).toBeVisible({ timeout: 60_000 });
+    const before = await add.getAttribute("aria-label");
+
+    await page.getByRole("button", { name: FOOTER_NAME }).click();
+    const sheet = page.getByRole("dialog", { name: "Deck stats" });
+    const budget = sheet.getByRole("region", { name: "Budget" });
+    await expect(budget).toBeVisible();
+    // $0 a card leaves only basics and owned cards: Add asks again within it, and the priced card on screen goes.
+    await budget.getByRole("textbox", { name: "Max per card" }).fill("0");
+    await sheet.getByRole("button", { name: "Close deck stats", exact: true }).click();
+    await expect(sitting.getByRole("button", { name: before ?? "", exact: true })).toBeHidden({ timeout: 30_000 });
   });
 });

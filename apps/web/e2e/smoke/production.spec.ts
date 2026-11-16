@@ -64,6 +64,8 @@ for (const { path, heading } of PAGES) {
     const h1 = page.getByRole("heading", { level: 1 }).first();
     await expect(h1).toBeVisible({ timeout: PAGE_TIMEOUT_MS });
     if (heading) await expect(h1).toContainText(heading);
+    // T090: TCGplayer links are plain deep links; no affiliate script runs on our pages.
+    expect(await page.locator("script#impact-affiliate").count(), path).toBe(0);
     await page.waitForLoadState("networkidle", { timeout: PAGE_TIMEOUT_MS });
     expect(problems, path).toEqual([]);
   });
@@ -74,6 +76,14 @@ test("card and commander pages show their card images", async ({ page }) => {
     await page.goto(path, { timeout: PAGE_TIMEOUT_MS });
     await expectImagesLoaded(page);
   }
+});
+
+// Passes only once T090 is released to production.
+test("the card page links its price to TCGplayer", async ({ page }) => {
+  await page.goto("/card/sol-ring", { timeout: PAGE_TIMEOUT_MS });
+  const link = page.getByRole("link", { name: /^From \$.* on TCGplayer$/ });
+  await expect(link).toBeVisible({ timeout: PAGE_TIMEOUT_MS });
+  expect(await link.getAttribute("rel")).toContain("sponsored");
 });
 
 test("the deck tool offers the decklist box", async ({ page }) => {

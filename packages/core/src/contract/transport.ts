@@ -22,6 +22,7 @@ import type {
   SavedDeckContents,
   SavedDeckSummary,
   StatChoices,
+  DeckBudget,
 } from './decks';
 import type { Result } from './errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
@@ -136,6 +137,8 @@ export interface ActionsApi {
     original?: DeckInput;
     /** The player's choices for Deck stats lines (v35), replacing the stored ones. Leave it out to keep those. */
     statChoices?: StatChoices;
+    /** The owner's budget (v37), replacing the stored one; an empty one clears it. Leave it out to keep the stored one. */
+    budget?: DeckBudget;
   }): Promise<Result<{ deckId: DeckId; code: string }>>;
   /** The caller's own saved deck, as decklist text to go on editing. NOT_FOUND for anyone else's. */
   openSavedDeck(input: { code: string }): Promise<Result<SavedDeckContents>>;
