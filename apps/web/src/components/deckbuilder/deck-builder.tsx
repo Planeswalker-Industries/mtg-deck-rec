@@ -154,7 +154,7 @@ export function DeckBuilder({
               tab === t ? TOGGLE_ON : TOGGLE_OFF,
             )}
           >
-            {t === "deck" ? "Deck" : "Add cards"}
+            {t === "deck" ? "Deck" : "Edit"}
           </button>
         ))}
       </div>

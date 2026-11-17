@@ -20,7 +20,7 @@ async function openDeckbuilder(page: Page) {
 async function openCardSearch(page: Page) {
   const recs = await openDeckbuilder(page);
   const width = page.viewportSize()?.width ?? 0;
-  if (width < LG_BREAKPOINT_PX) await recs.getByRole("button", { name: "Add cards" }).click();
+  if (width < LG_BREAKPOINT_PX) await recs.getByRole("button", { name: "Edit", exact: true }).click();
   return { recs, search: recs.getByRole("region", { name: "Add cards" }) };
 }
 
