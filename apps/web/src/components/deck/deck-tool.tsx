@@ -31,6 +31,7 @@ import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
 import { StartSettings } from "./start-settings";
+import { SelectedCommander } from "./selected-commander";
 import { BuildView } from "./build/build-view";
 import { useDeckBuild } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
@@ -150,7 +151,7 @@ const DECK_STATS_DOCK =
 const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6";
 
 /**
- * "upgrade" walks the deck through the journey; "edit" is the deckbuilder, which only saving opens (Save deck, Save for
+ * "upgrade" walks the deck through the journey; "edit" is the deckbuilder, which only saving opens (Save, Save for
  * Later). No control switches between them: cancelling the save goes back to Upgrade.
  */
 type ToolMode = "upgrade" | "edit";
@@ -207,6 +208,8 @@ function DeckToolSession() {
   const deckBuild = useDeckBuild(tool.ownedOnly);
   /** With a collection, the build start lists owned commanders unless the player asks for any. */
   const [pickFrom, setPickFrom] = useState<"owned" | "any">("owned");
+  /** The commander picked on the build start; Build deck builds it. */
+  const [picked, setPicked] = useState<CardSummary | null>(null);
   /** The paste screen's choice while there is no collection; with one, the collection setting is the choice. */
   const [pathWithoutCollection, setPathWithoutCollection] = useState<UpgradePath>("online");
   const upgradePath: UpgradePath =
@@ -632,6 +635,7 @@ function DeckToolSession() {
     const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null, statChoices }, { recs: next === "upgrade" });
     if (!outcome.parsed) return false;
     deckBuild.reset();
+    setPicked(null);
     // Off the picker's address: a refresh now offers this deck back, instead of the commander picker.
     if (buildStart) router.replace("/deck" as Route, { scroll: false });
     setEditing(false);
@@ -754,6 +758,7 @@ function DeckToolSession() {
           onPickAnother={() => {
             // Back from a fitted list goes to the list; back from a build goes to the commander picker.
             if (deckBuild.state.status !== "idle" && deckBuild.state.request.list) setEditing(true);
+            else setPicked(null);
             deckBuild.reset();
           }}
         />
@@ -784,17 +789,23 @@ function DeckToolSession() {
                   { value: "any", label: "Any commander" },
                 ]}
                 value={pickFrom}
-                onChange={setPickFrom}
+                onChange={(value) => {
+                  // The pick came from the other list; a fresh list starts a fresh pick.
+                  setPicked(null);
+                  setPickFrom(value);
+                }}
               />
             )}
-            {/* The collection offer takes focus while it is up; off again, the cursor goes back into the box. */}
-            <CommanderPicker
-              autoFocus={!offersCollection}
-              ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
-              onPick={(card) =>
-                void deckBuild.build({ commanders: [card], bracket: tool.startBracket, ...(tool.budget ? { budget: tool.budget } : {}) })
-              }
-            />
+            {picked ? (
+              <SelectedCommander card={picked} onChange={() => setPicked(null)} />
+            ) : (
+              // The collection offer takes focus while it is up; off again, the cursor goes back into the box.
+              <CommanderPicker
+                autoFocus={!offersCollection}
+                ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
+                onPick={setPicked}
+              />
+            )}
             <StartSettings
               bracket={tool.startBracket}
               onBracket={tool.setStartBracket}
@@ -802,6 +813,19 @@ function DeckToolSession() {
               onBudget={tool.changeBudget}
               importHref={tool.ownedOnly ? null : buildImportHref}
             />
+            {/* The Bracket and budget are read at the tap, so a change after the pick still counts. */}
+            <Button
+              type="button"
+              size="lg"
+              className="lit w-full sm:w-auto sm:self-end"
+              disabled={picked === null}
+              onClick={() => {
+                if (!picked) return;
+                void deckBuild.build({ commanders: [picked], bracket: tool.startBracket, ...(tool.budget ? { budget: tool.budget } : {}) });
+              }}
+            >
+              Build deck
+            </Button>
           </div>
         </PageHero>
       ) : showInput ? (
@@ -989,7 +1013,7 @@ function DeckToolSession() {
             collectionMode={tool.collectionMode}
             onCollectionModeChange={tool.changeCollectionMode}
             onEditDecklist={showInput ? undefined : () => void editDecklist()}
-            // Saving is asked for, never automatic: a new deck is public. Upgrade's Save deck (and a build's Save for
+            // Saving is asked for, never automatic: a new deck is public. Upgrade's Save (and a build's Save for
             // Later) brings the player here, in the Deckbuilder with the name form open; Cancel goes back to Upgrade. An
             // open deck already writes back on its own (and edits in its own editor).
             saveSlot={

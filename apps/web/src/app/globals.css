@@ -91,6 +91,18 @@
 
   --shadow-lift: var(--lift);
   --ease-table: cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* An unknown-length job: about 1.4 s a pass reads as working without looking frantic. */
+  --animate-progress-sweep: progress-sweep 1.4s ease-in-out infinite;
+}
+
+/* A third-width pill slides from off the track's left edge to off its right edge (translate is the pill's own width). */
+@keyframes progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
 }
 
 :root {
@@ -225,6 +237,11 @@
   border: 1px solid var(--seam);
   padding: 0.75rem;
   background: var(--sleeve);
+}
+
+@utility text-on-art {
+  /* Keeps text legible over commander art (plates, the deck bar, card plates): one shadow to tune for all of them. */
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
 }
 
 @utility lit {

@@ -3,7 +3,6 @@
 import { useId, useState, type ReactNode, type Ref } from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { ChevronDown } from "lucide-react";
 import type { Bracket, DeckBudget } from "@mtg/core/contract";
 import { deckBudgetSchema } from "@mtg/core/schemas";
 import { cn } from "cn";
@@ -11,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { ErrorText } from "@/components/ui/error-text";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { HINT_TEXT, TEXT_LINK, TOGGLE_OFF } from "@/lib/constants";
+import { HINT_TEXT, TEXT_LINK } from "@/lib/constants";
 import { BRACKETS, bracketLabel } from "@/lib/labels";
 
 /** A budget field as typed: blank is no limit. */
@@ -144,7 +143,7 @@ export function BudgetFields({
 
 /**
  * The start form's settings (T091), on the paste screen and Choose commander: the Bracket to aim for (3 until the player
- * picks another) and an optional budget, folded away under "Set a budget".
+ * picks another) and an optional budget, always shown.
  */
 export function StartSettings({
   bracket,
@@ -164,9 +163,6 @@ export function StartSettings({
   bracketRef?: Ref<HTMLButtonElement>;
 }) {
   const id = useId();
-  /** Folded until the player opens it, or a budget is set (a remembered deck's); null follows the budget. */
-  const [opened, setOpen] = useState<boolean | null>(null);
-  const open = opened ?? budget !== undefined;
 
   return (
     <div className="flex flex-col gap-3">
@@ -188,28 +184,12 @@ export function StartSettings({
           </SelectContent>
         </Select>
       </div>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={`${id}-budget`}
-        onClick={() => setOpen(!open)}
-        className={cn("flex min-h-11 w-fit items-center gap-1.5 rounded-lg px-2 text-sm font-semibold", TOGGLE_OFF)}
-      >
-        Set a budget
-        <ChevronDown aria-hidden className={cn("size-4 transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div id={`${id}-budget`}>
-          <BudgetFields
-            budget={budget}
-            onBudget={(next) => {
-              setOpen(true);
-              onBudget(next);
-            }}
-            importHref={importHref}
-          />
-        </div>
-      )}
+      <div role="group" aria-labelledby={`${id}-budget`} className="flex flex-col gap-1">
+        <h3 id={`${id}-budget`} className="text-sm font-semibold">
+          Budget
+        </h3>
+        <BudgetFields budget={budget} onBudget={onBudget} importHref={importHref} />
+      </div>
     </div>
   );
 }

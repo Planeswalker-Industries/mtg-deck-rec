@@ -1,9 +1,10 @@
 import type { Metadata, Route } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { decklistText } from "@mtg/core/parse";
+import { cn } from "cn";
+import { CommanderPlate } from "@/components/cards/commander-plate";
 import { DeckCards } from "@/components/decks/deck-cards";
 import { DeckExport } from "@/components/decks/deck-export";
 import { DeckBuilt } from "@/components/decks/deck-built";
@@ -53,51 +54,47 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
   // the canonical path — redirect() inside this <Suspense> runs after the shell has streamed, which leaves the
   // visitor on a loading page rather than moving them. The page is noindex, so duplicate paths cost nothing.
 
-  const lead = deck.commanders[0];
-  const art = lead?.images?.front.artCrop;
   const identity = [...WUBRG].filter((c) => deck.commanders.some((cmd) => cmd.colorIdentity.includes(c))).join("");
 
   return (
     <article className="flex flex-col gap-8">
-      <header className="flex flex-col gap-4">
-        <div className="flex items-center gap-4">
-          {art && (
-            <Image
-              src={art}
-              alt=""
-              width={192}
-              height={140}
-              unoptimized
-              priority
-              className="h-20 w-28 shrink-0 rounded-lg object-cover ring-1 ring-seam sm:h-24 sm:w-36"
-            />
-          )}
-          <div className="min-w-0">
-            <h1 className="font-heading text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
-              {deck.name}
-            </h1>
-            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-              <span>{deck.commanders.map(displayName).join(" and ") || "No commander"}</span>
-              <ColorIdentity identity={identity} />
-              <span className="font-mono">{deck.cardCount} cards</span>
-              {deck.bracket !== null && <span>Bracket {deck.bracket}</span>}
-            </p>
-          </div>
-        </div>
+      <div className="flex flex-col gap-5">
+        <CommanderPlate commanders={deck.commanders} priority>
+          <div className="flex min-h-32 flex-col justify-between gap-4 p-4 sm:min-h-40 sm:p-5">
+            <div className="min-w-0 text-on-art">
+              <h1 className="font-heading text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">{deck.name}</h1>
+              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-foreground/85">
+                <span>{deck.commanders.map(displayName).join(" and ") || "No commander"}</span>
+                <ColorIdentity identity={identity} />
+                <span className="font-mono">{deck.cardCount} cards</span>
+                {deck.bracket !== null && <span>Bracket {deck.bracket}</span>}
+              </p>
+            </div>
 
-        {deck.isOwner && (
-          <div className="flex flex-wrap gap-2">
-            <Link href={`/decks/${deck.commanderSlug}/${deck.code}/edit` as Route} className={buttonVariants({ size: "sm" })}>
-              Edit
-            </Link>
-            <Link href={{ pathname: "/deck", query: { deck: deck.code } }} className={buttonVariants({ size: "sm", variant: "outline" })}>
-              Upgrade
-            </Link>
+            {deck.isOwner && (
+              <div className="flex flex-wrap gap-2">
+                <Link href={`/decks/${deck.commanderSlug}/${deck.code}/edit` as Route} className={buttonVariants({ size: "sm" })}>
+                  Edit
+                </Link>
+                <Link
+                  href={{ pathname: "/deck", query: { deck: deck.code } }}
+                  className={cn(buttonVariants({ size: "sm", variant: "outline" }), "bg-background/70")}
+                >
+                  Upgrade
+                </Link>
+              </div>
+            )}
           </div>
-        )}
+        </CommanderPlate>
 
-        <DeckExport text={decklistText(deckExportEntries(deck))} commanderSlug={deck.commanderSlug} code={deck.code} />
-      </header>
+        {/* Buying sits in the first viewport (owner, 2026-11-16): the lines fold away under it. */}
+        <SavedDeckShopping
+          deckId={deck.id}
+          isOwner={deck.isOwner}
+          commanders={deck.commanders}
+          cards={deck.groups.flatMap((g) => g.cards.map(({ card, quantity }) => ({ card, quantity })))}
+        />
+      </div>
 
       <DeckCards
         deckId={deck.id}
@@ -106,6 +103,9 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
         // A stranger sees the comparison only while there is one; the owner also sees that a restored deck matches.
         original={deck.original && (deck.isOwner || deck.original.out.length + deck.original.in.length > 0) ? deck.original : null}
         groups={deck.groups}
+        exportActions={
+          <DeckExport text={decklistText(deckExportEntries(deck))} commanderSlug={deck.commanderSlug} code={deck.code} iconOnly />
+        }
         settings={
           deck.isOwner && (
             <>
@@ -114,13 +114,6 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             </>
           )
         }
-      />
-
-      <SavedDeckShopping
-        deckId={deck.id}
-        isOwner={deck.isOwner}
-        commanders={deck.commanders}
-        cards={deck.groups.flatMap((g) => g.cards.map(({ card, quantity }) => ({ card, quantity })))}
       />
 
       {!deck.isOwner && (

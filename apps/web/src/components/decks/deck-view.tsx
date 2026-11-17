@@ -1,8 +1,17 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { LayoutGrid, List } from "lucide-react";
+import { Funnel, LayoutGrid, List } from "lucide-react";
 import { cn } from "cn";
+import { CARD_SORTS, DEFAULT_CARD_SORT, type CardSort } from "@mtg/core/journey";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PHONE_HIT_AREA, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 
 /** How a deck's cards show: whole card images, or one plate per card. */
@@ -23,38 +32,100 @@ const VIEWS: { view: DeckView; label: string; icon: typeof LayoutGrid }[] = [
 ];
 
 const listeners = new Set<() => void>();
-/** The choices as last made on this page, which stand in when storage is blocked. */
-const memory = new Map<DeckViewPage, DeckView>();
-
-function readView(page: DeckViewPage): DeckView {
-  const { key, fallback } = VIEW_SETTINGS[page];
-  try {
-    const stored = localStorage.getItem(key);
-    return stored === "plates" || stored === "images" ? stored : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeView(page: DeckViewPage, view: DeckView) {
-  try {
-    localStorage.setItem(VIEW_SETTINGS[page].key, view);
-  } catch {
-    // Storage is blocked; the choice holds for this page only.
-  }
-  memory.set(page, view);
-  listeners.forEach((listener) => listener());
-}
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-/** The view in use on a page. The server and the first render show the page's default, so hydration matches. */
+/**
+ * One choice a page remembers in this browser (its view, its sort). The server and the first render show the page's
+ * default, so hydration matches; when storage is blocked, the choice as last made on this page stands in.
+ */
+function rememberedChoice<V extends string>(settings: Record<DeckViewPage, { key: string; fallback: V }>, valid: readonly V[]) {
+  const memory = new Map<DeckViewPage, V>();
+  const read = (page: DeckViewPage): V => {
+    const { key, fallback } = settings[page];
+    try {
+      const stored = localStorage.getItem(key);
+      return valid.find((v) => v === stored) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const write = (page: DeckViewPage, value: V) => {
+    try {
+      localStorage.setItem(settings[page].key, value);
+    } catch {
+      // Storage is blocked; the choice holds for this page only.
+    }
+    memory.set(page, value);
+    listeners.forEach((listener) => listener());
+  };
+  return function useChoice(page: DeckViewPage): [V, (value: V) => void] {
+    const value = useSyncExternalStore(
+      subscribe,
+      () => memory.get(page) ?? read(page),
+      () => settings[page].fallback,
+    );
+    return [value, (next: V) => write(page, next)];
+  };
+}
+
+const useViewChoice = rememberedChoice<DeckView>(
+  VIEW_SETTINGS,
+  VIEWS.map((v) => v.view),
+);
+
+/** The view in use on a page. */
 export function useDeckView(page: DeckViewPage = "deck"): [DeckView, (view: DeckView) => void] {
-  const view = useSyncExternalStore(subscribe, () => memory.get(page) ?? readView(page), () => VIEW_SETTINGS[page].fallback);
-  return [view, (next: DeckView) => writeView(page, next)];
+  return useViewChoice(page);
+}
+
+/** Where each page remembers its sort; both open sorted by mana value. */
+const SORT_SETTINGS = {
+  deck: { key: "mtg-deck-rec:deck-sort", fallback: DEFAULT_CARD_SORT },
+  build: { key: "mtg-deck-rec:build-sort", fallback: DEFAULT_CARD_SORT },
+} as const satisfies Record<DeckViewPage, { key: string; fallback: CardSort }>;
+const SORT_LABELS: Record<CardSort, string> = { name: "Name", cost: "Cost", color: "Color", price: "Price" };
+
+const useSortChoice = rememberedChoice<CardSort>(SORT_SETTINGS, CARD_SORTS);
+
+/** The sort in use on a page, remembered apart from the other page's. */
+export function useCardSort(page: DeckViewPage): [CardSort, (sort: CardSort) => void] {
+  return useSortChoice(page);
+}
+
+/** A funnel button that opens Name, Cost, Color or Price; sits next to the Images/List toggle. */
+export function SortMenu({ sort, onChange, className }: { sort: CardSort; onChange: (sort: CardSort) => void; className?: string }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Sort cards: ${SORT_LABELS[sort]}`}
+          className={cn(
+            PHONE_HIT_AREA,
+            "inline-flex h-7 items-center rounded-md px-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            TOGGLE_OFF,
+            className,
+          )}
+        >
+          <Funnel aria-hidden className="size-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={sort} onValueChange={(value) => onChange(CARD_SORTS.find((s) => s === value) ?? DEFAULT_CARD_SORT)}>
+          {CARD_SORTS.map((s) => (
+            <DropdownMenuRadioItem key={s} value={s}>
+              {SORT_LABELS[s]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 /** Images or List, for every card on a saved deck's page or a built deck. */

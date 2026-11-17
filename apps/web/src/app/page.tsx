@@ -74,16 +74,18 @@ function StrongestDecks() {
           Let&apos;s build something awesome.
         </span>
       </h2>
-      <Link
-        href="/deck"
-        className={buttonVariants({
-          size: "lg",
-          className: "lit mt-6 h-12 w-fit gap-2 px-6 text-base font-semibold",
-        })}
-      >
-        Get started
-      </Link>
-      {CLOSING_VISTA.src !== HERO_VISTA.src && <ArtCredit vista={CLOSING_VISTA} className="mt-4" />}
+      <div className="mt-6 flex items-center justify-between gap-4">
+        <Link
+          href="/deck"
+          className={buttonVariants({
+            size: "lg",
+            className: "lit h-12 w-fit gap-2 px-6 text-base font-semibold",
+          })}
+        >
+          Get started
+        </Link>
+        {CLOSING_VISTA.src !== HERO_VISTA.src && <ArtCredit vista={CLOSING_VISTA} className="self-center" />}
+      </div>
     </section>
   );
 }
@@ -100,7 +102,7 @@ export default function Home() {
       <section className="relative isolate mx-[calc(50%-50vw)] -mt-4 w-[100vw] overflow-hidden border-b border-seam">
         <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority />
 
-        {/* The fan's column stretches, so its credit sits at the hero's foot; the headline centres against the fan. */}
+        {/* The headline centres against the fan. */}
         <div className="page-column grid gap-4 pt-2 pb-6 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] md:gap-4 md:py-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
           {/* Cards come first on a phone: they say what this is faster than any sentence. */}
           <div className="order-first flex flex-col md:order-last">
@@ -109,7 +111,9 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="relative z-20 max-w-2xl md:self-center">
+          {/* The credit ends the "Spend less." line: last-baseline alignment sets it on that line's baseline, and it
+              stays outside the h1 so the heading reads clean. */}
+          <div className="relative z-20 flex max-w-2xl items-baseline-last justify-between gap-4 md:self-center">
             <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
               Build better decks.
               {/* The buddy's voice: the page's one italic headline phrase. */}
@@ -117,11 +121,8 @@ export default function Home() {
                 Spend less.
               </span>
             </h1>
+            <ArtCredit vista={HERO_VISTA} className="shrink-0 self-baseline-last" />
           </div>
-
-          {/* The hero's bottom right corner, on every width. `order-last` keeps it after the fan, which is ordered last
-              from md up. There the passed card hangs below the fan's box, so the credit keeps clear of it. */}
-          <ArtCredit vista={HERO_VISTA} className="order-last md:col-span-2 md:pt-6" />
         </div>
       </section>
 

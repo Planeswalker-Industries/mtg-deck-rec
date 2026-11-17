@@ -154,7 +154,7 @@ export function SaveDeckButton({
   if (!open) {
     return (
       <Button type="button" size="sm" onClick={() => setOpen(true)}>
-        Save deck
+        Save
       </Button>
     );
   }
@@ -232,7 +232,7 @@ export function SaveDeckButton({
               disabled={busy}
               onClick={() => confirm && void finish(confirm.name, confirm.deck, [], confirm.names)}
             >
-              {busy ? "Saving…" : "Save deck"}
+              {busy ? "Saving…" : "Save"}
             </Button>
             <Button
               type="button"

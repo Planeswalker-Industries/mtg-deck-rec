@@ -46,14 +46,17 @@ export function SavedDeckShopping({
   const missing = useMemo(() => (checking ? undefined : coverageData ? missingFromCoverage(coverageData) : null), [checking, coverageData]);
 
   return (
-    <ShoppingList
-      // Neutral while the collection is checked: a visitor without one would otherwise see "missing" flash.
-      title={missing === undefined ? "Shopping list" : missing === null ? "Buy this deck" : "Buy missing cards"}
-      entries={entries}
-      missing={missing}
-      roundIds={NO_ROUND}
-      scopeToggle={false}
-      headingLevel={2}
-    />
+    <div className="rounded-lg border border-seam bg-sleeve p-4">
+      <ShoppingList
+        // Neutral while the collection is checked: a visitor without one would otherwise see "missing" flash.
+        title={missing === undefined ? "Shopping list" : missing === null ? "Buy this deck" : "Buy missing cards"}
+        entries={entries}
+        missing={missing}
+        roundIds={NO_ROUND}
+        scopeToggle={false}
+        headingLevel={2}
+        folded
+      />
+    </div>
   );
 }

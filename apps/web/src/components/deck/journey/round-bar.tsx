@@ -76,7 +76,7 @@ export function RoundBar({
         {!showSave ? null : save.kind === "new" ? (
           <Button type="button" size="sm" variant="outline" onClick={save.onSave} disabled={busy}>
             <Save aria-hidden />
-            Save deck
+            Save
           </Button>
         ) : (
           <DropdownMenu>

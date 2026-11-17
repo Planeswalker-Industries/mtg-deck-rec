@@ -22,7 +22,7 @@ export function ResumeDeckDialog({
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onDismiss()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-open:animate-in data-open:fade-in-0" />
         <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-xl border border-seam bg-popover p-5 text-popover-foreground shadow-lg data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95">
           <div className="flex flex-col gap-1.5">
             <Dialog.Title className="font-heading text-xl leading-tight font-semibold tracking-tight text-balance">

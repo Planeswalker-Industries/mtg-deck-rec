@@ -116,7 +116,7 @@ export function HowItWorks() {
       inner="grid grid-cols-[minmax(0,1fr)] gap-6 py-8 md:py-10 lg:grid-cols-[22rem_minmax(0,1fr)] lg:gap-12"
     >
       <div>
-        <SectionHeading id="how-it-works" eyebrow="How it works">
+        <SectionHeading id="how-it-works">
           {HOW_IT_WORKS_HEADING}
         </SectionHeading>
         <p className="mt-1 font-drama text-xl text-foreground/85 italic">{HOW_IT_WORKS_SUBLINE}</p>

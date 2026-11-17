@@ -81,7 +81,7 @@ test("card and commander pages show their card images", async ({ page }) => {
 // Passes only once T090 is released to production.
 test("the card page links its price to TCGplayer", async ({ page }) => {
   await page.goto("/card/sol-ring", { timeout: PAGE_TIMEOUT_MS });
-  const link = page.getByRole("link", { name: /^From \$.* on TCGplayer$/ });
+  const link = page.getByRole("link", { name: /^~\$.* on TCGplayer$/ });
   await expect(link).toBeVisible({ timeout: PAGE_TIMEOUT_MS });
   expect(await link.getAttribute("rel")).toContain("sponsored");
 });

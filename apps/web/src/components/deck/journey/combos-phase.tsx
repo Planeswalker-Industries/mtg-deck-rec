@@ -67,12 +67,15 @@ function ComboEntry({
 function ComboSection({
   title,
   count,
+  asOf,
   open,
   onToggle,
   children,
 }: {
   title: string;
   count?: number;
+  /** The prices' as-of date, shown after the count. */
+  asOf?: string | null;
   open: boolean;
   onToggle: (open: boolean) => void;
   children: ReactNode;
@@ -82,6 +85,7 @@ function ComboSection({
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-primary [&::-webkit-details-marker]:hidden">
         <h3 className="font-heading text-lg leading-none font-semibold text-foreground">
           {title} {count !== undefined && <span className="font-mono text-base font-normal text-muted-foreground">{count}</span>}
+          {asOf && <span className="text-sm font-normal text-muted-foreground"> · prices {formatAsOf(asOf)}</span>}
         </h3>
         <ChevronDown aria-hidden className="size-5 transition-transform group-open:rotate-180" />
       </summary>
@@ -160,12 +164,9 @@ export function CombosPhase({ journey, uploadHref, nextLabel }: { journey: DeckJ
         </div>
       )}
 
-      <ComboSection title="Combo Upgrades" count={upgrades.length} open={upgradesOpen} onToggle={setUpgradesOpen}>
+      <ComboSection title="Combo Upgrades" count={upgrades.length} asOf={asOf} open={upgradesOpen} onToggle={setUpgradesOpen}>
         {upgrades.length > 0 ? (
-          <>
-            {entries(upgrades, true)}
-            {asOf && <p className="mt-4 text-xs text-muted-foreground">Prices are Scryfall estimates from {formatAsOf(asOf)}.</p>}
-          </>
+          entries(upgrades, true)
         ) : (
           <p className="text-sm text-muted-foreground">No combos to buy into for this deck.</p>
         )}

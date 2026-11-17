@@ -171,7 +171,7 @@ export function CardPlate({
           <Image src={art} alt="" fill unoptimized sizes="240px" className="object-cover object-[center_30%]" />
         </span>
       )}
-      <span className="relative flex min-w-0 items-center gap-2 [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">
+      <span className="relative flex min-w-0 items-center gap-2 text-on-art">
         {quantity > 1 && <span className="shrink-0 font-mono text-sm tabular-nums">{quantity}×</span>}
         <span className={cn("truncate text-sm font-semibold", mark === "cut" && "line-through decoration-cut decoration-2")}>{name}</span>
         {commander && <Crown aria-label="Commander" className="size-4 shrink-0 text-foreground/80" />}

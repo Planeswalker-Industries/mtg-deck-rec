@@ -11,15 +11,14 @@ import {
   type DeckStatsReport,
   type StatDelta,
   type StatLine,
-  type StatState,
 } from "@mtg/core/journey";
-import { ArrowDown, ArrowRight, ArrowUp, Check, CircleHelp, EyeOff, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Check, CircleHelp, X } from "lucide-react";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
-import { LevelBadge } from "./level";
+import { LevelBadge, Mark } from "./level";
 import { BudgetRow, type RoundBudget } from "./budget-row";
 import { STRIPES, StatBar } from "./stat-bar";
 
@@ -40,19 +39,9 @@ export interface StatAction {
 }
 
 /** "6 short", "3 over": whole cards against the target as shown. */
-function offBy(value: number, target: number): string {
+export function offBy(value: number, target: number): string {
   const delta = value - Math.round(target);
   return delta < 0 ? `${-delta} short` : `${delta} over`;
-}
-
-/** A line's mark: in line, off, or left out of the score because the player chose to ignore it (grey, with its own icon). */
-function Mark({ state }: { state: StatState }) {
-  if (state === "ignored") return <EyeOff role="img" aria-label="Ignored" className="size-4 shrink-0 text-muted-foreground" />;
-  return state === "ok" ? (
-    <Check role="img" aria-label="OK" className="size-4 shrink-0 text-muted-foreground" />
-  ) : (
-    <TriangleAlert role="img" aria-label="Off" className="size-4 shrink-0 text-warning" />
-  );
 }
 
 function ActionLink({ action, className }: { action: StatAction; className?: string }) {
@@ -259,8 +248,8 @@ function ColoursHelp() {
         <DialogHeader>
           <DialogTitle>Colour estimate</DialogTitle>
           <DialogDescription>
-            Sources needed come from Frank Karsten&apos;s 2022 tables for 99-card decks. Odds assume you keep a 7-card hand
-            with 2 to 5 lands and draw on turn one. Mana rocks, dorks and ramp count partly, as he counts them.
+            Sources needed come from Frank Karsten&apos;s 2022 tables for 99-card decks. Odds assume you keep a 7-card hand with 2 to 5
+            lands and draw on turn one. Mana rocks, dorks and ramp count partly, as he counts them.
           </DialogDescription>
         </DialogHeader>
         <a href={KARSTEN_ARTICLE_URL} target="_blank" rel="noreferrer" className={cn(TEXT_LINK, PHONE_HIT_AREA, "self-start text-sm")}>
@@ -282,7 +271,7 @@ const PREVIEWED = "-mx-1.5 rounded-md bg-foreground/5 px-1.5 py-1";
  * the lines that move the score beside the level badge.
  */
 function FlipTag({ to }: { to: Flip }) {
-  const Icon = to === "ok" ? Check : TriangleAlert;
+  const Icon = to === "ok" ? Check : X;
   return (
     <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-semibold">
       <ArrowRight aria-hidden className="size-3 text-muted-foreground" />
@@ -443,12 +432,7 @@ export function DeckStatsPanel({
                   {combo.pieceIds.map((id) => cards.get(id)?.name ?? "Unknown card").join(" + ")}
                   {combo.alsoNeeded.length > 0 ? ` + ${combo.alsoNeeded.join(", ")}` : ""}
                 </span>
-                <a
-                  href={combo.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={cn(TEXT_LINK, PHONE_HIT_AREA, "self-start text-xs")}
-                >
+                <a href={combo.url} target="_blank" rel="noreferrer" className={cn(TEXT_LINK, PHONE_HIT_AREA, "self-start text-xs")}>
                   Commander Spellbook
                 </a>
               </li>

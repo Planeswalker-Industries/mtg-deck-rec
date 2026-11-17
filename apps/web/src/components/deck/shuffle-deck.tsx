@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "motion/react";
 import { cn } from "cn";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import { CardBack } from "./card-back";
 
 const CARDS = 5;
@@ -10,9 +11,22 @@ const CARDS = 5;
  * A small stack of cards shuffling while the database is working: alternate cards split left and right and settle
  * back. It sits in the middle of a dimmed screen, so the thinking phase is the only thing on show and nothing
  * underneath can be tapped or swiped by accident. It lasts only as long as the work takes; with reduced motion it's a
- * still, fanned stack.
+ * still, fanned stack. `detail` is one sentence under the label on what is happening; `loader` adds a sweeping pill
+ * bar for work with no steps to count.
  */
-export function ShuffleDeck({ label, id, className }: { label: string; id?: string; className?: string }) {
+export function ShuffleDeck({
+  label,
+  detail,
+  loader = false,
+  id,
+  className,
+}: {
+  label: string;
+  detail?: string;
+  loader?: boolean;
+  id?: string;
+  className?: string;
+}) {
   const reduceMotion = useReducedMotion();
 
   return (
@@ -54,6 +68,8 @@ export function ShuffleDeck({ label, id, className }: { label: string; id?: stri
         })}
       </div>
       <p className="text-sm font-semibold text-muted-foreground">{label}</p>
+      {detail && <p className="max-w-xs text-center text-sm text-muted-foreground">{detail}</p>}
+      {loader && <ProgressBar value={null} label={label} className="w-48" />}
     </div>
   );
 }
