@@ -313,18 +313,22 @@ test("a saved deck page offers its missing cards to buy", async ({ page, request
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
   const url = page.url();
 
-  // The owner's collection holds Sol Ring, so the list leaves it out; basics are never listed.
-  const missing = page.getByRole("region", { name: /^Buy missing cards · \d+ cards? ~\$/ });
+  // The owner's collection holds Sol Ring, so the list leaves it out; basics are never listed. The panel leads with
+  // the count, the total and Buy; the lines open under "Show the N cards".
+  const missing = page.getByRole("region", { name: "Buy missing cards" });
   await expect(missing).toBeVisible({ timeout: 30_000 });
+  await expect(missing.getByText(/^\d+ cards?, about \$/)).toBeVisible();
   await expect(missing.getByRole("link", { name: "Buy on TCGplayer" })).toHaveAttribute("rel", /sponsored/);
+  await missing.getByRole("button", { name: /^Show the \d+ cards?$/ }).click();
   await expect(missing.getByText("Sol Ring", { exact: true })).toBeHidden();
 
   // A stranger with no collection is offered the whole deck.
   const stranger = await browser.newContext();
   const strangerPage = await stranger.newPage();
   await strangerPage.goto(url);
-  const whole = strangerPage.getByRole("region", { name: /^Buy this deck · \d+ cards? ~\$/ });
+  const whole = strangerPage.getByRole("region", { name: "Buy this deck" });
   await expect(whole).toBeVisible({ timeout: 30_000 });
+  await whole.getByRole("button", { name: /^Show the \d+ cards?$/ }).click();
   await expect(whole.getByText("Sol Ring", { exact: true })).toBeVisible();
   await stranger.close();
 });
