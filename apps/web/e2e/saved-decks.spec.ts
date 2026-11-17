@@ -11,7 +11,7 @@ const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved 
 async function expectEditor(page: Page) {
   const prompt = page.getByRole("dialog", { name: /\d+ (?:card isn't|cards aren't) in your collection/ });
   await expect(prompt.or(page.getByText("All changes saved"))).toBeVisible({ timeout: 30_000 });
-  if (await prompt.isVisible()) await prompt.getByRole("button", { name: "Save deck", exact: true }).click();
+  if (await prompt.isVisible()) await prompt.getByRole("button", { name: "Save", exact: true }).click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
   await expect(page.getByText("All changes saved")).toBeVisible({ timeout: 30_000 });
 }
@@ -38,7 +38,7 @@ test("saves a deck with its last edit, the deckbuilder saves every change, and t
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
 
-  // The round's Save deck opens the deckbuilder with the name form up.
+  // The round's Save opens the deckbuilder with the name form up.
   const recs = await toDeckbuilder(page);
   // Take a card out and save at once, well inside the pause before the edit would reach the decklist on its own.
   await recs.getByRole("region", { name: "Deck list" }).getByRole("button", { name: "Remove Sol Ring" }).click();
@@ -219,7 +219,7 @@ test("saving a journey's result keeps the original, which the deck page compares
   else await toReview.click();
 
   // Save from Finish opens the name form in the editor, prefilled.
-  await recs.getByRole("button", { name: "Save deck", exact: true }).click();
+  await recs.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click({ timeout: 60_000 });
   await expectEditor(page);
 

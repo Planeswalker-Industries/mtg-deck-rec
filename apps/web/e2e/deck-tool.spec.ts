@@ -4,7 +4,7 @@ import { expect, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
 /** Tailwind's `lg` breakpoint, where the deckbuilder shows search beside the deck instead of its own tab. */
 const LG_BREAKPOINT_PX = 1024;
 
-/** Analyzes the sample deck and opens the deckbuilder through Save deck. Returns the recommendations region. */
+/** Analyzes the sample deck and opens the deckbuilder through Save. Returns the recommendations region. */
 async function openDeckbuilder(page: Page) {
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
@@ -31,7 +31,7 @@ test("analyzes the sample deck, and the deckbuilder swaps a card for a replaceme
 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs).toBeVisible({ timeout: 60_000 });
-  // The upgrade journey is what opens, with no control to switch to the deckbuilder; Save deck opens it.
+  // The upgrade journey is what opens, with no control to switch to the deckbuilder; Save opens it.
   await expect(recs.getByRole("navigation", { name: "Deck upgrade steps" })).toBeVisible({ timeout: 60_000 });
   await expect(recs.getByRole("button", { name: "Deckbuilder" })).toHaveCount(0);
 

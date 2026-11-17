@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "cn";
-import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
 import { Pencil } from "lucide-react";
 import type { Bracket, DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
+import { CommanderArt } from "@/components/cards/commander-plate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -49,7 +49,7 @@ function DeckName({ name, onRename }: { name: string; onRename: (name: string) =
 
   if (draft === null) {
     return (
-      <h2 className="min-w-0 truncate font-heading text-lg leading-tight font-semibold tracking-tight sm:text-xl">
+      <h2 className="min-w-0 truncate font-heading text-lg leading-tight font-semibold tracking-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] sm:text-xl">
         <button
           type="button"
           title="Rename deck"
@@ -101,9 +101,9 @@ function DeckName({ name, onRename }: { name: string; onRename: (name: string) =
 }
 
 /**
- * Sticky summary of the deck being analyzed: its name (tap to rename), who it's built around (the commander's art
- * opens their page), and the two knobs that change recommendations (bracket and collection) on the right. Kept to two
- * lines so the swipe view below it has the screen on a phone. Game Changers follow the bracket
+ * Sticky summary of the deck being analyzed: its name (tap to rename) over the commander's art, as BuildView's header
+ * has it, the colour pips (which open the commander's page), and the two knobs that change recommendations (bracket
+ * and collection) on the right. Kept to two lines so the swipe view below it has the screen on a phone. Game Changers follow the bracket
  * (`defaultIncludeGameChangers`), so they have no control of their own.
  */
 export function DeckBar({
@@ -135,16 +135,14 @@ export function DeckBar({
   onEditDecklist?: (() => void) | undefined;
   /**
    * The Deckbuilder's bar: the colours move up beside the name, the card count goes (the builder's stats line has it),
-   * and this (Save deck) takes the collection select's place, which moves into the builder's search panel.
+   * and this (Save) takes the collection select's place, which moves into the builder's search panel.
    */
   saveSlot?: ReactNode;
   /** Return to the initiating deck after a successful collection import. */
   collectionImportHref?: Route;
 }) {
   const building = saveSlot !== undefined;
-  const phoneCoverage = !building && coverage !== undefined;
   const commanders = analysis.commanderKey.commanders;
-  const art = commanders[0]?.images?.front.artCrop;
   const bar = useRef<HTMLDivElement>(null);
 
   // Sticky surfaces below the bar read its height from a CSS variable, since the bar's height changes with the
@@ -164,33 +162,31 @@ export function DeckBar({
   const commanderName = commanders.map(displayName).join(" and ");
   const { slug, deckCount } = analysis.commanderKey;
   const commanderPage = slug && deckCount > 0 ? (`/commander/${slug}` as Route) : null;
-  const artImage = art ? (
-    <Image src={art} alt="" width={96} height={70} unoptimized className={cn("h-12 w-16 shrink-0 rounded-md object-cover ring-1 ring-seam", phoneCoverage && "max-sm:h-7")} />
-  ) : null;
+  // The pips lead to the commander's page, when they have one; the name is the deck's, and renames it.
+  const pips = commanderPage ? (
+    <Link
+      href={commanderPage}
+      aria-label={`${commanderName}: commander page`}
+      title={`${commanderName}: commander page`}
+      className={cn(PHONE_HIT_AREA, "inline-flex shrink-0 rounded-sm transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary")}
+    >
+      <ColorIdentity identity={analysis.colorIdentity} />
+    </Link>
+  ) : (
+    <ColorIdentity identity={analysis.colorIdentity} className="shrink-0" />
+  );
 
   return (
     <div
       ref={bar}
       data-deck-bar=""
-      className="sticky top-0 z-30 -mx-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b border-seam bg-background/95 px-4 py-1.5 backdrop-blur-sm"
+      className="sticky top-0 isolate z-30 -mx-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 overflow-hidden border-b border-seam bg-background/95 px-4 py-1.5 backdrop-blur-sm"
     >
-      {/* The commander's art leads to their page, when they have one; the name beside it is the deck's, and renames it. */}
-      {artImage && commanderPage ? (
-        <Link
-          href={commanderPage}
-          aria-label={`${commanderName}: commander page`}
-          title={`${commanderName}: commander page`}
-          className={cn("row-span-2 rounded-md transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", phoneCoverage && `${PHONE_HIT_AREA} max-sm:row-span-1`)}
-        >
-          {artImage}
-        </Link>
-      ) : (
-        <span className={cn("row-span-2", phoneCoverage && "max-sm:row-span-1")}>{artImage}</span>
-      )}
+      <CommanderArt commanders={commanders} className="-z-10" />
       {/* The deck's issues sit beside the name as a chip, on every screen; in the Deckbuilder the colours come first. */}
       <div className="flex min-w-0 items-center gap-2">
         <DeckName key={deckName} name={deckName} onRename={onRename} />
-        {building && <ColorIdentity identity={analysis.colorIdentity} className="shrink-0" />}
+        {building && pips}
         <DeckIssuesChip issues={analysis.issues} />
       </div>
       <Select value={String(context.bracket)} onValueChange={(value) => onBracketChange(Number(value) as Bracket)}>
@@ -207,11 +203,10 @@ export function DeckBar({
           ))}
         </SelectContent>
       </Select>
-      {/* Coverage uses the space below the art on phones, without adding a third line. */}
-      <p className={cn("flex min-w-0 items-center gap-2 text-xs text-muted-foreground", phoneCoverage && "max-sm:col-span-2")}>
+      <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">
         {!building && (
           <>
-            <ColorIdentity identity={analysis.colorIdentity} className={phoneCoverage ? "max-sm:min-w-0" : undefined} />
+            {pips}
             {coverage}
           </>
         )}
@@ -224,7 +219,7 @@ export function DeckBar({
       {building ? (
         <div className="justify-self-end">{saveSlot}</div>
       ) : collectionMode === null ? (
-        <Link href={collectionImportHref} className={cn(TEXT_LINK, "justify-self-end text-xs font-semibold")}>
+        <Link href={collectionImportHref} className={cn(TEXT_LINK, "inline-flex h-7 items-center justify-self-end rounded-md bg-sleeve px-2.5 text-xs font-semibold")}>
           Add collection
         </Link>
       ) : (

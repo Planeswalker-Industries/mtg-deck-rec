@@ -151,7 +151,7 @@ const DECK_STATS_DOCK =
 const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6";
 
 /**
- * "upgrade" walks the deck through the journey; "edit" is the deckbuilder, which only saving opens (Save deck, Save for
+ * "upgrade" walks the deck through the journey; "edit" is the deckbuilder, which only saving opens (Save, Save for
  * Later). No control switches between them: cancelling the save goes back to Upgrade.
  */
 type ToolMode = "upgrade" | "edit";
@@ -1012,7 +1012,7 @@ function DeckToolSession() {
             collectionMode={tool.collectionMode}
             onCollectionModeChange={tool.changeCollectionMode}
             onEditDecklist={showInput ? undefined : () => void editDecklist()}
-            // Saving is asked for, never automatic: a new deck is public. Upgrade's Save deck (and a build's Save for
+            // Saving is asked for, never automatic: a new deck is public. Upgrade's Save (and a build's Save for
             // Later) brings the player here, in the Deckbuilder with the name form open; Cancel goes back to Upgrade. An
             // open deck already writes back on its own (and edits in its own editor).
             saveSlot={

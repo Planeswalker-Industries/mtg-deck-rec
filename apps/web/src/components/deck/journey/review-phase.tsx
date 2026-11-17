@@ -281,7 +281,7 @@ export function ReviewPhase({
           </>
         ) : (
           <Button type="button" size="lg" className="lit" onClick={save.onSave} disabled={busy || stale}>
-            Save deck
+            Save
           </Button>
         )}
         <CopyDecklistButton text={journey.resultText} size="lg" disabled={busy || stale} />
