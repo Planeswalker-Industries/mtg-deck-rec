@@ -8,7 +8,8 @@ const ART_SIZES = "(min-width: 640px) 75vw, 100vw";
 
 /**
  * The commanders' art behind a header, fading in from the right like a card plate's; partners share the strip.
- * The left stays clear for the name. Purely decorative, so hidden from assistive tech.
+ * The left stays clear for the name, and the art is dimmed so copy over it stays legible. Purely decorative, so
+ * hidden from assistive tech.
  */
 export function CommanderArt({
   commanders,
@@ -34,7 +35,7 @@ export function CommanderArt({
     >
       {arts.map((src) => (
         <span key={src} className="relative flex-1">
-          <Image src={src} alt="" fill unoptimized priority={priority} sizes={sizes} className="object-cover object-[center_30%]" />
+          <Image src={src} alt="" fill unoptimized priority={priority} sizes={sizes} className="object-cover object-[center_30%] brightness-75" />
         </span>
       ))}
     </div>
