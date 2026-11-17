@@ -15,6 +15,8 @@ import { ErrorText } from "@/components/ui/error-text";
 import { SavedDeckCoverage } from "@/components/decks/saved-deck-coverage";
 import { CommanderPlate } from "@/components/cards/commander-plate";
 import { cn } from "cn";
+import { Check, X } from "lucide-react";
+import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 
 /** Edits settle this long before they are written, so a run of clicks is one save rather than one each. */
 const SAVE_DEBOUNCE_MS = 800;
@@ -26,6 +28,30 @@ const STATUS_TEXT: Record<Exclude<SaveStatus["kind"], "error">, string> = {
   pending: "Unsaved changes",
   saving: "Saving…",
 };
+
+/** The deck's size against 100, marked: a green check when full, otherwise a red X with how far off it is. */
+function CardCount({ size }: { size: number }) {
+  const off = size - COMMANDER_DECK_SIZE;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="font-mono">
+        {size}/{COMMANDER_DECK_SIZE}
+      </span>
+      cards
+      {off === 0 ? (
+        <span className="inline-flex items-center gap-0.5 text-success">
+          <Check aria-hidden className="size-4" />
+          Full
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-0.5 text-destructive">
+          <X aria-hidden className="size-4" />
+          {Math.abs(off)} {off < 0 ? "short" : "over"}
+        </span>
+      )}
+    </span>
+  );
+}
 
 /**
  * A saved deck in the deckbuilder. Every edit is written back to the account on its own, a moment after the last
@@ -184,6 +210,10 @@ export function SavedDeckEditor({
               {STATUS_TEXT[status.kind]}
             </p>
           )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">
+            <CardCount size={builder.size} />
+            <SavedDeckCoverage deck={liveDeck} deckId={deckId} />
+          </div>
           <div className="flex flex-wrap gap-2">
             <Link href={{ pathname: "/deck", query: { deck: code } }} className={buttonVariants({ size: "sm" })}>
               Upgrade this deck
@@ -201,7 +231,6 @@ export function SavedDeckEditor({
         builder={builder}
         analysis={analysis}
         swapContext={swapContext}
-        coverage={<SavedDeckCoverage deck={liveDeck} deckId={deckId} />}
       />
     </article>
   );

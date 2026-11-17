@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
+import { useMemo, useState } from "react";
 import type { DeckAnalysis, RecContext } from "@mtg/core/contract";
 import type { DeckEntry } from "@mtg/core/scoring";
-import { deckStats, isBasicLand } from "@mtg/core/journey";
+import { isBasicLand } from "@mtg/core/journey";
 import { cn } from "cn";
 import { byCost, groupHeading } from "@/components/deck/deck-group-id";
 import { DeckStatsFooter } from "@/components/deck/deck-stats/deck-stats-footer";
@@ -12,13 +11,9 @@ import { DeckStatsRail } from "@/components/deck/deck-stats/deck-stats-rail";
 import { useDeckStats } from "@/components/deck/deck-stats/use-deck-stats";
 import { SwapSheet } from "@/components/deck/swap-sheet";
 import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
-import { formatAsOf, formatUsd } from "@/lib/format";
 import { CardSearchPanel, type BuilderCollection } from "./card-search-panel";
 import { CardPlate } from "@/components/cards/card-plate";
 import type { DeckBuilderState } from "./use-deck-builder";
-
-/** Average mana value to one decimal: finer than that is noise at deck scale. */
-const MANA_VALUE_DECIMALS = 1;
 
 const WUBRG = "WUBRG";
 
@@ -68,7 +63,6 @@ export function DeckBuilder({
   swapContext,
   showIssues = true,
   collection,
-  coverage,
 }: {
   builder: DeckBuilderState;
   analysis: DeckAnalysis | null;
@@ -78,11 +72,8 @@ export function DeckBuilder({
   showIssues?: boolean;
   /** The player's collection, for the search panel's Owned only choice. The deck tool has one; a saved deck's page doesn't. */
   collection?: BuilderCollection | undefined;
-  /** The owner's collection coverage, beside the card count; the deck tool shows its own in the deck bar. */
-  coverage?: ReactNode;
 }) {
   const [tab, setTab] = useState<"deck" | "add">("deck");
-  const stats = deckStats([...builder.commanders.map((card) => ({ card, quantity: 1 })), ...builder.main]);
   const identity = builder.commanders.length === 0 ? undefined : [...WUBRG].filter((c) => builder.commanders.some((cmd) => cmd.colorIdentity.includes(c))).join("");
   const issues = analysis?.issues ?? [];
   // builder.main is rebuilt every render, and the stats hook re-syncs on a new array: keep one array per content.
@@ -100,35 +91,6 @@ export function DeckBuilder({
 
   return (
     <div className={cn("flex flex-col gap-4", statsReport && DECK_STATS_DOCK)}>
-      <dl className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border border-seam bg-sleeve px-4 py-3 text-sm">
-        <div className="flex gap-1.5">
-          <dt className="text-muted-foreground">Cards</dt>
-          <dd className={cn("font-mono", builder.size !== COMMANDER_DECK_SIZE && "text-cut")}>
-            {builder.size} / {COMMANDER_DECK_SIZE}
-          </dd>
-        </div>
-        <div className="flex gap-1.5">
-          <dt className="text-muted-foreground">Lands</dt>
-          <dd className="font-mono">{stats.lands}</dd>
-        </div>
-        <div className="flex gap-1.5">
-          <dt className="text-muted-foreground">Average mana value</dt>
-          <dd className="font-mono">{stats.averageManaValue.toFixed(MANA_VALUE_DECIMALS)}</dd>
-        </div>
-        <div className="flex gap-1.5">
-          <dt className="text-muted-foreground">Price</dt>
-          <dd className="font-mono">
-            {formatUsd(stats.priceUsd)}
-            {stats.priceAsOf && <span className="font-normal text-muted-foreground"> as of {formatAsOf(stats.priceAsOf)}</span>}
-          </dd>
-        </div>
-        {coverage && (
-          <div className="flex items-center gap-1.5">
-            <dt className="text-muted-foreground">Collection</dt>
-            <dd>{coverage}</dd>
-          </div>
-        )}
-      </dl>
       {showIssues && issues.length > 0 && (
         <details className="rounded-lg border border-cut/40 bg-cut/5 px-4 py-2 text-sm">
           <summary className="cursor-pointer font-semibold text-primary">
