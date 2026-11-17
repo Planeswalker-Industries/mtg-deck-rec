@@ -13,6 +13,10 @@ import { DeckBuilder } from "./deck-builder";
 import { useDeckBuilder } from "./use-deck-builder";
 import { ErrorText } from "@/components/ui/error-text";
 import { SavedDeckCoverage } from "@/components/decks/saved-deck-coverage";
+import { CommanderPlate } from "@/components/cards/commander-plate";
+import { cn } from "cn";
+import { Pencil } from "lucide-react";
+import { CardCount } from "./card-count";
 
 /** Edits settle this long before they are written, so a run of clicks is one save rather than one each. */
 const SAVE_DEBOUNCE_MS = 800;
@@ -140,58 +144,77 @@ export function SavedDeckEditor({
 
   return (
     <article className="flex flex-col gap-5">
-      <header className="flex flex-col gap-3">
-        {renaming ? (
-          <form
-            className="flex flex-wrap items-center gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void rename();
-            }}
-          >
-            <Input
-              autoFocus
-              aria-label="Deck name"
-              value={draftName}
-              maxLength={MAX_DECK_NAME_CHARS}
-              onChange={(e) => setDraftName(e.target.value)}
-              className="max-w-sm bg-sleeve"
-            />
-            <Button type="submit" size="sm">
-              Rename
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(false)}>
-              Cancel
-            </Button>
-          </form>
-        ) : (
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1 className="font-heading text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">{name}</h1>
-            <Button type="button" size="sm" variant="link" className="px-0" onClick={() => setRenaming(true)}>
-              Rename
-            </Button>
+      <CommanderPlate commanders={builder.commanders}>
+        <div className="flex min-h-32 flex-col gap-3 p-4 sm:min-h-40 sm:p-5">
+          {renaming ? (
+            <form
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void rename();
+              }}
+            >
+              <Input
+                autoFocus
+                aria-label="Deck name"
+                value={draftName}
+                maxLength={MAX_DECK_NAME_CHARS}
+                onChange={(e) => setDraftName(e.target.value)}
+                className="max-w-sm bg-sleeve"
+              />
+              <Button type="submit" size="sm">
+                Rename
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(false)}>
+                Cancel
+              </Button>
+            </form>
+          ) : (
+            <div className="font-heading text-2xl leading-tight sm:text-3xl">
+              {/* Inline, so the pencil follows the name's last word when it wraps; a sibling keeps it out of the heading's name. */}
+              <h1 className="inline font-semibold tracking-tight text-on-art">{name}</h1>
+              <Button
+                type="button"
+                size="icon-lg"
+                variant="ghost"
+                title="Rename deck"
+                aria-label={`Rename deck: ${name}`}
+                className="ml-1.5 bg-background/70 align-middle text-primary"
+                onClick={() => setRenaming(true)}
+              >
+                <Pencil aria-hidden className="size-5" />
+              </Button>
+            </div>
+          )}
+          {status.kind === "error" ? (
+            <ErrorText>Couldn&apos;t save: {status.message}</ErrorText>
+          ) : (
+            <p role="status" className="text-sm text-foreground/85 text-on-art">
+              {STATUS_TEXT[status.kind]}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-on-art">
+            <CardCount size={builder.size} />
+            <SavedDeckCoverage deck={liveDeck} deckId={deckId} />
           </div>
-        )}
-        {status.kind === "error" ? (
-          <ErrorText>Couldn&apos;t save: {status.message}</ErrorText>
-        ) : (
-          <p role="status" className="text-sm text-muted-foreground">
-            {STATUS_TEXT[status.kind]}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <Link href={{ pathname: "/deck", query: { deck: code } }} className={buttonVariants({ size: "sm" })}>
-            Upgrade this deck
-          </Link>
-          <Link href={`/decks/${commanderSlug}/${code}` as Route} className={buttonVariants({ size: "sm", variant: "outline" })}>
-            Deck page
-          </Link>
-          <Link href="/decks" className={buttonVariants({ size: "sm", variant: "ghost" })}>
-            All your decks
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href={{ pathname: "/deck", query: { deck: code } }} className={buttonVariants({ size: "sm" })}>
+              Upgrade this deck
+            </Link>
+            <Link
+              href={`/decks/${commanderSlug}/${code}` as Route}
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "bg-background/70")}
+            >
+              Deck page
+            </Link>
+          </div>
         </div>
-      </header>
-      <DeckBuilder builder={builder} analysis={analysis} swapContext={swapContext} coverage={<SavedDeckCoverage deck={liveDeck} deckId={deckId} />} />
+      </CommanderPlate>
+      <DeckBuilder
+        builder={builder}
+        analysis={analysis}
+        swapContext={swapContext}
+      />
     </article>
   );
 }

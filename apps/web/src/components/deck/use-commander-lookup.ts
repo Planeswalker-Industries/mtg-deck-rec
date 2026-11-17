@@ -14,10 +14,14 @@ const ACTIVE: ReadonlySet<CommanderRequestStatus> = new Set(["queued", "checking
 
 export type LookupState =
   | { phase: "idle" }
-  /** The commander has no deck data and no lookup: ask whether to pull decks. */
-  | { phase: "prompt"; commander: CardSummary; estimatedSeconds: number; collectorOnline: boolean; starting: boolean; error: string | null }
+  /**
+   * The commander has too little deck data and no lookup: ask whether to pull decks. `deckCount` is how many decks it
+   * has now (0 or a few), so the sheet says which. While the collector is offline the state is set but the sheet stays
+   * closed.
+   */
+  | { phase: "prompt"; commander: CardSummary; deckCount: number; estimatedSeconds: number; collectorOnline: boolean; starting: boolean; error: string | null }
   /** The visitor chose not to wait; they can still start a lookup from the deck tool. */
-  | { phase: "declined"; commander: CardSummary; estimatedSeconds: number; collectorOnline: boolean }
+  | { phase: "declined"; commander: CardSummary; deckCount: number; estimatedSeconds: number; collectorOnline: boolean }
   /** `found` is true for the first update after the source reported how many decks it lists. */
   | { phase: "running"; request: CommanderRequest; stage: RefreshStage | null; found: boolean }
   | { phase: "complete"; request: CommanderRequest }
@@ -116,15 +120,17 @@ export function useCommanderLookup(refresh: (onStage: (stage: RefreshStage) => P
     setState({ phase: "idle" });
     setOpen(false);
     const commander = lookupCommander(analysis);
-    if (!commander) return;
+    if (!analysis || !commander) return;
+    const { deckCount } = analysis.commanderKey;
 
     const r = await getApis().actions.getCommanderCoverage({ commanderId: commander.id });
     // Without coverage the deck tool still works on what cards do; there's just no offer to look up decks.
     if (id !== run.current || !r.ok) return;
     const { request, estimatedSeconds, collectorOnline } = r.data;
     if (!request) {
-      setState({ phase: "prompt", commander, estimatedSeconds, collectorOnline, starting: false, error: null });
-      setOpen(true);
+      setState({ phase: "prompt", commander, deckCount, estimatedSeconds, collectorOnline, starting: false, error: null });
+      // An offline collector couldn't start the lookup for a while: no pop-up the visitor didn't ask for.
+      if (collectorOnline) setOpen(true);
       return;
     }
     follow(id, request, null);
@@ -133,14 +139,14 @@ export function useCommanderLookup(refresh: (onStage: (stage: RefreshStage) => P
 
   async function approve() {
     if (state.phase !== "prompt" && state.phase !== "declined") return;
-    const { commander, estimatedSeconds, collectorOnline } = state;
+    const { commander, deckCount, estimatedSeconds, collectorOnline } = state;
     const id = ++run.current;
-    setState({ phase: "prompt", commander, estimatedSeconds, collectorOnline, starting: true, error: null });
+    setState({ phase: "prompt", commander, deckCount, estimatedSeconds, collectorOnline, starting: true, error: null });
     setOpen(true);
     const r = await getApis().actions.requestCommanderDecks({ commanderId: commander.id });
     if (id !== run.current) return;
     if (!r.ok) {
-      setState({ phase: "prompt", commander, estimatedSeconds, collectorOnline, starting: false, error: r.error.message });
+      setState({ phase: "prompt", commander, deckCount, estimatedSeconds, collectorOnline, starting: false, error: r.error.message });
       return;
     }
     follow(id, r.data, null);
@@ -157,8 +163,8 @@ export function useCommanderLookup(refresh: (onStage: (stage: RefreshStage) => P
   function close() {
     setOpen(false);
     if (state.phase === "prompt" && !state.starting) {
-      const { commander, estimatedSeconds, collectorOnline } = state;
-      setState({ phase: "declined", commander, estimatedSeconds, collectorOnline });
+      const { commander, deckCount, estimatedSeconds, collectorOnline } = state;
+      setState({ phase: "declined", commander, deckCount, estimatedSeconds, collectorOnline });
     } else if (state.phase === "complete") {
       setState({ phase: "idle" });
     }

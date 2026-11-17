@@ -1,6 +1,19 @@
-import type { DeckStatsLevel } from "@mtg/core/journey";
-import { ArrowDown, ArrowRight, ArrowUp, Check, CircleAlert, TriangleAlert, type LucideIcon } from "lucide-react";
+import type { DeckStatsLevel, StatState } from "@mtg/core/journey";
+import { ArrowDown, ArrowRight, ArrowUp, Check, CircleAlert, EyeOff, TriangleAlert, X, type LucideIcon } from "lucide-react";
 import { cn } from "cn";
+
+/**
+ * A Deck stats line's mark: a green check in line, a red X off, or a grey eye when the player chose to ignore the line
+ * (left out of the score). Every line in the sheet and the rail starts with one, the Budget row included.
+ */
+export function Mark({ state }: { state: StatState }) {
+  if (state === "ignored") return <EyeOff role="img" aria-label="Ignored" className="size-4 shrink-0 text-muted-foreground" />;
+  return state === "ok" ? (
+    <Check role="img" aria-label="OK" className="size-4 shrink-0 text-success" />
+  ) : (
+    <X role="img" aria-label="Off" className="size-4 shrink-0 text-destructive" />
+  );
+}
 
 /** Each level's icon, word and colour: the colour never stands alone. */
 export const LEVEL: Record<DeckStatsLevel, { icon: LucideIcon; word: string; text: string }> = {

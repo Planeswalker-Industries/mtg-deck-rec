@@ -53,9 +53,13 @@ A migration drops `rec_add_candidates` (both overloads), `rec_swap_candidates`, 
 Moxfield's whitelist also wants a production domain (T044). `www.spellchasm.com` is canonical and the apex redirects to it (Vercel's default, kept by the owner on 2026-11-16).
 
 - [x] Vercel (`mtg-app` → Domains) serves `www.spellchasm.com`, the apex redirects to it, and Namecheap DNS holds Vercel's records
-- [ ] Vercel `NEXT_PUBLIC_SITE_URL` = `https://www.spellchasm.com` (Production), then a redeploy: the value is baked in at build (on 2026-11-16 robots.txt still named `mtg-app-psi.vercel.app`)
-- [ ] Supabase → Authentication → URL Configuration: Site URL `https://www.spellchasm.com`, and both `https://www.spellchasm.com/**` and `https://spellchasm.com/**` in the redirect list
+- [x] Vercel `NEXT_PUBLIC_SITE_URL` = `https://www.spellchasm.com` (Production), then a redeploy: the value is baked in at build (on 2026-11-16 robots.txt still named `mtg-app-psi.vercel.app`)
+- [x] Supabase → Authentication → URL Configuration: Site URL `https://www.spellchasm.com`, and both `https://www.spellchasm.com/**` and `https://spellchasm.com/**` in the redirect list
 - [x] Google OAuth: consent screen name, home page, privacy link and authorized domain on `spellchasm.com` (owner, 2026-11-16)
+- [ ] Google's account chooser says "Spell Chasm", not the Supabase project domain. Verify `spellchasm.com` in Google Search Console as a Domain property (DNS TXT record at Namecheap), signed in with the Google account that owns the Cloud project
+- [ ] Google Cloud → Google Auth Platform → Branding: app name Spell Chasm, logo, home page and privacy policy URLs on `https://www.spellchasm.com`, authorized domain `spellchasm.com`; then submit the branding for verification
+- [ ] Once Google approves the branding, signing in on `www.spellchasm.com` shows "to continue to Spell Chasm" in the chooser
+- A Supabase custom domain (paid add-on) would also change the chooser's domain; considered and not chosen (owner, 2026-11-16)
 - [ ] The VPS worker's `WEB_APP_URL` is `https://www.spellchasm.com`; Impact's property URL is the new domain; Archidekt is told the crawl's new User-Agent (`SpellChasm/0.1`)
 - [x] `yarn workspace @mtg/web smoke` passes against `https://www.spellchasm.com` (14/14, 2026-11-16)
 - [ ] Resend (free tier) or equivalent verifies the sending domain, Supabase → Authentication → SMTP uses it, and Rate Limits → emails per hour goes up; the hosted sign-in email template and subject say Spell Chasm

@@ -1,9 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import type { DeckId, DeckInput } from "@mtg/core/contract";
+import { sortCards, type CardSort } from "@mtg/core/journey";
 import { cn } from "cn";
 import { CardPlate } from "@/components/cards/card-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -27,12 +28,15 @@ export function DeckOriginal({
   isOwner,
   original,
   view,
+  sort,
 }: {
   deckId: DeckId;
   name: string;
   isOwner: boolean;
   original: DeckOriginalData;
   view: DeckView;
+  /** The page's sort, applied to Out and In alike. */
+  sort: CardSort;
 }) {
   const router = useRouter();
   const bodyId = useId();
@@ -41,6 +45,8 @@ export function DeckOriginal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unchanged = original.out.length === 0 && original.in.length === 0;
+  const out = useMemo(() => sortCards(original.out, sort, (entry) => entry.card), [original.out, sort]);
+  const put = useMemo(() => sortCards(original.in, sort, (entry) => entry.card), [original.in, sort]);
   const copies = (list: DeckOriginalData["out"]) => list.reduce((n, c) => n + c.quantity, 0);
 
   async function restore(deck: DeckInput) {
@@ -102,13 +108,13 @@ export function DeckOriginal({
             {original.out.length > 0 && (
               <div className="flex flex-col gap-2">
                 <h3 className="font-heading text-lg font-semibold text-cut">Out</h3>
-                {grid(original.out, "Cards taken out since the original", "cut")}
+                {grid(out, "Cards taken out since the original", "cut")}
               </div>
             )}
             {original.in.length > 0 && (
               <div className="flex flex-col gap-2">
                 <h3 className="font-heading text-lg font-semibold text-add">In</h3>
-                {grid(original.in, "Cards put in since the original", "add")}
+                {grid(put, "Cards put in since the original", "add")}
               </div>
             )}
           </div>
@@ -134,11 +140,7 @@ export function DeckOriginal({
           )}
         </div>
       )}
-      {error && (
-        <ErrorText>
-          {error}
-        </ErrorText>
-      )}
+      {error && <ErrorText>{error}</ErrorText>}
     </section>
   );
 }

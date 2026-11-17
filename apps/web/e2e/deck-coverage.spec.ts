@@ -139,7 +139,7 @@ test("browser quantities and a live round update the two-line summary and the ke
   await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
   await expect(trigger).toHaveText("3/9 available", { timeout: 60_000 });
 
-  // Save deck opens the deckbuilder, which has no summary; cancelling the save goes back to Upgrade, and it returns.
+  // Save opens the deckbuilder, which has no summary; cancelling the save goes back to Upgrade, and it returns.
   await toDeckbuilder(page);
   await expect(trigger).toHaveCount(0);
   await recs.getByRole("button", { name: "Cancel", exact: true }).click();

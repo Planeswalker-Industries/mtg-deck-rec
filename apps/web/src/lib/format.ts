@@ -19,16 +19,28 @@ export function formatUsdDelta(value: number): string {
 }
 
 /**
- * One card's price: "From $1.10" (the cheapest printing's estimate) or "No price". `lower` for mid-sentence use
- * ("Not owned · from $1.10").
+ * One card's price: "~$1.10" (the lowest-priced printing's estimate; /privacy says what the ~ means) or "No price".
+ * `lower` for mid-sentence use ("Not owned · ~$1.10", "Not owned · no price"); `dated` adds the as-of date where the
+ * price stands alone ("~$1.10 (Nov 14, 2026)").
  */
-export function fromPrice(price: PriceEstimate | null | undefined, { lower = false }: { lower?: boolean } = {}): string {
-  const text = price ? `From ${usd.format(price.usd)}` : "No price";
+export function fromPrice(
+  price: PriceEstimate | null | undefined,
+  { lower = false, dated = false }: { lower?: boolean; dated?: boolean } = {},
+): string {
+  const text = price ? `~${usd.format(price.usd)}${dated ? asOfSuffix(price.asOf) : ""}` : "No price";
   return lower ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 }
 
 export function formatAsOf(iso: string): string {
   return shortDate.format(new Date(iso));
+}
+
+/**
+ * " (Nov 14, 2026)", or "" without a date. Prices carry their as-of date on the price or total itself, not on a note
+ * line (owner, 2026-11-16); where they come from is on /privacy.
+ */
+export function asOfSuffix(iso: string | null | undefined): string {
+  return iso ? ` (${formatAsOf(iso)})` : "";
 }
 
 export function formatPercent(rate: number): string {

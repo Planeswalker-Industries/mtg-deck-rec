@@ -119,17 +119,14 @@ function SheetBody({ lookup, commander }: { lookup: CommanderLookup; commander: 
       <>
         <SheetHeader className="p-0 pr-8">
           <SheetTitle className="font-heading text-xl leading-tight font-semibold tracking-tight">
-            {name} isn&apos;t in our database yet
+            {state.deckCount === 0 ? `No decks for ${name} yet` : `Only ${plural(state.deckCount, "deck")} for ${name} so far`}
           </SheetTitle>
           <SheetDescription className="text-base text-foreground">
-            Mind waiting about {minutes(state.estimatedSeconds)} while we pull public decks for it from Archidekt? You can
-            keep using the deck tool meanwhile.
+            Mind waiting about {minutes(state.estimatedSeconds)} while we pull {state.deckCount === 0 ? "public decks" : "more public decks"} for it
+            from Archidekt? You can keep using the deck tool meanwhile.
           </SheetDescription>
         </SheetHeader>
         <div className="col-span-2 mt-4 flex flex-col gap-3 sm:col-span-1">
-          {!state.collectorOnline && (
-            <p className="text-sm text-muted-foreground">Our deck collector is offline right now, so this may take longer.</p>
-          )}
           {state.phase === "prompt" && state.error && (
             <Alert variant="destructive">
               <AlertDescription>{state.error}</AlertDescription>

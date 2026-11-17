@@ -12,7 +12,7 @@ import { FlippableCardImage } from "@/components/cards/flippable-card-image";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
-import { describeCostDelta, formatAsOf, formatPercent } from "@/lib/format";
+import { asOfSuffix, describeCostDelta, formatPercent } from "@/lib/format";
 import { emptySwapMessage } from "@/lib/labels";
 import { OwnedCorner } from "@/components/cards/owned-corner";
 import { GameChangerBadge } from "./card-label";
@@ -100,11 +100,6 @@ function SwapBody({
             {suggestions.length > 1 && (
               <Alternatives suggestions={suggestions} selectedIndex={selectedIndex} onSelect={setSelectedIndex} />
             )}
-            {selected.costDelta.asOf && (
-              <p className="mt-4 text-xs text-muted-foreground">
-                Prices are Scryfall estimates from {formatAsOf(selected.costDelta.asOf)}.
-              </p>
-            )}
           </>
         )}
       </div>
@@ -145,7 +140,10 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
 
       <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="font-heading text-xl leading-tight font-semibold tracking-tight">{displayName(selected.card)}</h3>
-        <p className={cn("text-lg font-mono", saves && "text-save")}>{describeCostDelta(selected.costDelta)}</p>
+        <p className={cn("text-lg font-mono", saves && "text-save")}>
+          {describeCostDelta(selected.costDelta)}
+          <span className="text-sm text-muted-foreground">{asOfSuffix(selected.costDelta.asOf)}</span>
+        </p>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {selected.card.gameChanger && <GameChangerBadge />}

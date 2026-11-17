@@ -43,6 +43,8 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
   if (!page) notFound();
 
   const { key, top, roleProfile, computedAt, artists } = page;
+  // One Scryfall snapshot prices the page; its date joins the footer's Updated line (no separate price note).
+  const priceAsOf = top.groups.flatMap((g) => g.suggestions).find((s) => s.card.price)?.card.price?.asOf ?? null;
   const names = key.commanders.map(displayName).join(" and ");
   const identity = [...WUBRG].filter((color) => key.commanders.some((c) => c.colorIdentity.includes(color))).join("");
   const lead = key.commanders[0];
@@ -139,9 +141,9 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
           <a href="https://archidekt.com" className={TEXT_LINK}>
             Archidekt
           </a>
-          , counted only since each card came out. Updated {formatAsOf(computedAt)}.
+          , counted only since each card came out. Updated {formatAsOf(computedAt)}
+          {priceAsOf && `, prices ${formatAsOf(priceAsOf)}`}.
         </p>
-        <p>Prices are Scryfall estimates and may be out of date.</p>
       </footer>
     </article>
   );

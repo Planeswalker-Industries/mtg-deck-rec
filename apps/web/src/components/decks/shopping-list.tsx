@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import type { CardId } from "@mtg/core/contract";
 import { shoppingList, type ShoppingLine } from "@mtg/core/shop";
 import { cn } from "cn";
@@ -11,7 +11,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import { AFFILIATE_DISCLOSURE, PHONE_HIT_AREA, REMOVE_ARM_MS, SHOPPING_UNDO_MS, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
-import { formatAsOf, formatUsd, fromPrice } from "@/lib/format";
+import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
 
 /** A phone (or any touch screen) gets the two-tap remove; a mouse gets one click. */
@@ -91,6 +91,9 @@ function RemoveButton({ name, coarse, onRemove }: { name: string; coarse: boolea
  * Copy decklist at the top, so the list has no copy button of its own (owner, 2026-11-15). With a collection the
  * lines are the copies it doesn't supply; without one, `scopeToggle` offers this round's cards or the whole deck. Removing
  * a line is for this view only (Undo brings it back) and never touches the collection.
+ *
+ * `folded` (the saved deck page) leads with the count, the total and Buy, and keeps the lines behind a disclosure, so
+ * buying fits in the first viewport.
  */
 export function ShoppingList({
   title = "Shopping list",
@@ -100,6 +103,7 @@ export function ShoppingList({
   scopeToggle,
   pinActions = false,
   headingLevel = 3,
+  folded = false,
 }: {
   title?: string;
   /** The title's heading level: 3 inside Finish, 2 where the list is one of the page's own sections. */
@@ -114,12 +118,15 @@ export function ShoppingList({
   scopeToggle: boolean;
   /** Keep Buy and the price note at the foot of a scrolling container (Finish's aside from xl). */
   pinActions?: boolean;
+  /** Count, total and Buy first; the lines behind "Show the N cards", closed at first. */
+  folded?: boolean;
 }) {
   const coarse = useCoarsePointer();
   // A round that put nothing in has nothing to buy in round scope, so the whole deck is the useful default there.
   const [scope, setScope] = useState<Scope>(roundIds.length > 0 ? "round" : "deck");
   const [removed, setRemoved] = useState<CardId[]>([]);
   const [undoShown, setUndoShown] = useState(false);
+  const [linesOpen, setLinesOpen] = useState(false);
   // True once hydrated: the toast portals into <body>, which the server render has no access to.
   const mounted = useSyncExternalStore(
     subscribeNothing,
@@ -127,6 +134,7 @@ export function ShoppingList({
     () => false,
   );
   const headingId = useId();
+  const linesId = useId();
   // Keyed on content, so a parent that builds a fresh array each render doesn't rebuild the list.
   const roundKey = roundIds.join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,13 +183,146 @@ export function ShoppingList({
     setUndoShown(false);
   };
 
+  const cardsWord = list.count === 1 ? "card" : "cards";
+  // The prices' as-of date rides on the total (owner, 2026-11-16); where they come from is on /privacy.
+  const asOf = asOfSuffix(list.asOf);
+  const emptyText =
+    removed.length > 0
+      ? "You removed every card."
+      : missing
+        ? folded
+          ? "You own every card in this deck."
+          : "Your collection has every card."
+        : scopeToggle && scope === "round"
+          ? "This round put in no cards to buy."
+          : "Nothing to buy.";
+
+  const lines = (
+    <div className="columns-1 gap-6 @xl:columns-2">
+      {list.groups.map((group) => (
+        <section key={group.category} aria-label={cardCategoryLabel[group.category]} className="mb-4 break-inside-avoid">
+          <GroupTitle className="mb-2 text-sm font-semibold text-muted-foreground">
+            {cardCategoryLabel[group.category]}{" "}
+            <span className="font-mono font-normal">{group.lines.reduce((n, l) => n + l.quantity, 0)}</span>
+          </GroupTitle>
+          <ul aria-label={`${cardCategoryLabel[group.category]} to buy`} className="flex flex-col gap-1.5">
+            {group.lines.map(({ card, quantity }) => (
+              <CardPlate
+                key={card.id}
+                card={card}
+                quantity={quantity}
+                showCost={false}
+                onSwipeAway={() => remove(card.id)}
+                trailing={
+                  <>
+                    <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{fromPrice(card.price)}</span>
+                    <RemoveButton name={displayName(card)} coarse={coarse} onRemove={() => remove(card.id)} />
+                  </>
+                }
+              />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+
+  /*
+    A toast over the page, above the docked Deck stats footer, so it shows wherever in a long list the line was.
+    Portalled to <body>: this section is a size container, which would otherwise be the toast's containing block.
+    The live region stays mounted so a screen reader announces each new message.
+  */
+  const toast =
+    mounted &&
+    createPortal(
+      <div
+        role="status"
+        className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--deck-stats-dock,0px)+1rem)] z-50 mx-auto max-w-sm"
+      >
+        {undoShown && lastRemoved && (
+          <p className="pointer-events-auto flex items-center justify-between gap-3 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm shadow-lift">
+            <span className="min-w-0 truncate">Removed {displayName(lastRemoved.card)}.</span>
+            <button type="button" onClick={undo} className={cn(TEXT_LINK, PHONE_HIT_AREA, "shrink-0 font-semibold")}>
+              Undo
+            </button>
+          </p>
+        )}
+      </div>,
+      document.body,
+    );
+
+  const actions = (
+    // In Finish's aside (a scroll box from xl) Buy stays in view at its foot while the lines scroll.
+    <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:bottom-0 xl:bg-background xl:pt-2 xl:pb-1")}>
+      {/* A named primary action (owner, 2026-11-15): the solid blue button. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {carts.length === 0 || list.count === 0 ? (
+          <span aria-disabled className={cn(buttonVariants({ size: "lg" }), "pointer-events-none opacity-50")}>
+            Buy on TCGplayer
+          </span>
+        ) : (
+          carts.map((href, i) => (
+            <a key={href} href={href} {...OUTBOUND} className={cn(buttonVariants({ size: "lg" }), "lit")}>
+              {carts.length > 1 ? `Buy on TCGplayer (${i + 1} of ${carts.length})` : "Buy on TCGplayer"}
+            </a>
+          ))
+        )}
+      </div>
+
+      <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+        {list.unpriced > 0 && <p>{list.unpriced} unpriced.</p>}
+        {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
+      </div>
+    </div>
+  );
+
+  if (folded) {
+    return (
+      <section aria-labelledby={headingId} className="@container flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <Title id={headingId} className="font-heading text-xl leading-none font-semibold">
+            {title}
+          </Title>
+          <p className="text-sm text-muted-foreground">
+            {list.count === 0 ? emptyText : `${list.count} ${cardsWord}, about ${formatUsd(list.totalUsd)}${asOf}`}
+          </p>
+        </div>
+        {/* Nothing to buy: no Buy button at all, so nothing reads as broken. */}
+        {list.count > 0 && (
+          <>
+            {actions}
+            <div>
+              <button
+                type="button"
+                aria-expanded={linesOpen}
+                aria-controls={linesOpen ? linesId : undefined}
+                onClick={() => setLinesOpen((o) => !o)}
+                className="flex min-h-11 items-center gap-2 rounded-md text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <ChevronDown aria-hidden className={cn("size-4 transition-transform", !linesOpen && "-rotate-90")} />
+                {linesOpen ? `Hide the ${list.count} ${cardsWord}` : `Show the ${list.count} ${cardsWord}`}
+              </button>
+              {linesOpen && (
+                <div id={linesId} className="mt-2">
+                  {lines}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        {toast}
+      </section>
+    );
+  }
+
   return (
     // A container: one column in Finish's aside, two where the list has the page's width.
     <section aria-labelledby={headingId} className="@container flex flex-col gap-3">
       <Title id={headingId} className="font-heading text-xl leading-none font-semibold">
         {title}{" "}
         <span className="font-mono text-base font-normal text-muted-foreground">
-          · {list.count} {list.count === 1 ? "card" : "cards"} ~{formatUsd(list.totalUsd)}
+          · {list.count} {cardsWord} ~{formatUsd(list.totalUsd)}
+          {asOf}
         </span>
       </Title>
 
@@ -205,97 +346,11 @@ export function ShoppingList({
         </div>
       )}
 
-      {list.count === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {removed.length > 0
-            ? "You removed every card."
-            : missing
-              ? "Your collection has every card."
-              : scopeToggle && scope === "round"
-                ? "This round put in no cards to buy."
-                : "Nothing to buy."}
-        </p>
-      ) : (
-        <div className="columns-1 gap-6 @xl:columns-2">
-          {list.groups.map((group) => (
-            <section key={group.category} aria-label={cardCategoryLabel[group.category]} className="mb-4 break-inside-avoid">
-              <GroupTitle className="mb-2 text-sm font-semibold text-muted-foreground">
-                {cardCategoryLabel[group.category]}{" "}
-                <span className="font-mono font-normal">{group.lines.reduce((n, l) => n + l.quantity, 0)}</span>
-              </GroupTitle>
-              <ul aria-label={`${cardCategoryLabel[group.category]} to buy`} className="flex flex-col gap-1.5">
-                {group.lines.map(({ card, quantity }) => (
-                  <CardPlate
-                    key={card.id}
-                    card={card}
-                    quantity={quantity}
-                    showCost={false}
-                    onSwipeAway={() => remove(card.id)}
-                    trailing={
-                      <>
-                        <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{fromPrice(card.price)}</span>
-                        <RemoveButton name={displayName(card)} coarse={coarse} onRemove={() => remove(card.id)} />
-                      </>
-                    }
-                  />
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      )}
+      {list.count === 0 ? <p className="text-sm text-muted-foreground">{emptyText}</p> : lines}
 
-      {/*
-        A toast over the page, above the docked Deck stats footer, so it shows wherever in a long list the line was.
-        Portalled to <body>: this section is a size container, which would otherwise be the toast's containing block.
-        The live region stays mounted so a screen reader announces each new message.
-      */}
-      {mounted &&
-        createPortal(
-          <div
-            role="status"
-            className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--deck-stats-dock,0px)+1rem)] z-50 mx-auto max-w-sm"
-          >
-            {undoShown && lastRemoved && (
-              <p className="pointer-events-auto flex items-center justify-between gap-3 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm shadow-lift">
-                <span className="min-w-0 truncate">Removed {displayName(lastRemoved.card)}.</span>
-                <button type="button" onClick={undo} className={cn(TEXT_LINK, PHONE_HIT_AREA, "shrink-0 font-semibold")}>
-                  Undo
-                </button>
-              </p>
-            )}
-          </div>,
-          document.body,
-        )}
+      {toast}
 
-      {/* In Finish's aside (a scroll box from xl) Buy stays in view at its foot while the lines scroll. */}
-      <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:bottom-0 xl:bg-background xl:pt-2 xl:pb-1")}>
-        {/* A named primary action (owner, 2026-11-15): the solid blue button. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {carts.length === 0 || list.count === 0 ? (
-            <span aria-disabled className={cn(buttonVariants({ size: "lg" }), "pointer-events-none opacity-50")}>
-              Buy on TCGplayer
-            </span>
-          ) : (
-            carts.map((href, i) => (
-              <a key={href} href={href} {...OUTBOUND} className={cn(buttonVariants({ size: "lg" }), "lit")}>
-                {carts.length > 1 ? `Buy on TCGplayer (${i + 1} of ${carts.length})` : "Buy on TCGplayer"}
-              </a>
-            ))
-          )}
-        </div>
-
-        <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-          {list.asOf && (
-            <p>
-              Scryfall prices, {formatAsOf(list.asOf)}. TCGplayer shows the final price.
-              {list.unpriced > 0 && ` ${list.unpriced} unpriced.`}
-            </p>
-          )}
-          {!list.asOf && list.unpriced > 0 && <p>{list.unpriced} unpriced. TCGplayer shows the final price.</p>}
-          {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
-        </div>
-      </div>
+      {actions}
     </section>
   );
 }
