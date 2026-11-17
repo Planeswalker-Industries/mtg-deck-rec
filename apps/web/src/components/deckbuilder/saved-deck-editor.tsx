@@ -15,7 +15,7 @@ import { ErrorText } from "@/components/ui/error-text";
 import { SavedDeckCoverage } from "@/components/decks/saved-deck-coverage";
 import { CommanderPlate } from "@/components/cards/commander-plate";
 import { cn } from "cn";
-import { Check, X } from "lucide-react";
+import { Check, Pencil, X } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 
 /** Edits settle this long before they are written, so a run of clicks is one save rather than one each. */
@@ -194,12 +194,19 @@ export function SavedDeckEditor({
               </Button>
             </form>
           ) : (
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h1 className="font-heading text-2xl leading-tight font-semibold tracking-tight text-balance [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] sm:text-3xl">
-                {name}
-              </h1>
-              <Button type="button" size="sm" variant="link" className="px-0" onClick={() => setRenaming(true)}>
-                Rename
+            <div className="font-heading text-2xl leading-tight sm:text-3xl">
+              {/* Inline, so the pencil follows the name's last word when it wraps; a sibling keeps it out of the heading's name. */}
+              <h1 className="inline font-semibold tracking-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">{name}</h1>
+              <Button
+                type="button"
+                size="icon-lg"
+                variant="ghost"
+                title="Rename deck"
+                aria-label={`Rename deck: ${name}`}
+                className="ml-1.5 bg-background/70 align-middle text-primary"
+                onClick={() => setRenaming(true)}
+              >
+                <Pencil aria-hidden className="size-5" />
               </Button>
             </div>
           )}
