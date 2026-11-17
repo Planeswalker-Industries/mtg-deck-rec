@@ -113,13 +113,16 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
             )}
             <li className="font-mono">
               {card.price ? (
-                <a
-                  href={cardLink(tcgplayerProductId === null ? searchUrl(card.name) : productUrl(tcgplayerProductId))}
-                  {...OUTBOUND}
-                  className={TEXT_LINK}
-                >
-                  {fromPrice(card.price)} on TCGplayer{asOfSuffix(card.price.asOf)}
-                </a>
+                <>
+                  <a
+                    href={cardLink(tcgplayerProductId === null ? searchUrl(card.name) : productUrl(tcgplayerProductId))}
+                    {...OUTBOUND}
+                    className={TEXT_LINK}
+                  >
+                    {fromPrice(card.price)} on TCGplayer
+                  </a>
+                  <span className="text-muted-foreground">{asOfSuffix(card.price.asOf)}</span>
+                </>
               ) : (
                 fromPrice(card.price)
               )}

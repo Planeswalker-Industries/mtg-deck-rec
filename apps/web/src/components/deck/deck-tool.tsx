@@ -635,6 +635,7 @@ function DeckToolSession() {
     const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null, statChoices }, { recs: next === "upgrade" });
     if (!outcome.parsed) return false;
     deckBuild.reset();
+    setPicked(null);
     // Off the picker's address: a refresh now offers this deck back, instead of the commander picker.
     if (buildStart) router.replace("/deck" as Route, { scroll: false });
     setEditing(false);

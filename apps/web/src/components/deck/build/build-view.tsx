@@ -364,7 +364,7 @@ export function BuildView({
   const header = (
     <CommanderPlate commanders={request.commanders}>
       <div className="flex min-h-32 flex-col justify-between gap-4 p-4 sm:min-h-40 sm:p-5">
-        <h1 className="max-w-xl font-heading text-2xl font-semibold tracking-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] sm:text-3xl">
+        <h1 className="max-w-xl font-heading text-2xl font-semibold tracking-tight text-on-art sm:text-3xl">
           {commanderName}
           {tagline && (
             <span className="mt-1 block font-drama text-xl font-normal tracking-normal italic text-foreground/85 sm:text-2xl">

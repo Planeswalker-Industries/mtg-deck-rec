@@ -295,7 +295,7 @@ export function ShoppingList({
               <button
                 type="button"
                 aria-expanded={linesOpen}
-                aria-controls={linesId}
+                aria-controls={linesOpen ? linesId : undefined}
                 onClick={() => setLinesOpen((o) => !o)}
                 className="flex min-h-11 items-center gap-2 rounded-md text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >

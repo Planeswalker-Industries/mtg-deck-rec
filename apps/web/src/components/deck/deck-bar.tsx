@@ -8,6 +8,8 @@ import { Pencil } from "lucide-react";
 import type { Bracket, DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import { CommanderArt } from "@/components/cards/commander-plate";
+import { CardCount } from "@/components/deckbuilder/card-count";
+import { deckSize } from "@mtg/core/journey";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -49,7 +51,7 @@ function DeckName({ name, onRename }: { name: string; onRename: (name: string) =
 
   if (draft === null) {
     return (
-      <h2 className="min-w-0 truncate font-heading text-lg leading-tight font-semibold tracking-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] sm:text-xl">
+      <h2 className="min-w-0 truncate font-heading text-lg leading-tight font-semibold tracking-tight text-on-art sm:text-xl">
         <button
           type="button"
           title="Rename deck"
@@ -134,8 +136,8 @@ export function DeckBar({
   /** Opens the decklist box. Left out while the box is already open. */
   onEditDecklist?: (() => void) | undefined;
   /**
-   * The Deckbuilder's bar: the colours move up beside the name, the card count goes (the builder's stats line has it),
-   * and this (Save) takes the collection select's place, which moves into the builder's search panel.
+   * The Deckbuilder's bar: the colours move up beside the name, the card count takes the second line, and this (Save)
+   * takes the collection select's place, which moves into the builder's search panel.
    */
   saveSlot?: ReactNode;
   /** Return to the initiating deck after a successful collection import. */
@@ -203,8 +205,10 @@ export function DeckBar({
           ))}
         </SelectContent>
       </Select>
-      <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">
-        {!building && (
+      <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground text-on-art">
+        {building ? (
+          <CardCount size={deckSize(analysis.deck)} />
+        ) : (
           <>
             {pips}
             {coverage}

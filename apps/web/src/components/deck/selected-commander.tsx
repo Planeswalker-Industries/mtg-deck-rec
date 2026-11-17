@@ -17,10 +17,10 @@ export function SelectedCommander({ card, onChange }: { card: CardSummary; onCha
     <CommanderPlate as="div" commanders={[card]} priority>
       <div className="flex min-h-28 flex-col justify-between gap-3 p-4 sm:min-h-32 sm:p-5">
         <div className="flex flex-col gap-1">
-          <p className="max-w-xl font-heading text-xl font-semibold tracking-tight [text-shadow:0_1px_2px_rgb(0_0_0/0.9)] sm:text-2xl">
+          <p className="max-w-xl font-heading text-xl font-semibold tracking-tight text-on-art sm:text-2xl">
             {displayName(card)}
           </p>
-          <p className="max-w-xs text-sm text-foreground/85 [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">{card.typeLine}</p>
+          <p className="max-w-xs text-sm text-foreground/85 text-on-art">{card.typeLine}</p>
         </div>
         <div className="flex items-center justify-between gap-3">
           <ColorIdentity identity={card.colorIdentity} />

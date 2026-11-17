@@ -39,7 +39,7 @@ export interface StatAction {
 }
 
 /** "6 short", "3 over": whole cards against the target as shown. */
-function offBy(value: number, target: number): string {
+export function offBy(value: number, target: number): string {
   const delta = value - Math.round(target);
   return delta < 0 ? `${-delta} short` : `${delta} over`;
 }

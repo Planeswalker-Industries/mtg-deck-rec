@@ -61,7 +61,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
       <div className="flex flex-col gap-5">
         <CommanderPlate commanders={deck.commanders} priority>
           <div className="flex min-h-32 flex-col justify-between gap-4 p-4 sm:min-h-40 sm:p-5">
-            <div className="min-w-0 [text-shadow:0_1px_2px_rgb(0_0_0/0.9)]">
+            <div className="min-w-0 text-on-art">
               <h1 className="font-heading text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">{deck.name}</h1>
               <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-foreground/85">
                 <span>{deck.commanders.map(displayName).join(" and ") || "No commander"}</span>
