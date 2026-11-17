@@ -11,7 +11,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import { AFFILIATE_DISCLOSURE, PHONE_HIT_AREA, REMOVE_ARM_MS, SHOPPING_UNDO_MS, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
-import { formatAsOf, formatUsd, fromPrice } from "@/lib/format";
+import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
 
 /** A phone (or any touch screen) gets the two-tap remove; a mouse gets one click. */
@@ -185,7 +185,7 @@ export function ShoppingList({
 
   const cardsWord = list.count === 1 ? "card" : "cards";
   // The prices' as-of date rides on the total (owner, 2026-11-16); where they come from is on /privacy.
-  const asOf = list.asOf ? ` (${formatAsOf(list.asOf)})` : "";
+  const asOf = asOfSuffix(list.asOf);
   const emptyText =
     removed.length > 0
       ? "You removed every card."

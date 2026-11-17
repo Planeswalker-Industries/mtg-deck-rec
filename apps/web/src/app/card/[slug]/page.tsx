@@ -13,7 +13,7 @@ import { RulesText } from "@/components/cards/rules-text";
 import { GameChangerBadge } from "@/components/deck/card-label";
 import { buttonVariants } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
-import { describeCostDelta, formatAsOf, formatPercent, fromPrice } from "@/lib/format";
+import { asOfSuffix, describeCostDelta, formatAsOf, formatPercent, fromPrice } from "@/lib/format";
 import { emptySwapMessage } from "@/lib/labels";
 import { getCardPage } from "@/lib/server/recs-cache";
 import { AFFILIATE_DISCLOSURE, TEXT_LINK } from "@/lib/constants";
@@ -55,7 +55,8 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
   const { card, alternatives, playedWith, commanderSlug, artist, tcgplayerProductId } = page;
   const name = displayName(card);
   const faces = card.faces ?? [{ name: card.name, manaCost: "", typeLine: card.typeLine, oracleText: card.oracleText ?? "" }];
-  const priceAsOf = card.price?.asOf ?? alternatives.suggestions.find((s) => s.costDelta.asOf)?.costDelta.asOf ?? null;
+  // The card's own price carries the as-of date; without one, the alternatives' date ends their intro.
+  const altAsOf = card.price ? null : (alternatives.suggestions.find((s) => s.costDelta.asOf)?.costDelta.asOf ?? null);
 
   const commanderItems = playedWith.flatMap((entry): PocketItem[] => {
     const [first, partner] = entry.commanders;
@@ -117,7 +118,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
                   {...OUTBOUND}
                   className={TEXT_LINK}
                 >
-                  {fromPrice(card.price)} on TCGplayer
+                  {fromPrice(card.price)} on TCGplayer{asOfSuffix(card.price.asOf)}
                 </a>
               ) : (
                 fromPrice(card.price)
@@ -160,7 +161,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
         </h2>
         <p className="max-w-prose text-sm text-muted-foreground">
           In {name}&apos;s colors, best fit first. <Link href="/deck" className={TEXT_LINK}>Paste your deck</Link> to see
-          replacements picked for your commander.
+          replacements picked for your commander.{altAsOf && ` Prices from ${formatAsOf(altAsOf)}.`}
         </p>
         {alternatives.suggestions.length === 0 ? (
           <p className="text-sm">{emptySwapMessage[alternatives.emptyReason ?? "NO_CANDIDATES"]}</p>
@@ -197,7 +198,6 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
       )}
 
       <footer className="flex max-w-prose flex-col gap-1 text-xs text-muted-foreground">
-        {priceAsOf && <p>Prices are Scryfall estimates from {formatAsOf(priceAsOf)}.</p>}
         {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
         <p>
           Deck counts come from decks shared publicly on{" "}

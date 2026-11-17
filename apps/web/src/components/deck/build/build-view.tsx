@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
-import { formatAsOf, formatUsd, fromPrice } from "@/lib/format";
+import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
 import { ShuffleDeck } from "../shuffle-deck";
 import { ScoreExplainer } from "../score-explainer";
 import {
@@ -445,7 +445,8 @@ export function BuildView({
         {collectionGaps.length > 0 && <CollectionGaps gaps={collectionGaps} onChoice={onChoice} disabled={opening !== null} />}
         {cost && cost.cards > 0 && (
           <p className="text-sm text-muted-foreground">
-            {count(cost.cards, "card")} to buy, about {formatUsd(cost.usd)}.{cost.asOf ? ` Scryfall estimates from ${formatAsOf(cost.asOf)}.` : ""}
+            {count(cost.cards, "card")} to buy, about {formatUsd(cost.usd)}
+            {asOfSuffix(cost.asOf)}.
           </p>
         )}
         {unanswered && (

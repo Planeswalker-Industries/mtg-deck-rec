@@ -53,7 +53,7 @@ function Why({
   suggestion: AddSuggestion;
   roles: readonly StatLine[];
   hasCollection: boolean;
-  /** False where the counts show as chips under the card (the swipe view). */
+  /** False where the counts show as chips under the card (the swipe view), where the price also carries its date. */
   counts?: boolean;
 }) {
   const { card, corpus, owned } = suggestion;
@@ -64,7 +64,7 @@ function Why({
       {corpus && (
         <span className="font-mono">{corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}</span>
       )}
-      {!(hasCollection && owned) && <span className="font-mono">{fromPrice(card.price)}</span>}
+      {!(hasCollection && owned) && <span className="font-mono">{fromPrice(card.price, { dated: !counts })}</span>}
     </span>
   );
 }
@@ -197,7 +197,8 @@ export function AddPhase({
   const hasCollection = journey.add.hasCollection;
   // Owned cards are marked only where they mix with cards to buy: in Owned only every card is owned.
   const markOwned = hasCollection && !journey.add.collectionOnly;
-  // The as-of date goes with the prices on screen: with a collection, only cards not owned show one.
+  // The list's as-of date ends the intro (the swipe card's price carries its own): with a collection, only cards not
+  // owned show a price.
   const asOf = queue.find((s) => s.card.price && !(hasCollection && s.owned))?.card.price?.asOf;
   const filterName = filter ? filter.label.toLowerCase() : null;
 
@@ -207,6 +208,7 @@ export function AddPhase({
     <PhaseIntro title="Add" brief={view === "swipe" && room > 0 ? "Swipe right to add, left to skip." : undefined}>
       Cards decks like yours run and this one doesn&apos;t, best first{landsShort ? ", lands first while the mana base is short" : ""}. Each card you add
       changes what&apos;s suggested next.
+      {view === "list" && room > 0 && asOf && ` Prices from ${formatAsOf(asOf)}.`}
     </PhaseIntro>
   );
 
@@ -281,7 +283,6 @@ export function AddPhase({
       {room > 0 && <RolePills short={short} filter={filter} onChange={setFilter} />}
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}
-      {asOf && room > 0 && <p className="text-xs text-muted-foreground">Prices are Scryfall estimates from {formatAsOf(asOf)}.</p>}
       {view === "list" && room > 0 && (
         <NextBar label={nextLabel} onNext={toNext}>
           {adds.length} added
