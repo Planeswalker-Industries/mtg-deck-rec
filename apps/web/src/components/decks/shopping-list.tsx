@@ -184,6 +184,8 @@ export function ShoppingList({
   };
 
   const cardsWord = list.count === 1 ? "card" : "cards";
+  // The prices' as-of date rides on the total (owner, 2026-11-16); where they come from is on /privacy.
+  const asOf = list.asOf ? ` (${formatAsOf(list.asOf)})` : "";
   const emptyText =
     removed.length > 0
       ? "You removed every card."
@@ -268,13 +270,7 @@ export function ShoppingList({
       </div>
 
       <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-        {list.asOf && (
-          <p>
-            Scryfall prices, {formatAsOf(list.asOf)}. TCGplayer shows the final price.
-            {list.unpriced > 0 && ` ${list.unpriced} unpriced.`}
-          </p>
-        )}
-        {!list.asOf && list.unpriced > 0 && <p>{list.unpriced} unpriced. TCGplayer shows the final price.</p>}
+        {list.unpriced > 0 && <p>{list.unpriced} unpriced.</p>}
         {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
       </div>
     </div>
@@ -288,7 +284,7 @@ export function ShoppingList({
             {title}
           </Title>
           <p className="text-sm text-muted-foreground">
-            {list.count === 0 ? emptyText : `${list.count} ${cardsWord}, about ${formatUsd(list.totalUsd)}`}
+            {list.count === 0 ? emptyText : `${list.count} ${cardsWord}, about ${formatUsd(list.totalUsd)}${asOf}`}
           </p>
         </div>
         {/* Nothing to buy: no Buy button at all, so nothing reads as broken. */}
@@ -326,6 +322,7 @@ export function ShoppingList({
         {title}{" "}
         <span className="font-mono text-base font-normal text-muted-foreground">
           · {list.count} {cardsWord} ~{formatUsd(list.totalUsd)}
+          {asOf}
         </span>
       </Title>
 

@@ -78,7 +78,7 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await expect(page.getByRole("combobox", { name: "My collection" })).toHaveText(/Owned first/);
   const sitting = recs.getByRole("region", { name: "Cards to add" });
   await expectAboveFooter(page, [sitting.getByRole("button", { name: /^Add / }).first(), sitting.getByRole("button", { name: /^Skip / }).first()]);
-  await expect(sitting.getByText(/^From \$/)).toBeVisible();
+  await expect(sitting.getByText(/^~\$/)).toBeVisible();
 });
 
 test("a collection build asks about each gap: Allow buying adds cards to buy, Ignore leaves the line out (T089)", async ({ page }) => {

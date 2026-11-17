@@ -19,11 +19,11 @@ export function formatUsdDelta(value: number): string {
 }
 
 /**
- * One card's price: "From $1.10" (the cheapest printing's estimate) or "No price". `lower` for mid-sentence use
- * ("Not owned · from $1.10").
+ * One card's price: "~$1.10" (the lowest-priced printing's estimate; /privacy says what the ~ means) or "No price".
+ * `lower` for mid-sentence use ("Not owned · ~$1.10", "Not owned · no price").
  */
 export function fromPrice(price: PriceEstimate | null | undefined, { lower = false }: { lower?: boolean } = {}): string {
-  const text = price ? `From ${usd.format(price.usd)}` : "No price";
+  const text = price ? `~${usd.format(price.usd)}` : "No price";
   return lower ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 }
 

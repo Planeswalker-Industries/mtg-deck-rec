@@ -183,7 +183,9 @@ export default function PrivacyPage() {
           <a href="https://scryfall.com" className={TEXT_LINK}>
             Scryfall
           </a>
-          . Card roles come from the Scryfall Tagger project. Prices are estimates and may be out of date.
+          . Card roles come from the Scryfall Tagger project. Prices are Scryfall&apos;s estimates for each card&apos;s
+          lowest-priced printing, as of the date shown with them, and may be out of date: a price marked ~ is that
+          estimate. TCGplayer shows the final price.
         </p>
         <p>
           Spell Chasm is unofficial Fan Content permitted under the{" "}
