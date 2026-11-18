@@ -36,6 +36,17 @@ describe('card pairs (T064)', () => {
     expect(row?.lift).toBeCloseTo(pairLift(10, 10, 10, 30, 10));
   });
 
+  it('leaves out a pair seen only in decks dated before its release month', () => {
+    // Card 11 comes out in June, but ten January decks ran it with 10 (previews): no deck from June on runs either card,
+    // so the lift would divide by zero.
+    const previews = Array.from({ length: 10 }, () => ({ cardIds: [1, 10, 11], month: '2026-01' }));
+    const june = Array.from({ length: 10 }, () => ({ cardIds: [1, 20], month: '2026-06' }));
+    const release = (id: number) => (id === 11 ? '2026-06' : null);
+    const rows = keyPairs([...previews, ...june], release, SETTINGS);
+    expect(rows.every((r) => Number.isFinite(r.lift))).toBe(true);
+    expect(rows.map((r) => [r.cardA, r.cardB])).not.toContainEqual([10, 11]);
+  });
+
   it('drops pairs under the support or the lift floor', () => {
     expect(keyPairs(decks, always, { ...SETTINGS, minSupport: 11 })).toEqual([]);
     expect(keyPairs(decks, always, { ...SETTINGS, liftFloor: 10 })).toEqual([]);

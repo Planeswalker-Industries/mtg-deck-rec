@@ -130,7 +130,11 @@ export async function syncEdhrec({ limit }: { limit?: number } = {}): Promise<'s
 
     for (const slug of slugs) {
       pagesRead++;
-      if (pagesRead % HEARTBEAT_EVERY === 0) await heartbeat(sql, runId, pagesRead);
+      if (pagesRead % HEARTBEAT_EVERY === 0) {
+        await heartbeat(sql, runId, pagesRead);
+        // The fetch takes hours: a line per heartbeat shows it moving.
+        console.log(`edhrec_pages: ${pagesRead} of ${slugs.length} pages read (${counts.fetched} commander pages)`);
+      }
       const res = await politeFetch(pageUrl(slug), { limiter, accept: 'application/json', passStatuses: new Set([FORBIDDEN]) });
       if (res.status === FORBIDDEN) {
         const server = res.headers.get('server');

@@ -276,11 +276,10 @@ export async function precomputeSubstitutes(
       rowsRead: done,
       rowsChanged: (metrics.rowsWritten ?? 0) + (metrics.rowsRemoved ?? 0),
       metrics,
-    });
-    console.log(
-      `precompute_substitutes: ${done} of ${due.length} cards rebuilt (${metrics.rowsWritten} rows written, ` +
+      summary:
+        `precompute_substitutes: ${done} of ${due.length} cards rebuilt (${metrics.rowsWritten} rows written, ` +
         `${metrics.rowsRemoved} removed)${remaining > 0 ? `; ${remaining} left for the next pass` : ''}`,
-    );
+    });
     return { status: 'succeeded', done, remaining };
   } catch (err) {
     await finishRun(sql, runId, 'failed', { rowsRead: 0, error: err instanceof Error ? err.message : String(err) }).catch(() => {});

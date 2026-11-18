@@ -271,7 +271,20 @@ export async function copyRows(
     }
     if (chunk.length > 0) yield chunk;
   })();
-  const writable = await db.unsafe(`copy ${table} (${columns.join(', ')}) from stdin`).writable();
-  await pipeline(Readable.from(lines), writable);
+  const query = db.unsafe(`copy ${table} (${columns.join(', ')}) from stdin`);
+  // postgres.js 3.4 never settles a COPY the server rejects (a NULL in a not-null column, say): the error arrives after
+  // the query promise has resolved to the stream, and the stream's final callback is never called, so the pipeline
+  // waits forever (T094). The rejection still reaches the query's own reject, which is caught here.
+  const failed = new Promise<never>((_, reject) => {
+    const pending = query as unknown as { reject: (err: unknown) => unknown };
+    const original = pending.reject;
+    pending.reject = (err: unknown) => {
+      reject(err instanceof Error ? err : new Error(String(err)));
+      return original(err);
+    };
+  });
+  failed.catch(() => {});
+  const writable = await query.writable();
+  await Promise.race([pipeline(Readable.from(lines), writable), failed]);
   return count;
 }
