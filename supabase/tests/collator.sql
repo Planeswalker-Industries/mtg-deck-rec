@@ -54,6 +54,25 @@ delete from corpus.decks where source = 'archidekt' and source_deck_id = 'zz-col
 select chk('a removal queues the deck''s commander',
   exists (select 1 from corpus.dirty_commanders where commander_1 = :liesa and commander_2 = 0));
 
+-- An EDHREC page queues its commander for its scores alone (as cli collate does); a deck write since needs its stats.
+select chk('a deck write queues the stats too',
+  (select needs_stats from corpus.dirty_commanders where commander_1 = :liesa and commander_2 = 0));
+delete from corpus.dirty_commanders;
+insert into corpus.dirty_commanders (commander_1, commander_2, needs_stats) values (:liesa, 0, false);
+select chk('an EDHREC page queues its commander for its scores alone',
+  not (select needs_stats from corpus.dirty_commanders where commander_1 = :liesa and commander_2 = 0));
+insert into corpus.decks (source, source_deck_id, commander_card_ids, color_identity, card_ids, basic_lands, updated_month, content_hash)
+values ('archidekt', 'zz-collator-d', array[:liesa], 5, array[:sol], 30, '2026-10-01', '\x05');
+select chk('a deck write turns a waiting scores-only row into a stats rebuild',
+  (select needs_stats from corpus.dirty_commanders where commander_1 = :liesa and commander_2 = 0));
+delete from corpus.dirty_commanders;
+insert into corpus.dirty_commanders (commander_1, commander_2) values (:liesa, 0);
+insert into corpus.dirty_commanders (commander_1, commander_2, needs_stats) values (:liesa, 0, false)
+on conflict (commander_1, commander_2) do update set seq = nextval('corpus.dirty_commanders_seq');
+select chk('an EDHREC page never clears a waiting stats rebuild',
+  (select needs_stats from corpus.dirty_commanders where commander_1 = :liesa and commander_2 = 0));
+delete from corpus.dirty_commanders;
+
 -- === a player's deck leaves the corpus with the deck ===
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
 values ('eeeeeeee-0000-4000-8000-000000000054', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
