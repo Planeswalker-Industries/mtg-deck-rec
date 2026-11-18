@@ -278,7 +278,8 @@ both variables together and keep the container limit at least 1.2 GB above the h
    | `WEB_APP_URL` | `https://www.spellchasm.com` |
    | `REVALIDATE_SECRET` | the web app's `REVALIDATE_SECRET` in Vercel (Production) |
 
-   `SEARCH_API_URL` is fixed in the compose file (`http://search-api:8080`). Leave `WORKER_MEM_LIMIT` and
+   `SEARCH_API_URL` defaults to `http://search-api:8080`, the search API on the same server. When the worker runs on
+   another server than the search API, set it to the search API's public https URL. Leave `WORKER_MEM_LIMIT` and
    `WORKER_HEAP_MB` unset unless the defaults above need changing.
 5. **Deploy, and read the logs.** The first line is `worker: serving`. The first pass then does several things:
    - serves the queued deck lookups;
