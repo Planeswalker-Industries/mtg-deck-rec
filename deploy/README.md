@@ -245,7 +245,7 @@ which it reaches as `search-api` on the shared network. It publishes no port.
 
 ```sh
 cd deploy/worker && cp .env.example .env && $EDITOR .env && docker compose up -d --build
-docker compose logs -f worker              # "worker: serving", then one line per duty that did something
+docker compose logs -f worker              # "worker: serving", then a started and a done line per rebuild
 docker compose run --rm worker collate     # any other worker command, one off, in the same image
 ```
 
@@ -295,7 +295,8 @@ both variables together and keep the container limit at least 1.2 GB above the h
 7. **Watch memory during the global pair count:** `docker stats mtg-worker --no-stream`. See *Memory* above if it
    runs out.
 
-Dokploy redeploys the worker on every merge to `main`. A stop lets the duty in hand finish within 60 s. The schedule
+Dokploy redeploys the worker on every merge to `main`. A stop lets the duty in hand finish within 45 s; past that the
+worker closes the runs it has open as `abandoned` and exits, before Docker's 60 s kill. The schedule
 is read from the database, so a restarted worker neither repeats nor skips work, and an interrupted EDHREC fetch is
 retried after `retryHours`. Once the worker has started the daily crawls for two days, the Vercel cron
 (`apps/web/vercel.json`, `/api/cron/*-scrape`) goes.

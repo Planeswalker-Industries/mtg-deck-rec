@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { connect, type Sql } from '../lib/db';
+import { abandonOpenRuns } from '../lib/sync-runs';
 import { collate } from './collate';
 import { checkIn, serveLookups, triggerCrawl } from './lookups';
 import { precomputeBaseline, precomputeCommanders } from './precompute-commanders';
@@ -42,6 +43,14 @@ const CRAWL_RETRY_MINUTES = 10;
  * every card's list (about 15 minutes) spreads over several passes this way.
  */
 const SUBSTITUTES_BUDGET_MS = 2 * MS_PER_MINUTE;
+/**
+ * How long a stop waits for the duty in hand before closing its runs and exiting. Docker kills the container 60 s
+ * after SIGTERM (stop_grace_period in deploy/dokploy/worker.yml and deploy/worker/), so this leaves time to close them.
+ */
+const SHUTDOWN_DEADLINE_MS = 45_000;
+const SHUTDOWN_REASON = 'stopped when the worker shut down';
+/** Exit code when the deadline ends a duty early, so the stop shows as unclean. */
+const EXIT_INTERRUPTED = 1;
 
 async function loadSchedule(sql: Sql): Promise<Schedule> {
   const [row] = await sql<{ value: Partial<Schedule> }[]>`select value from public.app_config where key = 'worker'`;
@@ -109,12 +118,26 @@ async function globalPairsDue(sql: Sql, schedule: Schedule): Promise<boolean> {
   return row?.due ?? false;
 }
 
-/** Runs one duty, logging a failure instead of letting it stop the others. */
-async function duty(name: string, run: () => Promise<unknown>): Promise<void> {
+/** "0.4 s", "12.0 s", "7 min 46 s". */
+function elapsed(since: number): string {
+  const ms = Date.now() - since;
+  if (ms < MS_PER_MINUTE) return `${(ms / MS_PER_SECOND).toFixed(1)} s`;
+  return `${Math.floor(ms / MS_PER_MINUTE)} min ${Math.round((ms % MS_PER_MINUTE) / MS_PER_SECOND)} s`;
+}
+
+/**
+ * Runs one duty, logging a failure instead of letting it stop the others. An announced duty (the rebuilds, which take
+ * seconds to hours) logs when it starts and how long it took; the ones every pass runs (check-in, lookups, the crawl
+ * trigger) stay quiet unless they fail.
+ */
+async function duty(name: string, run: () => Promise<unknown>, { announce = false }: { announce?: boolean } = {}): Promise<void> {
+  const started = Date.now();
+  if (announce) console.log(`worker: ${name} started`);
   try {
     await run();
+    if (announce) console.log(`worker: ${name} done in ${elapsed(started)}`);
   } catch (err) {
-    console.error(`worker: ${name} failed:`, err);
+    console.error(`worker: ${name} failed after ${elapsed(started)}:`, err);
   }
 }
 
@@ -152,6 +175,14 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
   const stop = () => {
     stopping = true;
     console.log('worker: stopping after the duty in hand');
+    // A duty that outlasts the deadline is cut off, but its runs are closed first, so the next worker need not wait
+    // out the stale-heartbeat window before it can start those jobs again.
+    setTimeout(() => {
+      console.warn(`worker: the duty in hand is still running after ${SHUTDOWN_DEADLINE_MS / MS_PER_SECOND} s; closing its runs and exiting`);
+      void abandonOpenRuns(sql, SHUTDOWN_REASON)
+        .catch((err: unknown) => console.error('worker: closing the open runs failed:', err))
+        .finally(() => process.exit(EXIT_INTERRUPTED));
+    }, SHUTDOWN_DEADLINE_MS).unref();
   };
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
@@ -172,29 +203,33 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
       const collating = Date.now() - lastCollate >= schedule.collateEveryMinutes * MS_PER_MINUTE;
       if (collating) {
         lastCollate = Date.now();
-        await duty('collation', () => collate());
-        await duty('commander stats', () => precomputeCommanders(sql));
+        await duty('collation', () => collate(), { announce: true });
+        await duty('commander stats', () => precomputeCommanders(sql), { announce: true });
       }
-      if (await due('the nightly baseline', () => baselineDue(sql, schedule))) await duty('nightly baseline', () => precomputeBaseline(sql));
-      if (await due('scores', () => scoreSettingsChanged(sql))) await duty('scores', () => precomputeScores({ sql }));
+      if (await due('the nightly baseline', () => baselineDue(sql, schedule))) await duty('nightly baseline', () => precomputeBaseline(sql), { announce: true });
+      if (await due('scores', () => scoreSettingsChanged(sql))) await duty('scores', () => precomputeScores({ sql }), { announce: true });
       if (collating || substitutesPending) {
-        await duty('substitutes', async () => {
-          substitutesPending = (await precomputeSubstitutes(sql, { budgetMs: SUBSTITUTES_BUDGET_MS })).remaining > 0;
-        });
+        await duty(
+          'substitutes',
+          async () => {
+            substitutesPending = (await precomputeSubstitutes(sql, { budgetMs: SUBSTITUTES_BUDGET_MS })).remaining > 0;
+          },
+          { announce: true },
+        );
       }
       if (collating) {
-        await duty('card roles', () => precomputeRoles(sql));
-        await duty('combo pieces', () => precomputeCombos(sql));
-        await duty('card pairs', () => precomputePairs(sql));
+        await duty('card roles', () => precomputeRoles(sql), { announce: true });
+        await duty('combo pieces', () => precomputeCombos(sql), { announce: true });
+        await duty('card pairs', () => precomputePairs(sql), { announce: true });
       }
       if (!globalPairs && (await due('corpus card pairs', () => globalPairsDue(sql, schedule)))) {
-        globalPairs = duty('corpus card pairs', () => precomputeGlobalPairs(sql, { rerun: true })).finally(() => {
+        globalPairs = duty('corpus card pairs', () => precomputeGlobalPairs(sql, { rerun: true }), { announce: true }).finally(() => {
           globalPairs = null;
         });
         if (once) await globalPairs;
       }
       if (!edhrec && !once && (await due('the EDHREC fetch', () => edhrecDue(sql, schedule)))) {
-        edhrec = duty('EDHREC fetch', () => syncEdhrec()).finally(() => {
+        edhrec = duty('EDHREC fetch', () => syncEdhrec(), { announce: true }).finally(() => {
           edhrec = null;
         });
       }
@@ -204,6 +239,8 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
   } finally {
     // The corpus's pair count finishes its transaction well inside the stop grace period; an EDHREC fetch keeps its pages.
     if (globalPairs) await globalPairs;
+    // An EDHREC fetch still under way keeps the pages it wrote; its run is closed here and retried after retryHours.
+    await abandonOpenRuns(sql, SHUTDOWN_REASON).catch((err: unknown) => console.error('worker: closing the open runs failed:', err));
     clearInterval(heartbeat);
     await sql.end({ timeout: 5 });
   }

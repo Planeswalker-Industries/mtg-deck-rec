@@ -185,8 +185,8 @@ export async function precomputePairs(sql: Sql, { full = false, force = false }:
     rowsRead: rows,
     rowsChanged: written + removed,
     metrics: { keys: keys.length, rows, rowsWritten: written, rowsRemoved: removed },
+    summary: `precompute_pairs: ${keys.length} keys, ${rows} pairs (${written} written, ${removed} removed)`,
   });
-  console.log(`precompute_pairs: ${keys.length} keys, ${rows} pairs (${written} written, ${removed} removed)`);
   return keys.length;
 }
 
@@ -216,6 +216,8 @@ export async function precomputeGlobalPairs(
       if (seen === undefined) firstSource.set(d.content_hash, d.source);
       return seen === undefined || seen === d.source;
     });
+    // The count runs for minutes without a pause; these lines show which part is under way.
+    console.log(`precompute_global_pairs: counting pairs over ${decks.length} decks`);
     const pairs: PairRow[] = globalPairs(
       decks.map((d) => ({ cardIds: d.card_ids, identity: d.color_identity })),
       (id) => facts.get(id)?.identity ?? 0,
@@ -231,6 +233,7 @@ export async function precomputeGlobalPairs(
       return 'failed_sanity';
     }
 
+    console.log(`precompute_global_pairs: ${pairs.length} pairs counted; writing them`);
     const db = await reserve(sql);
     let written = 0;
     let removed = 0;
@@ -283,8 +286,8 @@ export async function precomputeGlobalPairs(
       rowsRead: decks.length,
       rowsChanged: written + removed,
       metrics: { decks: decks.length, rows: pairs.length, rowsWritten: written, rowsRemoved: removed },
+      summary: `precompute_global_pairs: ${decks.length} decks, ${pairs.length} pairs (${written} written, ${removed} removed)`,
     });
-    console.log(`precompute_global_pairs: ${decks.length} decks, ${pairs.length} pairs (${written} written, ${removed} removed)`);
     return 'succeeded';
   } catch (err) {
     await finishRun(sql, start.runId, 'failed', { rowsRead: 0, error: err instanceof Error ? err.message : String(err) }).catch(() => {});

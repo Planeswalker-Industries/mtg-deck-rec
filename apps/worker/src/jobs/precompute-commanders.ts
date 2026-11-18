@@ -118,11 +118,10 @@ export async function precomputeCommanders(sql: Sql): Promise<{ commanders: numb
       rowsRead: metrics.decksRead ?? 0,
       rowsChanged: (metrics.cardRowsWritten ?? 0) + (metrics.cardRowsRemoved ?? 0),
       metrics,
-    });
-    console.log(
-      `precompute_commanders: ${metrics.commanders} commanders rebuilt from ${metrics.decksRead} decks ` +
+      summary:
+        `precompute_commanders: ${metrics.commanders} commanders rebuilt from ${metrics.decksRead} decks ` +
         `(${metrics.emptied} with none left; ${metrics.cardRowsWritten} card rows written, ${metrics.cardRowsRemoved} removed)`,
-    );
+    });
   } catch (err) {
     await finishRun(sql, runId, 'failed', { rowsRead: 0, error: err instanceof Error ? err.message : String(err) }).catch(() => {});
     throw err;
@@ -209,8 +208,12 @@ export async function precomputeBaseline(sql: Sql, { force = false }: { force?: 
     } finally {
       db.release();
     }
-    await finishRun(sql, runId, 'succeeded', { rowsRead: sums.length, rowsChanged: metrics.cardRowsReshrunk ?? 0, metrics });
-    console.log(`precompute_baseline: baselines for ${globalRows.length} cards over ${eligibleDecks} decks; ${metrics.cardRowsReshrunk} commander-card rows re-shrunk`);
+    await finishRun(sql, runId, 'succeeded', {
+      rowsRead: sums.length,
+      rowsChanged: metrics.cardRowsReshrunk ?? 0,
+      metrics,
+      summary: `precompute_baseline: baselines for ${globalRows.length} cards over ${eligibleDecks} decks; ${metrics.cardRowsReshrunk} commander-card rows re-shrunk`,
+    });
   } catch (err) {
     await finishRun(sql, runId, 'failed', { rowsRead: 0, error: err instanceof Error ? err.message : String(err) }).catch(() => {});
     throw err;

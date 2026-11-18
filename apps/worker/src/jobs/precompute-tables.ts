@@ -55,8 +55,8 @@ async function diffRun(
     rowsRead: result.staged,
     rowsChanged: result.written + result.removed,
     metrics: { rows: result.staged, rowsWritten: result.written, rowsRemoved: result.removed },
+    summary: `${job}: ${result.staged} rows (${result.written} written, ${result.removed} removed)`,
   });
-  console.log(`${job}: ${result.staged} rows (${result.written} written, ${result.removed} removed)`);
 }
 
 /** The tracked roles (app_config.deck_role_targets), as tag ids. */

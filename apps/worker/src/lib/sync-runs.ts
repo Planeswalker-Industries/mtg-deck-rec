@@ -26,6 +26,54 @@ export const WORKER_ID = `${os.hostname()}:${process.pid}`;
 
 /** A running row whose heartbeat is older than this belongs to a worker that died. */
 const STALE_AFTER = '15 minutes';
+/**
+ * How often this process refreshes the heartbeat of every run it has open, well inside STALE_AFTER, so a long job
+ * that reports no progress of its own (the baseline, a slow merge) is not taken for a dead one.
+ */
+const RUN_HEARTBEAT_MS = 60_000;
+
+/** The runs this process has open, with the connection that opened each. */
+const openRuns = new Map<number, Sql>();
+let runBeat: NodeJS.Timeout | null = null;
+
+function trackRun(sql: Sql, runId: number): void {
+  openRuns.set(runId, sql);
+  if (runBeat) return;
+  runBeat = setInterval(() => {
+    for (const [id, conn] of openRuns) {
+      void conn`update public.sync_runs set heartbeat_at = now() where id = ${id} and status = 'running'`.catch(() => {});
+    }
+  }, RUN_HEARTBEAT_MS);
+  // A one-off command exits when its work is done, not when this timer stops.
+  runBeat.unref();
+}
+
+function untrackRun(runId: number): void {
+  openRuns.delete(runId);
+  if (openRuns.size === 0 && runBeat) {
+    clearInterval(runBeat);
+    runBeat = null;
+  }
+}
+
+/**
+ * Closes every run this process still has open, as `abandoned` with `reason`: the worker calls it when it stops before
+ * its duties end, so the next worker can start those jobs at once instead of waiting out STALE_AFTER. Uses `sql`, not
+ * the run's own connection, which may be busy with the statement that never finished.
+ */
+export async function abandonOpenRuns(sql: Sql, reason: string): Promise<number> {
+  const ids = [...openRuns.keys()];
+  if (ids.length === 0) return 0;
+  const closed = await sql<{ id: string; job: string }[]>`
+    update public.sync_runs
+    set status = 'abandoned', finished_at = now(), heartbeat_at = now(), error = ${reason}
+    where id = any(${ids}::bigint[]) and status = 'running'
+    returning id, job
+  `;
+  for (const id of ids) untrackRun(id);
+  for (const run of closed) console.warn(`${run.job}: run ${run.id} closed as abandoned (${reason})`);
+  return closed.length;
+}
 
 export interface RunSource {
   uri: string;
@@ -41,11 +89,13 @@ export type StartResult =
  * since the last successful run (unless forced), and refuses to start while another run of the job is live.
  */
 export async function startRun(sql: Sql, job: SyncJob, source: RunSource, force: boolean): Promise<StartResult> {
-  await sql`
+  const stale = await sql<{ id: string }[]>`
     update public.sync_runs
     set status = 'abandoned', finished_at = now(), error = 'heartbeat timed out'
     where job = ${job} and status = 'running' and heartbeat_at < now() - ${STALE_AFTER}::interval
+    returning id
   `;
+  for (const run of stale) console.warn(`${job}: run ${run.id} closed as abandoned (no heartbeat for ${STALE_AFTER})`);
 
   const [last] = await sql<{ source_updated_at: Date | null; metrics: SyncMetrics | null }[]>`
     select source_updated_at, metrics
@@ -70,6 +120,7 @@ export async function startRun(sql: Sql, job: SyncJob, source: RunSource, force:
       returning id
     `;
     if (!run) throw new Error('sync_runs insert returned no row');
+    trackRun(sql, Number(run.id));
     return { kind: 'started', runId: Number(run.id), previousMetrics: last?.metrics ?? null };
   } catch (err) {
     if ((err as { code?: string }).code === '23505') throw new Error(`Another ${job} run is already in progress.`);
@@ -85,8 +136,9 @@ export async function finishRun(
   sql: Sql,
   runId: number,
   status: 'succeeded' | 'failed' | 'failed_sanity',
-  result: { rowsRead: number; rowsChanged?: number; metrics?: SyncMetrics; error?: string },
+  result: { rowsRead: number; rowsChanged?: number; metrics?: SyncMetrics; error?: string; summary?: string },
 ): Promise<void> {
+  untrackRun(runId);
   const [run] = await sql<{ job: SyncJob }[]>`
     update public.sync_runs
     set status = ${status},
@@ -99,6 +151,8 @@ export async function finishRun(
     where id = ${runId}
     returning job
   `;
+  // The job's own line comes first: the index update and the cache refresh below can take minutes.
+  if (result.summary) console.log(result.summary);
   // Jobs report success only after their transaction commits, so the index and the web app both see the new data.
   // The index goes first: refreshing a page cache that then reads a stale index would be the wrong order.
   if (status === 'succeeded' && run) {

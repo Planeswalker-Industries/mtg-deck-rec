@@ -138,7 +138,9 @@ export function keyPairs(decks: readonly KeyPairDeck[], releaseMonth: (cardId: n
     const n = since(deckMonths, from);
     if (n === 0) continue;
     const lift = pairLift(pairDecks, since(cardMonths.get(cardA), from), since(cardMonths.get(cardB), from), n, settings.shrinkAlpha);
-    if (lift > settings.liftFloor) rows.push({ cardA, cardB, pairDecks, lift });
+    // A pair seen only in decks dated before the later card's release month (previews) has no decks to compare with:
+    // its lift divides by zero. It can't be stored (the column is not null), so it is left out.
+    if (Number.isFinite(lift) && lift > settings.liftFloor) rows.push({ cardA, cardB, pairDecks, lift });
   }
   return topPartners(rows, settings.maxPartners);
 }
