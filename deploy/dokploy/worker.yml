@@ -6,6 +6,8 @@
 #   DATABASE_URL             Supabase's session pooler connection string (never the transaction pooler)
 #   SEARCH_API_CRON_TOKEN    the search API's cron token, which starts crawls
 #   SEARCH_API_ADMIN_TOKEN   the search API's write token, so finished syncs update the search index
+#   SEARCH_API_URL           only when the search API runs on another server: its public https URL. Unset, the
+#                            worker reaches it as `search-api` on this server's network
 #   WEB_APP_URL, REVALIDATE_SECRET   so a corpus rebuild refreshes the web app's cached pages
 # and, only to change the defaults, WORKER_MEM_LIMIT and WORKER_HEAP_MB (see the comment on mem_limit below).
 #
@@ -23,7 +25,7 @@ services:
     stop_grace_period: 60s
     environment:
       DATABASE_URL: "${DATABASE_URL:?set DATABASE_URL on this app: the Supabase session pooler connection string}"
-      SEARCH_API_URL: "http://search-api:8080"
+      SEARCH_API_URL: "${SEARCH_API_URL:-http://search-api:8080}"
       SEARCH_API_ADMIN_TOKEN: "${SEARCH_API_ADMIN_TOKEN:-}"
       SEARCH_API_CRON_TOKEN: "${SEARCH_API_CRON_TOKEN:-}"
       WEB_APP_URL: "${WEB_APP_URL:-}"
