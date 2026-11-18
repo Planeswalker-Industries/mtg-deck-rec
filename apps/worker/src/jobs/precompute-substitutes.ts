@@ -9,12 +9,19 @@ import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-ru
  *
  * A card is rebuilt when it is new, when what its similarity rests on moved (its functional tags and their idf to two
  * places, its colours, mana value and functional twin, the depth, the functional tag config, the pool order's
- * weights: `tags_hash`), when a tag near its own was switched on or off, and every `substitutesRebuildDays`, which is
- * what catches a list that changed through its candidates rather than through the card itself.
+ * weights: `tags_hash`), when a tag near its own was switched on or off, when a card near it is new or changed (it may
+ * now belong in this list), and every `substitutesRebuildDays`, which catches what reaches a list only through its
+ * candidates' other fields: staple scores, legality, a tag a candidate lost.
  */
 
 /** Cards whose lists are computed and merged together. */
 const BATCH_TARGETS = 64;
+/**
+ * Lists computed at once. The hosted database has 2 CPUs, and each list is one CPU-bound query: on a copy held to 2
+ * CPUs (2026-11-18), 2 at once built 22.5 lists a second and 4 built 22.3, while a light read's p95 went from 3 ms to
+ * 40. More than the CPUs only makes the site wait.
+ */
+const PARALLEL_LISTS = 2;
 /** The depth when app_config.precompute has none: the shared swap pool's (migration 20261006000100 says why). */
 const DEFAULT_DEPTHS = { substitutesDepth: 220 };
 const DEFAULT_REBUILD_DAYS = 7;
@@ -86,9 +93,44 @@ async function currentHashes(sql: Sql, depths: Depths): Promise<Map<number, stri
 }
 
 /**
- * Tags switched on or off since the last pass make the lists of cards near them stale, through their candidates: the
- * cards carrying any tag within two steps of a common ancestor of a flipped one. Their hashes are cleared, so they
- * are rebuilt even if this pass runs out of time, and the new kill-switch state is stored.
+ * Clears the stored hash of every list these tags, or these cards' functional tags, can reach as a candidate: the
+ * cards carrying any tag within two steps of a common ancestor of one, which is the walk precompute_substitutes makes.
+ * The cards themselves are cleared as well (a new card gets its row now), so a change clears its neighbours once
+ * rather than on every pass until its own list is built. A cleared list is rebuilt even if the pass that cleared it
+ * runs out of time. Returns the cards it cleared.
+ */
+async function markNear(sql: Sql, { tagIds = [], cardIds = [] }: { tagIds?: string[]; cardIds?: number[] }): Promise<number[]> {
+  if (tagIds.length === 0 && cardIds.length === 0) return [];
+  const own = await sql<{ card_id: number }[]>`
+    insert into public.substitute_targets (card_id, tags_hash, built_at)
+    select unnest(${cardIds}::int[]), '', 'epoch'
+    on conflict (card_id) do update set tags_hash = ''
+    returning card_id
+  `;
+  const rows = await sql<{ card_id: number }[]>`
+    with changed as (
+      select unnest(${tagIds}::uuid[]) as id
+      union
+      select ct.tag_id from public.card_tags ct join public.functional_tags f on f.tag_id = ct.tag_id
+      where ct.card_id = any (${cardIds}::int[])
+    ),
+    up as (
+      select tc.ancestor_id as id from public.tag_closure tc join changed c on c.id = tc.descendant_id where tc.depth <= 2
+    ),
+    near as (
+      select tc.descendant_id as id from public.tag_closure tc join up on up.id = tc.ancestor_id where tc.depth <= 2
+    )
+    update public.substitute_targets s set tags_hash = ''
+    where s.card_id in (select ct.card_id from public.card_tags ct join near n on n.id = ct.tag_id)
+      and s.tags_hash <> ''
+    returning s.card_id
+  `;
+  return [...own, ...rows].map((r) => r.card_id);
+}
+
+/**
+ * Tags switched on or off since the last pass make the lists of cards near them stale, through their candidates.
+ * Their hashes are cleared and the new kill-switch state is stored.
  */
 async function markFlipped(sql: Sql): Promise<number> {
   const [now] = await sql<{ disabled: string[] }[]>`
@@ -102,20 +144,7 @@ async function markFlipped(sql: Sql): Promise<number> {
     const was = new Set(before);
     const is = new Set(disabled);
     const flipped = [...disabled.filter((id) => !was.has(id)), ...before.filter((id) => !is.has(id))];
-    if (flipped.length > 0) {
-      const result = await sql`
-        with up as (
-          select tc.ancestor_id as id from public.tag_closure tc where tc.descendant_id = any (${flipped}::uuid[]) and tc.depth <= 2
-        ),
-        near as (
-          select tc.descendant_id as id from public.tag_closure tc join up on up.id = tc.ancestor_id where tc.depth <= 2
-        )
-        update public.substitute_targets s set tags_hash = ''
-        where s.card_id in (select ct.card_id from public.card_tags ct join near n on n.id = ct.tag_id)
-          and s.tags_hash <> ''
-      `;
-      marked = result.count;
-    }
+    marked = (await markNear(sql, { tagIds: flipped })).length;
   }
   await sql`
     insert into public.precompute_state (part, version) values ('substitutes', ${sql.json({ disabled })})
@@ -149,6 +178,21 @@ export async function precomputeSubstitutes(
   const storedById = new Map(stored.map((s) => [s.card_id, s]));
   const staleBefore = Date.now() - rebuildDays * MS_PER_DAY;
 
+  // A new or changed card may now belong in the lists of the cards near it, so theirs are cleared too. A cleared hash
+  // ('') isn't a change of its own: counting it would spread the clearing card by card over the whole catalog.
+  if (!full) {
+    const moved = [...hashes]
+      .filter(([id, hash]) => {
+        const s = storedById.get(id);
+        return !s || (s.tags_hash !== '' && s.tags_hash !== hash);
+      })
+      .map(([id]) => id);
+    for (const id of await markNear(sql, { cardIds: moved })) {
+      const s = storedById.get(id);
+      if (s) s.tags_hash = '';
+    }
+  }
+
   const changed: number[] = [];
   const aged: { id: number; builtAt: number }[] = [];
   for (const [id, hash] of hashes) {
@@ -176,13 +220,19 @@ export async function precomputeSubstitutes(
     for (let i = 0; i < due.length; i += BATCH_TARGETS) {
       if (budgetMs !== undefined && Date.now() - started > budgetMs) break;
       const batch = due.slice(i, i + BATCH_TARGETS);
-      const lists = await Promise.all(
-        batch.map((id) =>
-          sql<{ card_id: number; tag_similarity: number; is_functional_twin: boolean }[]>`
-            select card_id, tag_similarity, is_functional_twin
-            from public.precompute_substitutes(${id}, ${depths.substitutesDepth})
-          `.then((rows) => ({ id, rows })),
-        ),
+      const lists: { id: number; rows: { card_id: number; tag_similarity: number; is_functional_twin: boolean }[] }[] = [];
+      let next = 0;
+      await Promise.all(
+        Array.from({ length: PARALLEL_LISTS }, async () => {
+          while (next < batch.length) {
+            const id = batch[next++] as number;
+            const rows = await sql<{ card_id: number; tag_similarity: number; is_functional_twin: boolean }[]>`
+              select card_id, tag_similarity, is_functional_twin
+              from public.precompute_substitutes(${id}, ${depths.substitutesDepth})
+            `;
+            lists.push({ id, rows });
+          }
+        }),
       );
 
       if (i === 0 && !force && !full) {
@@ -214,7 +264,12 @@ export async function precomputeSubstitutes(
           ['card_id', 'substitute_id', 'tag_similarity', 'is_functional_twin'],
           lists.flatMap((l) => l.rows.map((r) => [l.id, r.card_id, r.tag_similarity, r.is_functional_twin])),
         );
-        await copyRows(db, 'stg_targets', ['card_id', 'tags_hash'], batch.map((id) => [id, hashes.get(id) ?? '']));
+        await copyRows(
+          db,
+          'stg_targets',
+          ['card_id', 'tags_hash'],
+          batch.map((id) => [id, hashes.get(id) ?? '']),
+        );
         await db`begin`;
         try {
           const [removed] = await db<{ n: number }[]>`
@@ -276,6 +331,9 @@ export async function precomputeSubstitutes(
       rowsRead: done,
       rowsChanged: (metrics.rowsWritten ?? 0) + (metrics.rowsRemoved ?? 0),
       metrics,
+      // A rebuild carried over many passes refreshes the web caches once, when it's done: every slice clearing them sent
+      // visitors to a database already busy with the rebuild.
+      refreshCaches: remaining === 0,
       summary:
         `precompute_substitutes: ${done} of ${due.length} cards rebuilt (${metrics.rowsWritten} rows written, ` +
         `${metrics.rowsRemoved} removed)${remaining > 0 ? `; ${remaining} left for the next pass` : ''}`,

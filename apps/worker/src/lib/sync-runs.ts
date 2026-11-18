@@ -80,9 +80,7 @@ export interface RunSource {
   updatedAt: string;
 }
 
-export type StartResult =
-  | { kind: 'started'; runId: number; previousMetrics: SyncMetrics | null }
-  | { kind: 'skipped' };
+export type StartResult = { kind: 'started'; runId: number; previousMetrics: SyncMetrics | null } | { kind: 'skipped' };
 
 /**
  * Opens a sync run. Marks runs with stale heartbeats as abandoned, skips when the source hasn't changed
@@ -136,7 +134,15 @@ export async function finishRun(
   sql: Sql,
   runId: number,
   status: 'succeeded' | 'failed' | 'failed_sanity',
-  result: { rowsRead: number; rowsChanged?: number; metrics?: SyncMetrics; error?: string; summary?: string },
+  result: {
+    rowsRead: number;
+    rowsChanged?: number;
+    metrics?: SyncMetrics;
+    error?: string;
+    summary?: string;
+    /** False when more of the same job follows soon (a rebuild carried over passes): the last part refreshes them. */
+    refreshCaches?: boolean;
+  },
 ): Promise<void> {
   untrackRun(runId);
   const [run] = await sql<{ job: SyncJob }[]>`
@@ -157,6 +163,6 @@ export async function finishRun(
   // The index goes first: refreshing a page cache that then reads a stale index would be the wrong order.
   if (status === 'succeeded' && run) {
     await drainSearchIndexQuietly(sql, run.job);
-    await refreshWebCaches(run.job);
+    if (result.refreshCaches !== false) await refreshWebCaches(run.job);
   }
 }

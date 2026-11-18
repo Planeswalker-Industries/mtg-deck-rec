@@ -39,8 +39,9 @@ const HEARTBEAT_MS = 10_000;
 /** How often the daily crawl trigger may ask the search API again after it couldn't start a run. */
 const CRAWL_RETRY_MINUTES = 10;
 /**
- * How long one pass may spend rebuilding substitute lists before the worker gets back to lookups. The first build of
- * every card's list (about 15 minutes) spreads over several passes this way.
+ * How long one pass may spend rebuilding substitute lists before the worker gets back to lookups. A build of every
+ * card's list takes hours on the hosted database (three and a half on 2026-11-18, before migration 20261118000100 cut
+ * each list's time by about 40%) and spreads over many passes this way.
  */
 const SUBSTITUTES_BUDGET_MS = 2 * MS_PER_MINUTE;
 /**

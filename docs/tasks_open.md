@@ -1,6 +1,6 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T092.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T096.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
@@ -10,13 +10,22 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ## T074: Archidekt answers the daily crawl with 429s
 
-**HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`
+**HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`; the 429s are solved, the run bookkeeping is not
 
 Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the fetcher's backoff (doubling up to `requestIntervalMaxMs`, 8 s, in `services/search-api/internal/crawl/fetcher.go`) did not outlast.
 
-- [ ] Run 29 (2026-10-22, the first at the slower pace) reads `running` with a `finished_at`, and run 30 sits `queued`: find why, and close stale runs as failed
-- [ ] Three daily runs in a row without a 429 failure; if they still fail, switch the source off and ask Archidekt's staff what rate they want
-- [ ] Run 20 (2026-10-13, still `running`) closed as failed, and a redeploy that kills a run leaves it marked failed
+Hosted `crawl.runs` on 2026-11-17, runs 29–54 (the slower pace) — 26 runs:
+
+- 20 `succeeded`, each stopped by the 6-hour cap (10:46–16:46 UTC): about 800 commanders visited, 3,000–5,500 decks written, 35–220 throttles absorbed by the backoff.
+- 1 failed on a 429: run 46 (2026-11-09).
+- 2 failed with `context canceled`: runs 39 (2026-11-02) and 40 (2026-11-03). Their times do not match a merge to `main`, so a Dokploy redeploy is not the clear cause.
+- 3 left `running` with a `finished_at`, never closed: runs 29 (2026-10-22), 43 (2026-11-06) and 50 (2026-11-13). Run 20 (2026-10-13) is still `running` too.
+- No run on 2026-10-29.
+
+- [x] Three daily runs in a row without a 429 failure: runs 30–38 (2026-10-23 to 2026-11-01), nine in a row
+- [ ] Find why runs 29, 43 and 50 stopped without closing (process killed or crashed mid-run?) and what stopped runs 39 and 40; check the VPS host's restarts and container logs for those dates
+- [ ] Close runs 20, 29, 43 and 50 as failed, and make a run killed by a redeploy or crash end up marked failed (on shutdown, or by the next run closing stale ones)
+- [ ] Find why no run started on 2026-10-29
 
 ## T068: Recommendation latency (PR #139 review)
 
@@ -194,9 +203,11 @@ The adapter (`services/search-api/internal/moxfield/`) is built and seeded disab
 
 ## T066: Background jobs on the VPS
 
-**HIGH** · Worker / Ops · Shelved and handed off to the VPS host (owner, 2026-10-24); the owner runs the syncs by hand until they say otherwise · Absorbs T009
+**HIGH** · Worker / Ops · Unshelved 2026-11-17; the worker runs on the owner's Contabo VPS since 2026-11-18 · Absorbs T009
 
-The Node worker (`apps/worker` `cli serve`, `deploy/dokploy/worker.yml`, memory limits from PR #166) is built and released but not deployed: the VPS host would rather run background jobs in the Go search API than host a second kind of service. Until the owner says otherwise, they run by hand every sync no deployed service runs: `collate`, the precompute passes, the global pair count and `sync:edhrec`. The daily GitHub Actions sync (catalog, printings, tags and, since 2026-10-23, Spellbook) and the Go API's daily crawl keep running. Deck lookups stay unserved meanwhile: 2 hosted `commander_requests` queued since 2026-09-19 and 2026-09-28, and the deck tool shows the collector offline.
+**Plan (owner, 2026-11-17):** the Node worker runs as it is on the owner's own Contabo VPS (12 GB RAM), through `deploy/worker/docker-compose.yml` (no Dokploy). The search API, Typesense and the Archidekt crawl stay on the friend's VPS; the worker reaches the search API over its public URL (`SEARCH_API_URL`) with `SEARCH_API_CRON_TOKEN` and `SEARCH_API_ADMIN_TOKEN` from the host. No Go port. Why now (hosted, 2026-11-17): `corpus.decks` was last collated 2026-10-20, and 85,451 of the 304,157 raw `archidekt.decks` rows were fetched after that, so a month of crawling has not reached recommendations. Watch the load on hosted: the incremental passes go first, the full passes stay monthly at a quiet hour (the reason hand runs moved local on 2026-11-03).
+
+Before the plan above, the Node worker (`apps/worker` `cli serve`, `deploy/dokploy/worker.yml`, memory limits from PR #166) is built and released but not deployed: the VPS host would rather run background jobs in the Go search API than host a second kind of service. Until the owner says otherwise, they run by hand every sync no deployed service runs: `collate`, the precompute passes, the global pair count and `sync:edhrec`. The daily GitHub Actions sync (catalog, printings, tags and, since 2026-10-23, Spellbook) and the Go API's daily crawl keep running. Deck lookups stay unserved meanwhile: 2 hosted `commander_requests` queued since 2026-09-19 and 2026-09-28, and the deck tool shows the collector offline.
 
 What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 
@@ -208,10 +219,25 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 - Parity: the precompute's formulas live in `@mtg/core/scoring`, which the web app (`cardPrior`, `servedCardRates`, `commanderShare`, `pickCorpusSources`) and `eval:holdout` also run. A port to Go needs a check that its tables match the TypeScript jobs' on the same corpus.
 - Memory (2026-10-24): the global pair count over 212,606 decks needs about 1.3 GB of Node heap, plus a 1 GB count of card pairs (22,583 cards in 50 or more decks) that grows with the square of the card count.
 
-- [ ] The VPS host picks the design (a Go port, or the Node worker after all) and the owner unshelves
-- [ ] Hosted `commander_requests` are consumed and the deck tool sees the heartbeat
+- [x] The design is picked: the Node worker on the owner's own VPS (2026-11-17)
+- [x] The Contabo VPS is provisioned and hardened (2026-11-18): Ubuntu 24.04, 12 GB RAM, New Jersey; SSH by key only, `ufw` 22/80/443, unattended-upgrades, fail2ban. Contabo's image ships Dokploy, so the worker runs as a Dokploy Compose app (`deploy/dokploy/worker.yml`, branch `main`, deployed by hand). TCP connect to the `us-east-2` session pooler: 38–55 ms
+- [ ] The Dokploy panel gets a domain with TLS, and port 3000 closes (Docker-published ports bypass `ufw`)
+- [x] The worker runs there with `DATABASE_URL` (session pooler), `SEARCH_API_URL` (PR #212), both search API tokens, `WEB_APP_URL` and `REVALIDATE_SECRET` (in single quotes: Compose expands `$` in an unquoted value); the first collation (86,754 decks) and precompute finished on 2026-11-18 without straining hosted
+- [ ] `/privacy` names a rented server that runs background jobs
+- [x] Hosted `commander_requests` are consumed and the deck tool sees the heartbeat (both requests `done`, 2026-11-18)
 - [ ] The new jobs fill what hand runs do now, on the owner's cadence
 - [ ] Once the new trigger has started the daily crawls for two days, the Vercel cron (`/api/cron/*-scrape`) goes
+
+## T094: A failed COPY hangs the worker
+
+**HIGH** · Worker / Scoring · Found 2026-11-18 (runs 259 and 265, `precompute_pairs`)
+
+Hosted card pairs hung twice after the first chunk of 100 keys: the connection sat `idle in transaction (aborted)` on `copy stg_pairs … from stdin` for over 30 minutes while the worker's heartbeat kept the collector looking online. Cause: `keyPairs` (`@mtg/core/scoring` `pairs.ts`) gave 10 keys pairs with a non-finite lift, a pair seen only in decks dated before the later card's release month (preview cards of the 2026-10 and 2026-11 sets), so the lift divides by zero. `copyField` writes a non-finite number as `\N`, `lift` is `not null`, the COPY fails on the server, and `copyRows` (`pipeline` into the postgres.js writable) never settles.
+
+- [x] `keyPairs` leaves out non-finite lifts, with a test (PR #214), released so the worker's card pairs finish (#215; hosted card pairs ran in 11 min on 2026-11-18)
+- [x] `copyRows` rejects when the server fails the COPY, instead of hanging (PR #214; checked by hand against local Postgres, no committed test: the worker has no test runner)
+- [ ] Count a pair's decks over the same decks as its cards' (from the later release month on), as the module comment says; a scoring change, so through `eval:holdout` at its gate
+- [ ] The heartbeat says whether the loop is moving, not only that the process is up (a stuck duty shows in `worker_status`)
 
 ## T003: Deck report link destination
 
