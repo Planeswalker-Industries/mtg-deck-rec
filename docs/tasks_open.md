@@ -227,7 +227,7 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 - [ ] The new jobs fill what hand runs do now, on the owner's cadence
 - [x] The Vercel cron (`/api/cron/*-scrape`) is off: the owner disabled it in the Vercel dashboard on 2026-11-18, and the worker starts the daily crawl at `crawlHourUtc` (10:00 UTC); its entries are still in `apps/web/vercel.json`
 - [ ] The worker started the 2026-11-19 and 2026-11-20 crawls (`crawl.runs` at 10:00 UTC)
-- [ ] Pushes to `main` redeploy the worker: in Dokploy the `worker` app has Auto Deploy on and Watch Paths empty, and its Webhook URL is the `DOKPLOY_WORKER_WEBHOOK_URL` repository secret (`.github/workflows/worker-deploy.yml` logs a warning and skips until then; meanwhile click Deploy after each release)
+- [x] Pushes to `main` redeploy the worker (2026-11-18): the Dokploy `worker` app has Auto Deploy on and Watch Paths empty, its Webhook URL is the `DOKPLOY_WORKER_WEBHOOK_URL` repository secret, and a manual run of `.github/workflows/worker-deploy.yml` got Dokploy's "Compose deployed successfully"
 
 ## T094: A failed COPY hangs the worker
 
