@@ -221,7 +221,7 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 
 - [x] The design is picked: the Node worker on the owner's own VPS (2026-11-17)
 - [x] The Contabo VPS is provisioned and hardened (2026-11-18): Ubuntu 24.04, 12 GB RAM, New Jersey; SSH by key only, `ufw` 22/80/443, unattended-upgrades, fail2ban. Contabo's image ships Dokploy, so the worker runs as a Dokploy Compose app (`deploy/dokploy/worker.yml`, branch `main`, deployed by hand). TCP connect to the `us-east-2` session pooler: 38–55 ms
-- [ ] The Dokploy panel gets a domain with TLS, and port 3000 closes (Docker-published ports bypass `ufw`)
+- [x] The Dokploy panel gets a domain with TLS, and port 3000 closes (Docker-published ports bypass `ufw`): https://ops.spellchasm.com (Namecheap A record, Let's Encrypt through Dokploy's Web Server settings) since 2026-11-18, and `docker service update --publish-rm "published=3000,target=3000,mode=host" dokploy` took 3000 off (`--publish-add` puts it back from SSH)
 - [x] The worker runs there with `DATABASE_URL` (session pooler), `SEARCH_API_URL` (PR #212), both search API tokens, `WEB_APP_URL` and `REVALIDATE_SECRET` (in single quotes: Compose expands `$` in an unquoted value); the first collation (86,754 decks) and precompute finished on 2026-11-18 without straining hosted
 - [x] Hosted `commander_requests` are consumed and the deck tool sees the heartbeat (both requests `done`, 2026-11-18)
 - [ ] The new jobs fill what hand runs do now, on the owner's cadence
