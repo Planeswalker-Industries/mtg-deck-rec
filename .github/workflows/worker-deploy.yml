@@ -1,0 +1,73 @@
+name: Deploy the worker
+
+# Redeploys the VPS worker (T066) when a push to main changes what its image is built from. It calls the Dokploy
+# `worker` app's deploy webhook, which takes a GitHub-style push for the app's own branch (Dokploy v0.31.4 checks the
+# `X-GitHub-Event` header and `ref`), so the webhook token can only redeploy main.
+#
+# Setup, once: on the Dokploy `worker` app turn Auto Deploy on, copy the Webhook URL from its Deployments tab, and save
+# it as the DOKPLOY_WORKER_WEBHOOK_URL repository secret. Leave the app's Watch Paths empty: the paths below decide.
+#
+# The worker reads the hosted schema, so it waits for the migrations: when main holds a migration hosted lacks, the run
+# fails and names it. Run db-push.yml, then re-run this one.
+#
+# A deploy stops the worker: the duty in hand gets 45 s, then its runs close as `abandoned` and the next worker picks the
+# work up. The crawl runs on the search API's server and is not touched.
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/worker/**
+      - packages/core/**
+      - deploy/dokploy/worker.yml
+      - package.json
+      - yarn.lock
+      - .yarnrc.yml
+      - apps/web/package.json
+  workflow_dispatch:
+
+concurrency:
+  group: worker-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WEBHOOK_URL: ${{ secrets.DOKPLOY_WORKER_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Without the secrets the run logs what is missing and passes, so pushes to main stay green until they're set.
+      - name: Check the secrets
+        id: secrets
+        run: |
+          ready=true
+          [ -n "$DATABASE_URL" ] || { echo "::warning::DATABASE_URL isn't set, so the worker wasn't redeployed (see this workflow's header)."; ready=false; }
+          [ -n "$WEBHOOK_URL" ] || { echo "::warning::DOKPLOY_WORKER_WEBHOOK_URL isn't set, so the worker wasn't redeployed: click Deploy on the Dokploy worker app (see this workflow's header)."; ready=false; }
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+      - name: Hosted has every migration
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          newest=$(ls supabase/migrations | sed -n 's/^\([0-9]\{14\}\)_.*\.sql$/\1/p' | sort | tail -n 1)
+          applied=$(psql "$DATABASE_URL" -XAtc "select coalesce(max(version), '') from supabase_migrations.schema_migrations")
+          echo "newest in main: $newest; newest on hosted: $applied"
+          if [ "$applied" \< "$newest" ]; then
+            echo "::error::Hosted lacks migration $newest. Run db-push.yml, then re-run this workflow."
+            exit 1
+          fi
+
+      - name: Deploy
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          body=$(jq -nc --arg sha "$GITHUB_SHA" --arg msg "$(git log -1 --format=%s)" \
+            '{ref: "refs/heads/main", head_commit: {id: $sha, message: $msg}, commits: []}')
+          status=$(curl -sS -o response.txt -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' --data "$body" "$WEBHOOK_URL")
+          echo "Dokploy answered $status: $(head -c 300 response.txt)"
+          [ "$status" -ge 200 ] && [ "$status" -lt 300 ]
