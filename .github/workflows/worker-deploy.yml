@@ -42,15 +42,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Without the secrets the run logs what is missing and passes, so pushes to main stay green until they're set.
       - name: Check the secrets
+        id: secrets
         run: |
-          missing=0
-          for name in DATABASE_URL WEBHOOK_URL; do
-            if [ -z "${!name}" ]; then echo "::error::The $name secret is missing (see this workflow's header)."; missing=1; fi
-          done
-          exit $missing
+          ready=true
+          [ -n "$DATABASE_URL" ] || { echo "::warning::DATABASE_URL isn't set, so the worker wasn't redeployed (see this workflow's header)."; ready=false; }
+          [ -n "$WEBHOOK_URL" ] || { echo "::warning::DOKPLOY_WORKER_WEBHOOK_URL isn't set, so the worker wasn't redeployed: click Deploy on the Dokploy worker app (see this workflow's header)."; ready=false; }
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
 
       - name: Hosted has every migration
+        if: steps.secrets.outputs.ready == 'true'
         run: |
           newest=$(ls supabase/migrations | sed -n 's/^\([0-9]\{14\}\)_.*\.sql$/\1/p' | sort | tail -n 1)
           applied=$(psql "$DATABASE_URL" -XAtc "select coalesce(max(version), '') from supabase_migrations.schema_migrations")
@@ -61,6 +63,7 @@ jobs:
           fi
 
       - name: Deploy
+        if: steps.secrets.outputs.ready == 'true'
         run: |
           body=$(jq -nc --arg sha "$GITHUB_SHA" --arg msg "$(git log -1 --format=%s)" \
             '{ref: "refs/heads/main", head_commit: {id: $sha, message: $msg}, commits: []}')
