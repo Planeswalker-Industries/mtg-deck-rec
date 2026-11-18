@@ -711,12 +711,15 @@ export async function precomputeScores({
         on conflict (part) do update set version = excluded.version, updated_at = now()
       `;
     }
-    await finishRun(sql, runId, 'succeeded', { rowsRead: staged, rowsChanged: written + removed, metrics });
-    console.log(
-      `precompute_scores: ${sets.length} commanders, ${staged} rows (${written} written, ${removed} removed); ` +
+    await finishRun(sql, runId, 'succeeded', {
+      rowsRead: staged,
+      rowsChanged: written + removed,
+      metrics,
+      summary:
+        `precompute_scores: ${sets.length} commanders, ${staged} rows (${written} written, ${removed} removed); ` +
         `${metrics.derivedPairs ?? 0} derived pairs (${metrics.pairPoolRows ?? 0} pool rows, ${metrics.pairPriorRows ?? 0} listings); ` +
         `partner totals for ${partners.length} commanders`,
-    );
+    });
     return { status: 'succeeded', rows: staged };
   } catch (err) {
     if (runId !== null) {

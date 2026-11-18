@@ -38,6 +38,8 @@ import { requireSearchClient, searchClient } from '../lib/search-api';
 const IMPORT_BATCH = 1_000;
 /** Queue rows claimed per pass. */
 const DRAIN_BATCH = 5_000;
+/** How often a long drain logs how far it has got: often enough to show it moving, rarely enough to stay readable. */
+const DRAIN_PROGRESS_MS = 60_000;
 /** Rows read from Postgres per document batch. */
 const READ_BATCH = 2_000;
 
@@ -307,9 +309,12 @@ async function drainOnce(sql: ReservedSql, index: SearchClient): Promise<{ read:
  * turns any future mistake in the delete into a visible, bounded failure rather than a loop hammering the index —
  * which is precisely how the timestamp-precision bug in QueueRow showed up.
  */
-async function drainUntilEmpty(sql: ReservedSql, index: SearchClient): Promise<{ cleared: number; counts: Counts }> {
+async function drainUntilEmpty(sql: ReservedSql, index: SearchClient, label?: string): Promise<{ cleared: number; counts: Counts }> {
   let total = empty();
   let cleared = 0;
+  // A big rebuild queues a million documents or more, which takes many minutes to send: say how far it has got.
+  const [queued] = label ? await sql<{ n: number }[]>`select count(*)::int as n from public.search_index_queue` : [];
+  let lastProgress = Date.now();
   for (;;) {
     const pass = await drainOnce(sql, index);
     if (pass.read === 0) break;
@@ -318,6 +323,10 @@ async function drainUntilEmpty(sql: ReservedSql, index: SearchClient): Promise<{
     }
     cleared += pass.cleared;
     total = add(total, pass.counts);
+    if (label && Date.now() - lastProgress >= DRAIN_PROGRESS_MS) {
+      lastProgress = Date.now();
+      console.log(`${label}: search index update: ${cleared} of about ${queued?.n ?? '?'} queued documents sent`);
+    }
   }
   return { cleared, counts: total };
 }
@@ -428,7 +437,7 @@ export async function drainSearchIndexQuietly(pool: Sql, job: string): Promise<v
   try {
     await stageFunctionalTags(sql);
     await ensureCollections(index);
-    const { cleared, counts } = await drainUntilEmpty(sql, index);
+    const { cleared, counts } = await drainUntilEmpty(sql, index, job);
     if (cleared > 0) console.log(`${job}: search index updated (${counts.written} written, ${counts.removed} removed).`);
   } catch (err) {
     console.warn(`${job}: updating the search index failed, so it stays behind until the next drain: ${err instanceof Error ? err.message : String(err)}`);
