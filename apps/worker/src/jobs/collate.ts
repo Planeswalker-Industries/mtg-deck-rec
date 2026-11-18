@@ -503,9 +503,11 @@ async function collateEdhrec(ctx: Context, fetchRunId: number) {
         )
         select count(*)::int as n from written
       `);
+      // Scores only: a page feeds the scores, never the stats counted from our decks. A row already waiting keeps its
+      // needs_stats, so a deck change queued before this still rebuilds the stats.
       await db`
-        insert into corpus.dirty_commanders (commander_1, commander_2)
-        select distinct commander_1, commander_2 from stg_dirty
+        insert into corpus.dirty_commanders (commander_1, commander_2, needs_stats)
+        select distinct commander_1, commander_2, false from stg_dirty
         on conflict (commander_1, commander_2) do update set seq = nextval('corpus.dirty_commanders_seq')
       `;
       const [rows] = await db<{ card_rows: number; listed: number }[]>`

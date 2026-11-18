@@ -1,5 +1,5 @@
 import { IDENTITIES, loadCatalog, loadCorpusConfig, loadRoleCards, type CorpusDeck } from '../lib/corpus';
-import { reserve, type Sql } from '../lib/db';
+import { reserve, type ReservedSql, type Sql } from '../lib/db';
 import { cardStatRows, globalStatRows, keyStatRows, mergeBaseline, mergeKeyStats, tallyDecks } from '../lib/key-stats';
 import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-runs';
 import { precomputeScores } from './precompute-scores';
@@ -31,6 +31,18 @@ interface Dirty {
   commander_1: number;
   commander_2: number;
   seq: string;
+  /** False when only the commander's scores' inputs moved (an EDHREC page): its decks, and so its stats, didn't. */
+  needs_stats: boolean;
+}
+
+/** Takes these rows off the queue: only the versions read, so a commander queued again since keeps its row. */
+async function dequeue(db: Sql | ReservedSql, rows: readonly Dirty[]): Promise<void> {
+  if (rows.length === 0) return;
+  await db`
+    delete from corpus.dirty_commanders d
+    using unnest(${rows.map((b) => b.commander_1)}::int[], ${rows.map((b) => b.commander_2)}::int[], ${rows.map((b) => b.seq)}::bigint[]) as r (c1, c2, seq)
+    where d.commander_1 = r.c1 and d.commander_2 = r.c2 and d.seq = r.seq
+  `;
 }
 
 /** The decks of these commanders (or pairs), in id order, so the first copy of a cross-posted deck is the one counted. */
@@ -58,17 +70,31 @@ async function* decksOf(sql: Sql, batch: readonly Dirty[]): AsyncGenerator<Corpu
 }
 
 /**
- * Rebuilds the stats of the commanders whose decks changed, then their scores. Returns how many commanders it took;
- * an empty queue costs one indexed read and records no run.
+ * Rebuilds the stats of the commanders whose decks changed, then the scores of every commander taken, those queued
+ * for their scores alone included. Returns how many commanders it took; an empty queue costs one indexed read and
+ * records no run.
  */
 export async function precomputeCommanders(sql: Sql): Promise<{ commanders: number }> {
   const dirty = await sql<Dirty[]>`
-    select commander_1, commander_2, seq::text as seq from corpus.dirty_commanders order by seq limit ${MAX_COMMANDERS_PER_PASS}
+    select commander_1, commander_2, seq::text as seq, needs_stats
+    from corpus.dirty_commanders order by seq limit ${MAX_COMMANDERS_PER_PASS}
   `;
   if (dirty.length === 0) return { commanders: 0 };
+  const stale = dirty.filter((d) => d.needs_stats);
+  await rebuildStats(sql, stale);
+  await dequeue(sql, dirty.filter((d) => !d.needs_stats));
+
+  // Their scores, and those of every pair and partner they lend decks to.
+  await precomputeScores({ sql, commanderIds: [...new Set(dirty.flatMap((d) => (d.commander_2 === 0 ? [d.commander_1] : [d.commander_1, d.commander_2])))] });
+  return { commanders: dirty.length };
+}
+
+/** commander_keys, commander_stats and commander_card_stats of these commanders, from their decks; no run when none. */
+async function rebuildStats(sql: Sql, dirty: readonly Dirty[]): Promise<void> {
+  if (dirty.length === 0) return;
 
   const start = await startRun(sql, 'precompute_commanders', { uri: DIRTY_URI, updatedAt: new Date().toISOString() }, true);
-  if (start.kind === 'skipped') return { commanders: 0 };
+  if (start.kind === 'skipped') return;
   const runId = start.runId;
   const metrics: SyncMetrics = { commanders: 0, emptied: 0, decksRead: 0, cardRowsWritten: 0, cardRowsRemoved: 0 };
   try {
@@ -93,12 +119,7 @@ export async function precomputeCommanders(sql: Sql): Promise<{ commanders: numb
         await db`begin`;
         try {
           const merged = await mergeKeyStats(db, keyRows, cardRows, { everyKey: false, emptied });
-          // Only the queue rows read: a commander queued again since keeps its row for the next pass.
-          await db`
-            delete from corpus.dirty_commanders d
-            using unnest(${batch.map((b) => b.commander_1)}::int[], ${batch.map((b) => b.commander_2)}::int[], ${batch.map((b) => b.seq)}::bigint[]) as r (c1, c2, seq)
-            where d.commander_1 = r.c1 and d.commander_2 = r.c2 and d.seq = r.seq
-          `;
+          await dequeue(db, batch);
           await db`commit`;
           metrics.cardRowsWritten = (metrics.cardRowsWritten ?? 0) + merged.cardRowsWritten;
           metrics.cardRowsRemoved = (metrics.cardRowsRemoved ?? 0) + merged.cardRowsRemoved;
@@ -126,10 +147,6 @@ export async function precomputeCommanders(sql: Sql): Promise<{ commanders: numb
     await finishRun(sql, runId, 'failed', { rowsRead: 0, error: err instanceof Error ? err.message : String(err) }).catch(() => {});
     throw err;
   }
-
-  // Their scores, and those of every pair and partner they lend decks to.
-  await precomputeScores({ sql, commanderIds: [...new Set(dirty.flatMap((d) => (d.commander_2 === 0 ? [d.commander_1] : [d.commander_1, d.commander_2])))] });
-  return { commanders: dirty.length };
 }
 
 /**
