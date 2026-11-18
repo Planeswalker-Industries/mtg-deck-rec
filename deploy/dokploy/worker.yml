@@ -12,7 +12,8 @@
 # and, only to change the defaults, WORKER_MEM_LIMIT and WORKER_HEAP_MB (see the comment on mem_limit below).
 #
 # The schedule (crawl hour, collation, rebuild and EDHREC intervals) is app_config.worker in the database, not a panel
-# setting. No domain: the worker serves nothing.
+# setting. No domain: the worker serves nothing. A push to main that changes the worker redeploys it through this app's
+# webhook (.github/workflows/worker-deploy.yml, which says how to set it up).
 
 services:
   worker:
