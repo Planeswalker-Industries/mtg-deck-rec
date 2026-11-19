@@ -9,6 +9,12 @@
  */
 export const COLLECTION_MAX_IMPORT_ROWS = 50_000;
 
+/** Longest text the collection paste box takes: about 25,000 lines. Anything larger is a file, not a paste. */
+export const MAX_COLLECTION_PASTE_CHARS = 1_000_000;
+
+/** Largest deck file the deck tool reads. A deck export is a few KB; a bigger file is not a decklist. */
+export const MAX_DECK_FILE_BYTES = 1024 * 1024;
+
 /**
  * The CSS custom property the deck tool's sticky deck bar sets to its own height, so other sticky surfaces (the
  * deckbuilder's search filters) stop below it rather than under it. Tailwind classes spell it out literally,

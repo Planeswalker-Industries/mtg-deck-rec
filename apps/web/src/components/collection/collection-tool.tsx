@@ -20,7 +20,9 @@ import { withCollectionWrite } from "@/lib/collection-lock";
 import { safeNextPath } from "@/lib/safe-path";
 import { COLLECTION_VISTA } from "@/lib/landing-art";
 import { PageHero } from "@/components/ui/page-hero";
-import { COLLECTION_MAX_IMPORT_ROWS, TEXT_LINK } from "@/lib/constants";
+import { COLLECTION_MAX_IMPORT_ROWS, MAX_COLLECTION_PASTE_CHARS, TEXT_LINK } from "@/lib/constants";
+import { ErrorText } from "@/components/ui/error-text";
+import { TextLimitCount, useTextLimit } from "@/components/ui/text-limit";
 import {
   clearCollection,
   collectionTotals,
@@ -80,6 +82,8 @@ export function CollectionTool() {
   const [fileName, setFileName] = useState<string | null>(null);
   /** A file's text stays out of sight unless asked for: see `LoadedFile`. */
   const [fileTextShown, setFileTextShown] = useState(false);
+  /** The paste box refuses a paste past its limit whole; a collection that large comes as a file. */
+  const pasteLimit = useTextLimit(MAX_COLLECTION_PASTE_CHARS, "Upload the file instead.");
   const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   /** Lines that didn't match in the last import to the account, which doesn't keep them. */
@@ -329,6 +333,7 @@ export function CollectionTool() {
             name={fileName}
             lines={fileLines}
             textShown={fileTextShown}
+            tooLargeToShow={text.length > MAX_COLLECTION_PASTE_CHARS}
             onToggleText={() => setFileTextShown((shown) => !shown)}
             onRemove={() => {
               setText("");
@@ -343,6 +348,7 @@ export function CollectionTool() {
             disabled={importing}
             onFile={(contents, name) => {
               setProblem(null);
+              pasteLimit.clearError();
               setText(contents);
               setFileName(name);
               setFileTextShown(false);
@@ -359,7 +365,10 @@ export function CollectionTool() {
               setFileName(null);
               // The last problem was about the last text; leaving it up makes the new text look wrong too.
               setProblem(null);
+              pasteLimit.clearError();
             }}
+            onPaste={pasteLimit.onPaste}
+            maxLength={MAX_COLLECTION_PASTE_CHARS}
             placeholder={PLACEHOLDER}
             aria-describedby={fileName === null ? "collection-text-hint" : undefined}
             spellCheck={false}
@@ -369,6 +378,8 @@ export function CollectionTool() {
             className={IMPORT_TEXT_BOX}
           />
         )}
+        {!textHidden && <TextLimitCount length={text.length} max={MAX_COLLECTION_PASTE_CHARS} />}
+        {!textHidden && pasteLimit.error && <ErrorText>{pasteLimit.error}</ErrorText>}
         {fileName === null && (
           <p id="collection-text-hint" className="text-sm text-muted-foreground">
             Or paste a link to a public Archidekt collection, like https://archidekt.com/collection/v2/123456.

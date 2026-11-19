@@ -59,12 +59,21 @@ import { useDeckGroups } from "./use-deck-groups";
 import { useDeckTool } from "./use-deck-tool";
 import { useDeckCoverage } from "./use-deck-coverage";
 import { CommanderPicker } from "@/components/rater/commander-picker";
-import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
-import { BUILD_DECK_HREF, DECK_START_BUILD, DECK_START_PARAM, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { MAX_DECK_NAME_CHARS, MAX_DECKLIST_CHARS } from "@mtg/core/schemas";
+import {
+  BUILD_DECK_HREF,
+  DECK_START_BUILD,
+  DECK_START_PARAM,
+  MAX_DECK_FILE_BYTES,
+  TEXT_LINK,
+  TOGGLE_OFF,
+  TOGGLE_ON,
+} from "@/lib/constants";
 import { collectionCounts } from "@/lib/deck-collection";
 import { getApis } from "@/lib/api/client";
 import { RESUME_PARAM, RESUME_SAVE, takePendingSave } from "@/lib/pending-save";
 import { ErrorText } from "@/components/ui/error-text";
+import { TextLimitCount, charLimitError, useTextLimit } from "@/components/ui/text-limit";
 
 const PLACEHOLDER = `Commander
 1 Liesa, Forgotten Archangel
@@ -279,6 +288,8 @@ function DeckToolSession() {
   /** The last file read into the decklist box, and whether its text is on show (see `LoadedFile`). */
   const [deckFile, setDeckFile] = useState<{ name: string; text: string } | null>(null);
   const [fileTextShown, setFileTextShown] = useState(false);
+  /** The decklist box refuses a paste past the server's limit whole, rather than cutting it. */
+  const deckLimit = useTextLimit(MAX_DECKLIST_CHARS);
   const restoreStarted = useRef(false);
   /** The commander picker opened the tool, so the remembered deck wasn't put back in the box. */
   const restoreSkipped = useRef(false);
@@ -941,7 +952,12 @@ function DeckToolSession() {
                   id="decklist"
                   rows={DECKLIST_ROWS}
                   value={tool.text}
-                  onChange={(e) => tool.setText(e.target.value)}
+                  onChange={(e) => {
+                    tool.setText(e.target.value);
+                    deckLimit.clearError();
+                  }}
+                  onPaste={deckLimit.onPaste}
+                  maxLength={MAX_DECKLIST_CHARS}
                   placeholder={PLACEHOLDER}
                   spellCheck={false}
                   autoCapitalize="off"
@@ -950,6 +966,8 @@ function DeckToolSession() {
                   className={cn(IMPORT_TEXT_BOX, "bg-background/60 max-sm:min-h-0 max-sm:h-36")}
                 />
               )}
+              {!textHidden && <TextLimitCount length={tool.text.length} max={MAX_DECKLIST_CHARS} />}
+              {!textHidden && deckLimit.error && <ErrorText>{deckLimit.error}</ErrorText>}
               <StartSettings
                 bracket={tool.startBracket}
                 onBracket={chooseStartBracket}
@@ -974,9 +992,12 @@ function DeckToolSession() {
                 // A CSV deck export collapses to quantity and name: a deck is oracle-level, so the printing is noise.
                 <FileDrop
                   note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer."
+                  maxBytes={MAX_DECK_FILE_BYTES}
                   disabled={tool.parse.status === "loading"}
                   onFile={(contents, name) => {
                     const text = decklistFromFile(contents);
+                    if (text.length > MAX_DECKLIST_CHARS) return charLimitError(MAX_DECKLIST_CHARS);
+                    deckLimit.clearError();
                     tool.setText(text);
                     setDeckFile({ name, text });
                     setFileTextShown(false);
