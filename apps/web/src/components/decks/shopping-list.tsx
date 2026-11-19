@@ -6,12 +6,13 @@ import { ChevronDown, X } from "lucide-react";
 import type { CardId } from "@mtg/core/contract";
 import { shoppingList, type ShoppingLine } from "@mtg/core/shop";
 import { cn } from "cn";
+import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
 import { buttonVariants } from "@/components/ui/button";
 import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import { AFFILIATE_DISCLOSURE, PHONE_HIT_AREA, REMOVE_ARM_MS, SHOPPING_UNDO_MS, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
-import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
+import { asOfSuffix, formatUsd } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
 
 /** A phone (or any touch screen) gets the two-tap remove; a mouse gets one click. */
@@ -34,7 +35,11 @@ const defaultScope = (roundIds: readonly CardId[]): Scope => (roundIds.length > 
  * The carts Finish's list opens with, for a Buy button elsewhere (the Deck stats Budget row): with a collection the
  * copies it doesn't supply, without one this round's cards, or the whole deck when the round put none in.
  */
-export function defaultCarts(entries: readonly ShoppingLine[], missing: ReadonlyMap<CardId, number> | null, roundIds: readonly CardId[]): string[] {
+export function defaultCarts(
+  entries: readonly ShoppingLine[],
+  missing: ReadonlyMap<CardId, number> | null,
+  roundIds: readonly CardId[],
+): string[] {
   const list = shoppingList({ entries, missing, roundIds, scope: defaultScope(roundIds) });
   return cartLinks(list.groups.flatMap((g) => g.lines).map((l) => ({ name: l.card.name, quantity: l.quantity })));
 }
@@ -227,7 +232,7 @@ export function ShoppingList({
                 onSwipeAway={() => remove(card.id)}
                 trailing={
                   <>
-                    <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{fromPrice(card.price)}</span>
+                    <PriceTag price={card.price} className="mx-1 text-xs whitespace-nowrap text-muted-foreground" />
                     <RemoveButton name={displayName(card)} coarse={coarse} onRemove={() => remove(card.id)} />
                   </>
                 }

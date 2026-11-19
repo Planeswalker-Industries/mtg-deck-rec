@@ -10,7 +10,8 @@ import { PocketGrid } from "@/components/cards/pocket-grid";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
-import { formatAsOf, formatPercent, fromPrice } from "@/lib/format";
+import { PriceTag } from "@/components/cards/buy-price";
+import { formatAsOf, formatPercent } from "@/lib/format";
 import { PanelError, PanelLoading } from "../panel-state";
 import { CombosPhase } from "./combos-phase";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
@@ -62,9 +63,12 @@ function Why({
     <span className="flex flex-col items-start gap-0.5">
       {adds && <span className="font-semibold text-add">{adds}</span>}
       {corpus && (
-        <span className="font-mono">{corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}</span>
+        <span className="font-mono">
+          {corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}
+        </span>
       )}
-      {!(hasCollection && owned) && <span className="font-mono">{fromPrice(card.price)}</span>}
+      {/* Inside a pocket that adds its card (the list), the price is plain text; the intro gives the date. */}
+      {!(hasCollection && owned) && <PriceTag price={card.price} interactive={!counts} />}
     </span>
   );
 }
@@ -109,7 +113,11 @@ function RunOut({
           {open} open
         </span>
       }
-      message={collectionOnly ? "No more owned cards to suggest. Fill the holes with basics?" : "No more cards to suggest. Fill the holes with basics?"}
+      message={
+        collectionOnly
+          ? "No more owned cards to suggest. Fill the holes with basics?"
+          : "No more cards to suggest. Fill the holes with basics?"
+      }
     >
       <Button type="button" size="lg" disabled={adding} onClick={() => void fillBasics()}>
         {adding ? "Adding basics…" : `Add ${open} ${open === 1 ? "basic" : "basics"}`}
@@ -128,12 +136,28 @@ function RunOut({
 }
 
 /** Narrows Add to one short role, or shows every suggestion: blue pills, the chosen one solid. */
-function RolePills({ short, filter, onChange }: { short: readonly StatLine[]; filter: AddFilter | null; onChange: (filter: AddFilter | null) => void }) {
+function RolePills({
+  short,
+  filter,
+  onChange,
+}: {
+  short: readonly StatLine[];
+  filter: AddFilter | null;
+  onChange: (filter: AddFilter | null) => void;
+}) {
   if (short.length === 0) return null;
   const pill = (pressed: boolean) =>
-    cn(PHONE_HIT_AREA, "shrink-0 rounded-full border px-3 py-1 text-sm font-semibold whitespace-nowrap transition-colors", pressed ? PILL_ON : PILL_OFF);
+    cn(
+      PHONE_HIT_AREA,
+      "shrink-0 rounded-full border px-3 py-1 text-sm font-semibold whitespace-nowrap transition-colors",
+      pressed ? PILL_ON : PILL_OFF,
+    );
   return (
-    <div role="group" aria-label="Show suggestions for" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 sm:mx-0 sm:flex-wrap sm:px-0">
+    <div
+      role="group"
+      aria-label="Show suggestions for"
+      className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 sm:mx-0 sm:flex-wrap sm:px-0"
+    >
       <button type="button" aria-pressed={filter === null} className={pill(filter === null)} onClick={() => onChange(null)}>
         All
       </button>
@@ -147,7 +171,10 @@ function RolePills({ short, filter, onChange }: { short: readonly StatLine[]; fi
             className={pill(pressed)}
             onClick={() => onChange(pressed ? null : { kind: "role", roleId: role.key, label: role.label })}
           >
-            {role.label} <span className="font-mono font-normal">{role.value}/{Math.round(role.target)}</span>
+            {role.label}{" "}
+            <span className="font-mono font-normal">
+              {role.value}/{Math.round(role.target)}
+            </span>
           </button>
         );
       })}
@@ -206,8 +233,8 @@ export function AddPhase({
 
   const intro = (
     <PhaseIntro title="Add" brief={view === "swipe" && room > 0 ? "Swipe right to add, left to skip." : undefined}>
-      Cards decks like yours run and this one doesn&apos;t, best first{landsShort ? ", lands first while the mana base is short" : ""}. Each card you add
-      changes what&apos;s suggested next.
+      Cards decks like yours run and this one doesn&apos;t, best first{landsShort ? ", lands first while the mana base is short" : ""}. Each
+      card you add changes what&apos;s suggested next.
       {view === "list" && room > 0 && asOf && ` Prices from ${formatAsOf(asOf)}.`}
     </PhaseIntro>
   );
@@ -224,7 +251,8 @@ export function AddPhase({
     }
     if (addState.status === "loading" || addState.status === "idle") return <PanelLoading label="Finding cards to add" />;
     if (addState.status === "error") return <PanelError message={addState.message} />;
-    if (queue.length === 0) return <RunOut journey={journey} open={open} onNext={toNext} nextLabel={nextLabel} onShowUnowned={onShowUnowned} />;
+    if (queue.length === 0)
+      return <RunOut journey={journey} open={open} onNext={toNext} nextLabel={nextLabel} onShowUnowned={onShowUnowned} />;
     if (shown.length === 0) {
       return (
         <SwipeDone title={`No ${filterName} to suggest right now`} message="Every suggestion for it is already in the deck or skipped.">
@@ -242,7 +270,13 @@ export function AddPhase({
             zoomable
             label="Cards to add"
             onSelect={(card: CardSummary) => accept(card)}
-            items={shown.slice(0, LIST_SUGGESTIONS).map((s) => ({ card: s.card, owned: markOwned && s.owned !== null, caption: <Why suggestion={s} roles={roles} hasCollection={hasCollection} /> }))}
+            items={shown
+              .slice(0, LIST_SUGGESTIONS)
+              .map((s) => ({
+                card: s.card,
+                owned: markOwned && s.owned !== null,
+                caption: <Why suggestion={s} roles={roles} hasCollection={hasCollection} />,
+              }))}
           />
         </div>
       );

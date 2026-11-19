@@ -11,7 +11,8 @@ import { CardImage } from "@/components/cards/card-image";
 import { ZoomableCard } from "@/components/cards/card-zoom";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
-import { formatAsOf, fromPrice } from "@/lib/format";
+import { PriceTag } from "@/components/cards/buy-price";
+import { formatAsOf } from "@/lib/format";
 import { NextBar, PhaseIntro, StepStatus } from "./journey-stepper";
 import type { DeckJourney } from "./use-deck-journey";
 
@@ -47,16 +48,18 @@ function ComboEntry({
         <CardImage card={combo.card} variant="small" alt={combo.card.name} sizes={GRID_SIZES} />
       </ZoomableCard>
       <span className="text-sm leading-tight font-semibold">{result}</span>
-      <a
-        href={combo.url}
-        target="_blank"
-        rel="noreferrer"
-        className={cn(TEXT_LINK, PHONE_HIT_AREA, "w-fit text-xs leading-snug")}
-      >
+      <a href={combo.url} target="_blank" rel="noreferrer" className={cn(TEXT_LINK, PHONE_HIT_AREA, "w-fit text-xs leading-snug")}>
         {viaLine(combo, names)}
       </a>
-      {priced && <span className="font-mono text-xs">{fromPrice(combo.card.price)}</span>}
-      <Button type="button" size="sm" className="mt-auto w-full" disabled={!canAdd} onClick={onAdd} aria-label={`Add ${combo.card.name}, completes ${result}`}>
+      {priced && <PriceTag price={combo.card.price} className="w-fit text-xs" />}
+      <Button
+        type="button"
+        size="sm"
+        className="mt-auto w-full"
+        disabled={!canAdd}
+        onClick={onAdd}
+        aria-label={`Add ${combo.card.name}, completes ${result}`}
+      >
         Add Combo
       </Button>
     </li>
@@ -121,14 +124,7 @@ export function CombosPhase({ journey, uploadHref, nextLabel }: { journey: DeckJ
   const entries = (list: readonly ComboSuggestion[], priced: boolean) => (
     <ComboGrid>
       {list.map((combo) => (
-        <ComboEntry
-          key={combo.id}
-          combo={combo}
-          names={names}
-          priced={priced}
-          canAdd={room > 0}
-          onAdd={() => acceptCombo(combo.card)}
-        />
+        <ComboEntry key={combo.id} combo={combo} names={names} priced={priced} canAdd={room > 0} onAdd={() => acceptCombo(combo.card)} />
       ))}
     </ComboGrid>
   );
@@ -152,7 +148,11 @@ export function CombosPhase({ journey, uploadHref, nextLabel }: { journey: DeckJ
 
       {hasCollection ? (
         <ComboSection title="Collection Ready Combos" count={ready.length} open={readyOpen} onToggle={setReadyOpen}>
-          {ready.length > 0 ? entries(ready, false) : <p className="text-sm text-muted-foreground">None of your cards finish a combo for this deck yet.</p>}
+          {ready.length > 0 ? (
+            entries(ready, false)
+          ) : (
+            <p className="text-sm text-muted-foreground">None of your cards finish a combo for this deck yet.</p>
+          )}
         </ComboSection>
       ) : (
         <div className="flex flex-col items-start gap-3 rounded-panel border border-dashed border-seam p-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeftRight, Minus, Plus } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
 import { compareCards, type FixMove } from "@mtg/core/journey";
@@ -11,7 +11,7 @@ import { ZoomableCard } from "@/components/cards/card-zoom";
 import { OwnedCorner } from "@/components/cards/owned-corner";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
-import { fromPrice } from "@/lib/format";
+import { PriceTag } from "@/components/cards/buy-price";
 import { StatChips, compareCardOf } from "../deck-stats/stat-chips";
 import { useStatPreview } from "../deck-stats/stat-preview";
 import { PanelError } from "../panel-state";
@@ -39,7 +39,7 @@ function LineCount({ line }: { line: FixLineLabel }) {
 }
 
 /** One side of a move: Out or In in its job's colour (with its icon and word), the card, and its name. */
-function MoveCard({ card, side, owned, note }: { card: CardSummary; side: "out" | "in"; owned?: boolean; note?: string | null }) {
+function MoveCard({ card, side, owned, note }: { card: CardSummary; side: "out" | "in"; owned?: boolean; note?: ReactNode }) {
   const Icon = side === "out" ? Minus : Plus;
   return (
     <div className="flex min-w-0 flex-col items-center gap-1.5">
@@ -171,10 +171,22 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
             card={move.in}
             side="in"
             owned={hasCollection && inCard !== null && inCard.owned !== null}
-            note={notOwned ? `Not owned · ${fromPrice(price, { lower: true })}` : null}
+            note={
+              notOwned ? (
+                <>
+                  Not owned · <PriceTag price={price} lower />
+                </>
+              ) : null
+            }
           />
         </div>
-        <StatChips add={move.in} remove={move.out} marks={compareCards(compareCardOf(move.out), compareCardOf(move.in))} all className="justify-center" />
+        <StatChips
+          add={move.in}
+          remove={move.out}
+          marks={compareCards(compareCardOf(move.out), compareCardOf(move.in))}
+          all
+          className="justify-center"
+        />
         <DecisionButtons
           tone="primary"
           pass={{ word: "Skip", label: `Skip swapping ${outName} for ${inName}`, onClick: () => act(false) }}

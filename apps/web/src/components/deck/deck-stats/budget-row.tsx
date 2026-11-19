@@ -6,12 +6,13 @@ import Link from "next/link";
 import { ChevronDown, TriangleAlert } from "lucide-react";
 import type { CardId, CardSummary, DeckBudget } from "@mtg/core/contract";
 import { cn } from "cn";
+import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { affiliateOn, OUTBOUND } from "@/lib/affiliate";
 import { AFFILIATE_DISCLOSURE, TEXT_LINK } from "@/lib/constants";
-import { formatUsd, fromPrice } from "@/lib/format";
+import { formatUsd } from "@/lib/format";
 import { BudgetFields } from "../start-settings";
 import { Mark } from "./level";
 
@@ -174,7 +175,7 @@ export function BudgetRow({ money }: { money: RoundBudget }) {
               quantity={quantity}
               showCost={false}
               slim
-              trailing={<span className="px-1 font-mono text-xs whitespace-nowrap">{fromPrice(card.price)}</span>}
+              trailing={<PriceTag price={card.price} className="mx-1 text-xs whitespace-nowrap" />}
             />
           ))}
         </ul>
