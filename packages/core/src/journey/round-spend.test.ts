@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { CardId, CardSummary, IsoDateTime, OracleId, RecContext } from '../contract';
-import { startJourney } from './journey';
-import { roundBuys, roundSpendUsd, withSpent } from './round-spend';
+import type { BuildCard, BuildOrigin, BuildResult, CardId, CardSummary, IsoDateTime, OracleId, RecContext } from '../contract';
+import { journeyReducer, startJourney } from './journey';
+import { builtBuys, roundBuys, roundSpendUsd, withSpent } from './round-spend';
 
 const card = (id: number, typeLine: string, usd: number | null): CardSummary => ({
   id: id as CardId,
@@ -35,6 +35,50 @@ describe('roundSpendUsd', () => {
 
   it('is 0 for a round that brought nothing in', () => {
     expect(roundSpendUsd(base, () => false)).toBe(0);
+  });
+});
+
+describe("a built deck's spend", () => {
+  // Only what builtBuys reads of a build card: the card and where it came from.
+  const built = (summary: CardSummary, origin: BuildOrigin) => ({ card: summary, origin }) as BuildCard;
+  const result: Pick<BuildResult, 'groups'> = {
+    groups: [
+      { category: 'artifact', cards: [built(card(20, 'Artifact', 3), 'pick'), built(card(21, 'Creature', 1.5), 'kept')] },
+      { category: 'sorcery', cards: [built(card(22, 'Sorcery', 0.5), 'fill'), built(card(23, 'Land', 2), 'pick')] },
+    ],
+  };
+  const deck = {
+    commanders: [1 as CardId],
+    cards: [20, 21, 22, 23].map((id) => ({ cardId: id as CardId, quantity: 1, section: 'main' as const })),
+  };
+
+  it('counts every picked card without a collection, kept cards apart', () => {
+    const state = startJourney(deck, builtBuys(result));
+    expect(state.bought.map((c) => c.id)).toEqual([20, 22, 23]);
+    expect(roundSpendUsd(state, () => false)).toBe(5.5);
+  });
+
+  it('counts only the picks the collection lacks with one', () => {
+    const state = startJourney(deck, builtBuys(result));
+    expect(roundSpendUsd(state, (id) => id === 20 || id === 23)).toBe(0.5);
+    expect(roundBuys(state, (id) => id === 20 || id === 23).map((c) => c.id)).toEqual([22]);
+  });
+
+  it("counts basic lands as free, and the round's own buys after the build's", () => {
+    const state = {
+      ...startJourney(deck, [card(24, 'Basic Land — Forest', 0.3), ...builtBuys(result)]),
+      adds: [card(10, 'Artifact', 2.5)],
+    };
+    expect(roundBuys(state, () => false).map((c) => c.id)).toEqual([20, 22, 23, 10]);
+    expect(roundSpendUsd(state, () => false)).toBe(8);
+  });
+
+  it('refunds nothing for a built card cut, and a reset round starts with nothing bought', () => {
+    const state = startJourney(deck, builtBuys(result));
+    const cut = journeyReducer(state, { type: 'cut', card: card(20, 'Artifact', 3) });
+    expect(cut.cuts.map((c) => c.id)).toEqual([20]);
+    expect(roundSpendUsd(cut, () => false)).toBe(5.5);
+    expect(journeyReducer(cut, { type: 'reset', base: deck }).bought).toEqual([]);
   });
 });
 

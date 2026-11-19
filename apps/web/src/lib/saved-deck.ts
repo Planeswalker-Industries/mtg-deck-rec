@@ -144,7 +144,9 @@ export function loadJourney(base: DeckInput): JourneyState | null {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(JOURNEY_KEY) ?? "null");
     if (!isStoredJourney(value) || Date.now() - value.savedAt > MAX_AGE_MS) return null;
-    return deckKey(value.state.base) === deckKey(base) ? value.state : null;
+    if (deckKey(value.state.base) !== deckKey(base)) return null;
+    // Rounds stored before T099 have no built cards: nothing was bought before them.
+    return Array.isArray(value.state.bought) ? value.state : { ...value.state, bought: [] };
   } catch {
     return null;
   }

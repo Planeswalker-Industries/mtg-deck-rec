@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
 import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, DeckId, StatChoices } from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import { BRACKET_LINE, CURVE_LINE, statDeltas, toTallyCard, withSpent, type JourneyPhase, type StatLine } from "@mtg/core/journey";
+import { BRACKET_LINE, CURVE_LINE, builtBuys, deckKey, statDeltas, toTallyCard, withSpent, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { missingFromCoverage } from "@mtg/core/shop";
 import { cn } from "cn";
@@ -34,7 +34,7 @@ import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
 import { StartSettings } from "./start-settings";
 import { SelectedCommander } from "./selected-commander";
 import { BuildView } from "./build/build-view";
-import { useDeckBuild } from "./build/use-deck-build";
+import { buildEntries, useDeckBuild } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
@@ -330,6 +330,8 @@ function DeckToolSession() {
   /** Whether the spend can be told yet: without a collection every card counts, with one once its copies are in. */
   const spendKnown = !wantsOwned || copies !== null;
   const owns = useCallback((cardId: CardId) => (copies?.get(cardId) ?? 0) > 0, [copies]);
+  /** The last deck taken from a build, by key, with the cards the build bought: its round counts them as spent (T099). */
+  const [built, setBuilt] = useState<{ key: string; cards: readonly CardSummary[] } | null>(null);
   const journey = useDeckJourney({
     analysis,
     round: tool.round,
@@ -339,6 +341,7 @@ function DeckToolSession() {
     resume: tool.resumed,
     choices: tool.statChoices,
     owns,
+    built,
   });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
   const coverage = useDeckCoverage(journey.deck, source, tool.openDeck?.deckId, coverageEnabled && !collectionRefreshing);
@@ -659,7 +662,10 @@ function DeckToolSession() {
     if (deckBuild.state.status !== "ready") return false;
     editorHandle.current?.discard();
     if (tool.openDeck) tool.closeSavedDeck();
-    const bracket = deckBuild.state.request.bracket;
+    const { request, result } = deckBuild.state;
+    const bracket = request.bracket;
+    // Set before the analysis lands, so the round it starts already counts what the build spent.
+    setBuilt({ key: deckKey({ commanders: result.commanderKey.commanders.map((c) => c.id), cards: buildEntries(result) }), cards: builtBuys(result) });
     const outcome = await tool.submit({ text, bracketOverride: bracket, importedFrom: null, statChoices }, { recs: next === "upgrade" });
     if (!outcome.parsed) return false;
     deckBuild.reset();

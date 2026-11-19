@@ -181,7 +181,13 @@ export function useDeckJourney({
   resume,
   choices,
   owns = NOBODY_OWNS,
+  built = null,
 }: {
+  /**
+   * A built deck's key and the cards its build bought (T099): the round that starts on that deck counts them as spent
+   * from the start. Any other deck starts with nothing bought.
+   */
+  built?: { key: string; cards: readonly CardSummary[] } | null;
   /** The player's choices for Deck stats lines: an ignored line never holds a card back from Add. */
   choices: StatChoices;
   /**
@@ -243,7 +249,8 @@ export function useDeckJourney({
   let current = round;
   if (analysis && round?.id !== roundId) {
     const stored = resume ? loadJourney(analysis.deck) : null;
-    current = { id: roundId, analysis, state: stored ?? startJourney(analysis.deck), past: [] };
+    const bought = built !== null && built.key === deckKey(analysis.deck) ? [...built.cards] : [];
+    current = { id: roundId, analysis, state: stored ?? startJourney(analysis.deck, bought), past: [] };
     setRound(current);
   } else if (analysis && round && round.analysis !== analysis) {
     current = { ...round, analysis };

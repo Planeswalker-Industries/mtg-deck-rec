@@ -65,6 +65,11 @@ export interface JourneyState {
   fixes: FixMove[];
   /** Fix pairs the player skipped, so they aren't offered again this round. */
   declinedFixes: FixPair[];
+  /**
+   * Cards bought before the round began, one entry per copy (T099): a built deck's picks, which the round's spend
+   * counts from the start. They are part of `base`, so cutting one refunds nothing, as for any card the round took.
+   */
+  bought: CardSummary[];
 }
 
 export type JourneyAction =
@@ -86,7 +91,8 @@ export type JourneyAction =
   | { type: 'goto'; phase: JourneyPhase }
   | { type: 'reset'; base: DeckInput };
 
-export function startJourney(base: DeckInput): JourneyState {
+/** `bought`: the cards the deck was bought with before the round, a built deck's picks (T099). */
+export function startJourney(base: DeckInput, bought: CardSummary[] = []): JourneyState {
   const phase = phasesFor(deckSize(base))[0] ?? 'fix';
   return {
     phase,
@@ -101,6 +107,7 @@ export function startJourney(base: DeckInput): JourneyState {
     declinedSwaps: [],
     fixes: [],
     declinedFixes: [],
+    bought,
   };
 }
 
