@@ -93,7 +93,9 @@ export function SingleSwipe({
   return (
     <section aria-label={label} className="playmat mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-3">
       <p className="text-sm text-muted-foreground font-mono">
-        Card {position} of {total}
+        {/* "1 of 14": the word "Card" is read out, not shown (owner, 2026-11-18). */}
+        <span className="sr-only">Card </span>
+        {position} of {total}
       </p>
       <div aria-live="polite">
         <CardPanel card={card} rules={rulesFor(card.id)} owned={owned}>

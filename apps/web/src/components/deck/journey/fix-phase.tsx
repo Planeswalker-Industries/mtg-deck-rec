@@ -161,7 +161,9 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
       <p role="status" className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
         <LineCount line={fix.lineLabel(move.line)} />
         <span className="shrink-0 font-mono">
-          line {fix.position} of {fix.total}
+          {/* "1 of 12": the word "line" is read out, not shown (owner, 2026-11-18). */}
+          <span className="sr-only">Line </span>
+          {fix.position} of {fix.total}
         </span>
       </p>
       <section aria-label="Fix: one card out, one card in" className="playmat mx-auto flex w-full max-w-2xl flex-col gap-3">

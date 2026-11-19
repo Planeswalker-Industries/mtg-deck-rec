@@ -101,7 +101,7 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
   const move = recs.getByRole("region", FIX_MOVE);
   await expect(move).toBeVisible({ timeout: 60_000 });
   await expect(recs.getByText("Not legal here")).toBeVisible();
-  await expect(recs.getByText(/^line \d+ of \d+$/)).toBeVisible();
+  await expect(recs.getByText(/^Line \d+ of \d+$/)).toBeVisible();
   await move.getByRole("button", { name: /^Swap Lightning Bolt for / }).click();
   // One for one: the deck keeps its size, and the move is off the table.
   await expect(move.getByRole("button", { name: /^Swap Lightning Bolt for / })).toBeHidden({ timeout: 60_000 });
@@ -186,7 +186,7 @@ test("Finish names each line still off with its reason, and its Fix opens Fix at
   await expect(lands).toContainText("Can be fixed");
   await lands.getByRole("button", { name: "Fix", exact: true }).click();
   await expect(steps.getByRole("button", { name: "Fix" })).toHaveAttribute("aria-current", "step");
-  await expect(recs.getByRole("status").filter({ hasText: /line \d+ of \d+/ })).toContainText("Lands", { timeout: 60_000 });
+  await expect(recs.getByRole("status").filter({ hasText: /Line \d+ of \d+/ })).toContainText("Lands", { timeout: 60_000 });
 });
 
 test("a bracket the deck no longer fits, chosen during Swap or Finish, sends the round back to Fix at the bracket line (T089)", async ({ page }) => {
@@ -194,7 +194,7 @@ test("a bracket the deck no longer fits, chosen during Swap or Finish, sends the
   const recs = await analyzeDeck(page, ["Commander", "1 Chulane, Teller of Tales", "", "Deck", ...SPELLS, "1 Rhystic Study", "1 Cyclonic Rift"].join("\n"));
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
   const bracket = page.getByRole("combobox", { name: "Bracket" });
-  const bracketLine = (n: number) => recs.getByRole("status").filter({ hasText: /line \d+ of \d+/ }).filter({ hasText: `Bracket ${n}` });
+  const bracketLine = (n: number) => recs.getByRole("status").filter({ hasText: /Line \d+ of \d+/ }).filter({ hasText: `Bracket ${n}` });
 
   await openSwap(page);
   await bracket.click();
