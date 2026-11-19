@@ -17,7 +17,7 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 - [x] Text limits on the deck and collection boxes
 - [x] `maxLength` on every free-text input
 - [x] Collection rows the server would refuse are split out (core)
-- [ ] Collection import flow
+- [x] Collection import flow
 - [ ] Budget shortfall on builds without a collection
 
 ## T074: Archidekt answers the daily crawl with 429s

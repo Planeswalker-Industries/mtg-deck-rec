@@ -6,7 +6,14 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { CollectionTotals, ResolvedCollectionRow, UnresolvedCollectionRow } from "@mtg/core/contract";
-import { appendCsvPage, collectionLink } from "@mtg/core/parse";
+import {
+  appendCsvPage,
+  collectionLink,
+  isKnownCollectionHeader,
+  looksLikeBinary,
+  looksLikeCsv,
+  splitCollectionRows,
+} from "@mtg/core/parse";
 import { importCollectionFromLinkAction } from "@/app/collection/actions";
 import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "./file-drop";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -23,13 +30,7 @@ import { PageHero } from "@/components/ui/page-hero";
 import { COLLECTION_MAX_IMPORT_ROWS, MAX_COLLECTION_PASTE_CHARS, TEXT_LINK } from "@/lib/constants";
 import { ErrorText } from "@/components/ui/error-text";
 import { TextLimitCount, useTextLimit } from "@/components/ui/text-limit";
-import {
-  clearCollection,
-  collectionTotals,
-  MAX_UNMATCHED_KEPT,
-  saveCollection,
-  type UnmatchedLine,
-} from "@/lib/collection-store";
+import { clearCollection, collectionTotals, MAX_UNMATCHED_KEPT, saveCollection, type UnmatchedLine } from "@/lib/collection-store";
 import { notifyCollectionChanged, useCollectionSource, type PendingMove } from "./use-collection-source";
 import { useCollectionParser } from "./use-collection-parser";
 
@@ -57,7 +58,13 @@ interface Unmatched {
 interface Problem {
   title: string;
   message: string;
+  /** Lines behind the problem, listed under it: the unreadable ones when no line could be read. */
+  lines?: UnmatchedLine[];
 }
+
+/** How an unmatched line reads: an unreadable line has no name worth repeating. */
+const unmatchedLabel = (line: UnmatchedLine) =>
+  `Line ${line.rowNo}: ${line.reason === "INVALID" ? "unreadable" : (line.name ?? "no card name")}`;
 
 const LINK = cn(TEXT_LINK, "font-semibold");
 
@@ -101,6 +108,18 @@ export function CollectionTool() {
     const current = () => id === importRun.current;
     setProblem(null);
     setSuccess(null);
+    try {
+      await runImport(current);
+    } catch {
+      // A parse or call that throws (a worker crash, a storage error) must not leave the form stuck mid-import.
+      if (current()) importFailed("Couldn't read that file. Try again.");
+    } finally {
+      // Every path out of an import ends its progress, unless a newer import has taken the form over.
+      if (current()) setProgress(null);
+    }
+  }
+
+  async function runImport(current: () => boolean) {
     // A lone link is fetched first; what comes back is CSV and takes the same path as an uploaded file.
     let exported = text;
     if (collectionLink(text)) {
@@ -108,21 +127,30 @@ export function CollectionTool() {
       if (downloaded === null) return;
       exported = downloaded;
     }
+    // A spreadsheet or image picked by mistake parses as garbage; say what it is instead of "no cards".
+    if (looksLikeBinary(exported)) return importFailed("Not a text export. Upload a .csv or .txt.");
     // Parsing a large export is slow enough to say so: the worker keeps the page responsive, not instant.
     setProgress({ label: "Reading the export", done: 0, total: 1 });
-    const rows = await parse(exported);
+    const parsed = await parse(exported);
     if (!current()) return;
-    if (rows.length === 0) {
-      setProgress(null);
+    if (parsed.length === 0) {
+      if (fileName !== null && looksLikeCsv(exported, isKnownCollectionHeader)) return importFailed(`No cards in ${fileName}.`);
       return importFailed(
         fileName === null
           ? 'No cards found. Paste one card per line, like "4 Sol Ring (C21) 263", or upload a CSV export.'
           : `No cards found in ${fileName}. It should be a collection export from ManaBox, Moxfield, Archidekt or TCGplayer.`,
       );
     }
-    if (rows.length > COLLECTION_MAX_IMPORT_ROWS) {
-      setProgress(null);
-      return importFailed(`That's ${count(rows.length)} lines. Collections can have up to ${count(COLLECTION_MAX_IMPORT_ROWS)} lines for now.`);
+    if (parsed.length > COLLECTION_MAX_IMPORT_ROWS) {
+      return importFailed(
+        `That's ${count(parsed.length)} lines. Collections can have up to ${count(COLLECTION_MAX_IMPORT_ROWS)} lines for now.`,
+      );
+    }
+    // Lines the server would refuse never go out: one of them would fail the whole batch it rides in.
+    const { rows, skipped } = splitCollectionRows(parsed);
+    const skippedLines: UnmatchedLine[] = skipped.map((rowNo) => ({ rowNo, name: null, reason: "INVALID" }));
+    if (rows.length === 0) {
+      return setProblem({ title: "Couldn't import the collection", message: "No cards found.", lines: skippedLines });
     }
 
     const resolved: ResolvedCollectionRow[] = [];
@@ -132,29 +160,35 @@ export function CollectionTool() {
     for (let start = 0; start < rows.length; start += ROWS_PER_CALL) {
       const result = await getApis().actions.resolveCollectionRows({ rows: rows.slice(start, start + ROWS_PER_CALL) });
       if (!current()) return;
-      if (!result.ok) {
-        setProgress(null);
-        return importFailed(result.error.message);
-      }
+      if (!result.ok) return importFailed(result.error.message);
       resolved.push(...result.data.resolved);
       unresolved.push(...result.data.unresolved);
       catalogEpoch = result.data.catalogEpoch;
       setProgress({ label: "Matching cards", done: Math.min(start + ROWS_PER_CALL, rows.length), total: rows.length });
     }
     if (resolved.length === 0) {
-      setProgress(null);
       return importFailed("None of those lines matched a card, so nothing was imported. Check the card names and try again.");
     }
 
     const unmatched: Unmatched = {
-      lines: unresolved.slice(0, MAX_UNMATCHED_KEPT).map((u) => ({ rowNo: u.rowNo, name: u.input.name ?? null, reason: u.reason })),
-      count: unresolved.length,
+      lines: [
+        ...skippedLines,
+        ...unresolved.map((u): UnmatchedLine => ({ rowNo: u.rowNo, name: u.input.name ?? null, reason: u.reason })),
+      ].slice(0, MAX_UNMATCHED_KEPT),
+      count: skippedLines.length + unresolved.length,
     };
-    const saved = signedIn ? await saveToAccount(resolved, unmatched, current) : await saveToBrowser(catalogEpoch, resolved, unmatched, current);
+    const saved = signedIn
+      ? await saveToAccount(resolved, unmatched, current)
+      : await saveToBrowser(catalogEpoch, resolved, unmatched, current);
     if (!current()) return;
-    setProgress(null);
     if (saved) {
-      setSuccess(hasCollection ? mode === "merge" ? `Added ${count(resolved.reduce((n, row) => n + row.quantity, 0))} cards` : "Replaced your collection" : "Imported your collection");
+      setSuccess(
+        hasCollection
+          ? mode === "merge"
+            ? `Added ${count(resolved.reduce((n, row) => n + row.quantity, 0))} cards`
+            : "Replaced your collection"
+          : "Imported your collection",
+      );
       setText("");
       setFileName(null);
       notifyCollectionChanged();
@@ -178,7 +212,6 @@ export function CollectionTool() {
       );
       if (!current()) return null;
       if (!result.ok) {
-        setProgress(null);
         importFailed(result.error.message);
         return null;
       }
@@ -231,9 +264,17 @@ export function CollectionTool() {
     return true;
   }
 
-  async function saveToBrowser(catalogEpoch: string, rows: ResolvedCollectionRow[], unmatched: Unmatched, current: () => boolean): Promise<boolean> {
+  async function saveToBrowser(
+    catalogEpoch: string,
+    rows: ResolvedCollectionRow[],
+    unmatched: Unmatched,
+    current: () => boolean,
+  ): Promise<boolean> {
     try {
-      const stored = await saveCollection({ catalogEpoch, rows, unmatched: unmatched.lines, unmatchedCount: unmatched.count }, hasCollection ? mode : "replace");
+      const stored = await saveCollection(
+        { catalogEpoch, rows, unmatched: unmatched.lines, unmatchedCount: unmatched.count },
+        hasCollection ? mode : "replace",
+      );
       if (!current()) return false;
       setSource({ kind: "browser", signedIn: false, collection: stored });
       return true;
@@ -274,7 +315,8 @@ export function CollectionTool() {
       intro={
         <>
           <p>
-            Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, or paste a link to a public Archidekt collection, and the deck tool can suggest only cards you own.
+            Upload or paste a collection export from ManaBox, Moxfield, Archidekt or TCGplayer, or paste a link to a public Archidekt
+            collection, and the deck tool can suggest only cards you own.
             {source.kind !== "loading" &&
               (signedIn ? (
                 " It's saved to your account."
@@ -326,7 +368,7 @@ export function CollectionTool() {
         }}
       >
         <Label htmlFor={textHidden ? undefined : "collection-text"} className="font-semibold">
-          {hasCollection ? mode === "merge" ? "Add a new export" : "Replace with a new export" : "Collection import"}
+          {hasCollection ? (mode === "merge" ? "Add a new export" : "Replace with a new export") : "Collection import"}
         </Label>
         {fileName !== null ? (
           <LoadedFile
@@ -397,18 +439,42 @@ export function CollectionTool() {
         {problem && (
           <Alert variant="destructive">
             <AlertTitle>{problem.title}</AlertTitle>
-            <AlertDescription>{problem.message}</AlertDescription>
+            <AlertDescription>
+              <p>{problem.message}</p>
+              {problem.lines && problem.lines.length > 0 && (
+                <ul className="flex flex-col gap-1">
+                  {problem.lines.slice(0, UNMATCHED_SHOWN).map((line, index) => (
+                    <li key={`${line.rowNo}-${index}`}>{unmatchedLabel(line)}</li>
+                  ))}
+                  {problem.lines.length > UNMATCHED_SHOWN && <li>and {count(problem.lines.length - UNMATCHED_SHOWN)} more</li>}
+                </ul>
+              )}
+            </AlertDescription>
           </Alert>
         )}
         {hasCollection && (
           <fieldset disabled={importing} className="flex flex-col gap-2">
             <legend className="mb-2 text-sm font-semibold">How to import</legend>
             <label className="flex min-h-11 items-center gap-2">
-              <input type="radio" name="import-mode" value="merge" checked={mode === "merge"} onChange={() => setMode("merge")} className="accent-primary" />
+              <input
+                type="radio"
+                name="import-mode"
+                value="merge"
+                checked={mode === "merge"}
+                onChange={() => setMode("merge")}
+                className="accent-primary"
+              />
               Add to my collection
             </label>
             <label className="flex min-h-11 items-center gap-2">
-              <input type="radio" name="import-mode" value="replace" checked={mode === "replace"} onChange={() => setMode("replace")} className="accent-primary" />
+              <input
+                type="radio"
+                name="import-mode"
+                value="replace"
+                checked={mode === "replace"}
+                onChange={() => setMode("replace")}
+                className="accent-primary"
+              />
               Replace my collection
             </label>
           </fieldset>
@@ -421,7 +487,15 @@ export function CollectionTool() {
             variant={fileName !== null ? "default" : "outline"}
             disabled={!text.trim() || importing || source.kind === "loading"}
           >
-            {importing ? "Importing…" : hasCollection ? mode === "merge" ? "Add to collection" : "Replace collection" : isLink ? "Import from link" : "Import collection"}
+            {importing
+              ? "Importing…"
+              : hasCollection
+                ? mode === "merge"
+                  ? "Add to collection"
+                  : "Replace collection"
+                : isLink
+                  ? "Import from link"
+                  : "Import collection"}
           </Button>
         </div>
       </form>
@@ -457,7 +531,11 @@ function CollectionSummary({
       <h2 id="collection-summary" className="sr-only">
         Saved collection
       </h2>
-      {success && <p role="status" className="font-semibold">{success}</p>}
+      {success && (
+        <p role="status" className="font-semibold">
+          {success}
+        </p>
+      )}
       <dl className="grid grid-cols-2 gap-3">
         <div>
           <dt className="text-sm text-muted-foreground">Different cards</dt>
@@ -476,9 +554,7 @@ function CollectionSummary({
           </summary>
           <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">
             {unmatched.lines.slice(0, UNMATCHED_SHOWN).map((line, index) => (
-              <li key={`${line.rowNo}-${index}`}>
-                Line {line.rowNo}: {line.name ?? "no card name"}
-              </li>
+              <li key={`${line.rowNo}-${index}`}>{unmatchedLabel(line)}</li>
             ))}
           </ul>
           {unmatched.count > UNMATCHED_SHOWN && (
@@ -488,7 +564,9 @@ function CollectionSummary({
       )}
       <div className="flex flex-wrap gap-2">
         {success && next !== null && (
-          <Link href={safeNextPath(next, "/deck") as Route} className={buttonVariants({ size: "lg" })}>Back to your deck</Link>
+          <Link href={safeNextPath(next, "/deck") as Route} className={buttonVariants({ size: "lg" })}>
+            Back to your deck
+          </Link>
         )}
         <Link href="/collection" className={buttonVariants({ size: "lg", variant: success && next !== null ? "outline" : "default" })}>
           Browse your collection
