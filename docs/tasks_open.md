@@ -1,12 +1,24 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T098.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T099.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
 State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `20261022000100` (current). Hosted `corpus.decks` 212,606, last collated and precomputed by hand 2026-10-21.
 
 ---
+
+## T098: Input limits and error handling
+
+**HIGH** · Web · No input freezes or crashes a page, and every refusal or shortfall says in one short line what happened and what to do; design in `docs/plan_files/2026-11-19-input-limits-error-handling-design.md` (local)
+
+- [x] Safe action calls: a thrown Server Action call becomes a `Result` error
+- [ ] Error pages: `error.tsx` and `global-error.tsx`
+- [ ] Text limits on the deck and collection boxes
+- [ ] `maxLength` on every free-text input
+- [ ] Collection rows the server would refuse are split out (core)
+- [ ] Collection import flow
+- [ ] Budget shortfall on builds without a collection
 
 ## T074: Archidekt answers the daily crawl with 429s
 

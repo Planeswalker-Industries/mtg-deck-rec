@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Textarea } from "@/components/ui/textarea";
 import { getApis } from "@/lib/api/client";
+import { callAction } from "@/lib/api/call-action";
 import { withCollectionWrite } from "@/lib/collection-lock";
 import { safeNextPath } from "@/lib/safe-path";
 import { COLLECTION_VISTA } from "@/lib/landing-art";
@@ -165,7 +166,12 @@ export function CollectionTool() {
     let page: number | null = 1;
     setProgress({ label: "Downloading the collection", done: 0, total: 0 });
     while (page !== null) {
-      const result = await importCollectionFromLinkAction({ url, page });
+      // Built outside the closure, which can't see `page` narrowed to a number. Typed, because `page` is reassigned
+      // from this result and inference would loop.
+      const input: Parameters<typeof importCollectionFromLinkAction>[0] = { url, page };
+      const result: Awaited<ReturnType<typeof importCollectionFromLinkAction>> = await callAction(() =>
+        importCollectionFromLinkAction(input),
+      );
       if (!current()) return null;
       if (!result.ok) {
         setProgress(null);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { deleteAccountAction } from "@/app/account/actions";
+import { callAction } from "@/lib/api/call-action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,7 +59,7 @@ export function DeleteAccount() {
           if (!confirmed || pending) return;
           setPending(true);
           setError(null);
-          const result = await deleteAccountAction({ confirmation: typed });
+          const result = await callAction(() => deleteAccountAction({ confirmation: typed }));
           if (!result.ok) {
             setPending(false);
             setError(result.error.message);

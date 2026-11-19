@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { sendSignInEmailAction, startGoogleSignInAction, verifySignInCodeAction } from "@/app/sign-in/actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { callAction } from "@/lib/api/call-action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +32,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   async function sendCode() {
     setPending(true);
     setError(null);
-    const result = await sendSignInEmailAction({ email, next });
+    const result = await callAction(() => sendSignInEmailAction({ email, next }));
     setPending(false);
     if (!result.ok) return setError(result.error.message);
     setCode("");
@@ -41,7 +42,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   async function verifyCode() {
     setPending(true);
     setError(null);
-    const result = await verifySignInCodeAction({ email, code });
+    const result = await callAction(() => verifySignInCodeAction({ email, code }));
     if (!result.ok) {
       setPending(false);
       return setError(result.error.message);
@@ -54,7 +55,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   async function continueWithGoogle() {
     setPending(true);
     setError(null);
-    const result = await startGoogleSignInAction({ next });
+    const result = await callAction(() => startGoogleSignInAction({ next }));
     if (!result.ok) {
       setPending(false);
       return setError(result.error.message);
