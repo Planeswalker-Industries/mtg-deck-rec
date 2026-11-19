@@ -338,7 +338,7 @@ export function ShoppingList({
       <Title id={headingId} className="font-heading text-xl leading-none font-semibold">
         {title}{" "}
         <span className="font-mono text-base font-normal text-muted-foreground">
-          · {list.count} {cardsWord} ~{formatUsd(list.totalUsd)}
+          · {list.count} {cardsWord}, {formatUsd(list.totalUsd)}
           {asOf}
         </span>
       </Title>

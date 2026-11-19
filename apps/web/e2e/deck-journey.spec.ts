@@ -420,7 +420,7 @@ test("Add's combos: ready and upgrade sections, and Add Combo", async ({ page })
   if (!(await upgrades.getAttribute("open").then((v) => v !== null))) await upgrades.locator("summary").click();
   await expect(upgrades.getByText("Win the game")).toBeVisible();
   await expect(upgrades.getByRole("link", { name: "via Counterspell" })).toHaveAttribute("href", /commanderspellbook\.com\/combo\/mock-combo-2\//);
-  await expect(upgrades.getByText(/^~\$/).first()).toBeVisible();
+  await expect(upgrades.getByText(/^\$/).first()).toBeVisible();
 
   const before = await deckCount(recs);
   await upgrades.getByRole("button", { name: /^Add Swan Song/ }).click();
@@ -460,8 +460,8 @@ test("Swap never deals a piece of a combo the deck holds", async ({ page, browse
   expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
 });
 
-/** Finish's shopping list; its heading reads "Shopping list · 8 cards ~$12.34". */
-const SHOPPING_LIST = { name: /^Shopping list · \d+ cards? ~\$/ };
+/** Finish's shopping list; its heading reads "Shopping list · 8 cards, $12.34". */
+const SHOPPING_LIST = { name: /^Shopping list · \d+ cards?, \$/ };
 
 /** Straight to Finish from a deck at 100: no changes, so the list offers the whole deck. */
 async function finishAt100(page: Page) {
