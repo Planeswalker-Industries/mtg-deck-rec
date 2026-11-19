@@ -278,6 +278,11 @@ export function useDeckTool(
    * applied, so the ref is what the writes go by and the state is what the screen shows.
    */
   const openDeckRef = useRef<OpenDeck | null>(null);
+  /**
+   * The round's deck, once Buy in Deck stats wrote it to the open deck before the round was committed: later auto-saves
+   * in the same analysis write it too, rather than the deck the round started from. A new analysis clears it.
+   */
+  const roundDeckRef = useRef<DeckInput | null>(null);
   const saveRequest = useRef(0);
   /** The write auto-save has in flight, so a caller can wait for the account to have the deck before leaving. */
   const pendingSave = useRef<Promise<void>>(Promise.resolve());
@@ -367,7 +372,8 @@ export function useDeckTool(
     if (!deck) return;
     const id = ++saveRequest.current;
     trackOpenDeck({ ...deck, status: "saving" });
-    const original = changedOriginal(originDeckRef.current, analysis.deck);
+    const cards = roundDeckRef.current ?? analysis.deck;
+    const original = changedOriginal(originDeckRef.current, cards);
     // The budget goes only when it changed: an empty one clears the stored one.
     const changedBudget = storedBudget.current !== budgetKey(budgetRef.current) ? (budgetRef.current ?? {}) : undefined;
     // Counted as stored once sent, so a later save compares against it; a failed write puts the old value back.
@@ -376,7 +382,7 @@ export function useDeckTool(
     const r = await getApis().actions.saveDeck({
       deckId: deck.deckId,
       name: deck.name,
-      deck: analysis.deck,
+      deck: cards,
       isPublic: true,
       ...(bracket === null ? {} : { bracket }),
       ...(original ? { original } : {}),
@@ -453,6 +459,7 @@ export function useDeckTool(
     setImportedFrom(source);
     setParse({ status: "ready", data: null });
     setLines(r.data.lines);
+    roundDeckRef.current = null;
     setAnalysis(r.data.analysis);
     setBracketOverride(bracket);
     // The same deck carries its name and its stat choices through a journey's result and a replay of the remembered
@@ -519,6 +526,7 @@ export function useDeckTool(
     if (!analyzed.ok) return null;
     // A newer deck or setting change owns the panels now; the analysis still tells the caller what the lookup found.
     if (id !== recsRequest.current) return analyzed.data;
+    roundDeckRef.current = null;
     setAnalysis(analyzed.data);
     const ctx = contextFor(analyzed.data, bracketOverride, ownership);
     suggestedWith.current = ownershipKey;
@@ -556,6 +564,7 @@ export function useDeckTool(
     setAnalyzedText(null);
     setParse({ status: "idle" });
     setLines([]);
+    roundDeckRef.current = null;
     setAnalysis(null);
     setImportedFrom(null);
     setBracketOverride(null);
@@ -640,6 +649,16 @@ export function useDeckTool(
   }
 
   /** Remembers the deck a fresh save created, so later edits update it instead of making another one. */
+  /**
+   * Writes the round's deck to the open account deck while the round goes on (Buy in Deck stats, owner 2026-11-18).
+   * The open deck's status shows the write, as for any auto-save.
+   */
+  function saveRoundDeck(deck: DeckInput) {
+    if (!analysis || !openDeckRef.current) return;
+    roundDeckRef.current = deck;
+    pendingSave.current = persist(analysis, bracketOverride);
+  }
+
   function trackSavedDeck(saved: Pick<SavedDeckContents, "deckId" | "code" | "name">) {
     // The save that made it carried the budget, so the account deck has it.
     storedBudget.current = budgetKey(budgetRef.current);
@@ -655,6 +674,7 @@ export function useDeckTool(
     openDeck,
     closeSavedDeck,
     trackSavedDeck,
+    saveRoundDeck,
     /** The name the player gave a deck not saved yet; null while it goes by its commanders. */
     deckName,
     renameDeck,

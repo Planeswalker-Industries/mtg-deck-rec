@@ -6,12 +6,13 @@ import { ChevronDown, X } from "lucide-react";
 import type { CardId } from "@mtg/core/contract";
 import { shoppingList, type ShoppingLine } from "@mtg/core/shop";
 import { cn } from "cn";
+import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
 import { buttonVariants } from "@/components/ui/button";
 import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import { AFFILIATE_DISCLOSURE, PHONE_HIT_AREA, REMOVE_ARM_MS, SHOPPING_UNDO_MS, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
-import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
+import { asOfSuffix, formatUsd } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
 
 /** A phone (or any touch screen) gets the two-tap remove; a mouse gets one click. */
@@ -26,6 +27,22 @@ const SCOPES: { value: Scope; label: string }[] = [
   { value: "round", label: "This round's cards" },
   { value: "deck", label: "Whole deck" },
 ];
+
+/** Finish's first scope: this round's cards, or the whole deck when the round put none in. */
+const defaultScope = (roundIds: readonly CardId[]): Scope => (roundIds.length > 0 ? "round" : "deck");
+
+/**
+ * The carts Finish's list opens with, for a Buy button elsewhere (the Deck stats Budget row): with a collection the
+ * copies it doesn't supply, without one this round's cards, or the whole deck when the round put none in.
+ */
+export function defaultCarts(
+  entries: readonly ShoppingLine[],
+  missing: ReadonlyMap<CardId, number> | null,
+  roundIds: readonly CardId[],
+): string[] {
+  const list = shoppingList({ entries, missing, roundIds, scope: defaultScope(roundIds) });
+  return cartLinks(list.groups.flatMap((g) => g.lines).map((l) => ({ name: l.card.name, quantity: l.quantity })));
+}
 
 function useCoarsePointer(): boolean {
   const [coarse, setCoarse] = useState(false);
@@ -116,14 +133,14 @@ export function ShoppingList({
   roundIds: readonly CardId[];
   /** Offer "This round's cards | Whole deck" (only without a collection). */
   scopeToggle: boolean;
-  /** Keep Buy and the price note at the foot of a scrolling container (Finish's aside from xl). */
+  /** Keep Buy and the price note at the top of a scrolling container (Finish's aside from xl). */
   pinActions?: boolean;
   /** Count, total and Buy first; the lines behind "Show the N cards", closed at first. */
   folded?: boolean;
 }) {
   const coarse = useCoarsePointer();
   // A round that put nothing in has nothing to buy in round scope, so the whole deck is the useful default there.
-  const [scope, setScope] = useState<Scope>(roundIds.length > 0 ? "round" : "deck");
+  const [scope, setScope] = useState<Scope>(defaultScope(roundIds));
   const [removed, setRemoved] = useState<CardId[]>([]);
   const [undoShown, setUndoShown] = useState(false);
   const [linesOpen, setLinesOpen] = useState(false);
@@ -215,7 +232,7 @@ export function ShoppingList({
                 onSwipeAway={() => remove(card.id)}
                 trailing={
                   <>
-                    <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{fromPrice(card.price)}</span>
+                    <PriceTag price={card.price} className="mx-1 text-xs whitespace-nowrap text-muted-foreground" />
                     <RemoveButton name={displayName(card)} coarse={coarse} onRemove={() => remove(card.id)} />
                   </>
                 }
@@ -252,8 +269,8 @@ export function ShoppingList({
     );
 
   const actions = (
-    // In Finish's aside (a scroll box from xl) Buy stays in view at its foot while the lines scroll.
-    <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:bottom-0 xl:bg-background xl:pt-2 xl:pb-1")}>
+    // In Finish's aside (a scroll box from xl) Buy stays in view at its top while the lines scroll under it.
+    <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:top-0 xl:z-10 xl:bg-background xl:pt-1 xl:pb-2")}>
       {/* A named primary action (owner, 2026-11-15): the solid blue button. */}
       <div className="flex flex-wrap items-center gap-2">
         {carts.length === 0 || list.count === 0 ? (
@@ -321,7 +338,7 @@ export function ShoppingList({
       <Title id={headingId} className="font-heading text-xl leading-none font-semibold">
         {title}{" "}
         <span className="font-mono text-base font-normal text-muted-foreground">
-          · {list.count} {cardsWord} ~{formatUsd(list.totalUsd)}
+          · {list.count} {cardsWord}, {formatUsd(list.totalUsd)}
           {asOf}
         </span>
       </Title>
@@ -346,11 +363,12 @@ export function ShoppingList({
         </div>
       )}
 
+      {/* Buy at the top, as on the saved deck page (owner, 2026-11-18): the lines can run long. */}
+      {actions}
+
       {list.count === 0 ? <p className="text-sm text-muted-foreground">{emptyText}</p> : lines}
 
       {toast}
-
-      {actions}
     </section>
   );
 }

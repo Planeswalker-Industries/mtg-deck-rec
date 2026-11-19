@@ -101,6 +101,15 @@ function changesOf(journey: DeckJourney): Change[] {
   ];
 }
 
+/** The cards the round put in that the deck didn't start with, in the order Finish lists them: the shopping list's round. */
+export function roundInIds(journey: DeckJourney): CardId[] {
+  const state = journey.state;
+  const deck = journey.deck;
+  if (!state || !deck) return [];
+  const addedIds = new Set(deckDiff(state.base, deck).added.map((c) => c.cardId));
+  return [...new Set(changesOf(journey).flatMap((c) => (c.into && addedIds.has(c.into.card.id) ? [c.into.card.id] : [])))];
+}
+
 /**
  * Finish: the round's result, shown rather than told. How many Deck stats lines are in line, and each one that isn't
  * with its reason and what the player can do about it (T087); cards, mana value and price on one line, then each stat
@@ -343,7 +352,7 @@ export function ReviewPhase({
           <ShoppingList
             entries={journey.after}
             missing={missing}
-            roundIds={[...new Set(ins.map((c) => c.card.id).filter((id) => addedIds.has(id)))]}
+            roundIds={roundInIds(journey)}
             scopeToggle={missing === null}
             pinActions
           />

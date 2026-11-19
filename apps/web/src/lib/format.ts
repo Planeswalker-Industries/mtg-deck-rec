@@ -19,15 +19,12 @@ export function formatUsdDelta(value: number): string {
 }
 
 /**
- * One card's price: "~$1.10" (the lowest-priced printing's estimate; /privacy says what the ~ means) or "No price".
- * `lower` for mid-sentence use ("Not owned · ~$1.10", "Not owned · no price"); `dated` adds the as-of date where the
- * price stands alone ("~$1.10 (Nov 14, 2026)").
+ * One card's price: "$1.10" (the lowest-priced printing's estimate; /privacy says so) or "No price". No "~":
+ * it reads as a minus in DM Mono (owner, 2026-11-18). `lower` for mid-sentence use ("Not owned · $1.10", "Not owned ·
+ * no price"). A single card's price carries no date; totals do (`asOfSuffix`), and `PriceTag` opens it on a tap.
  */
-export function fromPrice(
-  price: PriceEstimate | null | undefined,
-  { lower = false, dated = false }: { lower?: boolean; dated?: boolean } = {},
-): string {
-  const text = price ? `~${usd.format(price.usd)}${dated ? asOfSuffix(price.asOf) : ""}` : "No price";
+export function fromPrice(price: PriceEstimate | null | undefined, { lower = false }: { lower?: boolean } = {}): string {
+  const text = price ? usd.format(price.usd) : "No price";
   return lower ? text.charAt(0).toLowerCase() + text.slice(1) : text;
 }
 

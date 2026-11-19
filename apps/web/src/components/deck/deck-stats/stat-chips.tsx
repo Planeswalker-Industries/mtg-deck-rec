@@ -1,10 +1,16 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
+import { Popover } from "radix-ui";
 import type { CardSummary } from "@mtg/core/contract";
 import { statDeltas, towardTarget, type CompareCard, type CompareMark, type DeckStatsReport, type TallyCard } from "@mtg/core/journey";
 import { cn } from "cn";
+import { countTip, markTip } from "./stat-chip-copy";
 import { useStatChips } from "./stat-preview";
+
+/** A pointer resting on a chip this long opens its tip; passing over a row of chips opens none. */
+const TIP_HOVER_DELAY_MS = 200;
 
 /** Colour rows move in tenths of a source (a Signet is 0.8): read to one decimal when not whole. */
 const SOURCE_DECIMALS = 1;
@@ -22,6 +28,8 @@ export interface StatChip {
   up: boolean;
   /** For screen readers: "16 to 15, toward the target", "1 cheaper to cast". */
   detail: string;
+  /** What the chip means, opened by a tap or a hover: "More ramp. The deck needs it." (`stat-chip-copy`). */
+  tip: string;
 }
 
 const formatCount = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(SOURCE_DECIMALS));
@@ -39,6 +47,8 @@ export function statChips(report: DeckStatsReport, add: TallyCard | null, remove
     const from = stat.value;
     const to = stat.value + moved.delta;
     const better = towardTarget(stat.value, stat.target, moved.delta, stat.group === "colours", moved.target);
+    // A colour row whose count holds while its requirement moves has no direction of its own: its arrow follows the tone.
+    const up = to === from ? better : to > from;
     const counts = to === from ? "" : `${formatCount(from)} to ${formatCount(to)}, `;
     const needs = moved.target === undefined ? "" : `needs ${Math.round(moved.target)}, `;
     return [
@@ -46,9 +56,9 @@ export function statChips(report: DeckStatsReport, add: TallyCard | null, remove
         key: stat.key,
         label: stat.label,
         better,
-        // A colour row whose count holds while its requirement moves has no direction of its own: its arrow follows the tone.
-        up: to === from ? better : to > from,
+        up,
         detail: `${counts}${needs}${better ? "toward the target" : "away from the target"}`,
+        tip: countTip({ group: stat.group, label: stat.label, up, better }),
       },
     ];
   });
@@ -65,7 +75,64 @@ const markChip = (mark: CompareMark): StatChip => ({
   better: mark.tone === "better",
   up: mark.direction === "up",
   detail: mark.detail,
+  tip: markTip(mark),
 });
+
+/**
+ * One chip, unchanged to the eye (owner, 2026-11-18), that opens its tip on a tap or a click, or while a mouse rests
+ * on it. The tip names the change in its first few words and says why it is good or bad here.
+ */
+function Chip({ chip }: { chip: StatChip }) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<number | null>(null);
+  const clear = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+  const Icon = chip.up ? ArrowUp : ArrowDown;
+  return (
+    <li className="shrink-0">
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger
+          type="button"
+          onPointerEnter={(e) => {
+            if (e.pointerType !== "mouse") return;
+            clear();
+            timer.current = window.setTimeout(() => setOpen(true), TIP_HOVER_DELAY_MS);
+          }}
+          onPointerLeave={(e) => {
+            if (e.pointerType !== "mouse") return;
+            clear();
+            setOpen(false);
+          }}
+          className={cn(
+            "relative inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold whitespace-nowrap",
+            // A taller target for a thumb without making the row taller.
+            "after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            chip.better ? "border-success/40 bg-success/10 text-success" : "border-destructive/40 bg-destructive/10 text-destructive",
+          )}
+        >
+          <Icon aria-hidden className="size-3.5 shrink-0" strokeWidth={2.75} />
+          <span>{chip.label}</span>
+          <span className="sr-only">{`: ${chip.detail}${chip.better ? " (better)" : " (worse)"}`}</span>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
+            side="top"
+            sideOffset={6}
+            collisionPadding={16}
+            // A hover tip leaves focus where it was; a tap moves nothing either, so the swipe keys keep working.
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            className="z-50 max-w-64 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm text-foreground shadow-lift"
+          >
+            {chip.tip}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
+    </li>
+  );
+}
 
 /**
  * Chips by a card, each an arrow and a short name in green or red. The colour never stands alone. `phoneRow` keeps the
@@ -90,22 +157,9 @@ export function ChipList({
       aria-label={label}
       className={cn("flex flex-wrap items-center gap-1.5", phoneRow && "max-sm:-mx-4 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-4", className)}
     >
-      {chips.map((chip) => {
-        const Icon = chip.up ? ArrowUp : ArrowDown;
-        return (
-          <li
-            key={chip.key}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold whitespace-nowrap",
-              chip.better ? "border-success/40 bg-success/10 text-success" : "border-destructive/40 bg-destructive/10 text-destructive",
-            )}
-          >
-            <Icon aria-hidden className="size-3.5 shrink-0" strokeWidth={2.75} />
-            <span>{chip.label}</span>
-            <span className="sr-only">{`: ${chip.detail}${chip.better ? " (better)" : " (worse)"}`}</span>
-          </li>
-        );
-      })}
+      {chips.map((chip) => (
+        <Chip key={chip.key} chip={chip} />
+      ))}
     </ul>
   );
 }
