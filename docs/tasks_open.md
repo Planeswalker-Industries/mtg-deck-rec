@@ -8,18 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T098: Input limits and error handling
-
-**HIGH** · Web · No input freezes or crashes a page, and every refusal or shortfall says in one short line what happened and what to do; design in `docs/plan_files/2026-11-19-input-limits-error-handling-design.md` (local)
-
-- [x] Safe action calls: a thrown Server Action call becomes a `Result` error
-- [x] Error pages: `error.tsx` and `global-error.tsx`
-- [x] Text limits on the deck and collection boxes
-- [x] `maxLength` on every free-text input
-- [x] Collection rows the server would refuse are split out (core)
-- [x] Collection import flow
-- [ ] Budget shortfall on builds without a collection
-
 ## T074: Archidekt answers the daily crawl with 429s
 
 **HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`; the 429s are solved, the run bookkeeping is not

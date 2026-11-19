@@ -846,6 +846,8 @@ function DeckToolSession() {
             else setPicked(null);
             deckBuild.reset();
           }}
+          // The picked commander stays, so the build start opens on it with the budget fields.
+          onChangeBudget={deckBuild.reset}
         />
       ) : showPicker ? (
         <PageHero
@@ -1182,6 +1184,7 @@ function DeckToolSession() {
                       view={view}
                       roles={deckStats?.stats.filter((stat) => stat.group === "roles") ?? []}
                       onShowUnowned={() => tool.changeCollectionMode("first")}
+                      budgeted={tool.budget?.spendUsd !== undefined || tool.budget?.cardCapUsd !== undefined}
                       uploadHref={
                         (signedIn
                           ? `${collectionImportHref}&ifEmpty=1`
