@@ -13,7 +13,7 @@ import { PocketGrid } from "@/components/cards/pocket-grid";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { DeckViewToggle, SortMenu, useCardSort, useDeckView, type DeckView } from "@/components/decks/deck-view";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
@@ -34,6 +34,10 @@ import { useBuildStats } from "./use-build-stats";
 /** What the open slots panel says, inline from sm up and behind its (?) on phones. */
 const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue and we'll fill the missing pieces together.";
 
+/** What a budget build without a collection says when the budget couldn't fill the deck: the popup and the open slots' (?). */
+const BUDGET_SHORT_TITLE = "Insufficient budget";
+const BUDGET_SHORT_HELP = "A competitive deck cannot be assembled at this budget. Increase the budget or upload your collection to build from.";
+
 /** What the overlay says while Continue or Save for Later opens the deck. */
 const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }> = {
   upgrade: { label: "Opening your deck", detail: "Reading the 100 cards and lining up upgrades. A few seconds." },
@@ -42,9 +46,13 @@ const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** What the build managed, in a few words: how many slots the collection filled (the open ones get their own panel). */
-function summary(result: BuildResult, fromCollection: boolean): string {
+/**
+ * What the build managed, in a few words: how many slots the collection filled, or the budget when it fell short (the
+ * open ones get their own panel).
+ */
+function summary(result: BuildResult, fromCollection: boolean, budgetShort: boolean): string {
   const { slots, filled } = result.feasibility;
+  if (budgetShort) return `${filled} of ${slots} cards`;
   if (!fromCollection) return `All ${slots} cards picked from every card in print.`;
   return count(filled, "match", "matches");
 }
@@ -293,6 +301,9 @@ function FitChanges({ request, result, view, sort }: { request: BuildRequest; re
  * A collection build asks about each Deck stats line the collection couldn't fill before the deck opens (T087): ignore
  * it, or allow buying for it, which builds the deck again with unowned cards for that line. Continue waits for every
  * answer, and the answers go into the deck tool with the deck.
+ *
+ * A budget build without a collection that couldn't fill every slot says so in a popup, once per build: change the
+ * budget or upload a collection. Closing it leaves the build as it is.
  */
 export function BuildView({
   state,
@@ -302,6 +313,7 @@ export function BuildView({
   onUpgrade,
   onSave,
   onPickAnother,
+  onChangeBudget,
 }: {
   state: Exclude<BuildState, { status: "idle" }>;
   collectionImportHref: Route;
@@ -312,6 +324,8 @@ export function BuildView({
   onUpgrade: (decklist: string, choices: StatChoices) => Promise<void>;
   onSave: (decklist: string, choices: StatChoices) => Promise<void>;
   onPickAnother: () => void;
+  /** Back to the build start, the commander kept, to set another budget. */
+  onChangeBudget: () => void;
 }) {
   const [view, setView] = useDeckView("build");
   const [sort, setSort] = useCardSort("build");
@@ -323,6 +337,10 @@ export function BuildView({
   const ready = state.status === "ready" ? state : null;
   const builtList = useMemo(() => (ready ? buildDecklist(ready.result) : null), [ready]);
   const stats = useBuildStats(ready?.result ?? null, builtList, state.request.bracket);
+  // The budget left slots open with nothing but the player's money to fill them from.
+  const budgetShort = ready !== null && !ready.fromCollection && ready.request.budget !== undefined && ready.result.feasibility.open > 0;
+  /** The build result whose shortfall popup was closed: a new build asks again. */
+  const [budgetSeen, setBudgetSeen] = useState<BuildResult | null>(null);
   // A line the collection had nothing more for is a fact about the collection, not an adjustment to make. The lines
   // the player answered stay listed after a rebuild fills them, so the answer can still be changed.
   const choices: StatChoices = state.request.choices ?? {};
@@ -437,7 +455,8 @@ export function BuildView({
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <p className={cn("flex items-center gap-2", request.list && "text-sm text-muted-foreground")}>
             {fromCollection && <CircleCheck aria-hidden className="size-5 shrink-0 text-success" />}
-            {summary(result, fromCollection)}
+            {budgetShort && <TriangleAlert aria-hidden className="size-5 shrink-0 text-warning" />}
+            {summary(result, fromCollection, budgetShort)}
           </p>
           <BracketEstimate asked={request.bracket} estimated={result.estimatedBracket} />
         </div>
@@ -489,7 +508,26 @@ export function BuildView({
           to build from the cards you own instead.
         </p>
       )}
-      {fromCollection && open > 0 && (
+      <Dialog open={budgetShort && budgetSeen !== result} onOpenChange={(isOpen) => !isOpen && setBudgetSeen(result)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TriangleAlert aria-hidden className="size-5 text-warning" />
+              {BUDGET_SHORT_TITLE}
+            </DialogTitle>
+            <DialogDescription>{BUDGET_SHORT_HELP}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button asChild size="lg" variant="outline">
+              <Link href={collectionImportHref}>Upload collection</Link>
+            </Button>
+            <Button type="button" size="lg" className="lit" onClick={onChangeBudget}>
+              Change budget
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {(fromCollection || budgetShort) && open > 0 && (
         // The buy side is shelved. The slot it will fill stays visible, honestly empty.
         <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:px-3 max-sm:py-1">
           {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
@@ -499,19 +537,26 @@ export function BuildView({
             </h2>
             <Dialog>
               <DialogTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" className={cn(PHONE_HIT_AREA, "sm:hidden")} aria-label="What open slots mean">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  // A short budget's line is long for the panel, so it waits behind the (?) at every width.
+                  className={cn(PHONE_HIT_AREA, !budgetShort && "sm:hidden")}
+                  aria-label="What open slots mean"
+                >
                   <CircleHelp aria-hidden />
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>{count(open, "open slot")}</DialogTitle>
-                  <DialogDescription>{OPEN_SLOTS_HELP}</DialogDescription>
+                  <DialogDescription>{budgetShort ? BUDGET_SHORT_HELP : OPEN_SLOTS_HELP}</DialogDescription>
                 </DialogHeader>
               </DialogContent>
             </Dialog>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>
+          {!budgetShort && <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>}
         </aside>
       )}
       {/* One toolbar row: taking the list away on the left, how the cards show on the right. */}

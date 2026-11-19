@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowDownAZ, ArrowDownZA, Crown, Plus, Search, X } from "lucide-react";
 import type { CardSearchSort, CardSummary, CardTypeFilter, OwnershipInput } from "@mtg/core/contract";
 import { canAdd, CURVE_TOP_MANA_VALUE } from "@mtg/core/journey";
+import { MAX_SEARCH_QUERY_CHARS } from "@mtg/core/schemas";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { ZoomableCard } from "@/components/cards/card-zoom";
@@ -352,6 +353,7 @@ export function CardSearchPanel({
               ref={box}
               type="search"
               aria-label="Card name"
+              maxLength={MAX_SEARCH_QUERY_CHARS}
               onKeyDown={(e) => {
                 if (e.key !== "Enter") return;
                 e.preventDefault();

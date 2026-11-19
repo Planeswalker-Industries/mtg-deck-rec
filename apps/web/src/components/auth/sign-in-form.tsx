@@ -6,11 +6,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { sendSignInEmailAction, startGoogleSignInAction, verifySignInCodeAction } from "@/app/sign-in/actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { callAction } from "@/lib/api/call-action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { safeNextPath } from "@/lib/safe-path";
 import { TEXT_LINK } from "@/lib/constants";
+
+/** The longest email address SMTP allows. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the commented-out email form uses it; keep it for when that returns.
+const MAX_EMAIL_CHARS = 254;
 
 const RETURN_ERRORS: Record<string, string> = {
   link: "That sign-in link didn't work or has expired. Sign in again.",
@@ -31,7 +36,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   async function sendCode() {
     setPending(true);
     setError(null);
-    const result = await sendSignInEmailAction({ email, next });
+    const result = await callAction(() => sendSignInEmailAction({ email, next }));
     setPending(false);
     if (!result.ok) return setError(result.error.message);
     setCode("");
@@ -41,7 +46,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   async function verifyCode() {
     setPending(true);
     setError(null);
-    const result = await verifySignInCodeAction({ email, code });
+    const result = await callAction(() => verifySignInCodeAction({ email, code }));
     if (!result.ok) {
       setPending(false);
       return setError(result.error.message);
@@ -54,7 +59,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   async function continueWithGoogle() {
     setPending(true);
     setError(null);
-    const result = await startGoogleSignInAction({ next });
+    const result = await callAction(() => startGoogleSignInAction({ next }));
     if (!result.ok) {
       setPending(false);
       return setError(result.error.message);
@@ -89,6 +94,8 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={6}
+          // A code copied with spaces or a line break is cut to its first six characters, then to its digits.
+          data-paste-truncate
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
           className="bg-sleeve text-xl tracking-[0.3em] font-mono sm:text-xl"
@@ -143,6 +150,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          maxLength={MAX_EMAIL_CHARS}
           className="bg-sleeve"
           required
         />

@@ -351,18 +351,30 @@ export const dealRaterCardsInputSchema = z
   .refine((input) => (input.commanderIds === undefined) !== (input.commanderSlug === undefined), { message: 'Pick a commander.' });
 
 export const MAX_COLLECTION_ROWS_PER_CALL = 2_000;
+/** A card name in a collection row: the longest printed name is under 150, so 200 leaves room for odd spellings. */
+export const MAX_COLLECTION_NAME_CHARS = 200;
+/** A set code: Scryfall's longest are 6 characters; 10 leaves room for app-specific prefixes. */
+export const MAX_COLLECTION_SET_CODE_CHARS = 10;
+/** A collector number: Scryfall's longest run about 10 characters with their star and variant suffixes. */
+export const MAX_COLLECTOR_NUMBER_CHARS = 16;
+/** A language code ('en', 'zhs', 'ph'), or an app's own short label for it. */
+export const MAX_LANG_CHARS = 8;
+/** A condition label ('near_mint', 'Lightly Played'), as each app spells it. */
+export const MAX_CONDITION_CHARS = 32;
+/** A Scryfall id is a 36-character UUID; 64 tolerates braces or stray whitespace an app may add. */
+export const MAX_SCRYFALL_ID_CHARS = 64;
 
 const collectionRow = z.object({
   rowNo: z.int().min(0),
-  name: z.string().max(200).optional(),
-  scryfallId: z.string().max(64).optional(),
+  name: z.string().max(MAX_COLLECTION_NAME_CHARS).optional(),
+  scryfallId: z.string().max(MAX_SCRYFALL_ID_CHARS).optional(),
   tcgplayerId: z.int().min(1).optional(),
-  setCode: z.string().max(10).optional(),
-  collectorNumber: z.string().max(16).optional(),
-  lang: z.string().max(8).optional(),
+  setCode: z.string().max(MAX_COLLECTION_SET_CODE_CHARS).optional(),
+  collectorNumber: z.string().max(MAX_COLLECTOR_NUMBER_CHARS).optional(),
+  lang: z.string().max(MAX_LANG_CHARS).optional(),
   finish: z.enum(['nonfoil', 'foil', 'etched']).optional(),
-  condition: z.string().max(32).optional(),
-  quantity: z.int().min(1, 'Quantities must be at least 1.').max(100_000),
+  condition: z.string().max(MAX_CONDITION_CHARS).optional(),
+  quantity: z.int().min(1, 'Quantities must be at least 1.').max(MAX_CARD_COPIES),
 });
 
 const rowsPerCall = `Send at most ${MAX_COLLECTION_ROWS_PER_CALL.toLocaleString('en-US')} rows per call.`;
@@ -380,11 +392,11 @@ const resolvedCollectionRow = z.object({
     .transform((id) => id as PrintingId | null),
   cardId: cardId('Invalid card in the collection.'),
   finish: z.enum(['nonfoil', 'foil', 'etched']),
-  condition: z.string().min(1).max(32),
-  lang: z.string().min(1).max(8),
-  quantity: z.int().min(1, 'Quantities must be at least 1.').max(100_000),
+  condition: z.string().min(1).max(MAX_CONDITION_CHARS),
+  lang: z.string().min(1).max(MAX_LANG_CHARS),
+  quantity: z.int().min(1, 'Quantities must be at least 1.').max(MAX_CARD_COPIES),
   via: z.enum(['scryfall_id', 'tcgplayer_id', 'set_cn_lang', 'set_cn', 'name_only']),
-  setCode: z.string().max(10).nullable().optional(),
+  setCode: z.string().max(MAX_COLLECTION_SET_CODE_CHARS).nullable().optional(),
 });
 
 export const saveCollectionBatchInputSchema = z.object(

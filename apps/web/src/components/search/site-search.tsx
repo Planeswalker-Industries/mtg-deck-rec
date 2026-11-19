@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Search, X } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
+import { MAX_SEARCH_QUERY_CHARS } from "@mtg/core/schemas";
 import { cn } from "cn";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { getApis } from "@/lib/api/client";
@@ -166,6 +167,7 @@ function SearchField({ autoFocus = false, onPicked }: { autoFocus?: boolean; onP
         value={query}
         autoFocus={autoFocus}
         onChange={(e) => search(e.target.value)}
+        maxLength={MAX_SEARCH_QUERY_CHARS}
         onFocus={() => setFocused(true)}
         // Let a click on a result land before the list closes.
         onBlur={() => window.setTimeout(() => setFocused(false), 150)}

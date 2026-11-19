@@ -19,6 +19,7 @@ import {
   type ManaColor,
   type SetFilter,
 } from "@mtg/core/collection";
+import { MAX_SEARCH_QUERY_CHARS } from "@mtg/core/schemas";
 import { cn } from "cn";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { COLOR_NAMES, MANA_SYMBOL_URL } from "@/components/deck/color-identity";
@@ -314,6 +315,7 @@ function CollectionBrowser({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            maxLength={MAX_SEARCH_QUERY_CHARS}
             placeholder="Search by name or what it does"
             aria-label={`Search ${whose} collection by card name or what it does`}
             className="pl-9"

@@ -83,9 +83,12 @@ function RunOut({
   onNext,
   nextLabel,
   onShowUnowned,
+  budgeted,
 }: {
   journey: DeckJourney;
   open: number;
+  /** The round has a budget: off the collection, that is what ran out. */
+  budgeted: boolean;
   onNext: () => void;
   nextLabel: string;
   /** Allow Singles: switches the collection setting to Owned first, so Add suggests cards the player doesn't own too. */
@@ -116,7 +119,9 @@ function RunOut({
       message={
         collectionOnly
           ? "No more owned cards to suggest. Fill the holes with basics?"
-          : "No more cards to suggest. Fill the holes with basics?"
+          : budgeted
+            ? "Nothing left under your budget."
+            : "No more cards to suggest. Fill the holes with basics?"
       }
     >
       <Button type="button" size="lg" disabled={adding} onClick={() => void fillBasics()}>
@@ -196,11 +201,14 @@ export function AddPhase({
   roles,
   onShowUnowned,
   uploadHref,
+  budgeted,
 }: {
   journey: DeckJourney;
   view: "swipe" | "list";
   roles: readonly StatLine[];
   onShowUnowned: () => void;
+  /** The round has a budget (a spend or a card cap): Add's run-out names it. */
+  budgeted: boolean;
   /** Where Combos' "Upload a collection" goes: sign-in first when signed out, then the import. */
   uploadHref: Route;
 }) {
@@ -252,7 +260,7 @@ export function AddPhase({
     if (addState.status === "loading" || addState.status === "idle") return <PanelLoading label="Finding cards to add" />;
     if (addState.status === "error") return <PanelError message={addState.message} />;
     if (queue.length === 0)
-      return <RunOut journey={journey} open={open} onNext={toNext} nextLabel={nextLabel} onShowUnowned={onShowUnowned} />;
+      return <RunOut journey={journey} open={open} onNext={toNext} nextLabel={nextLabel} onShowUnowned={onShowUnowned} budgeted={budgeted} />;
     if (shown.length === 0) {
       return (
         <SwipeDone title={`No ${filterName} to suggest right now`} message="Every suggestion for it is already in the deck or skipped.">
