@@ -7,9 +7,13 @@ import { cn } from "cn";
 /** The count under a box shows from 90% of its limit: early enough to see it coming, late enough not to nag. */
 const TEXT_COUNT_FROM_FRACTION = 0.9;
 
-/** The one line for text over a box's limit, also used when a file's text is too long for the box. */
-export function charLimitError(maxChars: number, next = "Try again."): string {
-  return `Character limit (${maxChars.toLocaleString("en-US")}) exceeded. ${next}`;
+/**
+ * The one line for text over a box's limit, also used when a file's text is too long for the box and, without a next
+ * step, in the bubble under a one-line field (`PasteLimitBubble`).
+ */
+export function charLimitError(maxChars: number, next: string | null = "Try again."): string {
+  const limit = `Character limit (${maxChars.toLocaleString("en-US")}) exceeded.`;
+  return next ? `${limit} ${next}` : limit;
 }
 
 /**

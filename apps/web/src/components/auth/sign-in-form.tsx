@@ -94,6 +94,8 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={6}
+          // A code copied with spaces or a line break is cut to its first six characters, then to its digits.
+          data-paste-truncate
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
           className="bg-sleeve text-xl tracking-[0.3em] font-mono sm:text-xl"

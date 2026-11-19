@@ -98,6 +98,8 @@ export function CollectionTool() {
   const [mode, setMode] = useState<"merge" | "replace">("merge");
   const [success, setSuccess] = useState<string | null>(null);
   const importRun = useRef(0);
+  /** The import run whose collection is saved: a throw after that point must not say the import failed. */
+  const savedRun = useRef<number | null>(null);
   const signedIn = source.kind === "account" || (source.kind !== "loading" && source.signedIn);
   const hasCollection = source.kind === "browser" || source.kind === "account";
 
@@ -110,9 +112,19 @@ export function CollectionTool() {
     setSuccess(null);
     try {
       await runImport(current);
-    } catch {
+    } catch (error) {
       // A parse or call that throws (a worker crash, a storage error) must not leave the form stuck mid-import.
-      if (current()) importFailed("Couldn't read that file. Try again.");
+      if (!current()) return;
+      if (savedRun.current === id) {
+        // The collection is in: say so, with what went wrong after, and clear the box so a retry can't add it twice.
+        const issue = error instanceof Error && error.message ? error.message : "unknown error";
+        setProblem({ title: "Collection saved", message: `Saved, but something went wrong: ${issue}` });
+        setText("");
+        setFileName(null);
+        notifyCollectionChanged();
+      } else {
+        importFailed("Couldn't read that file. Try again.");
+      }
     } finally {
       // Every path out of an import ends its progress, unless a newer import has taken the form over.
       if (current()) setProgress(null);
@@ -257,6 +269,8 @@ export function CollectionTool() {
       totals = result.data.totals;
       setProgress({ label: "Saving to your account", done: Math.min(start + ROWS_PER_CALL, rows.length), total: rows.length });
     }
+    // The final batch committed: the collection is in the account from here on.
+    savedRun.current = importRun.current;
     // Only a committed replacement supersedes a browser copy still waiting to move to the account.
     if (!hasCollection || mode === "replace") await clearCollection();
     setAccountUnmatched(unmatched);
@@ -276,6 +290,7 @@ export function CollectionTool() {
         hasCollection ? mode : "replace",
       );
       if (!current()) return false;
+      savedRun.current = importRun.current;
       setSource({ kind: "browser", signedIn: false, collection: stored });
       return true;
     } catch {

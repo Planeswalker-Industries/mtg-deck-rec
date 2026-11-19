@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { PasteLimitBubble } from "@/components/ui/paste-limit";
 import { SITE_URL } from "@/lib/site";
 import { body, drama, mono } from "./fonts";
 import "./globals.css";
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <AdSlot slot="rail" />
         </div>
         <SiteFooter />
+        <PasteLimitBubble />
       </body>
     </html>
   );
