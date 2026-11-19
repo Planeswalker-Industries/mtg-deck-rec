@@ -8,7 +8,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { FeaturedCommanders } from "@/components/home/featured-commanders";
-import { HeroFan } from "@/components/home/hero-fan";
+import { HeroPile } from "@/components/home/hero-pile";
 import { HowItWorks } from "@/components/home/how-it-works";
 import { Situations } from "@/components/home/situations";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
@@ -100,14 +100,16 @@ export default function Home() {
        * The section is `relative` and the inner container is not, so the art layer sizes against the bleed.
        */}
       <section className="relative isolate mx-[calc(50%-50vw)] -mt-4 w-[100vw] overflow-hidden border-b border-seam">
-        <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority />
+        {/* The washes lie over the cards too, so the pile fades into the art's edges; the headline sits above them at z-20. */}
+        <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority washOver />
 
-        {/* The headline centres against the fan. */}
-        <div className="page-column grid gap-4 pt-2 pb-6 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] md:gap-4 md:py-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+        {/* The headline centres against the pile of cards. Beside it, the headline takes only its own width and the
+            cards' table everything else, out to the window edge (the same reach as CLOSING_ART_RIGHT). */}
+        <div className="page-column grid gap-4 pt-2 pb-6 md:grid-cols-[auto_minmax(0,1fr)] md:gap-4 md:py-8">
           {/* Cards come first on a phone: they say what this is faster than any sentence. */}
-          <div className="order-first flex flex-col md:order-last">
+          <div className="order-first flex flex-col md:order-last md:mr-[calc(min(0px,(var(--page-column)_-_100vw)/2)_-_1rem)]">
             <div className="flex flex-1 items-center justify-center">
-              <HeroFan />
+              <HeroPile />
             </div>
           </div>
 
