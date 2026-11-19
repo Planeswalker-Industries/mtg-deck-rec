@@ -30,6 +30,7 @@ import {
   phaseIndex,
   pushUndo,
   roundPhases,
+  roundBuys,
   roundSpendUsd,
   startJourney,
   withSpent,
@@ -297,6 +298,8 @@ export function useDeckJourney({
   const deck = useMemo(() => (state ? workingDeck(state) : null), [state]);
   /** What the round has spent on cards the player doesn't own (T091): requests carry the budget less this. */
   const spentUsd = state ? roundSpendUsd(state, owns) : 0;
+  /** The copies that spend is on, in the order taken: the Budget row lists them. */
+  const buys = state ? roundBuys(state, owns) : [];
   const ownsRef = useRef(owns);
   useEffect(() => {
     ownsRef.current = owns;
@@ -814,6 +817,7 @@ export function useDeckJourney({
     workingContext,
     /** Money the round has spent on cards the player doesn't own (T091). */
     spentUsd,
+    buys,
     cards,
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
     before,

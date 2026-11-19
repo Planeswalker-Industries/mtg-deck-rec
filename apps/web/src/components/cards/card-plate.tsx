@@ -78,6 +78,7 @@ export function CardPlate({
   onSelect,
   selected = false,
   showCost = true,
+  slim = false,
   trailing,
   onSwipeAway,
   className,
@@ -88,6 +89,8 @@ export function CardPlate({
   onSwipeAway?: (() => void) | undefined;
   /** False leaves the mana cost off, where the plate is narrow and the name needs the room (a pair of plates on a phone). */
   showCost?: boolean;
+  /** A shorter row for a list inside a panel (the Budget row): 44 px on a phone, the touch minimum, 36 px wider. */
+  slim?: boolean;
   card: CardSummary;
   quantity: number;
   commander?: boolean;
@@ -190,7 +193,8 @@ export function CardPlate({
     <li
       ref={row}
       className={cn(
-        "group/row relative grid h-12 overflow-hidden rounded-lg border bg-sleeve",
+        "group/row relative grid overflow-hidden rounded-lg border bg-sleeve",
+        slim ? "h-11 sm:h-9" : "h-12",
         hasActions ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1",
         selected ? "border-primary ring-1 ring-primary" : "border-seam",
         mark === "cut" && "border-l-4 border-l-cut",

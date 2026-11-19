@@ -184,7 +184,7 @@ export default function PrivacyPage() {
             Scryfall
           </a>
           . Card roles come from the Scryfall Tagger project. Prices are Scryfall&apos;s estimates for each card&apos;s
-          lowest-priced printing, as of the date shown with them, and may be out of date: a price marked ~ is that
+          lowest-priced printing, as of the date shown with them, and may be out of date: every price shown is that
           estimate. TCGplayer shows the final price.
         </p>
         <p>

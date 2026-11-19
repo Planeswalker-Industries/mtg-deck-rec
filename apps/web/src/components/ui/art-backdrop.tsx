@@ -19,6 +19,9 @@ const WASHES = {
 /**
  * Land art laid behind a section. Decorative: the credit lives next to it in the page (see `lib/landing-art.ts`).
  * The parent must be `relative isolate`; the layer sits at `-z-10` inside it.
+ *
+ * With `washOver`, the washes leave the art's layer and sit at `z-10`, over the section's own content, so decoration
+ * (the hero's cards) sinks into them like the art does. Anything that must stay readable then needs `z-20`.
  */
 export function ArtBackdrop({
   src,
@@ -26,6 +29,7 @@ export function ArtBackdrop({
   sizes,
   priority = false,
   position = "object-center",
+  washOver = false,
 }: {
   src: string;
   wash: keyof typeof WASHES;
@@ -33,13 +37,21 @@ export function ArtBackdrop({
   priority?: boolean;
   /** A Tailwind `object-*` class choosing which part of the art stays in frame. */
   position?: string;
+  /** Lay the washes over the section's content instead of under it. */
+  washOver?: boolean;
 }) {
+  const washes = WASHES[wash].map((layer) => <div key={layer} className={cn("absolute inset-0", layer)} />);
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-      <Image src={src} alt="" fill priority={priority} sizes={sizes} className={cn("object-cover", position)} />
-      {WASHES[wash].map((layer) => (
-        <div key={layer} className={cn("absolute inset-0", layer)} />
-      ))}
-    </div>
+    <>
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <Image src={src} alt="" fill priority={priority} sizes={sizes} className={cn("object-cover", position)} />
+        {!washOver && washes}
+      </div>
+      {washOver && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-10">
+          {washes}
+        </div>
+      )}
+    </>
   );
 }

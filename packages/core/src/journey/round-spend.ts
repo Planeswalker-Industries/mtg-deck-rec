@@ -9,9 +9,17 @@ import type { JourneyState } from './journey';
  * and so out of the sum.
  */
 export function roundSpendUsd(state: JourneyState, owns: (cardId: CardId) => boolean): number {
-  const cards: CardSummary[] = [...state.adds, ...state.swaps.map((s) => s.replacement), ...state.fixes.map((f) => f.in)];
-  const cents = cards.reduce((sum, card) => (isBasicLand(card) || owns(card.id) ? sum : sum + Math.round((card.price?.usd ?? 0) * 100)), 0);
+  const cents = roundBuys(state, owns).reduce((sum, card) => sum + Math.round((card.price?.usd ?? 0) * 100), 0);
   return cents / 100;
+}
+
+/**
+ * The cards the round brought in that the spend counts, in the order they were taken (Add, then Swap, then Fix): one
+ * entry per copy, unowned and not basic lands. Unpriced ones are included; they add nothing to the spend.
+ */
+export function roundBuys(state: JourneyState, owns: (cardId: CardId) => boolean): CardSummary[] {
+  const cards: CardSummary[] = [...state.adds, ...state.swaps.map((s) => s.replacement), ...state.fixes.map((f) => f.in)];
+  return cards.filter((card) => !isBasicLand(card) && !owns(card.id));
 }
 
 /**

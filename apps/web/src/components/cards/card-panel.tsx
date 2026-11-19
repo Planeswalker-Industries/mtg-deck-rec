@@ -184,11 +184,14 @@ export function CompactCardPanel({
   side,
   dim = false,
   owned = false,
+  underArt,
   children,
 }: {
   card: CardSummary;
   rules: CardRules | null | undefined;
   side: "out" | "in";
+  /** Under the card's image, left of the facts: a card to buy shows its price here. */
+  underArt?: ReactNode;
   /** The card going out reads quieter than the one coming in. */
   dim?: boolean;
   /** Marks the card as owned (`OwnedCorner`). */
@@ -209,6 +212,7 @@ export function CompactCardPanel({
           />
         </ZoomableCard>
         {owned && <OwnedCorner />}
+        {underArt}
       </div>
       <CardFacts card={card} rules={rules} size="compact" tag={<SwapTag side={side} />} phoneRules={side === "in"}>
         {children}

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { compareCards } from "@mtg/core/journey";
 import { ownedOnly, swapMatchLabel } from "@mtg/core/scoring";
+import { BuyPrice } from "@/components/cards/buy-price";
 import { CompactCardPanel, DecisionButtons } from "@/components/cards/card-panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -165,7 +166,9 @@ export function SwipeRater({
     >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground font-mono">
-          Card {rater.targetIndex + 1} of {rater.targetCount}
+          {/* "1 of 14": the word "Card" is read out, not shown (owner, 2026-11-18); "option" stays, two counts need it. */}
+          <span className="sr-only">Card </span>
+          {rater.targetIndex + 1} of {rater.targetCount}
           {inRater ? "" : <span className="max-sm:hidden"> to replace</span>}
           {candidate && !inRater && <span className="sm:hidden"> · option {rater.candidateIndex + 1} of {rater.candidateCount}</span>}
         </p>
@@ -218,8 +221,14 @@ export function SwipeRater({
       ) : (
         <>
           <div aria-live="polite" className="flex flex-col gap-2">
-            <CompactCardPanel card={candidate.card} rules={candidateRules} side="in" owned={markOwned && candidate.owned !== null}>
-              {/* No price in the round: prices and buy links live on Finish and the card page. */}
+            <CompactCardPanel
+              card={candidate.card}
+              rules={candidateRules}
+              side="in"
+              owned={markOwned && candidate.owned !== null}
+              // A replacement to buy shows its price under its art (owner, 2026-11-18); owned ones and the rater's don't.
+              underArt={!inRater && candidate.owned === null ? <BuyPrice price={candidate.card.price} className="mt-1.5" /> : undefined}
+            >
               <span className="font-mono max-sm:hidden">
                 {rater.candidateIndex + 1} of {rater.candidateCount}
               </span>
