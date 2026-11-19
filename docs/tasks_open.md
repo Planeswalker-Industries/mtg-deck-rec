@@ -16,7 +16,7 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 - [x] Error pages: `error.tsx` and `global-error.tsx`
 - [x] Text limits on the deck and collection boxes
 - [x] `maxLength` on every free-text input
-- [ ] Collection rows the server would refuse are split out (core)
+- [x] Collection rows the server would refuse are split out (core)
 - [ ] Collection import flow
 - [ ] Budget shortfall on builds without a collection
 
