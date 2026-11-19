@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { Copy, Pencil, Trash2 } from "lucide-react";
 import type { DeckId, SavedDeckSummary } from "@mtg/core/contract";
+import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import { cn } from "cn";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
+          maxLength={MAX_DECK_NAME_CHARS}
           placeholder="Filter by name"
           aria-label="Filter decks by name"
           className="h-10 max-w-xs bg-sleeve"
@@ -183,7 +185,7 @@ function RenameRow({
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => e.key === "Escape" && onCancel()}
         aria-label={`New name for ${deck.name}`}
-        maxLength={80}
+        maxLength={MAX_DECK_NAME_CHARS}
         className="h-10 bg-background"
       />
       <Button type="submit" className="h-10 shrink-0 px-3">

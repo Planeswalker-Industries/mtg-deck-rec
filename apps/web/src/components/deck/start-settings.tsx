@@ -13,6 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { HINT_TEXT, TEXT_LINK } from "@/lib/constants";
 import { BRACKETS, bracketLabel } from "@/lib/labels";
 
+/** The most a budget field takes: "$100,000.00" plus a stray space. */
+const MAX_BUDGET_INPUT_CHARS = 12;
+
 /** A budget field as typed: blank is no limit. */
 type Field = "cardCapUsd" | "spendUsd";
 
@@ -122,6 +125,7 @@ export function BudgetFields({
                 value={text[key]}
                 aria-invalid={error !== null && amountOf(text[key]) !== undefined}
                 onChange={(e) => change(key, e.target.value)}
+                maxLength={MAX_BUDGET_INPUT_CHARS}
                 className="pl-6 font-mono"
               />
             </div>

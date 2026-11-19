@@ -11,7 +11,7 @@ import { ErrorText } from "@/components/ui/error-text";
 const ACCEPT = ".csv,.txt,text/csv,text/plain";
 
 /** Generous for a collection — a 50,000-row CSV is about 8 MB — and small enough to refuse a video by accident. */
-const MAX_BYTES = 32 * 1024 * 1024;
+const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 
 /**
  * The paste box on the deck and collection forms. It grows with its text up to about a phone screen's third and then
@@ -32,12 +32,18 @@ const mb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 export function FileDrop({
   onFile,
   note,
+  maxBytes = DEFAULT_MAX_BYTES,
   disabled = false,
 }: {
-  /** Called with the file's text and its name, once it has been read. */
-  onFile: (text: string, fileName: string) => void;
+  /**
+   * Called with the file's text and its name, once it has been read. A returned string is the file's problem, shown
+   * under the control, for a file that reads fine but can't be used (too long for the box it is meant for).
+   */
+  onFile: (text: string, fileName: string) => string | undefined;
   /** The line under the control. Say where the file goes: a collection is matched here, a decklist is sent to be read. */
   note: string;
+  /** Largest file taken; the deck tool's is far smaller than a collection's. */
+  maxBytes?: number;
   disabled?: boolean;
 }) {
   const inputId = useId();
@@ -48,8 +54,8 @@ export function FileDrop({
   async function take(file: File | undefined) {
     if (!file || disabled) return;
     setProblem(null);
-    if (file.size > MAX_BYTES) {
-      setProblem(`${file.name} is ${mb(file.size)}. Files up to ${mb(MAX_BYTES)} can be imported.`);
+    if (file.size > maxBytes) {
+      setProblem(`File too large (${mb(maxBytes)} max).`);
       return;
     }
     try {
@@ -58,7 +64,8 @@ export function FileDrop({
         setProblem(`${file.name} is empty.`);
         return;
       }
-      onFile(text, file.name);
+      const refused = onFile(text, file.name);
+      if (refused) setProblem(refused);
     } catch {
       setProblem(`Couldn't read ${file.name}. If it's open in another program, close it and try again.`);
     }
@@ -154,11 +161,14 @@ export function LoadedFile({
   textShown,
   onToggleText,
   onRemove,
+  tooLargeToShow = false,
   disabled = false,
 }: {
   name: string;
   lines: number;
   textShown: boolean;
+  /** The text is longer than the box can hold, so it can't be shown in it. */
+  tooLargeToShow?: boolean;
   onToggleText: () => void;
   onRemove: () => void;
   disabled?: boolean;
@@ -172,9 +182,13 @@ export function LoadedFile({
           {lines.toLocaleString()} line{lines === 1 ? "" : "s"}
         </p>
       </div>
-      <Button type="button" size="sm" variant="ghost" aria-expanded={textShown} onClick={onToggleText}>
-        {textShown ? "Hide text" : "Show text"}
-      </Button>
+      {tooLargeToShow ? (
+        <p className="text-sm text-muted-foreground">Too large to show.</p>
+      ) : (
+        <Button type="button" size="sm" variant="ghost" aria-expanded={textShown} onClick={onToggleText}>
+          {textShown ? "Hide text" : "Show text"}
+        </Button>
+      )}
       <Button type="button" size="icon-sm" variant="ghost" aria-label={`Remove ${name}`} disabled={disabled} onClick={onRemove}>
         <X aria-hidden />
       </Button>

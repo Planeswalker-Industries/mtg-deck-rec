@@ -1,42 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { PasteLimitBubble } from "@/components/ui/paste-limit";
 import { SITE_URL } from "@/lib/site";
+import { body, drama, mono } from "./fonts";
 import "./globals.css";
-
-// The fonts live in ./fonts (Google Fonts' latin subsets, SIL OFL, licences beside them) rather than next/font/google:
-// that one downloads them on every build, and a failed download fails the Vercel build.
-
-// Headings, body, buttons: warm and slightly hand-made. A variable font; the lane uses only its 400 and 600 weights.
-const body = localFont({
-  src: "./fonts/bricolage-grotesque-latin.woff2",
-  variable: "--font-body",
-  weight: "400 600",
-  style: "normal",
-  display: "swap",
-});
-
-// The buddy's voice: the friend's asides. Italic only, one weight.
-const drama = localFont({
-  src: "./fonts/newsreader-italic-latin.woff2",
-  variable: "--font-drama-face",
-  weight: "400",
-  style: "italic",
-  display: "swap",
-  adjustFontFallback: "Times New Roman",
-});
-
-// Every number: deck counts, prices, mana value. No metric-matched fallback: next/font offers only Arial and Times.
-const mono = localFont({
-  src: "./fonts/dm-mono-400-latin.woff2",
-  variable: "--font-mono-face",
-  weight: "400",
-  style: "normal",
-  display: "swap",
-  adjustFontFallback: false,
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -60,6 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <AdSlot slot="rail" />
         </div>
         <SiteFooter />
+        <PasteLimitBubble />
       </body>
     </html>
   );

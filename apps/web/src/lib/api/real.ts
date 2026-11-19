@@ -1,4 +1,5 @@
-import type { ActionsApi, ApiError, CardSummary, CatalogApi, RecsApi, Result } from "@mtg/core/contract";
+import type { ActionsApi, CardSummary, CatalogApi, RecsApi, Result } from "@mtg/core/contract";
+import { callAction, offline } from "./call-action";
 import {
   deleteCollectionAction,
   getMyCollectionEntriesAction,
@@ -32,11 +33,6 @@ import {
   setDeckVisibilityAction,
 } from "@/app/decks/actions";
 
-const offline: ApiError = {
-  code: "UPSTREAM_UNAVAILABLE",
-  message: "Couldn't reach the server. Check your connection and try again.",
-};
-
 async function post<T>(path: string, body: unknown): Promise<Result<T>> {
   try {
     const res = await fetch(path, {
@@ -65,35 +61,35 @@ export const realRecs: RecsApi = {
 };
 
 export const realActions: ActionsApi = {
-  parseDeck: (input) => parseDeckAction(input),
-  analyzeDeck: (input) => analyzeDeckAction(input),
-  getDeckCoverage: (input) => getDeckCoverageAction(input),
-  importDeckFromUrl: (input) => importDeckFromUrlAction(input),
-  getCommanderCoverage: (input) => getCommanderCoverageAction(input),
-  requestCommanderDecks: (input) => requestCommanderDecksAction(input),
-  getCommanderRequest: (input) => getCommanderRequestAction(input),
-  resolveCollectionRows: (input) => resolveCollectionRowsAction(input),
-  saveCollectionBatch: (input) => saveCollectionBatchAction(input),
-  deleteCollection: () => deleteCollectionAction(),
-  getMyCollectionEntries: () => getMyCollectionEntriesAction(),
-  setCollectionCardQuantity: (input) => setCollectionCardQuantityAction(input),
-  getMyCollectionSharing: () => getMyCollectionSharingAction(),
-  setCollectionSharing: (input) => setCollectionSharingAction(input),
-  getSharedCollection: (input) => getSharedCollectionAction(input),
-  saveDeck: (input) => saveDeckAction(input),
-  openSavedDeck: (input) => openSavedDeckAction(input),
-  renameDeck: (input) => renameDeckAction(input),
-  duplicateDeck: (input) => duplicateDeckAction(input),
-  setDeckVisibility: (input) => setDeckVisibilityAction(input),
-  setDeckBuilt: (input) => setDeckBuiltAction(input),
-  deleteDeck: (input) => deleteDeckAction(input),
+  parseDeck: (input) => callAction(() => parseDeckAction(input)),
+  analyzeDeck: (input) => callAction(() => analyzeDeckAction(input)),
+  getDeckCoverage: (input) => callAction(() => getDeckCoverageAction(input)),
+  importDeckFromUrl: (input) => callAction(() => importDeckFromUrlAction(input)),
+  getCommanderCoverage: (input) => callAction(() => getCommanderCoverageAction(input)),
+  requestCommanderDecks: (input) => callAction(() => requestCommanderDecksAction(input)),
+  getCommanderRequest: (input) => callAction(() => getCommanderRequestAction(input)),
+  resolveCollectionRows: (input) => callAction(() => resolveCollectionRowsAction(input)),
+  saveCollectionBatch: (input) => callAction(() => saveCollectionBatchAction(input)),
+  deleteCollection: () => callAction(() => deleteCollectionAction()),
+  getMyCollectionEntries: () => callAction(() => getMyCollectionEntriesAction()),
+  setCollectionCardQuantity: (input) => callAction(() => setCollectionCardQuantityAction(input)),
+  getMyCollectionSharing: () => callAction(() => getMyCollectionSharingAction()),
+  setCollectionSharing: (input) => callAction(() => setCollectionSharingAction(input)),
+  getSharedCollection: (input) => callAction(() => getSharedCollectionAction(input)),
+  saveDeck: (input) => callAction(() => saveDeckAction(input)),
+  openSavedDeck: (input) => callAction(() => openSavedDeckAction(input)),
+  renameDeck: (input) => callAction(() => renameDeckAction(input)),
+  duplicateDeck: (input) => callAction(() => duplicateDeckAction(input)),
+  setDeckVisibility: (input) => callAction(() => setDeckVisibilityAction(input)),
+  setDeckBuilt: (input) => callAction(() => setDeckBuiltAction(input)),
+  deleteDeck: (input) => callAction(() => deleteDeckAction(input)),
   exportDeck: notYet,
-  castVote: (input) => castVoteAction(input),
-  recordRecEvent: (input) => recordRecEventAction(input),
+  castVote: (input) => callAction(() => castVoteAction(input)),
+  recordRecEvent: (input) => callAction(() => recordRecEventAction(input)),
   setFavorite: notYet,
   adminSetTagDisabled: notYet,
-  dealRaterCards: (input) => dealRaterCardsAction(input),
-  submitFeedback: (input) => submitFeedbackAction(input),
+  dealRaterCards: (input) => callAction(() => dealRaterCardsAction(input)),
+  submitFeedback: (input) => callAction(() => submitFeedbackAction(input)),
 };
 
 /** Card lookups run as GET Route Handlers, so the CDN can keep results and searches don't queue behind actions. */
@@ -125,8 +121,7 @@ export const realCatalog: CatalogApi = {
       // means the edge answered and no function ran, so the source is whatever was true when that entry was cached —
       // add `&fresh=1` to bypass it.
       console.info(
-        `[search] ${res.headers.get("x-search-source") ?? "unknown"}` +
-          ` (cache: ${res.headers.get("x-vercel-cache") ?? "none"})`,
+        `[search] ${res.headers.get("x-search-source") ?? "unknown"}` + ` (cache: ${res.headers.get("x-vercel-cache") ?? "none"})`,
       );
       return (await res.json()) as Result<CardSummary[]>;
     } catch {

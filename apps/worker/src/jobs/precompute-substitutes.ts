@@ -9,9 +9,11 @@ import { finishRun, heartbeat, startRun, type SyncMetrics } from '../lib/sync-ru
  *
  * A card is rebuilt when it is new, when what its similarity rests on moved (its functional tags and their idf to two
  * places, its colours, mana value and functional twin, the depth, the functional tag config, the pool order's
- * weights: `tags_hash`), when a tag near its own was switched on or off, when a card near it is new or changed (it may
- * now belong in this list), and every `substitutesRebuildDays`, which catches what reaches a list only through its
- * candidates' other fields: staple scores, legality, a tag a candidate lost.
+ * weights: `tags_hash`), when a tag near its own was switched on or off, and every `substitutesRebuildDays`, which
+ * catches what reaches a list only through its candidates: a new or changed card near it, staple scores, legality, a tag
+ * a candidate lost. A new or changed card does not clear the lists near it: its functional tags are broad, so 11
+ * changed cards cleared 24,771 of 35,122 lists (2026-11-19), and rebuilding them changed 0.57% of their rows. After a
+ * set release, clear every hash (`update public.substitute_targets set tags_hash = ''`) and the worker rebuilds them.
  */
 
 /** Cards whose lists are computed and merged together. */
@@ -24,7 +26,8 @@ const BATCH_TARGETS = 64;
 const PARALLEL_LISTS = 2;
 /** The depth when app_config.precompute has none: the shared swap pool's (migration 20261006000100 says why). */
 const DEFAULT_DEPTHS = { substitutesDepth: 220 };
-const DEFAULT_REBUILD_DAYS = 7;
+/** Days between rebuilds of an unchanged list when app_config.worker has none: what they catch moves little (owner, 2026-11-19). */
+const DEFAULT_REBUILD_DAYS = 60;
 /**
  * A first batch where more than this share of the cards that had substitutes come back with none stops the run: that
  * is a broken tag config or hierarchy, not a week of tag edits.
@@ -93,26 +96,15 @@ async function currentHashes(sql: Sql, depths: Depths): Promise<Map<number, stri
 }
 
 /**
- * Clears the stored hash of every list these tags, or these cards' functional tags, can reach as a candidate: the
- * cards carrying any tag within two steps of a common ancestor of one, which is the walk precompute_substitutes makes.
- * The cards themselves are cleared as well (a new card gets its row now), so a change clears its neighbours once
- * rather than on every pass until its own list is built. A cleared list is rebuilt even if the pass that cleared it
- * runs out of time. Returns the cards it cleared.
+ * Clears the stored hash of every list these tags can reach as a candidate: the cards carrying any tag within two
+ * steps of a common ancestor of one, which is the walk precompute_substitutes makes. A cleared list is rebuilt even if
+ * the pass that cleared it runs out of time. Returns how many lists it cleared.
  */
-async function markNear(sql: Sql, { tagIds = [], cardIds = [] }: { tagIds?: string[]; cardIds?: number[] }): Promise<number[]> {
-  if (tagIds.length === 0 && cardIds.length === 0) return [];
-  const own = await sql<{ card_id: number }[]>`
-    insert into public.substitute_targets (card_id, tags_hash, built_at)
-    select unnest(${cardIds}::int[]), '', 'epoch'
-    on conflict (card_id) do update set tags_hash = ''
-    returning card_id
-  `;
+async function markNear(sql: Sql, tagIds: string[]): Promise<number> {
+  if (tagIds.length === 0) return 0;
   const rows = await sql<{ card_id: number }[]>`
     with changed as (
       select unnest(${tagIds}::uuid[]) as id
-      union
-      select ct.tag_id from public.card_tags ct join public.functional_tags f on f.tag_id = ct.tag_id
-      where ct.card_id = any (${cardIds}::int[])
     ),
     up as (
       select tc.ancestor_id as id from public.tag_closure tc join changed c on c.id = tc.descendant_id where tc.depth <= 2
@@ -125,7 +117,7 @@ async function markNear(sql: Sql, { tagIds = [], cardIds = [] }: { tagIds?: stri
       and s.tags_hash <> ''
     returning s.card_id
   `;
-  return [...own, ...rows].map((r) => r.card_id);
+  return rows.length;
 }
 
 /**
@@ -144,7 +136,7 @@ async function markFlipped(sql: Sql): Promise<number> {
     const was = new Set(before);
     const is = new Set(disabled);
     const flipped = [...disabled.filter((id) => !was.has(id)), ...before.filter((id) => !is.has(id))];
-    marked = (await markNear(sql, { tagIds: flipped })).length;
+    marked = await markNear(sql, flipped);
   }
   await sql`
     insert into public.precompute_state (part, version) values ('substitutes', ${sql.json({ disabled })})
@@ -177,21 +169,6 @@ export async function precomputeSubstitutes(
   `;
   const storedById = new Map(stored.map((s) => [s.card_id, s]));
   const staleBefore = Date.now() - rebuildDays * MS_PER_DAY;
-
-  // A new or changed card may now belong in the lists of the cards near it, so theirs are cleared too. A cleared hash
-  // ('') isn't a change of its own: counting it would spread the clearing card by card over the whole catalog.
-  if (!full) {
-    const moved = [...hashes]
-      .filter(([id, hash]) => {
-        const s = storedById.get(id);
-        return !s || (s.tags_hash !== '' && s.tags_hash !== hash);
-      })
-      .map(([id]) => id);
-    for (const id of await markNear(sql, { cardIds: moved })) {
-      const s = storedById.get(id);
-      if (s) s.tags_hash = '';
-    }
-  }
 
   const changed: number[] = [];
   const aged: { id: number; builtAt: number }[] = [];

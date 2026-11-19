@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import type { CardSummary, OwnershipInput } from "@mtg/core/contract";
+import { MAX_SEARCH_QUERY_CHARS } from "@mtg/core/schemas";
 import { cn } from "cn";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { Input } from "@/components/ui/input";
@@ -106,6 +107,7 @@ export function CommanderPicker({
         aria-activedescendant={open ? `${id}-option-${active}` : undefined}
         value={query}
         onChange={(e) => search(e.target.value)}
+        maxLength={MAX_SEARCH_QUERY_CHARS}
         onKeyDown={(e) => {
           if (!open) return;
           if (e.key === "ArrowDown") {

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { signOutAction } from "@/app/sign-in/actions";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
+import { callAction } from "@/lib/api/call-action";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -21,7 +22,7 @@ export function SignOutButton() {
         onClick={async () => {
           setPending(true);
           setError(null);
-          const result = await signOutAction();
+          const result = await callAction(() => signOutAction());
           if (!result.ok) {
             setPending(false);
             setError(result.error.message);

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Minus, Plus, Search, Trash2 } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
+import { MAX_SEARCH_QUERY_CHARS } from "@mtg/core/schemas";
 import { CardImage } from "@/components/cards/card-image";
 import { ZoomableCard } from "@/components/cards/card-zoom";
 import { Button } from "@/components/ui/button";
@@ -106,6 +107,7 @@ export function AddToCollection({ editor }: { editor: CollectionEditor }) {
           placeholder="Card name"
           value={text}
           onChange={(e) => change(e.target.value)}
+          maxLength={MAX_SEARCH_QUERY_CHARS}
           className="bg-background pl-9 text-base sm:text-sm"
         />
       </div>
