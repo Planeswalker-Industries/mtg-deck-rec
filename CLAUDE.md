@@ -32,6 +32,7 @@ yarn workspace @mtg/web tsx --env-file=.env.local scripts/dev-sign-in.ts anon   
 
 yarn workspace @mtg/worker cli <job>             # bulk:download, sync:catalog, sync:printings, sync:tags, sync:spellbook, sync:edhrec, sync:typesense [--rebuild], collate, aggregate:corpus, precompute, eval:holdout, serve
 yarn workspace @mtg/worker cli:hosted <job>      # the same against hosted (apps/worker/.env.hosted); plain `cli` is always local
+update public.substitute_targets set tags_hash = '';   # SQL, after a set release: the worker rebuilds every substitute list (otherwise every 60 days)
 
 docker compose -f docker-compose.search.yml up -d --build   # local Typesense (56325) and search API (56326)
 cd services/search-api && go test ./...
