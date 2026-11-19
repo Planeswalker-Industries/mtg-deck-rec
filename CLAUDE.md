@@ -90,7 +90,7 @@ APIs differ from older versions. Read `node_modules/next/dist/docs/` before writ
 - Fonts: Bricolage Grotesque (400 and 600 only) for UI, Newsreader Italic (`font-drama`) for the buddy's voice only, DM Mono (`font-mono`, 400 only) for standalone numbers. Type scale `text-xs`–`text-4xl`; no arbitrary `text-[…]`. Touch targets at least 44 px on phones.
 - Card images are hotlinked from Scryfall `unoptimized`: pick the `variant` from the rendered size (`small` for every grid). Never cover the lower part of a card: the artist and copyright line must stay visible.
 - On a phone at 390×844, the swipe view's ✓ and ✕ stay on screen without scrolling; re-measure after adding anything above the swipe card or changing the Deck stats footer.
-- Prices always render with their as-of date. Low play rate reads as "rarely played with this commander", never as wrong.
+- Totals and standalone prices render with their as-of date; a single card's price beside a suggestion or in a list is just "~$4.29". Low play rate reads as "rarely played with this commander", never as wrong.
 
 ## Domain conventions
 

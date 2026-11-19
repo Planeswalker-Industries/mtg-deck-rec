@@ -53,7 +53,7 @@ function Why({
   suggestion: AddSuggestion;
   roles: readonly StatLine[];
   hasCollection: boolean;
-  /** False where the counts show as chips under the card (the swipe view), where the price also carries its date. */
+  /** False where the counts show as chips under the card (the swipe view). Prices of cards to buy carry no date (owner, 2026-11-18). */
   counts?: boolean;
 }) {
   const { card, corpus, owned } = suggestion;
@@ -64,7 +64,7 @@ function Why({
       {corpus && (
         <span className="font-mono">{corpus.limited ? "New card, little play data yet" : `In ${formatPercent(corpus.inclusionRate)} of decks`}</span>
       )}
-      {!(hasCollection && owned) && <span className="font-mono">{fromPrice(card.price, { dated: !counts })}</span>}
+      {!(hasCollection && owned) && <span className="font-mono">{fromPrice(card.price)}</span>}
     </span>
   );
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
-import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, StatChoices } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, DeckId, StatChoices } from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import { BRACKET_LINE, CURVE_LINE, statDeltas, toTallyCard, withSpent, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
@@ -27,6 +27,7 @@ import { CollectionOfferDialog } from "./collection-offer-dialog";
 import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
+import { defaultCarts } from "@/components/decks/shopping-list";
 import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
@@ -37,6 +38,7 @@ import { useDeckBuild } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
+import type { BuySaveState, RoundBuy } from "./deck-stats/budget-row";
 import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { statChips } from "./deck-stats/stat-chips";
@@ -47,7 +49,7 @@ import { CutPhase } from "./journey/cut-phase";
 import { FixPhase } from "./journey/fix-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
-import { ReviewPhase } from "./journey/review-phase";
+import { ReviewPhase, roundInIds } from "./journey/review-phase";
 import { RoundBar, type CopyState, type RoundSave } from "./journey/round-bar";
 import { useDeckJourney, type DeckJourney } from "./journey/use-deck-journey";
 import { useFix } from "./journey/use-fix";
@@ -245,6 +247,14 @@ function DeckToolSession() {
   const [roundHeld, setRoundHeld] = useState(false);
   /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu; a new deck starts without one. */
   const [copy, setCopy] = useState<CopyState>({ status: "idle" });
+  /**
+   * The new deck Buy in Deck stats saved this round (signed in, no deck open), so a later press, or Finish's Save, writes
+   * to it rather than save another. Cleared when the commanders change.
+   */
+  const buyDeck = useRef<{ deckId: DeckId; code: string; name: string; commanders: string } | null>(null);
+  const [buySave, setBuySave] = useState<BuySaveState>({ status: "idle" });
+  /** Buy was pressed with a deck open: its write shows as the open deck's auto-save status. */
+  const [boughtOpen, setBoughtOpen] = useState(false);
   const [copyRound, setCopyRound] = useState(tool.round);
   if (copyRound !== tool.round) {
     setCopyRound(tool.round);
@@ -410,6 +420,11 @@ function DeckToolSession() {
   );
   /** The Deck stats lines a card in and a card out would move: the chips shown by the card on screen. */
   const chipsFor = (add: CardSummary | null, remove: CardSummary | null) => (deckStats ? statChips(deckStats, tallyOf(add), tallyOf(remove)) : []);
+  /** Buy on TCGplayer from Deck stats: Finish's carts, once the round is under way and the collection is checked. */
+  const roundBuy: RoundBuy | null =
+    journey.state && coverageMissing !== undefined
+      ? { carts: defaultCarts(journey.after, coverageMissing, roundInIds(journey)), onBuy: () => void saveForBuy(), saved: buySaveState() }
+      : null;
   const statsPanel = deckStats
     ? {
         report: deckStats,
@@ -422,6 +437,8 @@ function DeckToolSession() {
         after: previewReport,
         money: {
           spentUsd: spendKnown ? journey.spentUsd : 0,
+          buys: spendKnown ? journey.buys : [],
+          buy: roundBuy,
           budget: tool.budget,
           unpricedSkipped: journey.add.state.status === "ready" ? journey.add.state.data.unpricedSkipped : undefined,
           onBudget: tool.changeBudget,
@@ -682,7 +699,8 @@ function DeckToolSession() {
    * at Add. Save then opens the editor: an open account deck has just been written back by the analysis, and a deck
    * that isn't saved yet gets the name form.
    */
-  async function commitJourney(kind: "save" | "reanalyze") {
+  /** `open`: the deck the save writes to, when it was opened in this same handler (the state has yet to show it). */
+  async function commitJourney(kind: "save" | "reanalyze", open: { code: string } | null = tool.openDeck) {
     const text = journey.resultText();
     if (text === null) return;
     setCommitting(true);
@@ -691,9 +709,9 @@ function DeckToolSession() {
     if (!outcome.parsed) return;
     if (kind === "save") {
       // An open deck was just written back by the analysis; once that lands, its editor has the result.
-      if (tool.openDeck) {
+      if (open) {
         await tool.whenSaved();
-        router.push(editorUrl(tool.openDeck.code));
+        router.push(editorUrl(open.code));
         return;
       }
       setMode("edit");
@@ -723,6 +741,62 @@ function DeckToolSession() {
     });
     setCopy(result.ok ? { status: "saved", name, href: editorUrl(result.data.code) } : { status: "error", message: result.error.message });
   }
+  /** What became of the last Buy press's save: the open deck's own status when one is open. */
+  function buySaveState(): BuySaveState {
+    const open = tool.openDeck;
+    if (!open) return buySave;
+    if (!boughtOpen) return { status: "idle" };
+    if (open.status === "saving" || open.status === "dirty") return { status: "saving" };
+    if (open.status === "error") return { status: "error", message: open.message ?? "Couldn't save." };
+    return { status: "saved", href: editorUrl(open.code) };
+  }
+
+  /**
+   * Buy pressed in Deck stats (owner, 2026-11-18): a signed-in player's deck is saved to My Decks as the cart opens. An
+   * open deck takes the round's deck as an auto-save; otherwise the first press saves a new deck (public, as every new
+   * deck is) and later presses update it. The round goes on either way. Signed out, nothing is saved.
+   */
+  async function saveForBuy() {
+    const deck = journey.deck;
+    if (!signedIn || !deck || !analysis) return;
+    if (tool.openDeck) {
+      setBoughtOpen(true);
+      tool.saveRoundDeck(deck);
+      return;
+    }
+    const commanders = commandersOf(analysis);
+    const earlier = buyDeck.current?.commanders === commanders ? buyDeck.current : null;
+    const name = earlier?.name ?? (tool.deckName ?? suggestedDeckName(analysis)).slice(0, MAX_DECK_NAME_CHARS);
+    setBuySave({ status: "saving" });
+    const result = await getApis().actions.saveDeck({
+      ...(earlier ? { deckId: earlier.deckId } : {}),
+      name,
+      deck,
+      isPublic: true,
+      ...(tool.bracketOverride === null ? {} : { bracket: tool.bracketOverride }),
+      original: analysis.deck,
+      statChoices: tool.statChoices,
+      ...(tool.budget ? { budget: tool.budget } : {}),
+    });
+    if (!result.ok) {
+      setBuySave({ status: "error", message: result.error.message });
+      return;
+    }
+    buyDeck.current = { deckId: result.data.deckId, code: result.data.code, name, commanders };
+    setBuySave({ status: "saved", href: editorUrl(result.data.code) });
+  }
+
+  /** Finish's Save after Buy saved a new deck: that deck is opened first, so the save writes to it, not to another. */
+  function saveRound() {
+    const saved = buyDeck.current;
+    if (!tool.openDeck && saved && analysis && saved.commanders === commandersOf(analysis)) {
+      tool.trackSavedDeck(saved);
+      void commitJourney("save", saved);
+      return;
+    }
+    void commitJourney("save");
+  }
+
   const roundSave: RoundSave = tool.openDeck
     ? {
         kind: "open",
@@ -731,7 +805,7 @@ function DeckToolSession() {
         onSaveCopy: () => void saveCopy(),
         copy,
       }
-    : { kind: "new", onSave: () => void commitJourney("save") };
+    : { kind: "new", onSave: saveRound };
 
   return (
     <div className="flex flex-col gap-5">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId, CardSummary, IsoDateTime, OracleId, RecContext } from '../contract';
 import { startJourney } from './journey';
-import { roundSpendUsd, withSpent } from './round-spend';
+import { roundBuys, roundSpendUsd, withSpent } from './round-spend';
 
 const card = (id: number, typeLine: string, usd: number | null): CardSummary => ({
   id: id as CardId,
@@ -35,6 +35,18 @@ describe('roundSpendUsd', () => {
 
   it('is 0 for a round that brought nothing in', () => {
     expect(roundSpendUsd(base, () => false)).toBe(0);
+  });
+});
+
+describe('roundBuys', () => {
+  it('lists the unowned copies brought in, in the order taken, unpriced ones included', () => {
+    const state = {
+      ...base,
+      adds: [card(10, 'Artifact', 2.5), card(11, 'Basic Land — Plains', 0.25), card(12, 'Creature', null)],
+      swaps: [{ target: card(2, 'Instant', 1), replacement: card(13, 'Instant', 0.1) }],
+      fixes: [{ line: 'curve', in: card(14, 'Sorcery', 0.2), out: card(15, 'Sorcery', 9) }],
+    };
+    expect(roundBuys(state, (id) => id === 14).map((c) => c.id)).toEqual([10, 12, 13]);
   });
 });
 

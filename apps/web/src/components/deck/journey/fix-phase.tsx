@@ -171,7 +171,7 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
             card={move.in}
             side="in"
             owned={hasCollection && inCard !== null && inCard.owned !== null}
-            note={notOwned ? `Not owned · ${fromPrice(price, { lower: true, dated: true })}` : null}
+            note={notOwned ? `Not owned · ${fromPrice(price, { lower: true })}` : null}
           />
         </div>
         <StatChips add={move.in} remove={move.out} marks={compareCards(compareCardOf(move.out), compareCardOf(move.in))} all className="justify-center" />

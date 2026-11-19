@@ -27,6 +27,18 @@ const SCOPES: { value: Scope; label: string }[] = [
   { value: "deck", label: "Whole deck" },
 ];
 
+/** Finish's first scope: this round's cards, or the whole deck when the round put none in. */
+const defaultScope = (roundIds: readonly CardId[]): Scope => (roundIds.length > 0 ? "round" : "deck");
+
+/**
+ * The carts Finish's list opens with, for a Buy button elsewhere (the Deck stats Budget row): with a collection the
+ * copies it doesn't supply, without one this round's cards, or the whole deck when the round put none in.
+ */
+export function defaultCarts(entries: readonly ShoppingLine[], missing: ReadonlyMap<CardId, number> | null, roundIds: readonly CardId[]): string[] {
+  const list = shoppingList({ entries, missing, roundIds, scope: defaultScope(roundIds) });
+  return cartLinks(list.groups.flatMap((g) => g.lines).map((l) => ({ name: l.card.name, quantity: l.quantity })));
+}
+
 function useCoarsePointer(): boolean {
   const [coarse, setCoarse] = useState(false);
   useEffect(() => {
@@ -116,14 +128,14 @@ export function ShoppingList({
   roundIds: readonly CardId[];
   /** Offer "This round's cards | Whole deck" (only without a collection). */
   scopeToggle: boolean;
-  /** Keep Buy and the price note at the foot of a scrolling container (Finish's aside from xl). */
+  /** Keep Buy and the price note at the top of a scrolling container (Finish's aside from xl). */
   pinActions?: boolean;
   /** Count, total and Buy first; the lines behind "Show the N cards", closed at first. */
   folded?: boolean;
 }) {
   const coarse = useCoarsePointer();
   // A round that put nothing in has nothing to buy in round scope, so the whole deck is the useful default there.
-  const [scope, setScope] = useState<Scope>(roundIds.length > 0 ? "round" : "deck");
+  const [scope, setScope] = useState<Scope>(defaultScope(roundIds));
   const [removed, setRemoved] = useState<CardId[]>([]);
   const [undoShown, setUndoShown] = useState(false);
   const [linesOpen, setLinesOpen] = useState(false);
@@ -252,8 +264,8 @@ export function ShoppingList({
     );
 
   const actions = (
-    // In Finish's aside (a scroll box from xl) Buy stays in view at its foot while the lines scroll.
-    <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:bottom-0 xl:bg-background xl:pt-2 xl:pb-1")}>
+    // In Finish's aside (a scroll box from xl) Buy stays in view at its top while the lines scroll under it.
+    <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:top-0 xl:z-10 xl:bg-background xl:pt-1 xl:pb-2")}>
       {/* A named primary action (owner, 2026-11-15): the solid blue button. */}
       <div className="flex flex-wrap items-center gap-2">
         {carts.length === 0 || list.count === 0 ? (
@@ -346,11 +358,12 @@ export function ShoppingList({
         </div>
       )}
 
+      {/* Buy at the top, as on the saved deck page (owner, 2026-11-18): the lines can run long. */}
+      {actions}
+
       {list.count === 0 ? <p className="text-sm text-muted-foreground">{emptyText}</p> : lines}
 
       {toast}
-
-      {actions}
     </section>
   );
 }
