@@ -13,7 +13,7 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 **HIGH** · Web · No input freezes or crashes a page, and every refusal or shortfall says in one short line what happened and what to do; design in `docs/plan_files/2026-11-19-input-limits-error-handling-design.md` (local)
 
 - [x] Safe action calls: a thrown Server Action call becomes a `Result` error
-- [ ] Error pages: `error.tsx` and `global-error.tsx`
+- [x] Error pages: `error.tsx` and `global-error.tsx`
 - [ ] Text limits on the deck and collection boxes
 - [ ] `maxLength` on every free-text input
 - [ ] Collection rows the server would refuse are split out (core)
