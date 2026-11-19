@@ -13,6 +13,10 @@ import { Label } from "@/components/ui/label";
 import { safeNextPath } from "@/lib/safe-path";
 import { TEXT_LINK } from "@/lib/constants";
 
+/** The longest email address SMTP allows. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the commented-out email form uses it; keep it for when that returns.
+const MAX_EMAIL_CHARS = 254;
+
 const RETURN_ERRORS: Record<string, string> = {
   link: "That sign-in link didn't work or has expired. Sign in again.",
   google: "Google sign-in didn't finish. Try again.",
@@ -144,6 +148,7 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          maxLength={MAX_EMAIL_CHARS}
           className="bg-sleeve"
           required
         />

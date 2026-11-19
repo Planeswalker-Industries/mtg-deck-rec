@@ -8,7 +8,7 @@ import { callAction } from "@/lib/api/call-action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DELETE_CONFIRMATION } from "@/lib/account";
+import { DELETE_CONFIRMATION, DELETE_CONFIRMATION_MAX_CHARS } from "@/lib/account";
 import { TEXT_LINK } from "@/lib/constants";
 import { ErrorText } from "@/components/ui/error-text";
 
@@ -77,6 +77,7 @@ export function DeleteAccount() {
             id={inputId}
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
+            maxLength={DELETE_CONFIRMATION_MAX_CHARS}
             autoComplete="off"
             spellCheck={false}
             disabled={pending}
