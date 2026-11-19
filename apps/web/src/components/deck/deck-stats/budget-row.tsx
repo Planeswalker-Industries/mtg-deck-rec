@@ -1,9 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { ChevronDown, TriangleAlert } from "lucide-react";
+import { Popover } from "radix-ui";
 import type { CardId, CardSummary, DeckBudget } from "@mtg/core/contract";
 import { cn } from "cn";
 import { PriceTag } from "@/components/cards/buy-price";
@@ -11,7 +12,7 @@ import { CardPlate } from "@/components/cards/card-plate";
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { affiliateOn, OUTBOUND } from "@/lib/affiliate";
-import { AFFILIATE_DISCLOSURE, TEXT_LINK } from "@/lib/constants";
+import { AFFILIATE_DISCLOSURE, TEXT_LINK, TIP_HOVER_DELAY_MS } from "@/lib/constants";
 import { formatUsd } from "@/lib/format";
 import { BudgetFields } from "../start-settings";
 import { Mark } from "./level";
@@ -80,6 +81,62 @@ export function MoneySlot({ money }: { money: RoundBudget }) {
  */
 const overCap = (card: CardSummary, budget: DeckBudget | undefined) =>
   budget?.cardCapUsd !== undefined && card.price != null && card.price.usd > budget.cardCapUsd;
+
+/** The over-cap tip, the same words for the eye and the screen reader. */
+const OVER_CAP_TIP = "Over card budget!";
+
+/**
+ * The over-cap mark: the warning icon alone, the price beside it amber (owner, 2026-11-19: less is more). The icon
+ * opens its tip on a tap or a click, or while a mouse rests on it, as the Deck stats chips do; a screen reader hears
+ * the tip as the button's name.
+ */
+function OverCapMark() {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<number | null>(null);
+  const clear = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger
+        type="button"
+        aria-label={OVER_CAP_TIP}
+        // Stops here: the plate around it must not take the tap as its own.
+        onClick={(e) => e.stopPropagation()}
+        onPointerEnter={(e) => {
+          if (e.pointerType !== "mouse") return;
+          clear();
+          timer.current = window.setTimeout(() => setOpen(true), TIP_HOVER_DELAY_MS);
+        }}
+        onPointerLeave={(e) => {
+          if (e.pointerType !== "mouse") return;
+          clear();
+          setOpen(false);
+        }}
+        className={cn(
+          "relative inline-flex cursor-pointer items-center rounded-sm text-warning",
+          // A taller target for a thumb without making the plate taller.
+          "after:absolute after:-inset-3 after:content-['']",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        )}
+      >
+        <TriangleAlert aria-hidden className="size-4" />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="top"
+          sideOffset={6}
+          collisionPadding={16}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className="z-50 max-w-64 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm text-foreground shadow-lift"
+        >
+          {OVER_CAP_TIP}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
 
 /** The bought copies as one line per card, in the order first taken. */
 function countedBuys(buys: readonly CardSummary[]): { card: CardSummary; quantity: number }[] {
@@ -184,11 +241,8 @@ export function BudgetRow({ money }: { money: RoundBudget }) {
               slim
               trailing={
                 overCap(card, budget) ? (
-                  <span className="mx-1 inline-flex items-center gap-1 text-xs whitespace-nowrap text-warning">
-                    <TriangleAlert aria-hidden className="size-4" />
-                    <span>
-                      Over max<span className="sr-only"> per card</span>
-                    </span>
+                  <span className="mx-1 inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+                    <OverCapMark />
                     <PriceTag price={card.price} className="text-warning" />
                   </span>
                 ) : (

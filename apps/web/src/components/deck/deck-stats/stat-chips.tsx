@@ -6,11 +6,9 @@ import { Popover } from "radix-ui";
 import type { CardSummary } from "@mtg/core/contract";
 import { statDeltas, towardTarget, type CompareCard, type CompareMark, type DeckStatsReport, type TallyCard } from "@mtg/core/journey";
 import { cn } from "cn";
+import { TIP_HOVER_DELAY_MS } from "@/lib/constants";
 import { countTip, markTip } from "./stat-chip-copy";
 import { useStatChips } from "./stat-preview";
-
-/** A pointer resting on a chip this long opens its tip; passing over a row of chips opens none. */
-const TIP_HOVER_DELAY_MS = 200;
 
 /** Colour rows move in tenths of a source (a Signet is 0.8): read to one decimal when not whole. */
 const SOURCE_DECIMALS = 1;

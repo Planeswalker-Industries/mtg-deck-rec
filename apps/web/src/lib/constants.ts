@@ -61,6 +61,9 @@ export const SHOPPING_UNDO_MS = 5000;
 /** How long an armed remove button (first tap on a phone) waits for the confirming tap before it disarms. */
 export const REMOVE_ARM_MS = 3000;
 
+/** A pointer resting on a tip's trigger this long opens it; passing over a row of them opens none. */
+export const TIP_HOVER_DELAY_MS = 200;
+
 /**
  * A word that opens its own explanation (a switch's "Public"): the text stays white, a blue dotted underline says it can
  * be pressed and that it explains rather than goes somewhere. Tapped or clicked, never hover-only: phones have no hover.
