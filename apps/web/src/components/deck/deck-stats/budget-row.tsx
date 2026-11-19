@@ -74,6 +74,13 @@ export function MoneySlot({ money }: { money: RoundBudget }) {
   );
 }
 
+/**
+ * Whether a card taken already costs more than the Max per card (T099): only after the player lowered it, or a build's
+ * pick priced up since. It stays in the deck; the list marks it amber. An unpriced card is never over.
+ */
+const overCap = (card: CardSummary, budget: DeckBudget | undefined) =>
+  budget?.cardCapUsd !== undefined && card.price != null && card.price.usd > budget.cardCapUsd;
+
 /** The bought copies as one line per card, in the order first taken. */
 function countedBuys(buys: readonly CardSummary[]): { card: CardSummary; quantity: number }[] {
   const byId = new Map<CardId, { card: CardSummary; quantity: number }>();
@@ -116,7 +123,7 @@ function BuyButtons({ buy }: { buy: RoundBuy }) {
 /**
  * The sheet's Budget row: its mark (off once over budget), what the round spent against the budget, cards left out
  * unpriced, and the two fields to edit. Tapping "Budget" lists the cards the spend is on, each with its price, as slim
- * plates that enlarge when pressed. Buy on TCGplayer sits beside it, so the player can check out at any step.
+ * plates that enlarge when pressed; one over the Max per card is marked amber, never taken out. Buy on TCGplayer sits beside it, so the player can check out at any step.
  */
 export function BudgetRow({ money }: { money: RoundBudget }) {
   const { spentUsd, buys, budget, unpricedSkipped, onBudget, importHref, buy } = money;
@@ -175,7 +182,19 @@ export function BudgetRow({ money }: { money: RoundBudget }) {
               quantity={quantity}
               showCost={false}
               slim
-              trailing={<PriceTag price={card.price} className="mx-1 text-xs whitespace-nowrap" />}
+              trailing={
+                overCap(card, budget) ? (
+                  <span className="mx-1 inline-flex items-center gap-1 text-xs whitespace-nowrap text-warning">
+                    <TriangleAlert aria-hidden className="size-4" />
+                    <span>
+                      Over max<span className="sr-only"> per card</span>
+                    </span>
+                    <PriceTag price={card.price} className="text-warning" />
+                  </span>
+                ) : (
+                  <PriceTag price={card.price} className="mx-1 text-xs whitespace-nowrap" />
+                )
+              }
             />
           ))}
         </ul>
