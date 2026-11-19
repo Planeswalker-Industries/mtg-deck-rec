@@ -1,12 +1,21 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T099.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T100.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
 State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `20261022000100` (current). Hosted `corpus.decks` 212,606, last collated and precomputed by hand 2026-10-21.
 
 ---
+
+## T099: A built deck's spend counts against the round's budget
+
+**HIGH** · Web / Core · Start after `fix/input-limits` (T098) is merged. `roundSpendUsd` (`packages/core/src/journey/round-spend.ts`) counts only the cards a round takes in Add, Swap and Fix, and a built deck opens as the round's starting deck, so what the build spent never counts. A $5 build without a collection spends up to $5, then Deck stats shows "$0 of $5" and Add may spend $5 more; the Buy on TCGplayer carts (the whole deck's missing cards) then cost more than the Budget row says. No contract or schema change expected; if one is needed, ask first.
+
+- [ ] A deck opened from a budget build (`openBuilt`) starts its round with the build's unowned, non-basic picks counted as spent: the Budget row lists them, the footer shows them against the spend budget, and requests carry the budget less them (`withSpent`)
+- [ ] Undo and cuts behave as today: cutting a built card refunds nothing, as for any round card
+- [ ] Unit tests in `@mtg/core` for the seeded spend (a build with and without a collection, owned picks and basics cost nothing)
+- [ ] Optional (owner to decide): mark cards already taken that are over a lowered Max per card, amber in the Budget row's list; nothing is removed
 
 ## T074: Archidekt answers the daily crawl with 429s
 
