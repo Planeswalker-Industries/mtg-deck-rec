@@ -53,6 +53,11 @@ describe('splitCollectionRows', () => {
     expect(out).toEqual({ rows: [rest], skipped: [] });
   });
 
+  it('drops a TCGplayer id past Number.MAX_SAFE_INTEGER and keeps the row', () => {
+    const out = splitCollectionRows([{ ...CLEAN, tcgplayerId: Number.MAX_SAFE_INTEGER + 2 }]);
+    expect(out).toEqual({ rows: [CLEAN], skipped: [] });
+  });
+
   it('keeps a clean row unchanged', () => {
     const out = splitCollectionRows([CLEAN]);
     expect(out.skipped).toEqual([]);

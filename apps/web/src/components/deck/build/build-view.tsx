@@ -518,10 +518,10 @@ export function BuildView({
             <DialogDescription>{BUDGET_SHORT_HELP}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button asChild variant="outline">
+            <Button asChild size="lg" variant="outline">
               <Link href={collectionImportHref}>Upload collection</Link>
             </Button>
-            <Button type="button" className="lit" onClick={onChangeBudget}>
+            <Button type="button" size="lg" className="lit" onClick={onChangeBudget}>
               Change budget
             </Button>
           </DialogFooter>

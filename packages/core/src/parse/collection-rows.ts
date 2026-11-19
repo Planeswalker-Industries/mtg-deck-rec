@@ -26,7 +26,7 @@ const HINT_CAPS = [
 /**
  * Splits parsed collection rows into those the resolve schema accepts and those it would refuse, so one bad line
  * never fails a whole batch. A row with too many copies or an over-long name is skipped (its `rowNo` is returned);
- * a kept row loses any hint over its cap and keeps the rest.
+ * a kept row loses any hint over its cap (or a TCGplayer id too large to be an exact integer) and keeps the rest.
  */
 export function splitCollectionRows(rows: CollectionRowInput[]): { rows: CollectionRowInput[]; skipped: number[] } {
   const kept: CollectionRowInput[] = [];
@@ -43,6 +43,11 @@ export function splitCollectionRows(rows: CollectionRowInput[]): { rows: Collect
         if (out === row) out = { ...row };
         delete out[field];
       }
+    }
+    // The schema takes only safe integers; a 20-digit id in a TCGplayer export would fail the whole batch.
+    if (out.tcgplayerId !== undefined && !Number.isSafeInteger(out.tcgplayerId)) {
+      if (out === row) out = { ...row };
+      delete out.tcgplayerId;
     }
     kept.push(out);
   }

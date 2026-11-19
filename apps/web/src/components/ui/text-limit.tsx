@@ -28,7 +28,8 @@ export function useTextLimit(
 
   function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
     const box = e.currentTarget;
-    const pasted = e.clipboardData.getData("text").length;
+    // Windows clipboards carry CRLF; the box stores each line break as one LF, so count them that way.
+    const pasted = e.clipboardData.getData("text").replace(/\r\n?/g, "\n").length;
     // A paste replaces the selection, so a paste over selected text that fits is allowed.
     const replaced = box.selectionEnd - box.selectionStart;
     if (box.value.length - replaced + pasted > maxChars) {
