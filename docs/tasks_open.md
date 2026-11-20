@@ -226,7 +226,7 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 - [x] Hosted `commander_requests` are consumed and the deck tool sees the heartbeat (both requests `done`, 2026-11-18)
 - [ ] The new jobs fill what hand runs do now, on the owner's cadence
 - [x] The Vercel cron (`/api/cron/*-scrape`) is off: the owner disabled it in the Vercel dashboard on 2026-11-18, and the worker starts the daily crawl at `crawlHourUtc` (10:00 UTC); its entries left `apps/web/vercel.json` on 2026-11-19
-- [x] The worker started the 2026-11-19 and 2026-11-20 crawls (`crawl.runs` 56 at 10:00:03 and 57 at 10:00:06 UTC; 57 was still `queued` with no pages at 14:00 UTC, a search API matter)
+- [x] The worker started the 2026-11-19 and 2026-11-20 crawls (`crawl.runs` 56 at 10:00:03 and 57 at 10:00:06 UTC; 57 succeeded at 16:00 UTC)
 - [x] Pushes to `main` redeploy the worker (2026-11-18): the Dokploy `worker` app has Auto Deploy on and Watch Paths empty, its Webhook URL is the `DOKPLOY_WORKER_WEBHOOK_URL` repository secret, and a manual run of `.github/workflows/worker-deploy.yml` got Dokploy's "Compose deployed successfully"
 
 ## T003: Deck report link destination
