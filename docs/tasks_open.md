@@ -226,19 +226,8 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 - [x] Hosted `commander_requests` are consumed and the deck tool sees the heartbeat (both requests `done`, 2026-11-18)
 - [ ] The new jobs fill what hand runs do now, on the owner's cadence
 - [x] The Vercel cron (`/api/cron/*-scrape`) is off: the owner disabled it in the Vercel dashboard on 2026-11-18, and the worker starts the daily crawl at `crawlHourUtc` (10:00 UTC); its entries left `apps/web/vercel.json` on 2026-11-19
-- [ ] The worker started the 2026-11-19 and 2026-11-20 crawls (`crawl.runs` at 10:00 UTC)
+- [x] The worker started the 2026-11-19 and 2026-11-20 crawls (`crawl.runs` 56 at 10:00:03 and 57 at 10:00:06 UTC; 57 was still `queued` with no pages at 14:00 UTC, a search API matter)
 - [x] Pushes to `main` redeploy the worker (2026-11-18): the Dokploy `worker` app has Auto Deploy on and Watch Paths empty, its Webhook URL is the `DOKPLOY_WORKER_WEBHOOK_URL` repository secret, and a manual run of `.github/workflows/worker-deploy.yml` got Dokploy's "Compose deployed successfully"
-
-## T094: A failed COPY hangs the worker
-
-**HIGH** · Worker / Scoring · Found 2026-11-18 (runs 259 and 265, `precompute_pairs`)
-
-Hosted card pairs hung twice after the first chunk of 100 keys: the connection sat `idle in transaction (aborted)` on `copy stg_pairs … from stdin` for over 30 minutes while the worker's heartbeat kept the collector looking online. Cause: `keyPairs` (`@mtg/core/scoring` `pairs.ts`) gave 10 keys pairs with a non-finite lift, a pair seen only in decks dated before the later card's release month (preview cards of the 2026-10 and 2026-11 sets), so the lift divides by zero. `copyField` writes a non-finite number as `\N`, `lift` is `not null`, the COPY fails on the server, and `copyRows` (`pipeline` into the postgres.js writable) never settles.
-
-- [x] `keyPairs` leaves out non-finite lifts, with a test (PR #214), released so the worker's card pairs finish (#215; hosted card pairs ran in 11 min on 2026-11-18)
-- [x] `copyRows` rejects when the server fails the COPY, instead of hanging (PR #214; checked by hand against local Postgres, no committed test: the worker has no test runner)
-- [x] Count a pair's decks over the same decks as its cards' (from the later release month on), as the module comment says; a scoring change, so through `eval:holdout` at its gate (2026-11-20, local corpus through 2026-10: new and old code both 24.2% add recall (23.7%–24.6%), 27.2% cut precision, 48.5% collection recall, every bucket and the Sol Ring rate unchanged)
-- [ ] The heartbeat says whether the loop is moving, not only that the process is up (a stuck duty shows in `worker_status`)
 
 ## T003: Deck report link destination
 
