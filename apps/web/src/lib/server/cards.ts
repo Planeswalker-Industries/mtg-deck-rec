@@ -78,6 +78,7 @@ export function toCardSummary(row: CardRow, today = todayIso()): CardSummary {
     keywords: row.keywords ?? [],
     ...manaFields(row),
     ...(row.layout ? { layout: row.layout } : {}),
+    ...(row.artist ? { artist: row.artist } : {}),
     price:
       row.reference_price_usd !== null && row.prices_as_of !== null
         ? { usd: Number(row.reference_price_usd), finish: toFinish(row.reference_price_finish), asOf: row.prices_as_of, source: "scryfall" }
@@ -87,7 +88,12 @@ export function toCardSummary(row: CardRow, today = todayIso()): CardSummary {
 
 /** A card as the ranking in `@mtg/core/scoring` reads it. */
 export function rankCardOf(row: CardRow): RankCard {
-  return { summary: toCardSummary(row), colorIdentity: row.color_identity, legal: row.legal_commander === "legal", isBasicLand: row.is_basic_land };
+  return {
+    summary: toCardSummary(row),
+    colorIdentity: row.color_identity,
+    legal: row.legal_commander === "legal",
+    isBasicLand: row.is_basic_land,
+  };
 }
 
 export function toCommanderFacts(row: CardRow): CommanderCardFacts {

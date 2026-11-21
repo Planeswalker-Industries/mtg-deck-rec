@@ -20,7 +20,8 @@ const LIMIT = 8;
  * commander page when the card has one, so a card without a commander key can't send anyone to a 404.
  *
  * The header is already full at 390px, so phones get a button that opens a full-screen layer and
- * larger screens get the input inline.
+ * larger screens get the input inline. The input sits on the header's wood; the results list and the phone layer open
+ * inside the header, so `paper` puts them back on paper.
  */
 export function SiteSearch() {
   const [openOnPhone, setOpenOnPhone] = useState(false);
@@ -55,7 +56,7 @@ function PhoneSearchLayer({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Search cards" className="fixed inset-0 z-50 bg-background sm:hidden">
+    <div role="dialog" aria-modal="true" aria-label="Search cards" className="paper fixed inset-0 z-50 bg-background sm:hidden">
       <div className="flex items-center gap-2 border-b border-seam p-3">
         <div className="min-w-0 flex-1">
           <SearchField autoFocus onPicked={onClose} />
@@ -195,7 +196,7 @@ function SearchField({ autoFocus = false, onPicked }: { autoFocus?: boolean; onP
       {hint && (
         <p
           aria-live="polite"
-          className="absolute top-full right-0 left-0 z-50 mt-1 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm text-muted-foreground"
+          className="paper absolute top-full right-0 left-0 z-50 mt-1 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm text-muted-foreground"
         >
           {hint}
         </p>
@@ -205,7 +206,7 @@ function SearchField({ autoFocus = false, onPicked }: { autoFocus?: boolean; onP
           id={listId}
           role="listbox"
           aria-label="Search results"
-          className="absolute top-full right-0 left-0 z-50 mt-1 flex max-h-[70vh] flex-col divide-y divide-seam overflow-y-auto rounded-lg border border-seam bg-sleeve shadow-lg sm:max-h-96"
+          className="paper absolute top-full right-0 left-0 z-50 mt-1 flex max-h-[70vh] flex-col divide-y divide-seam overflow-y-auto rounded-lg border border-seam bg-sleeve shadow-lg sm:max-h-96"
         >
           {results.map((card, i) => {
             // The card's `small` printing, not `artCrop`: this box is 56x36, and the art crop is a 626x457 JPEG at

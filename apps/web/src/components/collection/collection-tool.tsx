@@ -542,7 +542,7 @@ function CollectionSummary({
   next: string | null;
 }) {
   return (
-    <section aria-labelledby="collection-summary" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4">
+    <section aria-labelledby="collection-summary" className="flex flex-col gap-4 border-t border-seam pt-4">
       <h2 id="collection-summary" className="sr-only">
         Saved collection
       </h2>

@@ -21,6 +21,7 @@ import { DeckBar } from "./deck-bar";
 import { DeckCoverage } from "./deck-coverage";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
+import { Panel } from "@/components/ui/panel";
 import { ResolutionIssues } from "./resolution-issues";
 import { ResumeDeckDialog } from "./resume-deck-dialog";
 import { CollectionOfferDialog } from "./collection-offer-dialog";
@@ -50,7 +51,7 @@ import { FixPhase } from "./journey/fix-phase";
 import { JourneyStepper } from "./journey/journey-stepper";
 import { ReplacePhase } from "./journey/replace-phase";
 import { ReviewPhase, roundInIds } from "./journey/review-phase";
-import { RoundBar, type CopyState, type RoundSave } from "./journey/round-bar";
+import { RoundBar, StepStatusSlot, type CopyState, type RoundSave } from "./journey/round-bar";
 import { useDeckJourney, type DeckJourney } from "./journey/use-deck-journey";
 import { useFix } from "./journey/use-fix";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
@@ -160,6 +161,11 @@ const DECK_STATS_DOCK =
   "[--deck-stats-dock:calc(var(--deck-stats-dock-height)_+_env(safe-area-inset-bottom))] lg:[--deck-stats-dock:0px]";
 /** From lg the round and the Deck stats rail sit side by side. */
 const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6";
+/**
+ * The round's column of sheets. On phones they run edge to edge: the negative margin cancels the page column's 1rem
+ * gutter, so the swipe cards keep their width.
+ */
+const ROUND_COLUMN = "flex min-w-0 scroll-mt-24 flex-col gap-4 max-sm:-mx-4";
 
 /**
  * "upgrade" walks the deck through the journey; "edit" is the deckbuilder, which only saving opens (Save, Save for
@@ -284,6 +290,8 @@ function DeckToolSession() {
   const editorHandle = useRef<EditorHandle | null>(null);
   /** Review's Save on a deck that isn't saved yet opens the name form in the header. */
   const [saveAsked, setSaveAsked] = useState(false);
+  /** The space beside the round's buttons that each step's `StepStatus` renders into. */
+  const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null);
   const [committing, setCommitting] = useState(false);
   /** The last file read into the decklist box, and whether its text is on show (see `LoadedFile`). */
   const [deckFile, setDeckFile] = useState<{ name: string; text: string } | null>(null);
@@ -823,6 +831,17 @@ function DeckToolSession() {
         copy,
       }
     : { kind: "new", onSave: saveRound };
+  const roundBar = journey.state && (
+    <RoundBar
+      canUndo={journey.canUndo}
+      onUndo={journey.undo}
+      onStartOver={journey.restart}
+      save={roundSave}
+      busy={committing || tool.stale}
+      showSave={journey.state.phase !== "review"}
+      slotRef={setStatusSlot}
+    />
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -1164,16 +1183,22 @@ function DeckToolSession() {
           {mode === "upgrade" ? (
             journey.state && (
               <StatPreviewProvider onChange={setStatPreview} chipsFor={chipsFor}>
+              <StepStatusSlot value={statusSlot}>
               <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
                 {/* scroll-mt clears the sticky deck bar when "Pick cuts" brings the steps back into view. */}
-                <div id={STEPS_ID} className="flex min-w-0 scroll-mt-24 flex-col gap-3">
+                <div id={STEPS_ID} className={ROUND_COLUMN}>
+                  {/* Paper sheets on the wood, one per section: the steps, the step (with this round's controls), the collection offer. */}
+                  <Panel padding="sm" className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
                       <JourneyStepper phases={journey.phases} phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
                     </div>
                     {hasViews(journey.state.phase) && <ViewToggle view={view} onChange={changeView} />}
                   </div>
-                  <RoundBar canUndo={journey.canUndo} onUndo={journey.undo} onStartOver={journey.restart} save={roundSave} busy={committing || tool.stale} showSave={journey.state.phase !== "review"} />
+                  </Panel>
+                  {journey.state.phase !== "review" && (
+                  <Panel padding="sm" className="flex flex-col gap-3">
+                  {roundBar}
                   {journey.state.phase === "cut" && (
                     <CutPhase
                       journey={journey}
@@ -1200,6 +1225,8 @@ function DeckToolSession() {
                   )}
                   {journey.state.phase === "fix" && <FixPhase journey={journey} fix={fix} hasCollection={journey.add.hasCollection} />}
                   {journey.state.phase === "replace" && <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />}
+                  </Panel>
+                  )}
                   {/* Players who came with only a list are offered their collection at every step (Done has its own, below). */}
                   {source.kind === "none" && journey.state.phase !== "review" && (
                     <CollectionNudge href={collectionImportHref} step={journey.state.phase} />
@@ -1217,6 +1244,7 @@ function DeckToolSession() {
                       onChoice={tool.setStatChoice}
                       collectionOnly={journey.add.collectionOnly}
                       missing={coverageMissing}
+                      toolbar={roundBar}
                     >
                       {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}
                       {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}
@@ -1230,6 +1258,7 @@ function DeckToolSession() {
                   </>
                 )}
               </div>
+              </StepStatusSlot>
               </StatPreviewProvider>
             )
           ) : (

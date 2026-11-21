@@ -2,6 +2,7 @@
 
 import { Admin, Resource } from "react-admin";
 import { BrowserRouter } from "react-router-dom";
+import { Percent, RefreshCw, ShieldCheck, Tags, Users } from "lucide-react";
 import { AdminLayout } from "./admin-layout";
 import { adminTheme } from "./theme";
 import { createAdminAuthProvider } from "./auth-provider";
@@ -10,14 +11,22 @@ import { adminDataProvider } from "./data-provider";
 import { SyncRunList, SyncRunShow } from "./sync-runs";
 import { TagEdit, TagList } from "./tags";
 import { PlatformAdminList, UserEdit, UserList, UserShow } from "./users";
+import { menuIcon } from "./menu-icon";
+
+/** Each screen's menu icon, made once so React Admin is handed the same component on every render. */
+const USERS_ICON = menuIcon(Users);
+const ADMINS_ICON = menuIcon(ShieldCheck);
+const TAGS_ICON = menuIcon(Tags);
+const SYNC_RUNS_ICON = menuIcon(RefreshCw);
+const ACCEPT_RATES_ICON = menuIcon(Percent);
 
 /**
  * The admin single-page app.
  *
  * It is Material UI in a site that is otherwise shadcn and Tailwind, but it is not a different-looking product:
- * `theme.ts` restates the site's own tokens — the table, the sleeve, the seam, the sleeve-blue accent, Bricolage
- * Grotesque — as a Material UI theme, so the components React Admin brings are dressed in them. No light theme is
- * offered, like the rest of the site.
+ * `theme.ts` restates the site's paper theme (the dark bar on the walnut, the paper sheet, espresso for what can be
+ * pressed, the site's faces) as a Material UI theme, so the components React Admin brings are dressed in it. No dark
+ * theme is offered, like the rest of the site.
  *
  * The <BrowserRouter> is load-bearing, not decoration. Left to itself React Admin builds a *hash* router, where
  * `basename` has nothing to apply to and every screen resolves to nothing at all — /admin renders an empty page. It
@@ -50,24 +59,26 @@ export default function AdminApp({ userId, email }: AdminAppProps) {
           list={UserList}
           show={UserShow}
           edit={UserEdit}
+          icon={USERS_ICON}
           recordRepresentation={(record) => record.email ?? record.displayName ?? record.id}
           options={{ label: "Users" }}
         />
         {/* The same records, filtered to the people who can reach this area. Read-only: granting and revoking is an
             edit to the user, so there is one place where it happens. */}
-        <Resource name="platform-admins" list={PlatformAdminList} options={{ label: "Platform admins" }} />
+        <Resource name="platform-admins" list={PlatformAdminList} icon={ADMINS_ICON} options={{ label: "Platform admins" }} />
         {/* The kill switch for Tagger tags: switching one off takes it out of recommendations. */}
         <Resource
           name="tags"
           list={TagList}
           edit={TagEdit}
+          icon={TAGS_ICON}
           recordRepresentation={(record) => record.label ?? record.id}
           options={{ label: "Tags" }}
         />
         {/* The worker's run history, read-only. */}
-        <Resource name="sync-runs" list={SyncRunList} show={SyncRunShow} options={{ label: "Sync runs" }} />
+        <Resource name="sync-runs" list={SyncRunList} show={SyncRunShow} icon={SYNC_RUNS_ICON} options={{ label: "Sync runs" }} />
         {/* How often suggestions shown in the deck tool are taken, per list and place (T065), read-only. */}
-        <Resource name="accept-rates" list={AcceptRateList} options={{ label: "Accept rate" }} />
+        <Resource name="accept-rates" list={AcceptRateList} icon={ACCEPT_RATES_ICON} options={{ label: "Accept rate" }} />
       </Admin>
     </BrowserRouter>
   );

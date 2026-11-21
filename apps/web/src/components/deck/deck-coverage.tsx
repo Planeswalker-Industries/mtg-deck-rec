@@ -60,7 +60,7 @@ export function DeckCoverage({ status, retry }: { status: CoverageStatus; retry:
               if (!rows.length) return null;
               return (
                 <section key={section} aria-label={section === "conflict" ? "In another deck" : section === "missing" ? "Not owned" : section === "stand-in" ? "Owned as another card" : section === "basic" ? "Basic land" : "Owned"}>
-                  <h3 className="mb-2 font-heading font-semibold">{section === "conflict" ? "In another deck" : section === "missing" ? "Not owned" : section === "stand-in" ? "Owned as another card" : section === "basic" ? "Basic land" : "Owned"}</h3>
+                  <h3 className="mb-2 font-semibold">{section === "conflict" ? "In another deck" : section === "missing" ? "Not owned" : section === "stand-in" ? "Owned as another card" : section === "basic" ? "Basic land" : "Owned"}</h3>
                   <ul className="flex flex-col gap-2">
                     {rows.map(({ entry, allocation }, i) => {
                       const card = byId.get(entry.cardId);

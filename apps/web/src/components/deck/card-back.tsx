@@ -28,7 +28,7 @@ export function CardBack({
       sizes={sizes}
       loading={eager ? "eager" : "lazy"}
       fetchPriority={eager ? "high" : "auto"}
-      className={cn("aspect-[488/680] w-full rounded-[4.75%/3.4%] object-cover shadow-[0_1px_0_rgb(0_0_0/0.35)]", className)}
+      className={cn("aspect-[488/680] w-full rounded-[4.75%/3.4%] object-cover shadow-card-edge", className)}
     />
   );
 }

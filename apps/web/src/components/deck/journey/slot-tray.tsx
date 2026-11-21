@@ -97,7 +97,7 @@ export function AddsCounter({ count, adds, onTakeOut }: { count: string; adds: r
         aria-describedby={undefined}
         className="mx-auto max-h-[75lvh] w-full max-w-xl gap-3 overflow-y-auto rounded-t-2xl border-seam bg-sleeve px-4 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
       >
-        <SheetTitle className="font-heading text-base font-semibold">Added this round</SheetTitle>
+        <SheetTitle className="text-base font-semibold">Added this round</SheetTitle>
         <ul className="flex flex-col gap-2">
           {adds.map((card, i) => (
             <li key={keys[i]} className="flex items-center gap-3">

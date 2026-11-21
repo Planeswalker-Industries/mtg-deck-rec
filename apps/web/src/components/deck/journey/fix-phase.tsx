@@ -18,7 +18,7 @@ import { PanelError } from "../panel-state";
 import { ShuffleDeck } from "../shuffle-deck";
 import { SWIPE_COOLDOWN_MS } from "../swipe-rater";
 import { FixAutoSheet } from "./fix-auto-sheet";
-import { PhaseIntro } from "./journey-stepper";
+import { PhaseIntro, StepStatus } from "./journey-stepper";
 import { SwipeDone } from "./single-swipe";
 import type { DeckJourney } from "./use-deck-journey";
 import type { Fix, FixLineLabel } from "./use-fix";
@@ -158,15 +158,17 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
   return (
     <div className="flex flex-col gap-3">
       {intro}
-      <p role="status" className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
-        <LineCount line={fix.lineLabel(move.line)} />
-        <span className="shrink-0 font-mono">
-          {/* "1 of 12": the word "line" is read out, not shown (owner, 2026-11-18). */}
-          <span className="sr-only">Line </span>
-          {fix.position} of {fix.total}
-        </span>
-      </p>
-      <section aria-label="Fix: one card out, one card in" className="playmat mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <StepStatus
+        reason={<LineCount line={fix.lineLabel(move.line)} />}
+        count={
+          <>
+            {/* "1 of 12": the word "line" is read out, not shown (owner, 2026-11-18). */}
+            <span className="sr-only">Line </span>
+            {fix.position} of {fix.total}
+          </>
+        }
+      />
+      <section aria-label="Fix: one card out, one card in" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
         <div aria-live="polite" className="grid grid-cols-2 items-start gap-3">
           <MoveCard card={move.out} side="out" />
           <MoveCard

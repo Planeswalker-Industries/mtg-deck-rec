@@ -66,7 +66,7 @@ const STATUS_LABEL: Record<AdminSyncStatus, string> = {
 
 /** Trouble is rose, health is jade, a run cut short is violet ("look closer"), and "nothing to do" stays quiet. */
 const STATUS_TONE: Record<AdminSyncStatus, PillTone> = {
-  running: "primary",
+  running: "ink",
   succeeded: "add",
   skipped_unchanged: "muted",
   failed: "cut",

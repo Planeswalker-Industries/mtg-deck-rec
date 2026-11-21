@@ -81,7 +81,8 @@ export function DeckIssuesChip({ issues }: { issues: DeckIssue[] }) {
         title={label}
         className={cn(
           PHONE_HIT_AREA,
-          "inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-primary/45 bg-sleeve px-2 font-mono text-xs text-primary transition-colors",
+          // `paper`: a paper tag even on the deck bar, where brick red would not read on the dark.
+          "paper inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-primary/45 bg-sleeve px-2 font-mono text-xs text-primary transition-colors",
           "hover:border-primary hover:bg-primary/10",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         )}

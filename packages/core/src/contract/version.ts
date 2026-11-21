@@ -162,5 +162,8 @@
  *
  * v38 (2026-11-16): feedback reports (T077; owner approved 2026-11-16). ActionsApi gains `submitFeedback`, signed in
  * only: a message and the page path it was sent from, stored for the site's admins. Additive.
+ *
+ * v39 (2026-11-21): CardSummary gains optional `artist` (owner approved 2026-11-21), so a card added on the client
+ * (the deck editor's new commander) can show its art with the credit it owes. Additive.
  */
-export const CONTRACT_VERSION = 38;
+export const CONTRACT_VERSION = 39;

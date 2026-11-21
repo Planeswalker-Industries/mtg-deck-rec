@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
-import { cn } from "cn";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { ReportsView } from "@/components/admin/reports-view";
 import { requirePlatformAdmin } from "@/lib/server/admin";
-import { TEXT_LINK } from "@/lib/constants";
+import { PAGE_SHEET } from "@/lib/constants";
 
 /**
  * /admin/reports — feedback reports (T077).
@@ -26,14 +23,10 @@ export const metadata: Metadata = {
 
 export default function AdminReportsPage() {
   return (
-    <div className="flex flex-col gap-6 py-6">
-      <Link href="/admin" className={cn(TEXT_LINK, "inline-flex w-fit items-center gap-1.5 text-sm font-semibold")}>
-        <ArrowLeft aria-hidden className="size-4" />
-        Admin
-      </Link>
+    <div className="flex flex-col gap-4 py-6">
       <Suspense
         fallback={
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className={`${PAGE_SHEET} text-sm text-muted-foreground`}>
             Checking your access…
           </p>
         }

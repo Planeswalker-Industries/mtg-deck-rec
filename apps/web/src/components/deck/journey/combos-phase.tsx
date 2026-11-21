@@ -84,7 +84,7 @@ function ComboSection({
   children: ReactNode;
 }) {
   return (
-    <details open={open} onToggle={(e) => onToggle(e.currentTarget.open)} className="group rounded-panel border border-seam bg-sleeve">
+    <details open={open} onToggle={(e) => onToggle(e.currentTarget.open)} className="group rounded-panel border border-seam">
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-primary [&::-webkit-details-marker]:hidden">
         <h3 className="font-heading text-lg leading-none font-semibold text-foreground">
           {title} {count !== undefined && <span className="font-mono text-base font-normal text-muted-foreground">{count}</span>}

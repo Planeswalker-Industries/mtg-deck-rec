@@ -5,8 +5,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Body, buttons, labels and small headings: Alegreya Sans at 400 and 700 (it has no 600, so semibold is 700). */
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  /* Page and section headings: Cormorant Garamond at 600/700, never below text-lg (its x-height is small). */
+  --font-heading: var(--font-heading-face), Georgia, serif;
   /* The buddy's voice: the friend's asides and nothing else. The only italic on the site. */
   --font-drama: var(--font-drama-face), Georgia, serif;
   /* Every number: counts, prices, mana value. */
@@ -20,6 +22,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -39,6 +42,9 @@
   --color-save: var(--save);
   --color-gc: var(--gc);
   --color-gc-bg: var(--gc-bg);
+  /* Decoration only on paper (frames, rims, rules); interactive only on the wood. */
+  --color-brass: var(--brass);
+  --color-brass-light: var(--brass-light);
 
   /* The three jobs. Deliberately off the mana wheel so they never read as color identity. */
   --color-cut: var(--cut);
@@ -90,6 +96,7 @@
   --text-4xl--line-height: 1.1;
 
   --shadow-lift: var(--lift);
+  --shadow-card-edge: var(--card-edge);
   --ease-table: cubic-bezier(0.2, 0.7, 0.2, 1);
   /* An unknown-length job: about 1.4 s a pass reads as working without looking frantic. */
   --animate-progress-sweep: progress-sweep 1.4s ease-in-out infinite;
@@ -108,62 +115,112 @@
 :root {
   --radius: 0.5rem; /* controls: rounded-lg is 8px */
 
-  /* Cool blue (2026-10-13): blue-grey slate surfaces, cool white ink, one blue accent. */
-  --background: oklch(0.17 0.012 260);
-  --foreground: oklch(0.95 0.005 255); /* cool white, never pure white */
-  --sleeve: oklch(0.21 0.014 260); /* panels and card rows, one step off the background */
-  --seam: color-mix(in oklch, var(--foreground) 10%, transparent); /* the hairline where two surfaces meet */
+  /*
+   * Paper theme (2026-11-20): square cream sheets on a walnut table, dark ink, espresso for what can be pressed, brass
+   * for decoration. Every colour but the wood, red and green comes from the owner's palette (champagne mist, charcoal
+   * brown, espresso, onyx, soft fawn; steps named beside each value).
+   */
+  --paper: #f4e8d7; /* champagne mist 100: the sheet */
+  --paper-raised: #f9f3eb; /* champagne mist 50: tiles, inputs, popovers on a sheet */
+  --paper-recessed: #e9d1af; /* champagne mist 200: muted fills, skeletons */
+  --ink: #1b1918; /* onyx 900 */
+  --ink-soft: #524b47; /* onyx 700: secondary text */
+  --espresso: #633636; /* espresso 700: the one interactive colour on paper */
+  --espresso-hover: #854747; /* espresso 600 */
+  --espresso-deep: #422424; /* espresso 800: a pressed button's lip */
+  --brass: #9f702d; /* champagne mist 600: frames, rims, rules; never a control on paper */
+  --brass-light: #d2a360; /* champagne mist 400 */
+  --brass-deep: #775422; /* champagne mist 700: a sheet's aged rim, and the amber of warnings */
+
+  /* The wood and the dark bars laid over it (header, footer). Brass is interactive only here. */
+  --wood: #1c120c; /* the walnut's base, shown while its tile loads (outside the palette, like the texture) */
+  --wood-bar: #131111; /* onyx 950 */
+  --wood-ink: #f4e8d7; /* champagne mist 100 */
+  --wood-muted: #b8b1ad; /* onyx 300 */
+  --wood-link: var(--brass-light);
+  --wood-raised: #211212; /* espresso 900: a panel or control on the bar */
+  --wood-recessed: #37322f; /* onyx 800: muted fills and hovers on the bar */
+  --wood-accent-ink: #ddba88; /* champagne mist 300: text on a hovered item on the bar */
+  /* The bar itself: onyx 950, thicker at the top edge, so the walnut shows through it. */
+  --wood-bar-fill: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--wood-bar) 85%, transparent),
+    color-mix(in oklch, var(--wood-bar) 70%, transparent)
+  );
+  --wood-bar-rule: color-mix(in oklch, var(--brass) 45%, transparent); /* the brass rule along the bar's edge */
+}
+
+/*
+ * The roles every component reads (shadcn names). Paper by default; `.paper` puts them back inside the wood scope, for
+ * a list or layer that opens inside the bar instead of in a portal (the header search's results).
+ */
+:root,
+.paper {
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --sleeve: var(--paper-raised); /* panels and card rows, one step off the background */
+  --seam: color-mix(in oklch, var(--ink) 18%, transparent); /* the hairline where two surfaces meet */
 
   --card: var(--sleeve);
-  --card-foreground: oklch(0.96 0.004 255);
-  --popover: oklch(0.21 0.014 260);
-  --popover-foreground: var(--foreground);
+  --card-foreground: var(--ink);
+  --popover: var(--paper-raised);
+  --popover-foreground: var(--ink);
 
-  --primary: oklch(0.707 0.165 254.6); /* the only accent: everything pressable, and only what is pressable */
-  --primary-foreground: var(--background);
-  --secondary: oklch(0.27 0.015 260);
-  --secondary-foreground: oklch(0.92 0.006 255);
-  --muted: oklch(0.25 0.014 260);
-  --muted-foreground: oklch(0.7 0.015 257);
-  --accent: oklch(0.29 0.05 262);
-  --accent-foreground: oklch(0.85 0.08 255);
+  --primary: var(--espresso);
+  --primary-hover: var(--espresso-hover);
+  --primary-foreground: var(--paper-raised);
+  --secondary: var(--paper-recessed);
+  --secondary-foreground: var(--ink);
+  --muted: var(--paper-recessed);
+  --muted-foreground: var(--ink-soft);
+  --accent: var(--paper-recessed);
+  --accent-foreground: var(--ink);
 
-  /* Cut, add and replace: status colours, always with an icon and a label. Clear of the primary blue. */
-  --cut: #e08a7a;
-  --add: #8cc49a;
-  --replace: #c7a2da;
+  --border: color-mix(in oklch, var(--ink) 20%, transparent);
+  --input: color-mix(in oklch, var(--ink) 50%, transparent); /* 3:1 on paper, as a control edge needs */
+  --ring: var(--primary);
+}
+
+.paper {
+  color: var(--foreground);
+}
+
+:root {
+  /* Cut, add and replace: status colours, always with an icon and a label. Clear of espresso. Red and green come from
+     outside the palette (owner, 2026-11-20). */
+  --cut: #9b2c1f; /* brick red */
+  --add: #2f6b3a; /* green */
+  --replace: #4a5643; /* charcoal brown 700: a cool slate, apart from espresso, brick, green and the amber warning */
 
   /* Deck stats levels (T045): the theme's own status colours, always with an icon and a word. */
   --stat-ok: var(--add);
   --stat-mild: var(--gc);
   --stat-urgent: var(--cut);
 
-  /* Card-type ring colors, in the DeckOverview legend order: land, creature, instant, sorcery,
-     artifact, enchantment, planeswalker, battle. */
-  --cat-land: #9c8f80;
-  --cat-creature: #87b0cb;
-  --cat-instant: #e1b880;
-  --cat-sorcery: #df6256;
-  --cat-artifact: #b0a79b;
-  --cat-enchantment: #d3b3c8;
-  --cat-planeswalker: #a37dcf;
-  --cat-battle: #74c284;
+  /* Card-type ring colors, in the DeckOverview legend order: land, creature, instant, sorcery, artifact, enchantment,
+     planeswalker, battle. Data colours keep their own hues (outside the palette), darkened to at least 3:1 on paper. */
+  --cat-land: #786b5c;
+  --cat-creature: #3f6f8f;
+  --cat-instant: #946421;
+  --cat-sorcery: #b0392e;
+  --cat-artifact: #6f675d;
+  --cat-enchantment: #8d5a7d;
+  --cat-planeswalker: #7451a3;
+  --cat-battle: #3d7f4b;
 
-  /* Status: red is an error, an over-target count or a cut; green is good or an add; amber is a warning. Never blue,
-     which only marks what can be pressed. Each comes with an icon and a word. */
-  --destructive: #e5796b;
+  /* Status: red is an error, an over-target count or a cut; green is good or an add; amber is a warning. Never
+     espresso, which only marks what can be pressed. Each comes with an icon and a word. */
+  --destructive: var(--cut);
   --success: var(--add);
   --warning: var(--gc);
   --save: var(--add);
-  --gc: #e0b354;
-  --gc-bg: #3a2d13;
-
-  --border: oklch(0.3 0.014 260);
-  --input: oklch(0.3 0.014 260);
-  --ring: var(--primary);
+  --gc: var(--brass-deep); /* champagne mist 700: amber */
+  --gc-bg: var(--paper-recessed);
 
   /* A card in hand: dragged, dealt or passed. Resting surfaces have no shadow. */
-  --lift: 0 14px 30px -14px rgb(20 12 6 / 0.55);
+  --lift: 0 14px 30px -14px rgb(19 17 17 / 0.55);
+  /* The dark hairline under a card back lying on the paper (the shuffling deck). */
+  --card-edge: 0 1px 0 color-mix(in oklch, var(--wood-bar) 35%, transparent);
 }
 
 @layer base {
@@ -172,7 +229,7 @@
   }
   html {
     @apply font-sans;
-    color-scheme: dark;
+    color-scheme: light;
     /* Both html and body: 100vw counts the scrollbar, so a full-bleed section overflows by its width
        unless the root clips too. clip, not hidden — hidden makes a scroll container and breaks the
        deck tool's sticky bar. overflow-y stays visible. */
@@ -180,8 +237,13 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    /* Paper and wood grain on the bare table. A background, not an overlay, so panels and card art stay clean. */
-    background-image: var(--grain);
+    /* One continuous walnut table under everything, darker toward the edges. A raster tile rendered from
+       /textures/src/walnut.svg, so long pages don't re-run the SVG filters while they scroll. */
+    background-color: var(--wood);
+    background-image: radial-gradient(ellipse 120% 90% at 50% 30%, transparent 40%, rgb(8 4 2 / 0.6) 100%),
+      url("/textures/walnut.webp");
+    background-size: 100% 100%, 900px 480px;
+    background-attachment: fixed, scroll;
     /* Lets a full-bleed section use 50vw margins without adding a horizontal scrollbar. Must be
        clip, not hidden: hidden would make body a scroll container and break sticky children
        like the deck tool's bar. overflow-y stays visible. */
@@ -227,26 +289,17 @@
   padding-inline: 1rem;
 }
 
-@utility playmat {
-  /*
-   * The patch of table where a card is dealt: an oak panel like every other, edged by a seam. Its padding (0.75rem each
-   * side) is counted in the swipe hosts' chrome (--swipe-chrome, SingleSwipe's card width), so phones keep ✓ and ✕ on
-   * screen.
-   */
-  border-radius: var(--radius-panel);
-  border: 1px solid var(--seam);
-  padding: 0.75rem;
-  background: var(--sleeve);
-}
-
 @utility text-on-art {
   /* Keeps text legible over commander art (plates, the deck bar, card plates): one shadow to tune for all of them. */
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
 }
 
 @utility lit {
-  /* A worn edge along the top of a control, like the lip of a card box. No drop shadow: only cards in hand cast one. */
-  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--foreground) 22%, transparent);
+  /* A filled button's worn edges: a pale highlight along the top and the espresso 800 lip along the foot, like the
+     seal's. No drop shadow: only cards in hand cast one. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--paper-raised) 28%, transparent),
+    inset 0 -2px 0 var(--espresso-deep);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -260,3 +313,104 @@
   }
 }
 
+
+/*
+ * A square-cornered sheet of cream paper laid on the walnut table. Its paper is a ::before layer under the content (a
+ * raster tile rendered from /textures/src/paper.svg); the shadow on the wood sits on the element itself, so a sheet that
+ * clips its content keeps it.
+ */
+@utility sheet {
+  position: relative;
+  isolation: isolate;
+  color: var(--foreground);
+  box-shadow:
+    0 1px 0 color-mix(in oklch, var(--wood-bar) 40%, transparent),
+    0 12px 26px -10px color-mix(in oklch, var(--wood-bar) 85%, transparent);
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(ellipse 30% 22% at 82% 78%, color-mix(in oklch, var(--brass) 8%, transparent), transparent 70%),
+      url("/textures/paper.webp");
+    background-size: auto, 600px 600px;
+    /* A faint aged rim, square to the corners. */
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklch, var(--brass-deep) 25%, transparent),
+      inset 0 0 36px 4px color-mix(in oklch, var(--brass) 14%, transparent);
+  }
+}
+
+/*
+ * A sheet's paper without the sheet: for a sticky bar inside a sheet that must hide what scrolls under it yet read as
+ * the same paper rather than a raised box. The tile matches the sheet's, so at the sheet's top edge it lines up.
+ */
+@utility paper-ground {
+  background-color: var(--paper);
+  background-image: url("/textures/paper.webp");
+  background-size: 600px 600px;
+}
+
+/*
+ * The dark bars laid over the wood (header, footer): the translucent onyx bar, light ink, brass links and focus rings,
+ * dark controls. Overlays they open render in a portal outside the bar, on paper; a layer that opens inside the bar
+ * (the header search's results) puts paper back with `.paper`.
+ */
+@utility wood {
+  color: var(--wood-ink);
+  background-image: var(--wood-bar-fill);
+  --background: var(--wood);
+  --foreground: var(--wood-ink);
+  --card-foreground: var(--wood-ink);
+  --muted-foreground: var(--wood-muted);
+  --primary: var(--wood-link);
+  --primary-hover: var(--wood-ink);
+  --primary-foreground: var(--wood-bar);
+  --ring: var(--wood-link);
+  --sleeve: var(--wood-raised);
+  --muted: var(--wood-recessed);
+  --accent: var(--wood-recessed);
+  --accent-foreground: var(--wood-accent-ink);
+  --seam: color-mix(in oklch, var(--wood-ink) 10%, transparent);
+  --border: var(--ink-soft);
+  --input: var(--ink-soft);
+}
+
+/* Faded cartography laid into a sheet, under its content. */
+@utility chart-ink {
+  background-image: url("/textures/chart.svg");
+  background-repeat: no-repeat;
+  opacity: 0.14;
+  pointer-events: none;
+}
+
+/* The wax-seal button: espresso with a brass rim. */
+@utility seal {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid var(--brass);
+  box-shadow:
+    inset 0 0 0 2px var(--primary),
+    inset 0 0 0 3px color-mix(in oklch, var(--brass-light) 55%, transparent),
+    0 3px 0 var(--espresso-deep),
+    0 6px 14px -6px color-mix(in oklch, var(--wood-bar) 70%, transparent);
+  &:hover {
+    background-color: var(--primary-hover);
+  }
+}
+
+/* The quiet partner of `seal`: espresso on raised paper, edged in brass. */
+@utility seal-outline {
+  color: var(--primary);
+  border: 1px solid var(--brass);
+  background-color: color-mix(in oklch, var(--paper-raised) 60%, transparent);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in oklch, var(--paper-raised) 50%, transparent),
+    0 2px 0 color-mix(in oklch, var(--brass-deep) 30%, transparent);
+  &:hover {
+    background-color: var(--paper-raised);
+  }
+}

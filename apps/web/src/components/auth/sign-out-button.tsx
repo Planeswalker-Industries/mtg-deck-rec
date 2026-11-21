@@ -13,7 +13,7 @@ export function SignOutButton() {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col items-start gap-2">
       <Button
         type="button"
         size="lg"

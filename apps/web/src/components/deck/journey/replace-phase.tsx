@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CardId, CardSummary, CommanderKeyId, CutReason } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -23,13 +23,6 @@ function shownReasons(reasons: readonly CutReason[]): CutReason[] {
   const others = reasons.filter((reason) => reason !== "NOT_OWNED").slice(0, notOwned ? MAX_REASONS - 1 : MAX_REASONS);
   return notOwned ? [...others, "NOT_OWNED"] : others;
 }
-
-/**
- * Everything on a phone's screen above and around the swipe sitting's two cards: the deck bar, the mode row, the
- * stepper and the sitting's own text and play mat, plus the Deck stats footer where the host docks one. The cards share what's
- * left, so ✓ and ✕ stay on screen without scrolling. Read by the card sizes in `SwipeRater` through --swipe-chrome.
- */
-const SWIPE_CHROME = { "--swipe-chrome": "calc(38.25rem + var(--deck-stats-dock, 0px))" } as CSSProperties;
 
 /**
  * Replace: the deck is looked at again as it now stands, and its weaker fits are dealt with a replacement each, like
@@ -60,7 +53,6 @@ export function ReplacePhase({
   const context = journey.workingContext;
   const reopen = reopened?.version === journey.replace.version ? reopened : null;
 
-
   // A swap taken back from the list below the sitting: the sitting, which reopened on its card, comes into view.
   useEffect(() => {
     if (reopened) sitting.current?.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -68,11 +60,10 @@ export function ReplacePhase({
 
   const intro = (
     <PhaseIntro title="Swap" brief={view === "swipe" ? "Swipe right to swap in, left for the next one." : undefined}>
-      Cards that do their job less well than something else could. Swipe right on a replacement to swap it in, left to see
-      the next one, or keep the card.
+      Cards that do their job less well than something else could. Swipe right on a replacement to swap it in, left to see the next one, or
+      keep the card.
     </PhaseIntro>
   );
-
 
   if (replaceState.status === "loading" || replaceState.status === "idle" || !context) {
     return (
@@ -125,7 +116,7 @@ export function ReplacePhase({
         <h3 id="journey-swaps" className="font-heading text-xl leading-none font-semibold">
           Swaps <span className="text-sm font-normal text-muted-foreground font-mono">{swaps.length}</span>
         </h3>
-        <ul aria-label="Swaps picked" className="flex flex-col divide-y divide-seam overflow-hidden rounded-lg border border-seam bg-sleeve">
+        <ul aria-label="Swaps picked" className="flex flex-col divide-y divide-seam overflow-hidden rounded-lg border border-seam">
           {swaps.map((s) => (
             <li key={s.target.id}>
               <button
@@ -206,7 +197,9 @@ export function ReplacePhase({
                   <span className="font-semibold text-replace">Swapping for {displayName(swap.replacement)}</span>
                 ) : (
                   <span className="text-muted-foreground">
-                    {shownReasons(s.reasons).map((reason) => cutReasonShortLabel[reason]).join(", ")}
+                    {shownReasons(s.reasons)
+                      .map((reason) => cutReasonShortLabel[reason])
+                      .join(", ")}
                   </span>
                 ),
               };
@@ -222,7 +215,7 @@ export function ReplacePhase({
   }
 
   return (
-    <div className="flex flex-col gap-4" style={SWIPE_CHROME}>
+    <div className="flex flex-col gap-4">
       {intro}
       {open.length === 0 || nothingDealt === journey.replace.version ? (
         nothingLeft

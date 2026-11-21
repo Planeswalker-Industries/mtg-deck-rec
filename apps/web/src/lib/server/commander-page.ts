@@ -7,11 +7,21 @@ import { loadRoleTags, loadRoleTargets } from "./recs";
 import { loadServedCards, loadServedDeckPool } from "./serving";
 import { loadScoringConfig } from "./scoring-config";
 import type { PublicClient } from "./supabase";
+import { loadTcgplayerProductIds } from "./tcgplayer-products";
 
 /** Cards read per commander before ranking; plenty for 12 per card type. */
 const TOP_POOL = 500;
 const PER_CATEGORY = 12;
-const CATEGORY_ORDER: readonly CardCategory[] = ["creature", "instant", "sorcery", "artifact", "enchantment", "planeswalker", "battle", "land"];
+const CATEGORY_ORDER: readonly CardCategory[] = [
+  "creature",
+  "instant",
+  "sorcery",
+  "artifact",
+  "enchantment",
+  "planeswalker",
+  "battle",
+  "land",
+];
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -44,6 +54,8 @@ async function loadTopCardIds(db: PublicClient, corpus: CommanderCorpus, command
 export type CommanderPage = CommanderPageData & {
   /** Artist per commander card id, for crediting art shown as a backdrop. */
   artists: Record<number, string | null>;
+  /** TCGplayer product id per shown card id (its cheapest printing), for the price links; missing ones link a search. */
+  tcgplayerProductIds: Record<number, number>;
 };
 
 export async function loadCommanderPage(db: PublicClient, slug: string): Promise<CommanderPage | null> {
@@ -95,7 +107,14 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
         card: toCardSummary(row),
         category: cardCategory(row.type_line),
         score: blendScore(
-          { tag: null, manaValue: null, staple: null, corpus: round2(commanderCorpusScore(rates.commanderRate, scoring.corpus)), votes: null, role: null },
+          {
+            tag: null,
+            manaValue: null,
+            staple: null,
+            corpus: round2(commanderCorpusScore(rates.commanderRate, scoring.corpus)),
+            votes: null,
+            role: null,
+          },
           scoring.weights.add,
         ),
         corpus: rates.evidence,
@@ -117,20 +136,27 @@ export async function loadCommanderPage(db: PublicClient, slug: string): Promise
     ...commanderKeyCounts(corpus),
   };
 
+  const groups = CATEGORY_ORDER.map((category) => ({
+    category,
+    suggestions: suggestions
+      .filter((s) => s.category === category)
+      .sort((a, b) => b.score.total - a.score.total)
+      .slice(0, PER_CATEGORY),
+  })).filter((g) => g.suggestions.length > 0);
+  const productIds = await loadTcgplayerProductIds(
+    db,
+    groups.flatMap((g) => g.suggestions.map((s) => s.card.id)),
+  );
+
   return {
     artists,
+    tcgplayerProductIds: Object.fromEntries(productIds),
     key: keyRef,
     top: {
       mode: "collection_less",
       commanderKey: keyRef,
       confidence: corpus.confidence,
-      groups: CATEGORY_ORDER.map((category) => ({
-        category,
-        suggestions: suggestions
-          .filter((s) => s.category === category)
-          .sort((a, b) => b.score.total - a.score.total)
-          .slice(0, PER_CATEGORY),
-      })).filter((g) => g.suggestions.length > 0),
+      groups,
     },
     roleProfile: roleTargets.flatMap((target) => {
       const tag = roleTags.get(target.roleId);

@@ -100,8 +100,8 @@ export function FileDrop({
         }}
         className={cn(
           // Phones don't drag files: there it is a compact row with the picker.
-          "rounded-xl border border-dashed p-6 text-center transition-colors max-sm:p-3",
-          // Blue at rest like an outline button: the whole box takes a file.
+          "rounded-lg border border-dashed p-6 text-center transition-colors max-sm:p-3",
+          // Espresso at rest like an outline button: the whole box takes a file.
           over ? "border-primary bg-primary/5" : "border-primary/55",
           disabled && "opacity-60",
         )}
@@ -174,7 +174,7 @@ export function LoadedFile({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-seam bg-sleeve py-2 pr-2 pl-4">
+    <div className="flex items-center gap-3 rounded-lg border border-input bg-sleeve py-2 pr-2 pl-4">
       <FileText aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{name}</p>

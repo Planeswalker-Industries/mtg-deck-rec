@@ -322,10 +322,10 @@ export function CardSearchPanel({
     <section aria-label="Add cards" className="flex flex-col gap-3">
       {/*
         Stuck while the results scroll. On a phone the page scrolls, so it stops below the deck tool's sticky deck bar
-        (--deck-bar-height, 0 where there is none) and bleeds to the screen edge like that bar; from lg the sidebar is
-        the scroll area, so it sticks to the sidebar's top.
+        (--deck-bar-height, 0 where there is none); from lg the sidebar is the scroll area, so it sticks to the sidebar's
+        top. It spans the sheet it sits on, edge to edge, with a rule under it rather than a raised box of its own.
       */}
-      <div className="sticky top-[var(--deck-bar-height,0px)] z-20 -mx-4 flex flex-col gap-2 border-b border-seam bg-background/95 px-4 py-3 backdrop-blur-sm lg:top-0 lg:mx-0 lg:rounded-lg lg:border lg:bg-background lg:px-3 lg:pt-3">
+      <div className="sticky top-[var(--deck-bar-height,0px)] z-20 -mx-4 flex flex-col gap-2 border-b border-seam paper-ground px-4 py-3 lg:top-0">
         <div role="group" aria-label="Card type" className={PILL_ROW}>
           <Pill pressed={query.cardTypes.length === 0} onClick={() => change({ cardTypes: [] })}>
             All

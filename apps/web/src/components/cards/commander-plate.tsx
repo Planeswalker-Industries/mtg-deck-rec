@@ -8,8 +8,8 @@ const ART_SIZES = "(min-width: 640px) 75vw, 100vw";
 
 /**
  * The commanders' art behind a header, fading in from the right like a card plate's; partners share the strip.
- * The left stays clear for the name, and the art is dimmed so copy over it stays legible. Purely decorative, so
- * hidden from assistive tech.
+ * The left stays clear for the name, and the art is dimmed so light copy over it stays legible. It sits on a dark
+ * ground (`CommanderPlate`, the deck bar), never on paper. Purely decorative, so hidden from assistive tech.
  */
 export function CommanderArt({
   commanders,
@@ -43,8 +43,10 @@ export function CommanderArt({
 }
 
 /**
- * A panel headed by the commanders' art: BuildView, the deck page and the edit page open on it.
- * No hooks, so a server component can render it. The children sit over the art; keep their copy on the left.
+ * A dark plate on the sheet holding the commanders' art, with copy and controls over it: BuildView, the build start
+ * (`SelectedCommander`) and the edit page open on it. Framed in brass like `ArtPlate`, but onyx underneath where the art
+ * fades out, and in the `wood` scope, so text and controls on it read light like the header's. Copy over it uses fixed
+ * light ink (`--wood-ink`) with `text-on-art`. No hooks, so a server component can render it. Keep the copy on the left.
  */
 export function CommanderPlate({
   commanders,
@@ -61,7 +63,7 @@ export function CommanderPlate({
   children: ReactNode;
 }) {
   return (
-    <Tag className={cn("relative isolate overflow-hidden rounded-panel border border-seam bg-sleeve", className)}>
+    <Tag className={cn("wood relative isolate overflow-hidden border-2 border-brass bg-(--wood-bar)", className)}>
       <CommanderArt commanders={commanders} priority={priority} />
       <div className="relative">{children}</div>
     </Tag>

@@ -20,6 +20,8 @@ export interface DeckPageData {
   isBuilt: boolean;
   isOwner: boolean;
   commanders: CardSummary[];
+  /** Who painted each commander's art, by card id: the hero plate's credit. Null when Scryfall names nobody. */
+  artists: Record<number, string | null>;
   /** The 99, grouped by card type in the order a decklist is usually written. */
   groups: { category: CardCategory; cards: DeckPageCard[] }[];
   cardCount: number;
@@ -86,6 +88,7 @@ export async function loadDeckPage(db: PublicClient, code: string, viewerId: str
   ]);
 
   const commanders: CardSummary[] = [];
+  const artists: Record<number, string | null> = {};
   const byCategory = new Map<CardCategory, DeckPageCard[]>();
   for (const row of rows ?? []) {
     const found = cards.get(row.card_id);
@@ -93,6 +96,7 @@ export async function loadDeckPage(db: PublicClient, code: string, viewerId: str
     const card = toCardSummary(found);
     if (row.section === "commander") {
       commanders.push(card);
+      artists[card.id] = found.artist;
       continue;
     }
     const category = cardCategory(card.typeLine);
@@ -133,6 +137,7 @@ export async function loadDeckPage(db: PublicClient, code: string, viewerId: str
     isBuilt: deck.is_built,
     isOwner,
     commanders: [...commanders].sort((a, b) => a.name.localeCompare(b.name)),
+    artists,
     groups,
     cardCount: deck.card_count,
     bracket: (deck.bracket as Bracket | null) ?? null,

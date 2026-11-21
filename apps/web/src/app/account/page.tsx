@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { cn } from "cn";
 import { DeleteAccount } from "@/components/auth/delete-account";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { isPlatformAdmin } from "@/lib/server/admin";
 import { getCurrentUser } from "@/lib/server/auth";
 import { buttonVariants } from "@/components/ui/button";
+import { PAGE_SHEET } from "@/lib/constants";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -15,12 +17,20 @@ export const metadata: Metadata = {
 
 export default function AccountPage() {
   return (
-    <div className="flex max-w-prose flex-col gap-4">
-      <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Your account</h1>
-      <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Loading your account…</p>}>
+    <section aria-labelledby="account-heading" className={cn(PAGE_SHEET, "max-w-prose")}>
+      <h1 id="account-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
+        Your account
+      </h1>
+      <Suspense
+        fallback={
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading your account…
+          </p>
+        }
+      >
         <AccountDetails />
       </Suspense>
-    </div>
+    </section>
   );
 }
 
