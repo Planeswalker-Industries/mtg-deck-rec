@@ -73,9 +73,10 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             <h1 id="deck-heading" className="font-heading text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
               {deck.name}
             </h1>
-            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            {/* Lining figures and a shared baseline: the body face's old-style "3" otherwise sits below the mono count. */}
+            <p className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-muted-foreground lining-nums">
               <span>{deck.commanders.map(displayName).join(" and ") || "No commander"}</span>
-              <ColorIdentity identity={identity} />
+              <ColorIdentity identity={identity} className="self-center" />
               <span className="font-mono">{deck.cardCount} cards</span>
               {deck.bracket !== null && <span>Bracket {deck.bracket}</span>}
             </p>

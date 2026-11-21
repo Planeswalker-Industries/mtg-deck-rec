@@ -11,7 +11,7 @@ import { CardPlate } from "@/components/cards/card-plate";
 import { buttonVariants } from "@/components/ui/button";
 import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
-import { AFFILIATE_DISCLOSURE, PHONE_HIT_AREA, REMOVE_ARM_MS, SHOPPING_UNDO_MS, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { AFFILIATE_DISCLOSURE, PHONE_HIT_AREA, REMOVE_ARM_MS, SEAL_BUTTON, SHOPPING_UNDO_MS, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 import { asOfSuffix, formatUsd } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
 
@@ -214,15 +214,27 @@ export function ShoppingList({
           ? "This round put in no cards to buy."
           : "Nothing to buy.";
 
+  /*
+   * Folded (the saved deck page): from lg the groups are narrow columns side by side, scrolling sideways, each scrolling
+   * down on its own, so the list fills the sheet's width (owner, 2026-11-21). Below lg it stays one column: a sideways
+   * drag on a plate removes the card there, so the row can't scroll sideways on a phone.
+   */
   const lines = (
-    <div className="columns-1 gap-6 @xl:columns-2">
+    <div className={folded ? "flex flex-col gap-4 lg:flex-row lg:items-start lg:overflow-x-auto lg:pb-2" : "columns-1 gap-6 @xl:columns-2"}>
       {list.groups.map((group) => (
-        <section key={group.category} aria-label={cardCategoryLabel[group.category]} className="mb-4 break-inside-avoid">
+        <section
+          key={group.category}
+          aria-label={cardCategoryLabel[group.category]}
+          className={folded ? "lg:w-64 lg:shrink-0" : "mb-4 break-inside-avoid"}
+        >
           <GroupTitle className="mb-2 text-sm font-semibold text-muted-foreground">
             {cardCategoryLabel[group.category]}{" "}
             <span className="font-mono font-normal">{group.lines.reduce((n, l) => n + l.quantity, 0)}</span>
           </GroupTitle>
-          <ul aria-label={`${cardCategoryLabel[group.category]} to buy`} className="flex flex-col gap-1.5">
+          <ul
+            aria-label={`${cardCategoryLabel[group.category]} to buy`}
+            className={cn("flex flex-col gap-1.5", folded && "lg:max-h-96 lg:overflow-y-auto lg:pr-1 lg:*:shrink-0")}
+          >
             {group.lines.map(({ card, quantity }) => (
               <CardPlate
                 key={card.id}
@@ -271,15 +283,15 @@ export function ShoppingList({
   const actions = (
     // In Finish's aside (a scroll box from xl) Buy stays in view at its top while the lines scroll under it.
     <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:top-0 xl:z-10 xl:bg-background xl:pt-1 xl:pb-2")}>
-      {/* A named primary action (owner, 2026-11-15): the solid blue button. */}
+      {/* A named primary action (owner, 2026-11-15): the solid button; on the saved deck page, the page's seal. */}
       <div className="flex flex-wrap items-center gap-2">
         {carts.length === 0 || list.count === 0 ? (
-          <span aria-disabled className={cn(buttonVariants({ size: "lg" }), "pointer-events-none opacity-50")}>
+          <span aria-disabled className={cn(folded ? SEAL_BUTTON : buttonVariants({ size: "lg" }), "pointer-events-none opacity-50")}>
             Buy on TCGplayer
           </span>
         ) : (
           carts.map((href, i) => (
-            <a key={href} href={href} {...OUTBOUND} className={cn(buttonVariants({ size: "lg" }), "lit")}>
+            <a key={href} href={href} {...OUTBOUND} className={folded ? SEAL_BUTTON : cn(buttonVariants({ size: "lg" }), "lit")}>
               {carts.length > 1 ? `Buy on TCGplayer (${i + 1} of ${carts.length})` : "Buy on TCGplayer"}
             </a>
           ))
@@ -301,7 +313,12 @@ export function ShoppingList({
             {title}
           </Title>
           <p className="text-sm text-muted-foreground">
-            {list.count === 0 ? emptyText : `${list.count} ${cardsWord}, about ${formatUsd(list.totalUsd)}${asOf}`}
+            {list.count === 0
+              ? emptyText
+              : missing
+                ? // With a collection: what's left to finish the deck (owner, 2026-11-21).
+                  `Complete this deck with ${list.count} ${cardsWord} for ${formatUsd(list.totalUsd)}${asOf}!`
+                : `${list.count} ${cardsWord}, about ${formatUsd(list.totalUsd)}${asOf}`}
           </p>
         </div>
         {/* Nothing to buy: no Buy button at all, so nothing reads as broken. */}
@@ -312,18 +329,17 @@ export function ShoppingList({
               <button
                 type="button"
                 aria-expanded={linesOpen}
-                aria-controls={linesOpen ? linesId : undefined}
+                aria-controls={linesId}
                 onClick={() => setLinesOpen((o) => !o)}
-                className="flex min-h-11 items-center gap-2 rounded-md text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                // From lg the lines always show, as columns; the toggle is for phones.
+                className="flex min-h-11 items-center gap-2 rounded-md text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden"
               >
                 <ChevronDown aria-hidden className={cn("size-4 transition-transform", !linesOpen && "-rotate-90")} />
                 {linesOpen ? `Hide the ${list.count} ${cardsWord}` : `Show the ${list.count} ${cardsWord}`}
               </button>
-              {linesOpen && (
-                <div id={linesId} className="mt-2">
-                  {lines}
-                </div>
-              )}
+              <div id={linesId} className={cn("mt-2", !linesOpen && "hidden lg:block")}>
+                {lines}
+              </div>
             </div>
           </>
         )}

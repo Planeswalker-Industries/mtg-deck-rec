@@ -13,7 +13,7 @@ const NO_ROUND: readonly CardId[] = [];
 /**
  * The saved deck page's shopping list, for whoever is looking (T090). The page is public and server-rendered; the
  * viewer's collection lives in their browser or account, so this reads it here: with one, the cards it doesn't supply
- * ("Buy missing cards"); without, the whole deck ("Buy this deck"). The deck maker's budget never shows here.
+ * ("Buylist"); without, the whole deck ("Buy this deck"). The deck maker's budget never shows here.
  */
 export function SavedDeckShopping({
   deckId,
@@ -49,7 +49,7 @@ export function SavedDeckShopping({
     <div className="sheet p-4 sm:p-6">
       <ShoppingList
         // Neutral while the collection is checked: a visitor without one would otherwise see "missing" flash.
-        title={missing === undefined ? "Shopping list" : missing === null ? "Buy this deck" : "Buy missing cards"}
+        title={missing === undefined ? "Shopping list" : missing === null ? "Buy this deck" : "Buylist"}
         entries={entries}
         missing={missing}
         roundIds={NO_ROUND}

@@ -315,9 +315,9 @@ test("a saved deck page offers its missing cards to buy", async ({ page, request
 
   // The owner's collection holds Sol Ring, so the list leaves it out; basics are never listed. The panel leads with
   // the count, the total and Buy; the lines open under "Show the N cards".
-  const missing = page.getByRole("region", { name: "Buy missing cards" });
+  const missing = page.getByRole("region", { name: "Buylist" });
   await expect(missing).toBeVisible({ timeout: 30_000 });
-  await expect(missing.getByText(/^\d+ cards?, about \$/)).toBeVisible();
+  await expect(missing.getByText(/^Complete this deck with \d+ cards? for \$/)).toBeVisible();
   await expect(missing.getByRole("link", { name: "Buy on TCGplayer" })).toHaveAttribute("rel", /sponsored/);
   await missing.getByRole("button", { name: /^Show the \d+ cards?$/ }).click();
   await expect(missing.getByText("Sol Ring", { exact: true })).toBeHidden();

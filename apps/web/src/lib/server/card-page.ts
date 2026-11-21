@@ -6,6 +6,7 @@ import { loadCorpusConfig } from "./corpus";
 import { loadSwapPool } from "./recs";
 import { loadScoringConfig } from "./scoring-config";
 import type { PublicClient } from "./supabase";
+import { loadTcgplayerProductIds } from "./tcgplayer-products";
 
 const ALTERNATIVES = 12;
 const ALTERNATIVE_POOL = 120;
@@ -39,27 +40,11 @@ export interface CardPageData {
   commanderSlug: string | null;
   /** Artist of the printing the images come from, for crediting art shown as a backdrop. */
   artist: string | null;
-  /** TCGplayer product of the cheapest printing (its etched product when the etched finish is cheapest). */
-  tcgplayerProductId: number | null;
-}
-
-/**
- * The cheapest printing's TCGplayer product id, or null. A read error only logs: a preview deploy on main's schema has
- * no cheapest_printing_id yet, and the page then links a TCGplayer search instead.
- */
-async function loadTcgplayerProductId(db: PublicClient, cardId: number): Promise<number | null> {
-  const { data, error } = await db
-    .from("card_stats")
-    .select("cheapest_finish, printing:printings!cheapest_printing_id(tcgplayer_id, tcgplayer_etched_id)")
-    .eq("card_id", cardId)
-    .maybeSingle();
-  if (error) {
-    console.error(`Loading the cheapest printing failed: ${error.message}`);
-    return null;
-  }
-  const printing = data?.printing;
-  if (!printing) return null;
-  return (data.cheapest_finish === "etched" ? printing.tcgplayer_etched_id : printing.tcgplayer_id) ?? null;
+  /**
+   * TCGplayer product of the cheapest printing (its etched product when the etched finish is cheapest), by card id: the
+   * card's own and its alternatives'. A card missing here links a TCGplayer search instead.
+   */
+  tcgplayerProductIds: Record<number, number>;
 }
 
 /** Data for a public card page. Null when the slug isn't a card in the catalog. */
@@ -73,13 +58,12 @@ export async function loadCardPage(db: PublicClient, slug: string): Promise<Card
   if (error) throw new Error(`Loading card failed: ${error.message}`);
   if (!found) return null;
 
-  const [rows, tagsResult, corpusConfig, scoring, keyResult, tcgplayerProductId] = await Promise.all([
+  const [rows, tagsResult, corpusConfig, scoring, keyResult] = await Promise.all([
     fetchCardsById(db, [found.id]),
     db.rpc("card_functional_tags", { p_card_id: found.id }),
     loadCorpusConfig(db),
     loadScoringConfig(),
     db.from("commander_keys").select("id").eq("slug", slug).is("commander_2", null).maybeSingle(),
-    loadTcgplayerProductId(db, found.id),
   ]);
   if (tagsResult.error) throw new Error(`Loading card tags failed: ${tagsResult.error.message}`);
   if (keyResult.error) throw new Error(`Loading commander key failed: ${keyResult.error.message}`);
@@ -142,14 +126,17 @@ export async function loadCardPage(db: PublicClient, slug: string): Promise<Card
     scryfallUri: found.scryfall_uri,
   };
 
+  const alternatives: SwapResult = pool
+    ? rankSwaps(pool, { context: NO_DECK, limit: ALTERNATIVES, ownedBoost: 0, scoring })
+    : { mode: "collection_less", target: summary, confidence: "none", suggestions: [], emptyReason: "NO_CANDIDATES" };
+  const productIds = await loadTcgplayerProductIds(db, [found.id, ...alternatives.suggestions.map((s) => s.card.id)]);
+
   return {
     card,
-    alternatives: pool
-      ? rankSwaps(pool, { context: NO_DECK, limit: ALTERNATIVES, ownedBoost: 0, scoring })
-      : { mode: "collection_less", target: summary, confidence: "none", suggestions: [], emptyReason: "NO_CANDIDATES" },
+    alternatives,
     playedWith,
     commanderSlug: (keyStats.data?.deck_count ?? 0) > 0 ? slug : null,
     artist: row.artist,
-    tcgplayerProductId,
+    tcgplayerProductIds: Object.fromEntries(productIds),
   };
 }

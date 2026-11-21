@@ -23,6 +23,8 @@ export interface PocketItem {
   href?: string;
   /** Marks the card as owned (`OwnedCorner`); set only where owned and unowned cards mix. */
   owned?: boolean;
+  /** Under the caption, outside the pressable pocket, so it may hold its own link (a price to buy at). */
+  footer?: ReactNode;
 }
 
 const GRID_SIZES = "(min-width: 1024px) 160px, (min-width: 640px) 25vw, 33vw";
@@ -146,6 +148,7 @@ export function PocketGrid({
               ) : (
                 pocket
               )}
+              {item.footer && <div className="px-1 text-xs leading-snug">{item.footer}</div>}
             </li>
           );
         })}
