@@ -9,7 +9,7 @@ import { DeckExport } from "@/components/decks/deck-export";
 import { DeckBuilt } from "@/components/decks/deck-built";
 import { DeckVisibility } from "@/components/decks/deck-visibility";
 import { SavedDeckShopping } from "@/components/decks/saved-deck-shopping";
-import { ArtHeader } from "@/components/ui/art-header";
+import { ArtPortraitHeader } from "@/components/ui/art-portrait-header";
 import { buttonVariants } from "@/components/ui/button";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
@@ -62,11 +62,10 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
 
   return (
     <article className="flex flex-col gap-5 md:gap-8">
-      <ArtHeader
+      <ArtPortraitHeader
         art={art}
         credit={artist && lead ? { cardName: displayName(lead), cardSlug: lead.slug, artist } : null}
         labelledBy="deck-heading"
-        className="flex min-h-40 flex-col justify-end p-4 sm:min-h-56 sm:p-6 lg:p-8"
       >
         <header className="flex min-w-0 flex-col gap-4">
           <div>
@@ -96,7 +95,7 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
             </div>
           )}
         </header>
-      </ArtHeader>
+      </ArtPortraitHeader>
 
       {/* Buying sits in the first viewport (owner, 2026-11-16): the lines fold away under it. */}
       <SavedDeckShopping

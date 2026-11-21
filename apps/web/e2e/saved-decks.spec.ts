@@ -10,10 +10,12 @@ const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved 
  */
 async function expectEditor(page: Page) {
   const prompt = page.getByRole("dialog", { name: /\d+ (?:card isn't|cards aren't) in your collection/ });
-  await expect(prompt.or(page.getByText("All changes saved"))).toBeVisible({ timeout: 30_000 });
+  // "All changes saved" is a toast after each save, not a standing line, so the editor is known by its Upgrade link.
+  const editor = page.getByRole("link", { name: "Upgrade this deck" });
+  await expect(prompt.or(editor)).toBeVisible({ timeout: 30_000 });
   if (await prompt.isVisible()) await prompt.getByRole("button", { name: "Save", exact: true }).click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
-  await expect(page.getByText("All changes saved")).toBeVisible({ timeout: 30_000 });
+  await expect(editor).toBeVisible({ timeout: 30_000 });
 }
 
 // Saving needs an account, so these run only where the local mail catcher is up.
