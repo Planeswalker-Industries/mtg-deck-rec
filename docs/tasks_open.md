@@ -8,23 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T100: Paper theme
-
-**HIGH** · Web / UI · In progress on branch `aesthetic-ui-concept`, one PR to `develop` when every area is converted
-
-The whole site becomes square cream paper sheets on a walnut table, replacing the Cool blue dark theme (owner, 2026-11-20). Espresso (`--primary`, `#633636`) takes over blue's rules as the one interactive colour on paper; the header and footer are dark bars over the wood with brass links; art becomes brass-framed plates on the sheets. Headings in Cormorant Garamond, body in Alegreya Sans. CLAUDE.md's "dark only" rule is overridden and its UI section is rewritten at the end.
-
-- [x] Tokens, fonts and raster textures (`sheet` and `wood` utilities in `globals.css`)
-- [ ] Shared primitives (`components/ui/*` without `dark:` variants), the wood scope on header menus, footer
-- [ ] Framed art plates on the opening screens and commander pages; the owner approves the look before the other areas
-- [ ] Card and saved-deck pages, card plates, the deck bar
-- [ ] Deck tool and journey; the swipe buttons stay on screen at 390×844
-- [ ] Deckbuilder
-- [ ] Collection
-- [ ] Remaining public pages; the homepage off its concept-only names
-- [ ] Admin
-- [ ] CLAUDE.md UI rules, no `dark:` classes or stray colour literals left, PR to `develop`
-
 ## T074: Archidekt answers the daily crawl with 429s
 
 **HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`; the 429s are solved, the run bookkeeping is not
