@@ -11,7 +11,16 @@ import { CardPlate } from "@/components/cards/card-plate";
 import { buttonVariants } from "@/components/ui/button";
 import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
-import { AFFILIATE_DISCLOSURE, PHONE_HIT_AREA, REMOVE_ARM_MS, SEAL_BUTTON, SHOPPING_UNDO_MS, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import {
+  AFFILIATE_DISCLOSURE,
+  PHONE_HIT_AREA,
+  REMOVE_ARM_MS,
+  SEAL_BUTTON,
+  SHOPPING_UNDO_MS,
+  TEXT_LINK,
+  TOGGLE_OFF,
+  TOGGLE_ON,
+} from "@/lib/constants";
 import { asOfSuffix, formatAsOf, formatUsd } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
 
@@ -225,16 +234,22 @@ export function ShoppingList({
 
   /*
    * Folded (the saved deck page): from lg the groups are narrow columns side by side, scrolling sideways, each scrolling
-   * down on its own, so the list fills the sheet's width (owner, 2026-11-21). Below lg it stays one column: a sideways
-   * drag on a plate removes the card there, so the row can't scroll sideways on a phone.
+   * down on its own, so the list fills the sheet's width (owner, 2026-11-21). Only with a mouse: on a touch screen a
+   * sideways drag on a plate removes the card there, so the row stays one column on phones and tablets alike.
    */
   const lines = (
-    <div className={folded ? "flex flex-col gap-4 lg:flex-row lg:items-start lg:overflow-x-auto lg:pb-2" : "columns-1 gap-6 @xl:columns-2"}>
+    <div
+      className={
+        folded
+          ? "flex flex-col gap-4 lg:pointer-fine:flex-row lg:pointer-fine:items-start lg:pointer-fine:overflow-x-auto lg:pointer-fine:pb-2"
+          : "columns-1 gap-6 @xl:columns-2"
+      }
+    >
       {list.groups.map((group) => (
         <section
           key={group.category}
           aria-label={cardCategoryLabel[group.category]}
-          className={folded ? "lg:w-64 lg:shrink-0" : "mb-4 break-inside-avoid"}
+          className={folded ? "lg:pointer-fine:w-64 lg:pointer-fine:shrink-0" : "mb-4 break-inside-avoid"}
         >
           <GroupTitle className="mb-2 text-sm font-semibold text-muted-foreground">
             {cardCategoryLabel[group.category]}{" "}

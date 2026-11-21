@@ -8,6 +8,8 @@ import { CREDIT_LINK } from "@/lib/constants";
 
 /** How much of the art shows over the paper: enough to read as the card's, thin enough for ink copy on top. */
 const ART_OPACITY = "opacity-35";
+/** Fades the art towards the sheet's foot: full art over the top 35%, 30% left at the bottom (an alpha mask, not a colour). */
+const ART_FADE_MASK = "[mask-image:linear-gradient(to_bottom,black_35%,rgb(0_0_0/0.3))]";
 
 /**
  * A page's first sheet with a card's art across its full width, behind the copy: the commander, card and saved-deck
@@ -39,13 +41,7 @@ export function ArtHeader({
   return (
     <section aria-labelledby={labelledBy} className="sheet overflow-hidden">
       {shown && (
-        <div
-          aria-hidden
-          className={cn(
-            "pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black_35%,rgb(0_0_0/0.3))]",
-            ART_OPACITY,
-          )}
-        >
+        <div aria-hidden className={cn("pointer-events-none absolute inset-0", ART_FADE_MASK, ART_OPACITY)}>
           <Image
             src={art}
             alt=""

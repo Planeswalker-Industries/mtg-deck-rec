@@ -52,6 +52,8 @@ export function SavedDeckShopping({
   const checking = source.kind === "loading" || coverage?.status === "loading";
   const missing = useMemo(() => (checking ? undefined : coverageData ? missingFromCoverage(coverageData) : null), [checking, coverageData]);
   const signedIn = source.kind === "account" || ((source.kind === "none" || source.kind === "browser") && source.signedIn);
+  // A viewer with a collection whose coverage read failed gets the neutral copy, never "Upload your collection".
+  const hasCollection = source.kind === "account" || source.kind === "browser";
   const pathname = usePathname();
   const buyLabel = (totalUsd: number) => `${formatUsd(totalUsd)} on TCGplayer`;
   const upload = (
@@ -60,7 +62,7 @@ export function SavedDeckShopping({
     </Link>
   );
   const copy =
-    missing === undefined
+    missing === undefined || (missing === null && hasCollection)
       ? { title: "Shopping list" }
       : missing !== null
         ? { title: "Complete This Deck!", summary: (n: number) => `${n} ${n === 1 ? "card" : "cards"} missing from your collection.` }

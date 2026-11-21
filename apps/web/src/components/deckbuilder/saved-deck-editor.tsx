@@ -168,7 +168,8 @@ export function SavedDeckEditor({
         }
       : null;
 
-  // The lead commander's art, as on the deck's page; the commander as edited, so a new one brings its own art.
+  // The lead commander's art, as on the deck's page. Artists come with the page load only (CardSummary has none), so a
+  // commander added while editing shows no art until the page reloads: uncredited art is never shown.
   const lead = builder.commanders[0];
   const artist = lead ? (artists[lead.id] ?? null) : null;
 

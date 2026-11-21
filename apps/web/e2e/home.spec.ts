@@ -39,6 +39,7 @@ test("clicking a tile selects that commander", async ({ page }) => {
 
 test("the Commander starting point opens the commander picker", async ({ page }) => {
   await page.goto("/");
-  const commander = page.getByRole("link", { name: "Choose Commander", exact: true });
+  // The hero and the closing sheet both carry the pair; the link's name includes its sub line.
+  const commander = page.getByRole("link", { name: /^Choose a Commander/ }).first();
   await expect(commander).toHaveAttribute("href", "/deck?start=build");
 });

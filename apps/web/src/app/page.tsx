@@ -96,7 +96,7 @@ async function FeaturedCommandersSection() {
 function FeaturedCommandersSkeleton() {
   return (
     <div aria-busy="true" aria-label="Popular Decks">
-      <OrnateHeading>Popular Decks</OrnateHeading>
+      <OrnateHeading id="popular-decks">Popular Decks</OrnateHeading>
       <div className="mt-6 grid grid-cols-[9rem_minmax(0,1fr)] items-center gap-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-8">
         <Skeleton className="aspect-square rounded-full" />
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-3">
@@ -125,7 +125,7 @@ export default function Home() {
     <div className="flex flex-col gap-5 pt-2 md:gap-8 md:pt-4">
       <Hero />
       <HowItWorks />
-      <SheetSection className="px-5 py-8 sm:px-8 md:py-10">
+      <SheetSection aria-labelledby="popular-decks" className="px-5 py-8 sm:px-8 md:py-10">
         <Suspense fallback={<FeaturedCommandersSkeleton />}>
           <FeaturedCommandersSection />
         </Suspense>

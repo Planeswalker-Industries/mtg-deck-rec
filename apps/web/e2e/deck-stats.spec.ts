@@ -19,8 +19,6 @@ async function firstStep(page: Page) {
 }
 /** Rounding slack for comparing layout boxes, in CSS pixels. */
 const LAYOUT_SLACK_PX = 1;
-/** How far the touch test drags up the footer: past its SWIPE_OPEN_PX (24) and out of the bar. */
-const SWIPE_TEST_PX = 80;
 
 async function analyzeSample(page: Page) {
   await page.goto("/deck");
@@ -28,7 +26,11 @@ async function analyzeSample(page: Page) {
   await page.getByRole("button", { name: "Analyze deck" }).click();
   await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 60_000 });
   // With real data the sample commander may have no play data, which offers a deck lookup. Not needed here.
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 3_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 3_000 })
+    .catch(() => undefined);
 }
 
 /** Both buttons sit inside the viewport and above the Deck stats footer: the 390×844 rule in CLAUDE.md. */
@@ -73,7 +75,10 @@ test.describe("deck stats on a phone", () => {
     // Add swipe, the first step of a short deck (the mocks' sample), which also covers the open slots it has to fill.
     test.skip((await firstStep(page)) !== "Add", "the sample deck is at 100, so the round has no Add step");
     const sitting = page.getByRole("region", { name: "Cards to add" });
-    await expectAboveFooter(page, [sitting.getByRole("button", { name: ADD_CARD }).first(), sitting.getByRole("button", { name: SKIP_CARD }).first()]);
+    await expectAboveFooter(page, [
+      sitting.getByRole("button", { name: ADD_CARD }).first(),
+      sitting.getByRole("button", { name: SKIP_CARD }).first(),
+    ]);
   });
 
   test("the Fix step keeps both cards and its buttons above the footer, and the footer shows the score it would give", async ({ page }) => {
@@ -84,7 +89,11 @@ test.describe("deck stats on a phone", () => {
     const nothingToFix = recs.getByRole("button", { name: /^Next: (swap|finish)$/ });
     await expect(move.or(nothingToFix).first()).toBeVisible({ timeout: 60_000 });
     test.skip(!(await move.isVisible()), "no Fix move in this data");
-    await expectAboveFooter(page, [move.getByRole("button", { name: FIX_SWAP }), move.getByRole("button", { name: FIX_SKIP }), move.getByRole("button", { name: "Fix the rest for me" })]);
+    await expectAboveFooter(page, [
+      move.getByRole("button", { name: FIX_SWAP }),
+      move.getByRole("button", { name: FIX_SKIP }),
+      move.getByRole("button", { name: "Fix the rest for me" }),
+    ]);
     // Closed, the footer reads one score (T091): the result the move on screen would give, or the score now when it
     // changes nothing. No per-line text.
     await expect(page.getByRole("button", { name: FOOTER_NAME })).toContainText(/\d+\/\d+/);
