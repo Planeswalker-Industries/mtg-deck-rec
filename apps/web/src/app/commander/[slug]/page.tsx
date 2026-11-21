@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { cn } from "cn";
-import { ArtPlate } from "@/components/ui/art-plate";
+import { ArtHeader } from "@/components/ui/art-header";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { buttonVariants } from "@/components/ui/button";
 import { GameChangerBadge } from "@/components/deck/card-label";
@@ -59,23 +59,12 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
 
   return (
     <article className="flex flex-col gap-5 md:gap-8">
-      <section
-        aria-labelledby="commander-heading"
-        className="sheet grid gap-5 p-4 sm:p-6 md:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)] lg:gap-8 lg:p-8"
+      <ArtHeader
+        art={art}
+        credit={artist && lead ? { cardName: displayName(lead), cardSlug: lead.slug, artist } : null}
+        labelledBy="commander-heading"
+        className="p-4 sm:p-6 lg:p-8"
       >
-        {/* Uncredited art is worse than none: an art crop carries no artist line of its own, so without one it stays off. */}
-        {art && artist && lead && (
-          <ArtPlate
-            src={art}
-            credit={{ cardName: displayName(lead), cardSlug: lead.slug, artist }}
-            sizes="(min-width: 1024px) 28rem, 100vw"
-            // The phone banner is a thin strip of the art: a commander's head is usually in its upper part.
-            position="object-center max-sm:object-[center_25%]"
-            unoptimized
-            priority
-            className="aspect-[16/7] sm:aspect-[4/3] sm:max-w-md lg:order-last lg:max-w-none lg:self-start"
-          />
-        )}
         <div className="flex min-w-0 flex-col gap-6">
           <header className="flex flex-col gap-4">
             <div>
@@ -105,7 +94,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
                 href={`/rate?commander=${key.slug ?? slug}` as Route}
                 className={cn(
                   buttonVariants({ size: "lg", variant: "outline" }),
-                  "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal",
+                  "h-auto min-h-9 max-w-full bg-background/70 py-2 text-center whitespace-normal",
                 )}
               >
                 Rate cards for this commander
@@ -129,7 +118,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
             </section>
           )}
         </div>
-      </section>
+      </ArtHeader>
 
       {/* One sheet per card type, so a long page reads as a stack of papers. */}
       {top.groups.map((group) => (

@@ -9,7 +9,7 @@ import { DeckExport } from "@/components/decks/deck-export";
 import { DeckBuilt } from "@/components/decks/deck-built";
 import { DeckVisibility } from "@/components/decks/deck-visibility";
 import { SavedDeckShopping } from "@/components/decks/saved-deck-shopping";
-import { ArtPlate } from "@/components/ui/art-plate";
+import { ArtHeader } from "@/components/ui/art-header";
 import { buttonVariants } from "@/components/ui/button";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
@@ -62,22 +62,12 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
 
   return (
     <article className="flex flex-col gap-5 md:gap-8">
-      <section
-        aria-labelledby="deck-heading"
-        className="sheet grid gap-5 p-4 sm:p-6 md:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:gap-8 lg:p-8"
+      <ArtHeader
+        art={art}
+        credit={artist && lead ? { cardName: displayName(lead), cardSlug: lead.slug, artist } : null}
+        labelledBy="deck-heading"
+        className="flex min-h-40 flex-col justify-end p-4 sm:min-h-56 sm:p-6 lg:p-8"
       >
-        {/* As on the commander page: the lead commander's art as a plate, and none without its artist to credit. */}
-        {art && artist && lead && (
-          <ArtPlate
-            src={art}
-            credit={{ cardName: displayName(lead), cardSlug: lead.slug, artist }}
-            sizes="(min-width: 1024px) 20rem, 100vw"
-            position="object-center max-sm:object-[center_25%]"
-            unoptimized
-            priority
-            className="aspect-[16/7] sm:aspect-[4/3] sm:max-w-md lg:order-last lg:max-w-none lg:self-start"
-          />
-        )}
         <header className="flex min-w-0 flex-col gap-4">
           <div>
             <h1 id="deck-heading" className="font-heading text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
@@ -96,13 +86,16 @@ async function DeckDetails({ params }: Pick<PageProps<"/decks/[commander]/[code]
               <Link href={`/decks/${deck.commanderSlug}/${deck.code}/edit` as Route} className={cn(buttonVariants({ size: "sm" }), "lit")}>
                 Edit
               </Link>
-              <Link href={{ pathname: "/deck", query: { deck: deck.code } }} className={buttonVariants({ size: "sm", variant: "outline" })}>
+              <Link
+                href={{ pathname: "/deck", query: { deck: deck.code } }}
+                className={cn(buttonVariants({ size: "sm", variant: "outline" }), "bg-background/70")}
+              >
                 Upgrade
               </Link>
             </div>
           )}
         </header>
-      </section>
+      </ArtHeader>
 
       {/* Buying sits in the first viewport (owner, 2026-11-16): the lines fold away under it. */}
       <SavedDeckShopping

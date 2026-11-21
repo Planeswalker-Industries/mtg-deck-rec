@@ -10,7 +10,7 @@ import { FlippableCardImage } from "@/components/cards/flippable-card-image";
 import { PocketGrid, type PocketItem } from "@/components/cards/pocket-grid";
 import { RulesText } from "@/components/cards/rules-text";
 import { GameChangerBadge } from "@/components/deck/card-label";
-import { ArtPlate } from "@/components/ui/art-plate";
+import { ArtHeader } from "@/components/ui/art-header";
 import { buttonVariants } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { asOfSuffix, describeCostDelta, formatAsOf, formatPercent, fromPrice } from "@/lib/format";
@@ -83,29 +83,15 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
     ];
   });
 
-  const art = card.images?.front.artCrop;
-
   return (
     <article className="flex flex-col gap-5 md:gap-8">
-      <section
-        aria-labelledby="card-heading"
-        className="sheet grid gap-5 p-4 sm:p-6 md:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:gap-8 lg:p-8"
+      <ArtHeader
+        art={card.images?.front.artCrop}
+        credit={artist ? { cardName: name, cardSlug: card.slug, artist } : null}
+        labelledBy="card-heading"
+        position="object-[center_30%]"
+        className="p-4 sm:p-6 lg:p-8"
       >
-        {/*
-         * The art as a plate: across the top of the sheet, then beside the card from lg, as on the commander page. Uncredited art is worse than none: an
-         * art crop carries no artist line of its own, so without one it stays off.
-         */}
-        {art && artist && (
-          <ArtPlate
-            src={art}
-            credit={{ cardName: name, cardSlug: card.slug, artist }}
-            sizes="(min-width: 1024px) 20rem, 100vw"
-            position="object-[center_30%]"
-            unoptimized
-            priority
-            className="aspect-[16/7] sm:aspect-[3/1] lg:order-last lg:aspect-[4/3] lg:self-start"
-          />
-        )}
         <div className="grid gap-6 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
           <figure className="mx-auto w-full max-w-72 sm:mx-0">
             <FlippableCardImage card={card} zoomable variant="large" sizes="(min-width: 640px) 288px, 80vw" eager />
@@ -176,7 +162,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
 
             <div className="flex flex-wrap items-center gap-3 text-sm">
               {commanderSlug && (
-                <Link href={`/commander/${commanderSlug}`} className={buttonVariants({ variant: "outline" })}>
+                <Link href={`/commander/${commanderSlug}`} className={cn(buttonVariants({ variant: "outline" }), "bg-background/70")}>
                   {name} as a commander
                 </Link>
               )}
@@ -186,7 +172,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
             </div>
           </div>
         </div>
-      </section>
+      </ArtHeader>
 
       <section aria-labelledby="alternatives-heading" className="sheet flex flex-col gap-2 p-4 sm:p-6 lg:p-8">
         <h2 id="alternatives-heading" className="font-heading text-xl font-semibold tracking-tight">
