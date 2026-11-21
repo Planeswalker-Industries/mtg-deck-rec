@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 import type { CardId } from "@mtg/core/contract";
@@ -12,7 +12,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import { AFFILIATE_DISCLOSURE, PHONE_HIT_AREA, REMOVE_ARM_MS, SEAL_BUTTON, SHOPPING_UNDO_MS, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
-import { asOfSuffix, formatUsd } from "@/lib/format";
+import { asOfSuffix, formatAsOf, formatUsd } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
 
 /** A phone (or any touch screen) gets the two-tap remove; a mouse gets one click. */
@@ -121,6 +121,9 @@ export function ShoppingList({
   pinActions = false,
   headingLevel = 3,
   folded = false,
+  summary,
+  buyLabel,
+  extraAction,
 }: {
   title?: string;
   /** The title's heading level: 3 inside Finish, 2 where the list is one of the page's own sections. */
@@ -137,6 +140,12 @@ export function ShoppingList({
   pinActions?: boolean;
   /** Count, total and Buy first; the lines behind "Show the N cards", closed at first. */
   folded?: boolean;
+  /** Folded: the line under the title, from the number of cards listed (else "N cards, about $Y"). */
+  summary?: (count: number) => string;
+  /** Folded: the Buy button's words, from the total (else "Buy on TCGplayer"). */
+  buyLabel?: (totalUsd: number) => string;
+  /** Folded: a second action before Buy (the saved deck page's collection upload). */
+  extraAction?: ReactNode;
 }) {
   const coarse = useCoarsePointer();
   // A round that put nothing in has nothing to buy in round scope, so the whole deck is the useful default there.
@@ -280,25 +289,30 @@ export function ShoppingList({
       document.body,
     );
 
+  const buyText = buyLabel ? buyLabel(list.totalUsd) : "Buy on TCGplayer";
   const actions = (
     // In Finish's aside (a scroll box from xl) Buy stays in view at its top while the lines scroll under it.
     <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:top-0 xl:z-10 xl:bg-background xl:pt-1 xl:pb-2")}>
       {/* A named primary action (owner, 2026-11-15): the solid button; on the saved deck page, the page's seal. */}
       <div className="flex flex-wrap items-center gap-2">
+        {folded && extraAction}
         {carts.length === 0 || list.count === 0 ? (
           <span aria-disabled className={cn(folded ? SEAL_BUTTON : buttonVariants({ size: "lg" }), "pointer-events-none opacity-50")}>
-            Buy on TCGplayer
+            {buyText}
           </span>
         ) : (
           carts.map((href, i) => (
             <a key={href} href={href} {...OUTBOUND} className={folded ? SEAL_BUTTON : cn(buttonVariants({ size: "lg" }), "lit")}>
-              {carts.length > 1 ? `Buy on TCGplayer (${i + 1} of ${carts.length})` : "Buy on TCGplayer"}
+              {/* Split carts can't each carry the whole total. */}
+              {carts.length > 1 ? `Buy on TCGplayer (${i + 1} of ${carts.length})` : buyText}
             </a>
           ))
         )}
       </div>
 
       <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+        {/* A total shown on the button still carries its prices' date. */}
+        {folded && buyLabel && list.asOf && <p>Prices from {formatAsOf(list.asOf)}.</p>}
         {list.unpriced > 0 && <p>{list.unpriced} unpriced.</p>}
         {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
       </div>
@@ -315,9 +329,8 @@ export function ShoppingList({
           <p className="text-sm text-muted-foreground">
             {list.count === 0
               ? emptyText
-              : missing
-                ? // With a collection: what's left to finish the deck (owner, 2026-11-21).
-                  `Complete this deck with ${list.count} ${cardsWord} for ${formatUsd(list.totalUsd)}${asOf}!`
+              : summary
+                ? summary(list.count)
                 : `${list.count} ${cardsWord}, about ${formatUsd(list.totalUsd)}${asOf}`}
           </p>
         </div>

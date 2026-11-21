@@ -6,14 +6,21 @@ import { missingFromCoverage, type ShoppingLine } from "@mtg/core/shop";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useDeckCoverage } from "@/components/deck/use-deck-coverage";
 import { ShoppingList } from "./shopping-list";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import type { Route } from "next";
+import { formatUsd } from "@/lib/format";
+import { SEAL_OUTLINE_BUTTON } from "@/lib/constants";
 
 /** A saved deck has no round. */
 const NO_ROUND: readonly CardId[] = [];
 
 /**
  * The saved deck page's shopping list, for whoever is looking (T090). The page is public and server-rendered; the
- * viewer's collection lives in their browser or account, so this reads it here: with one, the cards it doesn't supply
- * ("Buylist"); without, the whole deck ("Buy this deck"). The deck maker's budget never shows here.
+ * viewer's collection lives in their browser or account, so this reads it here. Its words follow who is looking
+ * (owner, 2026-11-21): with a collection (in an account, or in this browser while signed out), the cards it doesn't
+ * supply; signed in without one, an invitation to upload it beside buying the whole deck; signed out, the whole deck
+ * with the same two buttons. The deck maker's budget never shows here.
  */
 export function SavedDeckShopping({
   deckId,
@@ -44,12 +51,33 @@ export function SavedDeckShopping({
   const coverageData = coverage?.status === "ready" ? coverage.data.coverage : null;
   const checking = source.kind === "loading" || coverage?.status === "loading";
   const missing = useMemo(() => (checking ? undefined : coverageData ? missingFromCoverage(coverageData) : null), [checking, coverageData]);
+  const signedIn = source.kind === "account" || ((source.kind === "none" || source.kind === "browser") && source.signedIn);
+  const pathname = usePathname();
+  const buyLabel = (totalUsd: number) => `${formatUsd(totalUsd)} on TCGplayer`;
+  const upload = (
+    <Link href={`/collection/import?next=${encodeURIComponent(pathname)}` as Route} className={SEAL_OUTLINE_BUTTON}>
+      Upload
+    </Link>
+  );
+  const copy =
+    missing === undefined
+      ? { title: "Shopping list" }
+      : missing !== null
+        ? { title: "Complete This Deck!", summary: (n: number) => `${n} ${n === 1 ? "card" : "cards"} missing from your collection.` }
+        : signedIn
+          ? { title: "Build from Collection!", summary: () => "Upload your collection and buy the cards you need.", extraAction: upload }
+          : {
+              title: "Build this Deck!",
+              summary: (n: number) => `Purchase these ${n} ${n === 1 ? "card" : "cards"} or only the ones you need!`,
+              extraAction: upload,
+            };
 
   return (
     <div className="sheet p-4 sm:p-6">
       <ShoppingList
         // Neutral while the collection is checked: a visitor without one would otherwise see "missing" flash.
-        title={missing === undefined ? "Shopping list" : missing === null ? "Buy this deck" : "Buylist"}
+        {...copy}
+        buyLabel={buyLabel}
         entries={entries}
         missing={missing}
         roundIds={NO_ROUND}

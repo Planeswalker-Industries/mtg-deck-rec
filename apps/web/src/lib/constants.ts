@@ -73,12 +73,18 @@ export const TIP_HOVER_DELAY_MS = 200;
 export const HINT_TEXT =
   "underline decoration-primary decoration-dotted decoration-2 underline-offset-4 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
+/** The shape both seals share: the heading face, a 44 px target. */
+const SEAL_SHAPE =
+  "group inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 font-heading text-lg font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
 /**
- * The wax seal (the `seal` utility): a page's one main action, as on the homepage. Solid espresso with a brass rim, in
- * the heading face. Callers add width and an icon if they want one.
+ * The wax seal (the `seal` utility): a page's one main action, as on the homepage. Solid espresso with a brass rim.
+ * Callers add width and an icon if they want one.
  */
-export const SEAL_BUTTON =
-  "seal group inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 font-heading text-lg font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+export const SEAL_BUTTON = `seal ${SEAL_SHAPE}`;
+
+/** The seal's quiet partner (`seal-outline`): espresso on raised paper, edged in brass, beside a seal. */
+export const SEAL_OUTLINE_BUTTON = `seal-outline ${SEAL_SHAPE}`;
 
 /**
  * A link that credits an artist: muted, not espresso, so it never competes with the page's priority actions. Still
