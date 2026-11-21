@@ -11,7 +11,8 @@ import type { AdminFeedbackReport, AdminFeedbackReportPage } from "@/lib/admin/t
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { PAGE_SHEET, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { AdminBackLink } from "./back-link";
 
 /** Reports per page. "More reports" asks for the next one. */
 const PAGE_SIZE = 25;
@@ -119,105 +120,110 @@ export function ReportsView() {
   const more = page !== null && reports.length < page.total;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
+    <>
+      {/* One sheet for the heading and filters, one for the reports: wood between them, no tiles on the paper. */}
+      <div className={PAGE_SHEET}>
+        <AdminBackLink />
         <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight sm:text-3xl">Feedback reports</h1>
         <p className="mt-2 max-w-prose text-sm text-muted-foreground">
           What signed-in players sent from Send feedback and deck pages&apos; Report links. Senders stay anonymous here.
         </p>
+
+        <div className="flex flex-wrap items-center gap-3 border-t border-seam pt-4">
+          <div role="group" aria-label="Show" className="flex gap-1">
+            {FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                aria-pressed={filter === f.value}
+                onClick={() => changeFilter(f.value)}
+                className={cn(
+                  "min-h-11 rounded-md px-4 text-sm font-normal transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  filter === f.value ? TOGGLE_ON : TOGGLE_OFF,
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {page !== null && (
+            <p aria-live="polite" className="text-xs text-muted-foreground tabular-nums">
+              {page.total.toLocaleString()} {filter === "open" ? "open" : "in all"}
+            </p>
+          )}
+        </div>
+
+        {problem && <ErrorText>{problem}</ErrorText>}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div role="group" aria-label="Show" className="inline-flex rounded-lg bg-muted p-0.5">
-          {FILTERS.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              aria-pressed={filter === f.value}
-              onClick={() => changeFilter(f.value)}
-              className={cn(
-                "min-h-11 rounded-md px-4 text-sm font-normal transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                filter === f.value ? TOGGLE_ON : TOGGLE_OFF,
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        {page !== null && (
-          <p aria-live="polite" className="text-xs text-muted-foreground tabular-nums">
-            {page.total.toLocaleString()} {filter === "open" ? "open" : "in all"}
+      <div className={PAGE_SHEET}>
+        {page === null && !problem && (
+          <ul className="flex flex-col gap-4">
+            {Array.from({ length: SKELETON_ROWS }, (_, i) => (
+              <li key={i}>
+                <Skeleton className="h-24 w-full" />
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {page !== null && reports.length === 0 && (
+          <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+            <Inbox aria-hidden className="size-4" />
+            {filter === "open" ? "No open reports." : "No reports yet."}
           </p>
         )}
+
+        {reports.length > 0 && (
+          <ul aria-label="Reports" className={cn("flex flex-col divide-y divide-seam transition-opacity", busy && "opacity-60")}>
+            {reports.map((report) => (
+              <li key={report.id} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <time dateTime={report.createdAt}>{WHEN.format(new Date(report.createdAt))}</time>
+                  {report.resolvedAt && (
+                    <span className="flex items-center gap-1 font-semibold text-success">
+                      <CircleCheck aria-hidden className="size-3.5" />
+                      Resolved
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm break-words whitespace-pre-wrap">{report.message}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Link href={report.pagePath as Route} className={cn(TEXT_LINK, "min-w-0 text-sm break-all")}>
+                    {report.pagePath}
+                  </Link>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 px-4"
+                    disabled={saving === report.id}
+                    onClick={() => void setResolved(report, report.resolvedAt === null)}
+                  >
+                    {report.resolvedAt === null ? "Resolve" : "Reopen"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {more && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            className="self-start"
+            onClick={() => {
+              const next = offset + PAGE_SIZE;
+              setOffset(next);
+              setBusy(true);
+              run(filter, next, true);
+            }}
+          >
+            More reports
+          </Button>
+        )}
       </div>
-
-      {problem && <ErrorText className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">{problem}</ErrorText>}
-
-      {page === null && !problem && (
-        <ul className="flex flex-col gap-2">
-          {Array.from({ length: SKELETON_ROWS }, (_, i) => (
-            <li key={i}>
-              <Skeleton className="h-28 w-full rounded-xl" />
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {page !== null && reports.length === 0 && (
-        <p className="flex items-center gap-2 rounded-xl border border-seam bg-sleeve px-4 py-6 text-sm text-muted-foreground">
-          <Inbox aria-hidden className="size-4" />
-          {filter === "open" ? "No open reports." : "No reports yet."}
-        </p>
-      )}
-
-      {reports.length > 0 && (
-        <ul aria-label="Reports" className={cn("flex flex-col gap-2 transition-opacity", busy && "opacity-60")}>
-          {reports.map((report) => (
-            <li key={report.id} className="flex flex-col gap-3 rounded-xl border border-seam bg-sleeve p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <time dateTime={report.createdAt}>{WHEN.format(new Date(report.createdAt))}</time>
-                {report.resolvedAt && (
-                  <span className="flex items-center gap-1 font-semibold text-success">
-                    <CircleCheck aria-hidden className="size-3.5" />
-                    Resolved
-                  </span>
-                )}
-              </div>
-              <p className="text-sm break-words whitespace-pre-wrap">{report.message}</p>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Link href={report.pagePath as Route} className={cn(TEXT_LINK, "min-w-0 text-sm break-all")}>
-                  {report.pagePath}
-                </Link>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 px-4"
-                  disabled={saving === report.id}
-                  onClick={() => void setResolved(report, report.resolvedAt === null)}
-                >
-                  {report.resolvedAt === null ? "Resolve" : "Reopen"}
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {more && (
-        <Button
-          type="button"
-          variant="outline"
-          disabled={busy}
-          onClick={() => {
-            const next = offset + PAGE_SIZE;
-            setOffset(next);
-            setBusy(true);
-            run(filter, next, true);
-          }}
-        >
-          More reports
-        </Button>
-      )}
-    </div>
+    </>
   );
 }

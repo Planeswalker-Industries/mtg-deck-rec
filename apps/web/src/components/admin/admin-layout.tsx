@@ -4,9 +4,8 @@ import { Box } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { Suspense, type MouseEvent, type ReactElement } from "react";
 import { AppBar, Inspector, Loading, Menu, MenuItemLink, Sidebar, SkipNavigationButton, TitlePortal, type LayoutProps } from "react-admin";
-import FeedbackIcon from "@mui/icons-material/Feedback";
-import LayersIcon from "@mui/icons-material/Layers";
-import { ADMIN_TOKENS } from "./theme";
+import { Inbox, Layers } from "lucide-react";
+import { MenuIcon } from "./menu-icon";
 
 /**
  * React Admin's own <Layout>, rebuilt so the admin area sits inside the site rather than on top of it.
@@ -67,9 +66,8 @@ export const AdminLayout = ({ children }: LayoutProps) => (
       width: "100%",
       minWidth: 0,
       minHeight: "70vh",
-      backgroundColor: "background.default",
-      // The seam under the site header, so the two do not read as one bar.
-      borderTop: `1px solid ${ADMIN_TOKENS.seam}`,
+      // The walnut shows around the bar and the sheet, as on every other page.
+      backgroundColor: "transparent",
     }}
   >
     <SkipNavigationButton />
@@ -85,8 +83,8 @@ export const AdminLayout = ({ children }: LayoutProps) => (
           */}
           <Menu>
             <Menu.ResourceItems />
-            <SitePageMenuItem page="crawls" label="Deck crawls" icon={<LayersIcon />} />
-            <SitePageMenuItem page="reports" label="Feedback reports" icon={<FeedbackIcon />} />
+            <SitePageMenuItem page="crawls" label="Deck crawls" icon={<MenuIcon icon={Layers} />} />
+            <SitePageMenuItem page="reports" label="Feedback reports" icon={<MenuIcon icon={Inbox} />} />
           </Menu>
         </Sidebar>
         <Box
@@ -97,13 +95,15 @@ export const AdminLayout = ({ children }: LayoutProps) => (
             flexDirection: "column",
             flexGrow: 1,
             minWidth: 0,
-            // The site's own gutter on a phone, roomier once there is space for it.
-            px: { xs: 2, sm: 3 },
+            // The sheet runs edge to edge on a phone, like every page's sheets; past that it sits in the wood's gutter.
+            px: { xs: 0, sm: 3 },
             py: 3,
-            gap: 2,
           }}
         >
-          <Suspense fallback={<Loading />}>{children}</Suspense>
+          {/* The screen is one paper sheet: lists, records and forms lie flat on it, ruled off with seams. */}
+          <Box className="sheet" sx={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, p: { xs: 2, sm: 3 } }}>
+            <Suspense fallback={<Loading />}>{children}</Suspense>
+          </Box>
         </Box>
       </Box>
     </Box>

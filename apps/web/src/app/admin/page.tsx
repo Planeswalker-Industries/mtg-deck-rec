@@ -27,7 +27,7 @@ export default function AdminPage() {
     <div className="mx-[calc(50%-50vw)] w-[100vw]">
       <Suspense
         fallback={
-          <p role="status" className="p-6 text-sm text-muted-foreground">
+          <p role="status" className="p-6 text-sm text-(--wood-muted)">
             Checking your access…
           </p>
         }

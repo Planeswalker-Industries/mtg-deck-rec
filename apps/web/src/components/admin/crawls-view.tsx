@@ -9,7 +9,8 @@ import type { AdminCrawledDeck, AdminCrawledDeckCard, AdminCrawledDeckPage, Admi
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { PAGE_SHEET, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { AdminBackLink } from "./back-link";
 import { ErrorText } from "@/components/ui/error-text";
 
 /** Typing waits this long before asking again, so a word is one request rather than one per letter. */
@@ -18,6 +19,8 @@ const SEARCH_DEBOUNCE_MS = 350;
 const PAGE_SIZE = 25;
 /** How long the whole list takes to arrive, spread across its rows. Past this a stagger reads as lag, not motion. */
 const STAGGER_TOTAL_S = 0.24;
+/** Each source is its own sheet on the wood, like the decks below it: sheets edge to edge on a phone. */
+const SOURCE_SHEET = "sheet flex min-w-0 flex-col gap-3 p-4 max-sm:-mx-4";
 /** Rows past this one appear together: a stagger only says "these arrived" for the few the eye can follow. */
 const STAGGER_ROWS = 12;
 
@@ -73,7 +76,7 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: reduce ? 0 : index * 0.06, duration: 0.3, ease: "easeOut" }}
-      className="flex min-w-0 flex-col gap-3 rounded-xl border border-seam bg-sleeve p-4"
+      className={SOURCE_SHEET}
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-heading text-lg leading-none font-semibold capitalize">{source.source}</h2>
@@ -94,9 +97,7 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
       </div>
 
       <div className="flex items-baseline gap-2">
-        <span className="font-heading text-2xl leading-none font-mono text-foreground">
-          {source.decks.toLocaleString()}
-        </span>
+        <span className="font-heading text-2xl leading-none font-mono text-foreground">{source.decks.toLocaleString()}</span>
         <span className="text-sm text-muted-foreground">decks</span>
       </div>
 
@@ -121,9 +122,7 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
         </p>
       )}
       {!source.disabled && source.lastRun?.error && (
-        <p className="min-w-0 rounded-lg border border-seam bg-muted/40 px-2.5 py-2 text-xs break-words text-muted-foreground">
-          {source.lastRun.error}
-        </p>
+        <p className="min-w-0 border-t border-seam pt-3 text-xs break-words text-muted-foreground">{source.lastRun.error}</p>
       )}
     </motion.li>
   );
@@ -158,9 +157,9 @@ function DeckRow({ deck, index }: { deck: AdminCrawledDeck; index: number }) {
       initial={reduce ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: reduce ? 0 : Math.min(index, STAGGER_ROWS) * (STAGGER_TOTAL_S / STAGGER_ROWS), duration: 0.25 }}
-      className="overflow-hidden rounded-xl border border-seam bg-sleeve"
+      className="overflow-hidden"
     >
-      <div className="flex items-start gap-3 p-3 sm:p-4">
+      <div className="flex items-start gap-3 py-3">
         <button
           type="button"
           onClick={() => void toggle()}
@@ -212,12 +211,8 @@ function DeckRow({ deck, index }: { deck: AdminCrawledDeck; index: number }) {
             transition={{ duration: 0.24, ease: "easeOut" }}
             className="overflow-hidden border-t border-seam"
           >
-            <div className="p-3 sm:p-4">
-              {problem && (
-                <ErrorText className="text-xs">
-                  {problem}
-                </ErrorText>
-              )}
+            <div className="py-3">
+              {problem && <ErrorText className="text-xs">{problem}</ErrorText>}
               {!problem && cards === null && (
                 <div className="flex flex-col gap-1.5" role="status" aria-label="Loading the cards">
                   {Array.from({ length: 6 }, (_, i) => (
@@ -338,106 +333,109 @@ export function CrawlsView() {
   const more = data !== null && decks.length < data.page.total;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
+    <>
+      {/* The heading, each source and the deck list are separate sheets on the wood: no tiles on the paper. */}
+      <div className={PAGE_SHEET}>
+        <AdminBackLink />
         <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight sm:text-3xl">Deck crawls</h1>
         <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-          What the crawlers have written into the corpus. These are other people&apos;s decklists: they feed play rates
-          and nothing else, and this page is the only place in the app that shows them.
+          What the crawlers have written into the corpus. These are other people&apos;s decklists: they feed play rates and nothing else,
+          and this page is the only place in the app that shows them.
         </p>
+        {problem && <ErrorText>{problem}</ErrorText>}
       </div>
 
-      {problem && (
-        <ErrorText className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
-          {problem}
-        </ErrorText>
-      )}
-
       {data === null ? (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {Array.from({ length: 2 }, (_, i) => (
-            <li key={i}>
-              <Skeleton className="h-44 w-full rounded-xl" />
+            <li key={i} className={SOURCE_SHEET}>
+              <Skeleton className="h-36 w-full" />
             </li>
           ))}
         </ul>
       ) : (
-        <ul aria-label="Crawl sources" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <ul aria-label="Crawl sources" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {data.sources.map((s, i) => (
             <SourceCard key={s.source} source={s} index={i} />
           ))}
         </ul>
       )}
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div role="group" aria-label="Source" className="inline-flex rounded-lg bg-muted p-0.5">
-            {(["all", ...SOURCES] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={source === s}
-                onClick={() => changeSource(s)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-normal capitalize transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  source === s ? TOGGLE_ON : TOGGLE_OFF,
-                )}
-              >
-                {s}
-              </button>
-            ))}
+      <div className={PAGE_SHEET}>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="group" aria-label="Source" className="flex gap-1">
+              {(["all", ...SOURCES] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={source === s}
+                  onClick={() => changeSource(s)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-sm font-normal capitalize transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                    source === s ? TOGGLE_ON : TOGGLE_OFF,
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div className="relative min-w-0 flex-1 basis-full sm:max-w-xs sm:basis-auto">
+              <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                aria-label="Search decks"
+                placeholder="Deck id or commander"
+                value={text}
+                onChange={(e) => changeSearch(e.target.value)}
+                className="bg-sleeve pl-9 text-base sm:text-sm"
+              />
+            </div>
           </div>
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              aria-label="Search decks"
-              placeholder="Deck id or commander"
-              value={text}
-              onChange={(e) => changeSearch(e.target.value)}
-              className="bg-sleeve pl-9 text-base sm:text-sm"
-            />
-          </div>
+
+          {data !== null && (
+            <p aria-live="polite" className="text-xs text-muted-foreground tabular-nums">
+              {data.page.total.toLocaleString()} deck{data.page.total === 1 ? "" : "s"}
+              {text.trim() !== "" && " matching"}
+            </p>
+          )}
         </div>
 
-        {data !== null && (
-          <p aria-live="polite" className="text-xs text-muted-foreground tabular-nums">
-            {data.page.total.toLocaleString()} deck{data.page.total === 1 ? "" : "s"}
-            {text.trim() !== "" && " matching"}
+        {data !== null && decks.length === 0 && (
+          <p className="flex items-center gap-2 border-t border-seam pt-4 text-sm text-muted-foreground">
+            <Layers aria-hidden className="size-4" />
+            {text.trim() === "" ? "Nothing has been crawled yet." : "No deck matches that."}
           </p>
         )}
+
+        {decks.length > 0 && (
+          <ul
+            aria-label="Crawled decks"
+            className={cn("flex flex-col divide-y divide-seam border-t border-seam transition-opacity", busy && "opacity-60")}
+          >
+            {decks.map((deck, i) => (
+              <DeckRow key={deck.id} deck={deck} index={i} />
+            ))}
+          </ul>
+        )}
+
+        {more && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            className="self-start"
+            onClick={() => {
+              const next = offset + PAGE_SIZE;
+              setOffset(next);
+              setBusy(true);
+              run(source, text, next, true);
+            }}
+          >
+            More decks
+          </Button>
+        )}
       </div>
-
-      {data !== null && decks.length === 0 && (
-        <p className="flex items-center gap-2 rounded-xl border border-seam bg-sleeve px-4 py-6 text-sm text-muted-foreground">
-          <Layers aria-hidden className="size-4" />
-          {text.trim() === "" ? "Nothing has been crawled yet." : "No deck matches that."}
-        </p>
-      )}
-
-      {decks.length > 0 && (
-        <ul aria-label="Crawled decks" className={cn("flex flex-col gap-2 transition-opacity", busy && "opacity-60")}>
-          {decks.map((deck, i) => (
-            <DeckRow key={deck.id} deck={deck} index={i} />
-          ))}
-        </ul>
-      )}
-
-      {more && (
-        <Button
-          type="button"
-          variant="outline"
-          disabled={busy}
-          onClick={() => {
-            const next = offset + PAGE_SIZE;
-            setOffset(next);
-            setBusy(true);
-            run(source, text, next, true);
-          }}
-        >
-          More decks
-        </Button>
-      )}
-    </div>
+    </>
   );
 }

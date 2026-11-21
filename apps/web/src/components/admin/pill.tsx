@@ -1,18 +1,17 @@
 "use client";
 
 import { Box, Stack } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import type { ReactNode } from "react";
-import { ADMIN_TOKENS } from "./theme";
+import { ADMIN_TOKENS, tint } from "./theme";
 
 /**
  * Status as pills, in the site's own shape: a rounded outline that is quiet until it has something to say.
  *
  * A pill is only drawn when its fact is true, and it says what it means in words — colour alone would not. Tones are
- * the site's three jobs plus the accent: `cut` for trouble, `add` for healthy, `replace` for "changed, look closer",
- * `primary` for the one thing worth noticing.
+ * the site's three jobs plus ink: `cut` for trouble, `add` for healthy, `replace` for "changed, look closer", `ink` for
+ * the one thing worth noticing. Never espresso: on paper that colour means "you can press this".
  */
-export type PillTone = "primary" | "cut" | "add" | "replace" | "muted";
+export type PillTone = "ink" | "cut" | "add" | "replace" | "muted";
 
 const PILL_SHAPE = {
   display: "inline-flex",
@@ -27,12 +26,12 @@ const PILL_SHAPE = {
   whiteSpace: "nowrap",
 } as const;
 
-/** How strongly a pill's border and fill show its tone, against the text in full colour. */
-const BORDER_ALPHA = 0.45;
-const FILL_ALPHA = 0.1;
+/** How strongly a pill's border and fill show its tone (percent), against the text in full colour. */
+const BORDER_TINT_PERCENT = 45;
+const FILL_TINT_PERCENT = 10;
 
 const TONE_COLOR: Record<PillTone, string> = {
-  primary: ADMIN_TOKENS.primary,
+  ink: ADMIN_TOKENS.foreground,
   cut: ADMIN_TOKENS.cut,
   add: ADMIN_TOKENS.add,
   replace: ADMIN_TOKENS.replace,
@@ -44,7 +43,7 @@ export function Pill({ tone, children }: { tone: PillTone; children: ReactNode }
   return (
     <Box
       component="span"
-      sx={{ ...PILL_SHAPE, color, borderColor: alpha(color, BORDER_ALPHA), backgroundColor: alpha(color, FILL_ALPHA) }}
+      sx={{ ...PILL_SHAPE, color, borderColor: tint(color, BORDER_TINT_PERCENT), backgroundColor: tint(color, FILL_TINT_PERCENT) }}
     >
       {children}
     </Box>
