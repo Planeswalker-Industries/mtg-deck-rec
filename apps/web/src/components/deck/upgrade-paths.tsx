@@ -43,7 +43,8 @@ export function UpgradePathPicker({
             className={cn(
               "flex min-h-11 flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors duration-180 ease-table",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              chosen ? "border-primary bg-primary/15" : "border-primary/45 bg-background/40 hover:border-primary hover:bg-primary/10",
+              // Selected is a thick espresso edge, never a fill (the toggle rule).
+              chosen ? "border-primary bg-sleeve ring-2 ring-inset ring-primary" : "border-primary/45 bg-sleeve hover:border-primary hover:bg-primary/10",
             )}
           >
             <span className="flex items-center gap-2 text-sm font-semibold">

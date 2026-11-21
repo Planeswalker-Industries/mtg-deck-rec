@@ -10,7 +10,7 @@ import type { AdminAppProps } from "./admin-app";
 const AdminApp = dynamic(() => import("./admin-app"), {
   ssr: false,
   loading: () => (
-    <p role="status" className="p-6 text-sm text-muted-foreground">
+    <p role="status" className="p-6 text-sm text-(--wood-muted)">
       Loading the admin area…
     </p>
   ),

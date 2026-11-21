@@ -10,10 +10,12 @@ const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved 
  */
 async function expectEditor(page: Page) {
   const prompt = page.getByRole("dialog", { name: /\d+ (?:card isn't|cards aren't) in your collection/ });
-  await expect(prompt.or(page.getByText("All changes saved"))).toBeVisible({ timeout: 30_000 });
+  // "All changes saved" is a toast after each save, not a standing line, so the editor is known by its Upgrade link.
+  const editor = page.getByRole("link", { name: "Upgrade this deck" });
+  await expect(prompt.or(editor)).toBeVisible({ timeout: 30_000 });
   if (await prompt.isVisible()) await prompt.getByRole("button", { name: "Save", exact: true }).click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
-  await expect(page.getByText("All changes saved")).toBeVisible({ timeout: 30_000 });
+  await expect(editor).toBeVisible({ timeout: 30_000 });
 }
 
 // Saving needs an account, so these run only where the local mail catcher is up.
@@ -315,10 +317,10 @@ test("a saved deck page offers its missing cards to buy", async ({ page, request
 
   // The owner's collection holds Sol Ring, so the list leaves it out; basics are never listed. The panel leads with
   // the count, the total and Buy; the lines open under "Show the N cards".
-  const missing = page.getByRole("region", { name: "Buy missing cards" });
+  const missing = page.getByRole("region", { name: "Complete This Deck!" });
   await expect(missing).toBeVisible({ timeout: 30_000 });
-  await expect(missing.getByText(/^\d+ cards?, about \$/)).toBeVisible();
-  await expect(missing.getByRole("link", { name: "Buy on TCGplayer" })).toHaveAttribute("rel", /sponsored/);
+  await expect(missing.getByText(/^\d+ cards? missing from your collection\.$/)).toBeVisible();
+  await expect(missing.getByRole("link", { name: /^\$[\d,.]+ on TCGplayer$/ })).toHaveAttribute("rel", /sponsored/);
   await missing.getByRole("button", { name: /^Show the \d+ cards?$/ }).click();
   await expect(missing.getByText("Sol Ring", { exact: true })).toBeHidden();
 
@@ -326,7 +328,7 @@ test("a saved deck page offers its missing cards to buy", async ({ page, request
   const stranger = await browser.newContext();
   const strangerPage = await stranger.newPage();
   await strangerPage.goto(url);
-  const whole = strangerPage.getByRole("region", { name: "Buy this deck" });
+  const whole = strangerPage.getByRole("region", { name: "Build this Deck!" });
   await expect(whole).toBeVisible({ timeout: 30_000 });
   await whole.getByRole("button", { name: /^Show the \d+ cards?$/ }).click();
   await expect(whole.getByText("Sol Ring", { exact: true })).toBeVisible();

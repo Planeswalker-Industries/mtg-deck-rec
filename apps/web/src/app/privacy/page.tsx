@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { TEXT_LINK } from "@/lib/constants";
+import { cn } from "cn";
+import { PAGE_SHEET, TEXT_LINK } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "Privacy policy",
@@ -16,7 +17,7 @@ const UPDATED = "16 November 2026";
 // code: a new table holding personal data, a new processor, a new cookie or a new tracking script means an edit here.
 export default function PrivacyPage() {
   return (
-    <article className="flex max-w-prose flex-col gap-6">
+    <article className={cn(PAGE_SHEET, "max-w-prose gap-6")}>
       <header className="flex flex-col gap-2">
         <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Privacy policy</h1>
         <p className="text-sm text-muted-foreground">Last updated {UPDATED}</p>

@@ -21,8 +21,10 @@ import {
 } from "@mtg/core/collection";
 import { MAX_SEARCH_QUERY_CHARS } from "@mtg/core/schemas";
 import { cn } from "cn";
+import { CardPlate } from "@/components/cards/card-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { COLOR_NAMES, MANA_SYMBOL_URL } from "@/components/deck/color-identity";
+import { DeckViewToggle, useDeckView } from "@/components/decks/deck-view";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PageHero } from "@/components/ui/page-hero";
 import { COLLECTION_VISTA } from "@/lib/landing-art";
@@ -41,6 +43,8 @@ import { ErrorText } from "@/components/ui/error-text";
 const MULTICOLOR_WEDGES = "conic-gradient(#f8f6d8 0 20%, #0e68ab 0 40%, #3a3531 0 60%, #d3202a 0 80%, #00733e 0)";
 /** Size of a mana symbol inside its toggle, in px. */
 const SYMBOL_PX = 28;
+/** Each part of the page is its own sheet on the wood, edge to edge on phones (no paper on paper). */
+const COLLECTION_SHEET = "sheet flex flex-col gap-4 p-4 max-sm:-mx-4 sm:p-6";
 
 const ALL_SETS = "all";
 const OTHER_SETS = "other";
@@ -60,7 +64,7 @@ export function CollectionView() {
   return (
     <div className="flex flex-col gap-5">
       {view.status === "loading" && (
-        <>
+        <div className={COLLECTION_SHEET}>
           <Heading />
           <div className="flex max-w-md flex-col gap-1.5" aria-live="polite">
             <p className="text-sm tabular-nums">
@@ -68,15 +72,13 @@ export function CollectionView() {
             </p>
             <ProgressBar value={view.total === 0 ? 0 : Math.round((view.loaded / view.total) * 100)} label="Loading your collection" />
           </div>
-        </>
+        </div>
       )}
       {view.status === "error" && (
-        <>
+        <div className={COLLECTION_SHEET}>
           <Heading />
-          <ErrorText>
-            {view.message}
-          </ErrorText>
-        </>
+          <ErrorText>{view.message}</ErrorText>
+        </div>
       )}
       {view.status === "none" && (
         <EmptyView signedIn={view.signedIn} />
@@ -119,7 +121,7 @@ function EmptyView({ signedIn }: { signedIn: boolean }) {
         </div>
       </PageHero>
       {adding && (
-        <>
+        <div className={COLLECTION_SHEET}>
           {editor.error ? (
             <ErrorText>{editor.error}</ErrorText>
           ) : (
@@ -128,7 +130,7 @@ function EmptyView({ signedIn }: { signedIn: boolean }) {
             </p>
           )}
           <AddToCollection editor={editor} />
-        </>
+        </div>
       )}
     </>
   );
@@ -146,7 +148,7 @@ export function SharedCollectionView({ code }: { code: string }) {
   return (
     <div className="flex flex-col gap-5">
       {view.status === "loading" && (
-        <>
+        <div className={COLLECTION_SHEET}>
           <Heading>{heading}</Heading>
           <div className="flex max-w-md flex-col gap-1.5" aria-live="polite">
             <p className="text-sm tabular-nums">
@@ -154,13 +156,13 @@ export function SharedCollectionView({ code }: { code: string }) {
             </p>
             <ProgressBar value={view.total === 0 ? 0 : Math.round((view.loaded / view.total) * 100)} label="Loading the collection" />
           </div>
-        </>
+        </div>
       )}
       {view.status === "error" && (
-        <>
+        <div className={COLLECTION_SHEET}>
           <Heading>{heading}</Heading>
           <ErrorText>{view.message}</ErrorText>
-        </>
+        </div>
       )}
       {view.status === "ready" && (
         <CollectionBrowser
@@ -217,7 +219,7 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
           <CollectionSharingControl where={where} />
 
           {editing && (
-            <>
+            <div className="flex flex-col gap-3 border-t border-seam pt-4">
               {editor.error ? (
                 <ErrorText>{editor.error}</ErrorText>
               ) : (
@@ -226,7 +228,7 @@ function ReadyView({ items: loaded, sets, where }: { items: CollectionViewItem[]
                 </p>
               )}
               <AddToCollection editor={editor} />
-            </>
+            </div>
           )}
         </>
       }
@@ -258,6 +260,7 @@ function CollectionBrowser({
   const [colors, setColors] = useState<ColorFilter>({ colors: new Set(), colorless: false, multicolor: false });
   const [setValue, setSetValue] = useState(ALL_SETS);
   const [collapsed, setCollapsed] = useState<ReadonlySet<CollectionGroup>>(new Set());
+  const [view, setView] = useDeckView("collection");
 
   const majorSets = useMemo(() => majorSetsNewestFirst(sets), [sets]);
   const majorCodes = useMemo(() => new Set(majorSets.map((s) => s.code)), [majorSets]);
@@ -301,13 +304,13 @@ function CollectionBrowser({
 
   return (
     <>
-      {header}
+      <div className={COLLECTION_SHEET}>{header}</div>
 
       <div
         role="search"
         aria-label={`Filter ${whose} collection`}
         // Pinned while scrolling from sm up. On a phone the panel is a third of the screen, so it scrolls away with the page.
-        className="z-20 -mx-4 flex flex-col gap-3 border-y border-seam bg-sleeve/95 px-4 py-3 backdrop-blur-sm sm:sticky sm:top-0 sm:mx-0 sm:rounded-lg sm:border"
+        className="sheet z-20 flex flex-col gap-3 p-4 max-sm:-mx-4 sm:sticky sm:top-0"
       >
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -336,11 +339,11 @@ function CollectionBrowser({
               on={colors.multicolor}
               onToggle={() => setColors((p) => ({ ...p, multicolor: !p.multicolor }))}
             >
-              <span aria-hidden className="size-7 rounded-full ring-1 ring-black/40" style={{ background: MULTICOLOR_WEDGES }} />
+              <span aria-hidden className="size-7 rounded-full ring-1 ring-foreground/40" style={{ background: MULTICOLOR_WEDGES }} />
             </ColorToggle>
           </div>
           <Select value={setValue} onValueChange={setSetValue}>
-            <SelectTrigger aria-label="Set" className="w-full bg-background sm:w-64">
+            <SelectTrigger aria-label="Set" className="w-full sm:w-64">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -360,18 +363,22 @@ function CollectionBrowser({
             </SelectContent>
           </Select>
         </div>
-        <p className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground tabular-nums" aria-live="polite">
-          {filtering ? `Showing ${count(shown)} of ${count(items.length)} cards.` : `${count(items.length)} cards.`}
-          {filtering && (
-            <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={clearFilters}>
-              Clear filters
-            </Button>
-          )}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <p className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground tabular-nums" aria-live="polite">
+            {filtering ? `Showing ${count(shown)} of ${count(items.length)} cards.` : `${count(items.length)} cards.`}
+            {filtering && (
+              <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            )}
+          </p>
+          {/* Editing shows its own card tiles, so the choice waits until Done editing. */}
+          {!editableCards && <DeckViewToggle view={view} onChange={setView} className="self-center" />}
+        </div>
       </div>
 
       {groups.length === 0 ? (
-        <div className="flex flex-col items-start gap-2 py-6">
+        <div className={cn(COLLECTION_SHEET, "items-start gap-2")}>
           <p>No cards in {whose} collection match those filters.</p>
           <Button type="button" variant="outline" onClick={clearFilters}>
             Clear filters
@@ -382,7 +389,7 @@ function CollectionBrowser({
           const open = !collapsed.has(group);
           const id = `collection-${group}`;
           return (
-            <section key={group} aria-labelledby={`${id}-heading`} className="flex flex-col gap-2">
+            <section key={group} aria-labelledby={`${id}-heading`} className={cn(COLLECTION_SHEET, "gap-2")}>
               <h2 id={`${id}-heading`}>
                 <button
                   type="button"
@@ -407,6 +414,12 @@ function CollectionBrowser({
                 <div id={id}>
                   {editableCards ? (
                     editableCards(COLLECTION_GROUP_LABELS[group], groupItems)
+                  ) : view === "plates" ? (
+                    <ul aria-label={COLLECTION_GROUP_LABELS[group]} className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                      {groupItems.map((item) => (
+                        <CardPlate key={item.card.id} card={item.card} quantity={item.quantity} />
+                      ))}
+                    </ul>
                   ) : (
                     <PocketGrid
                       zoomable

@@ -26,10 +26,11 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/decks", label: "My decks", hint: "The decks you have saved", accountOnly: true },
 ];
 
-// Blue, like everything pressable. The page you are on reads in the foreground ink with an accent edge along the
-// header's foot, where the header meets the page.
+// Brass, like everything pressable on the wood. The page you are on reads in the bar's light ink with a brass edge along
+// the header's foot, where the header meets the page. The phone menu opens in a portal, on paper, so its links are
+// espresso.
 const NAV_LINK =
-  "relative flex h-16 items-center whitespace-nowrap px-3 text-sm font-semibold text-primary transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:text-foreground after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-primary after:opacity-0 aria-[current=page]:after:opacity-100";
+  "relative flex h-16 items-center whitespace-nowrap sm:h-[4.5rem] px-3 text-sm font-semibold text-primary transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:text-foreground after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-primary after:opacity-0 aria-[current=page]:after:opacity-100";
 
 const ICON_BUTTON =
   "flex size-11 items-center justify-center rounded-lg text-primary transition-colors hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";

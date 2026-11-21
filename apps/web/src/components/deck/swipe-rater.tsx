@@ -162,7 +162,7 @@ export function SwipeRater({
     <section
       ref={viewRef}
       aria-label={inRater ? "Rate replacements" : "Swipe through cards to replace"}
-      className="playmat mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-2 sm:gap-3"
+      className="mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-2 sm:gap-3"
     >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground font-mono">

@@ -47,6 +47,7 @@ async function Editor({ params }: Pick<PageProps<"/decks/[commander]/[code]/edit
       bracket={deck.bracket}
       deck={deck.deck}
       cards={deck.cards}
+      artists={deck.artists}
     />
   );
 }

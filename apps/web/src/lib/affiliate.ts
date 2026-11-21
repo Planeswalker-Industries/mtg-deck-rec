@@ -1,4 +1,4 @@
-import { MAX_CART_URL_CHARS, splitIntoCarts, tcgplayerLink, trackingBase, type CartLine } from "@mtg/core/shop";
+import { MAX_CART_URL_CHARS, productUrl, searchUrl, splitIntoCarts, tcgplayerLink, trackingBase, type CartLine } from "@mtg/core/shop";
 
 // TCGplayer affiliate links (Impact). The owner's tracking link comes from the environment, so the public repo carries
 // none and each deploy can turn links on or off; without it, links go straight to TCGplayer. No script runs on our
@@ -17,6 +17,11 @@ export function affiliateOn(): boolean {
 /** A TCGplayer page (product or search) as an outbound link. */
 export function cardLink(target: string): string {
   return tcgplayerLink(target, affiliateBase());
+}
+
+/** One card on TCGplayer: its product page when the catalog knows the product, else a search for its name. */
+export function cardBuyLink(name: string, productId: number | null | undefined): string {
+  return cardLink(productId === null || productId === undefined ? searchUrl(name) : productUrl(productId));
 }
 
 /** Mass Entry carts for the lines, split so no link is too long for TCGplayer. */

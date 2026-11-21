@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { DeckAnalysis, RecContext } from "@mtg/core/contract";
 import type { DeckEntry } from "@mtg/core/scoring";
 import { isBasicLand } from "@mtg/core/journey";
+import { TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { byCost, groupHeading } from "@/components/deck/deck-group-id";
 import { DeckStatsFooter } from "@/components/deck/deck-stats/deck-stats-footer";
@@ -22,16 +23,17 @@ const WUBRG = "WUBRG";
  * none from `xl`, where the readout is a rail. The page itself reserves the footer's room (globals.css); this is for the
  * halves below.
  */
-const DECK_STATS_DOCK =
-  "[--deck-stats-dock:calc(var(--deck-stats-dock-height)_+_env(safe-area-inset-bottom))] xl:[--deck-stats-dock:0px]";
+const DECK_STATS_DOCK = "[--deck-stats-dock:calc(var(--deck-stats-dock-height)_+_env(safe-area-inset-bottom))] xl:[--deck-stats-dock:0px]";
 
 /**
- * From `lg`, each half scrolls on its own inside the window, below the deck tool's sticky deck bar when there is one
- * (--deck-bar-height, set by DeckBar) and above the Deck stats footer while it docks (--deck-stats-dock), so the search
- * stays in reach however long the decklist is.
+ * Each half is a sheet, edge to edge on phones. From `lg` it scrolls on its own inside the window, below the deck
+ * tool's sticky deck bar when there is one (--deck-bar-height, set by DeckBar) and above the Deck stats footer while it
+ * docks (--deck-stats-dock), so the search stays in reach however long the decklist is. The sheet is the sticky outer
+ * box and HALF_SCROLL the scroll inside it: a sheet that scrolled itself would carry its paper (::before) away.
  */
-const HALF_SCROLL =
-  "lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:max-h-[calc(100dvh-var(--deck-bar-height,0px)-var(--deck-stats-dock,0px)-2rem)] lg:overflow-y-auto lg:overscroll-contain";
+const HALF_SHEET =
+  "sheet max-sm:-mx-4 lg:sticky lg:top-[calc(var(--deck-bar-height,0px)+1rem)] lg:flex lg:max-h-[calc(100dvh-var(--deck-bar-height,0px)-var(--deck-stats-dock,0px)-2rem)] lg:flex-col";
+const HALF_SCROLL = "min-h-0 px-4 pb-4 lg:overflow-y-auto lg:overscroll-contain";
 
 /** From `xl` the Deck stats rail is a third column beside the halves. */
 const WITH_STATS_RAIL = "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_18rem]";
@@ -74,7 +76,10 @@ export function DeckBuilder({
   collection?: BuilderCollection | undefined;
 }) {
   const [tab, setTab] = useState<"deck" | "add">("deck");
-  const identity = builder.commanders.length === 0 ? undefined : [...WUBRG].filter((c) => builder.commanders.some((cmd) => cmd.colorIdentity.includes(c))).join("");
+  const identity =
+    builder.commanders.length === 0
+      ? undefined
+      : [...WUBRG].filter((c) => builder.commanders.some((cmd) => cmd.colorIdentity.includes(c))).join("");
   const issues = analysis?.issues ?? [];
   // builder.main is rebuilt every render, and the stats hook re-syncs on a new array: keep one array per content.
   const mainKey = builder.main.map((e) => `${e.card.id}:${e.quantity}`).join(",");
@@ -92,8 +97,9 @@ export function DeckBuilder({
   return (
     <div className={cn("flex flex-col gap-4", statsReport && DECK_STATS_DOCK)}>
       {showIssues && issues.length > 0 && (
-        <details className="rounded-lg border border-cut/40 bg-cut/5 px-4 py-2 text-sm">
-          <summary className="cursor-pointer font-semibold text-primary">
+        <details className="sheet px-4 py-2 text-sm max-sm:-mx-4">
+          <summary className="flex min-h-11 cursor-pointer items-center gap-2 font-semibold text-primary">
+            <TriangleAlert aria-hidden className="size-4 shrink-0 text-destructive" />
             {issues.length} deck issue{issues.length === 1 ? "" : "s"}
           </summary>
           <ul className="mt-2 list-disc pl-5">
@@ -123,46 +129,50 @@ export function DeckBuilder({
 
       <div className={cn("grid grid-cols-1 items-start gap-6 lg:grid-cols-2", statsReport && WITH_STATS_RAIL)}>
         {/* Unlabelled: the panel inside is the "Add cards" region, and one landmark per job is enough. */}
-        <aside className={cn(HALF_SCROLL, "min-w-0", tab === "deck" && "hidden lg:block")}>
-          <CardSearchPanel builder={builder} colorIdentity={identity} collection={collection} />
+        <aside className={cn(HALF_SHEET, "min-w-0", tab === "deck" && "max-lg:hidden")}>
+          <div className={HALF_SCROLL}>
+            <CardSearchPanel builder={builder} colorIdentity={identity} collection={collection} />
+          </div>
         </aside>
 
-        <section aria-label="Deck list" className={cn(HALF_SCROLL, "flex min-w-0 flex-col gap-5 lg:pr-1", tab === "add" && "hidden lg:flex")}>
-          <section aria-labelledby="builder-commanders" className="flex flex-col gap-2">
-            <h2 id="builder-commanders" className="font-heading text-xl leading-none font-semibold">
-              Commander{builder.commanders.length > 1 ? "s" : ""}
-            </h2>
-            {builder.commanders.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No commander yet. The search shows only cards that can lead a deck until you pick one.
-              </p>
-            ) : (
-              <ul aria-label="Commanders" className="flex flex-col gap-1.5">
-                {builder.commanders.map((card) => (
-                  <CardPlate key={card.id} card={card} quantity={1} commander onRemove={() => builder.remove(card)} />
-                ))}
-              </ul>
-            )}
-          </section>
-          {builder.groups.map((group) => (
-            <section key={group.key} aria-label={groupHeading(group.label)} className="flex flex-col gap-2">
-              <h2 className="font-heading text-xl leading-none font-semibold">
-                {groupHeading(group.label)} <span className="font-mono text-sm font-normal text-muted-foreground">{group.count}</span>
+        <section aria-label="Deck list" className={cn(HALF_SHEET, "min-w-0", tab === "add" && "max-lg:hidden")}>
+          <div className={cn(HALF_SCROLL, "flex flex-col gap-5 pt-4")}>
+            <section aria-labelledby="builder-commanders" className="flex flex-col gap-2">
+              <h2 id="builder-commanders" className="font-heading text-xl leading-none font-semibold">
+                Commander{builder.commanders.length > 1 ? "s" : ""}
               </h2>
-              <ul aria-label={groupHeading(group.label)} className="flex flex-col gap-1.5">
-                {byCost(group.entries).map(({ card, quantity }) => (
-                  <CardPlate
-                    key={card.id}
-                    card={card}
-                    quantity={quantity}
-                    onRemove={() => builder.remove(card)}
-                    onQuantity={isBasicLand(card) ? (n) => builder.setQuantity(card, n) : undefined}
-                    onReplace={swapContext ? () => void builder.openSwap(card, swapContext) : undefined}
-                  />
-                ))}
-              </ul>
+              {builder.commanders.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No commander yet. The search shows only cards that can lead a deck until you pick one.
+                </p>
+              ) : (
+                <ul aria-label="Commanders" className="flex flex-col gap-1.5">
+                  {builder.commanders.map((card) => (
+                    <CardPlate key={card.id} card={card} quantity={1} commander onRemove={() => builder.remove(card)} />
+                  ))}
+                </ul>
+              )}
             </section>
-          ))}
+            {builder.groups.map((group) => (
+              <section key={group.key} aria-label={groupHeading(group.label)} className="flex flex-col gap-2">
+                <h2 className="font-heading text-xl leading-none font-semibold">
+                  {groupHeading(group.label)} <span className="font-mono text-sm font-normal text-muted-foreground">{group.count}</span>
+                </h2>
+                <ul aria-label={groupHeading(group.label)} className="flex flex-col gap-1.5">
+                  {byCost(group.entries).map(({ card, quantity }) => (
+                    <CardPlate
+                      key={card.id}
+                      card={card}
+                      quantity={quantity}
+                      onRemove={() => builder.remove(card)}
+                      onQuantity={isBasicLand(card) ? (n) => builder.setQuantity(card, n) : undefined}
+                      onReplace={swapContext ? () => void builder.openSwap(card, swapContext) : undefined}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
         </section>
         {statsReport && <DeckStatsRail className="hidden xl:flex" report={statsReport} cards={builder.cards} />}
       </div>

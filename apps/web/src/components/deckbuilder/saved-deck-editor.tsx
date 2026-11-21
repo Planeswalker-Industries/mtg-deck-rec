@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Route } from "next";
 import type { Bracket, CardSummary, DeckAnalysis, DeckId, DeckInput, RecContext } from "@mtg/core/contract";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getApis } from "@/lib/api/client";
 import { defaultIncludeGameChangers } from "@/lib/labels";
@@ -13,7 +14,9 @@ import { DeckBuilder } from "./deck-builder";
 import { useDeckBuilder } from "./use-deck-builder";
 import { ErrorText } from "@/components/ui/error-text";
 import { SavedDeckCoverage } from "@/components/decks/saved-deck-coverage";
-import { CommanderPlate } from "@/components/cards/commander-plate";
+import { ArtPortraitHeader } from "@/components/ui/art-portrait-header";
+import { SEAL_BUTTON, SEAL_OUTLINE_BUTTON } from "@/lib/constants";
+import { displayName } from "@/lib/cards";
 import { cn } from "cn";
 import { Pencil } from "lucide-react";
 import { CardCount } from "./card-count";
@@ -21,13 +24,13 @@ import { CardCount } from "./card-count";
 /** Edits settle this long before they are written, so a run of clicks is one save rather than one each. */
 const SAVE_DEBOUNCE_MS = 800;
 
+/** How long the "All changes saved" toast stays after a save: long enough to read, gone before the next edit. */
+const SAVED_TOAST_MS = 2500;
+
 type SaveStatus = { kind: "saved" } | { kind: "pending" } | { kind: "saving" } | { kind: "error"; message: string };
 
-const STATUS_TEXT: Record<Exclude<SaveStatus["kind"], "error">, string> = {
-  saved: "All changes saved",
-  pending: "Unsaved changes",
-  saving: "Saving…",
-};
+/** Nothing to subscribe to: the store below only tells the server render (false) from the hydrated one (true). */
+const subscribeNothing = () => () => {};
 
 /**
  * A saved deck in the deckbuilder. Every edit is written back to the account on its own, a moment after the last
@@ -44,6 +47,7 @@ export function SavedDeckEditor({
   bracket,
   deck,
   cards,
+  artists,
 }: {
   deckId: DeckId;
   code: string;
@@ -52,6 +56,8 @@ export function SavedDeckEditor({
   bracket: Bracket | null;
   deck: DeckInput;
   cards: CardSummary[];
+  /** Each commander's artist, for the header's art credit. */
+  artists: Record<number, string | null>;
 }) {
   const [name, setName] = useState(initialName);
   /** The deck as edited, for the coverage read; saving lags it by the debounce. */
@@ -64,6 +70,16 @@ export function SavedDeckEditor({
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(initialName);
   const [status, setStatus] = useState<SaveStatus>({ kind: "saved" });
+  /** A save landed: the toast shows for SAVED_TOAST_MS. Counted, so a second save restarts its timer. */
+  const [savedToast, setSavedToast] = useState(0);
+  /** On a touch screen the first tap on the name shows the pencil and the second starts the rename. */
+  const [pencilShown, setPencilShown] = useState(false);
+  // True once hydrated: the toast portals into <body>, which the server render has no access to.
+  const mounted = useSyncExternalStore(
+    subscribeNothing,
+    () => true,
+    () => false,
+  );
   const [analysis, setAnalysis] = useState<DeckAnalysis | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<DeckInput | null>(null);
@@ -95,7 +111,10 @@ export function SavedDeckEditor({
     const r = await getApis().actions.saveDeck({ deckId, name: nameRef.current, deck: next, isPublic: true });
     if (id !== saveRequest.current) return;
     setStatus(r.ok ? { kind: "saved" } : { kind: "error", message: r.error.message });
-    if (r.ok) void analyze(next);
+    if (r.ok) {
+      setSavedToast((n) => n + 1);
+      void analyze(next);
+    }
   }
 
   const builder = useDeckBuilder({
@@ -109,6 +128,28 @@ export function SavedDeckEditor({
       timer.current = setTimeout(() => void save(next), SAVE_DEBOUNCE_MS);
     },
   });
+
+  // Closing the tab or reloading skips the unmount above, so while an edit is unsaved the browser asks first. The
+  // waiting edit is written at once, so staying (or a quick leave) keeps it.
+  const unsaved = status.kind === "pending" || status.kind === "saving";
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      if (timer.current) clearTimeout(timer.current);
+      if (pending.current) void save(pending.current);
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+    // save reads only refs and stable setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unsaved]);
+
+  useEffect(() => {
+    if (savedToast === 0) return;
+    const timer = window.setTimeout(() => setSavedToast(0), SAVED_TOAST_MS);
+    return () => window.clearTimeout(timer);
+  }, [savedToast]);
 
   async function rename() {
     const trimmed = draftName.trim();
@@ -124,6 +165,7 @@ export function SavedDeckEditor({
     if (r.ok) {
       setName(trimmed);
       setRenaming(false);
+      setPencilShown(false);
     } else {
       nameRef.current = previous;
       setStatus({ kind: "error", message: r.error.message });
@@ -142,79 +184,127 @@ export function SavedDeckEditor({
         }
       : null;
 
-  return (
-    <article className="flex flex-col gap-5">
-      <CommanderPlate commanders={builder.commanders}>
-        <div className="flex min-h-32 flex-col gap-3 p-4 sm:min-h-40 sm:p-5">
-          {renaming ? (
-            <form
-              className="flex flex-wrap items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void rename();
+  // The lead commander's art, as on the deck's page; the commander as edited, so a new one brings its own art and
+  // credit (`CardSummary.artist`). Uncredited art is never shown.
+  const lead = builder.commanders[0];
+  const artist = lead ? (lead.artist ?? artists[lead.id] ?? null) : null;
+
+  const credit = artist && lead ? { cardName: displayName(lead), cardSlug: lead.slug, artist } : null;
+  const headerBody = (
+    <>
+      {renaming ? (
+        <>
+          {/* The sheet stays named by the deck while its name is being edited. */}
+          <h1 id="deck-name" className="sr-only">
+            {name}
+          </h1>
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void rename();
+            }}
+          >
+            <Input
+              autoFocus
+              aria-label="Deck name"
+              value={draftName}
+              maxLength={MAX_DECK_NAME_CHARS}
+              onChange={(e) => setDraftName(e.target.value)}
+              className="max-w-sm bg-sleeve"
+            />
+            <Button type="submit" size="sm">
+              Rename
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setRenaming(false);
+                setPencilShown(false);
               }}
             >
-              <Input
-                autoFocus
-                aria-label="Deck name"
-                value={draftName}
-                maxLength={MAX_DECK_NAME_CHARS}
-                onChange={(e) => setDraftName(e.target.value)}
-                className="max-w-sm bg-sleeve"
-              />
-              <Button type="submit" size="sm">
-                Rename
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(false)}>
-                Cancel
-              </Button>
-            </form>
-          ) : (
-            <div className="font-heading text-2xl leading-tight sm:text-3xl">
-              {/* Inline, so the pencil follows the name's last word when it wraps; a sibling keeps it out of the heading's name. */}
-              <h1 className="inline font-semibold tracking-tight text-on-art">{name}</h1>
-              <Button
-                type="button"
-                size="icon-lg"
-                variant="ghost"
-                title="Rename deck"
-                aria-label={`Rename deck: ${name}`}
-                className="ml-1.5 bg-background/70 align-middle text-primary"
-                onClick={() => setRenaming(true)}
-              >
-                <Pencil aria-hidden className="size-5" />
-              </Button>
-            </div>
-          )}
-          {status.kind === "error" ? (
-            <ErrorText>Couldn&apos;t save: {status.message}</ErrorText>
-          ) : (
-            <p role="status" className="text-sm text-foreground/85 text-on-art">
-              {STATUS_TEXT[status.kind]}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-on-art">
-            <CardCount size={builder.size} />
-            <SavedDeckCoverage deck={liveDeck} deckId={deckId} />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href={{ pathname: "/deck", query: { deck: code } }} className={buttonVariants({ size: "sm" })}>
-              Upgrade this deck
-            </Link>
-            <Link
-              href={`/decks/${commanderSlug}/${code}` as Route}
-              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "bg-background/70")}
+              Cancel
+            </Button>
+          </form>
+        </>
+      ) : (
+        <div className="group/name relative w-fit max-w-full font-heading text-2xl leading-tight sm:text-3xl">
+          <h1 id="deck-name" className="font-semibold tracking-tight">
+            {name}
+          </h1>
+          {/*
+            The whole name is the rename button, its pencil faint over the name's right side: shown on hover or keyboard
+            focus, and on a touch screen by the first tap, which the second turns into the rename.
+          */}
+          <button
+            type="button"
+            title="Rename deck"
+            aria-label={`Rename deck: ${name}`}
+            className="absolute inset-0 cursor-pointer rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            onBlur={() => setPencilShown(false)}
+            onClick={() => {
+              if (!pencilShown && window.matchMedia("(hover: none)").matches) {
+                setPencilShown(true);
+                return;
+              }
+              setRenaming(true);
+            }}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "absolute top-1/2 right-0 flex size-11 -translate-y-1/2 items-center justify-center rounded-md bg-background/50 text-primary transition-opacity",
+                pencilShown ? "opacity-60" : "opacity-0 group-hover/name:opacity-60 group-has-[:focus-visible]/name:opacity-60",
+              )}
             >
-              Deck page
-            </Link>
-          </div>
+              <Pencil className="size-5" />
+            </span>
+          </button>
         </div>
-      </CommanderPlate>
-      <DeckBuilder
-        builder={builder}
-        analysis={analysis}
-        swapContext={swapContext}
-      />
+      )}
+      {status.kind === "error" && <ErrorText>Couldn&apos;t save: {status.message}</ErrorText>}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <CardCount size={builder.size} />
+        <SavedDeckCoverage deck={liveDeck} deckId={deckId} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Link href={{ pathname: "/deck", query: { deck: code } }} className={SEAL_BUTTON}>
+          Upgrade this deck
+        </Link>
+        <Link href={`/decks/${commanderSlug}/${code}` as Route} className={SEAL_OUTLINE_BUTTON}>
+          Deck page
+        </Link>
+      </div>
+    </>
+  );
+
+  /*
+    "All changes saved" as a toast over the page, above the docked Deck stats footer below xl. Portalled to <body>; the
+    live region stays mounted so a screen reader hears each save.
+  */
+  const toast =
+    mounted &&
+    createPortal(
+      <div
+        role="status"
+        className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--deck-stats-dock-height)+env(safe-area-inset-bottom)+1rem)] z-50 mx-auto max-w-sm xl:bottom-4"
+      >
+        {savedToast > 0 && (
+          <p className="rounded-lg border border-seam bg-sleeve px-3 py-2 text-center text-sm shadow-lift">All changes saved</p>
+        )}
+      </div>,
+      document.body,
+    );
+
+  return (
+    <article className="flex flex-col gap-5">
+      <ArtPortraitHeader art={lead?.images?.front.artCrop} credit={credit} labelledBy="deck-name" className="gap-4">
+        {headerBody}
+      </ArtPortraitHeader>
+      <DeckBuilder builder={builder} analysis={analysis} swapContext={swapContext} />
+      {toast}
     </article>
   );
 }

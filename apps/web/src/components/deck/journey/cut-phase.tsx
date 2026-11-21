@@ -172,7 +172,7 @@ export function CutPhase({
       : state.cuts.length > 0
         ? "Back at 100."
         : "The deck is at 100. Nothing needs cutting.";
-  const statusLine = <StepStatus count={`${size} / ${COMMANDER_DECK_SIZE}`}>{status}</StepStatus>;
+  const statusLine = <StepStatus reason={status} count={`${size} / ${COMMANDER_DECK_SIZE}`} />;
   const landCuts = (shown: readonly LandCount[], label: string) => <LandCuts lands={shown} label={label} onCut={take} onRestore={restore} />;
 
   if (view === "list") {
@@ -268,7 +268,7 @@ export function CutPhase({
           }
         />
       ) : owed > 0 && landStep ? (
-        <section aria-labelledby="cut-lands" className="flex flex-col gap-3 rounded-xl border border-seam bg-sleeve/60 p-4">
+        <section aria-labelledby="cut-lands" className="flex flex-col gap-3">
           <div>
             <h3 id="cut-lands" className="font-heading text-xl font-semibold">
               CUT Lands?

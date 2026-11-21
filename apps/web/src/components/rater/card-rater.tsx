@@ -9,7 +9,9 @@ import { ShuffleDeck } from "@/components/deck/shuffle-deck";
 import { SwipeRater } from "@/components/deck/swipe-rater";
 import { Button } from "@/components/ui/button";
 import { getApis } from "@/lib/api/client";
+import { PAGE_SHEET } from "@/lib/constants";
 import { displayName } from "@/lib/cards";
+import { cn } from "cn";
 import { shuffled } from "@/lib/shuffle";
 import { PageHero } from "@/components/ui/page-hero";
 import { CommanderPicker } from "./commander-picker";
@@ -123,21 +125,21 @@ export function CardRater({ initialCommanderSlug }: { initialCommanderSlug: stri
   }
   if (deal.status === "loading") {
     return (
-      <>
+      <section aria-label="Rate replacements" className={PAGE_SHEET}>
         <RateHeading />
         <ShuffleDeck label="Dealing cards" />
-      </>
+      </section>
     );
   }
   if (deal.status === "error") {
     return (
-      <div className="flex flex-col items-start gap-3">
+      <section aria-label="Rate replacements" className={cn(PAGE_SHEET, "items-start gap-3")}>
         <RateHeading />
         <PanelError message={deal.message} />
         <Button type="button" variant="outline" onClick={pickAnother}>
           Pick a commander
         </Button>
-      </div>
+      </section>
     );
   }
 
@@ -147,9 +149,9 @@ export function CardRater({ initialCommanderSlug }: { initialCommanderSlug: stri
   const art = commanderKey.commanders[0]?.images?.front.artCrop;
 
   return (
-    <div className="flex flex-col gap-4">
+    <section aria-label="Rate replacements" className={PAGE_SHEET}>
       <RateHeading />
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-seam bg-sleeve px-3 py-2">
+      <div className="flex items-center justify-between gap-3 border-y border-seam py-3">
         <div className="flex min-w-0 items-center gap-3">
           {art && <Image src={art} alt="" width={64} height={46} unoptimized className="h-11 w-16 shrink-0 rounded-md object-cover ring-1 ring-seam" />}
           <div className="min-w-0">
@@ -183,7 +185,7 @@ export function CardRater({ initialCommanderSlug }: { initialCommanderSlug: stri
           />
         )
       )}
-    </div>
+    </section>
   );
 }
 

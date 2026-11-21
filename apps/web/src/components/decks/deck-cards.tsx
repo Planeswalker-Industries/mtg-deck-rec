@@ -45,22 +45,25 @@ export function DeckCards({
 
   return (
     <>
-      {settings && <div className="-my-2 flex flex-wrap items-center gap-x-4">{settings}</div>}
-      <div className="-my-2 flex items-center justify-between gap-2">
-        {exportActions}
-        {hasCards && (
-          <div className="flex items-center gap-1">
-            <DeckViewToggle view={view} onChange={setView} className="self-center" />
-            <SortMenu sort={sort} onChange={setSort} />
-          </div>
-        )}
+      {/* The toolbar is a strip of paper of its own; each card type below gets a sheet, as on the commander page. */}
+      <div className="sheet flex flex-col px-4 py-1 sm:px-6">
+        {settings && <div className="flex flex-wrap items-center gap-x-4">{settings}</div>}
+        <div className="flex items-center justify-between gap-2">
+          {exportActions}
+          {hasCards && (
+            <div className="flex items-center gap-1">
+              <DeckViewToggle view={view} onChange={setView} className="self-center" />
+              <SortMenu sort={sort} onChange={setSort} />
+            </div>
+          )}
+        </div>
       </div>
 
       {sorted.length === 0 ? (
-        <p className="text-muted-foreground">This deck has no cards yet.</p>
+        <p className="sheet p-4 text-muted-foreground sm:p-6">This deck has no cards yet.</p>
       ) : (
         sorted.map((group) => (
-          <section key={group.category} aria-labelledby={`group-${group.category}`} className="flex flex-col gap-3">
+          <section key={group.category} aria-labelledby={`group-${group.category}`} className="sheet flex flex-col gap-3 p-4 sm:p-6 lg:p-8">
             <h2 id={`group-${group.category}`} className="font-heading text-xl font-semibold tracking-tight">
               {cardCategoryLabel[group.category]}{" "}
               <span className="text-base font-normal text-muted-foreground font-mono">

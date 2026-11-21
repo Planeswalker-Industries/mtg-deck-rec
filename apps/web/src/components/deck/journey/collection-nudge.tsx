@@ -28,7 +28,7 @@ const COPY = {
 } as const;
 
 /**
- * A quiet offer to import a collection, for players who came in with only a decklist (paste-and-swipe needs none). Shown
+ * A quiet offer, on its own sheet, to import a collection, for players who came in with only a decklist (paste-and-swipe needs none). Shown
  * below the step, never above it, so it costs the swipe view no height. The import returns to the deck (`href`).
  */
 export function CollectionNudge({ href, step }: { href: Route; step: keyof typeof COPY }) {
@@ -36,7 +36,7 @@ export function CollectionNudge({ href, step }: { href: Route; step: keyof typeo
   return (
     <aside
       aria-labelledby={`collection-nudge-${step}`}
-      className="flex flex-col gap-3 rounded-panel border border-seam bg-sleeve p-4 sm:flex-row sm:items-center sm:justify-between"
+      className="sheet flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="max-w-prose">
         <h2 id={`collection-nudge-${step}`} className="font-semibold">

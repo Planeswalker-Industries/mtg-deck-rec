@@ -45,7 +45,7 @@ const StatusPills = () => {
     <Pills emptyLabel="No flags">
       {[
         record.isAdmin && (
-          <Pill key="admin" tone="primary">
+          <Pill key="admin" tone="ink">
             Admin
           </Pill>
         ),

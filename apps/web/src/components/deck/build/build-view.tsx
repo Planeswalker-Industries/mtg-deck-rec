@@ -21,22 +21,19 @@ import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
 import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
 import { ShuffleDeck } from "../shuffle-deck";
 import { ScoreExplainer } from "../score-explainer";
-import {
-  buildCards,
-  buildDecklist,
-  buildDecklistCsv,
-  buildEntries,
-  type BuildRequest,
-  type BuildState,
-} from "./use-deck-build";
+import { buildCards, buildDecklist, buildDecklistCsv, buildEntries, type BuildRequest, type BuildState } from "./use-deck-build";
 import { useBuildStats } from "./use-build-stats";
+
+/** Each part of the built deck is its own sheet on the wood, edge to edge on phones (no paper on paper). */
+const BUILD_SHEET = "sheet p-4 max-sm:-mx-4 sm:p-5";
 
 /** What the open slots panel says, inline from sm up and behind its (?) on phones. */
 const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue and we'll fill the missing pieces together.";
 
 /** What a budget build without a collection says when the budget couldn't fill the deck: the popup and the open slots' (?). */
 const BUDGET_SHORT_TITLE = "Insufficient budget";
-const BUDGET_SHORT_HELP = "A competitive deck cannot be assembled at this budget. Increase the budget or upload your collection to build from.";
+const BUDGET_SHORT_HELP =
+  "A competitive deck cannot be assembled at this budget. Increase the budget or upload your collection to build from.";
 
 /** What the overlay says while Continue or Save for Later opens the deck. */
 const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }> = {
@@ -109,7 +106,15 @@ const GAP_CHOICES: readonly { choice: StatChoice; label: string }[] = [
  * pick. Each gap asks for an answer before the deck opens: ignore the line (it leaves the Deck stats score), or allow
  * buying for it (the deck is built again with cards the player doesn't own for that line).
  */
-function CollectionGaps({ gaps, onChoice, disabled }: { gaps: readonly CollectionGap[]; onChoice: (line: string, choice: StatChoice) => void; disabled: boolean }) {
+function CollectionGaps({
+  gaps,
+  onChoice,
+  disabled,
+}: {
+  gaps: readonly CollectionGap[];
+  onChoice: (line: string, choice: StatChoice) => void;
+  disabled: boolean;
+}) {
   return (
     <div className="flex flex-col gap-2">
       <p className="flex items-start gap-2 text-muted-foreground">
@@ -218,7 +223,12 @@ function BuildCards({
             mark={mark}
             onSelect={onSelect ? () => onSelect(card.id) : undefined}
             // The note goes at the end of the row, as the shopping list puts its prices; the mana cost makes room for it.
-            {...(note !== undefined ? { showCost: false, trailing: <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{note}</span> } : {})}
+            {...(note !== undefined
+              ? {
+                  showCost: false,
+                  trailing: <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{note}</span>,
+                }
+              : {})}
           />
         ))}
       </ul>
@@ -382,16 +392,20 @@ export function BuildView({
   const header = (
     <CommanderPlate commanders={request.commanders}>
       <div className="flex min-h-32 flex-col justify-between gap-4 p-4 sm:min-h-40 sm:p-5">
-        <h1 className="max-w-xl font-heading text-2xl font-semibold tracking-tight text-on-art sm:text-3xl">
+        <h1 className="max-w-xl font-heading text-2xl font-semibold tracking-tight text-(--wood-ink) text-on-art sm:text-3xl">
           {commanderName}
           {tagline && (
-            <span className="mt-1 block font-drama text-xl font-normal tracking-normal italic text-foreground/85 sm:text-2xl">
+            <span className="mt-1 block font-drama text-xl font-normal tracking-normal italic text-(--wood-ink)/85 sm:text-2xl">
               {tagline}
             </span>
           )}
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={String(request.bracket)} onValueChange={(value) => onBracket(Number(value) as Bracket)} disabled={state.status === "loading"}>
+          <Select
+            value={String(request.bracket)}
+            onValueChange={(value) => onBracket(Number(value) as Bracket)}
+            disabled={state.status === "loading"}
+          >
             <SelectTrigger aria-label="Bracket" size="sm" className="bg-sleeve">
               <SelectValue>Bracket {request.bracket}</SelectValue>
             </SelectTrigger>
@@ -423,7 +437,7 @@ export function BuildView({
     return (
       <section aria-label="Building your deck" className="flex flex-col gap-6">
         {header}
-        <div role="alert" className="flex flex-col items-start gap-3 rounded-panel border border-seam bg-sleeve p-4">
+        <div role="alert" className={cn(BUILD_SHEET, "flex flex-col items-start gap-3")}>
           <p>{state.message}</p>
           <Button type="button" variant="outline" onClick={() => onBracket(request.bracket)}>
             Try again
@@ -450,7 +464,7 @@ export function BuildView({
       {header}
       {opening !== null && <ShuffleDeck {...OPENING_COPY[opening]} loader />}
 
-      <div className="flex flex-col gap-4 rounded-panel border border-seam bg-sleeve p-4 sm:p-5">
+      <div className={cn(BUILD_SHEET, "flex flex-col gap-4")}>
         {request.list && fit && <p>{fitSummary(copies(request.list.entries), copies(fit.removed), copies(fit.added))}</p>}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <p className={cn("flex items-center gap-2", request.list && "text-sm text-muted-foreground")}>
@@ -497,17 +511,17 @@ export function BuildView({
             Save for Later
           </Button>
         </div>
+        {!fromCollection && (
+          <p className="text-sm text-muted-foreground">
+            This deck draws on every card.{" "}
+            <Link href={collectionImportHref} className={cn(TEXT_LINK, "font-semibold")}>
+              Import your collection
+            </Link>{" "}
+            to build from the cards you own instead.
+          </p>
+        )}
       </div>
 
-      {!fromCollection && (
-        <p className="text-sm text-muted-foreground">
-          This deck draws on every card.{" "}
-          <Link href={collectionImportHref} className={cn(TEXT_LINK, "font-semibold")}>
-            Import your collection
-          </Link>{" "}
-          to build from the cards you own instead.
-        </p>
-      )}
       <Dialog open={budgetShort && budgetSeen !== result} onOpenChange={(isOpen) => !isOpen && setBudgetSeen(result)}>
         <DialogContent>
           <DialogHeader>
@@ -529,7 +543,7 @@ export function BuildView({
       </Dialog>
       {(fromCollection || budgetShort) && open > 0 && (
         // The buy side is shelved. The slot it will fill stays visible, honestly empty.
-        <aside aria-labelledby="build-open-slots" className="rounded-panel border border-dashed border-seam p-4 max-sm:px-3 max-sm:py-1">
+        <aside aria-labelledby="build-open-slots" className={cn(BUILD_SHEET, "max-sm:py-1")}>
           {/* Phones keep the panel to its heading; what the slots mean waits behind the (?). */}
           <div className="flex items-center justify-between gap-2">
             <h2 id="build-open-slots" className="font-semibold max-sm:text-sm">
@@ -559,53 +573,62 @@ export function BuildView({
           {!budgetShort && <p className="mt-1 text-sm text-muted-foreground max-sm:hidden">{OPEN_SLOTS_HELP}</p>}
         </aside>
       )}
-      {/* One toolbar row: taking the list away on the left, how the cards show on the right. */}
-      <div className="flex items-center justify-between gap-2">
-        <UnsavedDeckExport
-          text={decklist}
-          csv={buildDecklistCsv(result)}
-          commanders={result.commanderKey.commanders.map((c) => c.name)}
-          iconOnly
-        />
-        <div className="flex items-center gap-1">
-          <DeckViewToggle view={view} onChange={setView} className="self-center" />
-          <SortMenu sort={sort} onChange={setSort} />
-        </div>
-      </div>
-
-      <FitChanges request={request} result={result} view={view} sort={sort} />
-
-      {result.groups.map((group) => (
-        <BuildSection
-          key={group.category}
-          id={`build-${group.category}`}
-          title={
-            <>
-              {cardCategoryLabel[group.category]} <span className="font-mono text-base font-normal text-muted-foreground">{group.cards.length}</span>
-            </>
-          }
-        >
-          <BuildCards
-            view={view}
-            sort={sort}
-            label={cardCategoryLabel[group.category]}
-            entries={group.cards.map((c) => ({ card: c.card, quantity: 1, ...noteFor(c) }))}
-            onSelect={setDetail}
+      <div className={cn(BUILD_SHEET, "flex flex-col gap-6")}>
+        {/* One toolbar row: taking the list away on the left, how the cards show on the right. */}
+        <div className="flex items-center justify-between gap-2">
+          <UnsavedDeckExport
+            text={decklist}
+            csv={buildDecklistCsv(result)}
+            commanders={result.commanderKey.commanders.map((c) => c.name)}
+            iconOnly
           />
-        </BuildSection>
-      ))}
-      {result.basics.length > 0 && (
-        <BuildSection
-          id="build-basics"
-          title={
-            <>
-              Basic Lands <span className="font-mono text-base font-normal text-muted-foreground">{basicCount}</span>
-            </>
-          }
-        >
-          <BuildCards view={view} sort={sort} label="Basic Lands" entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))} alwaysCount />
-        </BuildSection>
-      )}
+          <div className="flex items-center gap-1">
+            <DeckViewToggle view={view} onChange={setView} className="self-center" />
+            <SortMenu sort={sort} onChange={setSort} />
+          </div>
+        </div>
+
+        <FitChanges request={request} result={result} view={view} sort={sort} />
+
+        {result.groups.map((group) => (
+          <BuildSection
+            key={group.category}
+            id={`build-${group.category}`}
+            title={
+              <>
+                {cardCategoryLabel[group.category]}{" "}
+                <span className="font-mono text-base font-normal text-muted-foreground">{group.cards.length}</span>
+              </>
+            }
+          >
+            <BuildCards
+              view={view}
+              sort={sort}
+              label={cardCategoryLabel[group.category]}
+              entries={group.cards.map((c) => ({ card: c.card, quantity: 1, ...noteFor(c) }))}
+              onSelect={setDetail}
+            />
+          </BuildSection>
+        ))}
+        {result.basics.length > 0 && (
+          <BuildSection
+            id="build-basics"
+            title={
+              <>
+                Basic Lands <span className="font-mono text-base font-normal text-muted-foreground">{basicCount}</span>
+              </>
+            }
+          >
+            <BuildCards
+              view={view}
+              sort={sort}
+              label="Basic Lands"
+              entries={result.basics.map((b) => ({ card: b.card, quantity: b.quantity }))}
+              alwaysCount
+            />
+          </BuildSection>
+        )}
+      </div>
       {detailCard && (
         <CardZoomLayer
           card={detailCard.card}

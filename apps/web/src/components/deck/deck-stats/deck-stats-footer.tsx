@@ -90,7 +90,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             setOpen((o) => !o);
           }}
         >
-          <span className="justify-self-start font-heading text-base font-semibold">Deck stats</span>
+          <span className="justify-self-start text-base font-semibold">Deck stats</span>
           {panel.money ? <MoneySlot money={panel.money} /> : <span />}
           <span className="flex shrink-0 items-center gap-2 justify-self-end">
             {after ? (
@@ -128,7 +128,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
           >
             {/* A span, not the default h2: a heading can't sit inside a button. It still names the dialog. */}
             <SheetTitle asChild>
-              <span className="font-heading text-base font-semibold">Deck stats</span>
+              <span className="text-base font-semibold">Deck stats</span>
             </SheetTitle>
             <span className="flex items-center gap-3">
               <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />

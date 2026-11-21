@@ -1,19 +1,9 @@
-import { Fragment } from "react";
-import { ChevronRight } from "lucide-react";
+"use client";
+
+import { useRef, useState, type KeyboardEvent } from "react";
+import { Coins, Crown, Shuffle } from "lucide-react";
 import { cn } from "cn";
-import { Band } from "@/components/ui/band";
-import { Panel } from "@/components/ui/panel";
-import { SectionHeading } from "@/components/ui/section-heading";
-import { StepsCarousel } from "./steps-carousel";
-
-const HOW_IT_WORKS_HEADING = "Use your own cards!";
-
-/** Under the heading, in the buddy's voice: a collection helps but is never required. */
-const HOW_IT_WORKS_SUBLINE = "Or don't.";
-
-/** Beside the steps: the three places players start from, a deck to improve, a new commander or a deck to trim. */
-const HOW_IT_WORKS_BLURB =
-  "Whether you want to improve your own decklist, build off of a new commander you just pulled, or find a way to trim that $2,000 decklist down to something manageable, we've got you covered!";
+import { SheetSection } from "@/components/ui/sheet-section";
 
 /** Wide screens get the higher-quality file; the recordings share one pixel size, so it is the colours that differ. */
 const HI_RES_MEDIA = "(min-width: 1024px)";
@@ -28,38 +18,37 @@ interface StepMedia {
 }
 
 /**
- * The three steps of the deck tool, each a recording of the app at that step with its verb as a caption: capitals and
- * the job's own colour, as in the tool's stepper. Capitals come from CSS, so a screen reader says "cut", not "C-U-T".
+ * The three tabs, each with its line and a recording of the app. The recordings are placeholders until the owner
+ * replaces them (2026-11-20).
  */
-const STEPS: { step: number; verb: string; rest: string; tone: string; media: StepMedia }[] = [
+const TABS: { id: string; label: string; line: string; icon: typeof Crown; media: StepMedia }[] = [
   {
-    step: 1,
-    verb: "Add",
-    rest: "what works",
-    tone: "text-add",
+    id: "commander",
+    label: "Choose any commander",
+    line: "Any bracket. Any commander. Build more decks and buy fewer singles.",
+    icon: Crown,
     media: { src: "/add.png", width: 427, height: 333 },
   },
   {
-    step: 2,
-    verb: "Cut",
-    rest: "the junk",
-    tone: "text-cut",
+    id: "budget",
+    label: "Build it on a budget",
+    line: "Sometimes a few more cards bring a deck together. Set a budget per card or per deck, so there are no surprises.",
+    icon: Coins,
     media: { src: "/cut_gif.gif", hiSrc: "/cut_gif_hi.gif", width: 566, height: 346 },
   },
   {
-    step: 3,
-    verb: "Swap",
-    rest: "in your collection",
-    tone: "text-replace",
+    id: "tune",
+    label: "Add, Cut, Swap & Share",
+    line: "Start fresh or paste a decklist, and we'll take it to the next level without breaking the bank.",
+    icon: Shuffle,
     media: { src: "/swipe_gif.gif", hiSrc: "/swipe_gif_hi.gif", width: 374, height: 378 },
   },
 ];
 
 /**
- * One step's recording, contained (never cropped) in a frame shared by all three so the cards line up; absolute, so
- * the recording's own size can't stretch the frame. Lazy: the recordings are megabytes and sit below the hero, and a
- * copy inside a `display: none` layout never loads at all. A plain <picture>, since next/image can't pick a file by media
- * query and does not optimise GIFs anyway.
+ * One recording, contained (never cropped) in a frame shared by all three; absolute, so the recording's own size can't
+ * stretch the frame. Lazy: the recordings are megabytes and sit below the hero, and one inside a `display: none` panel
+ * never loads at all. A plain <picture>, since next/image can't pick a file by media query and does not optimise GIFs.
  */
 function StepRecording({ media }: { media: StepMedia }) {
   return (
@@ -79,70 +68,96 @@ function StepRecording({ media }: { media: StepMedia }) {
   );
 }
 
-type Step = (typeof STEPS)[number];
-
 /**
- * One step: the recording, with the step's title as a slim caption along its foot (about a tenth of the card). No
- * edge of its own; the rounded corners come from the panel clipping the recording and caption.
- */
-function StepCard({ step, className, role }: { step: Step; className?: string; role?: string }) {
-  return (
-    <Panel role={role} padding="none" surface="sleeve" className={cn("@container flex flex-col overflow-hidden border-transparent", className)}>
-      {/* The recording is illustration; the caption carries the meaning. */}
-      <div aria-hidden className="relative aspect-[5/4] bg-black/30">
-        <StepRecording media={step.media} />
-      </div>
-      {/* Always one line, centred in whatever height the card is given, so no card grows a gap under its caption. The
-          size of the "Start here" heading where the card has room for "SWAP in your collection", a step or two
-          down the scale where it doesn't (the three cards are always the same width, so they always match). */}
-      <h3 className="flex min-w-0 flex-1 items-center justify-center px-2 py-2 font-heading text-base leading-tight font-semibold tracking-tight @[14rem]:text-lg @[18rem]:px-3 @[18rem]:text-xl">
-        <span className="truncate">
-          <span className={cn("uppercase", step.tone)}>{step.verb}</span> {step.rest}
-        </span>
-      </h3>
-    </Panel>
-  );
-}
-
-/**
- * The three steps, each showing the app at that step. The steps are a real sequence, hence the chevrons. Wide
- * screens lay them in a row; phones get a swipeable carousel. Only one of the two is displayed, so assistive tech and
- * the page's images see one set.
+ * The three things Spell Chasm does, as a tabber on one sheet. On a phone each tab reveals its line and recording
+ * beneath, one at a time. From `md` all three panels sit in a row under their tabs, and the selected tab highlights its
+ * own. Arrow keys move between tabs.
  */
 export function HowItWorks() {
+  const [selected, setSelected] = useState(0);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const next = (selected + (event.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length;
+    setSelected(next);
+    tabRefs.current[next]?.focus();
+  };
+
   return (
-    <Band
-      aria-labelledby="how-it-works"
-      inner="grid grid-cols-[minmax(0,1fr)] gap-6 py-8 md:py-10 lg:grid-cols-[22rem_minmax(0,1fr)] lg:gap-12"
-    >
-      <div>
-        <SectionHeading id="how-it-works">
-          {HOW_IT_WORKS_HEADING}
-        </SectionHeading>
-        <p className="mt-1 font-drama text-xl text-foreground/85 italic">{HOW_IT_WORKS_SUBLINE}</p>
-        <p className="mt-4 max-w-prose text-base text-muted-foreground">{HOW_IT_WORKS_BLURB}</p>
+    <SheetSection aria-label="How it works" className="overflow-hidden">
+      <div
+        role="tablist"
+        aria-label="How it works"
+        onKeyDown={onKeyDown}
+        className="grid grid-cols-3 divide-x divide-[color-mix(in_oklch,var(--ink)_30%,transparent)] border-b border-[color-mix(in_oklch,var(--ink)_25%,transparent)]"
+      >
+        {TABS.map((tab, i) => {
+          const on = i === selected;
+          return (
+            <button
+              key={tab.id}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
+              id={`tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              aria-controls={`panel-${tab.id}`}
+              tabIndex={on ? 0 : -1}
+              onClick={() => setSelected(i)}
+              className={cn(
+                "relative flex min-h-11 flex-col items-center justify-center gap-1.5 px-2 py-4 text-center transition-colors sm:flex-row sm:gap-3",
+                "focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-[var(--primary)]",
+                // The selected tab: espresso ink, a slightly lighter patch of paper and a thick bar along its foot.
+                on
+                  ? "bg-(--paper-raised)/70 text-[var(--primary)] after:absolute after:inset-x-0 after:-bottom-px after:h-1 after:bg-[var(--primary)]"
+                  : "text-[var(--ink)] hover:bg-(--paper-raised)/40",
+              )}
+            >
+              <tab.icon
+                aria-hidden
+                className={cn("size-6 shrink-0", on ? "text-[var(--primary)]" : "text-[var(--brass)]")}
+                strokeWidth={1.5}
+              />
+              <span className={cn("text-sm leading-snug sm:text-base", on && "font-semibold")}>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="md:hidden">
-        <StepsCarousel labels={STEPS.map((step) => `Step ${step.step}: ${step.verb} ${step.rest}`)}>
-          {STEPS.map((step) => (
-            <StepCard key={step.step} step={step} className="h-full" />
-          ))}
-        </StepsCarousel>
-      </div>
-
-      <div role="list" className="hidden md:flex md:flex-row md:items-stretch md:gap-1.5 md:self-start">
-        {STEPS.map((step, i) => (
-          <Fragment key={step.step}>
-            <StepCard step={step} className="flex-1" role="listitem" />
-            {i < STEPS.length - 1 && (
-              <div aria-hidden className="flex shrink-0 items-center justify-center text-muted-foreground">
-                <ChevronRight className="size-3.5" />
+      <div className="grid gap-6 px-5 py-6 sm:px-8 md:grid-cols-3 md:gap-8 md:py-8">
+        {TABS.map((tab, i) => {
+          const on = i === selected;
+          return (
+            <div
+              key={tab.id}
+              id={`panel-${tab.id}`}
+              role="tabpanel"
+              aria-labelledby={`tab-${tab.id}`}
+              className={cn(
+                "flex flex-col gap-4 transition-opacity duration-200",
+                on ? "opacity-100" : "max-md:hidden md:opacity-55 md:hover:opacity-80",
+              )}
+            >
+              <p className="text-base text-[var(--ink-soft)]">{tab.line}</p>
+              {/* The recording is illustration; the tab and its line carry the meaning. */}
+              <div
+                aria-hidden
+                className={cn(
+                  "relative mt-auto aspect-[5/4] rounded-md border-2 bg-(--wood-bar) shadow-[0_10px_18px_-10px_color-mix(in_srgb,var(--wood-bar)_90%,transparent)] transition-colors",
+                  on ? "border-[var(--primary)]" : "border-[var(--brass)]",
+                  i % 2 === 1 ? "rotate-[1.2deg]" : "-rotate-[1deg]",
+                )}
+              >
+                <StepRecording media={tab.media} />
               </div>
-            )}
-          </Fragment>
-        ))}
+            </div>
+          );
+        })}
       </div>
-    </Band>
+    </SheetSection>
   );
 }

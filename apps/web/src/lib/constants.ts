@@ -48,8 +48,9 @@ export const PHONE_HIT_AREA_BEFORE =
   "relative max-sm:before:absolute max-sm:before:top-1/2 max-sm:before:left-1/2 max-sm:before:size-full max-sm:before:min-h-11 max-sm:before:min-w-11 max-sm:before:-translate-x-1/2 max-sm:before:-translate-y-1/2 max-sm:before:content-['']";
 
 /**
- * Every text link on the site: primary blue and underlined, so blue always means "this goes somewhere". The underline
- * firms up on hover; keyboard focus gets the site's outline. Callers add size and weight, never another colour.
+ * Every text link on the site: the primary (espresso on paper, brass on the wood) and underlined, so that colour always
+ * means "this goes somewhere". The underline firms up on hover; keyboard focus gets the site's outline. Callers add
+ * size and weight, never another colour.
  */
 export const TEXT_LINK =
   "text-primary underline decoration-primary/50 underline-offset-2 transition-colors hover:decoration-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -65,26 +66,47 @@ export const REMOVE_ARM_MS = 3000;
 export const TIP_HOVER_DELAY_MS = 200;
 
 /**
- * A word that opens its own explanation (a switch's "Public"): the text stays white, a blue dotted underline says it can
- * be pressed and that it explains rather than goes somewhere. Tapped or clicked, never hover-only: phones have no hover.
+ * A word that opens its own explanation (a switch's "Public"): the text stays ink, an espresso dotted underline says it
+ * can be pressed and that it explains rather than goes somewhere. Tapped or clicked, never hover-only: phones have no
+ * hover.
  */
 export const HINT_TEXT =
   "underline decoration-primary decoration-dotted decoration-2 underline-offset-4 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 /**
- * A link that credits an artist: muted white, not blue, so it never competes with the page's priority actions. Still
+ * A plain page's sheet of paper (decks list, account, feedback, privacy, not-found, errors): edge to edge on phones, so
+ * the copy keeps the screen's width, with the gutter back as padding.
+ */
+export const PAGE_SHEET = "sheet flex flex-col gap-4 p-4 max-sm:-mx-4 sm:p-6";
+
+/** The shape both seals share: the heading face, a 44 px target. */
+const SEAL_SHAPE =
+  "group inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 font-heading text-lg font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+/**
+ * The wax seal (the `seal` utility): a page's one main action, as on the homepage. Solid espresso with a brass rim.
+ * Callers add width and an icon if they want one.
+ */
+export const SEAL_BUTTON = `seal ${SEAL_SHAPE}`;
+
+/** The seal's quiet partner (`seal-outline`): espresso on raised paper, edged in brass, beside a seal. */
+export const SEAL_OUTLINE_BUTTON = `seal-outline ${SEAL_SHAPE}`;
+
+/**
+ * A link that credits an artist: muted, not espresso, so it never competes with the page's priority actions. Still
  * underlined, so it reads as a link.
  */
 export const CREDIT_LINK =
   "text-muted-foreground underline decoration-muted-foreground/50 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
 /**
- * A toggle pill or segment (a filter, a grouping, a tab): blue text while off, because it can be pressed. On, it keeps
- * the same look with a thick blue edge; the solid primary fill is kept for primary action buttons. The edge is an inset
- * ring, so it costs no layout and works on segments that have no border of their own. Callers add shape and size.
+ * A toggle pill or segment (a filter, a grouping, a tab): espresso text while off, because it can be pressed. On, it
+ * keeps the same look with a thick espresso edge; the solid primary fill is kept for primary action buttons. The edge
+ * is an inset ring, so it costs no layout and works on segments that have no border of their own. Callers add shape
+ * and size.
  */
 export const TOGGLE_OFF = "text-primary hover:bg-primary/10";
 export const TOGGLE_ON = `${TOGGLE_OFF} ring-3 ring-inset ring-primary`;
-/** A toggle pill's outline: a thin blue border while off; on, the full border plus the ring makes the same thick edge. */
+/** A toggle pill's outline: a thin espresso border while off; on, the full border plus the ring makes the thick edge. */
 export const PILL_OFF = `border-primary/45 ${TOGGLE_OFF}`;
 export const PILL_ON = `border-primary ${TOGGLE_OFF} ring-2 ring-inset ring-primary`;

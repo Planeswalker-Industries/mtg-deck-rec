@@ -112,7 +112,7 @@ function CardFacts({
     <div className="flex min-w-0 flex-col gap-1.5">
       {tag}
       <div className="flex items-start justify-between gap-2">
-        <p className={cn("min-w-0 font-heading leading-tight font-semibold text-balance", size === "single" ? "text-lg" : "text-base")}>
+        <p className={cn("min-w-0 leading-tight font-semibold text-balance", size === "single" ? "font-heading text-lg" : "text-base")}>
           {displayName(card)}
         </p>
         <ManaCost cost={card.manaCost} className="mt-0.5 text-sm" />
