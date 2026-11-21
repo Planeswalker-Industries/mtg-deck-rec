@@ -80,7 +80,7 @@ export function DeckOriginal({
     );
 
   return (
-    <section aria-labelledby="deck-original" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4">
+    <section aria-labelledby="deck-original" className="sheet flex flex-col gap-4 p-4 sm:p-6">
       <div>
         <h2 id="deck-original">
           <button

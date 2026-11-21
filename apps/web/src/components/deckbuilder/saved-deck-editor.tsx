@@ -172,7 +172,7 @@ export function SavedDeckEditor({
           ) : (
             <div className="font-heading text-2xl leading-tight sm:text-3xl">
               {/* Inline, so the pencil follows the name's last word when it wraps; a sibling keeps it out of the heading's name. */}
-              <h1 className="inline font-semibold tracking-tight text-on-art">{name}</h1>
+              <h1 className="inline font-semibold tracking-tight text-(--wood-ink) text-on-art">{name}</h1>
               <Button
                 type="button"
                 size="icon-lg"
@@ -189,11 +189,11 @@ export function SavedDeckEditor({
           {status.kind === "error" ? (
             <ErrorText>Couldn&apos;t save: {status.message}</ErrorText>
           ) : (
-            <p role="status" className="text-sm text-foreground/85 text-on-art">
+            <p role="status" className="text-sm text-(--wood-ink)/85 text-on-art">
               {STATUS_TEXT[status.kind]}
             </p>
           )}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-on-art">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-(--wood-ink) text-on-art">
             <CardCount size={builder.size} />
             <SavedDeckCoverage deck={liveDeck} deckId={deckId} />
           </div>

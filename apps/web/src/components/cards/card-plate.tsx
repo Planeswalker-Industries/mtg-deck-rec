@@ -17,8 +17,11 @@ const PREVIEW_WIDTH_PX = 244;
 const PREVIEW_HEIGHT_PX = Math.round((PREVIEW_WIDTH_PX * 680) / 488);
 /** Space between the row and the floating card, and between the card and the window edge. */
 const PREVIEW_GAP_PX = 12;
-/** The plate's pressable area, either way (enlarge, or select). */
-const PLATE_AREA = "relative flex h-full min-w-0 items-center gap-2 pr-2 pl-3";
+/**
+ * The plate's pressable area, either way (enlarge, or select): onyx under the art, so the name reads in light ink over
+ * the painting and where it fades out alike. The actions cell beside it stays paper.
+ */
+const PLATE_AREA = "relative flex h-full min-w-0 items-center gap-2 bg-(--wood-bar) pr-2 pl-3";
 
 /** A pointer passing over the list shouldn't flicker a card up for every row it crosses. */
 const PREVIEW_DELAY_MS = 120;
@@ -174,13 +177,13 @@ export function CardPlate({
           <Image src={art} alt="" fill unoptimized sizes="240px" className="object-cover object-[center_30%]" />
         </span>
       )}
-      <span className="relative flex min-w-0 items-center gap-2 text-on-art">
+      <span className="relative flex min-w-0 items-center gap-2 text-(--wood-ink) text-on-art">
         {quantity > 1 && <span className="shrink-0 font-mono text-sm tabular-nums">{quantity}×</span>}
         <span className={cn("truncate text-sm font-semibold", mark === "cut" && "line-through decoration-cut decoration-2")}>{name}</span>
-        {commander && <Crown aria-label="Commander" className="size-4 shrink-0 text-foreground/80" />}
+        {commander && <Crown aria-label="Commander" className="size-4 shrink-0 text-(--wood-ink)/80" />}
         {showCost && <ManaCost cost={card.manaCost} className="text-sm" />}
         {card.gameChanger && (
-          <span title="Game Changer" className="shrink-0 rounded-sm bg-gc-bg px-1 font-mono text-xs text-gc">
+          <span title="Game Changer" className="shrink-0 rounded-sm bg-gc-bg px-1 font-mono text-xs text-gc [text-shadow:none]">
             GC<span className="sr-only"> (Game Changer)</span>
           </span>
         )}
@@ -216,7 +219,7 @@ export function CardPlate({
           type="button"
           aria-pressed={selected}
           onClick={onSelect}
-          className={cn(PLATE_AREA, "text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary")}
+          className={cn(PLATE_AREA, "text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--wood-link)")}
         >
           {plate}
         </button>

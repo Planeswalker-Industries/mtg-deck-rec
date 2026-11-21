@@ -6,11 +6,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { ArtBackdrop } from "@/components/cards/art-backdrop";
 import { FlippableCardImage } from "@/components/cards/flippable-card-image";
 import { PocketGrid, type PocketItem } from "@/components/cards/pocket-grid";
 import { RulesText } from "@/components/cards/rules-text";
 import { GameChangerBadge } from "@/components/deck/card-label";
+import { ArtPlate } from "@/components/ui/art-plate";
 import { buttonVariants } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { asOfSuffix, describeCostDelta, formatAsOf, formatPercent, fromPrice } from "@/lib/format";
@@ -41,7 +41,13 @@ export async function generateMetadata({ params }: PageProps<"/card/[slug]">): P
 
 export default function CardPage({ params }: PageProps<"/card/[slug]">) {
   return (
-    <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Loading card…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="text-sm text-muted-foreground">
+          Loading card…
+        </p>
+      }
+    >
       <CardDetails params={params} />
     </Suspense>
   );
@@ -77,94 +83,121 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
     ];
   });
 
+  const art = card.images?.front.artCrop;
+
   return (
-    <article className="flex flex-col gap-8">
-      <ArtBackdrop art={card.images?.front.artCrop} artist={artist} cardName={name} cardSlug={card.slug}>
-      <div className="grid gap-6 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-        <figure className="mx-auto w-full max-w-72 sm:mx-0">
-          <FlippableCardImage card={card} zoomable variant="large" sizes="(min-width: 640px) 288px, 80vw" eager />
-        </figure>
+    <article className="flex flex-col gap-5 md:gap-8">
+      <section
+        aria-labelledby="card-heading"
+        className="sheet grid gap-5 p-4 sm:p-6 md:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:gap-8 lg:p-8"
+      >
+        {/*
+         * The art as a plate: across the top of the sheet, then beside the card from lg, as on the commander page. Uncredited art is worse than none: an
+         * art crop carries no artist line of its own, so without one it stays off.
+         */}
+        {art && artist && (
+          <ArtPlate
+            src={art}
+            credit={{ cardName: name, cardSlug: card.slug, artist }}
+            sizes="(min-width: 1024px) 20rem, 100vw"
+            position="object-[center_30%]"
+            unoptimized
+            priority
+            className="aspect-[16/7] sm:aspect-[3/1] lg:order-last lg:aspect-[4/3] lg:self-start"
+          />
+        )}
+        <div className="grid gap-6 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+          <figure className="mx-auto w-full max-w-72 sm:mx-0">
+            <FlippableCardImage card={card} zoomable variant="large" sizes="(min-width: 640px) 288px, 80vw" eager />
+          </figure>
 
-        <div className="flex min-w-0 flex-col gap-4">
-          <div>
-            <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight text-balance sm:text-3xl">{name}</h1>
-            <p className="mt-2 text-sm text-muted-foreground">{card.typeLine}</p>
-          </div>
-
-          {faces.map((face) => (
-            <div key={face.name} className="rounded-lg border border-seam bg-sleeve p-3">
-              {faces.length > 1 && (
-                <p className="mb-1 text-sm font-semibold">
-                  {face.name} <span className="font-normal text-muted-foreground">{face.typeLine}</span>
-                </p>
-              )}
-              <p className="text-sm leading-relaxed whitespace-pre-line">
-                {face.oracleText ? <RulesText text={face.oracleText} /> : "No rules text."}
-              </p>
+          <div className="flex min-w-0 flex-col gap-4">
+            <div>
+              <h1 id="card-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight text-balance sm:text-3xl">
+                {name}
+              </h1>
+              <p className="mt-2 text-sm text-muted-foreground">{card.typeLine}</p>
             </div>
-          ))}
 
-          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            <li className={card.legalCommander === "legal" ? undefined : "font-semibold text-destructive"}>{LEGALITY[card.legalCommander]}</li>
-            {card.gameChanger && (
-              <li>
-                <GameChangerBadge />
+            {faces.map((face) => (
+              <div key={face.name} className="rounded-lg border border-seam bg-sleeve p-3">
+                {faces.length > 1 && (
+                  <p className="mb-1 text-sm font-semibold">
+                    {face.name} <span className="font-normal text-muted-foreground">{face.typeLine}</span>
+                  </p>
+                )}
+                <p className="text-sm leading-relaxed whitespace-pre-line">
+                  {face.oracleText ? <RulesText text={face.oracleText} /> : "No rules text."}
+                </p>
+              </div>
+            ))}
+
+            <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              <li className={card.legalCommander === "legal" ? undefined : "font-semibold text-destructive"}>
+                {LEGALITY[card.legalCommander]}
               </li>
-            )}
-            <li className="font-mono">
-              {card.price ? (
-                <>
-                  <a
-                    href={cardLink(tcgplayerProductId === null ? searchUrl(card.name) : productUrl(tcgplayerProductId))}
-                    {...OUTBOUND}
-                    className={TEXT_LINK}
-                  >
-                    {fromPrice(card.price)} on TCGplayer
-                  </a>
-                  <span className="text-muted-foreground">{asOfSuffix(card.price.asOf)}</span>
-                </>
-              ) : (
-                fromPrice(card.price)
+              {card.gameChanger && (
+                <li>
+                  <GameChangerBadge />
+                </li>
               )}
-            </li>
-          </ul>
+              <li className="font-mono">
+                {card.price ? (
+                  <>
+                    <a
+                      href={cardLink(tcgplayerProductId === null ? searchUrl(card.name) : productUrl(tcgplayerProductId))}
+                      {...OUTBOUND}
+                      className={TEXT_LINK}
+                    >
+                      {fromPrice(card.price)} on TCGplayer
+                    </a>
+                    <span className="text-muted-foreground">{asOfSuffix(card.price.asOf)}</span>
+                  </>
+                ) : (
+                  fromPrice(card.price)
+                )}
+              </li>
+            </ul>
 
-          {card.tags.length > 0 && (
-            <section aria-labelledby="jobs-heading">
-              <h2 id="jobs-heading" className="text-sm font-semibold">
-                What it does
-              </h2>
-              <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                {card.tags.map((tag) => (
-                  <li key={tag.id} className="rounded-full bg-sleeve px-2.5 py-0.5 text-xs ring-1 ring-seam">
-                    {tag.label}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            {commanderSlug && (
-              <Link href={`/commander/${commanderSlug}`} className={buttonVariants({ variant: "outline" })}>
-                {name} as a commander
-              </Link>
+            {card.tags.length > 0 && (
+              <section aria-labelledby="jobs-heading">
+                <h2 id="jobs-heading" className="text-sm font-semibold">
+                  What it does
+                </h2>
+                <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                  {card.tags.map((tag) => (
+                    <li key={tag.id} className="rounded-full bg-sleeve px-2.5 py-0.5 text-xs ring-1 ring-seam">
+                      {tag.label}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
-            <a href={card.scryfallUri} className={cn(TEXT_LINK, "inline-flex min-h-11 items-center sm:min-h-0")}>
-              View on Scryfall
-            </a>
+
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              {commanderSlug && (
+                <Link href={`/commander/${commanderSlug}`} className={buttonVariants({ variant: "outline" })}>
+                  {name} as a commander
+                </Link>
+              )}
+              <a href={card.scryfallUri} className={cn(TEXT_LINK, "inline-flex min-h-11 items-center sm:min-h-0")}>
+                View on Scryfall
+              </a>
+            </div>
           </div>
         </div>
-      </div>
-      </ArtBackdrop>
+      </section>
 
-      <section aria-labelledby="alternatives-heading" className="flex flex-col gap-2">
+      <section aria-labelledby="alternatives-heading" className="sheet flex flex-col gap-2 p-4 sm:p-6 lg:p-8">
         <h2 id="alternatives-heading" className="font-heading text-xl font-semibold tracking-tight">
           Cards that do the same job
         </h2>
         <p className="max-w-prose text-sm text-muted-foreground">
-          In {name}&apos;s colors, best fit first. <Link href="/deck" className={TEXT_LINK}>Paste your deck</Link> to see
-          replacements picked for your commander.{altAsOf && ` Prices from ${formatAsOf(altAsOf)}.`}
+          In {name}&apos;s colors, best fit first.{" "}
+          <Link href="/deck" className={TEXT_LINK}>
+            Paste your deck
+          </Link>{" "}
+          to see replacements picked for your commander.{altAsOf && ` Prices from ${formatAsOf(altAsOf)}.`}
         </p>
         {alternatives.suggestions.length === 0 ? (
           <p className="text-sm">{emptySwapMessage[alternatives.emptyReason ?? "NO_CANDIDATES"]}</p>
@@ -192,7 +225,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
       </section>
 
       {commanderItems.length > 0 && (
-        <section aria-labelledby="commanders-heading" className="flex flex-col gap-2">
+        <section aria-labelledby="commanders-heading" className="sheet flex flex-col gap-2 p-4 sm:p-6 lg:p-8">
           <h2 id="commanders-heading" className="font-heading text-xl font-semibold tracking-tight">
             Commanders whose decks run it most
           </h2>
@@ -200,7 +233,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
         </section>
       )}
 
-      <footer className="flex max-w-prose flex-col gap-1 text-xs text-muted-foreground">
+      <footer className="sheet flex flex-col gap-1 px-4 py-3 text-xs text-muted-foreground sm:px-6">
         {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
         <p>
           Deck counts come from decks shared publicly on{" "}

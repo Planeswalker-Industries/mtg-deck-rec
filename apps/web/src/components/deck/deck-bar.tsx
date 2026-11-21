@@ -51,7 +51,7 @@ function DeckName({ name, onRename }: { name: string; onRename: (name: string) =
 
   if (draft === null) {
     return (
-      <h2 className="min-w-0 truncate font-heading text-lg leading-tight font-semibold tracking-tight text-on-art sm:text-xl">
+      <h2 className="min-w-0 truncate font-heading text-lg leading-tight font-semibold tracking-tight text-(--wood-ink) text-on-art sm:text-xl">
         <button
           type="button"
           title="Rename deck"
@@ -103,8 +103,8 @@ function DeckName({ name, onRename }: { name: string; onRename: (name: string) =
 }
 
 /**
- * Sticky summary of the deck being analyzed: its name (tap to rename) over the commander's art, as BuildView's header
- * has it, the colour pips (which open the commander's page), and the two knobs that change recommendations (bracket
+ * Sticky summary of the deck being analyzed, a dark strip in the `wood` scope like the header: its name (tap to rename,
+ * fixed light ink) over the commander's art, as BuildView's header has it, the colour pips (which open the commander's page), and the two knobs that change recommendations (bracket
  * and collection) on the right. Kept to two lines so the swipe view below it has the screen on a phone. Game Changers follow the bracket
  * (`defaultIncludeGameChangers`), so they have no control of their own.
  */
@@ -182,7 +182,7 @@ export function DeckBar({
     <div
       ref={bar}
       data-deck-bar=""
-      className="sticky top-0 isolate z-30 -mx-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 overflow-hidden border-b border-seam bg-background/95 px-4 py-1.5 backdrop-blur-sm"
+      className="wood sticky top-0 isolate z-30 -mx-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 overflow-hidden border-b border-(--wood-bar-rule) bg-(--wood-bar)/95 px-4 py-1.5 backdrop-blur-sm"
     >
       <CommanderArt commanders={commanders} className="-z-10" />
       {/* The deck's issues sit beside the name as a chip, on every screen; in the Deckbuilder the colours come first. */}
@@ -205,9 +205,9 @@ export function DeckBar({
           ))}
         </SelectContent>
       </Select>
-      <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground text-on-art">
+      <p className="flex min-w-0 items-center gap-2 text-xs text-(--wood-muted) text-on-art">
         {building ? (
-          <CardCount size={deckSize(analysis.deck)} />
+          <CardCount size={deckSize(analysis.deck)} className="paper rounded-md bg-sleeve px-1.5 [text-shadow:none]" />
         ) : (
           <>
             {pips}

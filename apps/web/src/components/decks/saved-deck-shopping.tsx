@@ -46,7 +46,7 @@ export function SavedDeckShopping({
   const missing = useMemo(() => (checking ? undefined : coverageData ? missingFromCoverage(coverageData) : null), [checking, coverageData]);
 
   return (
-    <div className="rounded-lg border border-seam bg-sleeve p-4">
+    <div className="sheet p-4 sm:p-6">
       <ShoppingList
         // Neutral while the collection is checked: a visitor without one would otherwise see "missing" flash.
         title={missing === undefined ? "Shopping list" : missing === null ? "Buy this deck" : "Buy missing cards"}

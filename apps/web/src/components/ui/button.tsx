@@ -4,7 +4,7 @@ import { cn } from "cn"
 import { Slot } from "radix-ui"
 import { PHONE_HIT_AREA } from "@/lib/constants"
 
-const buttonVariants = cva(
+const buttonCva = cva(
   PHONE_HIT_AREA +
   " group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-normal whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-180 ease-table outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
@@ -43,6 +43,14 @@ const buttonVariants = cva(
   }
 )
 
+/**
+ * The button classes, merged: a variant's border colour replaces the base `border-transparent` even where a caller
+ * puts the result straight on a link (`className={buttonVariants(...)}`) instead of through `cn`.
+ */
+function buttonVariants(props?: Parameters<typeof buttonCva>[0]) {
+  return cn(buttonCva(props))
+}
+
 function Button({
   className,
   variant = "default",
@@ -50,7 +58,7 @@ function Button({
   asChild = false,
   ...props
 }: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
+  VariantProps<typeof buttonCva> & {
     asChild?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
@@ -60,7 +68,7 @@ function Button({
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={buttonVariants({ variant, size, className })}
       {...props}
     />
   )
