@@ -8,7 +8,7 @@ import { TEXT_LINK } from "@/lib/constants";
  */
 export function SiteFooter() {
   return (
-    <footer className="border-t border-seam text-xs text-muted-foreground">
+    <footer className="wood border-t border-seam text-xs text-muted-foreground">
       <div className="page-column flex flex-col gap-1.5 py-4">
         <p className="flex flex-wrap gap-x-4 gap-y-1">
           <a href="https://scryfall.com" className={TEXT_LINK}>

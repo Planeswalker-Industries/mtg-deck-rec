@@ -1,12 +1,29 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T100.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T101.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
 State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `20261022000100` (current). Hosted `corpus.decks` 212,606, last collated and precomputed by hand 2026-10-21.
 
 ---
+
+## T100: Paper theme
+
+**HIGH** · Web / UI · In progress on branch `aesthetic-ui-concept`, one PR to `develop` when every area is converted
+
+The whole site becomes square cream paper sheets on a walnut table, replacing the Cool blue dark theme (owner, 2026-11-20). Espresso (`--primary`, `#633636`) takes over blue's rules as the one interactive colour on paper; the header and footer are dark bars over the wood with brass links; art becomes brass-framed plates on the sheets. Headings in Cormorant Garamond, body in Alegreya Sans. CLAUDE.md's "dark only" rule is overridden and its UI section is rewritten at the end.
+
+- [x] Tokens, fonts and raster textures (`sheet` and `wood` utilities in `globals.css`)
+- [ ] Shared primitives (`components/ui/*` without `dark:` variants), the wood scope on header menus, footer
+- [ ] Framed art plates on the opening screens and commander pages; the owner approves the look before the other areas
+- [ ] Card and saved-deck pages, card plates, the deck bar
+- [ ] Deck tool and journey; the swipe buttons stay on screen at 390×844
+- [ ] Deckbuilder
+- [ ] Collection
+- [ ] Remaining public pages; the homepage off its concept-only names
+- [ ] Admin
+- [ ] CLAUDE.md UI rules, no `dark:` classes or stray colour literals left, PR to `develop`
 
 ## T074: Archidekt answers the daily crawl with 429s
 

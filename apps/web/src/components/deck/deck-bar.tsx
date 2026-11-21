@@ -91,7 +91,7 @@ function DeckName({ name, onRename }: { name: string; onRename: (name: string) =
           setDraft(null);
           setError(null);
         }}
-        className="h-8 bg-sleeve font-heading text-base font-semibold"
+        className="h-8 bg-sleeve text-base font-semibold"
       />
       {error && (
         <ErrorText className="text-xs">

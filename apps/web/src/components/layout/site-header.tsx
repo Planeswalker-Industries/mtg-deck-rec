@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 import { AccountLink, SignedOutNav } from "@/components/auth/account-link";
@@ -5,15 +6,22 @@ import { SiteSearch } from "@/components/search/site-search";
 
 export function SiteHeader() {
   return (
-    <header className="border-b border-seam bg-sleeve">
+    <header className="wood border-b border-[color-mix(in_oklch,var(--brass)_45%,transparent)] bg-[linear-gradient(to_bottom,rgb(19_17_17/0.85),rgb(19_17_17/0.7))] shadow-[0_6px_18px_-8px_rgb(19_17_17/0.9)]">
       {/* One flat row, so `order-*` can seat the nav (rendered inside AccountLink) beside the logo on wide screens. */}
-      <div className="page-column flex h-16 items-center gap-1 sm:gap-2">
+      <div className="page-column flex h-16 items-center sm:h-[4.5rem] gap-1 sm:gap-2">
         <Link
           href="/"
           className="group order-0 mr-auto flex min-h-11 min-w-0 items-center gap-2 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary lg:mr-6"
         >
-          <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-primary" />
-          <span className="font-heading text-xl leading-none font-semibold tracking-tight">Spell Chasm</span>
+          {/* Concept: the stacked wordmark (868×251) in place of the typed name. */}
+          <Image
+            src="/concept/logo-stacked.png"
+            alt="Spell Chasm"
+            width={868}
+            height={251}
+            priority
+            className="h-10 w-auto sm:h-12"
+          />
         </Link>
         <div className="order-2 shrink-0 lg:ml-auto">
           <SiteSearch />

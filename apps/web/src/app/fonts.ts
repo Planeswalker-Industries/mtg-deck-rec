@@ -1,16 +1,27 @@
 import localFont from "next/font/local";
 
 // Shared by the root layout and global-error, which renders its own document and must load the fonts itself.
-// The fonts live in ./fonts (Google Fonts' latin subsets, SIL OFL, licences beside them) rather than next/font/google:
+// The fonts live in ./fonts (latin subsets, SIL OFL, licences beside them) rather than next/font/google:
 // that one downloads them on every build, and a failed download fails the Vercel build.
 
-// Headings, body, buttons: warm and slightly hand-made. A variable font; the lane uses only its 400 and 600 weights.
+// Body, buttons, labels and small headings (paper theme, picked 2026-11-20). No 600 exists, so semibold renders at 700.
 export const body = localFont({
-  src: "./fonts/bricolage-grotesque-latin.woff2",
+  src: [
+    { path: "./fonts/alegreya-sans-400-latin.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/alegreya-sans-700-latin.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-body",
-  weight: "400 600",
+  display: "swap",
+});
+
+// Page and section headings: an old-style book serif. A variable font; the theme uses only 600 and 700.
+export const heading = localFont({
+  src: "./fonts/cormorant-garamond-latin.woff2",
+  variable: "--font-heading-face",
+  weight: "600 700",
   style: "normal",
   display: "swap",
+  adjustFontFallback: "Times New Roman",
 });
 
 // The buddy's voice: the friend's asides. Italic only, one weight.

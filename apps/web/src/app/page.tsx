@@ -1,51 +1,107 @@
 import Link from "next/link";
+import type { Route } from "next";
 import { Suspense } from "react";
-import { buttonVariants } from "@/components/ui/button";
-import { ArtBackdrop } from "@/components/ui/art-backdrop";
-import { ArtCredit } from "@/components/ui/art-credit";
-import { Band } from "@/components/ui/band";
-import { SectionHeading } from "@/components/ui/section-heading";
+import { ArrowRight, Compass, ScrollText } from "lucide-react";
+import { cn } from "cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { FeaturedCommanders } from "@/components/home/featured-commanders";
 import { HeroPile } from "@/components/home/hero-pile";
 import { HowItWorks } from "@/components/home/how-it-works";
-import { Situations } from "@/components/home/situations";
+import { OrnateHeading } from "@/components/concept/ornate-heading";
+import { Parchment } from "@/components/concept/parchment";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
-import { CLOSING_VISTA, HERO_VISTA } from "@/lib/landing-art";
+import { BUILD_DECK_HREF } from "@/lib/constants";
 
-/** The closing art runs from its column to the window edge on desktop, and full width below it. */
-const CLOSING_ART_SIZES = "(min-width: 1024px) 50vw, 100vw";
-
-/**
- * How far the closing art reaches past its cell on the right: the column's 1rem gutter, plus the margin beside the
- * page column (`--page-column`, globals.css) once the window is wider than it. So the art always meets the window edge.
+/*
+ * Aesthetic concept (2026-11-20): sheets of cream paper on a walnut table, in dark ink, espresso and muted brass.
  */
-const CLOSING_ART_RIGHT = "calc(min(0px, (var(--page-column) - 100vw) / 2) - 1rem)";
+
+/** The two ways in. The commander path is the wax seal; the decklist path its brass-edged partner. */
+const STARTS: { label: string; sub: string; href: Route; icon: typeof Compass; seal: boolean }[] = [
+  { label: "Choose a Commander", sub: "Build a deck around one", href: BUILD_DECK_HREF as Route, icon: Compass, seal: true },
+  { label: "Improve a Decklist", sub: "Paste one and tune it", href: "/deck", icon: ScrollText, seal: false },
+];
+
+/** The two ways in, as a pair of buttons: in the hero and again under the closing line. */
+function StartButtons({ className }: { className?: string }) {
+  return (
+    <ul className={cn("grid gap-3 sm:grid-cols-2", className)}>
+      {STARTS.map((start) => (
+        <li key={start.label}>
+          <Link
+            href={start.href}
+            className={cn(
+              "group flex min-h-14 items-center gap-3 rounded-md px-4 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]",
+              start.seal ? "seal" : "seal-outline",
+            )}
+          >
+            <start.icon aria-hidden className="size-6 shrink-0" strokeWidth={1.5} />
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="font-heading text-lg font-semibold">{start.label}</span>
+              <span className={cn("text-xs", start.seal ? "text-[#e9d1af]" : "text-[var(--ink-soft)]")}>{start.sub}</span>
+            </span>
+            <ArrowRight aria-hidden className="size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Hero() {
+  return (
+    <Parchment aria-labelledby="hero" className="overflow-hidden px-5 pt-6 pb-7 sm:px-8 md:py-10">
+      {/* Faded sea chart behind the cards. */}
+      <div
+        aria-hidden
+        className="chart-ink absolute inset-y-0 right-0 w-full bg-[length:26rem] bg-[position:right_-6rem_top_-4rem] md:w-1/2 md:bg-[length:36rem] md:bg-center"
+      />
+
+      {/* Not `relative`: on a phone the pile's table covers the whole sheet (its nearest positioned ancestor), and the
+          cards fall behind the headline. A paper wash between them keeps the copy legible. */}
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] md:items-center md:gap-6">
+        {/* Cards come first on a phone: they say what this is faster than any sentence. */}
+        <div className="order-first md:order-last">
+          <HeroPile />
+        </div>
+
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(to_top,var(--paper)_45%,rgb(244_232_215/0.75)_62%,transparent_85%)] md:hidden"
+        />
+
+        <div className="relative z-20">
+          <p className="mb-3 flex items-center gap-3 font-heading text-xs tracking-[0.14em] text-[var(--ink-soft)] uppercase sm:tracking-[0.2em]">
+            <span aria-hidden className="h-px w-6 bg-[var(--ink-soft)]" />
+            <span className="whitespace-nowrap">The Commander Deck Workshop</span>
+            <span aria-hidden className="hidden h-px w-6 bg-[var(--ink-soft)] sm:block" />
+          </p>
+          <h1 id="hero" className="font-heading text-3xl font-semibold tracking-tight xl:text-4xl">
+            Build better decks.
+            <span className="block text-[var(--primary)]">Spend less.</span>
+          </h1>
+          <p className="mt-3 max-w-md text-base text-[var(--ink-soft)] md:text-lg">
+            Build around a commander, improve an existing list, and find swaps from cards already owned.
+          </p>
+
+          <StartButtons className="mt-6" />
+        </div>
+      </div>
+    </Parchment>
+  );
+}
 
 async function FeaturedCommandersSection() {
   const commanders = await getFeaturedCommanders();
-  return (
-    <section aria-labelledby="popular-decks" className="py-8 md:py-10 lg:col-span-2 lg:pr-8">
-      <FeaturedCommanders
-        commanders={commanders}
-        intro={
-          <SectionHeading id="popular-decks" eyebrow="Featured" nowrap>
-            Popular Decks
-          </SectionHeading>
-        }
-      />
-    </section>
-  );
+  return <FeaturedCommanders commanders={commanders} intro={<OrnateHeading id="popular-decks">Popular Decks</OrnateHeading>} />;
 }
 
 /** Popular Decks while it loads: the heading, the ring and one tile per featured deck, in the same grid. */
 function FeaturedCommandersSkeleton() {
   return (
-    <section aria-busy="true" aria-label="Popular Decks" className="py-8 md:py-10 lg:col-span-2 lg:pr-8">
-      <SectionHeading eyebrow="Featured" nowrap>
-        Popular Decks
-      </SectionHeading>
+    <div aria-busy="true" aria-label="Popular Decks">
+      <OrnateHeading>Popular Decks</OrnateHeading>
       <div className="mt-6 grid grid-cols-[9rem_minmax(0,1fr)] items-center gap-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-8">
         <Skeleton className="aspect-square rounded-full" />
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-3">
@@ -54,91 +110,32 @@ function FeaturedCommandersSkeleton() {
           ))}
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
-/**
- * The closing line, one short sentence to a line, over art that runs to the window edge. The seam on its left divides
- * it from Popular Decks. Credits its art only when it isn't the hero's.
- */
-function StrongestDecks() {
+/** The closing line on its own small sheet, with both ways in under it. */
+function Closing() {
   return (
-    <section className="relative isolate flex flex-col border-t border-seam py-8 md:py-10 lg:border-t-0 lg:border-l lg:pl-8">
-      <div aria-hidden className="absolute inset-y-0 -left-4 lg:left-0" style={{ right: CLOSING_ART_RIGHT }}>
-        <ArtBackdrop src={CLOSING_VISTA.src} wash="left" sizes={CLOSING_ART_SIZES} position={CLOSING_VISTA.position} />
-      </div>
-      <h2 className="font-heading text-2xl font-semibold tracking-tight">
-        <span className="block">You already bought the cards.</span>{" "}
-        <span className="block font-drama font-normal tracking-normal italic text-foreground/85">
-          Let&apos;s build something awesome.
-        </span>
-      </h2>
-      <div className="mt-6 flex items-center justify-between gap-4">
-        <Link
-          href="/deck"
-          className={buttonVariants({
-            size: "lg",
-            className: "lit h-12 w-fit gap-2 px-6 text-base font-semibold",
-          })}
-        >
-          Get started
-        </Link>
-        {CLOSING_VISTA.src !== HERO_VISTA.src && <ArtCredit vista={CLOSING_VISTA} className="self-center" />}
-      </div>
-    </section>
+    <Parchment className="mx-auto w-full max-w-2xl px-6 py-8 text-center">
+      <h2 className="font-heading text-xl font-semibold sm:text-2xl">You already bought the cards.</h2>
+      <p className="mt-1 font-drama text-xl text-[var(--ink-soft)] italic">Let&apos;s build something awesome.</p>
+      <StartButtons className="mt-6 text-left" />
+    </Parchment>
   );
 }
 
 export default function Home() {
   return (
-    // Bands meet rule to rule, and the last one meets the footer's rule: -mb-10 cancels the layout's bottom padding.
-    <div className="-mb-10 flex flex-col">
-      {/*
-       * Full-bleed: the art has to reach the window edges, not the content column. The negative margin
-       * needs `overflow-x: clip` on html and body (globals.css) so 100vw can't add a horizontal scrollbar.
-       * The section is `relative` and the inner container is not, so the art layer sizes against the bleed.
-       */}
-      <section className="relative isolate mx-[calc(50%-50vw)] -mt-4 w-[100vw] overflow-hidden border-b border-seam">
-        {/* The washes lie over the cards too, so the pile fades into the art's edges; the headline sits above them at z-20. */}
-        <ArtBackdrop src={HERO_VISTA.src} wash="left" sizes="100vw" position={HERO_VISTA.position} priority washOver />
-
-        {/* The headline centres against the pile of cards. Beside it, the headline takes only its own width and the
-            cards' table everything else, out to the window edge (the same reach as CLOSING_ART_RIGHT). */}
-        <div className="page-column grid gap-4 pt-2 pb-6 md:grid-cols-[auto_minmax(0,1fr)] md:gap-4 md:py-8">
-          {/* Cards come first on a phone: they say what this is faster than any sentence. */}
-          <div className="order-first flex flex-col md:order-last md:mr-[calc(min(0px,(var(--page-column)_-_100vw)/2)_-_1rem)]">
-            <div className="flex flex-1 items-center justify-center">
-              <HeroPile />
-            </div>
-          </div>
-
-          {/* The credit ends the "Spend less." line: last-baseline alignment sets it on that line's baseline, and it
-              stays outside the h1 so the heading reads clean. */}
-          <div className="relative z-20 flex max-w-2xl items-baseline-last justify-between gap-4 md:self-center">
-            <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
-              Build better decks.
-              {/* The buddy's voice: the page's one italic headline phrase. */}
-              <span className="mt-1 block font-drama font-normal tracking-normal text-balance italic text-foreground/85">
-                Spend less.
-              </span>
-            </h1>
-            <ArtCredit vista={HERO_VISTA} className="shrink-0 self-baseline-last" />
-          </div>
-        </div>
-      </section>
-
-      <Situations />
-
+    <div className="flex flex-col gap-5 pt-2 md:gap-8 md:pt-4">
+      <Hero />
       <HowItWorks />
-
-      {/* The last band has no rule of its own: the footer's top rule closes it. */}
-      <Band className="border-b-0" inner="grid lg:grid-cols-3">
+      <Parchment className="px-5 py-8 sm:px-8 md:py-10">
         <Suspense fallback={<FeaturedCommandersSkeleton />}>
           <FeaturedCommandersSection />
         </Suspense>
-        <StrongestDecks />
-      </Band>
+      </Parchment>
+      <Closing />
     </div>
   );
 }

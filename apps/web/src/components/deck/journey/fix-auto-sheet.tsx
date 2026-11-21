@@ -69,7 +69,7 @@ export function FixAutoSheet({
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-seam px-4 py-3">
           <div className="min-w-0">
-            <SheetTitle className="font-heading text-base font-semibold">Fix the rest</SheetTitle>
+            <SheetTitle className="text-base font-semibold">Fix the rest</SheetTitle>
             <SheetDescription className="text-xs">Tap a move to leave it out.</SheetDescription>
           </div>
           <p className="flex shrink-0 items-center gap-1.5 font-mono text-sm">

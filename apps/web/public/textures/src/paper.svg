@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <defs>
+    <!-- Mottling: broad, soft patches of darker and lighter paper. -->
+    <filter id="mottle" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.006" numOctaves="4" seed="17" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 .62  0 0 0 0 .44  0 0 0 0 .18  -.55 0 0 0 .32"/>
+    </filter>
+    <!-- Fibres: fine grit across the sheet. -->
+    <filter id="fibre" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="3" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 .47  0 0 0 0 .33  0 0 0 0 .13  -.4 0 0 0 .24"/>
+    </filter>
+    <!-- Stains: a few tide marks where something once sat on the paper. -->
+    <filter id="tide" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" seed="61" stitchTiles="stitch" result="n"/>
+      <feComponentTransfer in="n">
+        <feFuncR type="discrete" tableValues="0 0 0 0 0 0 1 0 0 0"/>
+      </feComponentTransfer>
+      <feColorMatrix type="matrix" values="0 0 0 0 .62  0 0 0 0 .44  0 0 0 0 .18  .06 0 0 0 0"/>
+    </filter>
+  </defs>
+  <rect width="600" height="600" fill="#f4e8d7"/>
+  <rect width="600" height="600" filter="url(#mottle)"/>
+  <rect width="600" height="600" filter="url(#tide)"/>
+  <rect width="600" height="600" filter="url(#fibre)"/>
+</svg>
