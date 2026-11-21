@@ -21,6 +21,7 @@ import { DeckBar } from "./deck-bar";
 import { DeckCoverage } from "./deck-coverage";
 import { readReviewView, writeReviewView, type ReviewView } from "@/lib/review-view";
 import { PanelError } from "./panel-state";
+import { Panel } from "@/components/ui/panel";
 import { ResolutionIssues } from "./resolution-issues";
 import { ResumeDeckDialog } from "./resume-deck-dialog";
 import { CollectionOfferDialog } from "./collection-offer-dialog";
@@ -161,11 +162,10 @@ const DECK_STATS_DOCK =
 /** From lg the round and the Deck stats rail sit side by side. */
 const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6";
 /**
- * The round's sheet of paper: the stepper, the round bar and the step. On phones it runs edge to edge (its negative
- * margin cancels the page column's 1rem gutter and its padding puts the same 1rem back), so the swipe cards keep their
- * width.
+ * The step's own sheet (the card being decided, or the list). On phones it runs edge to edge: its negative margin
+ * cancels the page column's 1rem gutter, so the swipe cards keep their width. The other sheets keep the gutter.
  */
-const JOURNEY_SHEET = "sheet p-4 max-sm:-mx-4 sm:p-5";
+const STEP_SHEET = "flex flex-col max-sm:-mx-4";
 
 /**
  * "upgrade" walks the deck through the journey; "edit" is the deckbuilder, which only saving opens (Save, Save for
@@ -1172,7 +1172,9 @@ function DeckToolSession() {
               <StatPreviewProvider onChange={setStatPreview} chipsFor={chipsFor}>
               <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
                 {/* scroll-mt clears the sticky deck bar when "Pick cuts" brings the steps back into view. */}
-                <div id={STEPS_ID} className={cn(JOURNEY_SHEET, "flex min-w-0 scroll-mt-24 flex-col gap-3")}>
+                <div id={STEPS_ID} className="flex min-w-0 scroll-mt-24 flex-col gap-4">
+                  {/* Paper sheets on the wood, one per section: the steps and this round's controls, the step, the collection offer. */}
+                  <Panel padding="sm" className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
                       <JourneyStepper phases={journey.phases} phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
@@ -1180,6 +1182,9 @@ function DeckToolSession() {
                     {hasViews(journey.state.phase) && <ViewToggle view={view} onChange={changeView} />}
                   </div>
                   <RoundBar canUndo={journey.canUndo} onUndo={journey.undo} onStartOver={journey.restart} save={roundSave} busy={committing || tool.stale} showSave={journey.state.phase !== "review"} />
+                  </Panel>
+                  {journey.state.phase !== "review" && (
+                  <Panel padding="sm" className={STEP_SHEET}>
                   {journey.state.phase === "cut" && (
                     <CutPhase
                       journey={journey}
@@ -1206,6 +1211,8 @@ function DeckToolSession() {
                   )}
                   {journey.state.phase === "fix" && <FixPhase journey={journey} fix={fix} hasCollection={journey.add.hasCollection} />}
                   {journey.state.phase === "replace" && <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />}
+                  </Panel>
+                  )}
                   {/* Players who came with only a list are offered their collection at every step (Done has its own, below). */}
                   {source.kind === "none" && journey.state.phase !== "review" && (
                     <CollectionNudge href={collectionImportHref} step={journey.state.phase} />

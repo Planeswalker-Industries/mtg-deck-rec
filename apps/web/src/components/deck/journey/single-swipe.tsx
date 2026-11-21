@@ -91,7 +91,7 @@ export function SingleSwipe({
   });
 
   return (
-    <section aria-label={label} className="playmat mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-3">
+    <section aria-label={label} className="mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-3">
       <p className="text-sm text-muted-foreground font-mono">
         {/* "1 of 14": the word "Card" is read out, not shown (owner, 2026-11-18). */}
         <span className="sr-only">Card </span>
@@ -120,7 +120,7 @@ export function SingleSwipe({
  */
 export function SwipeDone({ title, message, children }: { title?: ReactNode; message: string; children?: ReactNode }) {
   return (
-    <div role="status" className="playmat mx-auto flex w-full max-w-md flex-col items-center gap-3 px-5 py-8 text-center">
+    <div role="status" className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-5 py-8 text-center">
       {title && <p className="font-heading text-xl leading-tight font-semibold text-balance">{title}</p>}
       <p className="max-w-prose text-sm text-muted-foreground text-pretty">{message}</p>
       {children && <div className="mt-1 flex flex-wrap justify-center gap-2">{children}</div>}

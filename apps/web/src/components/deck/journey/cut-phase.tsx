@@ -268,7 +268,7 @@ export function CutPhase({
           }
         />
       ) : owed > 0 && landStep ? (
-        <section aria-labelledby="cut-lands" className="flex flex-col gap-3 rounded-xl border border-seam bg-sleeve/60 p-4">
+        <section aria-labelledby="cut-lands" className="flex flex-col gap-3">
           <div>
             <h3 id="cut-lands" className="font-heading text-xl font-semibold">
               CUT Lands?

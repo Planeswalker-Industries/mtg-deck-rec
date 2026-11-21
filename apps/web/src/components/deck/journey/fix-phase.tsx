@@ -166,7 +166,7 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
           {fix.position} of {fix.total}
         </span>
       </p>
-      <section aria-label="Fix: one card out, one card in" className="playmat mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <section aria-label="Fix: one card out, one card in" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
         <div aria-live="polite" className="grid grid-cols-2 items-start gap-3">
           <MoveCard card={move.out} side="out" />
           <MoveCard

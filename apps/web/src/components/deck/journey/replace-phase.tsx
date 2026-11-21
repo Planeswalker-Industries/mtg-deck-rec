@@ -125,7 +125,7 @@ export function ReplacePhase({
         <h3 id="journey-swaps" className="font-heading text-xl leading-none font-semibold">
           Swaps <span className="text-sm font-normal text-muted-foreground font-mono">{swaps.length}</span>
         </h3>
-        <ul aria-label="Swaps picked" className="flex flex-col divide-y divide-seam overflow-hidden rounded-lg border border-seam bg-sleeve">
+        <ul aria-label="Swaps picked" className="flex flex-col divide-y divide-seam overflow-hidden rounded-lg border border-seam">
           {swaps.map((s) => (
             <li key={s.target.id}>
               <button

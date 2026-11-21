@@ -23,6 +23,8 @@ import type { Fix, FixLineLabel } from "./use-fix";
 
 /** Average mana value is shown to one decimal: finer than that is noise at deck scale. */
 const MANA_VALUE_DECIMALS = 1;
+/** One part of the result: a sheet of paper on the wood, padded like the journey's other sheets (`Panel` sm). */
+const SECTION_SHEET = "sheet p-4";
 
 const wholeUsd = (usd: number) => `$${Math.round(usd).toLocaleString("en-US")}`;
 
@@ -241,8 +243,11 @@ export function ReviewPhase({
     ));
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <h2 className="sr-only">Finish</h2>
+      {/* Each part of the result is its own sheet on the wood: what is left to fix with the ways out, the numbers, the
+          shopping list, the changes and the decklist. */}
+      <div className={cn(SECTION_SHEET, "flex flex-col gap-4")}>
       {overBy > 0 && (
         <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
@@ -260,7 +265,7 @@ export function ReviewPhase({
         </p>
       )}
       {report && (
-        <section aria-labelledby="review-deck-stats" className="flex flex-col gap-2 rounded-lg border border-seam bg-sleeve px-3 py-2.5 text-sm">
+        <section aria-labelledby="review-deck-stats" className="flex flex-col gap-2 text-sm">
           <h3 id="review-deck-stats" className="flex items-center justify-between gap-3 font-semibold">
             Deck stats
             <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />
@@ -312,14 +317,15 @@ export function ReviewPhase({
           The decklist has changed since this deck was analyzed. Analyze it to save or re-analyze from here.
         </p>
       )}
+      </div>
 
       {/*
         The round's result. On a phone one column: the numbers, then the shopping list, then the changes and the
         decklist. From xl (the Deck stats rail already takes a right column from lg) the shopping list is an aside on the right, kept in view while the rest scrolls; the
         left items name only their column, so auto-placement stacks them in rows 1-3 beside it.
       */}
-      <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-        <section aria-label="Before and after" className="flex flex-col gap-4 rounded-lg border border-seam bg-sleeve p-4 xl:col-start-1">
+      <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+        <section aria-label="Before and after" className={cn(SECTION_SHEET, "flex flex-col gap-4 xl:col-start-1")}>
           <dl className="grid grid-cols-3 gap-3">
             <Figure label="Cards">
               <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
@@ -349,17 +355,19 @@ export function ReviewPhase({
         </section>
 
         <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
-          <ShoppingList
-            entries={journey.after}
-            missing={missing}
-            roundIds={roundInIds(journey)}
-            scopeToggle={missing === null}
-            pinActions
-          />
+          <div className={SECTION_SHEET}>
+            <ShoppingList
+              entries={journey.after}
+              missing={missing}
+              roundIds={roundInIds(journey)}
+              scopeToggle={missing === null}
+              pinActions
+            />
+          </div>
         </aside>
 
         {changes.length > 0 && (
-          <section aria-labelledby="review-changes" className="flex flex-col gap-3 xl:col-start-1">
+          <section aria-labelledby="review-changes" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
             <h3 id="review-changes" className="font-heading text-xl leading-none font-semibold">
               Changes <span className="font-mono text-base font-normal text-muted-foreground">{changes.length}</span>
             </h3>
@@ -388,10 +396,10 @@ export function ReviewPhase({
           </section>
         )}
 
-        <div className="flex flex-col gap-6 xl:col-start-1">
+        <div className="flex flex-col gap-4 xl:col-start-1">
           {children}
 
-          <section aria-labelledby="review-decklist" className="flex flex-col gap-3">
+          <section aria-labelledby="review-decklist" className={cn(SECTION_SHEET, "flex flex-col gap-3")}>
             <h3 id="review-decklist" className="font-heading text-xl leading-none font-semibold">
               Decklist <span className="font-mono text-base font-normal text-muted-foreground">{after.cards}</span>
             </h3>
