@@ -72,11 +72,6 @@ function Hero() {
         />
 
         <div className="relative z-20">
-          <p className="mb-3 flex items-center gap-3 font-heading text-xs tracking-[0.14em] text-[var(--ink-soft)] uppercase sm:tracking-[0.2em]">
-            <span aria-hidden className="h-px w-6 bg-[var(--ink-soft)]" />
-            <span className="whitespace-nowrap">The Commander Deck Workshop</span>
-            <span aria-hidden className="hidden h-px w-6 bg-[var(--ink-soft)] sm:block" />
-          </p>
           <h1 id="hero" className="font-heading text-3xl font-semibold tracking-tight xl:text-4xl">
             Build better decks.
             <span className="block text-[var(--primary)]">Spend less.</span>

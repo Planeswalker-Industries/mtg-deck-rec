@@ -6,7 +6,7 @@ import { SiteSearch } from "@/components/search/site-search";
 
 export function SiteHeader() {
   return (
-    <header className="wood border-b border-[color-mix(in_oklch,var(--brass)_45%,transparent)] bg-[linear-gradient(to_bottom,rgb(19_17_17/0.85),rgb(19_17_17/0.7))] shadow-[0_6px_18px_-8px_rgb(19_17_17/0.9)]">
+    <header className="wood border-b border-(--wood-bar-rule) shadow-[0_6px_18px_-8px_var(--wood-bar)]">
       {/* One flat row, so `order-*` can seat the nav (rendered inside AccountLink) beside the logo on wide screens. */}
       <div className="page-column flex h-16 items-center sm:h-[4.5rem] gap-1 sm:gap-2">
         <Link

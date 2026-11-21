@@ -6,19 +6,19 @@ import { PHONE_HIT_AREA } from "@/lib/constants"
 
 const buttonVariants = cva(
   PHONE_HIT_AREA +
-  " group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-normal whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-180 ease-table outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  " group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-normal whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-180 ease-table outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
-        // Blue means pressable: every variant but destructive shows the primary at rest, not only on hover.
+        default: "bg-primary text-primary-foreground hover:bg-primary-hover",
+        // Espresso means pressable: every variant but destructive shows the primary at rest, not only on hover.
         outline:
           "border-primary/55 bg-transparent text-primary hover:border-primary hover:bg-primary/10 aria-expanded:bg-primary/10",
         secondary:
           "border-primary/55 bg-transparent text-primary hover:border-primary hover:bg-primary/10 aria-expanded:bg-primary/10",
         ghost: "text-primary hover:bg-primary/10 aria-expanded:bg-primary/10",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+          "border-destructive/40 bg-destructive/10 text-destructive hover:border-destructive hover:bg-destructive/15 focus-visible:border-destructive focus-visible:ring-destructive/25",
         link: "text-primary underline decoration-primary/50 underline-offset-2 hover:decoration-primary",
       },
       size: {

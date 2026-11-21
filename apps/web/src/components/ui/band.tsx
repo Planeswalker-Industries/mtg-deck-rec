@@ -2,11 +2,10 @@ import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "cn";
 
 /**
- * A full-width stripe of the page, closed by a rule that runs the whole window. The content inside stays in the
- * site's column (`page-column`), so it lines up with the header. Needs `overflow-x: clip` on html and body
- * (globals.css), since 100vw counts the scrollbar.
+ * A page section as one sheet of paper the width of the site's column (the `sheet` utility, globals.css), with wood
+ * showing between it and the next, as on the homepage. Sit it inside `page-column`.
  *
- * `inner` styles the column (padding, grid); `className` the stripe itself.
+ * `inner` styles the sheet's content (padding, grid); `className` the sheet itself.
  */
 export function Band({
   className,
@@ -15,8 +14,8 @@ export function Band({
   ...rest
 }: ComponentPropsWithoutRef<"section"> & { inner?: string }) {
   return (
-    <section className={cn("relative mx-[calc(50%-50vw)] w-screen border-b border-seam", className)} {...rest}>
-      <div className={cn("page-column", inner)}>{children}</div>
+    <section className={cn("sheet", className)} {...rest}>
+      <div className={cn("px-5 py-6 sm:px-8 sm:py-8", inner)}>{children}</div>
     </section>
   );
 }
