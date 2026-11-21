@@ -93,21 +93,33 @@ export interface KeyPairDeck {
 }
 
 /**
- * One commander key's pairs. Release-aware like its play rates: a pair's decks are those updated in or after the later
- * of the two cards' release months (`releaseMonth`; unknown counts as always out).
+ * One commander key's pairs. Release-aware like its play rates: a pair's decks, both cards' decks and the decks that
+ * could have run both are all counted over the decks updated in or after the later of the two cards' release months
+ * (`releaseMonth`; unknown counts as always out), so a preview deck dated before a card's release counts toward none
+ * of them.
+ *
+ * Two passes: the first counts each pair over every deck and drops those under the support (a count over fewer decks
+ * can't be higher); the second recounts the survivors whose later release month falls after the key's oldest deck,
+ * over the decks from that month on.
  */
-export function keyPairs(decks: readonly KeyPairDeck[], releaseMonth: (cardId: number) => string | null, settings: PairSettings): PairRow[] {
+export function keyPairs(
+  decks: readonly KeyPairDeck[],
+  releaseMonth: (cardId: number) => string | null,
+  settings: PairSettings,
+): PairRow[] {
   const support = Math.max(settings.minSupport, Math.ceil(settings.minShare * decks.length));
   const cardDecks = new Map<number, number>();
   for (const d of decks) for (const id of d.cardIds) cardDecks.set(id, (cardDecks.get(id) ?? 0) + 1);
   const frequent = (id: number) => (cardDecks.get(id) ?? 0) >= support;
 
-  // Decks and each frequent card's decks by month, for the counts after a release month.
+  // Decks and each frequent card's decks by month, for the counts after a release month; each pair over every deck.
   const deckMonths = new Map<string, number>();
   const cardMonths = new Map<number, Map<string, number>>();
-  const pairs = new Map<number, number>();
+  const totals = new Map<number, number>();
+  let oldest: string | null = null;
   for (const d of decks) {
     deckMonths.set(d.month, (deckMonths.get(d.month) ?? 0) + 1);
+    if (oldest === null || d.month < oldest) oldest = d.month;
     const ids = d.cardIds.filter(frequent).sort((a, b) => a - b);
     for (const id of ids) {
       let months = cardMonths.get(id);
@@ -118,7 +130,7 @@ export function keyPairs(decks: readonly KeyPairDeck[], releaseMonth: (cardId: n
       const a = ids[i] as number;
       for (let j = i + 1; j < ids.length; j++) {
         const key = pairKey(a, ids[j] as number);
-        pairs.set(key, (pairs.get(key) ?? 0) + 1);
+        totals.set(key, (totals.get(key) ?? 0) + 1);
       }
     }
   }
@@ -129,17 +141,50 @@ export function keyPairs(decks: readonly KeyPairDeck[], releaseMonth: (cardId: n
   };
   const later = (a: string | null, b: string | null) => (a === null ? b : b === null ? a : a > b ? a : b);
 
-  const rows: PairRow[] = [];
-  for (const [key, pairDecks] of pairs) {
-    if (pairDecks < support) continue;
+  // The pairs over the support, with the month their decks start from (null: every deck counts).
+  const pairs = new Map<number, { from: string | null; pairDecks: number }>();
+  const restricted = new Map<number, string>();
+  const restrictedCards = new Set<number>();
+  for (const [key, total] of totals) {
+    if (total < support) continue;
     const cardA = Math.floor(key / PAIR_KEY_BASE);
     const cardB = key % PAIR_KEY_BASE;
     const from = later(releaseMonth(cardA), releaseMonth(cardB));
+    if (from !== null && oldest !== null && from > oldest) {
+      restricted.set(key, from);
+      restrictedCards.add(cardA);
+      restrictedCards.add(cardB);
+      pairs.set(key, { from, pairDecks: 0 });
+    } else pairs.set(key, { from: null, pairDecks: total });
+  }
+
+  // Second pass: each restricted pair counts only the decks from its month on.
+  if (restricted.size > 0) {
+    for (const d of decks) {
+      const ids = d.cardIds.filter((id) => restrictedCards.has(id)).sort((a, b) => a - b);
+      for (let i = 0; i < ids.length; i++) {
+        const a = ids[i] as number;
+        for (let j = i + 1; j < ids.length; j++) {
+          const key = pairKey(a, ids[j] as number);
+          const from = restricted.get(key);
+          if (from === undefined || d.month < from) continue;
+          const pair = pairs.get(key);
+          if (pair) pair.pairDecks++;
+        }
+      }
+    }
+  }
+
+  const rows: PairRow[] = [];
+  for (const [key, { from, pairDecks }] of pairs) {
+    if (pairDecks < support) continue;
+    const cardA = Math.floor(key / PAIR_KEY_BASE);
+    const cardB = key % PAIR_KEY_BASE;
     const n = since(deckMonths, from);
     if (n === 0) continue;
     const lift = pairLift(pairDecks, since(cardMonths.get(cardA), from), since(cardMonths.get(cardB), from), n, settings.shrinkAlpha);
-    // A pair seen only in decks dated before the later card's release month (previews) has no decks to compare with:
-    // its lift divides by zero. It can't be stored (the column is not null), so it is left out.
+    // Backstop: with the pair counted over the same decks as its cards, the lift is always finite. A non-finite one
+    // can't be stored (the column is not null), so it would be left out.
     if (Number.isFinite(lift) && lift > settings.liftFloor) rows.push({ cardA, cardB, pairDecks, lift });
   }
   return topPartners(rows, settings.maxPartners);
@@ -163,7 +208,10 @@ const IDENTITIES = 32;
 export function globalPairs(decks: readonly GlobalPairDeck[], cardIdentity: (cardId: number) => number, settings: PairSettings): PairRow[] {
   const cardDecks = new Map<number, number>();
   for (const d of decks) for (const id of d.cardIds) cardDecks.set(id, (cardDecks.get(id) ?? 0) + 1);
-  const cards = [...cardDecks].filter(([, n]) => n >= settings.globalMinDecks).map(([id]) => id).sort((a, b) => a - b);
+  const cards = [...cardDecks]
+    .filter(([, n]) => n >= settings.globalMinDecks)
+    .map(([id]) => id)
+    .sort((a, b) => a - b);
   const rank = new Map(cards.map((id, i) => [id, i]));
   const m = cards.length;
   const rowStart = (i: number) => i * m - (i * (i + 1)) / 2;
@@ -174,10 +222,12 @@ export function globalPairs(decks: readonly GlobalPairDeck[], cardIdentity: (car
 
   for (const d of decks) {
     deckByIdentity[d.identity] = (deckByIdentity[d.identity] ?? 0) + 1;
-    const ranks = d.cardIds.flatMap((id) => {
-      const r = rank.get(id);
-      return r === undefined ? [] : [r];
-    }).sort((a, b) => a - b);
+    const ranks = d.cardIds
+      .flatMap((id) => {
+        const r = rank.get(id);
+        return r === undefined ? [] : [r];
+      })
+      .sort((a, b) => a - b);
     for (let x = 0; x < ranks.length; x++) {
       const i = ranks[x] as number;
       cardByIdentity[i * IDENTITIES + d.identity] = (cardByIdentity[i * IDENTITIES + d.identity] ?? 0) + 1;
@@ -191,7 +241,8 @@ export function globalPairs(decks: readonly GlobalPairDeck[], cardIdentity: (car
   // Decks (and a card's decks) whose identity contains a mask, for every mask.
   const supersets = Array.from({ length: IDENTITIES }, (_, u) => [...Array(IDENTITIES).keys()].filter((mask) => (mask & u) === u));
   const decksAllowing = supersets.map((list) => list.reduce((n, mask) => n + (deckByIdentity[mask] ?? 0), 0));
-  const cardDecksAllowing = (i: number, u: number) => (supersets[u] ?? []).reduce((n, mask) => n + (cardByIdentity[i * IDENTITIES + mask] ?? 0), 0);
+  const cardDecksAllowing = (i: number, u: number) =>
+    (supersets[u] ?? []).reduce((n, mask) => n + (cardByIdentity[i * IDENTITIES + mask] ?? 0), 0);
 
   const rows: PairRow[] = [];
   for (let i = 0; i < m; i++) {

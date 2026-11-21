@@ -47,6 +47,36 @@ describe('card pairs (T064)', () => {
     expect(rows.map((r) => [r.cardA, r.cardB])).not.toContainEqual([10, 11]);
   });
 
+  it("doesn't count preview decks toward a pair (T094)", () => {
+    // Ten January decks ran 10 and 11 before 11's June release: only the June decks count, for the pair as for its cards.
+    const previews = Array.from({ length: 10 }, () => ({ cardIds: [1, 10, 11], month: '2026-01' }));
+    const june = decks.map((d) => ({ ...d, month: '2026-06' }));
+    const release = (id: number) => (id === 11 ? '2026-06' : null);
+    const [row] = keyPairs([...previews, ...june], release, SETTINGS);
+    expect(row).toMatchObject({ cardA: 10, cardB: 11, pairDecks: 10 });
+    expect(row?.lift).toBeCloseTo(pairLift(10, 10, 10, 30, 10));
+  });
+
+  it('never counts more decks for a pair than for either of its cards (T094)', () => {
+    // Every third card comes out in a later month; decks run cards by a fixed pattern across six months.
+    const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'];
+    const release = (id: number) => (id % 3 === 0 ? (months[id % months.length] ?? null) : null);
+    const mixed = Array.from({ length: 120 }, (_, x) => ({
+      cardIds: [2, 3, 5, 6, 7, 9, 12].filter((id) => (x * id) % 4 !== 0),
+      month: months[x % months.length] as string,
+    }));
+    const rows = keyPairs(mixed, release, { ...SETTINGS, liftFloor: 0.01 });
+    expect(rows.length).toBeGreaterThan(0);
+    const later = (a: string | null, b: string | null) => (a === null ? b : b === null ? a : a > b ? a : b);
+    for (const r of rows) {
+      const from = later(release(r.cardA), release(r.cardB));
+      const counted = mixed.filter((d) => from === null || d.month >= from);
+      const decksOf = (id: number) => counted.filter((d) => d.cardIds.includes(id)).length;
+      expect(r.pairDecks).toBeLessThanOrEqual(Math.min(decksOf(r.cardA), decksOf(r.cardB)));
+      expect(r.pairDecks).toBe(counted.filter((d) => d.cardIds.includes(r.cardA) && d.cardIds.includes(r.cardB)).length);
+    }
+  });
+
   it('drops pairs under the support or the lift floor', () => {
     expect(keyPairs(decks, always, { ...SETTINGS, minSupport: 11 })).toEqual([]);
     expect(keyPairs(decks, always, { ...SETTINGS, liftFloor: 10 })).toEqual([]);

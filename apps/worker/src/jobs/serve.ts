@@ -50,8 +50,31 @@ const SUBSTITUTES_BUDGET_MS = 2 * MS_PER_MINUTE;
  */
 const SHUTDOWN_DEADLINE_MS = 45_000;
 const SHUTDOWN_REASON = 'stopped when the worker shut down';
-/** Exit code when the deadline ends a duty early, so the stop shows as unclean. */
+/** Exit code when the deadline ends a duty early, or a duty is stuck, so the stop shows as unclean. */
 const EXIT_INTERRUPTED = 1;
+/**
+ * How long a duty the loop waits on may run before the worker counts it stuck and restarts. On hosted, the longest that
+ * finished in the 30 days to 2026-11-20 was a card pairs pass at 11 min (commander stats 8 min 40 s, scores 7 min 15 s),
+ * while a stuck card pairs pass held the loop for 7 h 38 min. Nearly three times the longest leaves room for a bigger
+ * corpus. EDHREC and the corpus's card pairs run beside the loop and are not held to it.
+ */
+const STUCK_AFTER_MS = 30 * MS_PER_MINUTE;
+/**
+ * How long closing the open runs may take before the process exits anyway, so a database that stopped answering can't
+ * keep it alive. Added to SHUTDOWN_DEADLINE_MS it stays inside Docker's 60 s stop grace period.
+ */
+const CLOSE_RUNS_TIMEOUT_MS = 10_000;
+
+/** The duty the loop is waiting on, and since when; null between duties. */
+let inHand: { name: string; since: number } | null = null;
+
+/** Closes this process's open runs as abandoned with `reason`, then exits as unclean; Docker restarts the worker. */
+function abandonAndExit(sql: Sql, reason: string): void {
+  setTimeout(() => process.exit(EXIT_INTERRUPTED), CLOSE_RUNS_TIMEOUT_MS).unref();
+  void abandonOpenRuns(sql, reason)
+    .catch((err: unknown) => console.error('worker: closing the open runs failed:', err))
+    .finally(() => process.exit(EXIT_INTERRUPTED));
+}
 
 async function loadSchedule(sql: Sql): Promise<Schedule> {
   const [row] = await sql<{ value: Partial<Schedule> }[]>`select value from public.app_config where key = 'worker'`;
@@ -129,16 +152,24 @@ function elapsed(since: number): string {
 /**
  * Runs one duty, logging a failure instead of letting it stop the others. An announced duty (the rebuilds, which take
  * seconds to hours) logs when it starts and how long it took; the ones every pass runs (check-in, lookups, the crawl
- * trigger) stay quiet unless they fail.
+ * trigger) stay quiet unless they fail. A duty the loop waits on is recorded as the one in hand, so the heartbeat can
+ * tell a stuck one; a background duty (EDHREC, the corpus's card pairs) is not.
  */
-async function duty(name: string, run: () => Promise<unknown>, { announce = false }: { announce?: boolean } = {}): Promise<void> {
+async function duty(
+  name: string,
+  run: () => Promise<unknown>,
+  { announce = false, background = false }: { announce?: boolean; background?: boolean } = {},
+): Promise<void> {
   const started = Date.now();
+  if (!background) inHand = { name, since: started };
   if (announce) console.log(`worker: ${name} started`);
   try {
     await run();
     if (announce) console.log(`worker: ${name} done in ${elapsed(started)}`);
   } catch (err) {
     console.error(`worker: ${name} failed after ${elapsed(started)}:`, err);
+  } finally {
+    if (!background) inHand = null;
   }
 }
 
@@ -168,7 +199,7 @@ async function due(name: string, check: () => Promise<boolean>): Promise<boolean
  *
  * When something last ran is read from sync_runs and crawl.runs, so a restart neither repeats nor skips work. A stop
  * signal ends the loop after the duty in hand; an EDHREC fetch stopped halfway keeps the pages it wrote and is retried
- * after `retryHours`.
+ * after `retryHours`. A duty in hand past STUCK_AFTER_MS ends the process the same way, so Docker restarts it.
  */
 export async function serve({ once = false }: { once?: boolean } = {}): Promise<void> {
   const sql = connect();
@@ -180,15 +211,22 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
     // out the stale-heartbeat window before it can start those jobs again.
     setTimeout(() => {
       console.warn(`worker: the duty in hand is still running after ${SHUTDOWN_DEADLINE_MS / MS_PER_SECOND} s; closing its runs and exiting`);
-      void abandonOpenRuns(sql, SHUTDOWN_REASON)
-        .catch((err: unknown) => console.error('worker: closing the open runs failed:', err))
-        .finally(() => process.exit(EXIT_INTERRUPTED));
+      abandonAndExit(sql, SHUTDOWN_REASON);
     }, SHUTDOWN_DEADLINE_MS).unref();
   };
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
-  // Long duties (a rebuild takes minutes) must not make the collector look offline.
-  const heartbeat = setInterval(() => void checkIn(sql).catch(() => {}), HEARTBEAT_MS);
+  // Long duties (a rebuild takes minutes) must not make the collector look offline, but a stuck one must: past
+  // STUCK_AFTER_MS the worker stops checking in, closes its runs and exits, and Docker starts it again.
+  const heartbeat = setInterval(() => {
+    if (inHand && Date.now() - inHand.since > STUCK_AFTER_MS) {
+      clearInterval(heartbeat);
+      console.error(`worker: ${inHand.name} is stuck after ${elapsed(inHand.since)}; closing its runs and restarting`);
+      abandonAndExit(sql, `stuck: ${inHand.name} ran past ${STUCK_AFTER_MS / MS_PER_MINUTE} min`);
+      return;
+    }
+    void checkIn(sql).catch(() => {});
+  }, HEARTBEAT_MS);
   let edhrec: Promise<void> | null = null;
   let globalPairs: Promise<void> | null = null;
   let lastCollate = 0;
@@ -224,13 +262,13 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
         await duty('card pairs', () => precomputePairs(sql), { announce: true });
       }
       if (!globalPairs && (await due('corpus card pairs', () => globalPairsDue(sql, schedule)))) {
-        globalPairs = duty('corpus card pairs', () => precomputeGlobalPairs(sql, { rerun: true }), { announce: true }).finally(() => {
+        globalPairs = duty('corpus card pairs', () => precomputeGlobalPairs(sql, { rerun: true }), { announce: true, background: true }).finally(() => {
           globalPairs = null;
         });
         if (once) await globalPairs;
       }
       if (!edhrec && !once && (await due('the EDHREC fetch', () => edhrecDue(sql, schedule)))) {
-        edhrec = duty('EDHREC fetch', () => syncEdhrec(), { announce: true }).finally(() => {
+        edhrec = duty('EDHREC fetch', () => syncEdhrec(), { announce: true, background: true }).finally(() => {
           edhrec = null;
         });
       }

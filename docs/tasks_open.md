@@ -213,7 +213,7 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 
 - The `app_config.worker` schedule, read from the database so a restart neither repeats nor skips work, and the `worker_status` heartbeat (`commander-requests`) the deck tool reads (offline after 30 s).
 - Deck lookups (`lookups.ts`): a requested commander goes first in the crawl's queue, a crawl run starts when none is going, and after the visit the commander is collated, precomputed and its request closed.
-- Each source's daily crawl, now started by the Vercel cron (`apps/web/vercel.json`).
+- Each source's daily crawl, started by the Vercel cron before the worker took it over.
 - Incremental collation (`collate.ts`) about every 30 minutes, then the per-commander precompute passes for the commanders whose decks changed.
 - The heavy full passes (owner, 2026-10-23: monthly, since big swings come with new sets): every substitute list (2 h 41 min on 2026-10-21), the global pair count and the baseline. EDHREC stays weekly.
 - Parity: the precompute's formulas live in `@mtg/core/scoring`, which the web app (`cardPrior`, `servedCardRates`, `commanderShare`, `pickCorpusSources`) and `eval:holdout` also run. A port to Go needs a check that its tables match the TypeScript jobs' on the same corpus.
@@ -221,24 +221,13 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 
 - [x] The design is picked: the Node worker on the owner's own VPS (2026-11-17)
 - [x] The Contabo VPS is provisioned and hardened (2026-11-18): Ubuntu 24.04, 12 GB RAM, New Jersey; SSH by key only, `ufw` 22/80/443, unattended-upgrades, fail2ban. Contabo's image ships Dokploy, so the worker runs as a Dokploy Compose app (`deploy/dokploy/worker.yml`, branch `main`, deployed by hand). TCP connect to the `us-east-2` session pooler: 38–55 ms
-- [ ] The Dokploy panel gets a domain with TLS, and port 3000 closes (Docker-published ports bypass `ufw`)
+- [x] The Dokploy panel gets a domain with TLS (`ops.spellchasm.com`), and port 3000 closes (Docker-published ports bypass `ufw`) (2026-11-19)
 - [x] The worker runs there with `DATABASE_URL` (session pooler), `SEARCH_API_URL` (PR #212), both search API tokens, `WEB_APP_URL` and `REVALIDATE_SECRET` (in single quotes: Compose expands `$` in an unquoted value); the first collation (86,754 decks) and precompute finished on 2026-11-18 without straining hosted
 - [x] Hosted `commander_requests` are consumed and the deck tool sees the heartbeat (both requests `done`, 2026-11-18)
 - [ ] The new jobs fill what hand runs do now, on the owner's cadence
-- [x] The Vercel cron (`/api/cron/*-scrape`) is off: the owner disabled it in the Vercel dashboard on 2026-11-18, and the worker starts the daily crawl at `crawlHourUtc` (10:00 UTC); its entries are still in `apps/web/vercel.json`
-- [ ] The worker started the 2026-11-19 and 2026-11-20 crawls (`crawl.runs` at 10:00 UTC)
+- [x] The Vercel cron (`/api/cron/*-scrape`) is off: the owner disabled it in the Vercel dashboard on 2026-11-18, and the worker starts the daily crawl at `crawlHourUtc` (10:00 UTC); its entries left `apps/web/vercel.json` on 2026-11-19
+- [x] The worker started the 2026-11-19 and 2026-11-20 crawls (`crawl.runs` 56 at 10:00:03 and 57 at 10:00:06 UTC; 57 succeeded at 16:00 UTC)
 - [x] Pushes to `main` redeploy the worker (2026-11-18): the Dokploy `worker` app has Auto Deploy on and Watch Paths empty, its Webhook URL is the `DOKPLOY_WORKER_WEBHOOK_URL` repository secret, and a manual run of `.github/workflows/worker-deploy.yml` got Dokploy's "Compose deployed successfully"
-
-## T094: A failed COPY hangs the worker
-
-**HIGH** · Worker / Scoring · Found 2026-11-18 (runs 259 and 265, `precompute_pairs`)
-
-Hosted card pairs hung twice after the first chunk of 100 keys: the connection sat `idle in transaction (aborted)` on `copy stg_pairs … from stdin` for over 30 minutes while the worker's heartbeat kept the collector looking online. Cause: `keyPairs` (`@mtg/core/scoring` `pairs.ts`) gave 10 keys pairs with a non-finite lift, a pair seen only in decks dated before the later card's release month (preview cards of the 2026-10 and 2026-11 sets), so the lift divides by zero. `copyField` writes a non-finite number as `\N`, `lift` is `not null`, the COPY fails on the server, and `copyRows` (`pipeline` into the postgres.js writable) never settles.
-
-- [x] `keyPairs` leaves out non-finite lifts, with a test (PR #214), released so the worker's card pairs finish (#215; hosted card pairs ran in 11 min on 2026-11-18)
-- [x] `copyRows` rejects when the server fails the COPY, instead of hanging (PR #214; checked by hand against local Postgres, no committed test: the worker has no test runner)
-- [ ] Count a pair's decks over the same decks as its cards' (from the later release month on), as the module comment says; a scoring change, so through `eval:holdout` at its gate
-- [ ] The heartbeat says whether the loop is moving, not only that the process is up (a stuck duty shows in `worker_status`)
 
 ## T003: Deck report link destination
 
