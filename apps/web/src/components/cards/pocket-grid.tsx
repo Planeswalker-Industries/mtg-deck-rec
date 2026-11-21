@@ -69,7 +69,7 @@ function MarkedImage({
       {mark && (
         <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex h-3/5 items-center justify-center">
           <Icon
-            className={cn("size-3/5 drop-shadow-[0_2px_4px_rgb(0_0_0/0.8)]", mark === "cut" ? "text-cut" : "text-add")}
+            className={cn("size-3/5 drop-shadow-[0_2px_4px_color-mix(in_oklch,var(--wood-bar),transparent_20%)]", mark === "cut" ? "text-cut" : "text-add")}
             strokeWidth={3}
           />
         </span>

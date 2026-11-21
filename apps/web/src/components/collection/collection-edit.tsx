@@ -97,7 +97,7 @@ export function AddToCollection({ editor }: { editor: CollectionEditor }) {
   }
 
   return (
-    <section aria-label="Add to your collection" className="flex flex-col gap-3 rounded-lg border border-seam bg-sleeve p-4">
+    <section aria-label="Add to your collection" className="flex flex-col gap-3">
       <h2 className="font-heading text-xl leading-none font-semibold">Add cards</h2>
       <div className="relative max-w-md">
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -108,7 +108,7 @@ export function AddToCollection({ editor }: { editor: CollectionEditor }) {
           value={text}
           onChange={(e) => change(e.target.value)}
           maxLength={MAX_SEARCH_QUERY_CHARS}
-          className="bg-background pl-9 text-base sm:text-sm"
+          className="pl-9 text-base sm:text-sm"
         />
       </div>
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
