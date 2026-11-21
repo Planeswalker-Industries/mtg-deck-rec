@@ -1,10 +1,9 @@
 import type { Metadata, Route } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { cn } from "cn";
-import { ArtBackdrop } from "@/components/cards/art-backdrop";
+import { ArtPlate } from "@/components/ui/art-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { buttonVariants } from "@/components/ui/button";
 import { GameChangerBadge } from "@/components/deck/card-label";
@@ -31,7 +30,13 @@ export async function generateMetadata({ params }: PageProps<"/commander/[slug]"
 
 export default function CommanderPage({ params }: PageProps<"/commander/[slug]">) {
   return (
-    <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">Loading commander…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="text-sm text-muted-foreground">
+          Loading commander…
+        </p>
+      }
+    >
       <CommanderDetails params={params} />
     </Suspense>
   );
@@ -50,71 +55,85 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
   const lead = key.commanders[0];
   const art = lead?.images?.front.artCrop;
 
+  const artist = lead ? artists[lead.id] : null;
+
   return (
-    <article className="flex flex-col gap-8">
-      <ArtBackdrop
-        art={art}
-        artist={lead ? artists[lead.id] : null}
-        cardName={lead ? displayName(lead) : ""}
-        cardSlug={lead?.slug ?? ""}
+    <article className="flex flex-col gap-5 md:gap-8">
+      <section
+        aria-labelledby="commander-heading"
+        className="sheet grid gap-5 p-4 sm:p-6 md:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)] lg:gap-8 lg:p-8"
       >
-      <header className="flex flex-col gap-4">
-        <div className="flex items-center gap-4">
-          {art && (
-            <Image
-              src={art}
-              alt=""
-              width={192}
-              height={140}
-              unoptimized
-              priority
-              className="h-20 w-28 shrink-0 rounded-lg object-cover ring-1 ring-seam sm:h-28 sm:w-40"
-            />
-          )}
-          <div className="min-w-0">
-            <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight text-balance sm:text-3xl">{names}</h1>
-            <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <ColorIdentity identity={identity} />
-              <span>What {commanderDecksPhrase(key)} run</span>
-            </p>
-          </div>
-        </div>
-        {key.confidence !== "full" && (
-          <p className="max-w-prose text-sm">{fewDecksPhrase(key)}, so these rankings can still shift as more decks come in.</p>
+        {/* Uncredited art is worse than none: an art crop carries no artist line of its own, so without one it stays off. */}
+        {art && artist && lead && (
+          <ArtPlate
+            src={art}
+            credit={{ cardName: displayName(lead), cardSlug: lead.slug, artist }}
+            sizes="(min-width: 1024px) 28rem, 100vw"
+            // The phone banner is a thin strip of the art: a commander's head is usually in its upper part.
+            position="object-center max-sm:object-[center_25%]"
+            unoptimized
+            priority
+            className="aspect-[16/7] sm:aspect-[4/3] sm:max-w-md lg:order-last lg:max-w-none lg:self-start"
+          />
         )}
-        <div className="flex flex-wrap gap-2">
-          {/* Pair names run long, so the label wraps instead of running off a phone screen. */}
-          <Link href="/deck" className={cn(buttonVariants({ size: "lg" }), "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}>
-            Upgrade your {names} deck
-          </Link>
-          <Link
-            href={`/rate?commander=${key.slug ?? slug}` as Route}
-            className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}
-          >
-            Rate cards for this commander
-          </Link>
+        <div className="flex min-w-0 flex-col gap-6">
+          <header className="flex flex-col gap-4">
+            <div>
+              <h1
+                id="commander-heading"
+                className="font-heading text-2xl leading-none font-semibold tracking-tight text-balance sm:text-3xl"
+              >
+                {names}
+              </h1>
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <ColorIdentity identity={identity} />
+                <span>What {commanderDecksPhrase(key)} run</span>
+              </p>
+            </div>
+            {key.confidence !== "full" && (
+              <p className="max-w-prose text-sm">{fewDecksPhrase(key)}, so these rankings can still shift as more decks come in.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {/* Pair names run long, so the label wraps instead of running off a phone screen. */}
+              <Link
+                href="/deck"
+                className={cn(buttonVariants({ size: "lg" }), "lit h-auto min-h-9 max-w-full py-2 text-center whitespace-normal")}
+              >
+                Upgrade your {names} deck
+              </Link>
+              <Link
+                href={`/rate?commander=${key.slug ?? slug}` as Route}
+                className={cn(
+                  buttonVariants({ size: "lg", variant: "outline" }),
+                  "h-auto min-h-9 max-w-full py-2 text-center whitespace-normal",
+                )}
+              >
+                Rate cards for this commander
+              </Link>
+            </div>
+          </header>
+
+          {roleProfile.length > 0 && (
+            <section aria-labelledby="roles-heading" className="flex flex-col gap-3 border-t border-seam pt-5">
+              <h2 id="roles-heading" className="font-heading text-xl font-semibold tracking-tight">
+                In a typical deck
+              </h2>
+              <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {roleProfile.map(({ tag, avgPerDeck }) => (
+                  <div key={tag.id} className="rounded-lg border border-seam bg-sleeve px-3 py-2">
+                    <dt className="text-sm text-muted-foreground">{tag.label}</dt>
+                    <dd className="font-mono text-2xl">{avgPerDeck}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
         </div>
-      </header>
-      </ArtBackdrop>
+      </section>
 
-      {roleProfile.length > 0 && (
-        <section aria-labelledby="roles-heading" className="flex flex-col gap-3">
-          <h2 id="roles-heading" className="font-heading text-xl font-semibold tracking-tight">
-            In a typical deck
-          </h2>
-          <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {roleProfile.map(({ tag, avgPerDeck }) => (
-              <div key={tag.id} className="rounded-lg border border-seam bg-sleeve px-3 py-2">
-                <dt className="text-sm text-muted-foreground">{tag.label}</dt>
-                <dd className="font-heading text-2xl font-mono">{avgPerDeck}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      )}
-
+      {/* One sheet per card type, so a long page reads as a stack of papers. */}
       {top.groups.map((group) => (
-        <section key={group.category} aria-labelledby={`top-${group.category}`} className="flex flex-col gap-2">
+        <section key={group.category} aria-labelledby={`top-${group.category}`} className="sheet flex flex-col gap-2 p-4 sm:p-6 lg:p-8">
           <h2 id={`top-${group.category}`} className="font-heading text-xl font-semibold tracking-tight">
             {cardCategoryLabel[group.category]}
           </h2>
@@ -135,7 +154,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
         </section>
       ))}
 
-      <footer className="flex max-w-prose flex-col gap-1 text-xs text-muted-foreground">
+      <footer className="sheet flex flex-col gap-1 px-4 py-3 text-xs text-muted-foreground sm:px-6">
         <p>
           Based on {formatDeckCount(key.deckCount + (key.borrowedDeckCount ?? 0))} shared publicly on{" "}
           <a href="https://archidekt.com" className={TEXT_LINK}>
