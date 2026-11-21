@@ -160,6 +160,12 @@ const DECK_STATS_DOCK =
   "[--deck-stats-dock:calc(var(--deck-stats-dock-height)_+_env(safe-area-inset-bottom))] lg:[--deck-stats-dock:0px]";
 /** From lg the round and the Deck stats rail sit side by side. */
 const WITH_STATS_RAIL = "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6";
+/**
+ * The round's sheet of paper: the stepper, the round bar and the step. On phones it runs edge to edge (its negative
+ * margin cancels the page column's 1rem gutter and its padding puts the same 1rem back), so the swipe cards keep their
+ * width.
+ */
+const JOURNEY_SHEET = "sheet p-4 max-sm:-mx-4 sm:p-5";
 
 /**
  * "upgrade" walks the deck through the journey; "edit" is the deckbuilder, which only saving opens (Save, Save for
@@ -1166,7 +1172,7 @@ function DeckToolSession() {
               <StatPreviewProvider onChange={setStatPreview} chipsFor={chipsFor}>
               <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
                 {/* scroll-mt clears the sticky deck bar when "Pick cuts" brings the steps back into view. */}
-                <div id={STEPS_ID} className="flex min-w-0 scroll-mt-24 flex-col gap-3">
+                <div id={STEPS_ID} className={cn(JOURNEY_SHEET, "flex min-w-0 scroll-mt-24 flex-col gap-3")}>
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
                       <JourneyStepper phases={journey.phases} phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />

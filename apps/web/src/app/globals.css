@@ -96,6 +96,7 @@
   --text-4xl--line-height: 1.1;
 
   --shadow-lift: var(--lift);
+  --shadow-card-edge: var(--card-edge);
   --ease-table: cubic-bezier(0.2, 0.7, 0.2, 1);
   /* An unknown-length job: about 1.4 s a pass reads as working without looking frantic. */
   --animate-progress-sweep: progress-sweep 1.4s ease-in-out infinite;
@@ -218,6 +219,8 @@
 
   /* A card in hand: dragged, dealt or passed. Resting surfaces have no shadow. */
   --lift: 0 14px 30px -14px rgb(19 17 17 / 0.55);
+  /* The dark hairline under a card back lying on the paper (the shuffling deck). */
+  --card-edge: 0 1px 0 color-mix(in oklch, var(--wood-bar) 35%, transparent);
 }
 
 @layer base {
