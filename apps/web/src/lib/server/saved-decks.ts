@@ -247,6 +247,8 @@ export interface DeckForEdit {
   deck: DeckInput;
   /** Every card in the deck, for names and images. */
   cards: CardSummary[];
+  /** Each commander's artist, so the editor's header can credit the art it shows. */
+  artists: Record<number, string | null>;
 }
 
 /**
@@ -282,5 +284,6 @@ export async function loadDeckForEdit(db: AuthClient, code: string, userId: stri
       cards: kept.map((r) => ({ cardId: r.card_id as CardId, quantity: r.quantity, section: r.section === "commander" ? "commander" : "main" })),
     },
     cards: [...found.values()].map((row) => toCardSummary(row)),
+    artists: Object.fromEntries(kept.filter((r) => r.section === "commander").map((r) => [r.card_id, found.get(r.card_id)?.artist ?? null])),
   };
 }

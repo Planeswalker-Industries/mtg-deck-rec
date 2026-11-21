@@ -13,7 +13,8 @@ import { DeckBuilder } from "./deck-builder";
 import { useDeckBuilder } from "./use-deck-builder";
 import { ErrorText } from "@/components/ui/error-text";
 import { SavedDeckCoverage } from "@/components/decks/saved-deck-coverage";
-import { CommanderPlate } from "@/components/cards/commander-plate";
+import { ArtHeader } from "@/components/ui/art-header";
+import { displayName } from "@/lib/cards";
 import { cn } from "cn";
 import { Pencil } from "lucide-react";
 import { CardCount } from "./card-count";
@@ -44,6 +45,7 @@ export function SavedDeckEditor({
   bracket,
   deck,
   cards,
+  artists,
 }: {
   deckId: DeckId;
   code: string;
@@ -52,6 +54,8 @@ export function SavedDeckEditor({
   bracket: Bracket | null;
   deck: DeckInput;
   cards: CardSummary[];
+  /** Each commander's artist, for the header's art credit. */
+  artists: Record<number, string | null>;
 }) {
   const [name, setName] = useState(initialName);
   /** The deck as edited, for the coverage read; saving lags it by the debounce. */
@@ -142,11 +146,24 @@ export function SavedDeckEditor({
         }
       : null;
 
+  // The lead commander's art, as on the deck's page; the commander as edited, so a new one brings its own art.
+  const lead = builder.commanders[0];
+  const artist = lead ? (artists[lead.id] ?? null) : null;
+
   return (
     <article className="flex flex-col gap-5">
-      <CommanderPlate commanders={builder.commanders}>
-        <div className="flex min-h-32 flex-col gap-3 p-4 sm:min-h-40 sm:p-5">
-          {renaming ? (
+      <ArtHeader
+        art={lead?.images?.front.artCrop}
+        credit={artist && lead ? { cardName: displayName(lead), cardSlug: lead.slug, artist } : null}
+        labelledBy="deck-name"
+        className="flex min-h-32 flex-col justify-end gap-3 p-4 sm:min-h-40 sm:p-6"
+      >
+        {renaming ? (
+          <>
+            {/* The sheet stays named by the deck while its name is being edited. */}
+            <h1 id="deck-name" className="sr-only">
+              {name}
+            </h1>
             <form
               className="flex flex-wrap items-center gap-2"
               onSubmit={(e) => {
@@ -169,52 +186,50 @@ export function SavedDeckEditor({
                 Cancel
               </Button>
             </form>
-          ) : (
-            <div className="font-heading text-2xl leading-tight sm:text-3xl">
-              {/* Inline, so the pencil follows the name's last word when it wraps; a sibling keeps it out of the heading's name. */}
-              <h1 className="inline font-semibold tracking-tight text-(--wood-ink) text-on-art">{name}</h1>
-              <Button
-                type="button"
-                size="icon-lg"
-                variant="ghost"
-                title="Rename deck"
-                aria-label={`Rename deck: ${name}`}
-                className="ml-1.5 bg-background/70 align-middle text-primary"
-                onClick={() => setRenaming(true)}
-              >
-                <Pencil aria-hidden className="size-5" />
-              </Button>
-            </div>
-          )}
-          {status.kind === "error" ? (
-            <ErrorText>Couldn&apos;t save: {status.message}</ErrorText>
-          ) : (
-            <p role="status" className="text-sm text-(--wood-ink)/85 text-on-art">
-              {STATUS_TEXT[status.kind]}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-(--wood-ink) text-on-art">
-            <CardCount size={builder.size} />
-            <SavedDeckCoverage deck={liveDeck} deckId={deckId} />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href={{ pathname: "/deck", query: { deck: code } }} className={buttonVariants({ size: "sm" })}>
-              Upgrade this deck
-            </Link>
-            <Link
-              href={`/decks/${commanderSlug}/${code}` as Route}
-              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "bg-background/70")}
+          </>
+        ) : (
+          <div className="font-heading text-2xl leading-tight sm:text-3xl">
+            {/* Inline, so the pencil follows the name's last word when it wraps; a sibling keeps it out of the heading's name. */}
+            <h1 id="deck-name" className="inline font-semibold tracking-tight">
+              {name}
+            </h1>
+            <Button
+              type="button"
+              size="icon-lg"
+              variant="ghost"
+              title="Rename deck"
+              aria-label={`Rename deck: ${name}`}
+              className="ml-1.5 bg-background/70 align-middle text-primary"
+              onClick={() => setRenaming(true)}
             >
-              Deck page
-            </Link>
+              <Pencil aria-hidden className="size-5" />
+            </Button>
           </div>
+        )}
+        {status.kind === "error" ? (
+          <ErrorText>Couldn&apos;t save: {status.message}</ErrorText>
+        ) : (
+          <p role="status" className="text-sm text-muted-foreground">
+            {STATUS_TEXT[status.kind]}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <CardCount size={builder.size} />
+          <SavedDeckCoverage deck={liveDeck} deckId={deckId} />
         </div>
-      </CommanderPlate>
-      <DeckBuilder
-        builder={builder}
-        analysis={analysis}
-        swapContext={swapContext}
-      />
+        <div className="flex flex-wrap gap-2">
+          <Link href={{ pathname: "/deck", query: { deck: code } }} className={buttonVariants({ size: "sm" })}>
+            Upgrade this deck
+          </Link>
+          <Link
+            href={`/decks/${commanderSlug}/${code}` as Route}
+            className={cn(buttonVariants({ size: "sm", variant: "outline" }), "bg-background/70")}
+          >
+            Deck page
+          </Link>
+        </div>
+      </ArtHeader>
+      <DeckBuilder builder={builder} analysis={analysis} swapContext={swapContext} />
     </article>
   );
 }

@@ -345,6 +345,16 @@
 }
 
 /*
+ * A sheet's paper without the sheet: for a sticky bar inside a sheet that must hide what scrolls under it yet read as
+ * the same paper rather than a raised box. The tile matches the sheet's, so at the sheet's top edge it lines up.
+ */
+@utility paper-ground {
+  background-color: var(--paper);
+  background-image: url("/textures/paper.webp");
+  background-size: 600px 600px;
+}
+
+/*
  * The dark bars laid over the wood (header, footer): the translucent onyx bar, light ink, brass links and focus rings,
  * dark controls. Overlays they open render in a portal outside the bar, on paper; a layer that opens inside the bar
  * (the header search's results) puts paper back with `.paper`.
