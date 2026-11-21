@@ -18,12 +18,13 @@ import { PHONE_HIT_AREA, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 export type DeckView = "images" | "plates";
 
 /**
- * Where each page remembers its view in this browser, and what it shows first: a saved deck opens on images; a built
- * deck opens on plates, since the player reads it as a list before going through it card by card.
+ * Where each page remembers its view in this browser, and what it shows first: a saved deck and a collection open on
+ * images; a built deck opens on plates, since the player reads it as a list before going through it card by card.
  */
 const VIEW_SETTINGS = {
   deck: { key: "mtg-deck-rec:deck-view", fallback: "images" },
   build: { key: "mtg-deck-rec:build-view", fallback: "plates" },
+  collection: { key: "mtg-deck-rec:collection-view", fallback: "images" },
 } as const satisfies Record<string, { key: string; fallback: DeckView }>;
 export type DeckViewPage = keyof typeof VIEW_SETTINGS;
 const VIEWS: { view: DeckView; label: string; icon: typeof LayoutGrid }[] = [
@@ -42,9 +43,9 @@ function subscribe(listener: () => void) {
  * One choice a page remembers in this browser (its view, its sort). The server and the first render show the page's
  * default, so hydration matches; when storage is blocked, the choice as last made on this page stands in.
  */
-function rememberedChoice<V extends string>(settings: Record<DeckViewPage, { key: string; fallback: V }>, valid: readonly V[]) {
-  const memory = new Map<DeckViewPage, V>();
-  const read = (page: DeckViewPage): V => {
+function rememberedChoice<V extends string, P extends string>(settings: Record<P, { key: string; fallback: V }>, valid: readonly V[]) {
+  const memory = new Map<P, V>();
+  const read = (page: P): V => {
     const { key, fallback } = settings[page];
     try {
       const stored = localStorage.getItem(key);
@@ -53,7 +54,7 @@ function rememberedChoice<V extends string>(settings: Record<DeckViewPage, { key
       return fallback;
     }
   };
-  const write = (page: DeckViewPage, value: V) => {
+  const write = (page: P, value: V) => {
     try {
       localStorage.setItem(settings[page].key, value);
     } catch {
@@ -62,7 +63,7 @@ function rememberedChoice<V extends string>(settings: Record<DeckViewPage, { key
     memory.set(page, value);
     listeners.forEach((listener) => listener());
   };
-  return function useChoice(page: DeckViewPage): [V, (value: V) => void] {
+  return function useChoice(page: P): [V, (value: V) => void] {
     const value = useSyncExternalStore(
       subscribe,
       () => memory.get(page) ?? read(page),
@@ -72,7 +73,7 @@ function rememberedChoice<V extends string>(settings: Record<DeckViewPage, { key
   };
 }
 
-const useViewChoice = rememberedChoice<DeckView>(
+const useViewChoice = rememberedChoice<DeckView, DeckViewPage>(
   VIEW_SETTINGS,
   VIEWS.map((v) => v.view),
 );
@@ -86,13 +87,14 @@ export function useDeckView(page: DeckViewPage = "deck"): [DeckView, (view: Deck
 const SORT_SETTINGS = {
   deck: { key: "mtg-deck-rec:deck-sort", fallback: DEFAULT_CARD_SORT },
   build: { key: "mtg-deck-rec:build-sort", fallback: DEFAULT_CARD_SORT },
-} as const satisfies Record<DeckViewPage, { key: string; fallback: CardSort }>;
+} as const satisfies Record<string, { key: string; fallback: CardSort }>;
+type CardSortPage = keyof typeof SORT_SETTINGS;
 const SORT_LABELS: Record<CardSort, string> = { name: "Name", cost: "Cost", color: "Color", price: "Price" };
 
-const useSortChoice = rememberedChoice<CardSort>(SORT_SETTINGS, CARD_SORTS);
+const useSortChoice = rememberedChoice<CardSort, CardSortPage>(SORT_SETTINGS, CARD_SORTS);
 
 /** The sort in use on a page, remembered apart from the other page's. */
-export function useCardSort(page: DeckViewPage): [CardSort, (sort: CardSort) => void] {
+export function useCardSort(page: CardSortPage): [CardSort, (sort: CardSort) => void] {
   return useSortChoice(page);
 }
 
@@ -128,7 +130,7 @@ export function SortMenu({ sort, onChange, className }: { sort: CardSort; onChan
   );
 }
 
-/** Images or List, for every card on a saved deck's page or a built deck. */
+/** Images or List, for every card on a saved deck's page, a built deck or a collection. */
 export function DeckViewToggle({ view, onChange, className }: { view: DeckView; onChange: (view: DeckView) => void; className?: string }) {
   return (
     <div role="group" aria-label="Show cards as" className={cn("flex gap-1 self-end", className)}>

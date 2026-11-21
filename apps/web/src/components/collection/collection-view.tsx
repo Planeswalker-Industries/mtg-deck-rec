@@ -21,8 +21,10 @@ import {
 } from "@mtg/core/collection";
 import { MAX_SEARCH_QUERY_CHARS } from "@mtg/core/schemas";
 import { cn } from "cn";
+import { CardPlate } from "@/components/cards/card-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
 import { COLOR_NAMES, MANA_SYMBOL_URL } from "@/components/deck/color-identity";
+import { DeckViewToggle, useDeckView } from "@/components/decks/deck-view";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PageHero } from "@/components/ui/page-hero";
 import { COLLECTION_VISTA } from "@/lib/landing-art";
@@ -258,6 +260,7 @@ function CollectionBrowser({
   const [colors, setColors] = useState<ColorFilter>({ colors: new Set(), colorless: false, multicolor: false });
   const [setValue, setSetValue] = useState(ALL_SETS);
   const [collapsed, setCollapsed] = useState<ReadonlySet<CollectionGroup>>(new Set());
+  const [view, setView] = useDeckView("collection");
 
   const majorSets = useMemo(() => majorSetsNewestFirst(sets), [sets]);
   const majorCodes = useMemo(() => new Set(majorSets.map((s) => s.code)), [majorSets]);
@@ -360,14 +363,18 @@ function CollectionBrowser({
             </SelectContent>
           </Select>
         </div>
-        <p className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground tabular-nums" aria-live="polite">
-          {filtering ? `Showing ${count(shown)} of ${count(items.length)} cards.` : `${count(items.length)} cards.`}
-          {filtering && (
-            <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={clearFilters}>
-              Clear filters
-            </Button>
-          )}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <p className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground tabular-nums" aria-live="polite">
+            {filtering ? `Showing ${count(shown)} of ${count(items.length)} cards.` : `${count(items.length)} cards.`}
+            {filtering && (
+              <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            )}
+          </p>
+          {/* Editing shows its own card tiles, so the choice waits until Done editing. */}
+          {!editableCards && <DeckViewToggle view={view} onChange={setView} className="self-center" />}
+        </div>
       </div>
 
       {groups.length === 0 ? (
@@ -407,6 +414,12 @@ function CollectionBrowser({
                 <div id={id}>
                   {editableCards ? (
                     editableCards(COLLECTION_GROUP_LABELS[group], groupItems)
+                  ) : view === "plates" ? (
+                    <ul aria-label={COLLECTION_GROUP_LABELS[group]} className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                      {groupItems.map((item) => (
+                        <CardPlate key={item.card.id} card={item.card} quantity={item.quantity} />
+                      ))}
+                    </ul>
                   ) : (
                     <PocketGrid
                       zoomable
