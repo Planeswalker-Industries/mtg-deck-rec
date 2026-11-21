@@ -129,6 +129,22 @@ export function SavedDeckEditor({
     },
   });
 
+  // Closing the tab or reloading skips the unmount above, so while an edit is unsaved the browser asks first. The
+  // waiting edit is written at once, so staying (or a quick leave) keeps it.
+  const unsaved = status.kind === "pending" || status.kind === "saving";
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      if (timer.current) clearTimeout(timer.current);
+      if (pending.current) void save(pending.current);
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+    // save reads only refs and stable setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unsaved]);
+
   useEffect(() => {
     if (savedToast === 0) return;
     const timer = window.setTimeout(() => setSavedToast(0), SAVED_TOAST_MS);
@@ -168,10 +184,10 @@ export function SavedDeckEditor({
         }
       : null;
 
-  // The lead commander's art, as on the deck's page. Artists come with the page load only (CardSummary has none), so a
-  // commander added while editing shows no art until the page reloads: uncredited art is never shown.
+  // The lead commander's art, as on the deck's page; the commander as edited, so a new one brings its own art and
+  // credit (`CardSummary.artist`). Uncredited art is never shown.
   const lead = builder.commanders[0];
-  const artist = lead ? (artists[lead.id] ?? null) : null;
+  const artist = lead ? (lead.artist ?? artists[lead.id] ?? null) : null;
 
   const credit = artist && lead ? { cardName: displayName(lead), cardSlug: lead.slug, artist } : null;
   const headerBody = (

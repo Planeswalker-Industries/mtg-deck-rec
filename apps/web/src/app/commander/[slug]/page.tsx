@@ -95,9 +95,10 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
               <h2 id="roles-heading" className="font-heading text-xl font-semibold tracking-tight">
                 Common deck stats
               </h2>
-              <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {/* Each stat stands off a rule on the paper, not a raised tile: no paper on paper. */}
+              <dl className="grid grid-cols-2 gap-y-3 sm:grid-cols-4">
                 {roleProfile.map(({ tag, avgPerDeck }) => (
-                  <div key={tag.id} className="rounded-lg border border-seam bg-sleeve px-3 py-2">
+                  <div key={tag.id} className="border-l-2 border-seam px-3 py-1">
                     <dt className="text-sm text-muted-foreground">{tag.label}</dt>
                     <dd className="font-mono text-2xl">{avgPerDeck}</dd>
                   </div>

@@ -123,18 +123,21 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
               <p className="mt-2 text-sm text-muted-foreground">{card.typeLine}</p>
             </div>
 
-            {faces.map((face) => (
-              <div key={face.name} className="rounded-lg border border-seam bg-sleeve p-3">
-                {faces.length > 1 && (
-                  <p className="mb-1 text-sm font-semibold">
-                    {face.name} <span className="font-normal text-muted-foreground">{face.typeLine}</span>
+            {/* The rules text between rules on the paper, one band per face: no raised box on the sheet. */}
+            <div className="divide-y divide-seam border-y border-seam">
+              {faces.map((face) => (
+                <div key={face.name} className="py-3">
+                  {faces.length > 1 && (
+                    <p className="mb-1 text-sm font-semibold">
+                      {face.name} <span className="font-normal text-muted-foreground">{face.typeLine}</span>
+                    </p>
+                  )}
+                  <p className="text-sm leading-relaxed whitespace-pre-line">
+                    {face.oracleText ? <RulesText text={face.oracleText} /> : "No rules text."}
                   </p>
-                )}
-                <p className="text-sm leading-relaxed whitespace-pre-line">
-                  {face.oracleText ? <RulesText text={face.oracleText} /> : "No rules text."}
-                </p>
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
 
             <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
               {card.gameChanger && (
