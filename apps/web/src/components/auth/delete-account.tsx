@@ -36,7 +36,7 @@ export function DeleteAccount() {
   }
 
   return (
-    <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3 rounded-lg border border-destructive/50 p-4">
+    <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3 border-t border-destructive/50 pt-4">
       <h2 id={`${inputId}-heading`} className="font-heading text-xl font-semibold">
         Delete your account
       </h2>

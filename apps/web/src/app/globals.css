@@ -381,7 +381,7 @@
 
 /* Faded cartography laid into a sheet, under its content. */
 @utility chart-ink {
-  background-image: url("/concept/chart.svg");
+  background-image: url("/textures/chart.svg");
   background-repeat: no-repeat;
   opacity: 0.14;
   pointer-events: none;

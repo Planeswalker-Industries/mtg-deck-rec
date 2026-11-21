@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { FeedbackForm } from "@/components/feedback/feedback-form";
-import { TEXT_LINK } from "@/lib/constants";
+import { cn } from "cn";
+import { PAGE_SHEET, TEXT_LINK } from "@/lib/constants";
 import { feedbackFromPath, feedbackHref } from "@/lib/feedback";
 import { getCurrentUser } from "@/lib/server/auth";
 
@@ -17,8 +18,10 @@ export const metadata: Metadata = {
  */
 export default function FeedbackPage({ searchParams }: PageProps<"/feedback">) {
   return (
-    <div className="flex max-w-prose flex-col gap-4 py-6">
-      <h1 className="font-heading text-2xl leading-none font-semibold tracking-tight">Send feedback</h1>
+    <section aria-labelledby="feedback-heading" className={cn(PAGE_SHEET, "max-w-prose")}>
+      <h1 id="feedback-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
+        Send feedback
+      </h1>
       <Suspense
         fallback={
           <p role="status" className="text-sm text-muted-foreground">
@@ -28,7 +31,7 @@ export default function FeedbackPage({ searchParams }: PageProps<"/feedback">) {
       >
         <FeedbackBody searchParams={searchParams} />
       </Suspense>
-    </div>
+    </section>
   );
 }
 

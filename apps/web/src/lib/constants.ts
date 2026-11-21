@@ -73,6 +73,12 @@ export const TIP_HOVER_DELAY_MS = 200;
 export const HINT_TEXT =
   "underline decoration-primary decoration-dotted decoration-2 underline-offset-4 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
+/**
+ * A plain page's sheet of paper (decks list, account, feedback, privacy, not-found, errors): edge to edge on phones, so
+ * the copy keeps the screen's width, with the gutter back as padding.
+ */
+export const PAGE_SHEET = "sheet flex flex-col gap-4 p-4 max-sm:-mx-4 sm:p-6";
+
 /** The shape both seals share: the heading face, a 44 px target. */
 const SEAL_SHAPE =
   "group inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 font-heading text-lg font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";

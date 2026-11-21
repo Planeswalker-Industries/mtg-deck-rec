@@ -63,9 +63,9 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
       {shown.length === 0 ? (
         <p className="text-muted-foreground">No deck matches “{filter.trim()}”.</p>
       ) : (
-        <ul className={cn("flex flex-col gap-px overflow-hidden rounded-xl bg-seam", pending && "opacity-60")}>
+        <ul className={cn("flex flex-col divide-y divide-seam", pending && "opacity-60")}>
           {shown.map((deck) => (
-            <li key={deck.id} className="bg-sleeve p-3 sm:p-4">
+            <li key={deck.id} className="py-3 first:pt-0 last:pb-0 sm:py-4">
               {renaming === deck.id ? (
                 <RenameRow
                   deck={deck}
@@ -186,7 +186,7 @@ function RenameRow({
         onKeyDown={(e) => e.key === "Escape" && onCancel()}
         aria-label={`New name for ${deck.name}`}
         maxLength={MAX_DECK_NAME_CHARS}
-        className="h-10 bg-background"
+        className="h-10 bg-sleeve"
       />
       <Button type="submit" className="h-10 shrink-0 px-3">
         Save

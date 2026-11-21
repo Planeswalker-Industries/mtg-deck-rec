@@ -15,7 +15,7 @@ export function SiteHeader() {
         >
           {/* Concept: the stacked wordmark (868×251) in place of the typed name. */}
           <Image
-            src="/concept/logo-stacked.png"
+            src="/logo-stacked.png"
             alt="Spell Chasm"
             width={868}
             height={251}

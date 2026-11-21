@@ -8,13 +8,13 @@ import { FEATURED_DECKS } from "@/lib/featured-decks";
 import { FeaturedCommanders } from "@/components/home/featured-commanders";
 import { HeroPile } from "@/components/home/hero-pile";
 import { HowItWorks } from "@/components/home/how-it-works";
-import { OrnateHeading } from "@/components/concept/ornate-heading";
-import { Parchment } from "@/components/concept/parchment";
+import { OrnateHeading } from "@/components/ui/ornate-heading";
+import { SheetSection } from "@/components/ui/sheet-section";
 import { getFeaturedCommanders } from "@/lib/server/recs-cache";
 import { BUILD_DECK_HREF } from "@/lib/constants";
 
 /*
- * Aesthetic concept (2026-11-20): sheets of cream paper on a walnut table, in dark ink, espresso and muted brass.
+ * The homepage (2026-11-20): sheets of cream paper on a walnut table, in dark ink, espresso and muted brass.
  */
 
 /** The two ways in. The commander path is the wax seal; the decklist path its brass-edged partner. */
@@ -39,7 +39,7 @@ function StartButtons({ className }: { className?: string }) {
             <start.icon aria-hidden className="size-6 shrink-0" strokeWidth={1.5} />
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
               <span className="font-heading text-lg font-semibold">{start.label}</span>
-              <span className={cn("text-xs", start.seal ? "text-[#e9d1af]" : "text-[var(--ink-soft)]")}>{start.sub}</span>
+              <span className={cn("text-xs", start.seal ? "text-(--paper-recessed)" : "text-[var(--ink-soft)]")}>{start.sub}</span>
             </span>
             <ArrowRight aria-hidden className="size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
           </Link>
@@ -51,7 +51,7 @@ function StartButtons({ className }: { className?: string }) {
 
 function Hero() {
   return (
-    <Parchment aria-labelledby="hero" className="overflow-hidden px-5 pt-6 pb-7 sm:px-8 md:py-10">
+    <SheetSection aria-labelledby="hero" className="overflow-hidden px-5 pt-6 pb-7 sm:px-8 md:py-10">
       {/* Faded sea chart behind the cards. */}
       <div
         aria-hidden
@@ -68,7 +68,7 @@ function Hero() {
 
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(to_top,var(--paper)_45%,rgb(244_232_215/0.75)_62%,transparent_85%)] md:hidden"
+          className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(to_top,var(--paper)_45%,color-mix(in_srgb,var(--paper)_75%,transparent)_62%,transparent_85%)] md:hidden"
         />
 
         <div className="relative z-20">
@@ -83,7 +83,7 @@ function Hero() {
           <StartButtons className="mt-6" />
         </div>
       </div>
-    </Parchment>
+    </SheetSection>
   );
 }
 
@@ -112,11 +112,11 @@ function FeaturedCommandersSkeleton() {
 /** The closing line on its own small sheet, with both ways in under it. */
 function Closing() {
   return (
-    <Parchment className="mx-auto w-full max-w-2xl px-6 py-8 text-center">
+    <SheetSection className="mx-auto w-full max-w-2xl px-6 py-8 text-center">
       <h2 className="font-heading text-xl font-semibold sm:text-2xl">You already bought the cards.</h2>
       <p className="mt-1 font-drama text-xl text-[var(--ink-soft)] italic">Let&apos;s build something awesome.</p>
       <StartButtons className="mt-6 text-left" />
-    </Parchment>
+    </SheetSection>
   );
 }
 
@@ -125,11 +125,11 @@ export default function Home() {
     <div className="flex flex-col gap-5 pt-2 md:gap-8 md:pt-4">
       <Hero />
       <HowItWorks />
-      <Parchment className="px-5 py-8 sm:px-8 md:py-10">
+      <SheetSection className="px-5 py-8 sm:px-8 md:py-10">
         <Suspense fallback={<FeaturedCommandersSkeleton />}>
           <FeaturedCommandersSection />
         </Suspense>
-      </Parchment>
+      </SheetSection>
       <Closing />
     </div>
   );

@@ -3,7 +3,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { Coins, Crown, Shuffle } from "lucide-react";
 import { cn } from "cn";
-import { Parchment } from "@/components/concept/parchment";
+import { SheetSection } from "@/components/ui/sheet-section";
 
 /** Wide screens get the higher-quality file; the recordings share one pixel size, so it is the colours that differ. */
 const HI_RES_MEDIA = "(min-width: 1024px)";
@@ -86,7 +86,7 @@ export function HowItWorks() {
   };
 
   return (
-    <Parchment aria-label="How it works" className="overflow-hidden">
+    <SheetSection aria-label="How it works" className="overflow-hidden">
       <div
         role="tablist"
         aria-label="How it works"
@@ -113,8 +113,8 @@ export function HowItWorks() {
                 "focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-[var(--primary)]",
                 // The selected tab: espresso ink, a slightly lighter patch of paper and a thick bar along its foot.
                 on
-                  ? "bg-[rgb(249_243_235/0.7)] text-[var(--primary)] after:absolute after:inset-x-0 after:-bottom-px after:h-1 after:bg-[var(--primary)]"
-                  : "text-[var(--ink)] hover:bg-[rgb(249_243_235/0.4)]",
+                  ? "bg-(--paper-raised)/70 text-[var(--primary)] after:absolute after:inset-x-0 after:-bottom-px after:h-1 after:bg-[var(--primary)]"
+                  : "text-[var(--ink)] hover:bg-(--paper-raised)/40",
               )}
             >
               <tab.icon
@@ -147,7 +147,7 @@ export function HowItWorks() {
               <div
                 aria-hidden
                 className={cn(
-                  "relative mt-auto aspect-[5/4] rounded-md border-2 bg-[#131111] shadow-[0_10px_18px_-10px_rgb(19_17_17/0.9)] transition-colors",
+                  "relative mt-auto aspect-[5/4] rounded-md border-2 bg-(--wood-bar) shadow-[0_10px_18px_-10px_color-mix(in_srgb,var(--wood-bar)_90%,transparent)] transition-colors",
                   on ? "border-[var(--primary)]" : "border-[var(--brass)]",
                   i % 2 === 1 ? "rotate-[1.2deg]" : "-rotate-[1deg]",
                 )}
@@ -158,6 +158,6 @@ export function HowItWorks() {
           );
         })}
       </div>
-    </Parchment>
+    </SheetSection>
   );
 }
