@@ -133,6 +133,7 @@ export function ReviewPhase({
   onChoice,
   collectionOnly,
   missing,
+  toolbar,
   children,
 }: {
   /** For the shopping list: copies the collection doesn't supply, null without one, undefined while it is checked. */
@@ -159,6 +160,8 @@ export function ReviewPhase({
   onReanalyze: () => void;
   /** Shown after the changes, e.g. the offer to import a collection. */
   children?: ReactNode;
+  /** The round's Undo and Start over (`RoundBar`), first in the first sheet. */
+  toolbar?: ReactNode;
 }) {
   const state = journey.state;
   const deck = journey.deck;
@@ -248,6 +251,7 @@ export function ReviewPhase({
       {/* Each part of the result is its own sheet on the wood: what is left to fix with the ways out, the numbers, the
           shopping list, the changes and the decklist. */}
       <div className={cn(SECTION_SHEET, "flex flex-col gap-4")}>
+      {toolbar}
       {overBy > 0 && (
         <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />

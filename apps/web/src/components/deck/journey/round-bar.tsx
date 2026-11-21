@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useEffect, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { ChevronDown, Copy, RotateCcw, Save, Undo2 } from "lucide-react";
@@ -19,6 +19,12 @@ export type RoundSave =
   | { kind: "open"; deckName: string; onSaveChanges: () => void; onSaveCopy: () => void; copy: CopyState }
   | { kind: "new"; onSave: () => void };
 
+/**
+ * Where a step puts its status (`StepStatus`): the space beside the round's buttons, so the count sits on the same
+ * row as Undo, Start over and Save rather than on a line of its own. Null until the round bar has mounted.
+ */
+export const StepStatusSlot = createContext<HTMLElement | null>(null);
+
 /** Whether a key press is the player typing somewhere, where shortcuts must not fire. */
 const isTyping = (target: EventTarget | null) => {
   const el = target as HTMLElement | null;
@@ -27,8 +33,9 @@ const isTyping = (target: EventTarget | null) => {
 
 /**
  * The round's controls, on every step: Undo (the last choice, on whichever step it was made; also Z or Ctrl+Z), Start
- * over (after a confirm; Undo brings the choices back) and Save. One row under the steps, so a player who wants out or
- * wants to keep what they have never has to hunt for it.
+ * over (after a confirm, so it is never hit by mistake for Undo; Undo brings the choices back) and Save, as icons. The
+ * first row of the step's sheet, with the step's status in `slotRef` beside them, so a player who wants out or wants
+ * to keep what they have never has to hunt for it.
  */
 export function RoundBar({
   canUndo,
@@ -37,6 +44,7 @@ export function RoundBar({
   save,
   busy,
   showSave = true,
+  slotRef,
 }: {
   canUndo: boolean;
   onUndo: () => void;
@@ -46,6 +54,8 @@ export function RoundBar({
   busy: boolean;
   /** False on Finish, which has its own Save buttons. */
   showSave?: boolean;
+  /** Receives the element beside the buttons that the step's `StepStatus` renders into. */
+  slotRef?: (el: HTMLElement | null) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -62,49 +72,54 @@ export function RoundBar({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div role="toolbar" aria-label="This round" className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <Button type="button" size="sm" variant="ghost" onClick={onUndo} disabled={!canUndo} aria-keyshortcuts="Z" title="Undo the last choice (Z)">
+      <div className="flex min-h-11 items-center gap-3">
+        <div role="toolbar" aria-label="This round" className="flex shrink-0 items-center gap-1">
+          <Button type="button" size="icon-lg" variant="ghost" onClick={onUndo} disabled={!canUndo} aria-label="Undo" aria-keyshortcuts="Z" title="Undo the last choice (Z)">
             <Undo2 aria-hidden />
-            Undo
           </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)}>
+          <Button type="button" size="icon-lg" variant="ghost" onClick={() => setConfirming(true)} aria-label="Start over" title="Start over">
             <RotateCcw aria-hidden />
-            Start over
           </Button>
+          {!showSave ? null : save.kind === "new" ? (
+            <Button type="button" size="icon-lg" variant="ghost" onClick={save.onSave} disabled={busy} aria-label="Save" title="Save">
+              <Save aria-hidden />
+            </Button>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="ghost"
+                  className="gap-0.5 px-2"
+                  disabled={busy || save.copy.status === "saving"}
+                  aria-label={save.copy.status === "saving" ? "Saving" : "Save"}
+                  title="Save"
+                >
+                  <Save aria-hidden />
+                  <ChevronDown aria-hidden className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-56">
+                <DropdownMenuItem className="flex-col items-start gap-0 text-primary focus:text-primary" onSelect={save.onSaveChanges}>
+                  <span className="flex items-center gap-2 font-semibold">
+                    <Save aria-hidden className="text-primary" />
+                    Save changes
+                  </span>
+                  <span className="pl-6 text-xs text-muted-foreground">Writes this round into {save.deckName}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="flex-col items-start gap-0 text-primary focus:text-primary" onSelect={save.onSaveCopy}>
+                  <span className="flex items-center gap-2 font-semibold">
+                    <Copy aria-hidden className="text-primary" />
+                    Save as copy
+                  </span>
+                  <span className="pl-6 text-xs text-muted-foreground">A new deck; {save.deckName} stays as it is</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
-        {!showSave ? null : save.kind === "new" ? (
-          <Button type="button" size="sm" variant="outline" onClick={save.onSave} disabled={busy}>
-            <Save aria-hidden />
-            Save
-          </Button>
-        ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" size="sm" variant="outline" disabled={busy || save.copy.status === "saving"}>
-                <Save aria-hidden />
-                {save.copy.status === "saving" ? "Saving…" : "Save"}
-                <ChevronDown aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-56">
-              <DropdownMenuItem className="flex-col items-start gap-0 text-primary focus:text-primary" onSelect={save.onSaveChanges}>
-                <span className="flex items-center gap-2 font-semibold">
-                  <Save aria-hidden className="text-primary" />
-                  Save changes
-                </span>
-                <span className="pl-6 text-xs text-muted-foreground">Writes this round into {save.deckName}</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex-col items-start gap-0 text-primary focus:text-primary" onSelect={save.onSaveCopy}>
-                <span className="flex items-center gap-2 font-semibold">
-                  <Copy aria-hidden className="text-primary" />
-                  Save as copy
-                </span>
-                <span className="pl-6 text-xs text-muted-foreground">A new deck; {save.deckName} stays as it is</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        <div ref={slotRef} className="flex min-w-0 flex-1 items-center gap-3" />
       </div>
       {save.kind === "open" && save.copy.status === "saved" && (
         <p role="status" className="text-sm text-muted-foreground">

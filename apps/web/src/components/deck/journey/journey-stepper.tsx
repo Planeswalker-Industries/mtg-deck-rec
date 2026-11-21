@@ -1,13 +1,15 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Check, ClipboardList, Plus, Repeat2, Scissors, Wrench } from "lucide-react";
 import type { JourneyPhase } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import { TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
+import { PILL_OFF, PILL_ON } from "@/lib/constants";
+import { StepStatusSlot } from "./round-bar";
 
-/** Each step's name and icon. Steps are tabs, so they follow the toggle rule: solid blue when current, blue text when open. */
+/** Each step's name and icon. Steps are tabs drawn as outline buttons: the current one has a thicker espresso edge. */
 const STEPS: Record<JourneyPhase, { name: string; Icon: typeof Scissors }> = {
   cut: { name: "Cut", Icon: Scissors },
   add: { name: "Add", Icon: Plus },
@@ -39,7 +41,7 @@ export function JourneyStepper({
   const at = phases.indexOf(phase);
   return (
     <nav aria-label="Deck upgrade steps">
-      <ol className={cn("grid gap-1 rounded-lg bg-muted p-0.5", STEP_COLUMNS[phases.length] ?? "grid-cols-4")}>
+      <ol className={cn("grid gap-1.5", STEP_COLUMNS[phases.length] ?? "grid-cols-4")}>
         {phases.map((step, i) => {
           const { name, Icon } = STEPS[step];
           const current = i === at;
@@ -52,9 +54,9 @@ export function JourneyStepper({
                 aria-current={current ? "step" : undefined}
                 onClick={() => onSelect(step)}
                 className={cn(
-                  "flex w-full items-center justify-center gap-1 rounded-md px-1.5 py-1 text-sm font-semibold transition-colors sm:gap-1.5 sm:px-2",
+                  "flex min-h-9 w-full items-center justify-center gap-1 rounded-lg border px-1.5 py-1 text-sm font-semibold transition-colors max-sm:min-h-11 sm:gap-1.5 sm:px-2",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default",
-                  current ? TOGGLE_ON : done || canOpen(step) ? TOGGLE_OFF : "text-muted-foreground/50",
+                  current ? PILL_ON : done || canOpen(step) ? PILL_OFF : "border-primary/20 text-muted-foreground/50",
                 )}
               >
                 {/* Phones drop the icons, so every step's name fits its share of the row; the current step keeps its edge. */}
@@ -110,15 +112,22 @@ export function PhaseIntro({
 }
 
 /**
- * One line under the steps saying where the round stands and what this step asks for ("Cut 3 to get back to 100"). Shown
- * in both views: an empty or finished step must never read as a stuck one.
+ * Where the round stands, beside the round's Undo, Start over and Save (`StepStatusSlot`): the step's count on the
+ * right, any control of its own (Combos) after the buttons. The `reason` ("Cut 3 to get back to 100") is read out but
+ * not shown: the card on the sheet already says why (owner, 2026-11-21).
  */
-export function StepStatus({ children, count }: { children?: ReactNode; count?: ReactNode }) {
-  return (
-    <p role="status" className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
-      <span className="min-w-0 text-pretty">{children}</span>
-      {count !== undefined && <span className="shrink-0 font-mono text-foreground">{count}</span>}
-    </p>
+export function StepStatus({ reason, count, children }: { reason?: ReactNode; count?: ReactNode; children?: ReactNode }) {
+  const slot = useContext(StepStatusSlot);
+  if (!slot) return null;
+  return createPortal(
+    <>
+      {children}
+      <p role="status" className="ml-auto shrink-0 text-sm text-foreground">
+        {reason !== undefined && <span className="sr-only">{reason} </span>}
+        {count !== undefined && <span className="font-mono">{count}</span>}
+      </p>
+    </>,
+    slot,
   );
 }
 
