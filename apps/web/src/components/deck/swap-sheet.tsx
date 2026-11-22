@@ -200,7 +200,7 @@ function Alternatives({
                   i === selectedIndex ? "bg-background ring-2 ring-primary" : "hover:bg-background",
                 )}
               >
-                <CardImage card={s.card} variant="small" alt="" sizes="88px" />
+                <CardImage card={s.card} variant="normal" alt="" sizes="88px" />
                 <span className="mt-1 line-clamp-2 text-xs leading-tight font-semibold">{displayName(s.card)}</span>
               </button>
             </ZoomableCard>

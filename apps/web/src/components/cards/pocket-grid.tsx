@@ -30,11 +30,11 @@ export interface PocketItem {
 const GRID_SIZES = "(min-width: 1024px) 160px, (min-width: 640px) 25vw, 33vw";
 
 /**
- * Every pocket is a thumbnail, at most 160 CSS px wide, so the grid takes Scryfall's `small` printing: `normal` is
- * 488x680 and ~93 KB a card, which for a hundred-card deck page is nine megabytes of images nobody is reading the
- * rules text off. The grid is where a card is recognised, not read; enlarging one (`zoomable`) fetches `large`.
+ * Pockets are up to 160 CSS px wide, 320 device px on a 2x desktop screen: `small` (146 px) is blurry there, so the grid
+ * takes `normal` (488 px, owner 2026-11-22). Images load lazily, so a long deck page fetches only what scrolls into view.
+ * Enlarging one (`zoomable`) fetches `large`.
  */
-const GRID_VARIANT = "small";
+const GRID_VARIANT = "normal";
 
 /** The mark's glow, in the job's colour. */
 const MARK_GLOW = {
