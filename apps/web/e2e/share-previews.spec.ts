@@ -1,18 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { CRAWLER_UA, expect, headMeta as meta, test } from "./fixtures";
 
 const localData = Boolean(process.env.E2E_LOCAL_DATA);
 /** A PNG's IHDR holds its width and height as big-endian 32-bit integers at these byte offsets. */
 const PNG_WIDTH_OFFSET = 16;
 const PNG_HEIGHT_OFFSET = 20;
-/**
- * Facebook's link-preview crawler. Next streams a dynamic page's metadata into the body for browsers and blocks on it
- * only for crawlers it knows, so the head a share preview reads is the one this user agent gets.
- */
-const CRAWLER_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
-
-/** The content of one head meta tag, by its `property` (Open Graph) or `name` (X) attribute. */
-const meta = (page: Page, key: string) =>
-  page.locator(`head meta[property="${key}"], head meta[name="${key}"]`).first().getAttribute("content");
+/** The lead commander's Scryfall art crop, as Scryfall serves it. */
+const ART_CROP = /^https:\/\/cards\.scryfall\.io\/art_crop\//;
 
 test("every page has the default preview image", async ({ page }) => {
   for (const path of ["/", "/privacy"]) {
@@ -45,4 +38,15 @@ test("a card page shares its plate", async ({ browser, request }) => {
 
 test("an unknown card has no plate", async ({ request }) => {
   expect((await request.get("/card/not-a-real-card/opengraph-image")).status()).toBe(404);
+});
+
+test("a commander page shares its commander's art", async ({ browser }) => {
+  test.skip(!localData, "needs the synced catalog");
+  const crawler = await browser.newContext({ userAgent: CRAWLER_UA });
+  const page = await crawler.newPage();
+  await page.goto("/commander/liesa-forgotten-archangel");
+  expect(await meta(page, "og:image")).toMatch(ART_CROP);
+  expect(await meta(page, "twitter:image")).toMatch(ART_CROP);
+  expect(await meta(page, "og:title")).toBe("Liesa, Forgotten Archangel decks");
+  await crawler.close();
 });
