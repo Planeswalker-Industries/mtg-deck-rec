@@ -114,6 +114,9 @@ export const PILL_ON = `border-primary ${TOGGLE_OFF} ring-2 ring-inset ring-prim
 /** The site's name as link previews and the title template show it. */
 export const SITE_NAME = "Spell Chasm";
 
+/** Identifies the app honestly on every outbound request (the worker sends the same). */
+export const USER_AGENT = "SpellChasm/0.1 (+https://spellchasm.com; https://github.com/Planeswalker-Industries/mtg-deck-rec)";
+
 /** Share preview image size: the 1.91:1 size Open Graph and X large cards render without cropping. */
 export const OG_IMAGE_SIZE = { width: 1200, height: 630 } as const;
 

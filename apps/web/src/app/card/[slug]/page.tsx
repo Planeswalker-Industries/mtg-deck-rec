@@ -16,6 +16,7 @@ import { displayName } from "@/lib/cards";
 import { asOfSuffix, formatPercent, fromPrice } from "@/lib/format";
 import { emptySwapMessage } from "@/lib/labels";
 import { getCardPage } from "@/lib/server/recs-cache";
+import { shareMetadata } from "@/lib/share-metadata";
 import { AFFILIATE_DISCLOSURE, SEAL_BUTTON, TEXT_LINK } from "@/lib/constants";
 import { affiliateOn, cardBuyLink, OUTBOUND } from "@/lib/affiliate";
 import { PriceLink } from "@/components/cards/price-link";
@@ -34,10 +35,14 @@ export async function generateMetadata({ params }: PageProps<"/card/[slug]">): P
   if (!page) return { title: "Card not found", robots: { index: false, follow: true } };
   const rules = (page.card.faces?.map((f) => f.oracleText).join(" // ") ?? page.card.oracleText ?? "").replace(/\s+/g, " ").trim();
   const summary = rules.length > 140 ? `${rules.slice(0, 139)}…` : rules;
+  const title = page.card.name;
+  const description = `${summary} Cards that do the same job in Commander, and the commanders whose decks run it most.`.trim();
   return {
-    title: page.card.name,
-    description: `${summary} Cards that do the same job in Commander, and the commanders whose decks run it most.`.trim(),
+    title,
+    description,
     alternates: { canonical: `/card/${slug}` },
+    // The plate comes from ./opengraph-image.tsx.
+    ...shareMetadata({ title, description, image: "opengraph-image" }),
   };
 }
 
