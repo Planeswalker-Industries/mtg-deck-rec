@@ -5,6 +5,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { loadCardPage, type CardPageData } from "./card-page";
 import { loadCommanderPage, type CommanderPage } from "./commander-page";
 import { type FeaturedCommander, loadFeaturedCommanders } from "./featured";
+import { sharedCollection } from "./account-collection";
 import { loadBracketBasics } from "./brackets";
 import { availabilityFor, loadStandIns } from "./collection-availability";
 import { DEFAULT_SWAP_LIMIT, getSwapSuggestions, loadOwnedBoost, loadSwapPool, NotFoundError, SHARED_SWAP_POOL, swapWithRoles } from "./recs";
@@ -109,4 +110,17 @@ export async function getFeaturedCommanders(): Promise<FeaturedCommander[]> {
     db = null;
   }
   return loadFeaturedCommanders(db);
+}
+
+/**
+ * How many copies a shared collection holds, for its link preview; null when the code is unknown or not shared. Cached
+ * so a crawler's hit doesn't load a large collection on top of the page's own read. A count can lag the collection by
+ * up to the cache's lifetime, which a preview can live with.
+ */
+export async function getSharedCollectionCopies(code: string): Promise<number | null> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag(`collection:${code}`);
+  const shared = await sharedCollection(createPublicClient(), code);
+  return shared ? shared.entries.reduce((sum, entry) => sum + entry.quantity, 0) : null;
 }
