@@ -3,7 +3,8 @@ import { formatAsOf, formatUsd } from "@/lib/format";
 import type { DeckPageData } from "@/lib/server/deck-page";
 
 /**
- * A saved deck's link-preview title and description: "{name} — {commanders} deck" and what it holds, with its
+ * A saved deck's link-preview title and description: its name alone (owner, 2026-11-22: most decks are named after
+ * their commander, so a "— {commanders} deck" suffix repeated it), then its commanders and what it holds, with its
  * estimated total and the oldest price date among the cards counted. A deck with no priced card leaves the price
  * clause out; one with no commander is just a "Commander deck".
  */
@@ -24,9 +25,8 @@ export function deckShareText(deck: Pick<DeckPageData, "name" | "commanders" | "
     priceClause = `, ~${formatUsd(total)} (as of ${formatAsOf(asOf)})`;
   }
 
-  const kind = names ? `${names} deck` : "Commander deck";
   return {
-    title: `${deck.name} — ${kind}`,
+    title: deck.name,
     description: `A ${names ? `${names} ` : ""}Commander deck: ${deck.cardCount} cards${priceClause}. See its cards and get suggestions to add, cut and swap.`,
   };
 }

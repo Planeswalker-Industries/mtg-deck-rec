@@ -39,13 +39,12 @@ export async function generateMetadata({ params }: PageProps<"/decks/[commander]
   const deck = await loadDeckPage(createPublicClient(), code, null);
   if (!deck) return { robots: ROBOTS };
   const { title, description } = deckShareText(deck);
-  const lead = deck.commanders[0];
-  const art = lead?.images?.front.artCrop;
   return {
     robots: ROBOTS,
     title,
     description,
-    ...shareMetadata({ title, description, image: art && lead ? { url: art, alt: `${displayName(lead)} art` } : undefined }),
+    // The plate comes from ./opengraph-image.tsx; a deck with no commander has no art and shares the hero.
+    ...shareMetadata({ title, description, image: deck.commanders.length > 0 ? "opengraph-image" : undefined }),
   };
 }
 

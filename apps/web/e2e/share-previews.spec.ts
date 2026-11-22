@@ -4,9 +4,6 @@ const localData = Boolean(process.env.E2E_LOCAL_DATA);
 /** A PNG's IHDR holds its width and height as big-endian 32-bit integers at these byte offsets. */
 const PNG_WIDTH_OFFSET = 16;
 const PNG_HEIGHT_OFFSET = 20;
-/** The lead commander's Scryfall art crop, as Scryfall serves it. */
-const ART_CROP = /^https:\/\/cards\.scryfall\.io\/art_crop\//;
-
 test("every page has the default preview image", async ({ page }) => {
   for (const path of ["/", "/privacy"]) {
     await page.goto(path);
@@ -33,6 +30,7 @@ test("a card page shares its plate", async ({ browser, request }) => {
   expect(await meta(page, "og:image")).toContain("/card/sol-ring/opengraph-image");
   expect(await meta(page, "twitter:image")).toContain("/card/sol-ring/opengraph-image");
   expect(await meta(page, "og:title")).toBe("Sol Ring");
+  expect(await meta(page, "og:description")).not.toContain("{");
   await crawler.close();
 });
 
@@ -40,13 +38,16 @@ test("an unknown card has no plate", async ({ request }) => {
   expect((await request.get("/card/not-a-real-card/opengraph-image")).status()).toBe(404);
 });
 
-test("a commander page shares its commander's art", async ({ browser }) => {
+test("a commander page shares its plate", async ({ browser, request }) => {
   test.skip(!localData, "needs the synced catalog");
+  const res = await request.get("/commander/liesa-forgotten-archangel/opengraph-image");
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toBe("image/png");
   const crawler = await browser.newContext({ userAgent: CRAWLER_UA });
   const page = await crawler.newPage();
   await page.goto("/commander/liesa-forgotten-archangel");
-  expect(await meta(page, "og:image")).toMatch(ART_CROP);
-  expect(await meta(page, "twitter:image")).toMatch(ART_CROP);
+  expect(await meta(page, "og:image")).toContain("/commander/liesa-forgotten-archangel/opengraph-image");
+  expect(await meta(page, "twitter:image")).toContain("/commander/liesa-forgotten-archangel/opengraph-image");
   expect(await meta(page, "og:title")).toBe("Liesa, Forgotten Archangel decks");
   await crawler.close();
 });

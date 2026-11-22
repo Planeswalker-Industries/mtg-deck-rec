@@ -26,14 +26,12 @@ export async function generateMetadata({ params }: PageProps<"/commander/[slug]"
   const names = page.key.commanders.map((c) => c.name).join(" and ");
   const title = `${names} decks`;
   const description = `The cards ${page.key.deckCount.toLocaleString("en-US")} ${names} Commander decks run most, by card type, and how much ramp, card advantage, removal and protection they play.`;
-  // The lead commander's Scryfall art crop, as is (owner, 2026-11-21); the hero when Scryfall has none.
-  const lead = page.key.commanders[0];
-  const art = lead?.images?.front.artCrop;
   return {
     title,
     description,
     alternates: { canonical: `/commander/${slug}` },
-    ...shareMetadata({ title, description, image: art && lead ? { url: art, alt: `${displayName(lead)} art` } : undefined }),
+    // The plate comes from ./opengraph-image.tsx.
+    ...shareMetadata({ title, description, image: "opengraph-image" }),
   };
 }
 

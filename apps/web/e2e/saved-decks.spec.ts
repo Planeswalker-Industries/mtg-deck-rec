@@ -131,15 +131,13 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   expect(csv).toMatch(/,commander\r\n/);
   expect(csv).toContain("Sol Ring");
 
-  // Its link preview names the deck and shows its commander's art.
+  // Its link preview names the deck and shows its plate.
   const deckName = (await page.locator("#deck-heading").innerText()).trim();
   const crawler = await browser.newContext({ userAgent: CRAWLER_UA });
   const crawlerPage = await crawler.newPage();
   await crawlerPage.goto(url);
-  const ogTitle = await headMeta(crawlerPage, "og:title");
-  expect(ogTitle?.startsWith(`${deckName} — `), `og:title "${ogTitle}"`).toBe(true);
-  expect(ogTitle).toMatch(/ deck$/);
-  expect(await headMeta(crawlerPage, "og:image")).toMatch(/^https:\/\/cards\.scryfall\.io\/art_crop\//);
+  expect(await headMeta(crawlerPage, "og:title")).toBe(deckName);
+  expect(await headMeta(crawlerPage, "og:image")).toContain(`${new URL(url).pathname}/opengraph-image`);
 
   // Hiding it takes the page away from everyone else.
   const publicSwitch = page.getByRole("switch", { name: "Public" });

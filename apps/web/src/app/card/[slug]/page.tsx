@@ -37,12 +37,14 @@ export async function generateMetadata({ params }: PageProps<"/card/[slug]">): P
   const summary = rules.length > 140 ? `${rules.slice(0, 139)}…` : rules;
   const title = page.card.name;
   const description = `${summary} Cards that do the same job in Commander, and the commanders whose decks run it most.`.trim();
+  // Previews say what the page covers, without the rules text: its mana symbols show as raw "{T}" (owner, 2026-11-22).
+  const shareDescription = `The commanders whose decks play ${displayName(page.card)} most, and cards that do the same job in Commander.`;
   return {
     title,
     description,
     alternates: { canonical: `/card/${slug}` },
     // The plate comes from ./opengraph-image.tsx.
-    ...shareMetadata({ title, description, image: "opengraph-image" }),
+    ...shareMetadata({ title, description: shareDescription, image: "opengraph-image" }),
   };
 }
 
