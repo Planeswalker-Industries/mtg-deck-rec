@@ -18,6 +18,16 @@ export async function fillDecklist(page: Page, text: string) {
   }).toPass();
 }
 
+/**
+ * Facebook's link-preview crawler. Next streams a dynamic page's metadata into the body for browsers and blocks on it
+ * only for crawlers it knows, so the head a share preview reads is the one this user agent gets.
+ */
+export const CRAWLER_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
+
+/** The content of one head meta tag, by its `property` (Open Graph) or `name` (X) attribute. */
+export const headMeta = (page: Page, key: string) =>
+  page.locator(`head meta[property="${key}"], head meta[name="${key}"]`).first().getAttribute("content");
+
 /** The Fix step's pair on screen: one card out, one card in. */
 export const FIX_MOVE = { name: "Fix: one card out, one card in" } as const;
 /** Fix and Swap wait on a recommendation read, which a cold server takes a while over. */
