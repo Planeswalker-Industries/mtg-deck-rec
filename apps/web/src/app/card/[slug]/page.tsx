@@ -110,6 +110,7 @@ async function CardDetails({ params }: Pick<PageProps<"/card/[slug]">, "params">
         art={card.images?.front.artCrop}
         credit={artist ? { cardName: name, cardSlug: card.slug, artist } : null}
         labelledBy="card-heading"
+        plate
         position="object-[center_30%]"
         className="p-4 sm:p-6 lg:p-8"
       >
