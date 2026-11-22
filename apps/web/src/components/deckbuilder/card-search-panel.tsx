@@ -436,7 +436,7 @@ export function CardSearchPanel({
                 <li key={card.id} className="flex min-w-0 flex-col gap-1">
                   {/* Click or tap only: this panel scrolls, and a hover-opened card got stuck open (see `hover`). */}
                   <ZoomableCard card={card} hover={false}>
-                    <CardImage card={card} variant="small" alt="" sizes="(min-width: 1024px) 120px, 30vw" className={cn(!addable && "opacity-50")} />
+                    <CardImage card={card} variant="normal" alt="" sizes="(min-width: 1024px) 120px, 30vw" className={cn(!addable && "opacity-50")} />
                   </ZoomableCard>
                   {/* Two lines whatever the name, so the Add buttons line up across the row. */}
                   <span className="line-clamp-2 min-h-[2lh] text-sm leading-tight font-semibold">{displayName(card)}</span>
