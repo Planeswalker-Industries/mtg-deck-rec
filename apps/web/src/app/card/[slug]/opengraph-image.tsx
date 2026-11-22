@@ -16,18 +16,25 @@ export const contentType = "image/png";
 // A static alt can't carry the card's name, and generateImageMetadata would move the image off this URL.
 export const alt = `A Magic card on the ${SITE_NAME} table, with its name beside it`;
 
-/** Wood tokens from globals.css; Satori reads no CSS variables. */
+/** Wood and paper tokens from globals.css; Satori reads no CSS variables. */
 const COLOURS = {
   wood: "#1c120c", // --wood: the walnut's base
-  ink: "#f4e8d7", // --wood-ink, champagne mist 100: light text on the wood, far past AA on it
-  mark: "#d2a360", // --brass-light, champagne mist 400: the site's name, decoration on the wood
+  paper: "#f4e8d7", // --paper, champagne mist 100: the sheet under the name
+  ink: "#1b1918", // --ink, onyx 900: the name, far past AA on the paper
+  mark: "#775422", // --brass-deep, champagne mist 700: the site's name, 5.6:1 on the paper
   rule: "#9f702d", // --brass, champagne mist 600: the rule above the name
+  rim: "rgba(119, 84, 34, 0.25)", // --brass-deep at 25%: the sheet's aged edge, as the `sheet` utility draws it
+  rimGlow: "rgba(159, 112, 45, 0.14)", // --brass at 14%: the sheet's inner browning
   vignette: "rgba(8, 4, 2, 0.6)", // the body's edge darkening
-  shadow: "rgba(0, 0, 0, 0.55)", // the card's shadow on the table
+  shadow: "rgba(0, 0, 0, 0.55)", // the card's and the sheet's shadow on the table
 };
 
-/** Margin around the plate's contents, in px: the card's top and bottom edges sit this far in. */
+/** Margin around the plate's contents, in px: the card's and the sheet's edges sit this far in. */
 const PAD_PX = 48;
+/** The sheet's inner margin around the name, in px. */
+const SHEET_PAD_PX = 48;
+/** The paper tile's size on the site (globals.css `sheet`). */
+const PAPER_TILE = "600px 600px";
 /** Room between the card and its name, in px. */
 const GAP_PX = 64;
 /** Scryfall's `large` image is 672×936. */
@@ -56,7 +63,9 @@ const CACHE_CONTROL = "public, max-age=3600, s-maxage=86400, stale-while-revalid
 
 // Static TTF and JPEG: Satori reads neither woff2, variable fonts nor webp.
 const cormorantBold = readFile(join(process.cwd(), "assets/og/cormorant-garamond-700.ttf"));
-const walnut = readFile(join(process.cwd(), "assets/og/walnut.jpg"), "base64").then((b) => `data:image/jpeg;base64,${b}`);
+const jpegDataUrl = (file: string) => readFile(join(process.cwd(), "assets/og", file), "base64").then((b) => `data:image/jpeg;base64,${b}`);
+const walnut = jpegDataUrl("walnut.jpg");
+const paper = jpegDataUrl("paper.jpg");
 
 /** The card image as a data URL. Throws when Scryfall doesn't answer, so the cached plate is never the fallback. */
 async function fetchCardImage(url: string): Promise<string> {
@@ -94,7 +103,20 @@ async function renderPlate(name: string, image: string | null): Promise<Uint8Arr
           style={{ borderRadius: CARD_RADIUS_PX, boxShadow: `0 12px 32px ${COLOURS.shadow}`, marginRight: GAP_PX }}
         />
       ) : null}
-      <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          height: "100%",
+          justifyContent: "center",
+          padding: SHEET_PAD_PX,
+          backgroundColor: COLOURS.paper,
+          backgroundImage: `url(${await paper})`,
+          backgroundSize: PAPER_TILE,
+          boxShadow: `inset 0 0 0 1px ${COLOURS.rim}, inset 0 0 36px 4px ${COLOURS.rimGlow}, 0 12px 26px -10px ${COLOURS.shadow}`,
+        }}
+      >
         <div style={{ width: RULE_WIDTH_PX, height: RULE_HEIGHT_PX, backgroundColor: COLOURS.rule, marginBottom: RULE_GAP_PX }} />
         <div
           style={{
@@ -108,19 +130,19 @@ async function renderPlate(name: string, image: string | null): Promise<Uint8Arr
         >
           {name}
         </div>
-      </div>
-      <div
-        style={{
-          position: "absolute",
-          right: PAD_PX,
-          bottom: PAD_PX,
-          display: "flex",
-          fontFamily: "Cormorant Garamond",
-          fontSize: MARK_PX,
-          color: COLOURS.mark,
-        }}
-      >
-        {SITE_NAME}
+        <div
+          style={{
+            position: "absolute",
+            right: SHEET_PAD_PX,
+            bottom: SHEET_PAD_PX / 2,
+            display: "flex",
+            fontFamily: "Cormorant Garamond",
+            fontSize: MARK_PX,
+            color: COLOURS.mark,
+          }}
+        >
+          {SITE_NAME}
+        </div>
       </div>
     </div>,
     { ...OG_IMAGE_SIZE, fonts: [{ name: "Cormorant Garamond", data: await cormorantBold, weight: 700, style: "normal" }] },
