@@ -1,4 +1,4 @@
-import { FIX_MOVE, expect, openFix, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
+import { CRAWLER_UA, FIX_MOVE, expect, headMeta, openFix, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 /** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */
@@ -131,6 +131,14 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   expect(csv).toMatch(/,commander\r\n/);
   expect(csv).toContain("Sol Ring");
 
+  // Its link preview names the deck and shows its plate.
+  const deckName = (await page.locator("#deck-heading").innerText()).trim();
+  const crawler = await browser.newContext({ userAgent: CRAWLER_UA });
+  const crawlerPage = await crawler.newPage();
+  await crawlerPage.goto(url);
+  expect(await headMeta(crawlerPage, "og:title")).toBe(deckName);
+  expect(await headMeta(crawlerPage, "og:image")).toContain(`${new URL(url).pathname}/opengraph-image`);
+
   // Hiding it takes the page away from everyone else.
   const publicSwitch = page.getByRole("switch", { name: "Public" });
   await expect(publicSwitch).toBeChecked();
@@ -145,6 +153,11 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   // The download goes with the page.
   expect((await stranger.request.get(exportUrl)).status()).toBe(404);
   await stranger.close();
+  // Nor its name through the link preview. A hidden deck 404s in proxy.ts, so its head is the not-found page's.
+  await crawlerPage.goto(url);
+  expect(await crawlerPage.locator("head").innerHTML()).not.toContain(deckName);
+  expect(await headMeta(crawlerPage, "robots")).toContain("noindex");
+  await crawler.close();
   // Its owner can still download it.
   const ownerText = await page.request.get(`${url}/export?format=txt`);
   expect(ownerText.status()).toBe(200);

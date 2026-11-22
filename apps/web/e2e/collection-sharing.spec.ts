@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { CRAWLER_UA, headMeta } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 /** Real local catalog and account actions can take half a minute to finish. */
@@ -38,6 +39,13 @@ test("a shared collection is read-only to others, sends its owner home and 404s 
   await expect(visitor.getByRole("link", { name: "Import" })).toHaveCount(0);
   await expect(visitor.getByRole("link", { name: "Use in the deck tool" })).toHaveCount(0);
   await expect(visitor.getByRole("switch", { name: "Public" })).toHaveCount(0);
+
+  // A link preview names the copy count. Only known crawlers get dynamic metadata in the head.
+  const crawler = await browser.newContext({ userAgent: CRAWLER_UA });
+  const preview = await crawler.newPage();
+  await preview.goto(path);
+  expect(await headMeta(preview, "og:title")).toBe("A collection of 3 cards");
+  await crawler.close();
 
   // Off, the link is a real 404; on again, the same link works.
   await page.goto("/collection");

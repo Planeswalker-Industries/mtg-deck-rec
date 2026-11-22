@@ -15,6 +15,9 @@ import { ColorIdentity } from "@/components/deck/color-identity";
 import { createAuthClient, getCurrentUser } from "@/lib/server/auth";
 import { deckExportEntries } from "@/lib/server/deck-export";
 import { loadDeckPage } from "@/lib/server/deck-page";
+import { createPublicClient } from "@/lib/server/supabase";
+import { deckShareText } from "@/lib/deck-share";
+import { shareMetadata } from "@/lib/share-metadata";
 import { displayName } from "@/lib/cards";
 import { TEXT_LINK } from "@/lib/constants";
 import { feedbackHref } from "@/lib/feedback";
@@ -22,13 +25,28 @@ import { feedbackHref } from "@/lib/feedback";
 const WUBRG = "WUBRG";
 
 /**
- * A saved deck. The same route serves its owner and everyone else: a private deck 404s for a stranger, so its id
- * cannot be probed. Never indexed — a deck's page is for sharing a link, not for search results, and the names on it
- * are user-written.
+ * Never indexed — a deck's page is for sharing a link, not for search results, and the names on it are user-written.
  */
-export const metadata: Metadata = {
-  robots: { index: false, follow: false },
-};
+const ROBOTS: Metadata["robots"] = { index: false, follow: false };
+
+/**
+ * A saved deck. The same route serves its owner and everyone else: a private deck 404s for a stranger, so its id
+ * cannot be probed. The link preview reads the deck as a stranger (no viewer), so a private deck's name never reaches
+ * its head, even for its owner.
+ */
+export async function generateMetadata({ params }: PageProps<"/decks/[commander]/[code]">): Promise<Metadata> {
+  const { code } = await params;
+  const deck = await loadDeckPage(createPublicClient(), code, null);
+  if (!deck) return { robots: ROBOTS };
+  const { title, description } = deckShareText(deck);
+  return {
+    robots: ROBOTS,
+    title,
+    description,
+    // The plate comes from ./opengraph-image.tsx; a deck with no commander has no art and shares the hero.
+    ...shareMetadata({ title, description, image: deck.commanders.length > 0 ? "opengraph-image" : undefined }),
+  };
+}
 
 export default function DeckPage({ params }: PageProps<"/decks/[commander]/[code]">) {
   return (

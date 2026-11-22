@@ -2,6 +2,7 @@ import type { ApiError } from "@mtg/core/contract";
 import { classifyShareResponse } from "@mtg/core/parse";
 import { createAdminClient } from "./supabase-admin";
 import type { PublicClient } from "./supabase";
+import { USER_AGENT } from "@/lib/constants";
 
 export type ShareSource = "archidekt" | "manabox" | "moxfield" | "tcgplayer";
 
@@ -12,8 +13,6 @@ const SOURCES: Record<ShareSource, { name: string; hosts: readonly string[] }> =
   tcgplayer: { name: "TCGplayer", hosts: ["tcgplayer.com", "www.tcgplayer.com"] },
 };
 
-/** Identifies the app honestly on every outbound request (the worker sends the same). */
-const USER_AGENT = "SpellChasm/0.1 (+https://spellchasm.com; https://github.com/Planeswalker-Industries/mtg-deck-rec)";
 const TIMEOUT_MS = 10_000;
 const MAX_BODY_CHARS = 5_000_000;
 

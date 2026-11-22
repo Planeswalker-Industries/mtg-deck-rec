@@ -12,6 +12,7 @@ import { displayName } from "@/lib/cards";
 import { formatAsOf, formatPercent } from "@/lib/format";
 import { cardCategoryLabel, fewDecksPhrase, formatDeckCount } from "@/lib/labels";
 import { getCommanderPage } from "@/lib/server/recs-cache";
+import { shareMetadata } from "@/lib/share-metadata";
 import { AFFILIATE_DISCLOSURE, SEAL_BUTTON, TEXT_LINK } from "@/lib/constants";
 import { affiliateOn } from "@/lib/affiliate";
 import { PriceLink } from "@/components/cards/price-link";
@@ -23,10 +24,14 @@ export async function generateMetadata({ params }: PageProps<"/commander/[slug]"
   const page = await getCommanderPage(slug);
   if (!page) return { title: "Commander not found", robots: { index: false, follow: true } };
   const names = page.key.commanders.map((c) => c.name).join(" and ");
+  const title = `${names} decks`;
+  const description = `The cards ${page.key.deckCount.toLocaleString("en-US")} ${names} Commander decks run most, by card type, and how much ramp, card advantage, removal and protection they play.`;
   return {
-    title: `${names} decks`,
-    description: `The cards ${page.key.deckCount.toLocaleString("en-US")} ${names} Commander decks run most, by card type, and how much ramp, card advantage, removal and protection they play.`,
+    title,
+    description,
     alternates: { canonical: `/commander/${slug}` },
+    // The plate comes from ./opengraph-image.tsx.
+    ...shareMetadata({ title, description, image: "opengraph-image" }),
   };
 }
 
