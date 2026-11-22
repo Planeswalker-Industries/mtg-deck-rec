@@ -110,3 +110,16 @@ export const TOGGLE_ON = `${TOGGLE_OFF} ring-3 ring-inset ring-primary`;
 /** A toggle pill's outline: a thin espresso border while off; on, the full border plus the ring makes the thick edge. */
 export const PILL_OFF = `border-primary/45 ${TOGGLE_OFF}`;
 export const PILL_ON = `border-primary ${TOGGLE_OFF} ring-2 ring-inset ring-primary`;
+
+/** The site's name as link previews and the title template show it. */
+export const SITE_NAME = "Spell Chasm";
+
+/** Share preview image size: the 1.91:1 size Open Graph and X large cards render without cropping. */
+export const OG_IMAGE_SIZE = { width: 1200, height: 630 } as const;
+
+/** The preview image every page shares unless it sets its own: the homepage hero after its cards fall in (T101). */
+export const DEFAULT_OG_IMAGE = {
+  url: "/og/hero.png",
+  ...OG_IMAGE_SIZE,
+  alt: `Magic cards falling onto a walnut table: ${SITE_NAME}`,
+};
