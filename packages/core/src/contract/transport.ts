@@ -165,6 +165,8 @@ export interface ActionsApi {
   setFavorite(input: FavoriteRef & { on: boolean }): Promise<Result<null>>;
   /** Records a suggestion list shown, or a card from it taken or passed on (v25, the live accept rate). Works without an account. */
   recordRecEvent(input: RecEvent): Promise<Result<null>>;
+  /** Records many events of one list (one batchId) in one call (v40), so a build's acceptance isn't one call per card. */
+  recordRecEvents(input: { events: RecEvent[] }): Promise<Result<null>>;
 
   /** Cards to rate replacements for with a commander or partner pair, given by card ids or by commander page slug (exactly one). */
   dealRaterCards(input: { commanderIds?: CardId[]; commanderSlug?: string }): Promise<Result<RaterDeal>>;

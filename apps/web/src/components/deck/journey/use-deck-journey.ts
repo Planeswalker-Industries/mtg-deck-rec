@@ -44,7 +44,7 @@ import {
 import { byStaple, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { loadJourney, saveJourney } from "@/lib/saved-deck";
-import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
+import { recordDecision, recordDecisions, recordShown, type RecBatch, type RecDecision } from "@/lib/rec-events";
 import type { Async } from "../use-deck-tool";
 import type { Candidates } from "../use-swipe-rater";
 import { basicsToFill } from "./fill-basics";
@@ -531,11 +531,12 @@ export function useDeckJourney({
     if (cutBatch.current?.from !== cut.data) {
       cutBatch.current = { from: cut.data, batch: recordShown("cut", recommendedCuts.map((s) => s.card.id), context) };
     }
-    const { batch } = cutBatch.current;
+    const decisions: RecDecision[] = [];
     for (const s of recommendedCuts) {
       const isCutNow = next.cuts.some((c) => c.id === s.card.id);
-      if (isCutNow || next.kept.includes(s.card.id)) recordDecision(batch, s.card.id, isCutNow, context);
+      if (isCutNow || next.kept.includes(s.card.id)) decisions.push({ cardId: s.card.id, accepted: isCutNow });
     }
+    recordDecisions(cutBatch.current.batch, decisions, context);
   }
 
   /**

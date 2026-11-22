@@ -5,7 +5,7 @@ import type { Bracket, BuildResult, CardId, CardSummary, DeckBudget, DeckCardEnt
 import { requestBudget } from "@mtg/core/scoring";
 import { decklistCsv, decklistText, type DeckExportEntry } from "@mtg/core/parse";
 import { getApis } from "@/lib/api/client";
-import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
+import { recordDecisions, recordShown, type RecBatch } from "@/lib/rec-events";
 import { defaultIncludeGameChangers } from "@/lib/labels";
 
 /**
@@ -150,7 +150,7 @@ export function useDeckBuild(ownership: OwnershipInput | null) {
     const taken = shown.current;
     shown.current = null;
     if (!taken) return;
-    for (const cardId of taken.batch.cardIds) recordDecision(taken.batch, cardId, true, taken.context);
+    recordDecisions(taken.batch, taken.batch.cardIds.map((cardId) => ({ cardId, accepted: true })), taken.context);
   }
 
   return { state, build, reset, accept, choose };

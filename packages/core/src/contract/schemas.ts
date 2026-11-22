@@ -224,6 +224,24 @@ export const recEventInputSchema: InputSchema<RecEvent> = z
     path: ['position'],
   });
 
+/** The most events one recordRecEvents call carries: a build's 99 cards plus margin, one event each. */
+export const MAX_REC_EVENTS_PER_CALL = 120;
+
+export const recEventsInputSchema: InputSchema<{ events: RecEvent[] }> = z
+  .object(
+    {
+      events: z
+        .array(recEventInputSchema)
+        .min(1, 'Send at least one event.')
+        .max(MAX_REC_EVENTS_PER_CALL, `At most ${MAX_REC_EVENTS_PER_CALL} events per call.`),
+    },
+    request,
+  )
+  .refine(({ events }) => events.every((e) => e.batchId === events[0]?.batchId), {
+    message: 'Every event in one call comes from the same list.',
+    path: ['events'],
+  });
+
 export const castVoteInputSchema = z
   .object(
     {

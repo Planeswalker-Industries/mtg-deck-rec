@@ -165,5 +165,8 @@
  *
  * v39 (2026-11-21): CardSummary gains optional `artist` (owner approved 2026-11-21), so a card added on the client
  * (the deck editor's new commander) can show its art with the credit it owes. Additive.
+ *
+ * v40 (2026-11-22): conversion sprint (T102; owner approved 2026-11-22). ActionsApi.recordRecEvents records many events
+ * of one list in one call, so a build's acceptance no longer queues one Server Action per card. Additive.
  */
-export const CONTRACT_VERSION = 39;
+export const CONTRACT_VERSION = 40;

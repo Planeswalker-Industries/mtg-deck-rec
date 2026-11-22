@@ -7,6 +7,7 @@ import {
   MAX_DECKLIST_CHARS,
   MAX_FEEDBACK_CHARS,
   MAX_OWNED_CARDS,
+  MAX_REC_EVENTS_PER_CALL,
   MAX_CARD_COPIES,
   MAX_STAT_CHOICES,
   MAX_VOTE_CANDIDATES_SHOWN,
@@ -18,6 +19,7 @@ import {
   parseInput,
   recContextSchema,
   recEventInputSchema,
+  recEventsInputSchema,
   buildInputSchema,
   deckCoverageInputSchema,
   fixInputSchema,
@@ -216,18 +218,18 @@ describe('saveCollectionBatchInputSchema', () => {
   });
 });
 
-describe('recEventInputSchema (T065)', () => {
-  const event = (overrides: Record<string, unknown> = {}) => ({
-    kind: 'shown',
-    mode: 'add',
-    batchId: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b',
-    cardIds: [11, 12, 13],
-    commanderIds: [1],
-    bracket: 3,
-    collection: 'none',
-    ...overrides,
-  });
+const event = (overrides: Record<string, unknown> = {}) => ({
+  kind: 'shown',
+  mode: 'add',
+  batchId: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+  cardIds: [11, 12, 13],
+  commanderIds: [1],
+  bracket: 3,
+  collection: 'none',
+  ...overrides,
+});
 
+describe('recEventInputSchema (T065)', () => {
   it('accepts a list shown and a decision on one of its cards', () => {
     expect(parseInput(recEventInputSchema, event()).ok).toBe(true);
     expect(parseInput(recEventInputSchema, event({ kind: 'accepted', cardIds: [12], position: 1, components: { corpus: 0.8, deck: null } })).ok).toBe(true);
@@ -238,6 +240,26 @@ describe('recEventInputSchema (T065)', () => {
     expect(parseInput(recEventInputSchema, event({ kind: 'accepted', position: 0 })).ok).toBe(false);
     expect(parseInput(recEventInputSchema, event({ position: 0 })).ok).toBe(false);
     expect(parseInput(recEventInputSchema, event({ components: { made_up: 1 }, kind: 'accepted', cardIds: [11], position: 0 })).ok).toBe(false);
+  });
+});
+
+describe('recEventsInputSchema', () => {
+  const accepted = (position: number, overrides: Record<string, unknown> = {}) =>
+    event({ kind: 'accepted', mode: 'build', cardIds: [100 + position], position, ...overrides });
+
+  it('takes a batch of decisions sharing one batch id', () => {
+    expect(parseInput(recEventsInputSchema, { events: [0, 1, 2].map((p) => accepted(p)) }).ok).toBe(true);
+  });
+
+  it('refuses an empty list or one past the cap', () => {
+    expect(parseInput(recEventsInputSchema, { events: [] }).ok).toBe(false);
+    const tooMany = Array.from({ length: MAX_REC_EVENTS_PER_CALL + 1 }, (_, p) => accepted(p % 100));
+    expect(parseInput(recEventsInputSchema, { events: tooMany }).ok).toBe(false);
+  });
+
+  it('refuses events from different batches', () => {
+    const other = accepted(1, { batchId: '7a2b3c4d-5e6f-4a70-8b8c-9d0e1f2a3b4c' });
+    expect(parseInput(recEventsInputSchema, { events: [accepted(0), other] }).ok).toBe(false);
   });
 });
 
