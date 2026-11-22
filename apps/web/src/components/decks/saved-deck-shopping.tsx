@@ -6,6 +6,7 @@ import { missingFromCoverage, type ShoppingLine } from "@mtg/core/shop";
 import { useCollectionSource } from "@/components/collection/use-collection-source";
 import { useDeckCoverage } from "@/components/deck/use-deck-coverage";
 import { ShoppingList } from "./shopping-list";
+import { useShoppingCart } from "./use-shopping-cart";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
@@ -51,6 +52,7 @@ export function SavedDeckShopping({
   const coverageData = coverage?.status === "ready" ? coverage.data.coverage : null;
   const checking = source.kind === "loading" || coverage?.status === "loading";
   const missing = useMemo(() => (checking ? undefined : coverageData ? missingFromCoverage(coverageData) : null), [checking, coverageData]);
+  const cart = useShoppingCart({ entries, missing, roundIds: NO_ROUND, scopeToggle: false, resetKey: deckId });
   const signedIn = source.kind === "account" || ((source.kind === "none" || source.kind === "browser") && source.signedIn);
   // A viewer with a collection whose coverage read failed gets the neutral copy, never "Upload your collection".
   const hasCollection = source.kind === "account" || source.kind === "browser";
@@ -80,10 +82,7 @@ export function SavedDeckShopping({
         // Neutral while the collection is checked: a visitor without one would otherwise see "missing" flash.
         {...copy}
         buyLabel={buyLabel}
-        entries={entries}
-        missing={missing}
-        roundIds={NO_ROUND}
-        scopeToggle={false}
+        cart={cart}
         headingLevel={2}
         folded
       />

@@ -514,6 +514,44 @@ test("Finish shows a shopping list by type, removes and undoes", async ({ page }
   await expect(buy).toHaveAttribute("href", /massentry/);
 });
 
+/** The first dollar amount in a text, as a number ("$1,234.56" → 1234.56). */
+function firstUsd(text: string): number {
+  const match = /\$([\d,]+\.\d{2})/.exec(text);
+  if (!match?.[1]) throw new Error(`no dollar amount in "${text}"`);
+  return Number(match[1].replace(/,/g, ""));
+}
+
+/** The cart total as the shopping list's heading, the docked Deck stats bar and the sheet's Budget line show it. */
+async function cartTotals(page: Page, list: Locator): Promise<{ heading: number; bar: number; budget: number }> {
+  const heading = firstUsd(await list.getByRole("heading", { level: 3 }).first().innerText());
+  const dock = page.getByRole("button", { name: /^Deck stats/ });
+  const bar = firstUsd(await dock.innerText());
+  await dock.click();
+  const sheet = page.getByRole("dialog", { name: "Deck stats" });
+  const budget = firstUsd(await sheet.getByRole("region", { name: "Budget" }).locator("p", { hasText: "To buy" }).innerText());
+  await sheet.getByRole("button", { name: "Close deck stats" }).click();
+  await expect(sheet).toBeHidden();
+  return { heading, bar, budget };
+}
+
+test("Finish's totals follow the shopping list", async ({ page }) => {
+  const list = await finishAt100(page);
+  const before = await cartTotals(page, list);
+  expect(before.bar).toBe(before.heading);
+  expect(before.budget).toBe(before.heading);
+
+  // Remove a priced line: all three drop by its price.
+  const line = list.getByRole("listitem").filter({ hasText: /\$\d/ }).first();
+  const price = firstUsd(await line.innerText());
+  const name = await line.getByRole("button", { name: /^Remove / }).getAttribute("aria-label");
+  await removeLine(list, name ?? /^Remove /);
+  const cents = (usd: number) => Math.round(usd * 100);
+  await expect.poll(async () => cents(firstUsd(await list.getByRole("heading", { level: 3 }).first().innerText()))).toBe(cents(before.heading - price));
+  const after = await cartTotals(page, list);
+  expect(cents(after.bar)).toBe(cents(after.heading));
+  expect(cents(after.budget)).toBe(cents(after.heading));
+});
+
 test("remove all then undo", async ({ page }) => {
   const list = await finishAt100(page);
   const removeButtons = list.getByRole("button", { name: /^Remove / });

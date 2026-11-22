@@ -9,6 +9,7 @@ import { groupDeck, type DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
 import { ShoppingList } from "@/components/decks/shopping-list";
+import type { ShoppingCart } from "@/components/decks/use-shopping-cart";
 import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
@@ -132,12 +133,12 @@ export function ReviewPhase({
   choices,
   onChoice,
   collectionOnly,
-  missing,
+  cart,
   toolbar,
   children,
 }: {
-  /** For the shopping list: copies the collection doesn't supply, null without one, undefined while it is checked. */
-  missing: ReadonlyMap<CardId, number> | null | undefined;
+  /** The round's cart, which the docked Deck stats bar and the Budget line also read: the shopping list renders it. */
+  cart: ShoppingCart;
   /** Fix, for the lines still off and why, and to open it at one of them. */
   fix: Fix;
   /** The player's choices for Deck stats lines, and how one is made or taken back (null). */
@@ -342,9 +343,12 @@ export function ReviewPhase({
                 format={(n) => n.toFixed(MANA_VALUE_DECIMALS)}
               />
             </Figure>
-            {/* Whole dollars: cents are noise on an estimate. */}
+            {/*
+              Whole dollars: cents are noise on an estimate. The whole deck, basics and owned cards included, so it is
+              named apart from the cart total the shopping list and Deck stats show.
+            */}
             <Figure
-              label="Price"
+              label="Deck value"
               note={asOf ? `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` : undefined}
             >
               <Move
@@ -360,13 +364,7 @@ export function ReviewPhase({
 
         <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
           <div className={SECTION_SHEET}>
-            <ShoppingList
-              entries={journey.after}
-              missing={missing}
-              roundIds={roundInIds(journey)}
-              scopeToggle={missing === null}
-              pinActions
-            />
+            <ShoppingList cart={cart} pinActions />
           </div>
         </aside>
 

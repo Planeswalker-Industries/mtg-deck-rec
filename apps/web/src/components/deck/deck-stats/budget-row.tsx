@@ -5,7 +5,8 @@ import type { Route } from "next";
 import Link from "next/link";
 import { ChevronDown, TriangleAlert } from "lucide-react";
 import { Popover } from "radix-ui";
-import type { CardId, CardSummary, DeckBudget } from "@mtg/core/contract";
+import type { CardSummary, DeckBudget, IsoDateTime } from "@mtg/core/contract";
+import type { ShoppingLine } from "@mtg/core/shop";
 import { cn } from "cn";
 import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
@@ -13,7 +14,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { affiliateOn, OUTBOUND } from "@/lib/affiliate";
 import { AFFILIATE_DISCLOSURE, TEXT_LINK, TIP_HOVER_DELAY_MS } from "@/lib/constants";
-import { formatUsd } from "@/lib/format";
+import { asOfSuffix, formatUsd } from "@/lib/format";
 import { BudgetFields } from "../start-settings";
 import { Mark } from "./level";
 
@@ -30,12 +31,17 @@ export interface RoundBuy {
   saved: BuySaveState;
 }
 
-/** The round's money (T091), for the Deck stats footer and the sheet's Budget row. */
+/**
+ * The round's money (T091), for the Deck stats footer and the sheet's Budget row. Its total is the round's cart total
+ * (T102), the number Finish's shopping list shows and Buy sends, so the two never disagree.
+ */
 export interface RoundBudget {
-  /** What the round has spent on cards the player doesn't own. */
-  spentUsd: number;
-  /** The copies that spend is on, in the order taken (`roundBuys`). */
-  buys: readonly CardSummary[];
+  /** The cart total: every line the shopping list holds now (`cartTotal`). */
+  totalUsd: number;
+  /** The newest price date among those lines. */
+  asOf: IsoDateTime | null;
+  /** The cart's lines, the cards that total is on. */
+  lines: readonly ShoppingLine[];
   budget: DeckBudget | undefined;
   /** Cards Add left out under the budget for having no price; absent without a budget. */
   unpricedSkipped?: number | undefined;
@@ -46,23 +52,24 @@ export interface RoundBudget {
   buy?: RoundBuy | null;
 }
 
-/** Whether the round spent more than the budget allows: only after the player lowered it. */
-export const overBudget = ({ spentUsd, budget }: Pick<RoundBudget, "spentUsd" | "budget">) =>
-  budget?.spendUsd !== undefined && spentUsd > budget.spendUsd;
+/** Whether the cart costs more than the budget allows: only after the player lowered it. */
+export const overBudget = ({ totalUsd, budget }: Pick<RoundBudget, "totalUsd" | "budget">) =>
+  budget?.spendUsd !== undefined && totalUsd > budget.spendUsd;
 
 /**
- * The footer's money slot: "$23/$50" with a spend budget, "$23" without one, nothing before the round spends. Amber
- * with ⚠ once the spend passes the budget; it moves only when a card is taken, never for the card on screen.
+ * The footer's money slot: "$23/$50" with a spend budget, "$23" without one, nothing while the cart is empty. Amber
+ * with ⚠ once the cart passes the budget; it moves only when the cart changes, never for the card on screen. The prices'
+ * date is in its accessible name only: the docked bar has no room for it, and the sheet's Budget line shows it.
  */
 export function MoneySlot({ money }: { money: RoundBudget }) {
-  const { spentUsd, budget } = money;
-  if (spentUsd <= 0) return <span />;
+  const { totalUsd, asOf, budget } = money;
+  if (totalUsd <= 0) return <span />;
   const over = overBudget(money);
   return (
     <span className={over ? "inline-flex items-center gap-1 font-mono text-sm text-warning" : "font-mono text-sm"}>
       {over && <TriangleAlert aria-hidden className="size-4" />}
-      <span className="sr-only">Spent </span>
-      {formatUsd(spentUsd)}
+      <span className="sr-only">To buy </span>
+      {formatUsd(totalUsd)}
       {budget?.spendUsd !== undefined && (
         <>
           <span className="sr-only"> of </span>
@@ -70,6 +77,7 @@ export function MoneySlot({ money }: { money: RoundBudget }) {
           {formatUsd(budget.spendUsd)}
         </>
       )}
+      <span className="sr-only">{asOfSuffix(asOf)}</span>
       {over && <span className="sr-only">, over budget</span>}
     </span>
   );
@@ -138,13 +146,6 @@ function OverCapMark() {
   );
 }
 
-/** The bought copies as one line per card, in the order first taken. */
-function countedBuys(buys: readonly CardSummary[]): { card: CardSummary; quantity: number }[] {
-  const byId = new Map<CardId, { card: CardSummary; quantity: number }>();
-  for (const card of buys) byId.set(card.id, { card, quantity: (byId.get(card.id)?.quantity ?? 0) + 1 });
-  return [...byId.values()];
-}
-
 /** Buy on TCGplayer from Deck stats, with what became of the autosave under it. */
 function BuyButtons({ buy }: { buy: RoundBuy }) {
   const { carts, onBuy, saved } = buy;
@@ -178,17 +179,16 @@ function BuyButtons({ buy }: { buy: RoundBuy }) {
 }
 
 /**
- * The sheet's Budget row: its mark (off once over budget), what the round spent against the budget, cards left out
- * unpriced, and the two fields to edit. Tapping "Budget" lists the cards the spend is on, each with its price, as slim
+ * The sheet's Budget row: its mark (off once over budget), the cart total against the budget with its prices' date, cards
+ * left out unpriced, and the two fields to edit. Tapping "Budget" lists the cart's cards, each with its price, as slim
  * plates that enlarge when pressed; one over the Max per card is marked amber, never taken out. Buy on TCGplayer sits beside it, so the player can check out at any step.
  */
 export function BudgetRow({ money }: { money: RoundBudget }) {
-  const { spentUsd, buys, budget, unpricedSkipped, onBudget, importHref, buy } = money;
+  const { totalUsd, asOf, lines, budget, unpricedSkipped, onBudget, importHref, buy } = money;
   const [open, setOpen] = useState(false);
   const listId = useId();
   const spend = budget?.spendUsd;
   const over = overBudget(money);
-  const lines = countedBuys(buys);
   const expandable = lines.length > 0;
   return (
     <section className="flex flex-col gap-2" aria-label="Budget">
@@ -215,23 +215,24 @@ export function BudgetRow({ money }: { money: RoundBudget }) {
       <p className="flex items-center gap-2 text-sm">
         <Mark state={over ? "off" : "ok"} />
         <span>
-          <span className="sr-only">Spent </span>
-          <span className="font-mono">{formatUsd(spentUsd)}</span>
+          <span className="sr-only">To buy </span>
+          <span className="font-mono">{formatUsd(totalUsd)}</span>
           {spend !== undefined && (
             <>
               {" "}
               of <span className="font-mono">{formatUsd(spend)}</span>
             </>
           )}
+          {asOf && <span className="text-xs text-muted-foreground">{asOfSuffix(asOf)}</span>}
         </span>
         {over ? (
           <span className="ml-auto shrink-0 text-xs text-destructive">Over budget</span>
         ) : (
-          spend !== undefined && spentUsd >= spend && <span className="ml-auto shrink-0 text-xs text-muted-foreground">Budget spent</span>
+          spend !== undefined && totalUsd >= spend && <span className="ml-auto shrink-0 text-xs text-muted-foreground">Budget spent</span>
         )}
       </p>
       {open && expandable && (
-        <ul id={listId} aria-label="Cards the budget is spent on" className="flex flex-col gap-1">
+        <ul id={listId} aria-label="Cards to buy" className="flex flex-col gap-1">
           {lines.map(({ card, quantity }) => (
             <CardPlate
               key={card.id}

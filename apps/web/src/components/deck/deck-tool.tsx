@@ -28,7 +28,7 @@ import { CollectionOfferDialog } from "./collection-offer-dialog";
 import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
 import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
-import { defaultCarts } from "@/components/decks/shopping-list";
+import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
@@ -360,8 +360,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     };
   }, [wantsOwned, source]);
   const copies = ownedCopies?.source === source ? ownedCopies.copies : null;
-  /** Whether the spend can be told yet: without a collection every card counts, with one once its copies are in. */
-  const spendKnown = !wantsOwned || copies !== null;
   const owns = useCallback((cardId: CardId) => (copies?.get(cardId) ?? 0) > 0, [copies]);
   /** The last deck taken from a build, by key, with the cards the build bought: its round counts them as spent (T099). */
   const [built, setBuilt] = useState<{ key: string; cards: readonly CardSummary[] } | null>(null);
@@ -467,11 +465,23 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   );
   /** The Deck stats lines a card in and a card out would move: the chips shown by the card on screen. */
   const chipsFor = (add: CardSummary | null, remove: CardSummary | null) => (deckStats ? statChips(deckStats, tallyOf(add), tallyOf(remove)) : []);
+  /*
+   * The round's cart (T102): Finish's shopping list, the docked Deck stats bar, the Budget line and Deck stats' Buy all
+   * read it, so they show one total, the one Buy sends, and follow a line removed from the list. Requests keep the round
+   * spend (`withSpent(context, journey.spentUsd)`): the money left for suggestions is a ranker input, this is a display.
+   */
+  const cart = useShoppingCart({
+    entries: journey.after,
+    missing: coverageMissing,
+    roundIds: roundInIds(journey),
+    scopeToggle: coverageMissing === null,
+    // A built deck was bought whole, so its cart is the whole deck until the player picks this round's cards alone.
+    defaultScope: (journey.state?.bought.length ?? 0) > 0 ? "deck" : undefined,
+    resetKey: tool.round,
+  });
   /** Buy on TCGplayer from Deck stats: Finish's carts, once the round is under way and the collection is checked. */
   const roundBuy: RoundBuy | null =
-    journey.state && coverageMissing !== undefined
-      ? { carts: defaultCarts(journey.after, coverageMissing, roundInIds(journey)), onBuy: () => void saveForBuy(), saved: buySaveState() }
-      : null;
+    journey.state && cart.list !== null ? { carts: cart.carts, onBuy: () => void saveForBuy(), saved: buySaveState() } : null;
   const statsPanel = deckStats
     ? {
         report: deckStats,
@@ -483,8 +493,9 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null,
         after: previewReport,
         money: {
-          spentUsd: spendKnown ? journey.spentUsd : 0,
-          buys: spendKnown ? journey.buys : [],
+          totalUsd: cart.totalUsd,
+          asOf: cart.asOf,
+          lines: cart.lines,
           buy: roundBuy,
           budget: tool.budget,
           unpricedSkipped: journey.add.state.status === "ready" ? journey.add.state.data.unpricedSkipped : undefined,
@@ -1269,7 +1280,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                       choices={tool.statChoices}
                       onChoice={tool.setStatChoice}
                       collectionOnly={journey.add.collectionOnly}
-                      missing={coverageMissing}
+                      cart={cart}
                       toolbar={roundBar}
                     >
                       {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}

@@ -3,6 +3,7 @@ import type { DeckCoverage } from '../collection/coverage';
 import { isBasicLand } from '../journey/builder';
 import { cardCategory } from '../scoring/add';
 import { ADD_CATEGORIES } from '../scoring/rank';
+import type { CartLine } from './tcgplayer';
 
 /** Totals add whole cents, so a long list doesn't drift by float error. */
 const CENTS_PER_USD = 100;
@@ -87,4 +88,18 @@ export function shoppingList({ entries, missing, roundIds, scope }: ShoppingList
     if (asOf === null || card.price.asOf > asOf) asOf = card.price.asOf;
   }
   return { groups, count, totalUsd: totalCents / CENTS_PER_USD, unpriced, asOf };
+}
+
+/** The list's lines in list order, as the cart links take them: every Buy for the list sends these. */
+export function cartLines(list: ShoppingList): CartLine[] {
+  return list.groups.flatMap((g) => g.lines.map((l) => ({ name: l.card.name, quantity: l.quantity })));
+}
+
+/**
+ * What the TCGplayer cart will hold, in dollars: every line of the list, whatever number of carts it splits into, basic
+ * lands only where the list lists them (never). The one total every surface of a round shows (the docked Deck stats bar,
+ * the Budget line, the list's heading), so they agree with what Buy sends.
+ */
+export function cartTotal(list: ShoppingList): number {
+  return list.totalUsd;
 }

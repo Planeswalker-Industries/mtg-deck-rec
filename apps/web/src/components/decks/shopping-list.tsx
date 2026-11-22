@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 import type { CardId } from "@mtg/core/contract";
-import { shoppingList, type ShoppingLine } from "@mtg/core/shop";
 import { cn } from "cn";
 import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
 import { buttonVariants } from "@/components/ui/button";
-import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
+import { affiliateOn, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import {
   AFFILIATE_DISCLOSURE,
@@ -23,6 +22,7 @@ import {
 } from "@/lib/constants";
 import { asOfSuffix, formatAsOf, formatUsd } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
+import type { CartScope, ShoppingCart } from "./use-shopping-cart";
 
 /** A phone (or any touch screen) gets the two-tap remove; a mouse gets one click. */
 const COARSE_POINTER_QUERY = "(pointer: coarse)";
@@ -30,28 +30,10 @@ const COARSE_POINTER_QUERY = "(pointer: coarse)";
 /** Nothing to subscribe to: `useSyncExternalStore` only tells the server render from the client one here. */
 const subscribeNothing = () => () => {};
 
-type Scope = "round" | "deck";
-
-const SCOPES: { value: Scope; label: string }[] = [
+const SCOPES: { value: CartScope; label: string }[] = [
   { value: "round", label: "This round's cards" },
   { value: "deck", label: "Whole deck" },
 ];
-
-/** Finish's first scope: this round's cards, or the whole deck when the round put none in. */
-const defaultScope = (roundIds: readonly CardId[]): Scope => (roundIds.length > 0 ? "round" : "deck");
-
-/**
- * The carts Finish's list opens with, for a Buy button elsewhere (the Deck stats Budget row): with a collection the
- * copies it doesn't supply, without one this round's cards, or the whole deck when the round put none in.
- */
-export function defaultCarts(
-  entries: readonly ShoppingLine[],
-  missing: ReadonlyMap<CardId, number> | null,
-  roundIds: readonly CardId[],
-): string[] {
-  const list = shoppingList({ entries, missing, roundIds, scope: defaultScope(roundIds) });
-  return cartLinks(list.groups.flatMap((g) => g.lines).map((l) => ({ name: l.card.name, quantity: l.quantity })));
-}
 
 function useCoarsePointer(): boolean {
   const [coarse, setCoarse] = useState(false);
@@ -114,19 +96,17 @@ function RemoveButton({ name, coarse, onRemove }: { name: string; coarse: boolea
 
 /**
  * The cards a deck still needs, grouped by type, to buy on TCGplayer (T090). Both pages that show it already offer
- * Copy decklist at the top, so the list has no copy button of its own (owner, 2026-11-15). With a collection the
- * lines are the copies it doesn't supply; without one, `scopeToggle` offers this round's cards or the whole deck. Removing
- * a line is for this view only (Undo brings it back) and never touches the collection.
+ * Copy decklist at the top, so the list has no copy button of its own (owner, 2026-11-15). It renders the deck's `cart`
+ * (`useShoppingCart`), which the page owns so its other totals follow this list: with a collection the lines are the
+ * copies it doesn't supply; without one, the cart's scope toggle offers this round's cards or the whole deck. Removing a
+ * line is for this view only (Undo brings it back) and never touches the collection.
  *
  * `folded` (the saved deck page) leads with the count, the total and Buy, and keeps the lines behind a disclosure, so
  * buying fits in the first viewport.
  */
 export function ShoppingList({
   title = "Shopping list",
-  entries,
-  missing,
-  roundIds,
-  scopeToggle,
+  cart,
   pinActions = false,
   headingLevel = 3,
   folded = false,
@@ -137,14 +117,8 @@ export function ShoppingList({
   title?: string;
   /** The title's heading level: 3 inside Finish, 2 where the list is one of the page's own sections. */
   headingLevel?: 2 | 3;
-  /** The deck as it stands, commanders included. */
-  entries: readonly ShoppingLine[];
-  /** Copies the collection doesn't supply; null without a collection; undefined while it is being checked. */
-  missing: ReadonlyMap<CardId, number> | null | undefined;
-  /** Cards the round put in, best first; empty where there is no round. */
-  roundIds: readonly CardId[];
-  /** Offer "This round's cards | Whole deck" (only without a collection). */
-  scopeToggle: boolean;
+  /** The deck's cart: its lines, scope and removals, shared with the page's other totals. */
+  cart: ShoppingCart;
   /** Keep Buy and the price note at the top of a scrolling container (Finish's aside from xl). */
   pinActions?: boolean;
   /** Count, total and Buy first; the lines behind "Show the N cards", closed at first. */
@@ -157,9 +131,7 @@ export function ShoppingList({
   extraAction?: ReactNode;
 }) {
   const coarse = useCoarsePointer();
-  // A round that put nothing in has nothing to buy in round scope, so the whole deck is the useful default there.
-  const [scope, setScope] = useState<Scope>(defaultScope(roundIds));
-  const [removed, setRemoved] = useState<CardId[]>([]);
+  const { list, carts, scope, setScope, scopeToggle, removed } = cart;
   const [undoShown, setUndoShown] = useState(false);
   const [linesOpen, setLinesOpen] = useState(false);
   // True once hydrated: the toast portals into <body>, which the server render has no access to.
@@ -170,10 +142,6 @@ export function ShoppingList({
   );
   const headingId = useId();
   const linesId = useId();
-  // Keyed on content, so a parent that builds a fresh array each render doesn't rebuild the list.
-  const roundKey = roundIds.join(",");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const stableRoundIds = useMemo(() => roundIds, [roundKey]);
 
   useEffect(() => {
     if (!undoShown) return;
@@ -181,23 +149,10 @@ export function ShoppingList({
     return () => window.clearTimeout(timer);
   }, [undoShown, removed]);
 
-  const list = useMemo(() => {
-    const gone = new Set(removed);
-    return shoppingList({
-      entries: entries.filter((e) => !gone.has(e.card.id)),
-      missing: missing ?? null,
-      roundIds: stableRoundIds,
-      scope: scopeToggle ? scope : "deck",
-    });
-  }, [entries, missing, stableRoundIds, scope, scopeToggle, removed]);
-  const carts = useMemo(
-    () => cartLinks(list.groups.flatMap((g) => g.lines).map((l) => ({ name: l.card.name, quantity: l.quantity }))),
-    [list],
-  );
   const Title = headingLevel === 2 ? "h2" : "h3";
   const GroupTitle = headingLevel === 2 ? "h3" : "h4";
 
-  if (missing === undefined) {
+  if (list === null) {
     return (
       <section aria-label={title} className="flex flex-col gap-2">
         <Title className="font-heading text-xl leading-none font-semibold">{title}</Title>
@@ -208,13 +163,13 @@ export function ShoppingList({
     );
   }
 
-  const lastRemoved = removed.length > 0 ? entries.find((e) => e.card.id === removed[removed.length - 1]) : undefined;
+  const lastRemoved = cart.lastRemoved;
   const remove = (id: CardId) => {
-    setRemoved((r) => [...r, id]);
+    cart.remove(id);
     setUndoShown(true);
   };
   const undo = () => {
-    setRemoved((r) => r.slice(0, -1));
+    cart.undo();
     setUndoShown(false);
   };
 
@@ -224,7 +179,7 @@ export function ShoppingList({
   const emptyText =
     removed.length > 0
       ? "You removed every card."
-      : missing
+      : cart.fromCollection
         ? folded
           ? "You own every card in this deck."
           : "Your collection has every card."
