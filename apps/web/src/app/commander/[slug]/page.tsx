@@ -70,6 +70,7 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
         art={art}
         credit={artist && lead ? { cardName: displayName(lead), cardSlug: lead.slug, artist } : null}
         labelledBy="commander-heading"
+        plate
         className="p-4 sm:p-6 lg:p-8"
       >
         <div className="flex min-w-0 flex-col gap-6">
