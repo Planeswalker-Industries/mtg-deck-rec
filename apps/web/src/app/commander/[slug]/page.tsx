@@ -13,7 +13,7 @@ import { formatAsOf, formatPercent } from "@/lib/format";
 import { cardCategoryLabel, fewDecksPhrase, formatDeckCount } from "@/lib/labels";
 import { getCommanderPage } from "@/lib/server/recs-cache";
 import { shareMetadata } from "@/lib/share-metadata";
-import { AFFILIATE_DISCLOSURE, SEAL_BUTTON, TEXT_LINK } from "@/lib/constants";
+import { AFFILIATE_DISCLOSURE, SEAL_BUTTON, TEXT_LINK, buildCommanderHref } from "@/lib/constants";
 import { affiliateOn } from "@/lib/affiliate";
 import { PriceLink } from "@/components/cards/price-link";
 
@@ -89,9 +89,9 @@ async function CommanderDetails({ params }: Pick<PageProps<"/commander/[slug]">,
             {key.confidence !== "full" && (
               <p className="max-w-prose text-sm">{fewDecksPhrase(key)}, so these rankings can still shift as more decks come in.</p>
             )}
-            {/* The homepage's main action: the wax seal. */}
-            <Link href="/deck" className={cn(SEAL_BUTTON, "w-fit")}>
-              Upgrade deck
+            {/* The commander page's main action, the wax seal: build this commander (or pair) a deck. */}
+            <Link href={buildCommanderHref(slug)} className={cn(SEAL_BUTTON, "w-fit")}>
+              Build this Commander
               <ArrowRight aria-hidden className="size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </header>

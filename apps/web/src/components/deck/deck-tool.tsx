@@ -90,6 +90,9 @@ const BASIC_TYPE_PREFIX = "Basic ";
 /** Tall enough to show a commander, the deck heading and a few cards of the placeholder before it scrolls. */
 const DECKLIST_ROWS = 9;
 
+/** Owned results read to find a linked commander by its full name: the picker's own page size, so its match is there. */
+const PREFILL_OWNED_SEARCH_LIMIT = 8;
+
 /** The journey's steps column, which Deck stats' "Fix" scrolls back to. */
 const STEPS_ID = "deck-journey-steps";
 
@@ -184,7 +187,7 @@ const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join("
  * back on the deck they were working on. A fresh link to it (a push, not Back) starts a new tool at the picker instead.
  * The deck they left stays in this browser's storage for the decklist box, and a saved one stays in their account.
  */
-export function DeckTool() {
+export function DeckTool({ prefill }: { prefill: CardSummary[] | null }) {
   const { bfcacheId } = useRouter();
   const buildStart = useSearchParams().get(DECK_START_PARAM) === DECK_START_BUILD;
   const [session, setSession] = useState(bfcacheId);
@@ -193,13 +196,15 @@ export function DeckTool() {
     setSeenNavigation(bfcacheId);
     if (buildStart) setSession(bfcacheId);
   }
-  return <DeckToolSession key={session} />;
+  return <DeckToolSession key={session} prefill={prefill} />;
 }
 
-function DeckToolSession() {
+/** `prefill`: the commanders a `?start=build&commander=<slug>` link names, resolved on the server; null without one. */
+function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
   // ?commander=<slug> opens a featured deck from the landing page carousel.
-  // ?start=build builds a deck for a commander picked by name (from the collection when there is one).
+  // ?start=build builds a deck for a commander picked by name (from the collection when there is one); with it,
+  // ?commander=<slug> picks that commander for them (a commander page's "Build this Commander").
   const searchParams = useSearchParams();
   const openCode = searchParams.get("deck");
   const commanderSlug = searchParams.get("commander");
@@ -225,8 +230,28 @@ function DeckToolSession() {
   const deckBuild = useDeckBuild(tool.ownedOnly);
   /** With a collection, the build start lists owned commanders unless the player asks for any. */
   const [pickFrom, setPickFrom] = useState<"owned" | "any">("owned");
-  /** The commander picked on the build start; Build deck builds it. */
-  const [picked, setPicked] = useState<CardSummary | null>(null);
+  /** The commanders picked on the build start (both partners of a pair from a link); Build deck builds them. */
+  const [picked, setPicked] = useState<CardSummary[] | null>(prefill && prefill.length > 0 ? prefill : null);
+  /**
+   * A linked commander the collection doesn't hold switches the picker to Any commander for this pick, so the plate
+   * isn't left under "From my collection". The collection setting itself stays as it is. Checked once, when the
+   * collection is known.
+   */
+  const prefillChecked = useRef(false);
+  useEffect(() => {
+    if (prefillChecked.current || !picked || picked !== prefill || !tool.ownedOnly) return;
+    prefillChecked.current = true;
+    const ownedOnly = tool.ownedOnly;
+    void Promise.all(
+      picked.map((card) =>
+        getApis()
+          .catalog.searchCards({ q: card.name, commanderEligible: true, ownedOnly, limit: PREFILL_OWNED_SEARCH_LIMIT })
+          .then((r) => r.ok && r.data.some((c) => c.id === card.id)),
+      ),
+    ).then((owned) => {
+      if (owned.some((o) => !o)) setPickFrom("any");
+    });
+  }, [picked, prefill, tool.ownedOnly]);
   /** The paste screen's choice while there is no collection; with one, the collection setting is the choice. */
   const [pathWithoutCollection, setPathWithoutCollection] = useState<UpgradePath>("online");
   const upgradePath: UpgradePath =
@@ -487,7 +512,8 @@ function DeckToolSession() {
 
     // ?commander=<slug> loads a featured deck from the landing page carousel; an unknown slug falls through to the
     // remembered deck, same as no slug at all.
-    const featured = commanderSlug !== null ? FEATURED_DECKS.find((d) => d.slug === commanderSlug) : undefined;
+    // With ?start=build the slug names the commander to build instead (resolved on the server into `prefill`).
+    const featured = !buildStart && commanderSlug !== null ? FEATURED_DECKS.find((d) => d.slug === commanderSlug) : undefined;
     const hasLink = openCode !== null || featured !== undefined;
 
     if (!hasLink) {
@@ -909,13 +935,13 @@ function DeckToolSession() {
               />
             )}
             {picked ? (
-              <SelectedCommander card={picked} onChange={() => setPicked(null)} />
+              <SelectedCommander commanders={picked} onChange={() => setPicked(null)} />
             ) : (
               // The collection offer takes focus while it is up; off again, the cursor goes back into the box.
               <CommanderPicker
                 autoFocus={!offersCollection}
                 ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
-                onPick={setPicked}
+                onPick={(card) => setPicked([card])}
               />
             )}
             <StartSettings
@@ -933,7 +959,7 @@ function DeckToolSession() {
               disabled={picked === null}
               onClick={() => {
                 if (!picked) return;
-                void deckBuild.build({ commanders: [picked], bracket: tool.startBracket, ...(tool.budget ? { budget: tool.budget } : {}) });
+                void deckBuild.build({ commanders: picked, bracket: tool.startBracket, ...(tool.budget ? { budget: tool.budget } : {}) });
               }}
             >
               Build deck

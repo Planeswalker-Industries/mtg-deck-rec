@@ -1,3 +1,5 @@
+import type { Route } from "next";
+
 /**
  * Values the web app shares across files. A value used in one file stays at the top of that file; scoring weights
  * and anti-abuse thresholds belong in `app_config`, not here (the repo is public).
@@ -29,6 +31,9 @@ export const DECK_BAR_HEIGHT_VAR = "--deck-bar-height";
 export const DECK_START_PARAM = "start";
 export const DECK_START_BUILD = "build";
 export const BUILD_DECK_HREF = `/deck?${DECK_START_PARAM}=${DECK_START_BUILD}`;
+/** With `start=build`, `commander=<key slug>` opens the build start with that commander (or pair) already picked. */
+export const BUILD_COMMANDER_PARAM = "commander";
+export const buildCommanderHref = (slug: string) => `${BUILD_DECK_HREF}&${BUILD_COMMANDER_PARAM}=${encodeURIComponent(slug)}` as Route;
 
 /**
  * The bracket the start form (T091) and a build aim for until the player picks another: 3, Upgraded, where most decks at
