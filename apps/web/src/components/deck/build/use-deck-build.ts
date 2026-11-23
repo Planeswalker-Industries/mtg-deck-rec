@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { Bracket, BuildResult, CardId, CardSummary, DeckBudget, DeckCardEntry, OwnershipInput, RecContext, StatChoice, StatChoices } from "@mtg/core/contract";
 import { requestBudget } from "@mtg/core/scoring";
 import { decklistCsv, decklistText, type DeckExportEntry } from "@mtg/core/parse";
+import type { ShoppingLine } from "@mtg/core/shop";
 import { getApis } from "@/lib/api/client";
 import { recordDecisions, recordShown, type RecBatch } from "@/lib/rec-events";
 import { defaultIncludeGameChangers } from "@/lib/labels";
@@ -59,6 +60,29 @@ export function buildCards(result: BuildResult): Map<CardId, CardSummary> {
   for (const group of result.groups) for (const c of group.cards) cards.set(c.card.id, c.card);
   for (const basic of result.basics) cards.set(basic.card.id, basic.card);
   return cards;
+}
+
+/**
+ * What the built page's cart is made of (T102), for `useShoppingCart`: the whole build, commanders and basics included
+ * (the shopping list leaves basics out), and, from a collection, the copies it doesn't supply. A picked card the
+ * collection holds (or holds a twin of) carries `owned`; a commander is checked against the collection's `copies`,
+ * undefined while they load. Without a collection (`copies` null) `missing` is null and the cart is the whole deck.
+ */
+export function buildCart(
+  result: BuildResult,
+  copies: ReadonlyMap<CardId, number> | null | undefined,
+): { entries: ShoppingLine[]; missing: Map<CardId, number> | null | undefined } {
+  const picks = result.groups.flatMap((group) => group.cards);
+  const entries: ShoppingLine[] = [
+    ...result.commanderKey.commanders.map((card) => ({ card, quantity: 1 })),
+    ...picks.map((c) => ({ card: c.card, quantity: 1 })),
+    ...result.basics.map((b) => ({ card: b.card, quantity: b.quantity })),
+  ];
+  if (copies === null || copies === undefined) return { entries, missing: copies };
+  const missing = new Map<CardId, number>();
+  for (const commander of result.commanderKey.commanders) if ((copies.get(commander.id) ?? 0) === 0) missing.set(commander.id, 1);
+  for (const c of picks) if (c.owned === null) missing.set(c.card.id, 1);
+  return { entries, missing };
 }
 
 /** A build's cards by name, as the decklist and CSV exports take them: commanders, every picked card once, basics by count. */

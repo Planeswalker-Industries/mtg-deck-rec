@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
-import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, DeckId, StatChoices } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, DeckId, DeckInput, StatChoices } from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import { BRACKET_LINE, CURVE_LINE, builtBuys, deckKey, statDeltas, toTallyCard, withSpent, type JourneyPhase, type StatLine } from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
@@ -27,7 +27,8 @@ import { ResumeDeckDialog } from "./resume-deck-dialog";
 import { CollectionOfferDialog } from "./collection-offer-dialog";
 import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
-import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
+import type { BuySaveState, RoundBuy } from "@/components/decks/buy-buttons";
+import { SaveDeckButton, deckNameFor, suggestedDeckName } from "@/components/decks/save-deck-button";
 import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
@@ -35,11 +36,10 @@ import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
 import { StartSettings } from "./start-settings";
 import { SelectedCommander } from "./selected-commander";
 import { BuildView } from "./build/build-view";
-import { buildEntries, useDeckBuild } from "./build/use-deck-build";
+import { buildEntries, useDeckBuild, type BuildState } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
-import type { BuySaveState, RoundBuy } from "./deck-stats/budget-row";
 import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { statChips } from "./deck-stats/stat-chips";
@@ -181,6 +181,21 @@ const hasViews = (phase: JourneyPhase) => phase !== "fix" && phase !== "review";
 
 /** A deck's commanders as one comparable value, to tell whether the deck lookup offer needs checking again. */
 const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join(",");
+/** A build's commanders the same way, so the deck its Buy saved is the one the round's Buy and Save write to. */
+const builtCommandersOf = (state: Extract<BuildState, { status: "ready" }>) =>
+  state.result.commanderKey.commanders.map((c) => c.id).join(",");
+
+/** What the built page's Buy saves (T102): the built deck, its commanders key and name, and the build's settings. */
+interface BuiltForBuy {
+  deck: DeckInput;
+  commanders: string;
+  name: string;
+  /** The lead commander's slug, for the saved deck's address. */
+  slug: string | undefined;
+  statChoices: StatChoices;
+  bracket: Bracket;
+  budget: DeckBudget | undefined;
+}
 
 /**
  * Next keeps this page alive while the player is elsewhere (Activity), so a link to the commander picker would land
@@ -288,11 +303,14 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu; a new deck starts without one. */
   const [copy, setCopy] = useState<CopyState>({ status: "idle" });
   /**
-   * The new deck Buy in Deck stats saved this round (signed in, no deck open), so a later press, or Finish's Save, writes
-   * to it rather than save another. Cleared when the commanders change.
+   * The new deck a Buy saved (signed in, no deck open): the built page's, or one in the round. A later press, or Finish's
+   * Save, writes to it rather than save another, while the commanders stay the same.
    */
   const buyDeck = useRef<{ deckId: DeckId; code: string; name: string; commanders: string } | null>(null);
-  const [buySave, setBuySave] = useState<BuySaveState>({ status: "idle" });
+  /** What became of the last Buy's save, for the commanders it saved: another deck's Buy shows nothing. */
+  const [buySave, setBuySave] = useState<{ commanders: string; state: BuySaveState } | null>(null);
+  const buySaveFor = (commanders: string): BuySaveState =>
+    buySave?.commanders === commanders ? buySave.state : { status: "idle" };
   /** Buy was pressed with a deck open: its write shows as the open deck's auto-save status. */
   const [boughtOpen, setBoughtOpen] = useState(false);
   const [copyRound, setCopyRound] = useState(tool.round);
@@ -617,7 +635,8 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   const textHidden = fileInBox !== null && !fileTextShown;
 
   /** A saved deck's deckbuilder has its own address; the commander segment is decoration, the code finds the deck. */
-  const editorUrl = (code: string) => `/decks/${analysis?.commanderKey.commanders[0]?.slug ?? "deck"}/${code}/edit` as Route;
+  const editorUrl = (code: string, slug = analysis?.commanderKey.commanders[0]?.slug) =>
+    `/decks/${slug ?? "deck"}/${code}/edit` as Route;
 
   /**
    * Back to Upgrade when the player cancels saving: the deckbuilder's waiting edit goes in first, with the cuts Upgrade
@@ -806,7 +825,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   /** What became of the last Buy press's save: the open deck's own status when one is open. */
   function buySaveState(): BuySaveState {
     const open = tool.openDeck;
-    if (!open) return buySave;
+    if (!open) return analysis ? buySaveFor(commandersOf(analysis)) : { status: "idle" };
     if (!boughtOpen) return { status: "idle" };
     if (open.status === "saving" || open.status === "dirty") return { status: "saving" };
     if (open.status === "error") return { status: "error", message: open.message ?? "Couldn't save." };
@@ -814,38 +833,78 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   }
 
   /**
-   * Buy pressed in Deck stats (owner, 2026-11-18): a signed-in player's deck is saved to My Decks as the cart opens. An
-   * open deck takes the round's deck as an auto-save; otherwise the first press saves a new deck (public, as every new
-   * deck is) and later presses update it. The round goes on either way. Signed out, nothing is saved.
+   * Every Buy (T102): a signed-in player's deck is saved to My Decks as the cart opens (owner, 2026-11-18). From the
+   * built page (`built`) that is the built deck itself, before any analysis, with the built list as its original. In
+   * the round an open deck takes the round's deck as an auto-save; otherwise the first press saves a new deck (public, as
+   * every new deck is) and later presses, the built page's included, update it. The round goes on either way. Signed
+   * out, nothing is saved.
    */
-  async function saveForBuy() {
+  async function saveForBuy(built?: BuiltForBuy) {
+    if (!signedIn) return;
+    if (built) {
+      await writeBuyDeck(built.commanders, built.name, built.slug, {
+        deck: built.deck,
+        bracket: built.bracket,
+        original: built.deck,
+        statChoices: built.statChoices,
+        ...(built.budget ? { budget: built.budget } : {}),
+      });
+      return;
+    }
     const deck = journey.deck;
-    if (!signedIn || !deck || !analysis) return;
+    if (!deck || !analysis) return;
     if (tool.openDeck) {
       setBoughtOpen(true);
       tool.saveRoundDeck(deck);
       return;
     }
-    const commanders = commandersOf(analysis);
-    const earlier = buyDeck.current?.commanders === commanders ? buyDeck.current : null;
-    const name = earlier?.name ?? (tool.deckName ?? suggestedDeckName(analysis)).slice(0, MAX_DECK_NAME_CHARS);
-    setBuySave({ status: "saving" });
-    const result = await getApis().actions.saveDeck({
-      ...(earlier ? { deckId: earlier.deckId } : {}),
-      name,
+    await writeBuyDeck(commandersOf(analysis), tool.deckName ?? suggestedDeckName(analysis), undefined, {
       deck,
-      isPublic: true,
       ...(tool.bracketOverride === null ? {} : { bracket: tool.bracketOverride }),
       original: analysis.deck,
       statChoices: tool.statChoices,
       ...(tool.budget ? { budget: tool.budget } : {}),
     });
+  }
+
+  /** Saves Buy's deck: a new one, or the one an earlier Buy saved for the same commanders (keeping its name). */
+  async function writeBuyDeck(
+    commanders: string,
+    fallbackName: string,
+    slug: string | undefined,
+    fields: { deck: DeckInput; bracket?: Bracket; original: DeckInput; statChoices: StatChoices; budget?: DeckBudget },
+  ) {
+    const earlier = buyDeck.current?.commanders === commanders ? buyDeck.current : null;
+    const name = earlier?.name ?? fallbackName.slice(0, MAX_DECK_NAME_CHARS);
+    setBuySave({ commanders, state: { status: "saving" } });
+    const result = await getApis().actions.saveDeck({
+      ...(earlier ? { deckId: earlier.deckId } : {}),
+      name,
+      isPublic: true,
+      ...fields,
+    });
     if (!result.ok) {
-      setBuySave({ status: "error", message: result.error.message });
+      setBuySave({ commanders, state: { status: "error", message: result.error.message } });
       return;
     }
     buyDeck.current = { deckId: result.data.deckId, code: result.data.code, name, commanders };
-    setBuySave({ status: "saved", href: editorUrl(result.data.code) });
+    setBuySave({ commanders, state: { status: "saved", href: editorUrl(result.data.code, slug) } });
+  }
+
+  /** The built page's Buy: the deck it shows, with the answers its lines took. */
+  function buyBuilt(statChoices: StatChoices) {
+    if (deckBuild.state.status !== "ready") return;
+    const ready = deckBuild.state;
+    const commanders = ready.result.commanderKey.commanders;
+    void saveForBuy({
+      deck: { commanders: commanders.map((c) => c.id), cards: buildEntries(ready.result) },
+      commanders: builtCommandersOf(ready),
+      name: deckNameFor(commanders),
+      slug: commanders[0]?.slug,
+      statChoices,
+      bracket: ready.request.bracket,
+      budget: ready.request.budget,
+    });
   }
 
   /** Finish's Save after Buy saved a new deck: that deck is opened first, so the save writes to it, not to another. */
@@ -890,6 +949,9 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         <BuildView
           state={deckBuild.state}
           collectionImportHref={buildImportHref}
+          ownedCopies={deckBuild.state.status === "ready" && deckBuild.state.fromCollection ? (copies ?? undefined) : null}
+          onBuy={buyBuilt}
+          buySaved={deckBuild.state.status === "ready" ? buySaveFor(builtCommandersOf(deckBuild.state)) : { status: "idle" }}
           onBracket={(bracket) => {
             if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
           }}
@@ -1281,6 +1343,8 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                       onChoice={tool.setStatChoice}
                       collectionOnly={journey.add.collectionOnly}
                       cart={cart}
+                      onBuy={() => void saveForBuy()}
+                      buySaved={buySaveState()}
                       toolbar={roundBar}
                     >
                       {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}

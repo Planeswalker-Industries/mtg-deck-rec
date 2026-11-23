@@ -7,14 +7,12 @@ import type { CardId } from "@mtg/core/contract";
 import { cn } from "cn";
 import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
-import { buttonVariants } from "@/components/ui/button";
-import { affiliateOn, OUTBOUND } from "@/lib/affiliate";
+import { affiliateOn } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import {
   AFFILIATE_DISCLOSURE,
   PHONE_HIT_AREA,
   REMOVE_ARM_MS,
-  SEAL_BUTTON,
   SHOPPING_UNDO_MS,
   TEXT_LINK,
   TOGGLE_OFF,
@@ -22,6 +20,7 @@ import {
 } from "@/lib/constants";
 import { asOfSuffix, formatAsOf, formatUsd } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
+import { BuyButtons, type BuySaveState } from "./buy-buttons";
 import type { CartScope, ShoppingCart } from "./use-shopping-cart";
 
 /** A phone (or any touch screen) gets the two-tap remove; a mouse gets one click. */
@@ -113,6 +112,8 @@ export function ShoppingList({
   summary,
   buyLabel,
   extraAction,
+  onBuy,
+  saved,
 }: {
   title?: string;
   /** The title's heading level: 3 inside Finish, 2 where the list is one of the page's own sections. */
@@ -129,6 +130,10 @@ export function ShoppingList({
   buyLabel?: (totalUsd: number) => string;
   /** Folded: a second action before Buy (the saved deck page's collection upload). */
   extraAction?: ReactNode;
+  /** Called as a cart opens: Finish saves the deck to My Decks for a signed-in player, as every Buy does. */
+  onBuy?: () => void;
+  /** What became of that save. */
+  saved?: BuySaveState;
 }) {
   const coarse = useCoarsePointer();
   const { list, carts, scope, setScope, scopeToggle, removed } = cart;
@@ -263,28 +268,22 @@ export function ShoppingList({
   const actions = (
     // In Finish's aside (a scroll box from xl) Buy stays in view at its top while the lines scroll under it.
     <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:top-0 xl:z-10 xl:bg-background xl:pt-1 xl:pb-2")}>
-      {/* A named primary action (owner, 2026-11-15): the solid button; on the saved deck page, the page's seal. */}
-      <div className="flex flex-wrap items-center gap-2">
-        {folded && extraAction}
-        {carts.length === 0 || list.count === 0 ? (
-          <span aria-disabled className={cn(folded ? SEAL_BUTTON : buttonVariants({ size: "lg" }), "pointer-events-none opacity-50")}>
-            {buyText}
-          </span>
-        ) : (
-          carts.map((href, i) => (
-            <a key={href} href={href} {...OUTBOUND} className={folded ? SEAL_BUTTON : cn(buttonVariants({ size: "lg" }), "lit")}>
-              {/* Split carts can't each carry the whole total. */}
-              {carts.length > 1 ? `Buy on TCGplayer (${i + 1} of ${carts.length})` : buyText}
-            </a>
-          ))
-        )}
-      </div>
+      {/*
+        A named primary action (owner, 2026-11-15): the solid button; on the saved deck page, the page's seal. Nothing to
+        buy shows no Buy at all (T102).
+      */}
+      {(folded && extraAction) || (carts.length > 0 && list.count > 0) ? (
+        <div className="flex flex-wrap items-start gap-2">
+          {folded && extraAction}
+          {list.count > 0 && <BuyButtons carts={carts} onBuy={onBuy} saved={saved} seal={folded} label={buyText} />}
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
         {/* A total shown on the button still carries its prices' date. */}
         {folded && buyLabel && list.asOf && <p>Prices from {formatAsOf(list.asOf)}.</p>}
         {list.unpriced > 0 && <p>{list.unpriced} unpriced.</p>}
-        {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
+        {affiliateOn() && carts.length > 0 && list.count > 0 && <p>{AFFILIATE_DISCLOSURE}</p>}
       </div>
     </div>
   );

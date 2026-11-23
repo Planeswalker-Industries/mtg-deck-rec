@@ -2,7 +2,6 @@
 
 import { useId, useRef, useState } from "react";
 import type { Route } from "next";
-import Link from "next/link";
 import { ChevronDown, TriangleAlert } from "lucide-react";
 import { Popover } from "radix-ui";
 import type { CardSummary, DeckBudget, IsoDateTime } from "@mtg/core/contract";
@@ -10,26 +9,12 @@ import type { ShoppingLine } from "@mtg/core/shop";
 import { cn } from "cn";
 import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
-import { buttonVariants } from "@/components/ui/button";
-import { ErrorText } from "@/components/ui/error-text";
-import { affiliateOn, OUTBOUND } from "@/lib/affiliate";
-import { AFFILIATE_DISCLOSURE, TEXT_LINK, TIP_HOVER_DELAY_MS } from "@/lib/constants";
+import { BuyButtons, type RoundBuy } from "@/components/decks/buy-buttons";
+import { affiliateOn } from "@/lib/affiliate";
+import { AFFILIATE_DISCLOSURE, TIP_HOVER_DELAY_MS } from "@/lib/constants";
 import { asOfSuffix, formatUsd } from "@/lib/format";
 import { BudgetFields } from "../start-settings";
 import { Mark } from "./level";
-
-/** Where the Buy button's deck went when it saved it for a signed-in player (or why it couldn't). */
-export type BuySaveState =
-  { status: "idle" } | { status: "saving" } | { status: "saved"; href: Route } | { status: "error"; message: string };
-
-/** Buying from Deck stats (owner, 2026-11-18): the same carts as Finish's list, at any step of the round. */
-export interface RoundBuy {
-  /** Mass Entry carts; empty when there is nothing to buy. */
-  carts: string[];
-  /** Called as a cart opens: saves the deck to My Decks when the player is signed in. */
-  onBuy: () => void;
-  saved: BuySaveState;
-}
 
 /**
  * The round's money (T091), for the Deck stats footer and the sheet's Budget row. Its total is the round's cart total
@@ -146,42 +131,11 @@ function OverCapMark() {
   );
 }
 
-/** Buy on TCGplayer from Deck stats, with what became of the autosave under it. */
-function BuyButtons({ buy }: { buy: RoundBuy }) {
-  const { carts, onBuy, saved } = buy;
-  if (carts.length === 0) return null;
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex flex-wrap justify-end gap-2">
-        {/* A named primary action, as on Finish: the solid blue button. */}
-        {carts.map((href, i) => (
-          <a key={href} href={href} {...OUTBOUND} onClick={onBuy} className={cn(buttonVariants({ size: "sm" }), "lit")}>
-            {carts.length > 1 ? `Buy on TCGplayer (${i + 1} of ${carts.length})` : "Buy on TCGplayer"}
-          </a>
-        ))}
-      </div>
-      {saved.status === "saving" && (
-        <p role="status" className="text-xs text-muted-foreground">
-          Saving to My Decks…
-        </p>
-      )}
-      {saved.status === "saved" && (
-        <p role="status" className="text-xs text-muted-foreground">
-          Saved to{" "}
-          <Link href={saved.href} className={TEXT_LINK}>
-            My Decks
-          </Link>
-        </p>
-      )}
-      {saved.status === "error" && <ErrorText>{`Not saved: ${saved.message}`}</ErrorText>}
-    </div>
-  );
-}
-
 /**
  * The sheet's Budget row: its mark (off once over budget), the cart total against the budget with its prices' date, cards
  * left out unpriced, and the two fields to edit. Tapping "Budget" lists the cart's cards, each with its price, as slim
- * plates that enlarge when pressed; one over the Max per card is marked amber, never taken out. Buy on TCGplayer sits beside it, so the player can check out at any step.
+ * plates that enlarge when pressed; one over the Max per card is marked amber, never taken out. Buy on TCGplayer
+ * sits beside it, so the player can check out at any step.
  */
 export function BudgetRow({ money }: { money: RoundBudget }) {
   const { totalUsd, asOf, lines, budget, unpricedSkipped, onBudget, importHref, buy } = money;
@@ -210,7 +164,7 @@ export function BudgetRow({ money }: { money: RoundBudget }) {
         ) : (
           <h3 className="text-sm font-semibold text-muted-foreground">Budget</h3>
         )}
-        {buy && <BuyButtons buy={buy} />}
+        {buy && <BuyButtons carts={buy.carts} onBuy={buy.onBuy} saved={buy.saved} align="end" />}
       </div>
       <p className="flex items-center gap-2 text-sm">
         <Mark state={over ? "off" : "ok"} />

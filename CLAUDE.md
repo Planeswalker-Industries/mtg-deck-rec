@@ -93,7 +93,7 @@ APIs differ from older versions. Read `node_modules/next/dist/docs/` before writ
 - Fonts, self-hosted in `apps/web/src/app/fonts/` (never `next/font/google`): Cormorant Garamond (`font-heading`, 600 and 700, never below `text-lg`) for page and section headings; Alegreya Sans (400 and 700; `font-semibold` renders 700) for everything else, small headings and labels included; Newsreader Italic (`font-drama`) for the buddy's voice only; DM Mono (`font-mono`, 400 only) for standalone numbers. Type scale `text-xs`–`text-4xl`; no arbitrary `text-[…]`. Touch targets at least 44 px on phones.
 - Card images are hotlinked from Scryfall `unoptimized`: pick a `variant` at least twice the rendered width (`small` only for thumbnails up to 73 px, `normal` for every grid, `large` above 244 px). Never cover the lower part of a card: the artist and copyright line must stay visible.
 - On a phone at 390×844, the swipe view's ✓ and ✕ stay on screen without scrolling; re-measure after adding anything above the swipe card or changing the Deck stats footer.
-- Totals and standalone prices render with their as-of date; a single card's price beside a suggestion or in a list is just "~$4.29". Low play rate reads as "rarely played with this commander", never as wrong.
+- Totals and standalone prices render with their as-of date (the docked Deck stats bar excepted: no room, so the date is in its accessible name and the sheet's Budget line shows it); a single card's price beside a suggestion or in a list is just "~$4.29". Low play rate reads as "rarely played with this commander", never as wrong.
 
 ## Domain conventions
 

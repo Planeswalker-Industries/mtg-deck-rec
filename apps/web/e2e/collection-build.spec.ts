@@ -107,13 +107,18 @@ test("a collection build asks about each gap: Allow buying adds cards to buy, Ig
   await answers.getByRole("button", { name: "Allow buying" }).click();
   await expect(answers.getByRole("button", { name: "Allow buying" })).toHaveAttribute("aria-pressed", "true", { timeout: RECS_WAIT_MS });
   await expect(built.getByText(/^Not owned · /).first()).toBeVisible({ timeout: RECS_WAIT_MS });
-  await expect(built.getByText(/^\d+ cards? to buy, about \$/)).toBeVisible();
+  // The cart leads the actions: what the cards to buy cost, and Buy on TCGplayer beside Continue (T102).
+  await expect(built.getByText(/^\d+ cards? to buy, ~\$/)).toBeVisible();
+  await expect(built.getByRole("link", { name: /^Buy on TCGplayer/ }).first()).toBeVisible();
 
   // Ignore builds from the collection alone again; the line stays listed so the answer can still change.
   await answers.getByRole("button", { name: "Ignore", exact: true }).click();
   await expect(answers.getByRole("button", { name: "Ignore", exact: true })).toHaveAttribute("aria-pressed", "true", { timeout: RECS_WAIT_MS });
   await expect(built.getByText(/^Not owned · /)).toHaveCount(0, { timeout: RECS_WAIT_MS });
-  await expect(built.getByText(/^\d+ cards? to buy, about \$/)).toHaveCount(0);
+  // The collection supplies every card now: no Buy at all, never a greyed one.
+  await expect(built.getByText(/^\d+ cards? to buy, ~\$/)).toHaveCount(0);
+  await expect(built.getByText("You own every card.")).toBeVisible();
+  await expect(built.getByRole("link", { name: /^Buy on TCGplayer/ })).toHaveCount(0);
   await ignoreBuildGaps(page);
   await built.getByRole("button", { name: "Continue" }).click();
 

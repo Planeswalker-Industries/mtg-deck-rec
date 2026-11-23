@@ -559,7 +559,8 @@ test("remove all then undo", async ({ page }) => {
 
   await expect(list.getByRole("heading", { level: 3 })).toContainText("0 cards");
   await expect(list.getByRole("link", { name: /^Buy on TCGplayer/ })).toHaveCount(0);
-  await expect(list.getByText("Buy on TCGplayer")).toHaveAttribute("aria-disabled", "true");
+  // Nothing to buy shows no Buy at all, never a greyed one (T102).
+  await expect(list.getByText("Buy on TCGplayer")).toHaveCount(0);
 
   await expect(list.getByText("You removed every card.")).toBeVisible();
   await page.getByRole("status").getByRole("button", { name: "Undo" }).click();

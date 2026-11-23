@@ -9,6 +9,7 @@ import { groupDeck, type DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
 import { ShoppingList } from "@/components/decks/shopping-list";
+import type { BuySaveState } from "@/components/decks/buy-buttons";
 import type { ShoppingCart } from "@/components/decks/use-shopping-cart";
 import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
@@ -134,11 +135,17 @@ export function ReviewPhase({
   onChoice,
   collectionOnly,
   cart,
+  onBuy,
+  buySaved,
   toolbar,
   children,
 }: {
   /** The round's cart, which the docked Deck stats bar and the Budget line also read: the shopping list renders it. */
   cart: ShoppingCart;
+  /** Called as a cart opens: saves the deck to My Decks for a signed-in player, as every Buy does (T102). */
+  onBuy: () => void;
+  /** What became of that save. */
+  buySaved: BuySaveState;
   /** Fix, for the lines still off and why, and to open it at one of them. */
   fix: Fix;
   /** The player's choices for Deck stats lines, and how one is made or taken back (null). */
@@ -364,7 +371,7 @@ export function ReviewPhase({
 
         <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
           <div className={SECTION_SHEET}>
-            <ShoppingList cart={cart} pinActions />
+            <ShoppingList cart={cart} pinActions onBuy={onBuy} saved={buySaved} />
           </div>
         </aside>
 

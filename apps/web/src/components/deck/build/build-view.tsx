@@ -10,18 +10,20 @@ import { CardPlate } from "@/components/cards/card-plate";
 import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { CommanderPlate } from "@/components/cards/commander-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
+import { BuyButtons, type BuySaveState } from "@/components/decks/buy-buttons";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { DeckViewToggle, SortMenu, useCardSort, useDeckView, type DeckView } from "@/components/decks/deck-view";
+import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
-import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
+import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, SEAL_BUTTON, SEAL_OUTLINE_BUTTON, TEXT_LINK } from "@/lib/constants";
 import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
 import { ShuffleDeck } from "../shuffle-deck";
 import { ScoreExplainer } from "../score-explainer";
-import { buildCards, buildDecklist, buildDecklistCsv, buildEntries, type BuildRequest, type BuildState } from "./use-deck-build";
+import { buildCart, buildCards, buildDecklist, buildDecklistCsv, buildEntries, type BuildRequest, type BuildState } from "./use-deck-build";
 import { useBuildStats } from "./use-build-stats";
 
 /** Each part of the built deck is its own sheet on the wood, edge to edge on phones (no paper on paper). */
@@ -40,6 +42,11 @@ const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }
   upgrade: { label: "Opening your deck", detail: "Reading the 100 cards and lining up upgrades. A few seconds." },
   save: { label: "Opening the Deckbuilder", detail: "You'll name the deck next." },
 };
+
+/** The built page's cart before there is a build: nothing to buy. */
+const NO_CART = { entries: [], missing: null };
+/** The built page has no round: its cart is the whole build. */
+const NO_ROUND: readonly CardId[] = [];
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
@@ -314,6 +321,10 @@ function FitChanges({ request, result, view, sort }: { request: BuildRequest; re
  *
  * A budget build without a collection that couldn't fill every slot says so in a popup, once per build: change the
  * budget or upload a collection. Closing it leaves the build as it is.
+ *
+ * The build's cart (T102) leads the actions: what it costs to buy every card the collection doesn't supply (the whole
+ * deck without one), with Buy on TCGplayer as the page's seal beside Continue. A build the collection fully supplies
+ * says so and offers no Buy.
  */
 export function BuildView({
   state,
@@ -324,9 +335,18 @@ export function BuildView({
   onSave,
   onPickAnother,
   onChangeBudget,
+  ownedCopies,
+  onBuy,
+  buySaved,
 }: {
   state: Exclude<BuildState, { status: "idle" }>;
   collectionImportHref: Route;
+  /** The collection's copies, for the cart: null without a collection, undefined while they load. */
+  ownedCopies: ReadonlyMap<CardId, number> | null | undefined;
+  /** Called as a cart opens: saves the built deck to My Decks for a signed-in player. */
+  onBuy: (choices: StatChoices) => void;
+  /** What became of that save. */
+  buySaved: BuySaveState;
   onBracket: (bracket: Bracket) => void;
   /** The player's answer for a line the collection couldn't fill. */
   onChoice: (line: string, choice: StatChoice) => void;
@@ -347,6 +367,8 @@ export function BuildView({
   const ready = state.status === "ready" ? state : null;
   const builtList = useMemo(() => (ready ? buildDecklist(ready.result) : null), [ready]);
   const stats = useBuildStats(ready?.result ?? null, builtList, state.request.bracket);
+  const cartInput = useMemo(() => (ready ? buildCart(ready.result, ready.fromCollection ? ownedCopies : null) : NO_CART), [ready, ownedCopies]);
+  const cart = useShoppingCart({ ...cartInput, roundIds: NO_ROUND, scopeToggle: false });
   // The budget left slots open with nothing but the player's money to fill them from.
   const budgetShort = ready !== null && !ready.fromCollection && ready.request.budget !== undefined && ready.result.feasibility.open > 0;
   /** The build result whose shortfall popup was closed: a new build asks again. */
@@ -454,8 +476,8 @@ export function BuildView({
   const builtCards = new Map(result.groups.flatMap((g) => g.cards).map((c) => [c.card.id, c]));
   const detailCard = detail === null ? null : (builtCards.get(detail) ?? null);
   const fit = fitDiff(request, result);
-  // A card bought for a line the player opened says so, with its price; the date is on the summary line.
-  const cost = result.fillCost;
+  const buying = cart.carts.length > 0 && (cart.list?.count ?? 0) > 0;
+  // A card bought for a line the player opened says so, with its price; the date is on the cart's line.
   const noteFor = (c: (typeof result.groups)[number]["cards"][number]): { note: string } | Record<string, never> =>
     c.origin === "fill" ? { note: `Not owned · ${fromPrice(c.card.price, { lower: true })}` } : {};
 
@@ -476,10 +498,17 @@ export function BuildView({
         </div>
         {shortRoles.length > 0 && <RoleShortfalls lines={shortRoles} />}
         {collectionGaps.length > 0 && <CollectionGaps gaps={collectionGaps} onChoice={onChoice} disabled={opening !== null} />}
-        {cost && cost.cards > 0 && (
-          <p className="text-sm text-muted-foreground">
-            {count(cost.cards, "card")} to buy, about {formatUsd(cost.usd)}
-            {asOfSuffix(cost.asOf)}.
+        {cart.list && (
+          <p className="text-sm">
+            {cart.list.count === 0 ? (
+              "You own every card."
+            ) : (
+              <>
+                {count(cart.list.count, "card")} to buy, <span className="font-mono">~{formatUsd(cart.totalUsd)}</span>
+                <span className="text-xs text-muted-foreground">{asOfSuffix(cart.asOf)}</span>
+                {cart.list.unpriced > 0 && <span className="text-muted-foreground"> · {cart.list.unpriced} unpriced</span>}
+              </>
+            )}
           </p>
         )}
         {unanswered && (
@@ -487,29 +516,41 @@ export function BuildView({
             Choose Ignore or Allow buying for each to continue.
           </p>
         )}
-        {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
-        <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
-          <Button
-            type="button"
-            size="lg"
-            className="lit"
-            disabled={opening !== null || unanswered}
-            aria-busy={opening === "upgrade"}
-            onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
-          >
-            Continue
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            variant="outline"
-            className="px-2"
-            disabled={opening !== null}
-            aria-busy={opening === "save"}
-            onClick={() => void openDeck("save", onSave, decklist)}
-          >
-            Save for Later
-          </Button>
+        {/*
+          Buy is the page's seal when there is anything to buy, full width on phones; Continue is its partner then, and
+          the seal itself when the collection supplies every card. Continue takes two parts of its row to Save for
+          Later's one.
+        */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
+          <BuyButtons
+            carts={cart.carts}
+            onBuy={() => onBuy(choices)}
+            saved={buySaved}
+            seal
+            className="max-sm:items-stretch max-sm:[&_a]:flex-1"
+          />
+          <div className="grid grid-cols-[2fr_1fr] gap-2 sm:w-md">
+            <button
+              type="button"
+              className={cn(buying ? SEAL_OUTLINE_BUTTON : SEAL_BUTTON, "disabled:pointer-events-none disabled:opacity-50")}
+              disabled={opening !== null || unanswered}
+              aria-busy={opening === "upgrade"}
+              onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
+            >
+              Continue
+            </button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="h-auto px-2"
+              disabled={opening !== null}
+              aria-busy={opening === "save"}
+              onClick={() => void openDeck("save", onSave, decklist)}
+            >
+              Save for Later
+            </Button>
+          </div>
         </div>
         {!fromCollection && (
           <p className="text-sm text-muted-foreground">
