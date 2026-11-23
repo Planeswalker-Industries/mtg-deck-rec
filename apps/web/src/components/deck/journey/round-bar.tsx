@@ -25,38 +25,54 @@ export type RoundSave =
  */
 export const StepStatusSlot = createContext<HTMLElement | null>(null);
 
+/** What became of "Save as copy": the copy's name and a link to it, or why it failed. Nothing while idle or saving. */
+export function CopySaveStatus({ save }: { save: RoundSave }) {
+  if (save.kind !== "open") return null;
+  const { copy } = save;
+  if (copy.status === "saved")
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Saved as {copy.name}.{" "}
+        <Link href={copy.href} className={cn(TEXT_LINK, "font-semibold")}>
+          Open the copy
+        </Link>
+      </p>
+    );
+  return copy.status === "error" ? <ErrorText>Couldn&apos;t save a copy: {copy.message}</ErrorText> : null;
+}
+
+/**
+ * A round control: its icon over its name, so the name shows without a hover or a tap that would also act (T102). One
+ * touch target tall, the same row height as the icons alone had on a phone, so the swipe card doesn't move.
+ */
+const LABELLED_ICON = "h-11 min-w-11 flex-col gap-0.5 px-2 text-xs leading-none";
+
 /** Whether a key press is the player typing somewhere, where shortcuts must not fire. */
 const isTyping = (target: EventTarget | null) => {
   const el = target as HTMLElement | null;
   return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 };
 
-/**
- * The round's controls, on every step: Undo (the last choice, on whichever step it was made; also Z or Ctrl+Z), Start
- * over (after a confirm, so it is never hit by mistake for Undo; Undo brings the choices back) and Save, as icons. The
- * first row of the step's sheet, with the step's status in `slotRef` beside them, so a player who wants out or wants
- * to keep what they have never has to hunt for it.
- */
-export function RoundBar({
-  canUndo,
-  onUndo,
-  onStartOver,
-  save,
-  busy,
-  showSave = true,
-  slotRef,
-}: {
+/** What the round's controls need: Undo, Start over and Save. */
+interface RoundControlsProps {
   canUndo: boolean;
   onUndo: () => void;
   onStartOver: () => void;
   save: RoundSave;
   /** A save or re-analyze is under way: Save waits for it. */
   busy: boolean;
-  /** False on Finish, which has its own Save buttons. */
-  showSave?: boolean;
-  /** Receives the element beside the buttons that the step's `StepStatus` renders into. */
+  /** Receives the element between Start over and Save that the step's `StepStatus` renders into. */
   slotRef?: (el: HTMLElement | null) => void;
-}) {
+  className?: string;
+}
+
+/**
+ * The round's controls as labelled icons: Undo (the last choice, on whichever step it was made; also Z or Ctrl+Z), Start
+ * over (after a confirm, so it is never hit by mistake for Undo; Undo brings the choices back), and Save at the right
+ * (owner, 2026-11-23), with the step's status between them when `slotRef` is given. Finish puts them in its top
+ * sheet's top right.
+ */
+export function RoundControls({ canUndo, onUndo, onStartOver, save, busy, slotRef, className }: RoundControlsProps) {
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
@@ -71,36 +87,40 @@ export function RoundBar({
   }, [canUndo, onUndo]);
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex min-h-11 items-center gap-3">
-        <div role="toolbar" aria-label="This round" className="flex shrink-0 items-center gap-1">
-          <Button type="button" size="icon-lg" variant="ghost" onClick={onUndo} disabled={!canUndo} aria-label="Undo" aria-keyshortcuts="Z" title="Undo the last choice (Z)">
+    <>
+        <div role="group" aria-label="This round" className={cn("flex min-h-11 items-center gap-1", className)}>
+          <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={onUndo} disabled={!canUndo} aria-keyshortcuts="Z" title="Undo the last choice (Z)">
             <Undo2 aria-hidden />
+            Undo
           </Button>
-          <Button type="button" size="icon-lg" variant="ghost" onClick={() => setConfirming(true)} aria-label="Start over" title="Start over">
+          <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={() => setConfirming(true)}>
             <RotateCcw aria-hidden />
+            Start over
           </Button>
-          {!showSave ? null : save.kind === "new" ? (
-            <Button type="button" size="icon-lg" variant="ghost" onClick={save.onSave} disabled={busy} aria-label="Save" title="Save">
+          {slotRef && <div ref={slotRef} className="mx-2 flex min-w-0 flex-1 items-center gap-3" />}
+          {save.kind === "new" ? (
+            <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={save.onSave} disabled={busy}>
               <Save aria-hidden />
+              Save
             </Button>
           ) : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
-                  size="lg"
                   variant="ghost"
-                  className="gap-0.5 px-2"
+                  className={LABELLED_ICON}
                   disabled={busy || save.copy.status === "saving"}
                   aria-label={save.copy.status === "saving" ? "Saving" : "Save"}
-                  title="Save"
                 >
                   <Save aria-hidden />
-                  <ChevronDown aria-hidden className="size-3.5" />
+                  <span className="flex items-center gap-0.5">
+                    Save
+                    <ChevronDown aria-hidden className="size-3" />
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-56">
+              <DropdownMenuContent align="end" className="min-w-56">
                 <DropdownMenuItem className="flex-col items-start gap-0 text-primary focus:text-primary" onSelect={save.onSaveChanges}>
                   <span className="flex items-center gap-2 font-semibold">
                     <Save aria-hidden className="text-primary" />
@@ -119,17 +139,6 @@ export function RoundBar({
             </DropdownMenu>
           )}
         </div>
-        <div ref={slotRef} className="flex min-w-0 flex-1 items-center gap-3" />
-      </div>
-      {save.kind === "open" && save.copy.status === "saved" && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Saved as {save.copy.name}.{" "}
-          <Link href={save.copy.href} className={cn(TEXT_LINK, "font-semibold")}>
-            Open the copy
-          </Link>
-        </p>
-      )}
-      {save.kind === "open" && save.copy.status === "error" && <ErrorText>Couldn&apos;t save a copy: {save.copy.message}</ErrorText>}
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent>
@@ -157,6 +166,20 @@ export function RoundBar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+/**
+ * The round's controls as the first row of every step's sheet but Finish's (which carries them in its top sheet), with
+ * the step's status in `slotRef` between them, so a player who wants out or wants to keep what they have never has to
+ * hunt for it.
+ */
+export function RoundBar(props: RoundControlsProps) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <RoundControls {...props} />
+      <CopySaveStatus save={props.save} />
     </div>
   );
 }

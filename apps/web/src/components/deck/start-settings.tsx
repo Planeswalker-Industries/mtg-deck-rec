@@ -16,6 +16,9 @@ import { BRACKETS, bracketLabel } from "@/lib/labels";
 /** The most a budget field takes: "$100,000.00" plus a stray space. */
 const MAX_BUDGET_INPUT_CHARS = 12;
 
+/** The spend field's name, which the deck tool's over-budget warning sends focus back to. */
+export const SPEND_FIELD_LABEL = "Max to spend";
+
 /** A budget field as typed: blank is no limit. */
 type Field = "cardCapUsd" | "spendUsd";
 
@@ -27,8 +30,8 @@ const FIELDS: readonly { key: Field; label: string; help: string }[] = [
   },
   {
     key: "spendUsd",
-    label: "Max to spend",
-    help: "The cards you don't own that come in add up to no more than this. Cards you own cost nothing.",
+    label: SPEND_FIELD_LABEL,
+    help: "The cards to buy add up to no more than this: the ones you don't own. Cards you own cost nothing.",
   },
 ];
 

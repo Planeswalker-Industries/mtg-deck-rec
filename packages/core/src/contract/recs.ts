@@ -244,6 +244,17 @@ export interface SwapResult {
   emptyReason?: 'NO_TAGS_ON_TARGET' | 'NOTHING_OWNED_FITS' | 'NO_CANDIDATES';
 }
 
+/**
+ * A card worth buying for a deck the collection fully supplies (v40): one swap buy list's card, with the deck card it
+ * would replace. `gain` is how much it beats the best card the collection supplies for that slot.
+ */
+export type UpgradeSuggestion = BuySwapSuggestion & { target: CardSummary };
+
+/** Upgrades worth buying (v40), best gain first; empty when nothing beats what the collection supplies. */
+export interface UpgradesResult {
+  suggestions: UpgradeSuggestion[];
+}
+
 export type CardCategory =
   | 'creature'
   | 'instant'

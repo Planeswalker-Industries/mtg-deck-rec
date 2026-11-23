@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId, CardSummary, IsoDateTime, OracleId } from '../contract';
 import type { DeckCoverage } from '../collection/coverage';
-import { missingFromCoverage, shoppingList, type ShoppingLine } from './shopping-list';
+import { cartLines, cartTotal, missingFromCoverage, shoppingList, type ShoppingLine } from './shopping-list';
+import { splitIntoCarts } from './tcgplayer';
 
 const OLD = '2026-11-10T00:00:00Z' as IsoDateTime;
 const NEW = '2026-11-15T00:00:00Z' as IsoDateTime;
@@ -95,6 +96,44 @@ describe('shoppingList', () => {
   it('is empty with nothing missing', () => {
     const list = shoppingList({ entries, missing: new Map(), roundIds: [elf.id], scope: 'round' });
     expect(list).toEqual({ groups: [], count: 0, totalUsd: 0, unpriced: 0, asOf: null });
+  });
+});
+
+describe('cartTotal', () => {
+  /** A cart link this short holds only a few lines, so the list below splits into several carts. */
+  const SHORT_CART_CHARS = 120;
+  /** Enough lines to overflow one short cart several times. */
+  const LINE_COUNT = 12;
+
+  it('totals every line of a split list', () => {
+    const many: ShoppingLine[] = Array.from({ length: LINE_COUNT }, (_, i) => ({
+      card: summary(100 + i, `Card Number ${i}`, 'Creature — Elf', 1.25 + i),
+      quantity: 1,
+    }));
+    const list = shoppingList({ entries: many, missing: null, roundIds: [], scope: 'deck' });
+    expect(splitIntoCarts(cartLines(list), null, SHORT_CART_CHARS).length).toBeGreaterThan(1);
+    const sum = many.reduce((cents, l) => cents + Math.round((l.card.price?.usd ?? 0) * 100), 0) / 100;
+    expect(cartTotal(list)).toBe(sum);
+  });
+
+  it('leaves the basics out of the total', () => {
+    const list = shoppingList({ entries, missing: null, roundIds: [], scope: 'deck' });
+    // Elf Lord 3.50, Elf 0.25, Bolt 1.10, Dryad Arbor 0.60, Grove 2.00; the 30 Forests (3.00) and unpriced Ring add nothing.
+    expect(cartTotal(list)).toBe(7.45);
+  });
+});
+
+describe('cartLines', () => {
+  it('flattens the groups in list order, by name and quantity', () => {
+    const missing = new Map<CardId, number>([
+      [bolt.id, 2],
+      [elf.id, 1],
+    ]);
+    const list = shoppingList({ entries, missing, roundIds: [], scope: 'deck' });
+    expect(cartLines(list)).toEqual([
+      { name: 'Elf', quantity: 1 },
+      { name: 'Bolt', quantity: 2 },
+    ]);
   });
 });
 

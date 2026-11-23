@@ -269,8 +269,25 @@ test("builds a deck for a picked commander, then goes through it card by card", 
   // Without a collection the build draws on every card, and says how to build from owned cards instead.
   await expect(built.getByText(/picked from every card in print/)).toBeVisible();
   await expect(built.getByRole("link", { name: "Import your collection" })).toBeVisible();
-  await built.getByRole("button", { name: "Continue" }).click();
+  await built.getByRole("button", { name: "Tune it" }).click();
   await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 90_000 });
+});
+
+test("commander page builds its commander", async ({ page }) => {
+  test.skip(!process.env.E2E_LOCAL_DATA, "commander pages need the corpus (E2E_LOCAL_DATA)");
+  await page.goto("/commander/liesa-forgotten-archangel");
+  await page.getByRole("link", { name: "Build this Commander" }).click();
+  await expect(page).toHaveURL(/[?&]start=build&commander=liesa-forgotten-archangel/);
+  // The plate shows the linked commander in place of the search box, ready to build.
+  await expect(page.getByText("Liesa, Forgotten Archangel", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("combobox", { name: "Commander", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Build deck" })).toBeEnabled();
+});
+
+test("an unknown commander slug leaves the picker empty", async ({ page }) => {
+  await page.goto("/deck?start=build&commander=not-a-commander");
+  await expect(page.getByRole("combobox", { name: "Commander", exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Build deck" })).toBeDisabled();
 });
 
 test("fits a pasted list to the collection: owned cards stay, the rest comes from the collection", async ({ page }) => {

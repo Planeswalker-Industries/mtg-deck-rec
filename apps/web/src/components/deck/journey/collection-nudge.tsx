@@ -21,10 +21,6 @@ const COPY = {
     title: "Swap in cards you already own",
     body: "Swap looks through every card in print. Import your collection and it puts the cards you own first.",
   },
-  review: {
-    title: "Build this from your own cards",
-    body: "Import your collection to see how much of this deck you already have, and which cards you'd still need.",
-  },
 } as const;
 
 /**

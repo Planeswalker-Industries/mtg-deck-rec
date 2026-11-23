@@ -63,7 +63,22 @@ export async function openSwap(page: Page) {
 }
 
 /**
- * Answers every "Not in your collection" line of a built deck with Ignore, so Continue opens: a collection build
+ * From Swap on to Finish: the stepper's Finish while a card is dealt (the card has no Finish of its own), "Next: finish"
+ * on the empty stop, or nothing when an empty list already moved the round on by itself.
+ */
+export async function leaveSwap(page: Page) {
+  const recs = page.getByRole("region", { name: "Recommendations" });
+  const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
+  const toReview = recs.getByRole("button", { name: "Next: finish" });
+  const finished = recs.getByRole("heading", { name: /^(Deck Complete!|Almost ready)$/ });
+  await expect(rater.or(toReview).or(finished).first()).toBeVisible({ timeout: STEP_WAIT_MS });
+  if (await rater.isVisible()) await journeySteps(page).getByRole("button", { name: "Finish" }).click();
+  else if (await toReview.isVisible()) await toReview.click();
+  await expect(finished).toBeVisible({ timeout: STEP_WAIT_MS });
+}
+
+/**
+ * Answers every "Not in your collection" line of a built deck with Ignore, so Tune it opens: a collection build
  * waits for an answer to each line the collection couldn't fill.
  */
 export async function ignoreBuildGaps(page: Page) {
@@ -78,7 +93,7 @@ export async function ignoreBuildGaps(page: Page) {
  */
 export async function toDeckbuilder(page: Page) {
   const recs = page.getByRole("region", { name: "Recommendations" });
-  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Save", exact: true }).click({ timeout: STEP_WAIT_MS });
+  await recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Save", exact: true }).click({ timeout: STEP_WAIT_MS });
   await expect(page.getByRole("textbox", { name: "Deck name" })).toBeVisible({ timeout: STEP_WAIT_MS });
   return recs;
 }

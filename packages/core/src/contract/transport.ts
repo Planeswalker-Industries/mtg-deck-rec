@@ -26,11 +26,11 @@ import type {
 } from './decks';
 import type { Result } from './errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
-import type { AddResult, BuildFill, BuildResult, CutResult, FixResult, RecEvent, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
+import type { AddResult, BuildFill, BuildResult, CutResult, FixResult, RecEvent, RaterDeal, RecContext, SwapResult, UpgradesResult, VoteContext, VoteSummary } from './recs';
 import type { OwnershipInput } from './recs';
 
 /**
- * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut,build,fix}
+ * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut,build,fix,upgrades}
  * (parallel requests, WAF rate-limited). Not Server Actions — those are dispatched serially.
  */
 export interface RecsApi {
@@ -48,6 +48,12 @@ export interface RecsApi {
    * adds and cuts are. Read when Fix opens and again after an auto-fix is applied.
    */
   fix(input: { context: RecContext }): Promise<Result<FixResult>>;
+  /**
+   * Upgrades worth buying (v40) for a deck the collection fully supplies: the unowned replacements for the deck's
+   * weakest cards that beat what the collection has most, ranked by gain, never by price. Empty without a collection
+   * or with no money left to spend. `limit` defaults to 5.
+   */
+  upgrades(input: { context: RecContext; limit?: number }): Promise<Result<UpgradesResult>>;
 }
 
 /**
@@ -165,6 +171,8 @@ export interface ActionsApi {
   setFavorite(input: FavoriteRef & { on: boolean }): Promise<Result<null>>;
   /** Records a suggestion list shown, or a card from it taken or passed on (v25, the live accept rate). Works without an account. */
   recordRecEvent(input: RecEvent): Promise<Result<null>>;
+  /** Records many events of one list (one batchId) in one call (v40), so a build's acceptance isn't one call per card. */
+  recordRecEvents(input: { events: RecEvent[] }): Promise<Result<null>>;
 
   /** Cards to rate replacements for with a commander or partner pair, given by card ids or by commander page slug (exactly one). */
   dealRaterCards(input: { commanderIds?: CardId[]; commanderSlug?: string }): Promise<Result<RaterDeal>>;

@@ -28,6 +28,7 @@ import {
   parseDeckInputSchema,
   parseInput,
   recEventInputSchema,
+  recEventsInputSchema,
   resolveCollectionRowsInputSchema,
 } from "@mtg/core/schemas";
 import {
@@ -48,7 +49,7 @@ import { CoverageCardNotFound, loadDeckCoverage } from "@/lib/server/deck-covera
 import { createPublicClient, type PublicClient } from "@/lib/server/supabase";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { visitorKey } from "@/lib/server/visitor";
-import { recordRecEvent, RecEventRefused } from "@/lib/server/rec-events";
+import { recordRecEvent, recordRecEvents, RecEventRefused } from "@/lib/server/rec-events";
 import { castSwapVote, VoteRefused, type VoteRefusal } from "@/lib/server/votes";
 
 const failure = (code: ApiError["code"], message: string): Result<never> => ({ ok: false, error: { code, message } });
@@ -262,6 +263,26 @@ export async function recordRecEventAction(input: Parameters<ActionsApi["recordR
     const [limited, claims] = await Promise.all([checkRateLimit(db, "events", visitor), db.auth.getClaims()]);
     if (limited) return { ok: false, error: limited };
     await recordRecEvent(createAdminClient(), parsed.data, visitor, claims.data?.claims?.sub ?? null);
+    return { ok: true, data: null };
+  } catch (err) {
+    if (err instanceof RecEventRefused) return failure("VALIDATION", "That event isn't valid.");
+    return unavailable(err);
+  }
+}
+
+/**
+ * Records many events of one list in one call (v40): a build's acceptance, or a Cut step's decisions. Rate limited once
+ * per call, written as recordRecEventAction writes one.
+ */
+export async function recordRecEventsAction(input: Parameters<ActionsApi["recordRecEvents"]>[0]): Promise<Result<null>> {
+  const parsed = parseInput(recEventsInputSchema, input);
+  if (!parsed.ok) return parsed;
+  try {
+    const db = await createAuthClient();
+    const visitor = visitorKey(await headers());
+    const [limited, claims] = await Promise.all([checkRateLimit(db, "events", visitor), db.auth.getClaims()]);
+    if (limited) return { ok: false, error: limited };
+    await recordRecEvents(createAdminClient(), parsed.data.events, visitor, claims.data?.claims?.sub ?? null);
     return { ok: true, data: null };
   } catch (err) {
     if (err instanceof RecEventRefused) return failure("VALIDATION", "That event isn't valid.");

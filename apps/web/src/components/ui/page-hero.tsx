@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "cn";
 import { ArtPlate } from "@/components/ui/art-plate";
 import { TOOL_VISTA, type Vista } from "@/lib/landing-art";
 
@@ -16,6 +17,7 @@ export function PageHero({
   intro,
   children,
   vista = TOOL_VISTA,
+  slimArt = false,
 }: {
   /** The heading's id, for the section's accessible name. */
   id: string;
@@ -28,6 +30,8 @@ export function PageHero({
   children: ReactNode;
   /** The land art on the plate (`lib/landing-art.ts`). */
   vista?: Vista;
+  /** A thinner banner on phones, for a screen whose form must fit above the fold (the build start, T102). */
+  slimArt?: boolean;
 }) {
   return (
     <section
@@ -40,7 +44,7 @@ export function PageHero({
         position={vista.position}
         sizes="(min-width: 1024px) 40vw, 100vw"
         priority
-        className="aspect-[16/7] lg:order-last lg:aspect-square lg:self-start"
+        className={cn("aspect-[16/7] lg:order-last lg:aspect-square lg:self-start", slimArt && "max-sm:aspect-[16/4]")}
       />
       <div className="flex min-w-0 flex-col gap-6">
         <div className="flex flex-col gap-4">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BuildCard, BuildOrigin, BuildResult, CardId, CardSummary, IsoDateTime, OracleId, RecContext } from '../contract';
 import { journeyReducer, startJourney } from './journey';
-import { builtBuys, roundBuys, roundSpendUsd, withSpent } from './round-spend';
+import { builtBuys, missingSpendUsd, roundBuys, roundSpendUsd, withSpent } from './round-spend';
 
 const card = (id: number, typeLine: string, usd: number | null): CardSummary => ({
   id: id as CardId,
@@ -35,6 +35,33 @@ describe('roundSpendUsd', () => {
 
   it('is 0 for a round that brought nothing in', () => {
     expect(roundSpendUsd(base, () => false)).toBe(0);
+  });
+});
+
+describe('missingSpendUsd', () => {
+  const owned = new Map([[20 as CardId, 1], [21 as CardId, 4]]);
+
+  it('prices only the copies the collection lacks, basics and unpriced cards free', () => {
+    const entries = [
+      { card: card(20, 'Creature', 3), quantity: 2 },
+      { card: card(21, 'Instant', 5), quantity: 1 },
+      { card: card(22, 'Artifact', 1.25), quantity: 1 },
+      { card: card(23, 'Basic Land — Plains', 0.25), quantity: 30 },
+      { card: card(24, 'Sorcery', null), quantity: 1 },
+    ];
+    expect(missingSpendUsd(entries, owned)).toBe(4.25);
+  });
+
+  it('counts a card listed twice by its copies together', () => {
+    const twice = [
+      { card: card(20, 'Creature', 3), quantity: 1 },
+      { card: card(20, 'Creature', 3), quantity: 1 },
+    ];
+    expect(missingSpendUsd(twice, owned)).toBe(3);
+  });
+
+  it('is 0 for a deck the collection supplies', () => {
+    expect(missingSpendUsd([{ card: card(21, 'Instant', 5), quantity: 4 }], owned)).toBe(0);
   });
 });
 

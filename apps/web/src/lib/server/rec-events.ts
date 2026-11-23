@@ -1,6 +1,9 @@
 import type { RecEvent } from "@mtg/core/contract";
 import type { AdminClient } from "./supabase-admin";
 
+/** Events written at once by recordRecEvents: bounds the concurrent PostgREST calls one request makes. */
+const REC_EVENT_WRITE_CONCURRENCY = 10;
+
 /** The database refused the event: no visitor key, or an event that doesn't add up. */
 export class RecEventRefused extends Error {}
 
@@ -27,5 +30,13 @@ export async function recordRecEvent(db: AdminClient, event: RecEvent, visitor: 
   if (error) {
     if (/VOTER_REQUIRED|INVALID_EVENT/.test(error.message)) throw new RecEventRefused(error.message);
     throw new Error(`Recording the event failed: ${error.message}`);
+  }
+}
+
+/** Records many events of one list (v40) through recordRecEvent, REC_EVENT_WRITE_CONCURRENCY at a time. */
+export async function recordRecEvents(db: AdminClient, events: readonly RecEvent[], visitor: string, userId: string | null): Promise<void> {
+  for (let start = 0; start < events.length; start += REC_EVENT_WRITE_CONCURRENCY) {
+    const chunk = events.slice(start, start + REC_EVENT_WRITE_CONCURRENCY);
+    await Promise.all(chunk.map((event) => recordRecEvent(db, event, visitor, userId)));
   }
 }

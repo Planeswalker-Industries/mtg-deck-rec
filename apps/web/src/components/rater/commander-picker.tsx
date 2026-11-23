@@ -122,7 +122,7 @@ export function CommanderPicker({
             if (pick) onPick(pick);
           }
         }}
-        placeholder="Liesa, Forgotten Archangel"
+        placeholder="Search commanders…"
         autoComplete="off"
         autoCapitalize="off"
         autoCorrect="off"

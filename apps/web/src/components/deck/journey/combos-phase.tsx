@@ -45,7 +45,7 @@ function ComboEntry({
   return (
     <li className="flex min-w-0 flex-col gap-1.5">
       <ZoomableCard card={combo.card}>
-        <CardImage card={combo.card} variant="small" alt={combo.card.name} sizes={GRID_SIZES} />
+        <CardImage card={combo.card} variant="normal" alt={combo.card.name} sizes={GRID_SIZES} />
       </ZoomableCard>
       <span className="text-sm leading-tight font-semibold">{result}</span>
       <a href={combo.url} target="_blank" rel="noreferrer" className={cn(TEXT_LINK, PHONE_HIT_AREA, "w-fit text-xs leading-snug")}>
