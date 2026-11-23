@@ -18,7 +18,7 @@ import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
 import { LevelBadge, Mark } from "../deck-stats/level";
-import type { RoundSave } from "./round-bar";
+import { CopySaveStatus, type RoundSave } from "./round-bar";
 import { judge, Move, RoundMoves } from "./round-moves";
 import type { DeckJourney } from "./use-deck-journey";
 import type { Fix, FixLineLabel } from "./use-fix";
@@ -120,7 +120,8 @@ export function roundInIds(journey: DeckJourney): CardId[] {
  * cards, mana value and the deck's value before and after, each stat line as a read-only bar from where the round
  * started to where it ends against its aim, and each line still off with its reason and what the player can do about
  * it (T087). Then the shopping list, every change as card plates (Out beside In) and the finished decklist laid out by
- * type on the plates the deck editor uses. Undo and Start over are in the round's bar, first in the top sheet.
+ * type on the plates the deck editor uses. Finish has no Undo or Start over (owner, 2026-11-23): the round is done
+ * here; the stepper still goes back to a step, where they are.
  */
 export function ReviewPhase({
   journey,
@@ -136,7 +137,6 @@ export function ReviewPhase({
   cart,
   onBuy,
   buySaved,
-  toolbar,
   children,
 }: {
   /** The round's cart, which the docked Deck stats bar and the Budget line also read: the shopping list renders it. */
@@ -167,8 +167,6 @@ export function ReviewPhase({
   onReanalyze: () => void;
   /** Shown after the changes, e.g. the offer to import a collection. */
   children?: ReactNode;
-  /** The round's Undo and Start over (`RoundBar`), first in the first sheet. */
-  toolbar?: ReactNode;
 }) {
   const state = journey.state;
   const deck = journey.deck;
@@ -265,7 +263,6 @@ export function ReviewPhase({
         in one sheet; then the shopping list, the changes and the decklist.
       */}
       <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3")}>
-        {toolbar}
         <h2 id="review-ready" className="font-heading text-2xl leading-none font-semibold">
           {overBy > 0 ? "Almost ready" : "Deck ready"}
         </h2>
@@ -316,6 +313,7 @@ export function ReviewPhase({
             Re-analyze
           </Button>
         </div>
+        <CopySaveStatus save={save} />
         {stale && (
           <p role="status" className="text-sm text-muted-foreground">
             The decklist has changed since this deck was analyzed. Analyze it to save or re-analyze from here.

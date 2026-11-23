@@ -124,13 +124,16 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
   const scope = recs.getByRole("region", SHOPPING_LIST).getByRole("group", { name: "Cards to list" });
   await expect(scope.getByRole("button", { name: "This round's cards" })).toHaveAttribute("aria-pressed", "true");
 
-  // Start over, after a confirm, goes back to the deck as the round started, at Add; Undo brings the round back.
+  // Finish keeps the deck rather than changing it: no Undo or Start over there. Back on Swap, Start over, after a
+  // confirm, goes back to the deck as the round started, at Add; Undo brings the round back.
+  await expect(recs.getByRole("toolbar", { name: "This round" })).toHaveCount(0);
+  await steps.getByRole("button", { name: "Swap" }).click();
   await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Start over" }).click();
   await page.getByRole("dialog", { name: "Start this round over?" }).getByRole("button", { name: "Start over" }).click();
   await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
   await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
   await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
-  await expect(recs.getByRole("heading", { name: "Deck ready" })).toBeVisible();
+  await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
 });
 
 test("a deck at 100 opens on Fix, and Fix the rest previews its moves before one Undo takes them back", async ({ page }) => {

@@ -936,7 +936,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
       onStartOver={journey.restart}
       save={roundSave}
       busy={committing || tool.stale}
-      showSave={journey.state.phase !== "review"}
       slotRef={setStatusSlot}
     />
   );
@@ -1348,7 +1347,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                       cart={cart}
                       onBuy={() => void saveForBuy()}
                       buySaved={buySaveState()}
-                      toolbar={roundBar}
                     >
                       {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}
                       {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}

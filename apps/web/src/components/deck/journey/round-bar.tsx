@@ -25,6 +25,22 @@ export type RoundSave =
  */
 export const StepStatusSlot = createContext<HTMLElement | null>(null);
 
+/** What became of "Save as copy": the copy's name and a link to it, or why it failed. Nothing while idle or saving. */
+export function CopySaveStatus({ save }: { save: RoundSave }) {
+  if (save.kind !== "open") return null;
+  const { copy } = save;
+  if (copy.status === "saved")
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Saved as {copy.name}.{" "}
+        <Link href={copy.href} className={cn(TEXT_LINK, "font-semibold")}>
+          Open the copy
+        </Link>
+      </p>
+    );
+  return copy.status === "error" ? <ErrorText>Couldn&apos;t save a copy: {copy.message}</ErrorText> : null;
+}
+
 /** Whether a key press is the player typing somewhere, where shortcuts must not fire. */
 const isTyping = (target: EventTarget | null) => {
   const el = target as HTMLElement | null;
@@ -32,7 +48,7 @@ const isTyping = (target: EventTarget | null) => {
 };
 
 /**
- * The round's controls, on every step: Undo (the last choice, on whichever step it was made; also Z or Ctrl+Z), Start
+ * The round's controls, on every step but Finish (which keeps the deck rather than changing it): Undo (the last choice, on whichever step it was made; also Z or Ctrl+Z), Start
  * over (after a confirm, so it is never hit by mistake for Undo; Undo brings the choices back) and Save, as icons. The
  * first row of the step's sheet, with the step's status in `slotRef` beside them, so a player who wants out or wants
  * to keep what they have never has to hunt for it.
@@ -43,7 +59,6 @@ export function RoundBar({
   onStartOver,
   save,
   busy,
-  showSave = true,
   slotRef,
 }: {
   canUndo: boolean;
@@ -52,8 +67,6 @@ export function RoundBar({
   save: RoundSave;
   /** A save or re-analyze is under way: Save waits for it. */
   busy: boolean;
-  /** False on Finish, which has its own Save buttons. */
-  showSave?: boolean;
   /** Receives the element beside the buttons that the step's `StepStatus` renders into. */
   slotRef?: (el: HTMLElement | null) => void;
 }) {
@@ -80,7 +93,7 @@ export function RoundBar({
           <Button type="button" size="icon-lg" variant="ghost" onClick={() => setConfirming(true)} aria-label="Start over" title="Start over">
             <RotateCcw aria-hidden />
           </Button>
-          {!showSave ? null : save.kind === "new" ? (
+          {save.kind === "new" ? (
             <Button type="button" size="icon-lg" variant="ghost" onClick={save.onSave} disabled={busy} aria-label="Save" title="Save">
               <Save aria-hidden />
             </Button>
@@ -121,15 +134,7 @@ export function RoundBar({
         </div>
         <div ref={slotRef} className="flex min-w-0 flex-1 items-center gap-3" />
       </div>
-      {save.kind === "open" && save.copy.status === "saved" && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Saved as {save.copy.name}.{" "}
-          <Link href={save.copy.href} className={cn(TEXT_LINK, "font-semibold")}>
-            Open the copy
-          </Link>
-        </p>
-      )}
-      {save.kind === "open" && save.copy.status === "error" && <ErrorText>Couldn&apos;t save a copy: {save.copy.message}</ErrorText>}
+      <CopySaveStatus save={save} />
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent>
