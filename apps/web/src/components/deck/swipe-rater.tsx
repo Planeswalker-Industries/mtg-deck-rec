@@ -181,7 +181,8 @@ export function SwipeRater({
         {reasons.length > 0 && <span>{reasons.join(", ")}</span>}
         {/* Keeping is about this card, so it sits with it, as a button of its own rather than a link in the caption. */}
         {candidate && (
-          <Button type="button" size="lg" aria-label={keepLabel} onClick={rater.keep} className="mt-1 self-start">
+          // Outline: Swap in is the card's one filled button (T102).
+          <Button type="button" size="lg" variant="outline" aria-label={keepLabel} onClick={rater.keep} className="mt-1 self-start">
             {inRater ? "Skip" : "Keep"}
           </Button>
         )}

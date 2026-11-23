@@ -113,6 +113,7 @@ export function ShoppingList({
   onBuy,
   saved,
   buy = true,
+  foldAt,
 }: {
   title?: string;
   /** The title's heading level: 3 inside Finish, 2 where the list is one of the page's own sections. */
@@ -135,11 +136,14 @@ export function ShoppingList({
   saved?: BuySaveState;
   /** Show Buy here; false where the page already leads with its own Buy and total (Finish). */
   buy?: boolean;
+  /** From this many cards, open on the first group with "Show all" (Finish, where the Decklist repeats a long list). */
+  foldAt?: number;
 }) {
   const coarse = useCoarsePointer();
   const { list, carts, scope, setScope, scopeToggle, removed } = cart;
   const [undoShown, setUndoShown] = useState(false);
   const [linesOpen, setLinesOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   // True once hydrated: the toast portals into <body>, which the server render has no access to.
   const mounted = useSyncExternalStore(
     subscribeNothing,
@@ -193,6 +197,10 @@ export function ShoppingList({
           ? "This round put in no cards to buy."
           : "Nothing to buy.";
 
+  // A long list opens on its first group; "Show all" brings the rest.
+  const cut = !folded && !showAll && foldAt !== undefined && list.count >= foldAt && list.groups.length > 1;
+  const shownGroups = cut ? list.groups.slice(0, 1) : list.groups;
+
   /*
    * Folded (the saved deck page): from lg the groups are narrow columns side by side, scrolling sideways, each scrolling
    * down on its own, so the list fills the sheet's width (owner, 2026-11-21). Only with a mouse: on a touch screen a
@@ -206,7 +214,7 @@ export function ShoppingList({
           : "columns-1 gap-6 @xl:columns-2"
       }
     >
-      {list.groups.map((group) => (
+      {shownGroups.map((group) => (
         <section
           key={group.category}
           aria-label={cardCategoryLabel[group.category]}
@@ -364,6 +372,16 @@ export function ShoppingList({
       {actions}
 
       {list.count === 0 ? <p className="text-sm text-muted-foreground">{emptyText}</p> : lines}
+      {cut && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="flex min-h-11 w-fit items-center gap-2 rounded-md text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <ChevronDown aria-hidden className="size-4" />
+          Show all {list.count} {cardsWord}
+        </button>
+      )}
 
       {toast}
     </section>

@@ -373,8 +373,8 @@ export function useDeckJourney({
    * swap stays on the list with its replacement marked. Kept cards stay too: the sitting steps over decided cards as
    * their turn comes, since it deals the list by position and a card vanishing from it would skip the one after it.
    */
-  async function loadReplaceTargets(next: JourneyState, ctx: RecContext | null = context): Promise<void> {
-    if (!ctx || !current) return;
+  async function loadReplaceTargets(next: JourneyState, ctx: RecContext | null = context): Promise<boolean> {
+    if (!ctx || !current) return false;
     const round = current.id;
     const id = ++replaceRequest.current;
     const deck = deckBeforeSwaps(next);
@@ -383,10 +383,10 @@ export function useDeckJourney({
     setReplace({ round, key, candidates, value: { status: "loading" } });
     setReplaceVersion((v) => v + 1);
     const r = await getApis().recs.cut({ context: { ...ctx, deck } });
-    if (id !== replaceRequest.current) return;
+    if (id !== replaceRequest.current) return false;
     if (!r.ok) {
       setReplace({ round, key, candidates, value: toAsync(r) });
-      return;
+      return false;
     }
     // Additions and Fix's cards were chosen just now, so they aren't dealt as weaker fits; combo pieces are never dealt.
     const added = new Set<number>([...next.adds.map((c) => c.id), ...next.fixes.map((move) => move.in.id)]);
@@ -397,6 +397,7 @@ export function useDeckJourney({
       .filter((s) => !named.has(s.target.id))
       .map((s): CutSuggestion => ({ card: s.target, cutScore: 0, reasons: [], severity: "suggested", corpus: null, owned: null }));
     setReplace({ round, key, candidates, value: { status: "ready", data: { ...r.data, suggestions: [...swapped, ...listed] } } });
+    return swapped.length === 0 && listed.length === 0;
   }
 
   /** Whether the Add list on hand was made for the deck as `s` leaves it (or is on its way). */
@@ -446,7 +447,7 @@ export function useDeckJourney({
     invalidateLists();
     const { state: chosen } = now;
     if (chosen.phase === "add" && openSlots(chosen) > 0) return loadAdds(chosen, ctx);
-    if (chosen.phase === "replace") return loadReplaceTargets(chosen, ctx);
+    if (chosen.phase === "replace") await loadReplaceTargets(chosen, ctx);
   }
 
   /**
@@ -503,7 +504,12 @@ export function useDeckJourney({
     // the one on hand was made for the same deck: then the player picks up where they left off. A full deck has no
     // room to add, so Add asks for nothing.
     if (phase === "add" && openSlots(next) > 0 && !addFresh(next)) void loadAdds(next);
-    if (phase === "replace" && !replaceFresh(next)) void loadReplaceTargets(next);
+    // Nothing to swap: the round goes straight on to Finish rather than stop on an empty step (T102). Only as the
+    // list arrives on the way in, so a player who comes back to Swap later sees it empty instead of being sent away.
+    if (phase === "replace" && !replaceFresh(next))
+      void loadReplaceTargets(next).then((empty) => {
+        if (empty && latest.current?.state.phase === "replace") apply({ type: "goto", phase: "review" });
+      });
   }
 
   // ── Cut ────────────────────────────────────────────────────────────────────────────────────────────────────────

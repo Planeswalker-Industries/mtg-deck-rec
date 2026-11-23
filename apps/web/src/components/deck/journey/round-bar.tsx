@@ -41,6 +41,12 @@ export function CopySaveStatus({ save }: { save: RoundSave }) {
   return copy.status === "error" ? <ErrorText>Couldn&apos;t save a copy: {copy.message}</ErrorText> : null;
 }
 
+/**
+ * A round control: its icon over its name, so the name shows without a hover or a tap that would also act (T102). One
+ * touch target tall, the same row height as the icons alone had on a phone, so the swipe card doesn't move.
+ */
+const LABELLED_ICON = "h-11 min-w-11 flex-col gap-0.5 px-2 text-xs leading-none";
+
 /** Whether a key press is the player typing somewhere, where shortcuts must not fire. */
 const isTyping = (target: EventTarget | null) => {
   const el = target as HTMLElement | null;
@@ -49,7 +55,7 @@ const isTyping = (target: EventTarget | null) => {
 
 /**
  * The round's controls, on every step but Finish (which keeps the deck rather than changing it): Undo (the last choice, on whichever step it was made; also Z or Ctrl+Z), Start
- * over (after a confirm, so it is never hit by mistake for Undo; Undo brings the choices back) and Save, as icons. The
+ * over (after a confirm, so it is never hit by mistake for Undo; Undo brings the choices back) and Save, as labelled icons. The
  * first row of the step's sheet, with the step's status in `slotRef` beside them, so a player who wants out or wants
  * to keep what they have never has to hunt for it.
  */
@@ -87,30 +93,34 @@ export function RoundBar({
     <div className="flex flex-col gap-1.5">
       <div className="flex min-h-11 items-center gap-3">
         <div role="toolbar" aria-label="This round" className="flex shrink-0 items-center gap-1">
-          <Button type="button" size="icon-lg" variant="ghost" onClick={onUndo} disabled={!canUndo} aria-label="Undo" aria-keyshortcuts="Z" title="Undo the last choice (Z)">
+          <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={onUndo} disabled={!canUndo} aria-keyshortcuts="Z" title="Undo the last choice (Z)">
             <Undo2 aria-hidden />
+            Undo
           </Button>
-          <Button type="button" size="icon-lg" variant="ghost" onClick={() => setConfirming(true)} aria-label="Start over" title="Start over">
+          <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={() => setConfirming(true)}>
             <RotateCcw aria-hidden />
+            Start over
           </Button>
           {save.kind === "new" ? (
-            <Button type="button" size="icon-lg" variant="ghost" onClick={save.onSave} disabled={busy} aria-label="Save" title="Save">
+            <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={save.onSave} disabled={busy}>
               <Save aria-hidden />
+              Save
             </Button>
           ) : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
-                  size="lg"
                   variant="ghost"
-                  className="gap-0.5 px-2"
+                  className={LABELLED_ICON}
                   disabled={busy || save.copy.status === "saving"}
                   aria-label={save.copy.status === "saving" ? "Saving" : "Save"}
-                  title="Save"
                 >
                   <Save aria-hidden />
-                  <ChevronDown aria-hidden className="size-3.5" />
+                  <span className="flex items-center gap-0.5">
+                    Save
+                    <ChevronDown aria-hidden className="size-3" />
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-56">

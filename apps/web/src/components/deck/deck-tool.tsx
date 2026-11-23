@@ -66,6 +66,7 @@ import {
   DECK_START_BUILD,
   DECK_START_PARAM,
   MAX_DECK_FILE_BYTES,
+  SEAL_BUTTON,
   TEXT_LINK,
   TOGGLE_OFF,
   TOGGLE_ON,
@@ -978,6 +979,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         <PageHero
           id="deck-build-heading"
           heading="Choose commander"
+          slimArt
           aside="We'll deal you a deck."
           intro={
             <>
@@ -1025,11 +1027,10 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               onBudget={tool.changeBudget}
               importHref={tool.ownedOnly ? null : buildImportHref}
             />
-            {/* The Bracket and budget are read at the tap, so a change after the pick still counts. */}
-            <Button
+            {/* The page's main action, so the seal. The Bracket and budget are read at the tap, so a change after the pick still counts. */}
+            <button
               type="button"
-              size="lg"
-              className="lit w-full sm:w-auto sm:self-end"
+              className={cn(SEAL_BUTTON, "w-full disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:self-end")}
               disabled={picked === null}
               onClick={() => {
                 if (!picked) return;
@@ -1037,7 +1038,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               }}
             >
               Build deck
-            </Button>
+            </button>
           </div>
         </PageHero>
       ) : showInput ? (
@@ -1294,7 +1295,12 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                     <div className="min-w-0 flex-1">
                       <JourneyStepper phases={journey.phases} phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
                     </div>
-                    {hasViews(journey.state.phase) && <ViewToggle view={view} onChange={changeView} />}
+                    {/* Fix and Finish have one view: the toggle's place stays (empty) so the steps don't reflow from step to step. */}
+                    {hasViews(journey.state.phase) ? (
+                      <ViewToggle view={view} onChange={changeView} />
+                    ) : (
+                      <span aria-hidden className="size-8 shrink-0 sm:hidden" />
+                    )}
                   </div>
                   </Panel>
                   {journey.state.phase !== "review" && (
@@ -1328,7 +1334,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                   {journey.state.phase === "replace" && <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />}
                   </Panel>
                   )}
-                  {/* Players who came with only a list are offered their collection at every step (Done has its own, below). */}
+                  {/* Players who came with only a list are offered their collection at every step but Finish, where the deck bar's Add collection is the one offer. */}
                   {source.kind === "none" && journey.state.phase !== "review" && (
                     <CollectionNudge href={collectionImportHref} step={journey.state.phase} />
                   )}
@@ -1347,10 +1353,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                       cart={cart}
                       onBuy={() => void saveForBuy()}
                       buySaved={buySaveState()}
-                    >
-                      {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}
-                      {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}
-                    </ReviewPhase>
+                    />
                   )}
                 </div>
                 {statsPanel && (

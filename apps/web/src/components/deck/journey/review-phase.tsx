@@ -29,6 +29,11 @@ import type { Fix, FixLineLabel } from "./use-fix";
 const MANA_VALUE_DECIMALS = 1;
 /** One part of the result: a sheet of paper on the wood, padded like the journey's other sheets (`Panel` sm). */
 const SECTION_SHEET = "sheet p-4";
+/**
+ * Half a deck: a shopping list that long is most of the Decklist below it, so it opens on its first group with "Show
+ * all" rather than run the same cards down Finish twice.
+ */
+const FOLD_SHOPPING_LIST_AT = COMMANDER_DECK_SIZE / 2;
 
 const wholeUsd = (usd: number) => `$${Math.round(usd).toLocaleString("en-US")}`;
 
@@ -66,7 +71,9 @@ interface Leftover {
 function leftoverText({ line, label }: Leftover): string {
   if (label.value === undefined || label.target === undefined) return label.label;
   const aim = Math.round(label.target);
-  return line.startsWith("sources:") ? `${label.label}: ${label.value}, needs ${aim}` : `${label.label}: ${label.value}, about ${aim} is typical`;
+  return line.startsWith("sources:")
+    ? `${label.label}: ${label.value}, needs ${aim}`
+    : `${label.label}: ${label.value}, about ${aim} is typical`;
 }
 
 /**
@@ -75,7 +82,10 @@ function leftoverText({ line, label }: Leftover): string {
  */
 function leftoversOf(fix: Fix, report: DeckStatsReport | null, choices: StatChoices): Leftover[] {
   const counted: Leftover[] = fix.lines.map((l) => ({ line: l.line, label: fix.lineLabel(l.line), reason: l.blocked ?? "open" }));
-  const offKeys = new Set([...(report?.stats ?? []).filter((s) => !s.ok).map((s) => s.key), ...(report && !report.curve.ok ? [CURVE_LINE] : [])]);
+  const offKeys = new Set([
+    ...(report?.stats ?? []).filter((s) => !s.ok).map((s) => s.key),
+    ...(report && !report.curve.ok ? [CURVE_LINE] : []),
+  ]);
   const ignored: Leftover[] = Object.entries(choices)
     .filter(([line, choice]) => choice === "ignore" && offKeys.has(line))
     .map(([line]) => ({ line, label: fix.lineLabel(line), reason: "ignored" }));
@@ -140,7 +150,6 @@ export function ReviewPhase({
   cart,
   onBuy,
   buySaved,
-  children,
 }: {
   /** The round's cart, which the docked Deck stats bar and the Budget line also read: the shopping list renders it. */
   cart: ShoppingCart;
@@ -168,8 +177,6 @@ export function ReviewPhase({
   /** What saving does: write back to the open saved deck (or save a copy), or save a new deck. */
   save: RoundSave;
   onReanalyze: () => void;
-  /** Shown after the changes, e.g. the offer to import a collection. */
-  children?: ReactNode;
 }) {
   const state = journey.state;
   const deck = journey.deck;
@@ -193,8 +200,26 @@ export function ReviewPhase({
     const word = (text: string) => <span className="shrink-0 text-xs text-muted-foreground">{text}</span>;
     const fixLink = link("Fix", () => fix.openAt(line));
     if (reason === "open") return { inline: fixLink, note: null };
-    if (reason === "skipped") return { inline: <>{word("Skipped")}{fixLink}</>, note: null };
-    if (reason === "ignored") return { inline: <>{word("Ignored")}{link("Count it", () => onChoice(line, null))}</>, note: null };
+    if (reason === "skipped")
+      return {
+        inline: (
+          <>
+            {word("Skipped")}
+            {fixLink}
+          </>
+        ),
+        note: null,
+      };
+    if (reason === "ignored")
+      return {
+        inline: (
+          <>
+            {word("Ignored")}
+            {link("Count it", () => onChoice(line, null))}
+          </>
+        ),
+        note: null,
+      };
     const ignore = !RULE_LINES.has(line) && (
       <Button type="button" size="sm" variant="outline" onClick={() => onChoice(line, "ignore")}>
         Ignore
@@ -252,6 +277,9 @@ export function ReviewPhase({
   const blocked = busy || stale;
   /** Nothing to buy because the collection supplies every card (not because the player removed them). */
   const offerUpgrades = cart.fromCollection && cart.list?.count === 0 && cart.removed.length === 0;
+  // The shopping list shows unless it would only repeat the top sheet's "You own every card." (its scope toggle and a
+  // removal's empty state still have a use there).
+  const listed = !(cart.list?.count === 0 && cart.removed.length === 0 && !cart.scopeToggle);
   const nothingToBuy = cart.fromCollection
     ? "You own every card."
     : cart.removed.length > 0
@@ -260,14 +288,16 @@ export function ReviewPhase({
         ? "This round put in no cards to buy."
         : "Nothing to buy.";
 
+  /*
+   * Finish leads with the deck being done and what it costs to get (T102): the total and Buy, the page's seal, then the
+   * other ways to keep the deck in one outline row. Deck stats, the lines still off and their Fix links follow in one
+   * sheet; then the shopping list, the changes and the decklist. On a phone that is one column. From xl (the Deck stats
+   * rail already takes a right column from lg) the shopping list is an aside on the right from the top, kept in view
+   * while the rest scrolls; the left items name only their column, so auto-placement stacks them in rows 1-4 beside it.
+   */
   return (
-    <div className="flex flex-col gap-4">
-      {/*
-        Finish leads with the deck being done and what it costs to get (T102): the total and Buy, the page's seal, then
-        the other ways to keep the deck in one outline row. Deck stats, the lines still off and their Fix links follow
-        in one sheet; then the shopping list, the changes and the decklist.
-      */}
-      <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3")}>
+    <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+      <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
         {/* Assemble Now isn't built yet (owner, 2026-11-23): it shows, disabled, and says so when tapped or hovered. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 id="review-ready" className="font-heading text-2xl leading-none font-semibold">
@@ -292,7 +322,6 @@ export function ReviewPhase({
           </p>
         )}
         <CartTotal cart={cart} emptyText={nothingToBuy} />
-        <BuyButtons carts={cart.carts} onBuy={onBuy} saved={buySaved} seal className="max-sm:items-stretch max-sm:[&_a]:flex-1" />
         {/*
           A deck the collection fully supplies has nothing to buy, so Finish offers what would improve it instead (T102),
           with its own Buy in the seal's place.
@@ -300,45 +329,73 @@ export function ReviewPhase({
         {offerUpgrades && journey.workingContext && (
           <Upgrades context={journey.workingContext} onBuy={onBuy} saved={buySaved} className="border-t border-seam pt-3" />
         )}
-        {/* Symbols, not words (owner, 2026-11-23): each names itself to screen readers and on hover. */}
-        <div className="flex flex-wrap gap-2 pt-1">
-          {save.kind === "open" ? (
-            <>
-              <Button type="button" size="icon-lg" variant="outline" onClick={save.onSaveChanges} disabled={blocked} aria-label="Save changes" title="Save changes">
-                <Save aria-hidden />
-              </Button>
+        {/* From sm the outline row sits beside Buy rather than under it, so the sheet isn't half empty on a wide screen. */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
+          <BuyButtons carts={cart.carts} onBuy={onBuy} saved={buySaved} seal className="max-sm:items-stretch max-sm:[&_a]:flex-1" />
+          {/* Symbols, not words (owner, 2026-11-23): each names itself to screen readers and on hover. */}
+          <div className="flex flex-wrap gap-2 sm:py-1">
+            {save.kind === "open" ? (
+              <>
+                <Button
+                  type="button"
+                  size="icon-lg"
+                  variant="outline"
+                  onClick={save.onSaveChanges}
+                  disabled={blocked}
+                  aria-label="Save changes"
+                  title="Save changes"
+                >
+                  <Save aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon-lg"
+                  variant="outline"
+                  onClick={save.onSaveCopy}
+                  disabled={blocked || save.copy.status === "saving"}
+                  aria-label="Save as copy"
+                  title="Save as copy"
+                >
+                  <FilePlus2 aria-hidden />
+                </Button>
+              </>
+            ) : (
               <Button
                 type="button"
                 size="icon-lg"
                 variant="outline"
-                onClick={save.onSaveCopy}
-                disabled={blocked || save.copy.status === "saving"}
-                aria-label="Save as copy"
-                title="Save as copy"
+                onClick={save.onSave}
+                disabled={blocked}
+                aria-label="Save"
+                title="Save"
               >
-                <FilePlus2 aria-hidden />
+                <Save aria-hidden />
               </Button>
-            </>
-          ) : (
-            <Button type="button" size="icon-lg" variant="outline" onClick={save.onSave} disabled={blocked} aria-label="Save" title="Save">
-              <Save aria-hidden />
+            )}
+            <CopyDecklistButton text={journey.resultText} iconOnly outline disabled={blocked} />
+            <Button
+              type="button"
+              size="icon-lg"
+              variant="outline"
+              disabled={blocked}
+              aria-label="Download text"
+              title="Download text"
+              onClick={() => downloadText(journey.resultText(), deckFileName(deck.commanders.map((id) => journey.cards.get(id)?.name)))}
+            >
+              <Download aria-hidden />
             </Button>
-          )}
-          <CopyDecklistButton text={journey.resultText} iconOnly outline disabled={blocked} />
-          <Button
-            type="button"
-            size="icon-lg"
-            variant="outline"
-            disabled={blocked}
-            aria-label="Download text"
-            title="Download text"
-            onClick={() => downloadText(journey.resultText(), deckFileName(deck.commanders.map((id) => journey.cards.get(id)?.name)))}
-          >
-            <Download aria-hidden />
-          </Button>
-          <Button type="button" size="icon-lg" variant="outline" onClick={onReanalyze} disabled={blocked} aria-label="Re-analyze" title="Re-analyze">
-            <RefreshCw aria-hidden />
-          </Button>
+            <Button
+              type="button"
+              size="icon-lg"
+              variant="outline"
+              onClick={onReanalyze}
+              disabled={blocked}
+              aria-label="Re-analyze"
+              title="Re-analyze"
+            >
+              <RefreshCw aria-hidden />
+            </Button>
+          </div>
         </div>
         <CopySaveStatus save={save} />
         {stale && (
@@ -347,34 +404,29 @@ export function ReviewPhase({
           </p>
         )}
       </section>
-
-      {/*
-        The round's result. On a phone one column: Deck stats, then the shopping list, then the changes and the
-        decklist. From xl (the Deck stats rail already takes a right column from lg) the shopping list is an aside on the right, kept in view while the rest scrolls; the
-        left items name only their column, so auto-placement stacks them in rows 1-3 beside it.
-      */}
-      <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-        <section aria-labelledby="review-deck-stats" className={cn(SECTION_SHEET, "flex flex-col gap-4 xl:col-start-1")}>
-          <h3 id="review-deck-stats" className="flex items-center justify-between gap-3">
-            <span className="font-heading text-xl leading-none font-semibold">Deck stats</span>
-            {report && <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />}
-          </h3>
-          <dl className="grid grid-cols-3 gap-3">
-            <Figure label="Cards">
-              <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
-            </Figure>
-            <Figure label="Avg mana value">
-              <Move
-                before={rounded(before.averageManaValue)}
-                after={rounded(after.averageManaValue)}
-                verdict={judge(rounded(before.averageManaValue), rounded(after.averageManaValue), null)}
-                format={(n) => n.toFixed(MANA_VALUE_DECIMALS)}
-              />
-            </Figure>
-            {/*
+      <section aria-labelledby="review-deck-stats" className={cn(SECTION_SHEET, "flex flex-col gap-4 xl:col-start-1")}>
+        <h3 id="review-deck-stats" className="flex items-center justify-between gap-3">
+          <span className="font-heading text-xl leading-none font-semibold">Deck stats</span>
+          {report && <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />}
+        </h3>
+        <dl className={cn("grid gap-3", cart.fromCollection ? "grid-cols-3" : "grid-cols-2")}>
+          <Figure label="Cards">
+            <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
+          </Figure>
+          <Figure label="Avg mana value">
+            <Move
+              before={rounded(before.averageManaValue)}
+              after={rounded(after.averageManaValue)}
+              verdict={judge(rounded(before.averageManaValue), rounded(after.averageManaValue), null)}
+              format={(n) => n.toFixed(MANA_VALUE_DECIMALS)}
+            />
+          </Figure>
+          {/*
               Whole dollars: cents are noise on an estimate. The whole deck, basics and owned cards included, so it is
-              named apart from the cart total the shopping list and Deck stats show.
+              named apart from the cart total the shopping list and Deck stats show. Only with a collection: without
+              one the cart is the deck but its basics, and two near-equal totals read as a mistake.
             */}
+          {cart.fromCollection && (
             <Figure
               label="Deck value"
               note={asOf ? `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` : undefined}
@@ -386,113 +438,115 @@ export function ReviewPhase({
                 format={wholeUsd}
               />
             </Figure>
-          </dl>
-          {report &&
-            (!fix.ready ? (
-              <p role="status" className="text-sm text-muted-foreground">
-                Checking what is left to fix…
-              </p>
-            ) : leftovers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Every line is in line.</p>
-            ) : (
-              otherLeftovers.length > 0 && (
-                <ul aria-label="Lines still off" className="flex flex-col gap-2 text-sm">
-                  {otherLeftovers.map((l) => {
-                    const { inline, note } = leftoverParts(l);
-                    return (
-                      <li key={`${l.line}:${l.reason}`} className="flex flex-col gap-1">
-                        <span className={cn("flex min-w-0 items-center gap-2", l.reason === "ignored" && "text-muted-foreground")}>
-                          <Mark state={l.reason === "ignored" ? "ignored" : "off"} />
-                          <span className="min-w-0">{leftoverText(l)}</span>
-                          {inline}
-                        </span>
-                        {note && <span className="pl-6">{note}</span>}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )
-            ))}
-          {report && report.stats.length > 0 && (
-            <RoundMoves
-              lines={report.stats}
-              action={(key) => {
-                const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
-                return leftover && leftoverParts(leftover).inline;
-              }}
-              note={(key) => {
-                const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
-                return leftover && leftoverParts(leftover).note;
-              }}
-            />
           )}
-        </section>
+        </dl>
+        {report &&
+          (!fix.ready ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              Checking what is left to fix…
+            </p>
+          ) : leftovers.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Every line is in line.</p>
+          ) : (
+            otherLeftovers.length > 0 && (
+              <ul aria-label="Lines still off" className="flex flex-col gap-2 text-sm">
+                {otherLeftovers.map((l) => {
+                  const { inline, note } = leftoverParts(l);
+                  return (
+                    <li key={`${l.line}:${l.reason}`} className="flex flex-col gap-1">
+                      <span className={cn("flex min-w-0 items-center gap-2", l.reason === "ignored" && "text-muted-foreground")}>
+                        <Mark state={l.reason === "ignored" ? "ignored" : "off"} />
+                        <span className="min-w-0">{leftoverText(l)}</span>
+                        {inline}
+                      </span>
+                      {note && <span className="pl-6">{note}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )
+          ))}
+        {report && report.stats.length > 0 && (
+          <RoundMoves
+            lines={report.stats}
+            action={(key) => {
+              const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
+              return leftover && leftoverParts(leftover).inline;
+            }}
+            note={(key) => {
+              const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
+              return leftover && leftoverParts(leftover).note;
+            }}
+          />
+        )}
+      </section>
 
-        <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
+      {listed && (
+        <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-4 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
           <div className={SECTION_SHEET}>
-            <ShoppingList cart={cart} pinActions buy={false} />
+            <ShoppingList cart={cart} pinActions buy={false} foldAt={FOLD_SHOPPING_LIST_AT} />
           </div>
         </aside>
+      )}
 
-        {changes.length > 0 && (
-          <section aria-labelledby="review-changes" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
-            <h3 id="review-changes" className="font-heading text-xl leading-none font-semibold">
-              Changes <span className="font-mono text-base font-normal text-muted-foreground">{changes.length}</span>
-            </h3>
-            {/*
+      {changes.length > 0 && (
+        <section aria-labelledby="review-changes" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
+          <h3 id="review-changes" className="font-heading text-xl leading-none font-semibold">
+            Changes <span className="font-mono text-base font-normal text-muted-foreground">{changes.length}</span>
+          </h3>
+          {/*
               Out beside In. Swaps come first in both columns, so each sits on one row; the cuts and adds alone follow.
               Each plate floats its card on hover and enlarges it when pressed.
             */}
-            <div className="grid grid-cols-2 items-start gap-x-3">
-              <section aria-label="Out" className="flex flex-col gap-1.5">
-                <h4 aria-hidden className="text-xs font-semibold text-cut">Out</h4>
-                <ul className="flex flex-col gap-1.5">
-                  {outs.map(({ card, quantity }) => (
-                    <CardPlate key={card.id} card={card} quantity={quantity} mark="cut" />
-                  ))}
-                </ul>
-              </section>
-              <section aria-label="In" className="flex flex-col gap-1.5">
-                <h4 aria-hidden className="text-xs font-semibold text-add">In</h4>
-                <ul aria-label="Cards put in" className="flex flex-col gap-1.5">
-                  {ins.map(({ card, quantity }) => (
-                    <CardPlate key={card.id} card={card} quantity={quantity} mark="add" />
-                  ))}
-                </ul>
-              </section>
-            </div>
-          </section>
-        )}
+          <div className="grid grid-cols-2 items-start gap-x-3">
+            <section aria-label="Out" className="flex flex-col gap-1.5">
+              <h4 aria-hidden className="text-xs font-semibold text-cut">
+                Out
+              </h4>
+              <ul className="flex flex-col gap-1.5">
+                {outs.map(({ card, quantity }) => (
+                  <CardPlate key={card.id} card={card} quantity={quantity} mark="cut" />
+                ))}
+              </ul>
+            </section>
+            <section aria-label="In" className="flex flex-col gap-1.5">
+              <h4 aria-hidden className="text-xs font-semibold text-add">
+                In
+              </h4>
+              <ul aria-label="Cards put in" className="flex flex-col gap-1.5">
+                {ins.map(({ card, quantity }) => (
+                  <CardPlate key={card.id} card={card} quantity={quantity} mark="add" />
+                ))}
+              </ul>
+            </section>
+          </div>
+        </section>
+      )}
 
-        <div className="flex flex-col gap-4 xl:col-start-1">
-          {children}
-
-          <section aria-labelledby="review-decklist" className={cn(SECTION_SHEET, "flex flex-col gap-3")}>
-            <h3 id="review-decklist" className="font-heading text-xl leading-none font-semibold">
-              Decklist <span className="font-mono text-base font-normal text-muted-foreground">{after.cards}</span>
-            </h3>
-            {/* Columns like a decklist site: each type stays whole, and the plates flow into as many columns as fit. */}
-            <div className="columns-1 gap-6 md:columns-2 2xl:columns-3">
-              {commanders.length > 0 && (
-                <section aria-label={commanders.length > 1 ? "Commanders" : "Commander"} className="mb-5 break-inside-avoid">
-                  <h4 className="mb-2 text-sm font-semibold text-muted-foreground">{commanders.length > 1 ? "Commanders" : "Commander"}</h4>
-                  <ul className="flex flex-col gap-1.5">{plates(commanders, true)}</ul>
-                </section>
-              )}
-              {groups.map((group) => (
-                <section key={group.key} aria-label={groupHeading(group.label)} className="mb-5 break-inside-avoid">
-                  <h4 className="mb-2 text-sm font-semibold text-muted-foreground">
-                    {groupHeading(group.label)} <span className="font-mono font-normal">{group.count}</span>
-                  </h4>
-                  <ul aria-label={groupHeading(group.label)} className="flex flex-col gap-1.5">
-                    {plates(group.entries)}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          </section>
+      <section aria-labelledby="review-decklist" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
+        <h3 id="review-decklist" className="font-heading text-xl leading-none font-semibold">
+          Decklist <span className="font-mono text-base font-normal text-muted-foreground">{after.cards}</span>
+        </h3>
+        {/* Columns like a decklist site: each type stays whole, and the plates flow into as many columns as fit. */}
+        <div className="columns-1 gap-6 md:columns-2 2xl:columns-3">
+          {commanders.length > 0 && (
+            <section aria-label={commanders.length > 1 ? "Commanders" : "Commander"} className="mb-5 break-inside-avoid">
+              <h4 className="mb-2 text-sm font-semibold text-muted-foreground">{commanders.length > 1 ? "Commanders" : "Commander"}</h4>
+              <ul className="flex flex-col gap-1.5">{plates(commanders, true)}</ul>
+            </section>
+          )}
+          {groups.map((group) => (
+            <section key={group.key} aria-label={groupHeading(group.label)} className="mb-5 break-inside-avoid">
+              <h4 className="mb-2 text-sm font-semibold text-muted-foreground">
+                {groupHeading(group.label)} <span className="font-mono font-normal">{group.count}</span>
+              </h4>
+              <ul aria-label={groupHeading(group.label)} className="flex flex-col gap-1.5">
+                {plates(group.entries)}
+              </ul>
+            </section>
+          ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

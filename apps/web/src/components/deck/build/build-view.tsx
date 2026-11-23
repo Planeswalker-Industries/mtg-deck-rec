@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { ChevronDown, CircleCheck, CircleHelp, Info, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
 import { CURVE_LINE, cardsShort, deckDiff, shortOfTarget, sortCards, type CardSort, type StatLine } from "@mtg/core/journey";
+import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
 import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { CommanderPlate } from "@/components/cards/commander-plate";
@@ -30,18 +31,21 @@ import { useBuildStats } from "./use-build-stats";
 const BUILD_SHEET = "sheet p-4 max-sm:-mx-4 sm:p-5";
 
 /** What the open slots panel says, inline from sm up and behind its (?) on phones. */
-const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue and we'll fill the missing pieces together.";
+const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit Tune it and we'll fill the missing pieces together.";
 
 /** What a budget build without a collection says when the budget couldn't fill the deck: the popup and the open slots' (?). */
 const BUDGET_SHORT_TITLE = "Insufficient budget";
 const BUDGET_SHORT_HELP =
   "A competitive deck cannot be assembled at this budget. Increase the budget or upload your collection to build from.";
 
-/** What the overlay says while Continue or Save for Later opens the deck. */
+/** What the overlay says while Tune it or Save for Later opens the deck. */
 const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }> = {
   upgrade: { label: "Opening your deck", detail: "Reading the 100 cards and lining up upgrades. A few seconds." },
   save: { label: "Opening the Deckbuilder", detail: "You'll name the deck next." },
 };
+
+/** What Tune it does, in one line under the buttons. */
+const TUNE_IT_LINE = "Tune it: cut, add and swap a card at a time.";
 
 /** The built page's cart before there is a build: nothing to buy. */
 const NO_CART = { entries: [], missing: null };
@@ -230,12 +234,13 @@ function BuildCards({
             mark={mark}
             onSelect={onSelect ? () => onSelect(card.id) : undefined}
             // The note goes at the end of the row, as the shopping list puts its prices; the mana cost makes room for it.
+            // Every other card shows its price there (T102), a copy's price for a stack of basics.
             {...(note !== undefined
               ? {
                   showCost: false,
                   trailing: <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{note}</span>,
                 }
-              : {})}
+              : { trailing: <PriceTag price={card.price} lower className="mx-1 text-xs whitespace-nowrap text-muted-foreground" /> })}
           />
         ))}
       </ul>
@@ -316,14 +321,14 @@ function FitChanges({ request, result, view, sort }: { request: BuildRequest; re
  * says so. A pasted list fitted to the collection also shows what went out of the list and what came in.
  *
  * A collection build asks about each Deck stats line the collection couldn't fill before the deck opens (T087): ignore
- * it, or allow buying for it, which builds the deck again with unowned cards for that line. Continue waits for every
+ * it, or allow buying for it, which builds the deck again with unowned cards for that line. Tune it waits for every
  * answer, and the answers go into the deck tool with the deck.
  *
  * A budget build without a collection that couldn't fill every slot says so in a popup, once per build: change the
  * budget or upload a collection. Closing it leaves the build as it is.
  *
  * The build's cart (T102) leads the actions: what it costs to buy every card the collection doesn't supply (the whole
- * deck without one), with Buy on TCGplayer as the page's seal beside Continue. A build the collection fully supplies
+ * deck without one), with Buy on TCGplayer as the page's seal beside Tune it. A build the collection fully supplies
  * says so and offers no Buy.
  */
 export function BuildView({
@@ -363,7 +368,7 @@ export function BuildView({
   const [opening, setOpening] = useState<"upgrade" | "save" | null>(null);
   /** Set at once, so a second tap before the re-render can't open the deck twice. */
   const openingNow = useRef(false);
-  // The built deck graded by Deck stats, the report Add reads after Continue; shown once the analysis is in.
+  // The built deck graded by Deck stats, the report Add reads after Tune it; shown once the analysis is in.
   const ready = state.status === "ready" ? state : null;
   const builtList = useMemo(() => (ready ? buildDecklist(ready.result) : null), [ready]);
   const stats = useBuildStats(ready?.result ?? null, builtList, state.request.bracket);
@@ -501,12 +506,12 @@ export function BuildView({
         <CartTotal cart={cart} emptyText="You own every card." />
         {unanswered && (
           <p role="status" className="text-sm text-muted-foreground">
-            Choose Ignore or Allow buying for each to continue.
+            Choose Ignore or Allow buying for each to go on.
           </p>
         )}
         {/*
-          Buy is the page's seal when there is anything to buy, full width on phones; Continue is its partner then, and
-          the seal itself when the collection supplies every card. Continue takes two parts of its row to Save for
+          Buy is the page's seal when there is anything to buy, full width on phones; Tune it is its partner then, and
+          the seal itself when the collection supplies every card. Tune it takes two parts of its row to Save for
           Later's one.
         */}
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
@@ -525,7 +530,7 @@ export function BuildView({
               aria-busy={opening === "upgrade"}
               onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
             >
-              Continue
+              Tune it
             </button>
             <Button
               type="button"
@@ -540,6 +545,7 @@ export function BuildView({
             </Button>
           </div>
         </div>
+        <p className="text-sm text-muted-foreground">{TUNE_IT_LINE}</p>
         {!fromCollection && (
           <p className="text-sm text-muted-foreground">
             This deck draws on every card.{" "}
