@@ -5,7 +5,7 @@ const FOOTER_NAME = /^Deck stats/;
 /** The Add swipe's gesture buttons, "Add <card>" and "Skip <card>", inside its sitting. */
 const ADD_CARD = /^Add /;
 const SKIP_CARD = /^Skip /;
-/** The Swap swipe's buttons, "Swap in <card>" and "Pass on <card>". */
+/** The Swap step's Swap button ("Swap in <card>") and its next-option arrow ("Pass on <card>"). */
 const SWAP_IN = /^Swap in /;
 const PASS_ON = /^Pass on /;
 /** The Fix step's buttons, "Swap <out> for <in>" and "Skip swapping <out> for <in>". */

@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeftRight, Minus, Plus } from "lucide-react";
-import type { CardSummary } from "@mtg/core/contract";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeftRight } from "lucide-react";
 import { compareCards, type FixMove } from "@mtg/core/journey";
-import { cn } from "cn";
 import { DecisionButtons } from "@/components/cards/card-panel";
-import { CardImage } from "@/components/cards/card-image";
-import { ZoomableCard } from "@/components/cards/card-zoom";
-import { OwnedCorner } from "@/components/cards/owned-corner";
+import { MoveCard } from "@/components/cards/move-card";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { PriceTag } from "@/components/cards/buy-price";
@@ -35,35 +31,6 @@ function LineCount({ line }: { line: FixLineLabel }) {
         </span>
       )}
     </span>
-  );
-}
-
-/** One side of a move: Out or In in its job's colour (with its icon and word), the card, and its name. */
-function MoveCard({ card, side, owned, note }: { card: CardSummary; side: "out" | "in"; owned?: boolean; note?: ReactNode }) {
-  const Icon = side === "out" ? Minus : Plus;
-  return (
-    <div className="flex min-w-0 flex-col items-center gap-1.5">
-      <span className={cn("inline-flex items-center gap-1 text-xs font-semibold", side === "out" ? "text-cut" : "text-add")}>
-        <Icon aria-hidden className="size-3.5" strokeWidth={2.75} />
-        {side === "out" ? "Out" : "In"}
-      </span>
-      {/* The width is capped so both cards, the chips and the buttons fit a phone above the Deck stats footer. */}
-      <div className="relative w-full max-w-28 sm:max-w-52">
-        <ZoomableCard card={card}>
-          <CardImage
-            card={card}
-            variant="normal"
-            alt={`${side === "out" ? "Out" : "In"}: ${card.name}`}
-            sizes="(max-width: 640px) 40vw, 208px"
-            eager
-            className={side === "out" ? "opacity-80 saturate-50" : undefined}
-          />
-        </ZoomableCard>
-        {owned && <OwnedCorner />}
-      </div>
-      <p className="w-full text-center text-sm leading-tight font-semibold text-balance">{displayName(card)}</p>
-      {note && <p className="text-center font-mono text-xs text-muted-foreground">{note}</p>}
-    </div>
   );
 }
 
@@ -177,9 +144,9 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
             owned={hasCollection && inCard !== null && inCard.owned !== null}
             note={
               notOwned ? (
-                <>
+                <span className="font-mono">
                   Not owned · <PriceTag price={price} lower />
-                </>
+                </span>
               ) : null
             }
           />

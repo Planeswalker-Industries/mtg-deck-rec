@@ -86,8 +86,8 @@ export function FixAutoSheet({
           ) : (
             <div className="flex flex-col gap-4">
               <div aria-hidden className="grid grid-cols-2 gap-1.5 text-xs font-semibold">
-                <span className="text-cut">Out</span>
-                <span className="text-add">In</span>
+                <span className="text-cut">Remove</span>
+                <span className="text-add">Add</span>
               </div>
               {byLine(moves).map((group) => (
                 <section key={group.line} aria-label={lineLabel(group.line)} className="flex flex-col gap-1.5">

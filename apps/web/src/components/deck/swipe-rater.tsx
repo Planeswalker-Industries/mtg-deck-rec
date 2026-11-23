@@ -1,12 +1,13 @@
 "use client";
 
-import { cn } from "cn";
 import { useEffect, useRef } from "react";
+import { ArrowLeftRight, ChevronLeft, ChevronRight } from "lucide-react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { compareCards } from "@mtg/core/journey";
 import { ownedOnly, swapMatchLabel } from "@mtg/core/scoring";
 import { BuyPrice } from "@/components/cards/buy-price";
-import { CompactCardPanel, DecisionButtons } from "@/components/cards/card-panel";
+import { DecisionButtons } from "@/components/cards/card-panel";
+import { MoveCard } from "@/components/cards/move-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
@@ -31,9 +32,11 @@ const MAX_JOBS = 4;
 const PREFETCH_CANDIDATES = 4;
 
 /**
- * A card to replace and one replacement at a time, both in full: the card in the deck on top, the replacement below,
- * and green and red marks for how the replacement compares (cheaper to cast, faster, popular). Answered with the buttons
- * under them or the arrow keys: right swaps it in, left shows the next replacement.
+ * A card to replace and one replacement at a time, side by side as in Fix: the card to remove on the left, the one to
+ * add on the right, and green and red marks for how the replacement compares (cheaper to cast, faster, popular). The
+ * replacement's ‹ › go through its options; Skip and Swap under them decide about the card (owner, 2026-11-23: browsing
+ * sits with what it browses, the bottom row only decides, like a spell checker). The arrow keys do what Skip and Swap
+ * do. The rater keeps its own answers: Not a fit and Good fit, with Skip under them.
  */
 export function SwipeRater({
   targets,
@@ -116,11 +119,13 @@ export function SwipeRater({
   const rulesFor = useCardRules([...(target ? [target.card.id] : []), ...upcoming, ...(nextTarget === undefined ? [] : [nextTarget])]);
   useStatPreview(candidate?.card ?? null, candidate && target ? target.card : null);
 
-  const act = (swapIn: boolean) => {
+  /** Every answer waits out the cooldown, so a double tap can't answer what came up after the first. */
+  const act = (answer: "swap" | "pass" | "skip") => {
     if (!candidate || Date.now() - lastAt.current < SWIPE_COOLDOWN_MS) return;
     lastAt.current = Date.now();
-    if (swapIn) rater.swapIn();
-    else rater.pass();
+    if (answer === "swap") rater.swapIn();
+    else if (answer === "pass") rater.pass();
+    else rater.keep();
   };
 
   // Arrow keys do what the buttons do, unless the player is typing somewhere.
@@ -131,7 +136,9 @@ export function SwipeRater({
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
-      act(e.key === "ArrowRight");
+      // As the buttons under the cards: Swap or Skip here, Good fit or Not a fit in the rater.
+      if (e.key === "ArrowRight") act("swap");
+      else act(inRater ? "pass" : "skip");
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -160,109 +167,150 @@ export function SwipeRater({
           compareCardOf(candidate.card, candidateRules?.power ?? null, candidateRules?.toughness ?? null, candidate.corpus?.inclusionRate ?? null),
         )
       : [];
-  const keepLabel = `${inRater ? "Skip" : "Keep"} ${targetName}`;
+  const skipLabel = `Skip ${targetName}`;
+
+  /** Over Remove: which card of the list this is ("1 of 14"; the word "Card" is read out, not shown, owner 2026-11-18). */
+  const cardCount = (
+    <p className="font-mono text-xs text-muted-foreground">
+      <span className="sr-only">Card </span>
+      {rater.targetIndex + 1} of {rater.targetCount}
+    </p>
+  );
+  const optionCount = (
+    <span className="font-mono text-xs text-muted-foreground">
+      <span className="sr-only">Option </span>
+      {rater.candidateIndex + 1} of {rater.candidateCount}
+    </span>
+  );
+  const targetCard = (
+    <MoveCard card={target.card} side="out" nav={cardCount} note={reasons.length > 0 ? <span>{reasons.join(", ")}</span> : null} />
+  );
 
   return (
     <section
       ref={viewRef}
       aria-label={inRater ? "Rate replacements" : "Swipe through cards to replace"}
-      className="mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-2 sm:gap-3"
+      className="mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-3"
     >
-      <div className={cn("flex items-center gap-3", finishButton ? "justify-between" : "justify-center")}>
-        <p className="text-sm text-muted-foreground font-mono">
-          {/* "1 of 14": the word "Card" is read out, not shown (owner, 2026-11-18); "option" stays, two counts need it. */}
-          <span className="sr-only">Card </span>
-          {rater.targetIndex + 1} of {rater.targetCount}
-          {inRater ? "" : <span className="max-sm:hidden"> to replace</span>}
-          {candidate && !inRater && <span className="sm:hidden"> · option {rater.candidateIndex + 1} of {rater.candidateCount}</span>}
-        </p>
-        {finishButton && (
+      {finishButton && (
+        <div className="flex justify-end">
           <Button type="button" size="sm" variant="ghost" onClick={onFinish}>
             {inRater ? "Done" : "Finish"}
           </Button>
-        )}
-      </div>
-
-      <CompactCardPanel card={target.card} rules={targetRules} side="out" dim={!inRater}>
-        {reasons.length > 0 && <span>{reasons.join(", ")}</span>}
-        {/* Keeping is about this card, so it sits with it, as a button of its own rather than a link in the caption. */}
-        {candidate && (
-          // Outline: Swap in is the card's one filled button (T102).
-          <Button type="button" size="lg" variant="outline" aria-label={keepLabel} onClick={rater.keep} className="mt-1 self-start">
-            {inRater ? "Skip" : "Keep"}
-          </Button>
-        )}
-      </CompactCardPanel>
-
-      <div aria-hidden className="h-px bg-seam max-sm:hidden" />
+        </div>
+      )}
 
       {!loaded ? (
-        <div role="status" aria-label="Finding replacements" className="grid grid-cols-[minmax(0,2fr)_minmax(0,5fr)] gap-3">
-          <Skeleton className="aspect-[488/680] w-full rounded-[4.75%/3.4%] bg-seam" />
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-4 w-2/3 bg-seam" />
-            <Skeleton className="h-3 w-full bg-seam" />
-            <Skeleton className="h-3 w-5/6 bg-seam" />
+        <div className="grid grid-cols-2 items-start gap-3">
+          {targetCard}
+          <div role="status" aria-label="Finding replacements" className="flex justify-center self-center">
+            <Skeleton className="aspect-[488/680] w-full max-w-28 rounded-[4.75%/3.4%] bg-seam sm:max-w-52" />
           </div>
         </div>
-      ) : loaded.status === "error" ? (
-        <div className="flex flex-col items-center gap-3">
-          <PanelError message={loaded.message} />
-          <Button type="button" variant="outline" onClick={rater.keep}>
-            {keepLabel}
-          </Button>
-        </div>
-      ) : !candidate ? (
-        <div className="flex flex-col items-center gap-3 py-4 text-center">
-          <p className="max-w-xs text-sm">
-            {loaded.suggestions.length === 0
-              ? emptySwapMessage[rater.emptyReason ?? "NO_CANDIDATES"]
-              : rater.candidateCount === 0
-                ? `No other replacements for ${targetName}.`
-                : `That's every replacement for ${targetName}.`}
-          </p>
-          <Button type="button" onClick={rater.keep}>
-            {keepLabel}
-          </Button>
-        </div>
+      ) : loaded.status === "error" || !candidate ? (
+        <>
+          <div className="grid grid-cols-2 items-center gap-3">
+            {targetCard}
+            {loaded.status === "error" ? (
+              <PanelError message={loaded.message} />
+            ) : (
+              <p className="text-center text-sm">
+                {loaded.suggestions.length === 0
+                  ? emptySwapMessage[rater.emptyReason ?? "NO_CANDIDATES"]
+                  : rater.candidateCount === 0
+                    ? `No other replacements for ${targetName}.`
+                    : `That's every replacement for ${targetName}.`}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap justify-center gap-2">
+            {/* Passed on every option: one tap goes back to the last, to think again. */}
+            {!inRater && rater.candidateIndex > 0 && loaded.status === "ready" && (
+              <Button type="button" size="lg" variant="outline" onClick={rater.back}>
+                <ChevronLeft aria-hidden />
+                Back to the options
+              </Button>
+            )}
+            <Button type="button" size="lg" aria-label={skipLabel} onClick={rater.keep}>
+              Skip
+            </Button>
+          </div>
+        </>
       ) : (
         <>
-          <div aria-live="polite" className="flex flex-col gap-2">
-            <CompactCardPanel
+          <div aria-live="polite" className="grid grid-cols-2 items-start gap-3">
+            {targetCard}
+            <MoveCard
               card={candidate.card}
-              rules={candidateRules}
               side="in"
               owned={markOwned && candidate.owned !== null}
-              // A replacement to buy shows its price under its art (owner, 2026-11-18); owned ones and the rater's don't.
-              underArt={!inRater && candidate.owned === null ? <BuyPrice price={candidate.card.price} className="mt-1.5" /> : undefined}
-            >
-              <span className="font-mono max-sm:hidden">
-                {rater.candidateIndex + 1} of {rater.candidateCount}
-              </span>
-              {candidate.functionalTwin ? (
-                <span className="font-drama text-sm text-foreground/85 italic">Same rules as {targetName}, under a different name.</span>
-              ) : rungLabel ? (
-                // Shown at every width, phones included: it is why this card is offered.
-                <span>{rungLabel}</span>
-              ) : (
-                jobs.length > 0 && <span className="max-sm:hidden">Also does: {jobs.join(", ").toLowerCase()}</span>
-              )}
-            </CompactCardPanel>
-            <StatChips add={candidate.card} remove={target.card} marks={marks} />
+              nav={
+                inRater ? (
+                  optionCount
+                ) : (
+                  <div role="group" aria-label="Replacement options" className="flex items-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Previous option"
+                      disabled={rater.candidateIndex === 0}
+                      onClick={rater.back}
+                      className="size-11"
+                    >
+                      <ChevronLeft aria-hidden className="size-5" />
+                    </Button>
+                    {optionCount}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Pass on ${candidate.card.name}`}
+                      onClick={() => act("pass")}
+                      className="size-11"
+                    >
+                      <ChevronRight aria-hidden className="size-5" />
+                    </Button>
+                  </div>
+                )
+              }
+              note={
+                <>
+                  {/* A replacement to buy shows its price (owner, 2026-11-18); owned ones and the rater's don't. */}
+                  {!inRater && candidate.owned === null && <BuyPrice price={candidate.card.price} />}
+                  {candidate.functionalTwin ? (
+                    <span className="font-drama text-sm text-foreground/85 italic">Same rules as {targetName}, under a different name.</span>
+                  ) : rungLabel ? (
+                    // Shown at every width, phones included: it is why this card is offered.
+                    <span>{rungLabel}</span>
+                  ) : (
+                    jobs.length > 0 && <span className="max-sm:hidden">Also does: {jobs.join(", ").toLowerCase()}</span>
+                  )}
+                </>
+              }
+            />
           </div>
-          <DecisionButtons
-            tone="primary"
-            pass={{
-              word: inRater ? "Not a fit" : "Next one",
-              label: inRater ? `Not a fit: ${candidate.card.name}` : `Pass on ${candidate.card.name}`,
-              onClick: () => act(false),
-            }}
-            accept={{
-              word: inRater ? "Good fit" : "Swap in",
-              label: inRater ? `Good fit: ${candidate.card.name}` : `Swap in ${candidate.card.name}`,
-              onClick: () => act(true),
-            }}
-          />
+          <StatChips add={candidate.card} remove={target.card} marks={marks} className="justify-center" />
+          {inRater ? (
+            <>
+              <DecisionButtons
+                tone="primary"
+                pass={{ word: "Not a fit", label: `Not a fit: ${candidate.card.name}`, onClick: () => act("pass") }}
+                accept={{ word: "Good fit", label: `Good fit: ${candidate.card.name}`, onClick: () => act("swap") }}
+              />
+              <div className="-mt-1 flex justify-center">
+                <Button type="button" size="sm" variant="link" aria-label={skipLabel} onClick={() => act("skip")}>
+                  Skip
+                </Button>
+              </div>
+            </>
+          ) : (
+            <DecisionButtons
+              tone="primary"
+              pass={{ word: "Skip", label: skipLabel, onClick: () => act("skip") }}
+              accept={{ word: "Swap", label: `Swap in ${candidate.card.name}`, icon: ArrowLeftRight, onClick: () => act("swap") }}
+            />
+          )}
         </>
       )}
       {rater.voteError && <p className="text-center text-xs text-muted-foreground">{`Your last vote wasn't saved: ${rater.voteError}`}</p>}

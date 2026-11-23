@@ -69,7 +69,7 @@ test("swap in Owned only with nothing to offer says so instead of dealing an emp
   await openSwap(page);
   await expect(recs.getByRole("status").getByText("No valid swaps right now.")).toBeVisible({ timeout: 60_000 });
   // No card was dealt to keep or swap, and the step did not move on to Finish by itself.
-  await expect(recs.getByRole("button", { name: /^(Keep|Swap in) / })).toHaveCount(0);
+  await expect(recs.getByRole("button", { name: /^(Skip|Swap in) / })).toHaveCount(0);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
   await expect(steps.getByRole("button", { name: "Swap" })).toHaveAttribute("aria-current", "step");
   await expect(recs.getByRole("button", { name: "Next: finish" })).toBeVisible();

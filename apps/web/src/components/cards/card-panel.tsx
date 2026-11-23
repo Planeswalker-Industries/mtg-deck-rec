@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Check, Minus, Plus, X, type LucideIcon } from "lucide-react";
+import { Check, X, type LucideIcon } from "lucide-react";
 import type { CardFace, CardRules, CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,19 +13,17 @@ import { OwnedCorner } from "./owned-corner";
 import { RulesText } from "./rules-text";
 
 /**
- * Rules text lines shown before "More": a whole card on the single panel, the gist on a compact one. A phone shows fewer
- * on the single panel, so the swipe buttons stay above the Deck stats footer at 390×844 with a wordy card.
+ * Rules text lines shown before "More". A phone shows fewer, so the swipe buttons stay above the Deck stats footer at
+ * 390×844 with a wordy card.
  */
-const PHONE_CLAMP = { single: "max-sm:line-clamp-4", compact: "line-clamp-2" } as const;
-const CLAMP = { single: `${PHONE_CLAMP.single} sm:line-clamp-6`, compact: PHONE_CLAMP.compact } as const;
+const PHONE_CLAMP = "max-sm:line-clamp-4";
+const CLAMP = `${PHONE_CLAMP} sm:line-clamp-6`;
 /** Rules text longer than this many characters gets "More"; shorter text always fits the clamp. */
-const CLAMP_CHARS = { single: 220, compact: 70 } as const;
+const CLAMP_CHARS = 220;
 /** The same on a phone's narrower column, where fewer characters fill the clamp. */
-const PHONE_CLAMP_CHARS = { single: 90, compact: 70 } as const;
+const PHONE_CLAMP_CHARS = 90;
 /** Placeholder lines while a card's rules are on their way. */
-const LOADING_LINES = { single: 4, compact: 2 } as const;
-
-type Size = keyof typeof CLAMP;
+const LOADING_LINES = 4;
 
 /** "2/1", "Loyalty 4", "Defense 3": the printed stat in the card's lower right, or null when it has none. */
 export function printedStat(stats: Pick<CardFace, "power" | "toughness" | "loyalty" | "defense">): string | null {
@@ -36,13 +34,13 @@ export function printedStat(stats: Pick<CardFace, "power" | "toughness" | "loyal
 }
 
 /** The text of a card: each face's when it has several, so a double-faced card reads front then back. */
-function RulesBlock({ rules, size }: { rules: CardRules | null | undefined; size: Size }) {
+function RulesBlock({ rules }: { rules: CardRules | null | undefined }) {
   const [open, setOpen] = useState(false);
   if (rules === undefined) {
     return (
       <div role="status" aria-label="Loading rules text" className="flex flex-col gap-1.5 pt-0.5">
-        {Array.from({ length: LOADING_LINES[size] }, (_, i) => (
-          <Skeleton key={i} className={cn("h-3.5 bg-seam", i === LOADING_LINES[size] - 1 ? "w-2/3" : "w-full")} />
+        {Array.from({ length: LOADING_LINES }, (_, i) => (
+          <Skeleton key={i} className={cn("h-3.5 bg-seam", i === LOADING_LINES - 1 ? "w-2/3" : "w-full")} />
         ))}
       </div>
     );
@@ -51,14 +49,14 @@ function RulesBlock({ rules, size }: { rules: CardRules | null | undefined; size
   const faces = rules.faces ?? [];
   const text = faces.length > 0 ? faces.map((f) => f.oracleText).join("\n") : (rules.oracleText ?? "");
   if (text.trim() === "") return null;
-  const long = text.length > CLAMP_CHARS[size];
-  const longOnPhone = text.length > PHONE_CLAMP_CHARS[size];
+  const long = text.length > CLAMP_CHARS;
+  const longOnPhone = text.length > PHONE_CLAMP_CHARS;
   return (
     <div className="text-sm leading-snug">
       <div
         className={cn(
           "flex flex-col gap-1.5 whitespace-pre-line",
-          !open && (long ? CLAMP[size] : longOnPhone && PHONE_CLAMP[size]),
+          !open && (long ? CLAMP : longOnPhone && PHONE_CLAMP),
         )}
       >
         {faces.length > 0 ? (
@@ -91,40 +89,20 @@ function RulesBlock({ rules, size }: { rules: CardRules | null | undefined; size
  * What a card is and says, beside its image: name and cost, type line and printed stat, then the rules text. `children`
  * goes under it: why the card is here, its play rate, its price.
  */
-function CardFacts({
-  card,
-  rules,
-  size,
-  tag,
-  phoneRules = true,
-  children,
-}: {
-  card: CardSummary;
-  rules: CardRules | null | undefined;
-  size: Size;
-  tag?: ReactNode;
-  /** False leaves the rules text off on phones (the card can still be enlarged to read it). */
-  phoneRules?: boolean;
-  children?: ReactNode;
-}) {
+function CardFacts({ card, rules, children }: { card: CardSummary; rules: CardRules | null | undefined; children?: ReactNode }) {
   const stat = rules ? printedStat(rules) : null;
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      {tag}
       <div className="flex items-start justify-between gap-2">
-        <p className={cn("min-w-0 leading-tight font-semibold text-balance", size === "single" ? "font-heading text-lg" : "text-base")}>
-          {displayName(card)}
-        </p>
+        <p className="min-w-0 font-heading text-lg leading-tight font-semibold text-balance">{displayName(card)}</p>
         <ManaCost cost={card.manaCost} className="mt-0.5 text-sm" />
       </div>
       <p className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
         <span className="min-w-0 truncate">{card.typeLine}</span>
         {stat && <span className="shrink-0 rounded border border-seam px-1.5 font-mono text-sm text-foreground">{stat}</span>}
       </p>
-      <div aria-hidden className={cn("h-px bg-seam", !phoneRules && "max-sm:hidden")} />
-      <div className={cn(!phoneRules && "max-sm:hidden")}>
-        <RulesBlock rules={rules} size={size} />
-      </div>
+      <div aria-hidden className="h-px bg-seam" />
+      <RulesBlock rules={rules} />
       {children && <div className="mt-auto flex flex-col gap-0.5 pt-1 text-xs text-muted-foreground">{children}</div>}
     </div>
   );
@@ -155,66 +133,7 @@ export function CardPanel({
         </ZoomableCard>
         {owned && <OwnedCorner />}
       </div>
-      <CardFacts card={card} rules={rules} size="single">
-        {children}
-      </CardFacts>
-    </div>
-  );
-}
-
-/** Out or In on a swap's compact rows: the job's colour, always with its icon and word. */
-function SwapTag({ side }: { side: "out" | "in" }) {
-  const Icon = side === "out" ? Minus : Plus;
-  return (
-    <span className={cn("inline-flex w-fit items-center gap-1 text-xs font-semibold", side === "out" ? "text-cut" : "text-add")}>
-      <Icon aria-hidden className="size-3.5" strokeWidth={2.75} />
-      {side === "out" ? "In your deck" : "Swap in"}
-    </span>
-  );
-}
-
-/**
- * A smaller panel for one side of a swap: two of these stack on a phone with room for the buttons. On a phone the card
- * going out shows no rules text: it is the player's own card, and the two rows, the marks and the buttons have to fit
- * above the Deck stats footer at 390×844. Tapping its image still shows the whole card.
- */
-export function CompactCardPanel({
-  card,
-  rules,
-  side,
-  dim = false,
-  owned = false,
-  underArt,
-  children,
-}: {
-  card: CardSummary;
-  rules: CardRules | null | undefined;
-  side: "out" | "in";
-  /** Under the card's image, left of the facts: a card to buy shows its price here. */
-  underArt?: ReactNode;
-  /** The card going out reads quieter than the one coming in. */
-  dim?: boolean;
-  /** Marks the card as owned (`OwnedCorner`). */
-  owned?: boolean;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,3fr)] items-start gap-3 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
-      <div className="relative">
-        <ZoomableCard card={card}>
-          <CardImage
-            card={card}
-            variant="normal"
-            alt={`${side === "out" ? "In your deck" : "Replacement"}: ${card.name}`}
-            sizes="(max-width: 640px) 28vw, 136px"
-            eager
-            className={dim ? "opacity-80 saturate-50" : undefined}
-          />
-        </ZoomableCard>
-        {owned && <OwnedCorner />}
-        {underArt}
-      </div>
-      <CardFacts card={card} rules={rules} size="compact" tag={<SwapTag side={side} />} phoneRules={side === "in"}>
+      <CardFacts card={card} rules={rules}>
         {children}
       </CardFacts>
     </div>

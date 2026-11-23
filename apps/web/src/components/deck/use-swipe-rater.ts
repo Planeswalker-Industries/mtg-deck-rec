@@ -248,6 +248,15 @@ export function useSwipeRater({
     voteError,
     swapIn: () => vote(1),
     pass: () => vote(-1),
+    /**
+     * Deck tool: back to the replacement before the one on screen, passed on earlier in this sitting. The pass stays
+     * recorded; swapping it in now records the swap as well.
+     */
+    back: () => {
+      if (candidateIndex === 0) return;
+      setCandidateIndex(candidateIndex - 1);
+      setVoteError(null);
+    },
     /** Moves on to the next card without a vote: keeps the card in the deck tool, skips it in the rater. */
     keep: () => {
       if (mode === "deck" && target) onKeep?.(target.card);

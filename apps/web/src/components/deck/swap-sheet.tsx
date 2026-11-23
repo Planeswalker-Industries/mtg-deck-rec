@@ -117,12 +117,12 @@ function Comparison({ target, selected, commanderCount }: { target: CardSummary;
     <div>
       <div className="grid grid-cols-[minmax(0,2fr)_auto_minmax(0,3fr)] items-center gap-2 sm:gap-4">
         <figure className="min-w-0">
-          <figcaption className="mb-1.5 text-xs text-muted-foreground">In your deck</figcaption>
+          <figcaption className="mb-1.5 text-xs text-muted-foreground">Remove</figcaption>
           <FlippableCardImage card={target} zoomable sizes="(min-width: 640px) 210px, 38vw" className="opacity-75 saturate-50" />
         </figure>
         <ChevronRight aria-hidden className="size-6 text-muted-foreground" />
         <figure className="min-w-0">
-          <figcaption className="mb-1.5 text-xs text-muted-foreground">Replacement</figcaption>
+          <figcaption className="mb-1.5 text-xs text-muted-foreground">Add</figcaption>
           <div className="relative">
             <FlippableCardImage
               key={selected.card.id}
