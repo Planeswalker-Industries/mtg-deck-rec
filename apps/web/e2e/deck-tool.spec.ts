@@ -1,5 +1,5 @@
 import { test as withoutOfferSkip } from "@playwright/test";
-import { expect, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
+import { clearBuildBudget, expect, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
 
 /** Tailwind's `lg` breakpoint, where the deckbuilder shows search beside the deck instead of its own tab. */
 const LG_BREAKPOINT_PX = 1024;
@@ -263,6 +263,7 @@ test("builds a deck for a picked commander, then goes through it card by card", 
   await expect(build).toBeDisabled();
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: 30_000 });
+  await clearBuildBudget(page);
   await build.click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: 90_000 });
