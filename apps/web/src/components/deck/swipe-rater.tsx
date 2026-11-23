@@ -7,7 +7,7 @@ import { compareCards } from "@mtg/core/journey";
 import { ownedOnly, swapMatchLabel } from "@mtg/core/scoring";
 import { BuyPrice } from "@/components/cards/buy-price";
 import { DecisionButtons } from "@/components/cards/card-panel";
-import { MoveCard } from "@/components/cards/move-card";
+import { MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
@@ -201,8 +201,9 @@ export function SwipeRater({
       )}
 
       {!loaded ? (
-        <div className="grid grid-cols-2 items-start gap-3">
+        <div className={MOVE_PAIR_GRID}>
           {targetCard}
+          <SwapMark />
           <div role="status" aria-label="Finding replacements" className="flex justify-center self-center">
             <Skeleton className="aspect-[488/680] w-full max-w-28 rounded-[4.75%/3.4%] bg-seam sm:max-w-52" />
           </div>
@@ -238,8 +239,9 @@ export function SwipeRater({
         </>
       ) : (
         <>
-          <div aria-live="polite" className="grid grid-cols-2 items-start gap-3">
+          <div aria-live="polite" className={MOVE_PAIR_GRID}>
             {targetCard}
+            <SwapMark />
             <MoveCard
               card={candidate.card}
               side="in"

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, WandSparkles } from "lucide-react";
 import { compareCards, type FixMove } from "@mtg/core/journey";
 import { DecisionButtons } from "@/components/cards/card-panel";
-import { MoveCard } from "@/components/cards/move-card";
+import { MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { PriceTag } from "@/components/cards/buy-price";
@@ -36,8 +36,8 @@ function LineCount({ line }: { line: FixLineLabel }) {
 
 /**
  * Fix: one paired move at a time, a card out on the left and a card in on the right, for the Deck stats line named in
- * the header. Swap makes the move, Skip passes on the pair (either card may come back in another), and "Fix the rest
- * for me" previews every move left to apply together. The chips under the cards name every line the move changes.
+ * the header. Swap makes the move, Skip passes on the pair (either card may come back in another), and Auto-Fix
+ * previews every move left to apply together. The chips under the cards name every line the move changes.
  */
 export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney; fix: Fix; hasCollection: boolean }) {
   const { move } = fix;
@@ -136,8 +136,9 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
         }
       />
       <section aria-label="Fix: one card out, one card in" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <div aria-live="polite" className="grid grid-cols-2 items-start gap-3">
+        <div aria-live="polite" className={MOVE_PAIR_GRID}>
           <MoveCard card={move.out} side="out" />
+          <SwapMark />
           <MoveCard
             card={move.in}
             side="in"
@@ -163,11 +164,11 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
           pass={{ word: "Skip", label: `Skip swapping ${outName} for ${inName}`, onClick: () => act(false) }}
           accept={{ word: "Swap", label: `Swap ${outName} for ${inName}`, icon: ArrowLeftRight, onClick: () => act(true) }}
         />
-        <div className="-mt-1 flex flex-wrap justify-center gap-2">
-          <Button type="button" size="sm" variant="link" onClick={() => setPlan(fix.plan())}>
-            Fix the rest for me
-          </Button>
-        </div>
+        {/* Outline, under the pair: a way out of going one move at a time, never louder than Swap. */}
+        <Button type="button" size="lg" variant="outline" onClick={() => setPlan(fix.plan())} className="self-center">
+          <WandSparkles aria-hidden />
+          Auto-Fix
+        </Button>
       </section>
       {plan !== null && (
         <FixAutoSheet

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Minus, Plus } from "lucide-react";
+import { ArrowLeftRight, Minus, Plus } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { displayName } from "@/lib/cards";
@@ -54,4 +54,15 @@ export function MoveCard({
       {note && <div className="flex flex-col items-center gap-0.5 text-center text-xs text-muted-foreground">{note}</div>}
     </div>
   );
+}
+
+/** The row that holds a swap: the card going out, the swap mark, the card coming in. */
+export const MOVE_PAIR_GRID = "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2 sm:gap-3";
+
+/**
+ * The swap mark between the two cards (the Swap button's icon): brass, as decoration on paper, since it does nothing
+ * when pressed. Centred on the row's height, which puts it about level with the middle of the cards.
+ */
+export function SwapMark() {
+  return <ArrowLeftRight aria-hidden className="size-5 self-center text-brass" strokeWidth={2.25} />;
 }

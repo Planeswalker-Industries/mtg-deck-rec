@@ -248,7 +248,7 @@ export function useFix({
     skip: () => {
       if (move) journey.dispatch({ type: "declineFix", inId: move.in.id, outId: move.out.id });
     },
-    /** Every move left, each found on the deck as the ones before leave it: what "Fix the rest for me" previews. */
+    /** Every move left, each found on the deck as the ones before leave it: what Auto-Fix previews. */
     plan: (): FixMove[] => (input ? planFixes(input) : []),
     /** Makes the chosen moves as one choice, and reads the pool again for the deck they leave. */
     applyPlan: (moves: readonly FixMove[]) => {
