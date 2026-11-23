@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "cn";
 import { useEffect, useRef } from "react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { compareCards } from "@mtg/core/journey";
@@ -51,6 +52,7 @@ export function SwipeRater({
   cache,
   skipEmpty,
   onFinish,
+  finishButton = true,
   onNothingDealt,
   viewRef,
 }: {
@@ -79,6 +81,8 @@ export function SwipeRater({
   /** Deck tool: step over a card with no replacement on any rung instead of showing it empty (see useSwipeRater). */
   skipEmpty?: boolean;
   onFinish: () => void;
+  /** Show the Finish (Done) button beside the count; false where the page already offers it (Swap's stepper). */
+  finishButton?: boolean;
   /** The sitting ended without dealing a replacement (see useSwipeRater). */
   onNothingDealt?: () => void;
   /** Receives the view's element once it shows cards (not while the deck is still shuffling), e.g. to scroll it into place. */
@@ -164,7 +168,7 @@ export function SwipeRater({
       aria-label={inRater ? "Rate replacements" : "Swipe through cards to replace"}
       className="mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-2 sm:gap-3"
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className={cn("flex items-center gap-3", finishButton ? "justify-between" : "justify-center")}>
         <p className="text-sm text-muted-foreground font-mono">
           {/* "1 of 14": the word "Card" is read out, not shown (owner, 2026-11-18); "option" stays, two counts need it. */}
           <span className="sr-only">Card </span>
@@ -172,9 +176,11 @@ export function SwipeRater({
           {inRater ? "" : <span className="max-sm:hidden"> to replace</span>}
           {candidate && !inRater && <span className="sm:hidden"> · option {rater.candidateIndex + 1} of {rater.candidateCount}</span>}
         </p>
-        <Button type="button" size="sm" variant="ghost" onClick={onFinish}>
-          {inRater ? "Done" : "Finish"}
-        </Button>
+        {finishButton && (
+          <Button type="button" size="sm" variant="ghost" onClick={onFinish}>
+            {inRater ? "Done" : "Finish"}
+          </Button>
+        )}
       </div>
 
       <CompactCardPanel card={target.card} rules={targetRules} side="out" dim={!inRater}>

@@ -1,4 +1,4 @@
-import { CRAWLER_UA, FIX_MOVE, expect, headMeta, openFix, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
+import { CRAWLER_UA, FIX_MOVE, expect, headMeta, openFix, leaveSwap, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 /** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */
@@ -227,11 +227,7 @@ test("saving a journey's result keeps the original, which the deck page compares
   await openFix(page);
   await recs.getByRole("region", FIX_MOVE).getByRole("button", { name: /^Swap Lightning Bolt for / }).click({ timeout: 60_000 });
   await openSwap(page);
-  const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
-  const toReview = recs.getByRole("button", { name: "Next: finish" });
-  await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });
-  if (await rater.isVisible()) await rater.getByRole("button", { name: "Finish" }).click();
-  else await toReview.click();
+  await leaveSwap(page);
 
   // Save from Finish opens the name form in the editor, prefilled.
   await recs.getByRole("button", { name: "Save", exact: true }).click();

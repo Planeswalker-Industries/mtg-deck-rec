@@ -8,20 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T102: Conversion sprint: commander build to Buy on TCGplayer
-
-**HIGH** · Web · Plan approved 2026-11-22 (local `docs/plan_files/2026-11-22-conversion-sprint.md`); one branch `conversion-sprint`, one PR to `develop`
-
-A phone walk of the commander-build path found Continue taking 16-17 s on production (one Server Action per built card), the commander page dropping its commander, Buy two screens below Save, and three different totals on Finish.
-
-- [ ] Continue opens the round in under 2 s (`recordRecEvents`, contract v40)
-- [ ] Commander page "Build this Commander" prefills the build start
-- [ ] One cart total on every surface
-- [ ] Buy on the built page; every signed-in Buy saves to My Decks
-- [ ] Finish leads with the total and Buy as the seal
-- [ ] "Upgrades worth buying" for a fully owned deck (`POST /api/recs/upgrades`)
-- [ ] Polish and cleanup pass at 390x844 and desktop
-
 ## T074: Archidekt answers the daily crawl with 429s
 
 **HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`; the 429s are solved, the run bookkeeping is not

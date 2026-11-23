@@ -53,29 +53,26 @@ const isTyping = (target: EventTarget | null) => {
   return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 };
 
-/**
- * The round's controls, on every step but Finish (which keeps the deck rather than changing it): Undo (the last choice, on whichever step it was made; also Z or Ctrl+Z), Start
- * over (after a confirm, so it is never hit by mistake for Undo; Undo brings the choices back) and Save, as labelled icons. The
- * first row of the step's sheet, with the step's status in `slotRef` beside them, so a player who wants out or wants
- * to keep what they have never has to hunt for it.
- */
-export function RoundBar({
-  canUndo,
-  onUndo,
-  onStartOver,
-  save,
-  busy,
-  slotRef,
-}: {
+/** What the round's controls need: Undo, Start over and Save. */
+interface RoundControlsProps {
   canUndo: boolean;
   onUndo: () => void;
   onStartOver: () => void;
   save: RoundSave;
   /** A save or re-analyze is under way: Save waits for it. */
   busy: boolean;
-  /** Receives the element beside the buttons that the step's `StepStatus` renders into. */
+  /** Receives the element between Start over and Save that the step's `StepStatus` renders into. */
   slotRef?: (el: HTMLElement | null) => void;
-}) {
+  className?: string;
+}
+
+/**
+ * The round's controls as labelled icons: Undo (the last choice, on whichever step it was made; also Z or Ctrl+Z), Start
+ * over (after a confirm, so it is never hit by mistake for Undo; Undo brings the choices back), and Save at the right
+ * (owner, 2026-11-23), with the step's status between them when `slotRef` is given. Finish puts them in its top
+ * sheet's top right.
+ */
+export function RoundControls({ canUndo, onUndo, onStartOver, save, busy, slotRef, className }: RoundControlsProps) {
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
@@ -90,9 +87,8 @@ export function RoundBar({
   }, [canUndo, onUndo]);
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex min-h-11 items-center gap-3">
-        <div role="toolbar" aria-label="This round" className="flex shrink-0 items-center gap-1">
+    <>
+        <div role="toolbar" aria-label="This round" className={cn("flex min-h-11 items-center gap-1", className)}>
           <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={onUndo} disabled={!canUndo} aria-keyshortcuts="Z" title="Undo the last choice (Z)">
             <Undo2 aria-hidden />
             Undo
@@ -101,6 +97,7 @@ export function RoundBar({
             <RotateCcw aria-hidden />
             Start over
           </Button>
+          {slotRef && <div ref={slotRef} className="mx-2 flex min-w-0 flex-1 items-center gap-3" />}
           {save.kind === "new" ? (
             <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={save.onSave} disabled={busy}>
               <Save aria-hidden />
@@ -123,7 +120,7 @@ export function RoundBar({
                   </span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-56">
+              <DropdownMenuContent align="end" className="min-w-56">
                 <DropdownMenuItem className="flex-col items-start gap-0 text-primary focus:text-primary" onSelect={save.onSaveChanges}>
                   <span className="flex items-center gap-2 font-semibold">
                     <Save aria-hidden className="text-primary" />
@@ -142,9 +139,6 @@ export function RoundBar({
             </DropdownMenu>
           )}
         </div>
-        <div ref={slotRef} className="flex min-w-0 flex-1 items-center gap-3" />
-      </div>
-      <CopySaveStatus save={save} />
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent>
@@ -172,6 +166,20 @@ export function RoundBar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+/**
+ * The round's controls as the first row of every step's sheet but Finish's (which carries them in its top sheet), with
+ * the step's status in `slotRef` between them, so a player who wants out or wants to keep what they have never has to
+ * hunt for it.
+ */
+export function RoundBar(props: RoundControlsProps) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <RoundControls {...props} />
+      <CopySaveStatus save={props.save} />
     </div>
   );
 }

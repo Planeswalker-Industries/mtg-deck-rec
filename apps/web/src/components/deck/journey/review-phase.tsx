@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Download, FilePlus2, RefreshCw, Save, TriangleAlert } from "lucide-react";
+import { Download, RefreshCw, TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
 import { CURVE_LINE, deckDiff, deckStats, type DeckStatsReport, type FixBlock } from "@mtg/core/journey";
@@ -13,13 +13,12 @@ import { BuyButtons, CartTotal, type BuySaveState } from "@/components/decks/buy
 import type { ShoppingCart } from "@/components/decks/use-shopping-cart";
 import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
-import { ComingSoonButton } from "@/components/ui/coming-soon-button";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
 import { LevelBadge, Mark } from "../deck-stats/level";
-import { CopySaveStatus, type RoundSave } from "./round-bar";
+import { CopySaveStatus, RoundControls, type RoundSave } from "./round-bar";
 import { judge, Move, RoundMoves } from "./round-moves";
 import { Upgrades } from "./upgrades";
 import type { DeckJourney } from "./use-deck-journey";
@@ -127,14 +126,13 @@ export function roundInIds(journey: DeckJourney): CardId[] {
 }
 
 /**
- * Finish: the round's result, shown rather than told. It leads with "Deck Complete!", the cart total and Buy on TCGplayer
- * as the seal (or, when the collection supplies every card, the upgrades worth buying and their Buy), with Save, Copy,
- * Download and Re-analyze in one outline row under it (T102). Then one Deck stats sheet:
- * cards, mana value and the deck's value before and after, each stat line as a read-only bar from where the round
- * started to where it ends against its aim, and each line still off with its reason and what the player can do about
- * it (T087). Then the shopping list, every change as card plates (Out beside In) and the finished decklist laid out by
- * type on the plates the deck editor uses. Finish has no Undo or Start over (owner, 2026-11-23): the round is done
- * here; the stepper still goes back to a step, where they are.
+ * Finish: the round's result, shown rather than told. It leads with "Deck Complete!" and the round's Undo, Start over and
+ * Save in its top right (owner, 2026-11-23), the cart total and Buy on TCGplayer as the seal (or, when the collection
+ * supplies every card, the upgrades worth buying and their Buy), with Copy, Download and Re-analyze in one outline row
+ * beside it (T102). Then one Deck stats sheet: cards, mana value and the deck's value before and after, each stat line as
+ * a read-only bar from where the round started to where it ends against its aim, and each line still off with its
+ * reason and what the player can do about it (T087). Then the shopping list, every change as card plates (Out beside
+ * In) and the finished decklist laid out by type on the plates the deck editor uses.
  */
 export function ReviewPhase({
   journey,
@@ -290,7 +288,7 @@ export function ReviewPhase({
 
   /*
    * Finish leads with the deck being done and what it costs to get (T102): the total and Buy, the page's seal, then the
-   * other ways to keep the deck in one outline row. Deck stats, the lines still off and their Fix links follow in one
+   * other ways to take the deck away in one outline row. Deck stats, the lines still off and their Fix links follow in one
    * sheet; then the shopping list, the changes and the decklist. On a phone that is one column. From xl (the Deck stats
    * rail already takes a right column from lg) the shopping list is an aside on the right from the top, kept in view
    * while the rest scrolls; the left items name only their column, so auto-placement stacks them in rows 1-4 beside it.
@@ -298,12 +296,12 @@ export function ReviewPhase({
   return (
     <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
       <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
-        {/* Assemble Now isn't built yet (owner, 2026-11-23): it shows, disabled, and says so when tapped or hovered. */}
+        {/* The round's Undo, Start over and Save sit in the top right, as on every step (owner, 2026-11-23). */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 id="review-ready" className="font-heading text-2xl leading-none font-semibold">
             {overBy > 0 ? "Almost ready" : "Deck Complete!"}
           </h2>
-          <ComingSoonButton label="Assemble Now" />
+          <RoundControls canUndo={journey.canUndo} onUndo={journey.undo} onStartOver={journey.restart} save={save} busy={blocked} />
         </div>
         {overBy > 0 && (
           <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
@@ -334,44 +332,6 @@ export function ReviewPhase({
           <BuyButtons carts={cart.carts} onBuy={onBuy} saved={buySaved} seal className="max-sm:items-stretch max-sm:[&_a]:flex-1" />
           {/* Symbols, not words (owner, 2026-11-23): each names itself to screen readers and on hover. */}
           <div className="flex flex-wrap gap-2 sm:py-1">
-            {save.kind === "open" ? (
-              <>
-                <Button
-                  type="button"
-                  size="icon-lg"
-                  variant="outline"
-                  onClick={save.onSaveChanges}
-                  disabled={blocked}
-                  aria-label="Save changes"
-                  title="Save changes"
-                >
-                  <Save aria-hidden />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon-lg"
-                  variant="outline"
-                  onClick={save.onSaveCopy}
-                  disabled={blocked || save.copy.status === "saving"}
-                  aria-label="Save as copy"
-                  title="Save as copy"
-                >
-                  <FilePlus2 aria-hidden />
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="button"
-                size="icon-lg"
-                variant="outline"
-                onClick={save.onSave}
-                disabled={blocked}
-                aria-label="Save"
-                title="Save"
-              >
-                <Save aria-hidden />
-              </Button>
-            )}
             <CopyDecklistButton text={journey.resultText} iconOnly outline disabled={blocked} />
             <Button
               type="button"

@@ -241,6 +241,8 @@ export function ReplacePhase({
             // step says so and waits rather than move on to Finish by itself.
             skipEmpty
             onFinish={toReview}
+            // The stepper's Finish is on screen above; the card's line keeps to the count.
+            finishButton={false}
             onNothingDealt={() => setNothingDealt(journey.replace.version)}
           />
         </div>
