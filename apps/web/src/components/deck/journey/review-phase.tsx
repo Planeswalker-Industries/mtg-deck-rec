@@ -297,12 +297,22 @@ export function ReviewPhase({
     // Without the shopping list there is no aside, so the page keeps one column rather than an empty right one.
     <div className={cn("flex flex-col gap-4", listed && "xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start")}>
       <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
-        {/* The round's Undo, Start over and Save sit in the top right, as on every step (owner, 2026-11-23). */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="review-ready" className="font-heading text-2xl leading-none font-semibold">
+        {/*
+          The round's Undo, Start over and Save sit in the top right, as on every step, on the heading's line (owner,
+          2026-11-23): the heading steps down a size on phones so both fit the 390 px width.
+        */}
+        <div className="flex items-center justify-between gap-2">
+          <h2 id="review-ready" className="min-w-0 font-heading text-xl leading-none font-semibold sm:text-2xl">
             {overBy > 0 ? "Almost ready" : "Deck Complete!"}
           </h2>
-          <RoundControls canUndo={journey.canUndo} onUndo={journey.undo} onStartOver={journey.restart} save={save} busy={blocked} />
+          <RoundControls
+            canUndo={journey.canUndo}
+            onUndo={journey.undo}
+            onStartOver={journey.restart}
+            save={save}
+            busy={blocked}
+            className="shrink-0"
+          />
         </div>
         {overBy > 0 && (
           <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
