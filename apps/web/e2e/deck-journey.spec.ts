@@ -535,7 +535,7 @@ async function cartTotals(page: Page): Promise<{ heading: number; bar: number; b
   const bar = firstUsd(await dock.innerText());
   await dock.click();
   const sheet = page.getByRole("dialog", { name: "Deck stats" });
-  const budget = firstUsd(await sheet.getByRole("region", { name: "Budget" }).locator("p", { hasText: "To buy" }).innerText());
+  const budget = firstUsd(await sheet.getByRole("region", { name: "Budget" }).getByRole("button", { name: /^Budget:/ }).innerText());
   await sheet.getByRole("button", { name: "Close deck stats" }).click();
   await expect(sheet).toBeHidden();
   return { heading, bar, budget };

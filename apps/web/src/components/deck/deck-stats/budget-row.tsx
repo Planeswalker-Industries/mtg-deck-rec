@@ -131,88 +131,89 @@ function OverCapMark() {
 }
 
 /**
- * The sheet's Budget row: its mark (off once over budget), the cart total against the budget with its prices' date, cards
- * left out unpriced, and the two fields to edit. Tapping "Budget" lists the cart's cards, each with its price, as slim
- * plates that enlarge when pressed; one over the Max per card is marked amber, never taken out. Buy on TCGplayer
- * sits beside it, so the player can check out at any step.
+ * The sheet's Budget row, folded to one line (owner, 2026-11-23): its mark (off once over budget), the cart total against
+ * the budget with its prices' date, and Over budget or Budget spent, with Buy on TCGplayer beside it so the player can
+ * check out at any step. Tapping the line opens the two fields to edit, cards left out unpriced, and the cart's cards,
+ * each with its price, as slim plates that enlarge when pressed; one over the Max per card is marked amber, never taken
+ * out. It opens closed: the over-budget warning's Cancel goes to the start form's fields, and the sheet isn't up then.
  */
 export function BudgetRow({ money }: { money: RoundBudget }) {
   const { totalUsd, asOf, lines, budget, unpricedSkipped, onBudget, importHref, buy } = money;
   const [open, setOpen] = useState(false);
-  const listId = useId();
+  const panelId = useId();
   const spend = budget?.spendUsd;
   const over = overBudget(money);
-  const expandable = lines.length > 0;
+  const spent = !over && spend !== undefined && totalUsd >= spend;
+  const status = over ? "Over budget" : spent ? "Budget spent" : null;
+  const amount = spend !== undefined ? `${formatUsd(totalUsd)} of ${formatUsd(spend)}` : `${formatUsd(totalUsd)}, no limit`;
+  // The line's words for a screen reader, in the order the eye reads them; the mark's state is in the status.
+  const name = `Budget: ${amount} to buy${asOfSuffix(asOf)}${status ? `, ${status.toLowerCase()}` : ""}`;
   return (
     <section className="flex flex-col gap-2" aria-label="Budget">
-      <div className="flex items-start justify-between gap-3">
-        {expandable ? (
-          <h3 className="text-sm font-semibold">
-            <button
-              type="button"
-              aria-expanded={open}
-              aria-controls={open ? listId : undefined}
-              onClick={() => setOpen((o) => !o)}
-              className="-my-2 flex min-h-11 cursor-pointer items-center gap-1 rounded-md text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              Budget
-              <ChevronDown aria-hidden className={cn("size-4 transition-transform", !open && "-rotate-90")} />
-              <span className="sr-only">{open ? ": hide the cards" : `: show the ${lines.length} cards`}</span>
-            </button>
-          </h3>
-        ) : (
-          <h3 className="text-sm font-semibold text-muted-foreground">Budget</h3>
-        )}
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          aria-label={name}
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          onClick={() => setOpen((o) => !o)}
+          className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <Mark state={over ? "off" : "ok"} />
+          <span className="min-w-0">
+            <span className="font-semibold text-primary">Budget</span>
+            <span aria-hidden className="text-muted-foreground">
+              {" · "}
+            </span>
+            <span className="font-mono">{formatUsd(totalUsd)}</span>
+            {spend !== undefined ? (
+              <>
+                {" "}
+                of <span className="font-mono">{formatUsd(spend)}</span>
+              </>
+            ) : (
+              <span className="text-muted-foreground"> · no limit</span>
+            )}
+            {asOf && <span className="text-xs text-muted-foreground">{asOfSuffix(asOf)}</span>}
+          </span>
+          {status && <span className={cn("ml-auto shrink-0 text-xs", over ? "text-destructive" : "text-muted-foreground")}>{status}</span>}
+          <ChevronDown aria-hidden className={cn("size-4 shrink-0 text-primary transition-transform", !status && "ml-auto", !open && "-rotate-90")} />
+        </button>
         {buy && <BuyButtons carts={buy.carts} onBuy={buy.onBuy} saved={buy.saved} align="end" />}
       </div>
-      <p className="flex items-center gap-2 text-sm">
-        <Mark state={over ? "off" : "ok"} />
-        <span>
-          <span className="sr-only">To buy </span>
-          <span className="font-mono">{formatUsd(totalUsd)}</span>
-          {spend !== undefined && (
-            <>
-              {" "}
-              of <span className="font-mono">{formatUsd(spend)}</span>
-            </>
+      {open && (
+        <div id={panelId} className="flex flex-col gap-2">
+          <BudgetFields budget={budget} onBudget={onBudget} importHref={importHref} />
+          {unpricedSkipped !== undefined && unpricedSkipped > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {unpricedSkipped} card{unpricedSkipped === 1 ? "" : "s"} without a price left out
+            </p>
           )}
-          {asOf && <span className="text-xs text-muted-foreground">{asOfSuffix(asOf)}</span>}
-        </span>
-        {over ? (
-          <span className="ml-auto shrink-0 text-xs text-destructive">Over budget</span>
-        ) : (
-          spend !== undefined && totalUsd >= spend && <span className="ml-auto shrink-0 text-xs text-muted-foreground">Budget spent</span>
-        )}
-      </p>
-      {open && expandable && (
-        <ul id={listId} aria-label="Cards to buy" className="flex flex-col gap-1">
-          {lines.map(({ card, quantity }) => (
-            <CardPlate
-              key={card.id}
-              card={card}
-              quantity={quantity}
-              showCost={false}
-              slim
-              trailing={
-                overCap(card, budget) ? (
-                  <span className="mx-1 inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
-                    <OverCapMark />
-                    <PriceTag price={card.price} className="text-warning" />
-                  </span>
-                ) : (
-                  <PriceTag price={card.price} className="mx-1 text-xs whitespace-nowrap" />
-                )
-              }
-            />
-          ))}
-        </ul>
+          {lines.length > 0 && (
+            <ul aria-label="Cards to buy" className="flex flex-col gap-1">
+              {lines.map(({ card, quantity }) => (
+                <CardPlate
+                  key={card.id}
+                  card={card}
+                  quantity={quantity}
+                  showCost={false}
+                  slim
+                  trailing={
+                    overCap(card, budget) ? (
+                      <span className="mx-1 inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+                        <OverCapMark />
+                        <PriceTag price={card.price} className="text-warning" />
+                      </span>
+                    ) : (
+                      <PriceTag price={card.price} className="mx-1 text-xs whitespace-nowrap" />
+                    )
+                  }
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
-      {unpricedSkipped !== undefined && unpricedSkipped > 0 && (
-        <p className="text-sm text-muted-foreground">
-          {unpricedSkipped} card{unpricedSkipped === 1 ? "" : "s"} without a price left out
-        </p>
-      )}
-      <BudgetFields budget={budget} onBudget={onBudget} importHref={importHref} />
     </section>
   );
 }

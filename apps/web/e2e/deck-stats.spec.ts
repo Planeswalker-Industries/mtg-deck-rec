@@ -170,6 +170,8 @@ test.describe("the round's budget (T091)", () => {
     const sheet = page.getByRole("dialog", { name: "Deck stats" });
     const budget = sheet.getByRole("region", { name: "Budget" });
     await expect(budget).toBeVisible();
+    // Budget opens folded to its one line; the fields are behind it.
+    await budget.getByRole("button", { name: /^Budget:/ }).click();
     // $0 a card leaves only basics and owned cards: Add asks again within it, and the priced card on screen goes.
     await budget.getByRole("textbox", { name: "Max per card" }).fill("0");
     await sheet.getByRole("button", { name: "Close deck stats", exact: true }).click();
