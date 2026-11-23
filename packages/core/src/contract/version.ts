@@ -167,6 +167,8 @@
  * (the deck editor's new commander) can show its art with the credit it owes. Additive.
  *
  * v40 (2026-11-22): conversion sprint (T102; owner approved 2026-11-22). ActionsApi.recordRecEvents records many events
- * of one list in one call, so a build's acceptance no longer queues one Server Action per card. Additive.
+ * of one list in one call, so a build's acceptance no longer queues one Server Action per card. RecsApi.upgrades
+ * (POST /api/recs/upgrades): for a deck the collection fully supplies, the unowned replacements that improve it most,
+ * ranked by gain, never by price (UpgradesResult, UpgradeSuggestion). Additive.
  */
 export const CONTRACT_VERSION = 40;

@@ -20,6 +20,7 @@ import { byCost, groupHeading } from "../deck-group-id";
 import { LevelBadge, Mark } from "../deck-stats/level";
 import { CopySaveStatus, type RoundSave } from "./round-bar";
 import { judge, Move, RoundMoves } from "./round-moves";
+import { Upgrades } from "./upgrades";
 import type { DeckJourney } from "./use-deck-journey";
 import type { Fix, FixLineLabel } from "./use-fix";
 
@@ -116,7 +117,8 @@ export function roundInIds(journey: DeckJourney): CardId[] {
 
 /**
  * Finish: the round's result, shown rather than told. It leads with "Deck ready", the cart total and Buy on TCGplayer
- * as the seal, with Save, Copy, Download and Re-analyze in one outline row under it (T102). Then one Deck stats sheet:
+ * as the seal (or, when the collection supplies every card, the upgrades worth buying and their Buy), with Save, Copy,
+ * Download and Re-analyze in one outline row under it (T102). Then one Deck stats sheet:
  * cards, mana value and the deck's value before and after, each stat line as a read-only bar from where the round
  * started to where it ends against its aim, and each line still off with its reason and what the player can do about
  * it (T087). Then the shopping list, every change as card plates (Out beside In) and the finished decklist laid out by
@@ -247,6 +249,8 @@ export function ReviewPhase({
   const leftoverByLine = new Map(leftovers.filter((l) => statKeys.has(l.line)).map((l) => [l.line, l]));
   const otherLeftovers = leftovers.filter((l) => !statKeys.has(l.line));
   const blocked = busy || stale;
+  /** Nothing to buy because the collection supplies every card (not because the player removed them). */
+  const offerUpgrades = cart.fromCollection && cart.list?.count === 0 && cart.removed.length === 0;
   const nothingToBuy = cart.fromCollection
     ? "You own every card."
     : cart.removed.length > 0
@@ -284,6 +288,13 @@ export function ReviewPhase({
         )}
         <CartTotal cart={cart} emptyText={nothingToBuy} />
         <BuyButtons carts={cart.carts} onBuy={onBuy} saved={buySaved} seal className="max-sm:items-stretch max-sm:[&_a]:flex-1" />
+        {/*
+          A deck the collection fully supplies has nothing to buy, so Finish offers what would improve it instead (T102),
+          with its own Buy in the seal's place.
+        */}
+        {offerUpgrades && journey.workingContext && (
+          <Upgrades context={journey.workingContext} onBuy={onBuy} saved={buySaved} className="border-t border-seam pt-3" />
+        )}
         <div className="flex flex-wrap gap-2 pt-1">
           {save.kind === "open" ? (
             <>

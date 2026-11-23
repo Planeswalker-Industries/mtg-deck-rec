@@ -26,11 +26,11 @@ import type {
 } from './decks';
 import type { Result } from './errors';
 import type { Bracket, CardId, CommanderKeyId, DeckId, IsoDateTime, TagId } from './ids';
-import type { AddResult, BuildFill, BuildResult, CutResult, FixResult, RecEvent, RaterDeal, RecContext, SwapResult, VoteContext, VoteSummary } from './recs';
+import type { AddResult, BuildFill, BuildResult, CutResult, FixResult, RecEvent, RaterDeal, RecContext, SwapResult, UpgradesResult, VoteContext, VoteSummary } from './recs';
 import type { OwnershipInput } from './recs';
 
 /**
- * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut,build,fix}
+ * Recommendation reads. Transport: Route Handlers POST /api/recs/{swap,add,cut,build,fix,upgrades}
  * (parallel requests, WAF rate-limited). Not Server Actions — those are dispatched serially.
  */
 export interface RecsApi {
@@ -48,6 +48,12 @@ export interface RecsApi {
    * adds and cuts are. Read when Fix opens and again after an auto-fix is applied.
    */
   fix(input: { context: RecContext }): Promise<Result<FixResult>>;
+  /**
+   * Upgrades worth buying (v40) for a deck the collection fully supplies: the unowned replacements for the deck's
+   * weakest cards that beat what the collection has most, ranked by gain, never by price. Empty without a collection
+   * or with no money left to spend. `limit` defaults to 5.
+   */
+  upgrades(input: { context: RecContext; limit?: number }): Promise<Result<UpgradesResult>>;
 }
 
 /**

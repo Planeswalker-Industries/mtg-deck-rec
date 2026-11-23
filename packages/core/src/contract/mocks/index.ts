@@ -44,6 +44,7 @@ import type { CommanderRequest, CommanderRequestStatus } from '../commander-requ
 import type { ActionsApi, CatalogApi, DataApi, RecsApi } from '../transport';
 import { ownedFirst, ownedOnly, rankKey } from '../../scoring/owned';
 import { buyList } from '../../scoring/rank';
+import { DEFAULT_UPGRADES_LIMIT, pickUpgrades } from '../../shop/upgrades';
 import { effectiveCapUsd, withinBudget } from '../../scoring/budget';
 import { cardTypes } from '../../scoring/add';
 import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
@@ -122,6 +123,8 @@ const MOCK_LADDER_MIN = 3;
 const MOCK_SLOT_MANA_VALUE_RANGE = 1;
 /** The buy list's settings, as `app_config.scoring.collection` starts them (a shorter list, for the mock catalog). */
 const MOCK_BUY_LIST = { buyMargin: 0.05, priceFloorUsd: 0.25, buyListSize: 5 };
+/** Weakest deck cards mock upgrades scan, fewer than the route's: the mock catalog is small. */
+const MOCK_UPGRADE_TARGET_SCAN = 8;
 /** Lands a mock build aims for, about what Commander decks run (`app_config.scoring.build` holds the real counts). */
 const MOCK_BUILD_LANDS = 36;
 /**
@@ -698,6 +701,16 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       } catch (e) {
         return delay(fail('VALIDATION', (e as Error).message));
       }
+    },
+
+    async upgrades({ context, limit = DEFAULT_UPGRADES_LIMIT }) {
+      // As the route: nothing without a collection or with no money left to spend.
+      if (context.ownership === null || context.budget?.spendLeftUsd === 0) return delay(ok({ suggestions: [] }));
+      const only = { ...context, ownershipMode: 'only' as const };
+      const cuts = await recs.cut({ context: only, limit: MOCK_UPGRADE_TARGET_SCAN });
+      if (!cuts.ok) return cuts;
+      const swaps = await Promise.all(cuts.data.suggestions.map((s) => recs.swap({ context: only, targetCardId: s.card.id })));
+      return ok({ suggestions: pickUpgrades(swaps.flatMap((r) => (r.ok ? [r.data] : [])), limit) });
     },
   };
 

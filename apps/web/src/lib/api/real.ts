@@ -59,6 +59,7 @@ export const realRecs: RecsApi = {
   fix: (input) => post("/api/recs/fix", input),
   cut: (input) => post("/api/recs/cut", input),
   build: (input) => post("/api/recs/build", input),
+  upgrades: (input) => post("/api/recs/upgrades", input),
 };
 
 export const realActions: ActionsApi = {

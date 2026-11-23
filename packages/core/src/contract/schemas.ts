@@ -155,6 +155,16 @@ export const cutInputSchema = z.object({ context: recContextSchema, limit }, req
 export const buildInputSchema = z.object({ context: recContextSchema, fill: z.enum(['none', 'value']).optional() }, request);
 /** Fix's pool (v35): the deck, its bracket and its collection, as for adds and cuts. */
 export const fixInputSchema = z.object({ context: recContextSchema }, request);
+/** Most upgrades one request may ask for (v40): Finish shows five; the cap leaves room without scanning more. */
+export const MAX_UPGRADES_LIMIT = 10;
+/** Upgrades worth buying (v40): the deck as it stands and its collection; `limit` 1 to MAX_UPGRADES_LIMIT. */
+export const upgradesInputSchema = z.object(
+  {
+    context: recContextSchema,
+    limit: z.int().min(1).max(MAX_UPGRADES_LIMIT, `At most ${MAX_UPGRADES_LIMIT} upgrades.`).optional(),
+  },
+  request,
+);
 
 export const parseDeckInputSchema = z.object(
   {

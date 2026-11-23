@@ -45,6 +45,14 @@ test("rejects invalid bodies with readable errors", async ({ request }) => {
   expect((await account.json()).error.code).toBe("UNAUTHENTICATED");
 });
 
+test("rejects invalid upgrades requests", async ({ request }) => {
+  const noDeck = await post(request, "/api/recs/upgrades", {}, visitor("upgrades"));
+  expect(noDeck.status()).toBe(400);
+  const tooMany = await post(request, "/api/recs/upgrades", { context, limit: 11 }, visitor("upgrades-limit"));
+  expect(tooMany.status()).toBe(400);
+  expect((await tooMany.json()).error.message).toBe("At most 10 upgrades.");
+});
+
 test("limits each visitor's recommendation requests", async ({ request }) => {
   const from = visitor("limit");
   // Invalid bodies still count against the budget, so this runs no recommendation queries.

@@ -10,6 +10,7 @@ import {
   MAX_REC_EVENTS_PER_CALL,
   MAX_CARD_COPIES,
   MAX_STAT_CHOICES,
+  MAX_UPGRADES_LIMIT,
   MAX_VOTE_CANDIDATES_SHOWN,
   addInputSchema,
   castVoteInputSchema,
@@ -27,6 +28,7 @@ import {
   saveDeckInputSchema,
   submitFeedbackInputSchema,
   swapInputSchema,
+  upgradesInputSchema,
 } from './schemas';
 
 const context = (overrides: Record<string, unknown> = {}) => ({
@@ -260,6 +262,17 @@ describe('recEventsInputSchema', () => {
   it('refuses events from different batches', () => {
     const other = accepted(1, { batchId: '7a2b3c4d-5e6f-4a70-8b8c-9d0e1f2a3b4c' });
     expect(parseInput(recEventsInputSchema, { events: [accepted(0), other] }).ok).toBe(false);
+  });
+});
+
+describe('upgradesInputSchema (v40)', () => {
+  it('takes a context and a limit up to the cap', () => {
+    expect(parseInput(upgradesInputSchema, { context: context() }).ok).toBe(true);
+    expect(parseInput(upgradesInputSchema, { context: context(), limit: MAX_UPGRADES_LIMIT }).ok).toBe(true);
+  });
+
+  it('refuses a limit past the cap', () => {
+    expect(parseInput(upgradesInputSchema, { context: context(), limit: MAX_UPGRADES_LIMIT + 1 }).ok).toBe(false);
   });
 });
 
