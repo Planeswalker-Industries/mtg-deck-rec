@@ -132,7 +132,8 @@ test("a collection build asks about each gap: Allow buying adds cards to buy, Ig
     const sheet = page.getByRole("dialog", { name: "Deck stats" });
     // Each line is a ring named "<line>: <count>, <where it stands>".
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const ring = sheet.getByRole("button", { name: new RegExp(`^${escaped}: \\d+, ignored`) });
+    // Relative to the item it filters, so from the page, not the sheet.
+    const ring = page.getByRole("button", { name: new RegExp(`^${escaped}: \\d+, ignored`) });
     const line = sheet.getByRole("listitem").filter({ has: ring }).first();
     await expect(line.getByRole("img", { name: "Ignored" })).toBeVisible({ timeout: RECS_WAIT_MS });
     await page.keyboard.press("Escape");
