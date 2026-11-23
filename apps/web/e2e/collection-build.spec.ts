@@ -70,7 +70,7 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   const before = await count.innerText();
   await fill.click();
   await expect(count).toHaveText("100 / 100", { timeout: RECS_WAIT_MS });
-  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
+  await recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
   await expect(count).toHaveText(before);
 
   // Allow Singles switches the collection setting to Owned first, and Add deals cards to buy, with their price.

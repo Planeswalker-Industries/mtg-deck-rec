@@ -57,6 +57,14 @@ export function Upgrades({
       <h3 id="review-upgrades" className="font-heading text-xl leading-none font-semibold">
         Upgrades worth buying
       </h3>
+      {/* The total and Buy lead, as on the rest of Finish: on a phone the rows would push Buy under the docked bar. */}
+      <p className="text-sm">
+        {list.count.toLocaleString("en-US")} {list.count === 1 ? "card" : "cards"},{" "}
+        <span className="font-mono">{formatUsd(list.totalUsd)}</span>
+        <span className="text-xs text-muted-foreground">{asOfSuffix(list.asOf)}</span>
+        {list.unpriced > 0 && <span className="text-muted-foreground"> · {list.unpriced} unpriced</span>}
+      </p>
+      <BuyButtons carts={carts} onBuy={onBuy} saved={saved} seal className="max-sm:items-stretch max-sm:[&_a]:flex-1" />
       {/*
         Out beside In, as Changes lays a swap out: the deck card on the left, the card to buy for it on the right. The
         plates are one height, so each pair sits on one row.
@@ -87,13 +95,6 @@ export function Upgrades({
           </ul>
         </section>
       </div>
-      <p className="text-sm">
-        {list.count.toLocaleString("en-US")} {list.count === 1 ? "card" : "cards"},{" "}
-        <span className="font-mono">{formatUsd(list.totalUsd)}</span>
-        <span className="text-xs text-muted-foreground">{asOfSuffix(list.asOf)}</span>
-        {list.unpriced > 0 && <span className="text-muted-foreground"> · {list.unpriced} unpriced</span>}
-      </p>
-      <BuyButtons carts={carts} onBuy={onBuy} saved={saved} seal className="max-sm:items-stretch max-sm:[&_a]:flex-1" />
     </section>
   );
 }

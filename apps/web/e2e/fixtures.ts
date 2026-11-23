@@ -93,7 +93,7 @@ export async function ignoreBuildGaps(page: Page) {
  */
 export async function toDeckbuilder(page: Page) {
   const recs = page.getByRole("region", { name: "Recommendations" });
-  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Save", exact: true }).click({ timeout: STEP_WAIT_MS });
+  await recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Save", exact: true }).click({ timeout: STEP_WAIT_MS });
   await expect(page.getByRole("textbox", { name: "Deck name" })).toBeVisible({ timeout: STEP_WAIT_MS });
   return recs;
 }

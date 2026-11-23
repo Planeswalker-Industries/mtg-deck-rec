@@ -136,7 +136,7 @@ test("browser quantities and a live round update the two-line summary and the ke
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   // Undo puts Bolt back, and the summary with it.
-  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
+  await recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
   await expect(trigger).toHaveText("3/9 available", { timeout: 60_000 });
 
   // Save opens the deckbuilder, which has no summary; cancelling the save goes back to Upgrade, and it returns.

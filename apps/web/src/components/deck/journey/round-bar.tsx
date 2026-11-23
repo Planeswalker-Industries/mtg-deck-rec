@@ -88,7 +88,7 @@ export function RoundControls({ canUndo, onUndo, onStartOver, save, busy, slotRe
 
   return (
     <>
-        <div role="toolbar" aria-label="This round" className={cn("flex min-h-11 items-center gap-1", className)}>
+        <div role="group" aria-label="This round" className={cn("flex min-h-11 items-center gap-1", className)}>
           <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={onUndo} disabled={!canUndo} aria-keyshortcuts="Z" title="Undo the last choice (Z)">
             <Undo2 aria-hidden />
             Undo

@@ -405,18 +405,27 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
    * a collection, and again when it changes; until they are in, the money slot stays empty.
    */
   const [ownedCopies, setOwnedCopies] = useState<{ source: typeof source; copies: ReadonlyMap<CardId, number> } | null>(null);
+  /** A failed read of those copies, for the source it failed on: the built page says so and offers another try. */
+  const [copiesFailed, setCopiesFailed] = useState<typeof source | null>(null);
+  /** Bumped by that Retry, to read the copies again. */
+  const [copiesAttempt, setCopiesAttempt] = useState(0);
   const wantsOwned = source.kind === "browser" || source.kind === "account";
   useEffect(() => {
     if (!wantsOwned) return;
     let live = true;
     void collectionCounts(source)
       .then((copies) => live && setOwnedCopies({ source, copies }))
-      .catch(() => undefined);
+      .catch(() => live && setCopiesFailed(source));
     return () => {
       live = false;
     };
-  }, [wantsOwned, source]);
+  }, [wantsOwned, source, copiesAttempt]);
   const copies = ownedCopies?.source === source ? ownedCopies.copies : null;
+  const copiesError = copies === null && copiesFailed === source;
+  function retryCopies() {
+    setCopiesFailed(null);
+    setCopiesAttempt((n) => n + 1);
+  }
   const owns = useCallback((cardId: CardId) => (copies?.get(cardId) ?? 0) > 0, [copies]);
   /** The last deck taken from a build, by key, with the cards the build bought: its round counts them as spent (T099). */
   const [built, setBuilt] = useState<{ key: string; cards: readonly CardSummary[] } | null>(null);
@@ -1052,6 +1061,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
           state={deckBuild.state}
           collectionImportHref={buildImportHref}
           ownedCopies={deckBuild.state.status === "ready" && deckBuild.state.fromCollection ? (copies ?? undefined) : null}
+          onRetryOwnedCopies={copiesError ? retryCopies : null}
           onBuy={buyBuilt}
           buySaved={deckBuild.state.status === "ready" ? buySaveFor(builtCommandersOf(deckBuild.state)) : { status: "idle" }}
           onBracket={(bracket) => {

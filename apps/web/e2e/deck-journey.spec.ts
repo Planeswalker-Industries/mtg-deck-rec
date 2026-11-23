@@ -122,11 +122,11 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
 
   // Finish carries the round's controls in its top sheet: Start over, after a confirm, goes back to the deck as the
   // round started, at Add; Undo brings the round back, on Finish.
-  await recs.getByRole("region", { name: "Deck Complete!" }).getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Start over" }).click();
+  await recs.getByRole("region", { name: "Deck Complete!" }).getByRole("group", { name: "This round" }).getByRole("button", { name: "Start over" }).click();
   await page.getByRole("dialog", { name: "Start this round over?" }).getByRole("button", { name: "Start over" }).click();
   await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
   await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
-  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
+  await recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
   await expect(steps.getByRole("button", { name: "Finish" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
 });
 
@@ -141,7 +141,7 @@ test("a deck at 100 opens on Fix, and Fix the rest previews its moves before one
   await expect(first).toBeVisible({ timeout: 60_000 });
   // The lines the move changes sit by the cards, with their counts.
   await expect(move.getByRole("list", { name: "What this changes" }).getByRole("listitem").first()).toBeVisible();
-  const undo = recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" });
+  const undo = recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" });
   await expect(undo).toBeDisabled();
 
   await move.getByRole("button", { name: "Fix the rest for me" }).click();
@@ -218,7 +218,7 @@ test("a bracket the deck no longer fits, chosen during Swap or Finish, sends the
 test("Undo takes back the last choice, on the step it was made on", async ({ page }) => {
   const recs = await analyzeDeck(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
-  const undo = recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" });
+  const undo = recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" });
   await expect(undo).toBeDisabled();
 
   const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / });

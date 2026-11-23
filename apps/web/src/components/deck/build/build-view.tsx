@@ -16,6 +16,7 @@ import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { DeckViewToggle, SortMenu, useCardSort, useDeckView, type DeckView } from "@/components/decks/deck-view";
 import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { Button } from "@/components/ui/button";
+import { ErrorText } from "@/components/ui/error-text";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
@@ -341,6 +342,7 @@ export function BuildView({
   onPickAnother,
   onChangeBudget,
   ownedCopies,
+  onRetryOwnedCopies = null,
   onBuy,
   buySaved,
 }: {
@@ -348,6 +350,8 @@ export function BuildView({
   collectionImportHref: Route;
   /** The collection's copies, for the cart: null without a collection, undefined while they load. */
   ownedCopies: ReadonlyMap<CardId, number> | null | undefined;
+  /** Set when reading those copies failed: the cart can't be counted, so the page says so with another try. */
+  onRetryOwnedCopies?: (() => void) | null;
   /** Called as a cart opens: saves the built deck to My Decks for a signed-in player. */
   onBuy: (choices: StatChoices) => void;
   /** What became of that save. */
@@ -503,7 +507,16 @@ export function BuildView({
         </div>
         {shortRoles.length > 0 && <RoleShortfalls lines={shortRoles} />}
         {collectionGaps.length > 0 && <CollectionGaps gaps={collectionGaps} onChoice={onChoice} disabled={opening !== null} />}
-        <CartTotal cart={cart} emptyText="You own every card." />
+        {onRetryOwnedCopies && ownedCopies === undefined ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <ErrorText>Couldn&apos;t check your collection.</ErrorText>
+            <Button type="button" variant="outline" onClick={onRetryOwnedCopies}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <CartTotal cart={cart} emptyText="You own every card." />
+        )}
         {unanswered && (
           <p role="status" className="text-sm text-muted-foreground">
             Choose Ignore or Allow buying for each to go on.
