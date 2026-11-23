@@ -18,8 +18,8 @@ interface StepMedia {
 }
 
 /**
- * The three tabs, each with its line and a recording of the app. The recordings are placeholders until the owner
- * replaces them (2026-11-20).
+ * The three tabs, each with its line and a recording of the app. The budget and tune recordings are placeholders until
+ * the owner replaces them (2026-11-23).
  */
 const TABS: { id: string; label: string; line: string; icon: typeof Crown; media: StepMedia }[] = [
   {
@@ -27,7 +27,7 @@ const TABS: { id: string; label: string; line: string; icon: typeof Crown; media
     label: "Choose any commander",
     line: "Any bracket. Any commander. Build more decks and buy fewer singles.",
     icon: Crown,
-    media: { src: "/add.png", width: 427, height: 333 },
+    media: { src: "/commander_gif.gif", hiSrc: "/commander_gif_hi.gif", width: 598, height: 446 },
   },
   {
     id: "budget",
