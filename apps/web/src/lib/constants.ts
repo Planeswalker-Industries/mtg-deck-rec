@@ -94,7 +94,7 @@ const SEAL_SHAPE =
  */
 export const SEAL_BUTTON = `seal ${SEAL_SHAPE}`;
 
-/** The seal's quiet partner (`seal-outline`): espresso on raised paper, edged in brass, beside a seal. */
+/** The seal's quiet partner (`seal-outline`): a ghost, espresso in a thick brass edge, beside a seal. */
 export const SEAL_OUTLINE_BUTTON = `seal-outline ${SEAL_SHAPE}`;
 
 /**

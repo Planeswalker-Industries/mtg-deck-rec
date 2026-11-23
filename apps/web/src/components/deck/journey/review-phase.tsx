@@ -9,7 +9,7 @@ import { groupDeck, type DeckEntry } from "@mtg/core/scoring";
 import { cn } from "cn";
 import { CopyDecklistButton } from "@/components/decks/deck-export";
 import { ShoppingList } from "@/components/decks/shopping-list";
-import type { BuySaveState } from "@/components/decks/buy-buttons";
+import { BuyButtons, CartTotal, type BuySaveState } from "@/components/decks/buy-buttons";
 import type { ShoppingCart } from "@/components/decks/use-shopping-cart";
 import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
@@ -115,13 +115,12 @@ export function roundInIds(journey: DeckJourney): CardId[] {
 }
 
 /**
- * Finish: the round's result, shown rather than told. How many Deck stats lines are in line, and each one that isn't
- * with its reason and what the player can do about it (T087); cards, mana value and price on one line, then each stat
- * line as a track from where the round started to where it ends against its aim (green toward it, red away), every
- * change as card plates, Out beside In, and the finished
- * decklist laid out by type on the plates the deck editor uses. From here the player saves, copies or downloads the
- * result (or a copy, from an open saved deck), or runs it through the journey again. Undo and Start over are in the
- * round's bar above, as on every step.
+ * Finish: the round's result, shown rather than told. It leads with "Deck ready", the cart total and Buy on TCGplayer
+ * as the seal, with Save, Copy, Download and Re-analyze in one outline row under it (T102). Then one Deck stats sheet:
+ * cards, mana value and the deck's value before and after, each stat line as a read-only bar from where the round
+ * started to where it ends against its aim, and each line still off with its reason and what the player can do about
+ * it (T087). Then the shopping list, every change as card plates (Out beside In) and the finished decklist laid out by
+ * type on the plates the deck editor uses. Undo and Start over are in the round's bar, first in the top sheet.
  */
 export function ReviewPhase({
   journey,
@@ -179,8 +178,11 @@ export function ReviewPhase({
   // A finished deck can still be off on what decks like it run: each line is named, with its reason.
   const leftovers = leftoversOf(fix, report, choices);
   const linkClass = cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer font-semibold");
-  /** What a leftover says about itself, and what the player can do about it. */
-  const leftoverRow = (leftover: Leftover) => {
+  /**
+   * Why a leftover is still off and what the player can do about it. `named` puts the line's own words first: a rule or
+   * the curve, which have no bar of their own; a stat line's bar already shows its name and numbers.
+   */
+  const leftoverNote = (leftover: Leftover, named: boolean) => {
     const { line, reason } = leftover;
     const canIgnore = !RULE_LINES.has(line);
     const fixLink = (
@@ -221,16 +223,16 @@ export function ReviewPhase({
                 : [bought ? "No card to buy for it" : "No card to bring in", ignore];
     const Icon = reason === "ignored" ? EyeOff : TriangleAlert;
     return (
-      <li key={`${line}:${reason}`} className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="flex min-w-0 flex-1 basis-48 items-start gap-2">
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="flex min-w-0 flex-1 basis-40 items-start gap-2">
           <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", reason === "ignored" ? "text-muted-foreground" : "text-warning")} />
           <span className={cn(reason === "ignored" && "text-muted-foreground")}>
-            {leftoverText(leftover)}
-            <span className="block text-xs text-muted-foreground">{why}</span>
+            {named && leftoverText(leftover)}
+            <span className={cn(named ? "block text-xs text-muted-foreground" : "text-sm")}>{why}</span>
           </span>
         </span>
         {actions}
-      </li>
+      </span>
     );
   };
   const before = deckStats(journey.before);
@@ -253,91 +255,96 @@ export function ReviewPhase({
       <CardPlate key={card.id} card={card} quantity={quantity} commander={commander} mark={addedIds.has(card.id) ? "add" : undefined} />
     ));
 
+  // The lines with a bar of their own carry their leftover under it; the rest (rules, the curve) are listed above the bars.
+  const statKeys = new Set((report?.stats ?? []).map((l) => l.key));
+  const leftoverByLine = new Map(leftovers.filter((l) => statKeys.has(l.line)).map((l) => [l.line, l]));
+  const otherLeftovers = leftovers.filter((l) => !statKeys.has(l.line));
+  const blocked = busy || stale;
+  const nothingToBuy = cart.fromCollection
+    ? "You own every card."
+    : cart.removed.length > 0
+      ? "You removed every card."
+      : cart.scopeToggle && cart.scope === "round"
+        ? "This round put in no cards to buy."
+        : "Nothing to buy.";
+
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="sr-only">Finish</h2>
-      {/* Each part of the result is its own sheet on the wood: what is left to fix with the ways out, the numbers, the
-          shopping list, the changes and the decklist. */}
-      <div className={cn(SECTION_SHEET, "flex flex-col gap-4")}>
-      {toolbar}
-      {overBy > 0 && (
-        <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-          <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-          <span>
-            The deck is {overBy} over 100.
-            {journey.phases.includes("cut") && (
-              <>
-                {" "}
-                <button type="button" className={linkClass} onClick={() => journey.goTo("cut")}>
-                  Back to Cut
-                </button>
-              </>
-            )}
-          </span>
-        </p>
-      )}
-      {report && (
-        <section aria-labelledby="review-deck-stats" className="flex flex-col gap-2 text-sm">
-          <h3 id="review-deck-stats" className="flex items-center justify-between gap-3 font-semibold">
-            Deck stats
-            <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />
-          </h3>
-          {!fix.ready ? (
-            <p role="status" className="text-muted-foreground">
-              Checking what is left to fix…
-            </p>
-          ) : leftovers.length === 0 ? (
-            <p className="text-muted-foreground">Every line is in line.</p>
-          ) : (
-            <ul aria-label="Lines still off" className="flex flex-col gap-2.5">
-              {leftovers.map(leftoverRow)}
-            </ul>
-          )}
-        </section>
-      )}
-      <div className="flex flex-wrap gap-2">
-        {save.kind === "open" ? (
-          <>
-            <Button type="button" size="lg" className="lit" onClick={save.onSaveChanges} disabled={busy || stale}>
-              Save changes
-            </Button>
-            <Button type="button" size="lg" variant="outline" onClick={save.onSaveCopy} disabled={busy || stale || save.copy.status === "saving"}>
-              Save as copy
-            </Button>
-          </>
-        ) : (
-          <Button type="button" size="lg" className="lit" onClick={save.onSave} disabled={busy || stale}>
-            Save
-          </Button>
+      {/*
+        Finish leads with the deck being done and what it costs to get (T102): the total and Buy, the page's seal, then
+        the other ways to keep the deck in one outline row. Deck stats, the lines still off and their Fix links follow
+        in one sheet; then the shopping list, the changes and the decklist.
+      */}
+      <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3")}>
+        {toolbar}
+        <h2 id="review-ready" className="font-heading text-2xl leading-none font-semibold">
+          {overBy > 0 ? "Almost ready" : "Deck ready"}
+        </h2>
+        {overBy > 0 && (
+          <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+            <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+            <span>
+              The deck is {overBy} over 100.
+              {journey.phases.includes("cut") && (
+                <>
+                  {" "}
+                  <button type="button" className={linkClass} onClick={() => journey.goTo("cut")}>
+                    Back to Cut
+                  </button>
+                </>
+              )}
+            </span>
+          </p>
         )}
-        <CopyDecklistButton text={journey.resultText} size="lg" disabled={busy || stale} />
-        <Button
-          type="button"
-          size="lg"
-          variant="outline"
-          disabled={busy || stale}
-          onClick={() => downloadText(journey.resultText(), deckFileName(deck.commanders.map((id) => journey.cards.get(id)?.name)))}
-        >
-          Download text
-        </Button>
-        <Button type="button" size="lg" variant="outline" onClick={onReanalyze} disabled={busy || stale}>
-          Re-analyze
-        </Button>
-      </div>
-      {stale && (
-        <p role="status" className="-mt-3 text-sm text-muted-foreground">
-          The decklist has changed since this deck was analyzed. Analyze it to save or re-analyze from here.
-        </p>
-      )}
-      </div>
+        <CartTotal cart={cart} emptyText={nothingToBuy} />
+        <BuyButtons carts={cart.carts} onBuy={onBuy} saved={buySaved} seal className="max-sm:items-stretch max-sm:[&_a]:flex-1" />
+        <div className="flex flex-wrap gap-2 pt-1">
+          {save.kind === "open" ? (
+            <>
+              <Button type="button" size="lg" variant="outline" onClick={save.onSaveChanges} disabled={blocked}>
+                Save changes
+              </Button>
+              <Button type="button" size="lg" variant="outline" onClick={save.onSaveCopy} disabled={blocked || save.copy.status === "saving"}>
+                Save as copy
+              </Button>
+            </>
+          ) : (
+            <Button type="button" size="lg" variant="outline" onClick={save.onSave} disabled={blocked}>
+              Save
+            </Button>
+          )}
+          <CopyDecklistButton text={journey.resultText} size="lg" disabled={blocked} />
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            disabled={blocked}
+            onClick={() => downloadText(journey.resultText(), deckFileName(deck.commanders.map((id) => journey.cards.get(id)?.name)))}
+          >
+            Download text
+          </Button>
+          <Button type="button" size="lg" variant="outline" onClick={onReanalyze} disabled={blocked}>
+            Re-analyze
+          </Button>
+        </div>
+        {stale && (
+          <p role="status" className="text-sm text-muted-foreground">
+            The decklist has changed since this deck was analyzed. Analyze it to save or re-analyze from here.
+          </p>
+        )}
+      </section>
 
       {/*
-        The round's result. On a phone one column: the numbers, then the shopping list, then the changes and the
+        The round's result. On a phone one column: Deck stats, then the shopping list, then the changes and the
         decklist. From xl (the Deck stats rail already takes a right column from lg) the shopping list is an aside on the right, kept in view while the rest scrolls; the
         left items name only their column, so auto-placement stacks them in rows 1-3 beside it.
       */}
       <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-        <section aria-label="Before and after" className={cn(SECTION_SHEET, "flex flex-col gap-4 xl:col-start-1")}>
+        <section aria-labelledby="review-deck-stats" className={cn(SECTION_SHEET, "flex flex-col gap-4 xl:col-start-1")}>
+          <h3 id="review-deck-stats" className="flex items-center justify-between gap-3">
+            <span className="font-heading text-xl leading-none font-semibold">Deck stats</span>
+            {report && <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />}
+          </h3>
           <dl className="grid grid-cols-3 gap-3">
             <Figure label="Cards">
               <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
@@ -366,7 +373,31 @@ export function ReviewPhase({
               />
             </Figure>
           </dl>
-          {report && report.stats.length > 0 && <RoundMoves lines={report.stats} />}
+          {report &&
+            (!fix.ready ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                Checking what is left to fix…
+              </p>
+            ) : leftovers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Every line is in line.</p>
+            ) : (
+              otherLeftovers.length > 0 && (
+                <ul aria-label="Lines still off" className="flex flex-col gap-2.5 text-sm">
+                  {otherLeftovers.map((l) => (
+                    <li key={`${l.line}:${l.reason}`}>{leftoverNote(l, true)}</li>
+                  ))}
+                </ul>
+              )
+            ))}
+          {report && report.stats.length > 0 && (
+            <RoundMoves
+              lines={report.stats}
+              note={(key) => {
+                const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
+                return leftover && leftoverNote(leftover, false);
+              }}
+            />
+          )}
         </section>
 
         <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">

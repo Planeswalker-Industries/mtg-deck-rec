@@ -114,9 +114,9 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
   if (await rater.isVisible()) await rater.getByRole("button", { name: "Finish" }).click();
   else await toReview.click();
 
-  // Finish: how the lines stand, the numbers before and after, the changes, and the decklist.
+  // Finish: the deck ready to buy, how the lines stand with the numbers before and after, the changes, and the decklist.
+  await expect(recs.getByRole("heading", { name: "Deck ready" })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Deck stats" })).toBeVisible();
-  await expect(recs.getByRole("region", { name: "Before and after" })).toBeVisible();
   await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Out" }).getByText("Lightning Bolt", { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Decklist" })).toBeVisible();
@@ -127,7 +127,7 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
   await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
   await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
   await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
-  await expect(recs.getByRole("region", { name: "Before and after" })).toBeVisible();
+  await expect(recs.getByRole("heading", { name: "Deck ready" })).toBeVisible();
 });
 
 test("a deck at 100 opens on Fix, and Fix the rest previews its moves before one Undo takes them back", async ({ page }) => {
@@ -179,10 +179,12 @@ test("Finish names each line still off with its reason, and its Fix opens Fix at
   await steps.getByRole("button", { name: "Swap" }).click();
   await steps.getByRole("button", { name: "Finish" }).click();
 
-  const left = recs.getByRole("region", { name: "Deck stats" }).getByRole("list", { name: "Lines still off" });
+  // Rules and the curve are listed by name; a stat line carries its reason under its own bar.
+  const stats = recs.getByRole("region", { name: "Deck stats" });
+  const left = stats.getByRole("list", { name: "Lines still off" });
   await expect(left.getByRole("listitem").filter({ hasText: "Not legal here" })).toContainText("Can be fixed", { timeout: 60_000 });
   // The deck is nearly all Forests: Lands is far over, and its Fix opens Fix on that line, ahead of the rule break.
-  const lands = left.getByRole("listitem").filter({ hasText: /^Lands: \d+, about \d+ is typical/ });
+  const lands = stats.getByRole("listitem").filter({ hasText: /^Lands/ });
   await expect(lands).toContainText("Can be fixed");
   await lands.getByRole("button", { name: "Fix", exact: true }).click();
   await expect(steps.getByRole("button", { name: "Fix" })).toHaveAttribute("aria-current", "step");

@@ -7,6 +7,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { OUTBOUND } from "@/lib/affiliate";
 import { SEAL_BUTTON, TEXT_LINK } from "@/lib/constants";
+import { asOfSuffix, formatUsd } from "@/lib/format";
+import type { ShoppingCart } from "./use-shopping-cart";
 
 /** Where the Buy button's deck went when it saved it for a signed-in player (or why it couldn't). */
 export type BuySaveState =
@@ -79,5 +81,29 @@ export function BuyButtons({
       )}
       {saved.status === "error" && <ErrorText>{`Not saved: ${saved.message}`}</ErrorText>}
     </div>
+  );
+}
+
+/**
+ * The cart's total in one line, beside or above its Buy (T102): "12 cards to buy, ~$54.20 (Nov 16, 2026)", the same
+ * number every other surface shows. `emptyText` stands in when there is nothing to buy; nothing renders while the
+ * collection is checked.
+ */
+export function CartTotal({ cart, emptyText, className }: { cart: ShoppingCart; emptyText: string; className?: string }) {
+  const list = cart.list;
+  if (!list) return null;
+  return (
+    <p className={cn("text-sm", className)}>
+      {list.count === 0 ? (
+        emptyText
+      ) : (
+        <>
+          {list.count.toLocaleString("en-US")} {list.count === 1 ? "card" : "cards"} to buy,{" "}
+          <span className="font-mono">~{formatUsd(cart.totalUsd)}</span>
+          <span className="text-xs text-muted-foreground">{asOfSuffix(cart.asOf)}</span>
+          {list.unpriced > 0 && <span className="text-muted-foreground"> · {list.unpriced} unpriced</span>}
+        </>
+      )}
+    </p>
   );
 }

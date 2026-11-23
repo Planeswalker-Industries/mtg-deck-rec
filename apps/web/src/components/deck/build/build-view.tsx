@@ -10,7 +10,7 @@ import { CardPlate } from "@/components/cards/card-plate";
 import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { CommanderPlate } from "@/components/cards/commander-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
-import { BuyButtons, type BuySaveState } from "@/components/decks/buy-buttons";
+import { BuyButtons, CartTotal, type BuySaveState } from "@/components/decks/buy-buttons";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { DeckViewToggle, SortMenu, useCardSort, useDeckView, type DeckView } from "@/components/decks/deck-view";
 import { useShoppingCart } from "@/components/decks/use-shopping-cart";
@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, SEAL_BUTTON, SEAL_OUTLINE_BUTTON, TEXT_LINK } from "@/lib/constants";
-import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
+import { fromPrice } from "@/lib/format";
 import { ShuffleDeck } from "../shuffle-deck";
 import { ScoreExplainer } from "../score-explainer";
 import { buildCart, buildCards, buildDecklist, buildDecklistCsv, buildEntries, type BuildRequest, type BuildState } from "./use-deck-build";
@@ -498,19 +498,7 @@ export function BuildView({
         </div>
         {shortRoles.length > 0 && <RoleShortfalls lines={shortRoles} />}
         {collectionGaps.length > 0 && <CollectionGaps gaps={collectionGaps} onChoice={onChoice} disabled={opening !== null} />}
-        {cart.list && (
-          <p className="text-sm">
-            {cart.list.count === 0 ? (
-              "You own every card."
-            ) : (
-              <>
-                {count(cart.list.count, "card")} to buy, <span className="font-mono">~{formatUsd(cart.totalUsd)}</span>
-                <span className="text-xs text-muted-foreground">{asOfSuffix(cart.asOf)}</span>
-                {cart.list.unpriced > 0 && <span className="text-muted-foreground"> · {cart.list.unpriced} unpriced</span>}
-              </>
-            )}
-          </p>
-        )}
+        <CartTotal cart={cart} emptyText="You own every card." />
         {unanswered && (
           <p role="status" className="text-sm text-muted-foreground">
             Choose Ignore or Allow buying for each to continue.

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
@@ -31,9 +32,10 @@ export function Move({ before, after, verdict, format = String }: { before: numb
 }
 
 /**
- * One stat line as a track: a hollow ring where the round started, a filled dot where it ends, the stretch between in
- * the verdict's colour, and a tick at the aim. Seen together the rows show at a glance which lines the round moved and
- * whether toward the aim, even when a line moved down on purpose (11 card advantage against an aim of 11).
+ * One stat line as a read-only bar (no thumbs: nothing here is draggable): ink up to where the line both started and
+ * ends, the stretch the round moved it in the verdict's colour, and a tick at the aim. Seen together the rows show at a
+ * glance which lines the round moved and whether toward the aim, even when a line moved down on purpose (11 card
+ * advantage against an aim of 11).
  */
 function Track({ line }: { line: StatLine }) {
   const verdict = judge(line.start, line.value, line.target);
@@ -42,29 +44,29 @@ function Track({ line }: { line: StatLine }) {
   const low = Math.min(line.start, line.value);
   const high = Math.max(line.start, line.value);
   return (
-    <div aria-hidden className="relative h-4">
-      <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-seam" />
-      {verdict !== "same" && (
-        <div className={cn("absolute top-1/2 h-1 -translate-y-1/2 rounded-full", VERDICT_FILL[verdict])} style={{ left: at(low), width: `calc(${at(high)} - ${at(low)})` }} />
-      )}
-      <div className="absolute top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/60" style={{ left: at(line.target) }} />
-      {verdict !== "same" && (
-        <div className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-muted-foreground bg-background" style={{ left: at(line.start) }} />
-      )}
-      <div className={cn("absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-background", VERDICT_FILL[verdict])} style={{ left: at(line.value) }} />
+    <div aria-hidden className="relative h-3.5">
+      <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-seam">
+        <div className="absolute inset-y-0 left-0 bg-foreground/60" style={{ width: at(low) }} />
+        {verdict !== "same" && (
+          <div className={cn("absolute inset-y-0", VERDICT_FILL[verdict])} style={{ left: at(low), width: `calc(${at(high)} - ${at(low)})` }} />
+        )}
+      </div>
+      <div className="absolute top-1/2 h-3.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground" style={{ left: at(line.target) }} />
     </div>
   );
 }
 
 /**
  * The round's stat lines, one compact row each: label, track, numbers against the aim. On a phone the track gets a line
- * of its own under the label and numbers, so it stays long enough to read.
+ * of its own under the label and numbers, so it stays long enough to read. `note` adds a line under a row's bar (Finish:
+ * why a line is still off, and its Fix).
  */
-export function RoundMoves({ lines }: { lines: readonly StatLine[] }) {
+export function RoundMoves({ lines, note }: { lines: readonly StatLine[]; note?: (key: string) => ReactNode }) {
   return (
     <ul className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:gap-y-2.5">
       {lines.map((line) => {
         const verdict = judge(line.start, line.value, line.target);
+        const noted = note?.(line.key);
         return (
           <li key={line.key} className="col-span-2 grid grid-cols-subgrid items-center gap-y-0.5 sm:col-span-3">
             <span className="flex min-w-0 items-center gap-1.5 text-sm">
@@ -83,6 +85,8 @@ export function RoundMoves({ lines }: { lines: readonly StatLine[] }) {
                 {line.ok ? ", in line" : ""}
               </span>
             </span>
+            {/* Under the bar: the whole row on a phone, the bar's and numbers' columns on a wider screen. */}
+            {noted && <div className="col-span-2 row-start-3 pt-1 sm:col-span-2 sm:col-start-2 sm:row-start-2">{noted}</div>}
           </li>
         );
       })}
