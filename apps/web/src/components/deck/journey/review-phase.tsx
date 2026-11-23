@@ -294,7 +294,8 @@ export function ReviewPhase({
    * while the rest scrolls; the left items name only their column, so auto-placement stacks them in rows 1-4 beside it.
    */
   return (
-    <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+    // Without the shopping list there is no aside, so the page keeps one column rather than an empty right one.
+    <div className={cn("flex flex-col gap-4", listed && "xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start")}>
       <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
         {/* The round's Undo, Start over and Save sit in the top right, as on every step (owner, 2026-11-23). */}
         <div className="flex flex-wrap items-center justify-between gap-3">

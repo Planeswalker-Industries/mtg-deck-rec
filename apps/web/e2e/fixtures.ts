@@ -78,7 +78,7 @@ export async function leaveSwap(page: Page) {
 }
 
 /**
- * Answers every "Not in your collection" line of a built deck with Ignore, so Continue opens: a collection build
+ * Answers every "Not in your collection" line of a built deck with Ignore, so Tune it opens: a collection build
  * waits for an answer to each line the collection couldn't fill.
  */
 export async function ignoreBuildGaps(page: Page) {

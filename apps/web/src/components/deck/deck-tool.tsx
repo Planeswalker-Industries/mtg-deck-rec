@@ -5,9 +5,31 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
-import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, DeckId, DeckInput, StatChoices } from "@mtg/core/contract";
+import type {
+  Bracket,
+  CardId,
+  CardSummary,
+  DeckAnalysis,
+  DeckBudget,
+  DeckId,
+  DeckInput,
+  IsoDateTime,
+  ResolvedLine,
+  StatChoices,
+} from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import { BRACKET_LINE, CURVE_LINE, builtBuys, deckKey, statDeltas, toTallyCard, withSpent, type JourneyPhase, type StatLine } from "@mtg/core/journey";
+import {
+  BRACKET_LINE,
+  CURVE_LINE,
+  builtBuys,
+  deckKey,
+  missingSpendUsd,
+  statDeltas,
+  toTallyCard,
+  withSpent,
+  type JourneyPhase,
+  type StatLine,
+} from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { missingFromCoverage } from "@mtg/core/shop";
 import { cn } from "cn";
@@ -33,7 +55,8 @@ import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
-import { StartSettings } from "./start-settings";
+import { SPEND_FIELD_LABEL, StartSettings } from "./start-settings";
+import { asOfSuffix, formatUsd } from "@/lib/format";
 import { SelectedCommander } from "./selected-commander";
 import { BuildView } from "./build/build-view";
 import { buildEntries, useDeckBuild, type BuildState } from "./build/use-deck-build";
@@ -298,7 +321,22 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   /** The start form's Bracket select, for the above-bracket warning's Cancel. */
   const bracketSelect = useRef<HTMLButtonElement>(null);
   /** A pasted deck estimated above the chosen bracket (T091), until the player goes on or goes back to the Bracket. */
-  const [bracketWarning, setBracketWarning] = useState<{ estimated: Bracket; chosen: Bracket; analysis: DeckAnalysis | null } | null>(null);
+  const [bracketWarning, setBracketWarning] = useState<{
+    estimated: Bracket;
+    chosen: Bracket;
+    analysis: DeckAnalysis | null;
+    lines: readonly ResolvedLine[];
+  } | null>(null);
+  /**
+   * A pasted deck whose missing copies already cost more than Max to spend (T102), with a collection, until the player
+   * raises the budget or goes back to it. Without a collection a pasted deck counts as their own, so it never shows.
+   */
+  const [budgetWarning, setBudgetWarning] = useState<{
+    costUsd: number;
+    asOf: IsoDateTime | null;
+    spendUsd: number;
+    analysis: DeckAnalysis | null;
+  } | null>(null);
   /** The round waits behind the form from that warning until the player goes on: Cancel is back to the form alone. */
   const [roundHeld, setRoundHeld] = useState(false);
   /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu; a new deck starts without one. */
@@ -391,6 +429,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     resume: tool.resumed,
     choices: tool.statChoices,
     owns,
+    ownedCopies: copies,
     built,
   });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
@@ -402,10 +441,23 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   const hasCollectionSource = source.kind === "browser" || source.kind === "account";
   const coverageChecking =
     coverageEnabled && (source.kind === "loading" || (hasCollectionSource && coverage?.status !== "ready" && coverage?.status !== "error"));
-  const coverageMissing = useMemo(
+  const freshMissing = useMemo(
     () => (coverageChecking ? undefined : coverageData ? missingFromCoverage(coverageData) : null),
     [coverageChecking, coverageData],
   );
+  /*
+   * The collection is read again whenever the window takes focus (back from a TCGplayer tab, say). While that read and
+   * the coverage after it are out, the last answer for this same deck stays up, so the cart, the money slot and Finish's
+   * upgrades don't blank and load again on every return. A different deck never inherits it, and only a collection's
+   * answer is held: a collector must never see the no-collection list stand in while theirs is checked.
+   */
+  const workingDeckKey = journey.deck ? deckKey(journey.deck) : null;
+  const [heldMissing, setHeldMissing] = useState<{ deck: string; missing: ReadonlyMap<CardId, number> } | null>(null);
+  if (freshMissing && workingDeckKey !== null && (heldMissing?.deck !== workingDeckKey || heldMissing.missing !== freshMissing)) {
+    setHeldMissing({ deck: workingDeckKey, missing: freshMissing });
+  }
+  const coverageMissing =
+    freshMissing === undefined && heldMissing !== null && heldMissing.deck === workingDeckKey ? heldMissing.missing : freshMissing;
   const hasWorkingDeck = journey.deck !== null;
   useEffect(() => {
     if (!coverageEnabled || !hasWorkingDeck) return;
@@ -494,10 +546,11 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     entries: journey.after,
     missing: coverageMissing,
     roundIds,
-    // "This round's cards" only when the round put cards in: otherwise that choice lists nothing.
-    scopeToggle: coverageMissing === null && roundIds.length > 0,
+    // Without a collection a pasted deck counts as the player's own cards: the cart is what the round puts in, and
+    // "Whole deck" is there for a deck they don't own yet.
+    scopeToggle: coverageMissing === null,
     // A built deck was bought whole, so its cart is the whole deck until the player picks this round's cards alone.
-    defaultScope: (journey.state?.bought.length ?? 0) > 0 ? "deck" : undefined,
+    defaultScope: (journey.state?.bought.length ?? 0) > 0 ? "deck" : "round",
     resetKey: tool.round,
   });
   /** Buy on TCGplayer from Deck stats: Finish's carts, once the round is under way and the collection is checked. */
@@ -679,11 +732,58 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     // A deck stronger than the bracket asked for is said so first: the round would bring it down (T091).
     const estimated = outcome.analysis?.estimatedBracket;
     if (estimated !== undefined && outcome.bracket != null && estimated > outcome.bracket) {
-      setBracketWarning({ estimated, chosen: outcome.bracket, analysis: outcome.analysis });
+      setBracketWarning({ estimated, chosen: outcome.bracket, analysis: outcome.analysis, lines: outcome.lines ?? [] });
       setRoundHeld(true);
       return;
     }
-    beginRound(outcome.analysis);
+    beginOrWarnBudget(outcome.analysis, outcome.lines ?? []);
+  }
+
+  /**
+   * What the copies a pasted deck lacks cost (T102), the shopping list's money at the round's start, with the newest
+   * price date among them. Null until the collection's copies are in, and without a collection.
+   */
+  function missingCostOf(analyzed: DeckAnalysis | null, read: readonly ResolvedLine[]): { costUsd: number; asOf: IsoDateTime | null } | null {
+    if (!analyzed || !copies) return null;
+    const byId = new Map<CardId, CardSummary>();
+    for (const { resolution } of read) if (resolution.status === "resolved") byId.set(resolution.card.id, resolution.card);
+    const main = analyzed.deck.cards.flatMap((c) => {
+      const card = c.section === "main" ? byId.get(c.cardId) : undefined;
+      return card ? [{ card, quantity: c.quantity }] : [];
+    });
+    const entries = [...analyzed.commanderKey.commanders.map((card) => ({ card, quantity: 1 })), ...main];
+    const asOf = entries
+      .filter((e) => e.card.price && e.quantity > (copies.get(e.card.id) ?? 0))
+      .reduce<IsoDateTime | null>((newest, e) => (newest === null || e.card.price!.asOf > newest ? e.card.price!.asOf : newest), null);
+    return { costUsd: missingSpendUsd(entries, copies), asOf };
+  }
+
+  /** The round starts, unless the deck's missing copies already cost more than Max to spend: that is said first. */
+  function beginOrWarnBudget(analyzed: DeckAnalysis | null, read: readonly ResolvedLine[]) {
+    const spendUsd = tool.budget?.spendUsd;
+    const missing = spendUsd === undefined ? null : missingCostOf(analyzed, read);
+    if (spendUsd !== undefined && missing !== null && missing.costUsd > spendUsd) {
+      setBudgetWarning({ ...missing, spendUsd, analysis: analyzed });
+      setRoundHeld(true);
+      return;
+    }
+    beginRound(analyzed);
+  }
+
+  /** The over-budget warning's Cancel: back to the form, at Max to spend. */
+  function backToBudget() {
+    setBudgetWarning(null);
+    returnToBudget.current = true;
+  }
+  /** Set by Cancel, read when the dialog hands focus back: then it goes to the start form's Max to spend. */
+  const returnToBudget = useRef(false);
+  function focusBudget(e: Event) {
+    if (!returnToBudget.current) return;
+    returnToBudget.current = false;
+    e.preventDefault();
+    const field = document.querySelector<HTMLInputElement>(`input[aria-label="${SPEND_FIELD_LABEL}"]`);
+    field?.scrollIntoView({ block: "center", behavior: "smooth" });
+    field?.focus({ preventScroll: true });
   }
 
   /** The analyzed deck's round starts: the decklist box folds away on Upgrade. */
@@ -1432,11 +1532,45 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               className="lit"
               onClick={() => {
                 const analyzed = bracketWarning?.analysis ?? null;
+                const read = bracketWarning?.lines ?? [];
                 setBracketWarning(null);
-                beginRound(analyzed);
+                beginOrWarnBudget(analyzed, read);
               }}
             >
               Proceed
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={budgetWarning !== null} onOpenChange={(open) => !open && backToBudget()}>
+        <DialogContent onCloseAutoFocus={focusBudget}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TriangleAlert aria-hidden className="size-5 text-warning" />
+              Over budget
+            </DialogTitle>
+            <DialogDescription>
+              Cards you don&apos;t own cost {formatUsd(budgetWarning?.costUsd ?? 0)}
+              {asOfSuffix(budgetWarning?.asOf)}, over your {formatUsd(budgetWarning?.spendUsd ?? 0)} budget.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={backToBudget}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="lit"
+              onClick={() => {
+                if (!budgetWarning) return;
+                const { analysis: analyzed, costUsd } = budgetWarning;
+                setBudgetWarning(null);
+                // Whole dollars, so the new budget reads as a round amount and still covers the cents.
+                chooseBudget({ ...tool.budget, spendUsd: Math.ceil(costUsd) });
+                beginRound(analyzed);
+              }}
+            >
+              Raise to {formatUsd(Math.ceil(budgetWarning?.costUsd ?? 0))}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -14,6 +14,24 @@ export function roundSpendUsd(state: JourneyState, owns: (cardId: CardId) => boo
 }
 
 /**
+ * With a collection (T102): what the deck as it stands still needs bought, the copies the collection lacks, priced. The
+ * spend budget caps this, the same money the shopping list and Buy hold, so a deck from the web built from the
+ * collection spends from the budget for its missing cards as much as for the cards the round brings in. Basic lands and
+ * unpriced cards cost nothing; a card listed twice (a commander also in the main deck) is counted once, by copies.
+ */
+export function missingSpendUsd(entries: readonly { card: CardSummary; quantity: number }[], owned: ReadonlyMap<CardId, number>): number {
+  const byId = new Map<CardId, { card: CardSummary; quantity: number }>();
+  for (const { card, quantity } of entries) byId.set(card.id, { card, quantity: (byId.get(card.id)?.quantity ?? 0) + quantity });
+  let cents = 0;
+  for (const { card, quantity } of byId.values()) {
+    if (isBasicLand(card)) continue;
+    const lacking = Math.max(0, quantity - (owned.get(card.id) ?? 0));
+    cents += lacking * Math.round((card.price?.usd ?? 0) * 100);
+  }
+  return cents / 100;
+}
+
+/**
  * The cards the round brought in that the spend counts, in the order they were taken (the build's, then Add, Swap and
  * Fix): one entry per copy, unowned and not basic lands. Unpriced ones are included; they add nothing to the spend.
  */

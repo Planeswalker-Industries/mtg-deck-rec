@@ -101,7 +101,7 @@ test("a collection build asks about each gap: Allow buying adds cards to buy, Ig
   await expect(answers).not.toHaveAttribute("aria-label", /^A Deck stats line/, { timeout: RECS_WAIT_MS });
   const label = (await answers.getAttribute("aria-label"))!.replace(/: ignore it or allow buying$/, "");
   await expect(built.getByRole("button", { name: "Tune it" })).toBeDisabled();
-  await expect(built.getByText("Choose Ignore or Allow buying for each to continue.")).toBeVisible();
+  await expect(built.getByText("Choose Ignore or Allow buying for each to go on.")).toBeVisible();
 
   // Allow buying builds again with cards the collection lacks, each marked with its price, and the cost to buy them.
   await answers.getByRole("button", { name: "Allow buying" }).click();

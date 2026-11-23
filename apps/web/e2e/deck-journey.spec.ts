@@ -475,6 +475,12 @@ async function finishAt100(page: Page) {
   await steps.getByRole("button", { name: "Finish" }).click();
   const list = recs.getByRole("region", SHOPPING_LIST);
   await expect(list).toBeVisible({ timeout: 60_000 });
+  // Without a collection a pasted deck counts as the player's own: the list opens on this round's cards, none here,
+  // and Whole deck lists the deck for one they don't own yet.
+  const scope = list.getByRole("group", { name: "Cards to list" });
+  await expect(scope.getByRole("button", { name: "This round's cards" })).toHaveAttribute("aria-pressed", "true");
+  await expect(list.getByText("This round put in no cards to buy.")).toBeVisible();
+  await scope.getByRole("button", { name: "Whole deck" }).click();
   return list;
 }
 
@@ -487,9 +493,6 @@ async function removeLine(list: Locator, name: string | RegExp) {
 
 test("Finish shows a shopping list by type, removes and undoes", async ({ page }) => {
   const list = await finishAt100(page);
-
-  // No cards put in this round: no "This round's cards" choice, the list is the whole deck.
-  await expect(list.getByRole("group", { name: "Cards to list" })).toHaveCount(0);
 
   // Grouped by type; basics never listed.
   await expect(list.getByRole("list", { name: "Instants to buy" }).getByText("Counterspell", { exact: true })).toBeVisible();

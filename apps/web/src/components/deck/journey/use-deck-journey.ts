@@ -30,6 +30,7 @@ import {
   phaseIndex,
   pushUndo,
   roundPhases,
+  missingSpendUsd,
   roundSpendUsd,
   startJourney,
   withSpent,
@@ -180,6 +181,7 @@ export function useDeckJourney({
   resume,
   choices,
   owns = NOBODY_OWNS,
+  ownedCopies = null,
   built = null,
 }: {
   /**
@@ -194,6 +196,12 @@ export function useDeckJourney({
    * nothing is owned, so every card brought in counts.
    */
   owns?: (cardId: CardId) => boolean;
+  /**
+   * The collection's copies (T102), once read; null without a collection or until then. With them the spend is the
+   * deck's: every copy the collection lacks, the shopping list's money, so the budget caps what Buy would cost. Without
+   * them a pasted deck counts as the player's own cards and the spend is what the round brings in.
+   */
+  ownedCopies?: ReadonlyMap<CardId, number> | null;
   analysis: DeckAnalysis | null;
   /** The tool's analysis count: a new value is a new deck, and a new round. */
   round: number;
@@ -302,13 +310,12 @@ export function useDeckJourney({
   }, [lines, analysis, state]);
 
   const deck = useMemo(() => (state ? workingDeck(state) : null), [state]);
-  /** What the round has spent on cards the player doesn't own (T091): requests carry the budget less this. */
-  const spentUsd = state ? roundSpendUsd(state, owns) : 0;
   const ownsRef = useRef(owns);
+  const copiesRef = useRef(ownedCopies);
   useEffect(() => {
     ownsRef.current = owns;
+    copiesRef.current = ownedCopies;
   });
-  const workingContext = context && deck ? { ...withSpent(context, spentUsd), deck } : null;
 
   const entriesOf = (d: typeof deck): DeckEntry[] => entriesFor(d, cards);
   /** Copies of lands in a deck. */
@@ -323,6 +330,20 @@ export function useDeckJourney({
   );
   /** The deck as it stands, as entries, commanders first: one value per change, since Deck stats re-tallies on a new one. */
   const after = useMemo(() => [...commanders, ...entriesFor(deck, cards)], [commanders, deck, cards]);
+  /**
+   * What the round counts as spent (T091, T102): requests carry the budget less this. With the collection's copies, the
+   * copies the deck as it stands lacks; without, the unowned cards the round brought in.
+   */
+  const spendOf = (s: JourneyState, entries: readonly DeckEntry[], copies: ReadonlyMap<CardId, number> | null, owned: (cardId: CardId) => boolean) =>
+    copies ? missingSpendUsd(entries, copies) : roundSpendUsd(s, owned);
+  const spentUsd = state ? spendOf(state, after, ownedCopies, owns) : 0;
+  const workingContext = context && deck ? { ...withSpent(context, spentUsd), deck } : null;
+  /** The spend once `next` is the deck: a choice ahead of the render, so its cards are read from the choices too. */
+  const spendAfter = (next: JourneyState) => {
+    const seen = new Map(cards);
+    for (const c of choiceCards(next)) seen.set(c.id, c);
+    return spendOf(next, [...commanders, ...entriesFor(workingDeck(next), seen)], copiesRef.current, ownsRef.current);
+  };
   /** The round's starting deck the same way: Deck stats draws its round-start ticks from it. */
   const before = useMemo(() => [...commanders, ...entriesFor(analysis?.deck ?? null, cards)], [commanders, analysis, cards]);
   /** The deck as it stands, counted for Deck stats' lines: what Fix pairs its moves on and Add checks its cards against. */
@@ -348,7 +369,7 @@ export function useDeckJourney({
     setAdd({ round, key, value: { status: "loading" } });
     addPending.current = true;
     // The budget less what the round will have spent once `next` is the deck.
-    const r = await getApis().recs.add({ context: { ...withSpent(ctx, roundSpendUsd(next, ownsRef.current)), deck }, excludeCardIds: next.declinedAdds });
+    const r = await getApis().recs.add({ context: { ...withSpent(ctx, spendAfter(next)), deck }, excludeCardIds: next.declinedAdds });
     if (id !== addRequest.current) return;
     addPending.current = false;
     setAdd({ round, key, value: toAsync(r) });
@@ -826,7 +847,7 @@ export function useDeckJourney({
     },
     deck,
     workingContext,
-    /** Money the round has spent on cards the player doesn't own (T091). */
+    /** What the round counts as spent (T091): with a collection, the copies the deck lacks (T102). */
     spentUsd,
     cards,
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
