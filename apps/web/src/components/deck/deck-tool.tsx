@@ -56,6 +56,7 @@ import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
 import { SPEND_FIELD_LABEL, StartSettings } from "./start-settings";
+import { readBudgetPref, writeBudgetPref, type BudgetPrefMode } from "@/lib/budget-prefs";
 import { asOfSuffix, formatUsd } from "@/lib/format";
 import { SelectedCommander } from "./selected-commander";
 import { BuildView } from "./build/build-view";
@@ -689,6 +690,29 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   const showInput = editing || !analysis;
   // Building from nothing asks for a commander in place of the decklist box, until there is a deck to build on.
   const showPicker = buildStart && !analysis;
+
+  /**
+   * The build start's budget follows the list it builds from, each remembered in this browser (`budget-prefs.ts`):
+   * opening the picker or switching lists fills the fields with that list's budget. Waits until the collection is
+   * known, so the fields don't flash the Any commander budget first.
+   */
+  const budgetPrefMode: BudgetPrefMode | null =
+    !showPicker || !collectionLoaded || ((source.kind === "browser" || source.kind === "account") && tool.ownedOnly === null)
+      ? null
+      : tool.ownedOnly && pickFrom === "owned"
+        ? "collection"
+        : "any";
+  const appliedBudgetPref = useRef<BudgetPrefMode | null>(null);
+  useEffect(() => {
+    if (budgetPrefMode === null || budgetPrefMode === appliedBudgetPref.current) return;
+    appliedBudgetPref.current = budgetPrefMode;
+    tool.changeBudget(readBudgetPref(budgetPrefMode), { keepSavedDeck: true });
+  }, [budgetPrefMode, tool]);
+  /** A budget typed on the build start: used now and remembered for the list it was typed under. */
+  function chooseBuildBudget(budget: DeckBudget | undefined) {
+    tool.changeBudget(budget, { keepSavedDeck: true });
+    if (budgetPrefMode) writeBudgetPref(budgetPrefMode, budget);
+  }
   // On the opening screens a player with no collection is offered an import first; the resume question waits for the
   // collection to load and the offer to be answered, so the two never stack and the offer never pops up mid-analysis.
   const offersCollection = source.kind === "none" && !collectionRefreshing && !collectionOfferAnswered && (showPicker || showInput);
@@ -1134,7 +1158,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               bracket={tool.startBracket}
               onBracket={tool.setStartBracket}
               budget={tool.budget}
-              onBudget={tool.changeBudget}
+              onBudget={chooseBuildBudget}
               importHref={tool.ownedOnly ? null : buildImportHref}
             />
             {/* The page's main action, so the seal. The Bracket and budget are read at the tap, so a change after the pick still counts. */}
