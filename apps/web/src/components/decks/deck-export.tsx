@@ -36,7 +36,10 @@ export function CopyDecklistButton({
   disabled = false,
   short = false,
   iconOnly = false,
+  outline = false,
 }: {
+  /** With `iconOnly`: an outline button at the large icon size, for a row of outline buttons (Finish). */
+  outline?: boolean;
   /** The decklist, or a function that builds it at the moment of copying. */
   text: string | (() => string | null);
   size?: "sm" | "lg";
@@ -69,7 +72,14 @@ export function CopyDecklistButton({
   return (
     <>
       {iconOnly ? (
-        <Button variant="ghost" size="icon" onClick={copyText} disabled={disabled} aria-label="Copy decklist">
+        <Button
+          variant={outline ? "outline" : "ghost"}
+          size={outline ? "icon-lg" : "icon"}
+          onClick={copyText}
+          disabled={disabled}
+          aria-label="Copy decklist"
+          title="Copy decklist"
+        >
           {copy === "copied" ? <Check aria-hidden /> : <ClipboardCopy aria-hidden />}
         </Button>
       ) : (

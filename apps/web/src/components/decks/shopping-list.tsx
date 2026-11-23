@@ -1,21 +1,16 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 import type { CardId } from "@mtg/core/contract";
-import { shoppingList, type ShoppingLine } from "@mtg/core/shop";
 import { cn } from "cn";
 import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
-import { buttonVariants } from "@/components/ui/button";
-import { affiliateOn, cartLinks, OUTBOUND } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import {
-  AFFILIATE_DISCLOSURE,
   PHONE_HIT_AREA,
   REMOVE_ARM_MS,
-  SEAL_BUTTON,
   SHOPPING_UNDO_MS,
   TEXT_LINK,
   TOGGLE_OFF,
@@ -23,6 +18,8 @@ import {
 } from "@/lib/constants";
 import { asOfSuffix, formatAsOf, formatUsd } from "@/lib/format";
 import { cardCategoryLabel } from "@/lib/labels";
+import { BuyButtons, type BuySaveState } from "./buy-buttons";
+import type { CartScope, ShoppingCart } from "./use-shopping-cart";
 
 /** A phone (or any touch screen) gets the two-tap remove; a mouse gets one click. */
 const COARSE_POINTER_QUERY = "(pointer: coarse)";
@@ -30,28 +27,10 @@ const COARSE_POINTER_QUERY = "(pointer: coarse)";
 /** Nothing to subscribe to: `useSyncExternalStore` only tells the server render from the client one here. */
 const subscribeNothing = () => () => {};
 
-type Scope = "round" | "deck";
-
-const SCOPES: { value: Scope; label: string }[] = [
+const SCOPES: { value: CartScope; label: string }[] = [
   { value: "round", label: "This round's cards" },
   { value: "deck", label: "Whole deck" },
 ];
-
-/** Finish's first scope: this round's cards, or the whole deck when the round put none in. */
-const defaultScope = (roundIds: readonly CardId[]): Scope => (roundIds.length > 0 ? "round" : "deck");
-
-/**
- * The carts Finish's list opens with, for a Buy button elsewhere (the Deck stats Budget row): with a collection the
- * copies it doesn't supply, without one this round's cards, or the whole deck when the round put none in.
- */
-export function defaultCarts(
-  entries: readonly ShoppingLine[],
-  missing: ReadonlyMap<CardId, number> | null,
-  roundIds: readonly CardId[],
-): string[] {
-  const list = shoppingList({ entries, missing, roundIds, scope: defaultScope(roundIds) });
-  return cartLinks(list.groups.flatMap((g) => g.lines).map((l) => ({ name: l.card.name, quantity: l.quantity })));
-}
 
 function useCoarsePointer(): boolean {
   const [coarse, setCoarse] = useState(false);
@@ -114,37 +93,33 @@ function RemoveButton({ name, coarse, onRemove }: { name: string; coarse: boolea
 
 /**
  * The cards a deck still needs, grouped by type, to buy on TCGplayer (T090). Both pages that show it already offer
- * Copy decklist at the top, so the list has no copy button of its own (owner, 2026-11-15). With a collection the
- * lines are the copies it doesn't supply; without one, `scopeToggle` offers this round's cards or the whole deck. Removing
- * a line is for this view only (Undo brings it back) and never touches the collection.
+ * Copy decklist at the top, so the list has no copy button of its own (owner, 2026-11-15). It renders the deck's `cart`
+ * (`useShoppingCart`), which the page owns so its other totals follow this list: with a collection the lines are the
+ * copies it doesn't supply; without one, the cart's scope toggle offers this round's cards or the whole deck. Removing a
+ * line is for this view only (Undo brings it back) and never touches the collection.
  *
  * `folded` (the saved deck page) leads with the count, the total and Buy, and keeps the lines behind a disclosure, so
  * buying fits in the first viewport.
  */
 export function ShoppingList({
   title = "Shopping list",
-  entries,
-  missing,
-  roundIds,
-  scopeToggle,
+  cart,
   pinActions = false,
   headingLevel = 3,
   folded = false,
   summary,
   buyLabel,
   extraAction,
+  onBuy,
+  saved,
+  buy = true,
+  foldAt,
 }: {
   title?: string;
   /** The title's heading level: 3 inside Finish, 2 where the list is one of the page's own sections. */
   headingLevel?: 2 | 3;
-  /** The deck as it stands, commanders included. */
-  entries: readonly ShoppingLine[];
-  /** Copies the collection doesn't supply; null without a collection; undefined while it is being checked. */
-  missing: ReadonlyMap<CardId, number> | null | undefined;
-  /** Cards the round put in, best first; empty where there is no round. */
-  roundIds: readonly CardId[];
-  /** Offer "This round's cards | Whole deck" (only without a collection). */
-  scopeToggle: boolean;
+  /** The deck's cart: its lines, scope and removals, shared with the page's other totals. */
+  cart: ShoppingCart;
   /** Keep Buy and the price note at the top of a scrolling container (Finish's aside from xl). */
   pinActions?: boolean;
   /** Count, total and Buy first; the lines behind "Show the N cards", closed at first. */
@@ -155,13 +130,20 @@ export function ShoppingList({
   buyLabel?: (totalUsd: number) => string;
   /** Folded: a second action before Buy (the saved deck page's collection upload). */
   extraAction?: ReactNode;
+  /** Called as a cart opens: Finish saves the deck to My Decks for a signed-in player, as every Buy does. */
+  onBuy?: () => void;
+  /** What became of that save. */
+  saved?: BuySaveState;
+  /** Show Buy here; false where the page already leads with its own Buy and total (Finish). */
+  buy?: boolean;
+  /** From this many cards, open on the first group with "Show all" (Finish, where the Decklist repeats a long list). */
+  foldAt?: number;
 }) {
   const coarse = useCoarsePointer();
-  // A round that put nothing in has nothing to buy in round scope, so the whole deck is the useful default there.
-  const [scope, setScope] = useState<Scope>(defaultScope(roundIds));
-  const [removed, setRemoved] = useState<CardId[]>([]);
+  const { list, carts, scope, setScope, scopeToggle, removed } = cart;
   const [undoShown, setUndoShown] = useState(false);
   const [linesOpen, setLinesOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   // True once hydrated: the toast portals into <body>, which the server render has no access to.
   const mounted = useSyncExternalStore(
     subscribeNothing,
@@ -170,10 +152,6 @@ export function ShoppingList({
   );
   const headingId = useId();
   const linesId = useId();
-  // Keyed on content, so a parent that builds a fresh array each render doesn't rebuild the list.
-  const roundKey = roundIds.join(",");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const stableRoundIds = useMemo(() => roundIds, [roundKey]);
 
   useEffect(() => {
     if (!undoShown) return;
@@ -181,23 +159,10 @@ export function ShoppingList({
     return () => window.clearTimeout(timer);
   }, [undoShown, removed]);
 
-  const list = useMemo(() => {
-    const gone = new Set(removed);
-    return shoppingList({
-      entries: entries.filter((e) => !gone.has(e.card.id)),
-      missing: missing ?? null,
-      roundIds: stableRoundIds,
-      scope: scopeToggle ? scope : "deck",
-    });
-  }, [entries, missing, stableRoundIds, scope, scopeToggle, removed]);
-  const carts = useMemo(
-    () => cartLinks(list.groups.flatMap((g) => g.lines).map((l) => ({ name: l.card.name, quantity: l.quantity }))),
-    [list],
-  );
   const Title = headingLevel === 2 ? "h2" : "h3";
   const GroupTitle = headingLevel === 2 ? "h3" : "h4";
 
-  if (missing === undefined) {
+  if (list === null) {
     return (
       <section aria-label={title} className="flex flex-col gap-2">
         <Title className="font-heading text-xl leading-none font-semibold">{title}</Title>
@@ -208,13 +173,13 @@ export function ShoppingList({
     );
   }
 
-  const lastRemoved = removed.length > 0 ? entries.find((e) => e.card.id === removed[removed.length - 1]) : undefined;
+  const lastRemoved = cart.lastRemoved;
   const remove = (id: CardId) => {
-    setRemoved((r) => [...r, id]);
+    cart.remove(id);
     setUndoShown(true);
   };
   const undo = () => {
-    setRemoved((r) => r.slice(0, -1));
+    cart.undo();
     setUndoShown(false);
   };
 
@@ -224,13 +189,17 @@ export function ShoppingList({
   const emptyText =
     removed.length > 0
       ? "You removed every card."
-      : missing
+      : cart.fromCollection
         ? folded
           ? "You own every card in this deck."
           : "Your collection has every card."
         : scopeToggle && scope === "round"
           ? "This round put in no cards to buy."
           : "Nothing to buy.";
+
+  // A long list opens on its first group; "Show all" brings the rest.
+  const cut = !folded && !showAll && foldAt !== undefined && list.count >= foldAt && list.groups.length > 1;
+  const shownGroups = cut ? list.groups.slice(0, 1) : list.groups;
 
   /*
    * Folded (the saved deck page): from lg the groups are narrow columns side by side, scrolling sideways, each scrolling
@@ -245,7 +214,7 @@ export function ShoppingList({
           : "columns-1 gap-6 @xl:columns-2"
       }
     >
-      {list.groups.map((group) => (
+      {shownGroups.map((group) => (
         <section
           key={group.category}
           aria-label={cardCategoryLabel[group.category]}
@@ -305,31 +274,26 @@ export function ShoppingList({
     );
 
   const buyText = buyLabel ? buyLabel(list.totalUsd) : "Buy on TCGplayer";
-  const actions = (
+  const showBuy = (folded && extraAction) || (buy && carts.length > 0 && list.count > 0);
+  // With no Buy and no note (Finish, everything priced) there is nothing to keep in view: no empty sticky band.
+  const actions = (showBuy || list.unpriced > 0 || (folded && buyLabel && list.asOf)) && (
     // In Finish's aside (a scroll box from xl) Buy stays in view at its top while the lines scroll under it.
     <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:top-0 xl:z-10 xl:bg-background xl:pt-1 xl:pb-2")}>
-      {/* A named primary action (owner, 2026-11-15): the solid button; on the saved deck page, the page's seal. */}
-      <div className="flex flex-wrap items-center gap-2">
-        {folded && extraAction}
-        {carts.length === 0 || list.count === 0 ? (
-          <span aria-disabled className={cn(folded ? SEAL_BUTTON : buttonVariants({ size: "lg" }), "pointer-events-none opacity-50")}>
-            {buyText}
-          </span>
-        ) : (
-          carts.map((href, i) => (
-            <a key={href} href={href} {...OUTBOUND} className={folded ? SEAL_BUTTON : cn(buttonVariants({ size: "lg" }), "lit")}>
-              {/* Split carts can't each carry the whole total. */}
-              {carts.length > 1 ? `Buy on TCGplayer (${i + 1} of ${carts.length})` : buyText}
-            </a>
-          ))
-        )}
-      </div>
+      {/*
+        A named primary action (owner, 2026-11-15): the solid button; on the saved deck page, the page's seal. Nothing to
+        buy shows no Buy at all (T102).
+      */}
+      {showBuy ? (
+        <div className="flex flex-wrap items-start gap-2">
+          {folded && extraAction}
+          {buy && list.count > 0 && <BuyButtons carts={carts} onBuy={onBuy} saved={saved} seal={folded} label={buyText} />}
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
         {/* A total shown on the button still carries its prices' date. */}
         {folded && buyLabel && list.asOf && <p>Prices from {formatAsOf(list.asOf)}.</p>}
         {list.unpriced > 0 && <p>{list.unpriced} unpriced.</p>}
-        {affiliateOn() && <p>{AFFILIATE_DISCLOSURE}</p>}
       </div>
     </div>
   );
@@ -380,11 +344,8 @@ export function ShoppingList({
     // A container: one column in Finish's aside, two where the list has the page's width.
     <section aria-labelledby={headingId} className="@container flex flex-col gap-3">
       <Title id={headingId} className="font-heading text-xl leading-none font-semibold">
-        {title}{" "}
-        <span className="font-mono text-base font-normal text-muted-foreground">
-          · {list.count} {cardsWord}, {formatUsd(list.totalUsd)}
-          {asOf}
-        </span>
+        {/* The count alone, as Decklist shows it: the total and its date lead the page this list sits on. */}
+        {title} <span className="font-mono text-base font-normal text-muted-foreground">{list.count}</span>
       </Title>
 
       {scopeToggle && (
@@ -411,6 +372,16 @@ export function ShoppingList({
       {actions}
 
       {list.count === 0 ? <p className="text-sm text-muted-foreground">{emptyText}</p> : lines}
+      {cut && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="flex min-h-11 w-fit items-center gap-2 rounded-md text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <ChevronDown aria-hidden className="size-4" />
+          Show all {list.count} {cardsWord}
+        </button>
+      )}
 
       {toast}
     </section>

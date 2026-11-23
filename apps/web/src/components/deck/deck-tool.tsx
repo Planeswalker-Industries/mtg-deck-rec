@@ -5,9 +5,31 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useRouter, useSearchParams } from "next/navigation";
 import { GalleryHorizontalEnd, Library, List, TriangleAlert } from "lucide-react";
-import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, DeckId, StatChoices } from "@mtg/core/contract";
+import type {
+  Bracket,
+  CardId,
+  CardSummary,
+  DeckAnalysis,
+  DeckBudget,
+  DeckId,
+  DeckInput,
+  IsoDateTime,
+  ResolvedLine,
+  StatChoices,
+} from "@mtg/core/contract";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
-import { BRACKET_LINE, CURVE_LINE, builtBuys, deckKey, statDeltas, toTallyCard, withSpent, type JourneyPhase, type StatLine } from "@mtg/core/journey";
+import {
+  BRACKET_LINE,
+  CURVE_LINE,
+  builtBuys,
+  deckKey,
+  missingSpendUsd,
+  statDeltas,
+  toTallyCard,
+  withSpent,
+  type JourneyPhase,
+  type StatLine,
+} from "@mtg/core/journey";
 import { decklistFromFile } from "@mtg/core/parse";
 import { missingFromCoverage } from "@mtg/core/shop";
 import { cn } from "cn";
@@ -27,19 +49,20 @@ import { ResumeDeckDialog } from "./resume-deck-dialog";
 import { CollectionOfferDialog } from "./collection-offer-dialog";
 import { FileDrop, IMPORT_TEXT_BOX, LoadedFile, lineCount } from "@/components/collection/file-drop";
 import { OpenDeckBar } from "@/components/decks/open-deck-bar";
-import { SaveDeckButton, suggestedDeckName } from "@/components/decks/save-deck-button";
-import { defaultCarts } from "@/components/decks/shopping-list";
+import type { BuySaveState, RoundBuy } from "@/components/decks/buy-buttons";
+import { SaveDeckButton, deckNameFor, suggestedDeckName } from "@/components/decks/save-deck-button";
+import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
-import { StartSettings } from "./start-settings";
+import { SPEND_FIELD_LABEL, StartSettings } from "./start-settings";
+import { asOfSuffix, formatUsd } from "@/lib/format";
 import { SelectedCommander } from "./selected-commander";
 import { BuildView } from "./build/build-view";
-import { buildEntries, useDeckBuild } from "./build/use-deck-build";
+import { buildEntries, useDeckBuild, type BuildState } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
 import { DeckStatsRail } from "./deck-stats/deck-stats-rail";
-import type { BuySaveState, RoundBuy } from "./deck-stats/budget-row";
 import type { StatAction } from "./deck-stats/deck-stats-panel";
 import { useDeckStats } from "./deck-stats/use-deck-stats";
 import { statChips } from "./deck-stats/stat-chips";
@@ -66,6 +89,7 @@ import {
   DECK_START_BUILD,
   DECK_START_PARAM,
   MAX_DECK_FILE_BYTES,
+  SEAL_BUTTON,
   TEXT_LINK,
   TOGGLE_OFF,
   TOGGLE_ON,
@@ -89,6 +113,9 @@ const BASIC_TYPE_PREFIX = "Basic ";
 
 /** Tall enough to show a commander, the deck heading and a few cards of the placeholder before it scrolls. */
 const DECKLIST_ROWS = 9;
+
+/** Owned results read to find a linked commander by its full name: the picker's own page size, so its match is there. */
+const PREFILL_OWNED_SEARCH_LIMIT = 8;
 
 /** The journey's steps column, which Deck stats' "Fix" scrolls back to. */
 const STEPS_ID = "deck-journey-steps";
@@ -178,13 +205,28 @@ const hasViews = (phase: JourneyPhase) => phase !== "fix" && phase !== "review";
 
 /** A deck's commanders as one comparable value, to tell whether the deck lookup offer needs checking again. */
 const commandersOf = (analysis: DeckAnalysis) => analysis.deck.commanders.join(",");
+/** A build's commanders the same way, so the deck its Buy saved is the one the round's Buy and Save write to. */
+const builtCommandersOf = (state: Extract<BuildState, { status: "ready" }>) =>
+  state.result.commanderKey.commanders.map((c) => c.id).join(",");
+
+/** What the built page's Buy saves (T102): the built deck, its commanders key and name, and the build's settings. */
+interface BuiltForBuy {
+  deck: DeckInput;
+  commanders: string;
+  name: string;
+  /** The lead commander's slug, for the saved deck's address. */
+  slug: string | undefined;
+  statChoices: StatChoices;
+  bracket: Bracket;
+  budget: DeckBudget | undefined;
+}
 
 /**
  * Next keeps this page alive while the player is elsewhere (Activity), so a link to the commander picker would land
  * back on the deck they were working on. A fresh link to it (a push, not Back) starts a new tool at the picker instead.
  * The deck they left stays in this browser's storage for the decklist box, and a saved one stays in their account.
  */
-export function DeckTool() {
+export function DeckTool({ prefill }: { prefill: CardSummary[] | null }) {
   const { bfcacheId } = useRouter();
   const buildStart = useSearchParams().get(DECK_START_PARAM) === DECK_START_BUILD;
   const [session, setSession] = useState(bfcacheId);
@@ -193,13 +235,15 @@ export function DeckTool() {
     setSeenNavigation(bfcacheId);
     if (buildStart) setSession(bfcacheId);
   }
-  return <DeckToolSession key={session} />;
+  return <DeckToolSession key={session} prefill={prefill} />;
 }
 
-function DeckToolSession() {
+/** `prefill`: the commanders a `?start=build&commander=<slug>` link names, resolved on the server; null without one. */
+function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   // ?deck=<code> opens one of the signed-in player's saved decks instead of the deck from their last visit.
   // ?commander=<slug> opens a featured deck from the landing page carousel.
-  // ?start=build builds a deck for a commander picked by name (from the collection when there is one).
+  // ?start=build builds a deck for a commander picked by name (from the collection when there is one); with it,
+  // ?commander=<slug> picks that commander for them (a commander page's "Build this Commander").
   const searchParams = useSearchParams();
   const openCode = searchParams.get("deck");
   const commanderSlug = searchParams.get("commander");
@@ -225,8 +269,28 @@ function DeckToolSession() {
   const deckBuild = useDeckBuild(tool.ownedOnly);
   /** With a collection, the build start lists owned commanders unless the player asks for any. */
   const [pickFrom, setPickFrom] = useState<"owned" | "any">("owned");
-  /** The commander picked on the build start; Build deck builds it. */
-  const [picked, setPicked] = useState<CardSummary | null>(null);
+  /** The commanders picked on the build start (both partners of a pair from a link); Build deck builds them. */
+  const [picked, setPicked] = useState<CardSummary[] | null>(prefill && prefill.length > 0 ? prefill : null);
+  /**
+   * A linked commander the collection doesn't hold switches the picker to Any commander for this pick, so the plate
+   * isn't left under "From my collection". The collection setting itself stays as it is. Checked once, when the
+   * collection is known.
+   */
+  const prefillChecked = useRef(false);
+  useEffect(() => {
+    if (prefillChecked.current || !picked || picked !== prefill || !tool.ownedOnly) return;
+    prefillChecked.current = true;
+    const ownedOnly = tool.ownedOnly;
+    void Promise.all(
+      picked.map((card) =>
+        getApis()
+          .catalog.searchCards({ q: card.name, commanderEligible: true, ownedOnly, limit: PREFILL_OWNED_SEARCH_LIMIT })
+          .then((r) => r.ok && r.data.some((c) => c.id === card.id)),
+      ),
+    ).then((owned) => {
+      if (owned.some((o) => !o)) setPickFrom("any");
+    });
+  }, [picked, prefill, tool.ownedOnly]);
   /** The paste screen's choice while there is no collection; with one, the collection setting is the choice. */
   const [pathWithoutCollection, setPathWithoutCollection] = useState<UpgradePath>("online");
   const upgradePath: UpgradePath =
@@ -257,17 +321,35 @@ function DeckToolSession() {
   /** The start form's Bracket select, for the above-bracket warning's Cancel. */
   const bracketSelect = useRef<HTMLButtonElement>(null);
   /** A pasted deck estimated above the chosen bracket (T091), until the player goes on or goes back to the Bracket. */
-  const [bracketWarning, setBracketWarning] = useState<{ estimated: Bracket; chosen: Bracket; analysis: DeckAnalysis | null } | null>(null);
+  const [bracketWarning, setBracketWarning] = useState<{
+    estimated: Bracket;
+    chosen: Bracket;
+    analysis: DeckAnalysis | null;
+    lines: readonly ResolvedLine[];
+  } | null>(null);
+  /**
+   * A pasted deck whose missing copies already cost more than Max to spend (T102), with a collection, until the player
+   * raises the budget or goes back to it. Without a collection a pasted deck counts as their own, so it never shows.
+   */
+  const [budgetWarning, setBudgetWarning] = useState<{
+    costUsd: number;
+    asOf: IsoDateTime | null;
+    spendUsd: number;
+    analysis: DeckAnalysis | null;
+  } | null>(null);
   /** The round waits behind the form from that warning until the player goes on: Cancel is back to the form alone. */
   const [roundHeld, setRoundHeld] = useState(false);
   /** A copy of the round's result saved as a new deck, from an open saved deck's Save menu; a new deck starts without one. */
   const [copy, setCopy] = useState<CopyState>({ status: "idle" });
   /**
-   * The new deck Buy in Deck stats saved this round (signed in, no deck open), so a later press, or Finish's Save, writes
-   * to it rather than save another. Cleared when the commanders change.
+   * The new deck a Buy saved (signed in, no deck open): the built page's, or one in the round. A later press, or Finish's
+   * Save, writes to it rather than save another, while the commanders stay the same.
    */
   const buyDeck = useRef<{ deckId: DeckId; code: string; name: string; commanders: string } | null>(null);
-  const [buySave, setBuySave] = useState<BuySaveState>({ status: "idle" });
+  /** What became of the last Buy's save, for the commanders it saved: another deck's Buy shows nothing. */
+  const [buySave, setBuySave] = useState<{ commanders: string; state: BuySaveState } | null>(null);
+  const buySaveFor = (commanders: string): BuySaveState =>
+    buySave?.commanders === commanders ? buySave.state : { status: "idle" };
   /** Buy was pressed with a deck open: its write shows as the open deck's auto-save status. */
   const [boughtOpen, setBoughtOpen] = useState(false);
   const [copyRound, setCopyRound] = useState(tool.round);
@@ -323,20 +405,27 @@ function DeckToolSession() {
    * a collection, and again when it changes; until they are in, the money slot stays empty.
    */
   const [ownedCopies, setOwnedCopies] = useState<{ source: typeof source; copies: ReadonlyMap<CardId, number> } | null>(null);
+  /** A failed read of those copies, for the source it failed on: the built page says so and offers another try. */
+  const [copiesFailed, setCopiesFailed] = useState<typeof source | null>(null);
+  /** Bumped by that Retry, to read the copies again. */
+  const [copiesAttempt, setCopiesAttempt] = useState(0);
   const wantsOwned = source.kind === "browser" || source.kind === "account";
   useEffect(() => {
     if (!wantsOwned) return;
     let live = true;
     void collectionCounts(source)
       .then((copies) => live && setOwnedCopies({ source, copies }))
-      .catch(() => undefined);
+      .catch(() => live && setCopiesFailed(source));
     return () => {
       live = false;
     };
-  }, [wantsOwned, source]);
+  }, [wantsOwned, source, copiesAttempt]);
   const copies = ownedCopies?.source === source ? ownedCopies.copies : null;
-  /** Whether the spend can be told yet: without a collection every card counts, with one once its copies are in. */
-  const spendKnown = !wantsOwned || copies !== null;
+  const copiesError = copies === null && copiesFailed === source;
+  function retryCopies() {
+    setCopiesFailed(null);
+    setCopiesAttempt((n) => n + 1);
+  }
   const owns = useCallback((cardId: CardId) => (copies?.get(cardId) ?? 0) > 0, [copies]);
   /** The last deck taken from a build, by key, with the cards the build bought: its round counts them as spent (T099). */
   const [built, setBuilt] = useState<{ key: string; cards: readonly CardSummary[] } | null>(null);
@@ -349,6 +438,7 @@ function DeckToolSession() {
     resume: tool.resumed,
     choices: tool.statChoices,
     owns,
+    ownedCopies: copies,
     built,
   });
   const coverageEnabled = mode === "upgrade" && !tool.stale;
@@ -360,10 +450,23 @@ function DeckToolSession() {
   const hasCollectionSource = source.kind === "browser" || source.kind === "account";
   const coverageChecking =
     coverageEnabled && (source.kind === "loading" || (hasCollectionSource && coverage?.status !== "ready" && coverage?.status !== "error"));
-  const coverageMissing = useMemo(
+  const freshMissing = useMemo(
     () => (coverageChecking ? undefined : coverageData ? missingFromCoverage(coverageData) : null),
     [coverageChecking, coverageData],
   );
+  /*
+   * The collection is read again whenever the window takes focus (back from a TCGplayer tab, say). While that read and
+   * the coverage after it are out, the last answer for this same deck stays up, so the cart, the money slot and Finish's
+   * upgrades don't blank and load again on every return. A different deck never inherits it, and only a collection's
+   * answer is held: a collector must never see the no-collection list stand in while theirs is checked.
+   */
+  const workingDeckKey = journey.deck ? deckKey(journey.deck) : null;
+  const [heldMissing, setHeldMissing] = useState<{ deck: string; missing: ReadonlyMap<CardId, number> } | null>(null);
+  if (freshMissing && workingDeckKey !== null && (heldMissing?.deck !== workingDeckKey || heldMissing.missing !== freshMissing)) {
+    setHeldMissing({ deck: workingDeckKey, missing: freshMissing });
+  }
+  const coverageMissing =
+    freshMissing === undefined && heldMissing !== null && heldMissing.deck === workingDeckKey ? heldMissing.missing : freshMissing;
   const hasWorkingDeck = journey.deck !== null;
   useEffect(() => {
     if (!coverageEnabled || !hasWorkingDeck) return;
@@ -442,11 +545,26 @@ function DeckToolSession() {
   );
   /** The Deck stats lines a card in and a card out would move: the chips shown by the card on screen. */
   const chipsFor = (add: CardSummary | null, remove: CardSummary | null) => (deckStats ? statChips(deckStats, tallyOf(add), tallyOf(remove)) : []);
+  /*
+   * The round's cart (T102): Finish's shopping list, the docked Deck stats bar, the Budget line and Deck stats' Buy all
+   * read it, so they show one total, the one Buy sends, and follow a line removed from the list. Requests keep the round
+   * spend (`withSpent(context, journey.spentUsd)`): the money left for suggestions is a ranker input, this is a display.
+   */
+  const roundIds = roundInIds(journey);
+  const cart = useShoppingCart({
+    entries: journey.after,
+    missing: coverageMissing,
+    roundIds,
+    // Without a collection a pasted deck counts as the player's own cards: the cart is what the round puts in, and
+    // "Whole deck" is there for a deck they don't own yet.
+    scopeToggle: coverageMissing === null,
+    // A built deck was bought whole, so its cart is the whole deck until the player picks this round's cards alone.
+    defaultScope: (journey.state?.bought.length ?? 0) > 0 ? "deck" : "round",
+    resetKey: tool.round,
+  });
   /** Buy on TCGplayer from Deck stats: Finish's carts, once the round is under way and the collection is checked. */
   const roundBuy: RoundBuy | null =
-    journey.state && coverageMissing !== undefined
-      ? { carts: defaultCarts(journey.after, coverageMissing, roundInIds(journey)), onBuy: () => void saveForBuy(), saved: buySaveState() }
-      : null;
+    journey.state && cart.list !== null ? { carts: cart.carts, onBuy: () => void saveForBuy(), saved: buySaveState() } : null;
   const statsPanel = deckStats
     ? {
         report: deckStats,
@@ -458,8 +576,9 @@ function DeckToolSession() {
         preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null,
         after: previewReport,
         money: {
-          spentUsd: spendKnown ? journey.spentUsd : 0,
-          buys: spendKnown ? journey.buys : [],
+          totalUsd: cart.totalUsd,
+          asOf: cart.asOf,
+          lines: cart.lines,
           buy: roundBuy,
           budget: tool.budget,
           unpricedSkipped: journey.add.state.status === "ready" ? journey.add.state.data.unpricedSkipped : undefined,
@@ -487,7 +606,8 @@ function DeckToolSession() {
 
     // ?commander=<slug> loads a featured deck from the landing page carousel; an unknown slug falls through to the
     // remembered deck, same as no slug at all.
-    const featured = commanderSlug !== null ? FEATURED_DECKS.find((d) => d.slug === commanderSlug) : undefined;
+    // With ?start=build the slug names the commander to build instead (resolved on the server into `prefill`).
+    const featured = !buildStart && commanderSlug !== null ? FEATURED_DECKS.find((d) => d.slug === commanderSlug) : undefined;
     const hasLink = openCode !== null || featured !== undefined;
 
     if (!hasLink) {
@@ -580,7 +700,8 @@ function DeckToolSession() {
   const textHidden = fileInBox !== null && !fileTextShown;
 
   /** A saved deck's deckbuilder has its own address; the commander segment is decoration, the code finds the deck. */
-  const editorUrl = (code: string) => `/decks/${analysis?.commanderKey.commanders[0]?.slug ?? "deck"}/${code}/edit` as Route;
+  const editorUrl = (code: string, slug = analysis?.commanderKey.commanders[0]?.slug) =>
+    `/decks/${slug ?? "deck"}/${code}/edit` as Route;
 
   /**
    * Back to Upgrade when the player cancels saving: the deckbuilder's waiting edit goes in first, with the cuts Upgrade
@@ -620,11 +741,58 @@ function DeckToolSession() {
     // A deck stronger than the bracket asked for is said so first: the round would bring it down (T091).
     const estimated = outcome.analysis?.estimatedBracket;
     if (estimated !== undefined && outcome.bracket != null && estimated > outcome.bracket) {
-      setBracketWarning({ estimated, chosen: outcome.bracket, analysis: outcome.analysis });
+      setBracketWarning({ estimated, chosen: outcome.bracket, analysis: outcome.analysis, lines: outcome.lines ?? [] });
       setRoundHeld(true);
       return;
     }
-    beginRound(outcome.analysis);
+    beginOrWarnBudget(outcome.analysis, outcome.lines ?? []);
+  }
+
+  /**
+   * What the copies a pasted deck lacks cost (T102), the shopping list's money at the round's start, with the newest
+   * price date among them. Null until the collection's copies are in, and without a collection.
+   */
+  function missingCostOf(analyzed: DeckAnalysis | null, read: readonly ResolvedLine[]): { costUsd: number; asOf: IsoDateTime | null } | null {
+    if (!analyzed || !copies) return null;
+    const byId = new Map<CardId, CardSummary>();
+    for (const { resolution } of read) if (resolution.status === "resolved") byId.set(resolution.card.id, resolution.card);
+    const main = analyzed.deck.cards.flatMap((c) => {
+      const card = c.section === "main" ? byId.get(c.cardId) : undefined;
+      return card ? [{ card, quantity: c.quantity }] : [];
+    });
+    const entries = [...analyzed.commanderKey.commanders.map((card) => ({ card, quantity: 1 })), ...main];
+    const asOf = entries
+      .filter((e) => e.card.price && e.quantity > (copies.get(e.card.id) ?? 0))
+      .reduce<IsoDateTime | null>((newest, e) => (newest === null || e.card.price!.asOf > newest ? e.card.price!.asOf : newest), null);
+    return { costUsd: missingSpendUsd(entries, copies), asOf };
+  }
+
+  /** The round starts, unless the deck's missing copies already cost more than Max to spend: that is said first. */
+  function beginOrWarnBudget(analyzed: DeckAnalysis | null, read: readonly ResolvedLine[]) {
+    const spendUsd = tool.budget?.spendUsd;
+    const missing = spendUsd === undefined ? null : missingCostOf(analyzed, read);
+    if (spendUsd !== undefined && missing !== null && missing.costUsd > spendUsd) {
+      setBudgetWarning({ ...missing, spendUsd, analysis: analyzed });
+      setRoundHeld(true);
+      return;
+    }
+    beginRound(analyzed);
+  }
+
+  /** The over-budget warning's Cancel: back to the form, at Max to spend. */
+  function backToBudget() {
+    setBudgetWarning(null);
+    returnToBudget.current = true;
+  }
+  /** Set by Cancel, read when the dialog hands focus back: then it goes to the start form's Max to spend. */
+  const returnToBudget = useRef(false);
+  function focusBudget(e: Event) {
+    if (!returnToBudget.current) return;
+    returnToBudget.current = false;
+    e.preventDefault();
+    const field = document.querySelector<HTMLInputElement>(`input[aria-label="${SPEND_FIELD_LABEL}"]`);
+    field?.scrollIntoView({ block: "center", behavior: "smooth" });
+    field?.focus({ preventScroll: true });
   }
 
   /** The analyzed deck's round starts: the decklist box folds away on Upgrade. */
@@ -769,7 +937,7 @@ function DeckToolSession() {
   /** What became of the last Buy press's save: the open deck's own status when one is open. */
   function buySaveState(): BuySaveState {
     const open = tool.openDeck;
-    if (!open) return buySave;
+    if (!open) return analysis ? buySaveFor(commandersOf(analysis)) : { status: "idle" };
     if (!boughtOpen) return { status: "idle" };
     if (open.status === "saving" || open.status === "dirty") return { status: "saving" };
     if (open.status === "error") return { status: "error", message: open.message ?? "Couldn't save." };
@@ -777,38 +945,78 @@ function DeckToolSession() {
   }
 
   /**
-   * Buy pressed in Deck stats (owner, 2026-11-18): a signed-in player's deck is saved to My Decks as the cart opens. An
-   * open deck takes the round's deck as an auto-save; otherwise the first press saves a new deck (public, as every new
-   * deck is) and later presses update it. The round goes on either way. Signed out, nothing is saved.
+   * Every Buy (T102): a signed-in player's deck is saved to My Decks as the cart opens (owner, 2026-11-18). From the
+   * built page (`built`) that is the built deck itself, before any analysis, with the built list as its original. In
+   * the round an open deck takes the round's deck as an auto-save; otherwise the first press saves a new deck (public, as
+   * every new deck is) and later presses, the built page's included, update it. The round goes on either way. Signed
+   * out, nothing is saved.
    */
-  async function saveForBuy() {
+  async function saveForBuy(built?: BuiltForBuy) {
+    if (!signedIn) return;
+    if (built) {
+      await writeBuyDeck(built.commanders, built.name, built.slug, {
+        deck: built.deck,
+        bracket: built.bracket,
+        original: built.deck,
+        statChoices: built.statChoices,
+        ...(built.budget ? { budget: built.budget } : {}),
+      });
+      return;
+    }
     const deck = journey.deck;
-    if (!signedIn || !deck || !analysis) return;
+    if (!deck || !analysis) return;
     if (tool.openDeck) {
       setBoughtOpen(true);
       tool.saveRoundDeck(deck);
       return;
     }
-    const commanders = commandersOf(analysis);
-    const earlier = buyDeck.current?.commanders === commanders ? buyDeck.current : null;
-    const name = earlier?.name ?? (tool.deckName ?? suggestedDeckName(analysis)).slice(0, MAX_DECK_NAME_CHARS);
-    setBuySave({ status: "saving" });
-    const result = await getApis().actions.saveDeck({
-      ...(earlier ? { deckId: earlier.deckId } : {}),
-      name,
+    await writeBuyDeck(commandersOf(analysis), tool.deckName ?? suggestedDeckName(analysis), undefined, {
       deck,
-      isPublic: true,
       ...(tool.bracketOverride === null ? {} : { bracket: tool.bracketOverride }),
       original: analysis.deck,
       statChoices: tool.statChoices,
       ...(tool.budget ? { budget: tool.budget } : {}),
     });
+  }
+
+  /** Saves Buy's deck: a new one, or the one an earlier Buy saved for the same commanders (keeping its name). */
+  async function writeBuyDeck(
+    commanders: string,
+    fallbackName: string,
+    slug: string | undefined,
+    fields: { deck: DeckInput; bracket?: Bracket; original: DeckInput; statChoices: StatChoices; budget?: DeckBudget },
+  ) {
+    const earlier = buyDeck.current?.commanders === commanders ? buyDeck.current : null;
+    const name = earlier?.name ?? fallbackName.slice(0, MAX_DECK_NAME_CHARS);
+    setBuySave({ commanders, state: { status: "saving" } });
+    const result = await getApis().actions.saveDeck({
+      ...(earlier ? { deckId: earlier.deckId } : {}),
+      name,
+      isPublic: true,
+      ...fields,
+    });
     if (!result.ok) {
-      setBuySave({ status: "error", message: result.error.message });
+      setBuySave({ commanders, state: { status: "error", message: result.error.message } });
       return;
     }
     buyDeck.current = { deckId: result.data.deckId, code: result.data.code, name, commanders };
-    setBuySave({ status: "saved", href: editorUrl(result.data.code) });
+    setBuySave({ commanders, state: { status: "saved", href: editorUrl(result.data.code, slug) } });
+  }
+
+  /** The built page's Buy: the deck it shows, with the answers its lines took. */
+  function buyBuilt(statChoices: StatChoices) {
+    if (deckBuild.state.status !== "ready") return;
+    const ready = deckBuild.state;
+    const commanders = ready.result.commanderKey.commanders;
+    void saveForBuy({
+      deck: { commanders: commanders.map((c) => c.id), cards: buildEntries(ready.result) },
+      commanders: builtCommandersOf(ready),
+      name: deckNameFor(commanders),
+      slug: commanders[0]?.slug,
+      statChoices,
+      bracket: ready.request.bracket,
+      budget: ready.request.budget,
+    });
   }
 
   /** Finish's Save after Buy saved a new deck: that deck is opened first, so the save writes to it, not to another. */
@@ -838,7 +1046,6 @@ function DeckToolSession() {
       onStartOver={journey.restart}
       save={roundSave}
       busy={committing || tool.stale}
-      showSave={journey.state.phase !== "review"}
       slotRef={setStatusSlot}
     />
   );
@@ -853,6 +1060,10 @@ function DeckToolSession() {
         <BuildView
           state={deckBuild.state}
           collectionImportHref={buildImportHref}
+          ownedCopies={deckBuild.state.status === "ready" && deckBuild.state.fromCollection ? (copies ?? undefined) : null}
+          onRetryOwnedCopies={copiesError ? retryCopies : null}
+          onBuy={buyBuilt}
+          buySaved={deckBuild.state.status === "ready" ? buySaveFor(builtCommandersOf(deckBuild.state)) : { status: "idle" }}
           onBracket={(bracket) => {
             if (deckBuild.state.status !== "idle") void deckBuild.build({ ...deckBuild.state.request, bracket });
           }}
@@ -878,6 +1089,7 @@ function DeckToolSession() {
         <PageHero
           id="deck-build-heading"
           heading="Choose commander"
+          slimArt
           aside="We'll deal you a deck."
           intro={
             <>
@@ -909,13 +1121,13 @@ function DeckToolSession() {
               />
             )}
             {picked ? (
-              <SelectedCommander card={picked} onChange={() => setPicked(null)} />
+              <SelectedCommander commanders={picked} onChange={() => setPicked(null)} />
             ) : (
               // The collection offer takes focus while it is up; off again, the cursor goes back into the box.
               <CommanderPicker
                 autoFocus={!offersCollection}
                 ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
-                onPick={setPicked}
+                onPick={(card) => setPicked([card])}
               />
             )}
             <StartSettings
@@ -925,19 +1137,18 @@ function DeckToolSession() {
               onBudget={tool.changeBudget}
               importHref={tool.ownedOnly ? null : buildImportHref}
             />
-            {/* The Bracket and budget are read at the tap, so a change after the pick still counts. */}
-            <Button
+            {/* The page's main action, so the seal. The Bracket and budget are read at the tap, so a change after the pick still counts. */}
+            <button
               type="button"
-              size="lg"
-              className="lit w-full sm:w-auto sm:self-end"
+              className={cn(SEAL_BUTTON, "w-full disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:self-end")}
               disabled={picked === null}
               onClick={() => {
                 if (!picked) return;
-                void deckBuild.build({ commanders: [picked], bracket: tool.startBracket, ...(tool.budget ? { budget: tool.budget } : {}) });
+                void deckBuild.build({ commanders: picked, bracket: tool.startBracket, ...(tool.budget ? { budget: tool.budget } : {}) });
               }}
             >
               Build deck
-            </Button>
+            </button>
           </div>
         </PageHero>
       ) : showInput ? (
@@ -1184,7 +1395,8 @@ function DeckToolSession() {
             journey.state && (
               <StatPreviewProvider onChange={setStatPreview} chipsFor={chipsFor}>
               <StepStatusSlot value={statusSlot}>
-              <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
+              {/* Finish carries its own Deck stats sheet, so from lg the rail steps aside there and the result takes the width. */}
+              <div className={cn(statsPanel && [DECK_STATS_DOCK, journey.state.phase !== "review" && WITH_STATS_RAIL])}>
                 {/* scroll-mt clears the sticky deck bar when "Pick cuts" brings the steps back into view. */}
                 <div id={STEPS_ID} className={ROUND_COLUMN}>
                   {/* Paper sheets on the wood, one per section: the steps, the step (with this round's controls), the collection offer. */}
@@ -1193,7 +1405,12 @@ function DeckToolSession() {
                     <div className="min-w-0 flex-1">
                       <JourneyStepper phases={journey.phases} phase={journey.state.phase} canOpen={journey.stepper.canOpen} onSelect={journey.stepper.select} />
                     </div>
-                    {hasViews(journey.state.phase) && <ViewToggle view={view} onChange={changeView} />}
+                    {/* Fix and Finish have one view: the toggle's place stays (empty) so the steps don't reflow from step to step. */}
+                    {hasViews(journey.state.phase) ? (
+                      <ViewToggle view={view} onChange={changeView} />
+                    ) : (
+                      <span aria-hidden className="size-8 shrink-0 sm:hidden" />
+                    )}
                   </div>
                   </Panel>
                   {journey.state.phase !== "review" && (
@@ -1227,7 +1444,7 @@ function DeckToolSession() {
                   {journey.state.phase === "replace" && <ReplacePhase journey={journey} view={view} commanderKeyId={analysis.commanderKey.id} />}
                   </Panel>
                   )}
-                  {/* Players who came with only a list are offered their collection at every step (Done has its own, below). */}
+                  {/* Players who came with only a list are offered their collection at every step but Finish, where the deck bar's Add collection is the one offer. */}
                   {source.kind === "none" && journey.state.phase !== "review" && (
                     <CollectionNudge href={collectionImportHref} step={journey.state.phase} />
                   )}
@@ -1243,17 +1460,15 @@ function DeckToolSession() {
                       choices={tool.statChoices}
                       onChoice={tool.setStatChoice}
                       collectionOnly={journey.add.collectionOnly}
-                      missing={coverageMissing}
-                      toolbar={roundBar}
-                    >
-                      {/* Only players without a collection get an offer here: one who has a collection already played the round with it. */}
-                      {source.kind === "none" && <CollectionNudge href={collectionImportHref} step="review" />}
-                    </ReviewPhase>
+                      cart={cart}
+                      onBuy={() => void saveForBuy()}
+                      buySaved={buySaveState()}
+                    />
                   )}
                 </div>
                 {statsPanel && (
                   <>
-                    <DeckStatsRail className="hidden lg:flex" {...statsPanel} />
+                    {journey.state.phase !== "review" && <DeckStatsRail className="hidden lg:flex" {...statsPanel} />}
                     <DeckStatsFooter className="lg:hidden" dock="lg" {...statsPanel} />
                   </>
                 )}
@@ -1327,11 +1542,45 @@ function DeckToolSession() {
               className="lit"
               onClick={() => {
                 const analyzed = bracketWarning?.analysis ?? null;
+                const read = bracketWarning?.lines ?? [];
                 setBracketWarning(null);
-                beginRound(analyzed);
+                beginOrWarnBudget(analyzed, read);
               }}
             >
               Proceed
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={budgetWarning !== null} onOpenChange={(open) => !open && backToBudget()}>
+        <DialogContent onCloseAutoFocus={focusBudget}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TriangleAlert aria-hidden className="size-5 text-warning" />
+              Over budget
+            </DialogTitle>
+            <DialogDescription>
+              Cards you don&apos;t own cost {formatUsd(budgetWarning?.costUsd ?? 0)}
+              {asOfSuffix(budgetWarning?.asOf)}, over your {formatUsd(budgetWarning?.spendUsd ?? 0)} budget.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={backToBudget}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="lit"
+              onClick={() => {
+                if (!budgetWarning) return;
+                const { analysis: analyzed, costUsd } = budgetWarning;
+                setBudgetWarning(null);
+                // Whole dollars, so the new budget reads as a round amount and still covers the cents.
+                chooseBudget({ ...tool.budget, spendUsd: Math.ceil(costUsd) });
+                beginRound(analyzed);
+              }}
+            >
+              Raise to {formatUsd(Math.ceil(budgetWarning?.costUsd ?? 0))}
             </Button>
           </DialogFooter>
         </DialogContent>

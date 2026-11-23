@@ -6,40 +6,52 @@ import type { Route } from "next";
 import { ChevronDown, CircleCheck, CircleHelp, Info, TriangleAlert } from "lucide-react";
 import type { Bracket, BuildResult, CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
 import { CURVE_LINE, cardsShort, deckDiff, shortOfTarget, sortCards, type CardSort, type StatLine } from "@mtg/core/journey";
+import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
 import { CardZoomLayer } from "@/components/cards/card-zoom";
 import { CommanderPlate } from "@/components/cards/commander-plate";
 import { PocketGrid } from "@/components/cards/pocket-grid";
+import { BuyButtons, CartTotal, type BuySaveState } from "@/components/decks/buy-buttons";
 import { UnsavedDeckExport } from "@/components/decks/deck-export";
 import { DeckViewToggle, SortMenu, useCardSort, useDeckView, type DeckView } from "@/components/decks/deck-view";
+import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { Button } from "@/components/ui/button";
+import { ErrorText } from "@/components/ui/error-text";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
 import { cn } from "cn";
-import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
-import { asOfSuffix, formatUsd, fromPrice } from "@/lib/format";
+import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, SEAL_BUTTON, SEAL_OUTLINE_BUTTON, TEXT_LINK } from "@/lib/constants";
+import { fromPrice } from "@/lib/format";
 import { ShuffleDeck } from "../shuffle-deck";
 import { ScoreExplainer } from "../score-explainer";
-import { buildCards, buildDecklist, buildDecklistCsv, buildEntries, type BuildRequest, type BuildState } from "./use-deck-build";
+import { buildCart, buildCards, buildDecklist, buildDecklistCsv, buildEntries, type BuildRequest, type BuildState } from "./use-deck-build";
 import { useBuildStats } from "./use-build-stats";
 
 /** Each part of the built deck is its own sheet on the wood, edge to edge on phones (no paper on paper). */
 const BUILD_SHEET = "sheet p-4 max-sm:-mx-4 sm:p-5";
 
 /** What the open slots panel says, inline from sm up and behind its (?) on phones. */
-const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit continue and we'll fill the missing pieces together.";
+const OPEN_SLOTS_HELP = "Your collection ran out of auto-includes. Hit Tune it and we'll fill the missing pieces together.";
 
 /** What a budget build without a collection says when the budget couldn't fill the deck: the popup and the open slots' (?). */
 const BUDGET_SHORT_TITLE = "Insufficient budget";
 const BUDGET_SHORT_HELP =
   "A competitive deck cannot be assembled at this budget. Increase the budget or upload your collection to build from.";
 
-/** What the overlay says while Continue or Save for Later opens the deck. */
+/** What the overlay says while Tune it or Save for Later opens the deck. */
 const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }> = {
   upgrade: { label: "Opening your deck", detail: "Reading the 100 cards and lining up upgrades. A few seconds." },
   save: { label: "Opening the Deckbuilder", detail: "You'll name the deck next." },
 };
+
+/** What Tune it does, in one line under the buttons. */
+const TUNE_IT_LINE = "Tune it: cut, add and swap a card at a time.";
+
+/** The built page's cart before there is a build: nothing to buy. */
+const NO_CART = { entries: [], missing: null };
+/** The built page has no round: its cart is the whole build. */
+const NO_ROUND: readonly CardId[] = [];
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
@@ -223,12 +235,13 @@ function BuildCards({
             mark={mark}
             onSelect={onSelect ? () => onSelect(card.id) : undefined}
             // The note goes at the end of the row, as the shopping list puts its prices; the mana cost makes room for it.
+            // Every other card shows its price there (T102), a copy's price for a stack of basics.
             {...(note !== undefined
               ? {
                   showCost: false,
                   trailing: <span className="px-1 font-mono text-xs whitespace-nowrap text-muted-foreground">{note}</span>,
                 }
-              : {})}
+              : { trailing: <PriceTag price={card.price} lower className="mx-1 text-xs whitespace-nowrap text-muted-foreground" /> })}
           />
         ))}
       </ul>
@@ -309,11 +322,15 @@ function FitChanges({ request, result, view, sort }: { request: BuildRequest; re
  * says so. A pasted list fitted to the collection also shows what went out of the list and what came in.
  *
  * A collection build asks about each Deck stats line the collection couldn't fill before the deck opens (T087): ignore
- * it, or allow buying for it, which builds the deck again with unowned cards for that line. Continue waits for every
+ * it, or allow buying for it, which builds the deck again with unowned cards for that line. Tune it waits for every
  * answer, and the answers go into the deck tool with the deck.
  *
  * A budget build without a collection that couldn't fill every slot says so in a popup, once per build: change the
  * budget or upload a collection. Closing it leaves the build as it is.
+ *
+ * The build's cart (T102) leads the actions: what it costs to buy every card the collection doesn't supply (the whole
+ * deck without one), with Buy on TCGplayer as the page's seal beside Tune it. A build the collection fully supplies
+ * says so and offers no Buy.
  */
 export function BuildView({
   state,
@@ -324,9 +341,21 @@ export function BuildView({
   onSave,
   onPickAnother,
   onChangeBudget,
+  ownedCopies,
+  onRetryOwnedCopies = null,
+  onBuy,
+  buySaved,
 }: {
   state: Exclude<BuildState, { status: "idle" }>;
   collectionImportHref: Route;
+  /** The collection's copies, for the cart: null without a collection, undefined while they load. */
+  ownedCopies: ReadonlyMap<CardId, number> | null | undefined;
+  /** Set when reading those copies failed: the cart can't be counted, so the page says so with another try. */
+  onRetryOwnedCopies?: (() => void) | null;
+  /** Called as a cart opens: saves the built deck to My Decks for a signed-in player. */
+  onBuy: (choices: StatChoices) => void;
+  /** What became of that save. */
+  buySaved: BuySaveState;
   onBracket: (bracket: Bracket) => void;
   /** The player's answer for a line the collection couldn't fill. */
   onChoice: (line: string, choice: StatChoice) => void;
@@ -343,10 +372,12 @@ export function BuildView({
   const [opening, setOpening] = useState<"upgrade" | "save" | null>(null);
   /** Set at once, so a second tap before the re-render can't open the deck twice. */
   const openingNow = useRef(false);
-  // The built deck graded by Deck stats, the report Add reads after Continue; shown once the analysis is in.
+  // The built deck graded by Deck stats, the report Add reads after Tune it; shown once the analysis is in.
   const ready = state.status === "ready" ? state : null;
   const builtList = useMemo(() => (ready ? buildDecklist(ready.result) : null), [ready]);
   const stats = useBuildStats(ready?.result ?? null, builtList, state.request.bracket);
+  const cartInput = useMemo(() => (ready ? buildCart(ready.result, ready.fromCollection ? ownedCopies : null) : NO_CART), [ready, ownedCopies]);
+  const cart = useShoppingCart({ ...cartInput, roundIds: NO_ROUND, scopeToggle: false });
   // The budget left slots open with nothing but the player's money to fill them from.
   const budgetShort = ready !== null && !ready.fromCollection && ready.request.budget !== undefined && ready.result.feasibility.open > 0;
   /** The build result whose shortfall popup was closed: a new build asks again. */
@@ -454,8 +485,8 @@ export function BuildView({
   const builtCards = new Map(result.groups.flatMap((g) => g.cards).map((c) => [c.card.id, c]));
   const detailCard = detail === null ? null : (builtCards.get(detail) ?? null);
   const fit = fitDiff(request, result);
-  // A card bought for a line the player opened says so, with its price; the date is on the summary line.
-  const cost = result.fillCost;
+  const buying = cart.carts.length > 0 && (cart.list?.count ?? 0) > 0;
+  // A card bought for a line the player opened says so, with its price; the date is on the cart's line.
   const noteFor = (c: (typeof result.groups)[number]["cards"][number]): { note: string } | Record<string, never> =>
     c.origin === "fill" ? { note: `Not owned · ${fromPrice(c.card.price, { lower: true })}` } : {};
 
@@ -476,41 +507,58 @@ export function BuildView({
         </div>
         {shortRoles.length > 0 && <RoleShortfalls lines={shortRoles} />}
         {collectionGaps.length > 0 && <CollectionGaps gaps={collectionGaps} onChoice={onChoice} disabled={opening !== null} />}
-        {cost && cost.cards > 0 && (
-          <p className="text-sm text-muted-foreground">
-            {count(cost.cards, "card")} to buy, about {formatUsd(cost.usd)}
-            {asOfSuffix(cost.asOf)}.
-          </p>
+        {onRetryOwnedCopies && ownedCopies === undefined ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <ErrorText>Couldn&apos;t check your collection.</ErrorText>
+            <Button type="button" variant="outline" onClick={onRetryOwnedCopies}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <CartTotal cart={cart} emptyText="You own every card." />
         )}
         {unanswered && (
           <p role="status" className="text-sm text-muted-foreground">
-            Choose Ignore or Allow buying for each to continue.
+            Choose Ignore or Allow buying for each to go on.
           </p>
         )}
-        {/* Continue is the way on, so it takes two parts of the row to Save for Later's one. */}
-        <div className="grid grid-cols-[2fr_1fr] gap-2 sm:max-w-md">
-          <Button
-            type="button"
-            size="lg"
-            className="lit"
-            disabled={opening !== null || unanswered}
-            aria-busy={opening === "upgrade"}
-            onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
-          >
-            Continue
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            variant="outline"
-            className="px-2"
-            disabled={opening !== null}
-            aria-busy={opening === "save"}
-            onClick={() => void openDeck("save", onSave, decklist)}
-          >
-            Save for Later
-          </Button>
+        {/*
+          Buy is the page's seal when there is anything to buy, full width on phones; Tune it is its partner then, and
+          the seal itself when the collection supplies every card. Tune it takes two parts of its row to Save for
+          Later's one.
+        */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
+          <BuyButtons
+            carts={cart.carts}
+            onBuy={() => onBuy(choices)}
+            saved={buySaved}
+            seal
+            className="max-sm:items-stretch max-sm:[&_a]:flex-1"
+          />
+          <div className="grid grid-cols-[2fr_1fr] gap-2 sm:w-md">
+            <button
+              type="button"
+              className={cn(buying ? SEAL_OUTLINE_BUTTON : SEAL_BUTTON, "disabled:pointer-events-none disabled:opacity-50")}
+              disabled={opening !== null || unanswered}
+              aria-busy={opening === "upgrade"}
+              onClick={() => void openDeck("upgrade", onUpgrade, decklist)}
+            >
+              Tune it
+            </button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="h-auto px-2"
+              disabled={opening !== null}
+              aria-busy={opening === "save"}
+              onClick={() => void openDeck("save", onSave, decklist)}
+            >
+              Save for Later
+            </Button>
+          </div>
         </div>
+        <p className="text-sm text-muted-foreground">{TUNE_IT_LINE}</p>
         {!fromCollection && (
           <p className="text-sm text-muted-foreground">
             This deck draws on every card.{" "}

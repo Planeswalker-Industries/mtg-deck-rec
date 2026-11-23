@@ -30,7 +30,7 @@ import {
   phaseIndex,
   pushUndo,
   roundPhases,
-  roundBuys,
+  missingSpendUsd,
   roundSpendUsd,
   startJourney,
   withSpent,
@@ -44,7 +44,7 @@ import {
 import { byStaple, ownedOnly, type DeckEntry } from "@mtg/core/scoring";
 import { getApis } from "@/lib/api/client";
 import { loadJourney, saveJourney } from "@/lib/saved-deck";
-import { recordDecision, recordShown, type RecBatch } from "@/lib/rec-events";
+import { recordDecision, recordDecisions, recordShown, type RecBatch, type RecDecision } from "@/lib/rec-events";
 import type { Async } from "../use-deck-tool";
 import type { Candidates } from "../use-swipe-rater";
 import { basicsToFill } from "./fill-basics";
@@ -181,6 +181,7 @@ export function useDeckJourney({
   resume,
   choices,
   owns = NOBODY_OWNS,
+  ownedCopies = null,
   built = null,
 }: {
   /**
@@ -195,6 +196,12 @@ export function useDeckJourney({
    * nothing is owned, so every card brought in counts.
    */
   owns?: (cardId: CardId) => boolean;
+  /**
+   * The collection's copies (T102), once read; null without a collection or until then. With them the spend is the
+   * deck's: every copy the collection lacks, the shopping list's money, so the budget caps what Buy would cost. Without
+   * them a pasted deck counts as the player's own cards and the spend is what the round brings in.
+   */
+  ownedCopies?: ReadonlyMap<CardId, number> | null;
   analysis: DeckAnalysis | null;
   /** The tool's analysis count: a new value is a new deck, and a new round. */
   round: number;
@@ -303,15 +310,12 @@ export function useDeckJourney({
   }, [lines, analysis, state]);
 
   const deck = useMemo(() => (state ? workingDeck(state) : null), [state]);
-  /** What the round has spent on cards the player doesn't own (T091): requests carry the budget less this. */
-  const spentUsd = state ? roundSpendUsd(state, owns) : 0;
-  /** The copies that spend is on, in the order taken: the Budget row lists them. */
-  const buys = state ? roundBuys(state, owns) : [];
   const ownsRef = useRef(owns);
+  const copiesRef = useRef(ownedCopies);
   useEffect(() => {
     ownsRef.current = owns;
+    copiesRef.current = ownedCopies;
   });
-  const workingContext = context && deck ? { ...withSpent(context, spentUsd), deck } : null;
 
   const entriesOf = (d: typeof deck): DeckEntry[] => entriesFor(d, cards);
   /** Copies of lands in a deck. */
@@ -326,6 +330,20 @@ export function useDeckJourney({
   );
   /** The deck as it stands, as entries, commanders first: one value per change, since Deck stats re-tallies on a new one. */
   const after = useMemo(() => [...commanders, ...entriesFor(deck, cards)], [commanders, deck, cards]);
+  /**
+   * What the round counts as spent (T091, T102): requests carry the budget less this. With the collection's copies, the
+   * copies the deck as it stands lacks; without, the unowned cards the round brought in.
+   */
+  const spendOf = (s: JourneyState, entries: readonly DeckEntry[], copies: ReadonlyMap<CardId, number> | null, owned: (cardId: CardId) => boolean) =>
+    copies ? missingSpendUsd(entries, copies) : roundSpendUsd(s, owned);
+  const spentUsd = state ? spendOf(state, after, ownedCopies, owns) : 0;
+  const workingContext = context && deck ? { ...withSpent(context, spentUsd), deck } : null;
+  /** The spend once `next` is the deck: a choice ahead of the render, so its cards are read from the choices too. */
+  const spendAfter = (next: JourneyState) => {
+    const seen = new Map(cards);
+    for (const c of choiceCards(next)) seen.set(c.id, c);
+    return spendOf(next, [...commanders, ...entriesFor(workingDeck(next), seen)], copiesRef.current, ownsRef.current);
+  };
   /** The round's starting deck the same way: Deck stats draws its round-start ticks from it. */
   const before = useMemo(() => [...commanders, ...entriesFor(analysis?.deck ?? null, cards)], [commanders, analysis, cards]);
   /** The deck as it stands, counted for Deck stats' lines: what Fix pairs its moves on and Add checks its cards against. */
@@ -351,7 +369,7 @@ export function useDeckJourney({
     setAdd({ round, key, value: { status: "loading" } });
     addPending.current = true;
     // The budget less what the round will have spent once `next` is the deck.
-    const r = await getApis().recs.add({ context: { ...withSpent(ctx, roundSpendUsd(next, ownsRef.current)), deck }, excludeCardIds: next.declinedAdds });
+    const r = await getApis().recs.add({ context: { ...withSpent(ctx, spendAfter(next)), deck }, excludeCardIds: next.declinedAdds });
     if (id !== addRequest.current) return;
     addPending.current = false;
     setAdd({ round, key, value: toAsync(r) });
@@ -376,8 +394,8 @@ export function useDeckJourney({
    * swap stays on the list with its replacement marked. Kept cards stay too: the sitting steps over decided cards as
    * their turn comes, since it deals the list by position and a card vanishing from it would skip the one after it.
    */
-  async function loadReplaceTargets(next: JourneyState, ctx: RecContext | null = context): Promise<void> {
-    if (!ctx || !current) return;
+  async function loadReplaceTargets(next: JourneyState, ctx: RecContext | null = context): Promise<boolean> {
+    if (!ctx || !current) return false;
     const round = current.id;
     const id = ++replaceRequest.current;
     const deck = deckBeforeSwaps(next);
@@ -386,10 +404,10 @@ export function useDeckJourney({
     setReplace({ round, key, candidates, value: { status: "loading" } });
     setReplaceVersion((v) => v + 1);
     const r = await getApis().recs.cut({ context: { ...ctx, deck } });
-    if (id !== replaceRequest.current) return;
+    if (id !== replaceRequest.current) return false;
     if (!r.ok) {
       setReplace({ round, key, candidates, value: toAsync(r) });
-      return;
+      return false;
     }
     // Additions and Fix's cards were chosen just now, so they aren't dealt as weaker fits; combo pieces are never dealt.
     const added = new Set<number>([...next.adds.map((c) => c.id), ...next.fixes.map((move) => move.in.id)]);
@@ -400,6 +418,7 @@ export function useDeckJourney({
       .filter((s) => !named.has(s.target.id))
       .map((s): CutSuggestion => ({ card: s.target, cutScore: 0, reasons: [], severity: "suggested", corpus: null, owned: null }));
     setReplace({ round, key, candidates, value: { status: "ready", data: { ...r.data, suggestions: [...swapped, ...listed] } } });
+    return swapped.length === 0 && listed.length === 0;
   }
 
   /** Whether the Add list on hand was made for the deck as `s` leaves it (or is on its way). */
@@ -449,7 +468,7 @@ export function useDeckJourney({
     invalidateLists();
     const { state: chosen } = now;
     if (chosen.phase === "add" && openSlots(chosen) > 0) return loadAdds(chosen, ctx);
-    if (chosen.phase === "replace") return loadReplaceTargets(chosen, ctx);
+    if (chosen.phase === "replace") await loadReplaceTargets(chosen, ctx);
   }
 
   /**
@@ -506,7 +525,12 @@ export function useDeckJourney({
     // the one on hand was made for the same deck: then the player picks up where they left off. A full deck has no
     // room to add, so Add asks for nothing.
     if (phase === "add" && openSlots(next) > 0 && !addFresh(next)) void loadAdds(next);
-    if (phase === "replace" && !replaceFresh(next)) void loadReplaceTargets(next);
+    // Nothing to swap: the round goes straight on to Finish rather than stop on an empty step (T102). Only as the
+    // list arrives on the way in, so a player who comes back to Swap later sees it empty instead of being sent away.
+    if (phase === "replace" && !replaceFresh(next))
+      void loadReplaceTargets(next).then((empty) => {
+        if (empty && latest.current?.state.phase === "replace") apply({ type: "goto", phase: "review" });
+      });
   }
 
   // ── Cut ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -531,11 +555,12 @@ export function useDeckJourney({
     if (cutBatch.current?.from !== cut.data) {
       cutBatch.current = { from: cut.data, batch: recordShown("cut", recommendedCuts.map((s) => s.card.id), context) };
     }
-    const { batch } = cutBatch.current;
+    const decisions: RecDecision[] = [];
     for (const s of recommendedCuts) {
       const isCutNow = next.cuts.some((c) => c.id === s.card.id);
-      if (isCutNow || next.kept.includes(s.card.id)) recordDecision(batch, s.card.id, isCutNow, context);
+      if (isCutNow || next.kept.includes(s.card.id)) decisions.push({ cardId: s.card.id, accepted: isCutNow });
     }
+    recordDecisions(cutBatch.current.batch, decisions, context);
   }
 
   /**
@@ -822,9 +847,8 @@ export function useDeckJourney({
     },
     deck,
     workingContext,
-    /** Money the round has spent on cards the player doesn't own (T091). */
+    /** What the round counts as spent (T091): with a collection, the copies the deck lacks (T102). */
     spentUsd,
-    buys,
     cards,
     /** The round's starting deck and the deck as it stands, as entries, commanders first. */
     before,

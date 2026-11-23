@@ -136,7 +136,7 @@ test("browser quantities and a live round update the two-line summary and the ke
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   // Undo puts Bolt back, and the summary with it.
-  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
+  await recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
   await expect(trigger).toHaveText("3/9 available", { timeout: 60_000 });
 
   // Save opens the deckbuilder, which has no summary; cancelling the save goes back to Upgrade, and it returns.
@@ -209,4 +209,29 @@ test("cross-tab edits and clearing the collection are read again on focus", asyn
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(trigger).toHaveCount(0);
   await other.close();
+});
+
+test("a pasted deck whose missing cards cost more than Max to spend warns, and Raise starts the round on the new budget", async ({ page }) => {
+  await importCollection(page);
+  await page.goto("/deck");
+  await fillDecklist(page, DECK);
+  // The collection lacks a Sol Ring and every other main-deck card: far more than $1.
+  await page.getByRole("textbox", { name: "Max to spend" }).fill("1");
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  const warning = page.getByRole("dialog", { name: "Over budget" });
+  await expect(warning).toBeVisible({ timeout: 60_000 });
+  await expect(warning.getByText(/^Cards you don't own cost \$[\d,]+\.\d{2} \(.+\), over your \$1\.00 budget\.$/)).toBeVisible();
+  const raise = warning.getByRole("button", { name: /^Raise to \$[\d,]+\.00$/ });
+  const raised = Number(/\$([\d,]+)\.00/.exec(await raise.innerText())?.[1]?.replace(/,/g, ""));
+  expect(raised).toBeGreaterThan(1);
+  await raise.click();
+  await expect(warning).toBeHidden();
+  await expect(page.getByRole("navigation", { name: "Deck upgrade steps" })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: OPTIONAL_LOOKUP_TIMEOUT_MS }).catch(() => undefined);
+
+  // The Deck stats sheet's Budget shows the raised amount, and the cart is within it.
+  await page.getByRole("button", { name: /^Deck stats/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Deck stats" });
+  await expect(sheet.getByRole("region", { name: "Budget" }).getByRole("textbox", { name: "Max to spend" })).toHaveValue(String(raised));
+  await expect(sheet.getByText("Over budget")).toHaveCount(0);
 });

@@ -155,6 +155,16 @@ export const cutInputSchema = z.object({ context: recContextSchema, limit }, req
 export const buildInputSchema = z.object({ context: recContextSchema, fill: z.enum(['none', 'value']).optional() }, request);
 /** Fix's pool (v35): the deck, its bracket and its collection, as for adds and cuts. */
 export const fixInputSchema = z.object({ context: recContextSchema }, request);
+/** Most upgrades one request may ask for (v40): Finish shows five; the cap leaves room without scanning more. */
+export const MAX_UPGRADES_LIMIT = 10;
+/** Upgrades worth buying (v40): the deck as it stands and its collection; `limit` 1 to MAX_UPGRADES_LIMIT. */
+export const upgradesInputSchema = z.object(
+  {
+    context: recContextSchema,
+    limit: z.int().min(1).max(MAX_UPGRADES_LIMIT, `At most ${MAX_UPGRADES_LIMIT} upgrades.`).optional(),
+  },
+  request,
+);
 
 export const parseDeckInputSchema = z.object(
   {
@@ -222,6 +232,24 @@ export const recEventInputSchema: InputSchema<RecEvent> = z
   .refine((e) => (e.kind === 'shown' ? e.position === undefined : e.position !== undefined && e.cardIds.length === 1), {
     message: 'A list shown has no position; a decision names one card and its position.',
     path: ['position'],
+  });
+
+/** The most events one recordRecEvents call carries: a build's 99 cards plus margin, one event each. */
+export const MAX_REC_EVENTS_PER_CALL = 120;
+
+export const recEventsInputSchema: InputSchema<{ events: RecEvent[] }> = z
+  .object(
+    {
+      events: z
+        .array(recEventInputSchema)
+        .min(1, 'Send at least one event.')
+        .max(MAX_REC_EVENTS_PER_CALL, `At most ${MAX_REC_EVENTS_PER_CALL} events per call.`),
+    },
+    request,
+  )
+  .refine(({ events }) => events.every((e) => e.batchId === events[0]?.batchId), {
+    message: 'Every event in one call comes from the same list.',
+    path: ['events'],
   });
 
 export const castVoteInputSchema = z

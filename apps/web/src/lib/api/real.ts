@@ -15,6 +15,7 @@ import {
   analyzeDeckAction,
   castVoteAction,
   recordRecEventAction,
+  recordRecEventsAction,
   getCommanderCoverageAction,
   getDeckCoverageAction,
   getCommanderRequestAction,
@@ -58,6 +59,7 @@ export const realRecs: RecsApi = {
   fix: (input) => post("/api/recs/fix", input),
   cut: (input) => post("/api/recs/cut", input),
   build: (input) => post("/api/recs/build", input),
+  upgrades: (input) => post("/api/recs/upgrades", input),
 };
 
 export const realActions: ActionsApi = {
@@ -86,6 +88,7 @@ export const realActions: ActionsApi = {
   exportDeck: notYet,
   castVote: (input) => callAction(() => castVoteAction(input)),
   recordRecEvent: (input) => callAction(() => recordRecEventAction(input)),
+  recordRecEvents: (input) => callAction(() => recordRecEventsAction(input)),
   setFavorite: notYet,
   adminSetTagDisabled: notYet,
   dealRaterCards: (input) => callAction(() => dealRaterCardsAction(input)),

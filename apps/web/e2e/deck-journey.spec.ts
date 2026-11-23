@@ -1,4 +1,4 @@
-import { FIX_MOVE, expect, fillDecklist, openFix, openSwap, skipCollectionOffer, test, type Locator, type Page } from "./fixtures";
+import { FIX_MOVE, expect, fillDecklist, openFix, leaveSwap, openSwap, skipCollectionOffer, test, type Locator, type Page } from "./fixtures";
 
 /** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
 const CUT_CARD = /^Cut (?!the rest and move on$)/;
@@ -108,26 +108,26 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
 
   // Swap: weaker fits, each with a replacement. The deck may have none, which goes on to Finish.
   await openSwap(page);
-  const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
-  const toReview = recs.getByRole("button", { name: "Next: finish" });
-  await expect(rater.or(toReview)).toBeVisible({ timeout: 60_000 });
-  if (await rater.isVisible()) await rater.getByRole("button", { name: "Finish" }).click();
-  else await toReview.click();
+  await leaveSwap(page);
 
-  // Finish: how the lines stand, the numbers before and after, the changes, and the decklist.
+  // Finish: the deck ready to buy, how the lines stand with the numbers before and after, the changes, and the decklist.
+  await expect(recs.getByRole("heading", { name: "Deck Complete!" })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Deck stats" })).toBeVisible();
-  await expect(recs.getByRole("region", { name: "Before and after" })).toBeVisible();
   await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Out" }).getByText("Lightning Bolt", { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Decklist" })).toBeVisible();
+  // The round put a card in, so the list offers this round's cards (chosen) or the whole deck.
+  const scope = recs.getByRole("region", SHOPPING_LIST).getByRole("group", { name: "Cards to list" });
+  await expect(scope.getByRole("button", { name: "This round's cards" })).toHaveAttribute("aria-pressed", "true");
 
-  // Start over, after a confirm, goes back to the deck as the round started, at Add; Undo brings the round back.
-  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Start over" }).click();
+  // Finish carries the round's controls in its top sheet: Start over, after a confirm, goes back to the deck as the
+  // round started, at Add; Undo brings the round back, on Finish.
+  await recs.getByRole("region", { name: "Deck Complete!" }).getByRole("group", { name: "This round" }).getByRole("button", { name: "Start over" }).click();
   await page.getByRole("dialog", { name: "Start this round over?" }).getByRole("button", { name: "Start over" }).click();
   await expect(steps.getByRole("button", { name: "Add" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
   await expect(recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / })).toBeVisible({ timeout: 60_000 });
-  await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
-  await expect(recs.getByRole("region", { name: "Before and after" })).toBeVisible();
+  await recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" }).click();
+  await expect(steps.getByRole("button", { name: "Finish" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
 });
 
 test("a deck at 100 opens on Fix, and Fix the rest previews its moves before one Undo takes them back", async ({ page }) => {
@@ -141,7 +141,7 @@ test("a deck at 100 opens on Fix, and Fix the rest previews its moves before one
   await expect(first).toBeVisible({ timeout: 60_000 });
   // The lines the move changes sit by the cards, with their counts.
   await expect(move.getByRole("list", { name: "What this changes" }).getByRole("listitem").first()).toBeVisible();
-  const undo = recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" });
+  const undo = recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" });
   await expect(undo).toBeDisabled();
 
   await move.getByRole("button", { name: "Fix the rest for me" }).click();
@@ -179,11 +179,14 @@ test("Finish names each line still off with its reason, and its Fix opens Fix at
   await steps.getByRole("button", { name: "Swap" }).click();
   await steps.getByRole("button", { name: "Finish" }).click();
 
-  const left = recs.getByRole("region", { name: "Deck stats" }).getByRole("list", { name: "Lines still off" });
-  await expect(left.getByRole("listitem").filter({ hasText: "Not legal here" })).toContainText("Can be fixed", { timeout: 60_000 });
+  // Rules and the curve are listed by name; a stat line carries its reason under its own bar.
+  const stats = recs.getByRole("region", { name: "Deck stats" });
+  const left = stats.getByRole("list", { name: "Lines still off" });
+  await expect(left.getByRole("listitem").filter({ hasText: "Not legal here" }).getByRole("button", { name: "Fix", exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
   // The deck is nearly all Forests: Lands is far over, and its Fix opens Fix on that line, ahead of the rule break.
-  const lands = left.getByRole("listitem").filter({ hasText: /^Lands: \d+, about \d+ is typical/ });
-  await expect(lands).toContainText("Can be fixed");
+  const lands = stats.getByRole("listitem").filter({ hasText: /^Lands/ });
   await lands.getByRole("button", { name: "Fix", exact: true }).click();
   await expect(steps.getByRole("button", { name: "Fix" })).toHaveAttribute("aria-current", "step");
   await expect(recs.getByRole("status").filter({ hasText: /Line \d+ of \d+/ })).toContainText("Lands", { timeout: 60_000 });
@@ -215,7 +218,7 @@ test("a bracket the deck no longer fits, chosen during Swap or Finish, sends the
 test("Undo takes back the last choice, on the step it was made on", async ({ page }) => {
   const recs = await analyzeDeck(page);
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
-  const undo = recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Undo" });
+  const undo = recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" });
   await expect(undo).toBeDisabled();
 
   const addIt = recs.getByRole("region", { name: "Cards to add" }).getByRole("button", { name: /^Add / });
@@ -460,8 +463,8 @@ test("Swap never deals a piece of a combo the deck holds", async ({ page, browse
   expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
 });
 
-/** Finish's shopping list; its heading reads "Shopping list · 8 cards, $12.34". */
-const SHOPPING_LIST = { name: /^Shopping list · \d+ cards?, \$/ };
+/** Finish's shopping list; its heading reads "Shopping list 8" (the total leads Finish, above it). */
+const SHOPPING_LIST = { name: /^Shopping list \d+$/ };
 
 /** Straight to Finish from a deck at 100: no changes, so the list offers the whole deck. */
 async function finishAt100(page: Page) {
@@ -472,6 +475,12 @@ async function finishAt100(page: Page) {
   await steps.getByRole("button", { name: "Finish" }).click();
   const list = recs.getByRole("region", SHOPPING_LIST);
   await expect(list).toBeVisible({ timeout: 60_000 });
+  // Without a collection a pasted deck counts as the player's own: the list opens on this round's cards, none here,
+  // and Whole deck lists the deck for one they don't own yet.
+  const scope = list.getByRole("group", { name: "Cards to list" });
+  await expect(scope.getByRole("button", { name: "This round's cards" })).toHaveAttribute("aria-pressed", "true");
+  await expect(list.getByText("This round put in no cards to buy.")).toBeVisible();
+  await scope.getByRole("button", { name: "Whole deck" }).click();
   return list;
 }
 
@@ -484,13 +493,6 @@ async function removeLine(list: Locator, name: string | RegExp) {
 
 test("Finish shows a shopping list by type, removes and undoes", async ({ page }) => {
   const list = await finishAt100(page);
-
-  // No collection: the toggle shows, and with no cards put in this round the whole deck is chosen.
-  const scope = list.getByRole("group", { name: "Cards to list" });
-  await expect(scope.getByRole("button", { name: "Whole deck" })).toHaveAttribute("aria-pressed", "true");
-  await scope.getByRole("button", { name: "This round's cards" }).click();
-  await expect(list.getByText("This round put in no cards to buy.")).toBeVisible();
-  await scope.getByRole("button", { name: "Whole deck" }).click();
 
   // Grouped by type; basics never listed.
   await expect(list.getByRole("list", { name: "Instants to buy" }).getByText("Counterspell", { exact: true })).toBeVisible();
@@ -508,10 +510,52 @@ test("Finish shows a shopping list by type, removes and undoes", async ({ page }
   // No copy button of its own: Finish already offers Copy decklist at the top.
   await expect(list.getByRole("button", { name: /^Copy/ })).toHaveCount(0);
 
-  // Buy goes to TCGplayer's Mass Entry as a paid outbound link.
-  const buy = list.getByRole("link", { name: "Buy on TCGplayer" });
+  // Buy leads Finish, above the list (which has none of its own), and goes to TCGplayer's Mass Entry as a paid outbound link.
+  await expect(list.getByRole("link", { name: /^Buy on TCGplayer/ })).toHaveCount(0);
+  const buy = page.getByRole("region", { name: "Deck Complete!" }).getByRole("link", { name: "Buy on TCGplayer" });
   await expect(buy).toHaveAttribute("rel", /sponsored/);
   await expect(buy).toHaveAttribute("href", /massentry/);
+});
+
+/** The first dollar amount in a text, as a number ("$1,234.56" → 1234.56). */
+function firstUsd(text: string): number {
+  const match = /\$([\d,]+\.\d{2})/.exec(text);
+  if (!match?.[1]) throw new Error(`no dollar amount in "${text}"`);
+  return Number(match[1].replace(/,/g, ""));
+}
+
+/** Finish's total line: "80 cards to buy, $254.59 (Nov 16, 2026)". */
+const finishTotal = (page: Page) => page.getByRole("region", { name: "Deck Complete!" }).getByText(/^\d+ cards? to buy, \$/);
+
+/** The cart total as Finish's top line, the docked Deck stats bar and the sheet's Budget line show it. */
+async function cartTotals(page: Page): Promise<{ heading: number; bar: number; budget: number }> {
+  const heading = firstUsd(await finishTotal(page).innerText());
+  const dock = page.getByRole("button", { name: /^Deck stats/ });
+  const bar = firstUsd(await dock.innerText());
+  await dock.click();
+  const sheet = page.getByRole("dialog", { name: "Deck stats" });
+  const budget = firstUsd(await sheet.getByRole("region", { name: "Budget" }).locator("p", { hasText: "To buy" }).innerText());
+  await sheet.getByRole("button", { name: "Close deck stats" }).click();
+  await expect(sheet).toBeHidden();
+  return { heading, bar, budget };
+}
+
+test("Finish's totals follow the shopping list", async ({ page }) => {
+  const list = await finishAt100(page);
+  const before = await cartTotals(page);
+  expect(before.bar).toBe(before.heading);
+  expect(before.budget).toBe(before.heading);
+
+  // Remove a priced line: all three drop by its price.
+  const line = list.getByRole("listitem").filter({ hasText: /\$\d/ }).first();
+  const price = firstUsd(await line.innerText());
+  const name = await line.getByRole("button", { name: /^Remove / }).getAttribute("aria-label");
+  await removeLine(list, name ?? /^Remove /);
+  const cents = (usd: number) => Math.round(usd * 100);
+  await expect.poll(async () => cents(firstUsd(await finishTotal(page).innerText()))).toBe(cents(before.heading - price));
+  const after = await cartTotals(page);
+  expect(cents(after.bar)).toBe(cents(after.heading));
+  expect(cents(after.budget)).toBe(cents(after.heading));
 });
 
 test("remove all then undo", async ({ page }) => {
@@ -519,11 +563,13 @@ test("remove all then undo", async ({ page }) => {
   const removeButtons = list.getByRole("button", { name: /^Remove / });
   while ((await removeButtons.count()) > 0) await removeLine(list, /^Remove /);
 
-  await expect(list.getByRole("heading", { level: 3 })).toContainText("0 cards");
-  await expect(list.getByRole("link", { name: /^Buy on TCGplayer/ })).toHaveCount(0);
-  await expect(list.getByText("Buy on TCGplayer")).toHaveAttribute("aria-disabled", "true");
+  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 0");
+  // Nothing to buy shows no Buy at all, never a greyed one (T102).
+  const ready = page.getByRole("region", { name: "Deck Complete!" });
+  await expect(ready.getByText("Buy on TCGplayer")).toHaveCount(0);
+  await expect(ready.getByText("You removed every card.")).toBeVisible();
 
   await expect(list.getByText("You removed every card.")).toBeVisible();
   await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
-  await expect(list.getByRole("heading", { level: 3 })).toContainText("1 card ");
+  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 1");
 });

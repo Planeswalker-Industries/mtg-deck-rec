@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
-import type { Bracket, CardId, DeckAnalysis, DeckBudget, DeckId, DeckInput, StatChoices } from "@mtg/core/contract";
+import type { Bracket, CardId, CardSummary, DeckAnalysis, DeckBudget, DeckId, DeckInput, StatChoices } from "@mtg/core/contract";
 import { collectionShortfall, type CollectionShortfall } from "@mtg/core/collection";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import type { CollectionSource } from "@/components/collection/use-collection-source";
@@ -254,6 +254,11 @@ export function SaveDeckButton({
  * for anyone who doesn't care about the name.
  */
 export function suggestedDeckName(analysis: DeckAnalysis): string {
-  const names = analysis.commanderKey.commanders.map(displayName);
+  return deckNameFor(analysis.commanderKey.commanders);
+}
+
+/** The same name from the commanders alone: a built deck's Buy saves it before any analysis (T102). */
+export function deckNameFor(commanders: readonly CardSummary[]): string {
+  const names = commanders.map(displayName);
   return names.length === 0 ? "My Commander deck" : names.join(" and ").slice(0, MAX_DECK_NAME_CHARS);
 }
