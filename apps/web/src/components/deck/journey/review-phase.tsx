@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { TriangleAlert } from "lucide-react";
+import { Download, FilePlus2, RefreshCw, Save, TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
 import { CURVE_LINE, deckDiff, deckStats, type DeckStatsReport, type FixBlock } from "@mtg/core/journey";
@@ -13,6 +13,7 @@ import { BuyButtons, CartTotal, type BuySaveState } from "@/components/decks/buy
 import type { ShoppingCart } from "@/components/decks/use-shopping-cart";
 import { CardPlate } from "@/components/cards/card-plate";
 import { Button } from "@/components/ui/button";
+import { ComingSoonButton } from "@/components/ui/coming-soon-button";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
@@ -116,7 +117,7 @@ export function roundInIds(journey: DeckJourney): CardId[] {
 }
 
 /**
- * Finish: the round's result, shown rather than told. It leads with "Deck ready", the cart total and Buy on TCGplayer
+ * Finish: the round's result, shown rather than told. It leads with "Deck Complete!", the cart total and Buy on TCGplayer
  * as the seal (or, when the collection supplies every card, the upgrades worth buying and their Buy), with Save, Copy,
  * Download and Re-analyze in one outline row under it (T102). Then one Deck stats sheet:
  * cards, mana value and the deck's value before and after, each stat line as a read-only bar from where the round
@@ -267,9 +268,13 @@ export function ReviewPhase({
         in one sheet; then the shopping list, the changes and the decklist.
       */}
       <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3")}>
-        <h2 id="review-ready" className="font-heading text-2xl leading-none font-semibold">
-          {overBy > 0 ? "Almost ready" : "Deck ready"}
-        </h2>
+        {/* Assemble Now isn't built yet (owner, 2026-11-23): it shows, disabled, and says so when tapped or hovered. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="review-ready" className="font-heading text-2xl leading-none font-semibold">
+            {overBy > 0 ? "Almost ready" : "Deck Complete!"}
+          </h2>
+          <ComingSoonButton label="Assemble Now" />
+        </div>
         {overBy > 0 && (
           <p role="status" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
             <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
@@ -295,33 +300,44 @@ export function ReviewPhase({
         {offerUpgrades && journey.workingContext && (
           <Upgrades context={journey.workingContext} onBuy={onBuy} saved={buySaved} className="border-t border-seam pt-3" />
         )}
+        {/* Symbols, not words (owner, 2026-11-23): each names itself to screen readers and on hover. */}
         <div className="flex flex-wrap gap-2 pt-1">
           {save.kind === "open" ? (
             <>
-              <Button type="button" size="lg" variant="outline" onClick={save.onSaveChanges} disabled={blocked}>
-                Save changes
+              <Button type="button" size="icon-lg" variant="outline" onClick={save.onSaveChanges} disabled={blocked} aria-label="Save changes" title="Save changes">
+                <Save aria-hidden />
               </Button>
-              <Button type="button" size="lg" variant="outline" onClick={save.onSaveCopy} disabled={blocked || save.copy.status === "saving"}>
-                Save as copy
+              <Button
+                type="button"
+                size="icon-lg"
+                variant="outline"
+                onClick={save.onSaveCopy}
+                disabled={blocked || save.copy.status === "saving"}
+                aria-label="Save as copy"
+                title="Save as copy"
+              >
+                <FilePlus2 aria-hidden />
               </Button>
             </>
           ) : (
-            <Button type="button" size="lg" variant="outline" onClick={save.onSave} disabled={blocked}>
-              Save
+            <Button type="button" size="icon-lg" variant="outline" onClick={save.onSave} disabled={blocked} aria-label="Save" title="Save">
+              <Save aria-hidden />
             </Button>
           )}
-          <CopyDecklistButton text={journey.resultText} size="lg" disabled={blocked} />
+          <CopyDecklistButton text={journey.resultText} iconOnly outline disabled={blocked} />
           <Button
             type="button"
-            size="lg"
+            size="icon-lg"
             variant="outline"
             disabled={blocked}
+            aria-label="Download text"
+            title="Download text"
             onClick={() => downloadText(journey.resultText(), deckFileName(deck.commanders.map((id) => journey.cards.get(id)?.name)))}
           >
-            Download text
+            <Download aria-hidden />
           </Button>
-          <Button type="button" size="lg" variant="outline" onClick={onReanalyze} disabled={blocked}>
-            Re-analyze
+          <Button type="button" size="icon-lg" variant="outline" onClick={onReanalyze} disabled={blocked} aria-label="Re-analyze" title="Re-analyze">
+            <RefreshCw aria-hidden />
           </Button>
         </div>
         <CopySaveStatus save={save} />

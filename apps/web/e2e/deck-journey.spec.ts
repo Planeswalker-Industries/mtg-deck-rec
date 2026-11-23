@@ -115,7 +115,7 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
   else await toReview.click();
 
   // Finish: the deck ready to buy, how the lines stand with the numbers before and after, the changes, and the decklist.
-  await expect(recs.getByRole("heading", { name: "Deck ready" })).toBeVisible();
+  await expect(recs.getByRole("heading", { name: "Deck Complete!" })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Deck stats" })).toBeVisible();
   await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Out" }).getByText("Lightning Bolt", { exact: true })).toBeVisible();
@@ -515,7 +515,7 @@ test("Finish shows a shopping list by type, removes and undoes", async ({ page }
 
   // Buy leads Finish, above the list (which has none of its own), and goes to TCGplayer's Mass Entry as a paid outbound link.
   await expect(list.getByRole("link", { name: /^Buy on TCGplayer/ })).toHaveCount(0);
-  const buy = page.getByRole("region", { name: "Deck ready" }).getByRole("link", { name: "Buy on TCGplayer" });
+  const buy = page.getByRole("region", { name: "Deck Complete!" }).getByRole("link", { name: "Buy on TCGplayer" });
   await expect(buy).toHaveAttribute("rel", /sponsored/);
   await expect(buy).toHaveAttribute("href", /massentry/);
 });
@@ -528,7 +528,7 @@ function firstUsd(text: string): number {
 }
 
 /** Finish's total line: "80 cards to buy, $254.59 (Nov 16, 2026)". */
-const finishTotal = (page: Page) => page.getByRole("region", { name: "Deck ready" }).getByText(/^\d+ cards? to buy, \$/);
+const finishTotal = (page: Page) => page.getByRole("region", { name: "Deck Complete!" }).getByText(/^\d+ cards? to buy, \$/);
 
 /** The cart total as Finish's top line, the docked Deck stats bar and the sheet's Budget line show it. */
 async function cartTotals(page: Page): Promise<{ heading: number; bar: number; budget: number }> {
@@ -568,7 +568,7 @@ test("remove all then undo", async ({ page }) => {
 
   await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 0");
   // Nothing to buy shows no Buy at all, never a greyed one (T102).
-  const ready = page.getByRole("region", { name: "Deck ready" });
+  const ready = page.getByRole("region", { name: "Deck Complete!" });
   await expect(ready.getByText("Buy on TCGplayer")).toHaveCount(0);
   await expect(ready.getByText("You removed every card.")).toBeVisible();
 
