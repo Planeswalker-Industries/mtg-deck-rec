@@ -5,8 +5,8 @@ import Link from "next/link";
 import { cn } from "cn";
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
-import { OUTBOUND } from "@/lib/affiliate";
-import { SEAL_BUTTON, TEXT_LINK } from "@/lib/constants";
+import { affiliateOn, OUTBOUND } from "@/lib/affiliate";
+import { AFFILIATE_DISCLOSURE, SEAL_BUTTON, TEXT_LINK } from "@/lib/constants";
 import { asOfSuffix, formatUsd } from "@/lib/format";
 import type { ShoppingCart } from "./use-shopping-cart";
 
@@ -26,7 +26,8 @@ export interface RoundBuy {
 /**
  * Buy on TCGplayer (T102), the one button every Buy renders through: the built page, Finish, Deck stats and the saved
  * deck page. One button per cart ("Buy on TCGplayer (1 of 2)" when the cards need several), nothing at all when there is
- * nothing to buy (no greyed Buy), and under it what became of the save a signed-in press makes. Every button is at least
+ * nothing to buy (no greyed Buy), and under it what became of the save a signed-in press makes and the affiliate
+ * disclosure, so every Buy carries it. Every button is at least
  * 44 px tall on phones. `seal` makes it the page's main action; otherwise it is the solid primary button.
  */
 export function BuyButtons({
@@ -80,13 +81,14 @@ export function BuyButtons({
         </p>
       )}
       {saved.status === "error" && <ErrorText>{`Not saved: ${saved.message}`}</ErrorText>}
+      {affiliateOn() && <p className="text-xs text-muted-foreground">{AFFILIATE_DISCLOSURE}</p>}
     </div>
   );
 }
 
 /**
- * The cart's total in one line, beside or above its Buy (T102): "12 cards to buy, ~$54.20 (Nov 16, 2026)", the same
- * number every other surface shows. `emptyText` stands in when there is nothing to buy; nothing renders while the
+ * The cart's total in one line, beside or above its Buy (T102): "12 cards to buy, $54.20 (Nov 16, 2026)", the same
+ * number every other surface shows, written as they write it (no "~": it reads as a minus in DM Mono). `emptyText` stands in when there is nothing to buy; nothing renders while the
  * collection is checked.
  */
 export function CartTotal({ cart, emptyText, className }: { cart: ShoppingCart; emptyText: string; className?: string }) {
@@ -99,7 +101,7 @@ export function CartTotal({ cart, emptyText, className }: { cart: ShoppingCart; 
       ) : (
         <>
           {list.count.toLocaleString("en-US")} {list.count === 1 ? "card" : "cards"} to buy,{" "}
-          <span className="font-mono">~{formatUsd(cart.totalUsd)}</span>
+          <span className="font-mono">{formatUsd(cart.totalUsd)}</span>
           <span className="text-xs text-muted-foreground">{asOfSuffix(cart.asOf)}</span>
           {list.unpriced > 0 && <span className="text-muted-foreground"> · {list.unpriced} unpriced</span>}
         </>

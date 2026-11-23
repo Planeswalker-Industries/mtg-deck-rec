@@ -488,11 +488,13 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
    * read it, so they show one total, the one Buy sends, and follow a line removed from the list. Requests keep the round
    * spend (`withSpent(context, journey.spentUsd)`): the money left for suggestions is a ranker input, this is a display.
    */
+  const roundIds = roundInIds(journey);
   const cart = useShoppingCart({
     entries: journey.after,
     missing: coverageMissing,
-    roundIds: roundInIds(journey),
-    scopeToggle: coverageMissing === null,
+    roundIds,
+    // "This round's cards" only when the round put cards in: otherwise that choice lists nothing.
+    scopeToggle: coverageMissing === null && roundIds.length > 0,
     // A built deck was bought whole, so its cart is the whole deck until the player picks this round's cards alone.
     defaultScope: (journey.state?.bought.length ?? 0) > 0 ? "deck" : undefined,
     resetKey: tool.round,
@@ -1283,7 +1285,8 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
             journey.state && (
               <StatPreviewProvider onChange={setStatPreview} chipsFor={chipsFor}>
               <StepStatusSlot value={statusSlot}>
-              <div className={cn(statsPanel && [DECK_STATS_DOCK, WITH_STATS_RAIL])}>
+              {/* Finish carries its own Deck stats sheet, so from lg the rail steps aside there and the result takes the width. */}
+              <div className={cn(statsPanel && [DECK_STATS_DOCK, journey.state.phase !== "review" && WITH_STATS_RAIL])}>
                 {/* scroll-mt clears the sticky deck bar when "Pick cuts" brings the steps back into view. */}
                 <div id={STEPS_ID} className={ROUND_COLUMN}>
                   {/* Paper sheets on the wood, one per section: the steps, the step (with this round's controls), the collection offer. */}
@@ -1354,7 +1357,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                 </div>
                 {statsPanel && (
                   <>
-                    <DeckStatsRail className="hidden lg:flex" {...statsPanel} />
+                    {journey.state.phase !== "review" && <DeckStatsRail className="hidden lg:flex" {...statsPanel} />}
                     <DeckStatsFooter className="lg:hidden" dock="lg" {...statsPanel} />
                   </>
                 )}

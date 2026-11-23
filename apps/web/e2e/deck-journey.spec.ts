@@ -120,6 +120,9 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
   await expect(recs.getByRole("list", { name: "Cards put in" }).getByText(added.split(" // ")[0] ?? added, { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Out" }).getByText("Lightning Bolt", { exact: true })).toBeVisible();
   await expect(recs.getByRole("region", { name: "Decklist" })).toBeVisible();
+  // The round put a card in, so the list offers this round's cards (chosen) or the whole deck.
+  const scope = recs.getByRole("region", SHOPPING_LIST).getByRole("group", { name: "Cards to list" });
+  await expect(scope.getByRole("button", { name: "This round's cards" })).toHaveAttribute("aria-pressed", "true");
 
   // Start over, after a confirm, goes back to the deck as the round started, at Add; Undo brings the round back.
   await recs.getByRole("toolbar", { name: "This round" }).getByRole("button", { name: "Start over" }).click();
@@ -182,10 +185,11 @@ test("Finish names each line still off with its reason, and its Fix opens Fix at
   // Rules and the curve are listed by name; a stat line carries its reason under its own bar.
   const stats = recs.getByRole("region", { name: "Deck stats" });
   const left = stats.getByRole("list", { name: "Lines still off" });
-  await expect(left.getByRole("listitem").filter({ hasText: "Not legal here" })).toContainText("Can be fixed", { timeout: 60_000 });
+  await expect(left.getByRole("listitem").filter({ hasText: "Not legal here" }).getByRole("button", { name: "Fix", exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
   // The deck is nearly all Forests: Lands is far over, and its Fix opens Fix on that line, ahead of the rule break.
   const lands = stats.getByRole("listitem").filter({ hasText: /^Lands/ });
-  await expect(lands).toContainText("Can be fixed");
   await lands.getByRole("button", { name: "Fix", exact: true }).click();
   await expect(steps.getByRole("button", { name: "Fix" })).toHaveAttribute("aria-current", "step");
   await expect(recs.getByRole("status").filter({ hasText: /Line \d+ of \d+/ })).toContainText("Lands", { timeout: 60_000 });
@@ -462,8 +466,8 @@ test("Swap never deals a piece of a combo the deck holds", async ({ page, browse
   expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
 });
 
-/** Finish's shopping list; its heading reads "Shopping list · 8 cards, $12.34". */
-const SHOPPING_LIST = { name: /^Shopping list · \d+ cards?, \$/ };
+/** Finish's shopping list; its heading reads "Shopping list 8" (the total leads Finish, above it). */
+const SHOPPING_LIST = { name: /^Shopping list \d+$/ };
 
 /** Straight to Finish from a deck at 100: no changes, so the list offers the whole deck. */
 async function finishAt100(page: Page) {
@@ -487,12 +491,8 @@ async function removeLine(list: Locator, name: string | RegExp) {
 test("Finish shows a shopping list by type, removes and undoes", async ({ page }) => {
   const list = await finishAt100(page);
 
-  // No collection: the toggle shows, and with no cards put in this round the whole deck is chosen.
-  const scope = list.getByRole("group", { name: "Cards to list" });
-  await expect(scope.getByRole("button", { name: "Whole deck" })).toHaveAttribute("aria-pressed", "true");
-  await scope.getByRole("button", { name: "This round's cards" }).click();
-  await expect(list.getByText("This round put in no cards to buy.")).toBeVisible();
-  await scope.getByRole("button", { name: "Whole deck" }).click();
+  // No cards put in this round: no "This round's cards" choice, the list is the whole deck.
+  await expect(list.getByRole("group", { name: "Cards to list" })).toHaveCount(0);
 
   // Grouped by type; basics never listed.
   await expect(list.getByRole("list", { name: "Instants to buy" }).getByText("Counterspell", { exact: true })).toBeVisible();
@@ -510,8 +510,9 @@ test("Finish shows a shopping list by type, removes and undoes", async ({ page }
   // No copy button of its own: Finish already offers Copy decklist at the top.
   await expect(list.getByRole("button", { name: /^Copy/ })).toHaveCount(0);
 
-  // Buy goes to TCGplayer's Mass Entry as a paid outbound link.
-  const buy = list.getByRole("link", { name: "Buy on TCGplayer" });
+  // Buy leads Finish, above the list (which has none of its own), and goes to TCGplayer's Mass Entry as a paid outbound link.
+  await expect(list.getByRole("link", { name: /^Buy on TCGplayer/ })).toHaveCount(0);
+  const buy = page.getByRole("region", { name: "Deck ready" }).getByRole("link", { name: "Buy on TCGplayer" });
   await expect(buy).toHaveAttribute("rel", /sponsored/);
   await expect(buy).toHaveAttribute("href", /massentry/);
 });
@@ -523,9 +524,12 @@ function firstUsd(text: string): number {
   return Number(match[1].replace(/,/g, ""));
 }
 
-/** The cart total as the shopping list's heading, the docked Deck stats bar and the sheet's Budget line show it. */
-async function cartTotals(page: Page, list: Locator): Promise<{ heading: number; bar: number; budget: number }> {
-  const heading = firstUsd(await list.getByRole("heading", { level: 3 }).first().innerText());
+/** Finish's total line: "80 cards to buy, $254.59 (Nov 16, 2026)". */
+const finishTotal = (page: Page) => page.getByRole("region", { name: "Deck ready" }).getByText(/^\d+ cards? to buy, \$/);
+
+/** The cart total as Finish's top line, the docked Deck stats bar and the sheet's Budget line show it. */
+async function cartTotals(page: Page): Promise<{ heading: number; bar: number; budget: number }> {
+  const heading = firstUsd(await finishTotal(page).innerText());
   const dock = page.getByRole("button", { name: /^Deck stats/ });
   const bar = firstUsd(await dock.innerText());
   await dock.click();
@@ -538,7 +542,7 @@ async function cartTotals(page: Page, list: Locator): Promise<{ heading: number;
 
 test("Finish's totals follow the shopping list", async ({ page }) => {
   const list = await finishAt100(page);
-  const before = await cartTotals(page, list);
+  const before = await cartTotals(page);
   expect(before.bar).toBe(before.heading);
   expect(before.budget).toBe(before.heading);
 
@@ -548,8 +552,8 @@ test("Finish's totals follow the shopping list", async ({ page }) => {
   const name = await line.getByRole("button", { name: /^Remove / }).getAttribute("aria-label");
   await removeLine(list, name ?? /^Remove /);
   const cents = (usd: number) => Math.round(usd * 100);
-  await expect.poll(async () => cents(firstUsd(await list.getByRole("heading", { level: 3 }).first().innerText()))).toBe(cents(before.heading - price));
-  const after = await cartTotals(page, list);
+  await expect.poll(async () => cents(firstUsd(await finishTotal(page).innerText()))).toBe(cents(before.heading - price));
+  const after = await cartTotals(page);
   expect(cents(after.bar)).toBe(cents(after.heading));
   expect(cents(after.budget)).toBe(cents(after.heading));
 });
@@ -559,12 +563,13 @@ test("remove all then undo", async ({ page }) => {
   const removeButtons = list.getByRole("button", { name: /^Remove / });
   while ((await removeButtons.count()) > 0) await removeLine(list, /^Remove /);
 
-  await expect(list.getByRole("heading", { level: 3 })).toContainText("0 cards");
-  await expect(list.getByRole("link", { name: /^Buy on TCGplayer/ })).toHaveCount(0);
+  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 0");
   // Nothing to buy shows no Buy at all, never a greyed one (T102).
-  await expect(list.getByText("Buy on TCGplayer")).toHaveCount(0);
+  const ready = page.getByRole("region", { name: "Deck ready" });
+  await expect(ready.getByText("Buy on TCGplayer")).toHaveCount(0);
+  await expect(ready.getByText("You removed every card.")).toBeVisible();
 
   await expect(list.getByText("You removed every card.")).toBeVisible();
   await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
-  await expect(list.getByRole("heading", { level: 3 })).toContainText("1 card ");
+  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 1");
 });

@@ -7,10 +7,8 @@ import type { CardId } from "@mtg/core/contract";
 import { cn } from "cn";
 import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
-import { affiliateOn } from "@/lib/affiliate";
 import { displayName } from "@/lib/cards";
 import {
-  AFFILIATE_DISCLOSURE,
   PHONE_HIT_AREA,
   REMOVE_ARM_MS,
   SHOPPING_UNDO_MS,
@@ -114,6 +112,7 @@ export function ShoppingList({
   extraAction,
   onBuy,
   saved,
+  buy = true,
 }: {
   title?: string;
   /** The title's heading level: 3 inside Finish, 2 where the list is one of the page's own sections. */
@@ -134,6 +133,8 @@ export function ShoppingList({
   onBuy?: () => void;
   /** What became of that save. */
   saved?: BuySaveState;
+  /** Show Buy here; false where the page already leads with its own Buy and total (Finish). */
+  buy?: boolean;
 }) {
   const coarse = useCoarsePointer();
   const { list, carts, scope, setScope, scopeToggle, removed } = cart;
@@ -265,17 +266,19 @@ export function ShoppingList({
     );
 
   const buyText = buyLabel ? buyLabel(list.totalUsd) : "Buy on TCGplayer";
-  const actions = (
+  const showBuy = (folded && extraAction) || (buy && carts.length > 0 && list.count > 0);
+  // With no Buy and no note (Finish, everything priced) there is nothing to keep in view: no empty sticky band.
+  const actions = (showBuy || list.unpriced > 0 || (folded && buyLabel && list.asOf)) && (
     // In Finish's aside (a scroll box from xl) Buy stays in view at its top while the lines scroll under it.
     <div className={cn("flex flex-col gap-3", pinActions && "xl:sticky xl:top-0 xl:z-10 xl:bg-background xl:pt-1 xl:pb-2")}>
       {/*
         A named primary action (owner, 2026-11-15): the solid button; on the saved deck page, the page's seal. Nothing to
         buy shows no Buy at all (T102).
       */}
-      {(folded && extraAction) || (carts.length > 0 && list.count > 0) ? (
+      {showBuy ? (
         <div className="flex flex-wrap items-start gap-2">
           {folded && extraAction}
-          {list.count > 0 && <BuyButtons carts={carts} onBuy={onBuy} saved={saved} seal={folded} label={buyText} />}
+          {buy && list.count > 0 && <BuyButtons carts={carts} onBuy={onBuy} saved={saved} seal={folded} label={buyText} />}
         </div>
       ) : null}
 
@@ -283,7 +286,6 @@ export function ShoppingList({
         {/* A total shown on the button still carries its prices' date. */}
         {folded && buyLabel && list.asOf && <p>Prices from {formatAsOf(list.asOf)}.</p>}
         {list.unpriced > 0 && <p>{list.unpriced} unpriced.</p>}
-        {affiliateOn() && carts.length > 0 && list.count > 0 && <p>{AFFILIATE_DISCLOSURE}</p>}
       </div>
     </div>
   );
@@ -334,11 +336,8 @@ export function ShoppingList({
     // A container: one column in Finish's aside, two where the list has the page's width.
     <section aria-labelledby={headingId} className="@container flex flex-col gap-3">
       <Title id={headingId} className="font-heading text-xl leading-none font-semibold">
-        {title}{" "}
-        <span className="font-mono text-base font-normal text-muted-foreground">
-          · {list.count} {cardsWord}, {formatUsd(list.totalUsd)}
-          {asOf}
-        </span>
+        {/* The count alone, as Decklist shows it: the total and its date lead the page this list sits on. */}
+        {title} <span className="font-mono text-base font-normal text-muted-foreground">{list.count}</span>
       </Title>
 
       {scopeToggle && (

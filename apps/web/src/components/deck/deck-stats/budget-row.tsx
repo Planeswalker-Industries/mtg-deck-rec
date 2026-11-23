@@ -10,8 +10,7 @@ import { cn } from "cn";
 import { PriceTag } from "@/components/cards/buy-price";
 import { CardPlate } from "@/components/cards/card-plate";
 import { BuyButtons, type RoundBuy } from "@/components/decks/buy-buttons";
-import { affiliateOn } from "@/lib/affiliate";
-import { AFFILIATE_DISCLOSURE, TIP_HOVER_DELAY_MS } from "@/lib/constants";
+import { TIP_HOVER_DELAY_MS } from "@/lib/constants";
 import { asOfSuffix, formatUsd } from "@/lib/format";
 import { BudgetFields } from "../start-settings";
 import { Mark } from "./level";
@@ -208,7 +207,6 @@ export function BudgetRow({ money }: { money: RoundBudget }) {
           ))}
         </ul>
       )}
-      {buy && buy.carts.length > 0 && affiliateOn() && <p className="text-xs text-muted-foreground">{AFFILIATE_DISCLOSURE}</p>}
       {unpricedSkipped !== undefined && unpricedSkipped > 0 && (
         <p className="text-sm text-muted-foreground">
           {unpricedSkipped} card{unpricedSkipped === 1 ? "" : "s"} without a price left out

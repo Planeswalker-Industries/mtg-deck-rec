@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { EyeOff, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
 import { CURVE_LINE, deckDiff, deckStats, type DeckStatsReport, type FixBlock } from "@mtg/core/journey";
@@ -17,7 +17,7 @@ import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
-import { LevelBadge } from "../deck-stats/level";
+import { LevelBadge, Mark } from "../deck-stats/level";
 import type { RoundSave } from "./round-bar";
 import { judge, Move, RoundMoves } from "./round-moves";
 import type { DeckJourney } from "./use-deck-journey";
@@ -179,61 +179,50 @@ export function ReviewPhase({
   const leftovers = leftoversOf(fix, report, choices);
   const linkClass = cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer font-semibold");
   /**
-   * Why a leftover is still off and what the player can do about it. `named` puts the line's own words first: a rule or
-   * the curve, which have no bar of their own; a stat line's bar already shows its name and numbers.
+   * What a leftover offers, as the Deck stats rail lays it out: a short word and a link beside the line's name (Fix,
+   * Skipped and Fix, Ignored and Count it), and, where the reason needs buttons of its own, a note under it.
    */
-  const leftoverNote = (leftover: Leftover, named: boolean) => {
+  const leftoverParts = (leftover: Leftover): { inline: ReactNode; note: ReactNode } => {
     const { line, reason } = leftover;
-    const canIgnore = !RULE_LINES.has(line);
-    const fixLink = (
-      <button type="button" className={linkClass} onClick={() => fix.openAt(line)}>
-        Fix
+    const link = (label: string, onClick: () => void) => (
+      <button type="button" className={cn(linkClass, "shrink-0 text-xs")} onClick={onClick}>
+        {label}
       </button>
     );
-    const ignore = canIgnore && (
+    const word = (text: string) => <span className="shrink-0 text-xs text-muted-foreground">{text}</span>;
+    const fixLink = link("Fix", () => fix.openAt(line));
+    if (reason === "open") return { inline: fixLink, note: null };
+    if (reason === "skipped") return { inline: <>{word("Skipped")}{fixLink}</>, note: null };
+    if (reason === "ignored") return { inline: <>{word("Ignored")}{link("Count it", () => onChoice(line, null))}</>, note: null };
+    const ignore = !RULE_LINES.has(line) && (
       <Button type="button" size="sm" variant="outline" onClick={() => onChoice(line, "ignore")}>
         Ignore
       </Button>
     );
     const bought = choices[line] === "buy";
     const [why, actions]: [string, ReactNode] =
-      reason === "ignored"
-        ? [
-            "Ignored",
-            <button key="count" type="button" className={linkClass} onClick={() => onChoice(line, null)}>
-              Count it
-            </button>,
-          ]
-        : reason === "open"
-          ? ["Can be fixed", fixLink]
-          : reason === "skipped"
-            ? ["Skipped by you", fixLink]
-            : reason === "noCardOut"
-              ? ["No safe card to take out", null]
-              : collectionOnly && !bought
-                ? [
-                    "Not in your collection",
-                    <span key="choice" className="flex flex-wrap gap-2">
-                      {ignore}
-                      <Button type="button" size="sm" variant="outline" onClick={() => onChoice(line, "buy")}>
-                        Allow buying
-                      </Button>
-                    </span>,
-                  ]
-                : [bought ? "No card to buy for it" : "No card to bring in", ignore];
-    const Icon = reason === "ignored" ? EyeOff : TriangleAlert;
-    return (
-      <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="flex min-w-0 flex-1 basis-40 items-start gap-2">
-          <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", reason === "ignored" ? "text-muted-foreground" : "text-warning")} />
-          <span className={cn(reason === "ignored" && "text-muted-foreground")}>
-            {named && leftoverText(leftover)}
-            <span className={cn(named ? "block text-xs text-muted-foreground" : "text-sm")}>{why}</span>
-          </span>
+      reason === "noCardOut"
+        ? ["No safe card to take out", null]
+        : collectionOnly && !bought
+          ? [
+              "Not in your collection",
+              <>
+                {ignore}
+                <Button type="button" size="sm" variant="outline" onClick={() => onChoice(line, "buy")}>
+                  Allow buying
+                </Button>
+              </>,
+            ]
+          : [bought ? "No card to buy for it" : "No card to bring in", ignore];
+    return {
+      inline: null,
+      note: (
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+          {why}
+          {actions}
         </span>
-        {actions}
-      </span>
-    );
+      ),
+    };
   };
   const before = deckStats(journey.before);
   const after = deckStats(journey.after);
@@ -382,19 +371,33 @@ export function ReviewPhase({
               <p className="text-sm text-muted-foreground">Every line is in line.</p>
             ) : (
               otherLeftovers.length > 0 && (
-                <ul aria-label="Lines still off" className="flex flex-col gap-2.5 text-sm">
-                  {otherLeftovers.map((l) => (
-                    <li key={`${l.line}:${l.reason}`}>{leftoverNote(l, true)}</li>
-                  ))}
+                <ul aria-label="Lines still off" className="flex flex-col gap-2 text-sm">
+                  {otherLeftovers.map((l) => {
+                    const { inline, note } = leftoverParts(l);
+                    return (
+                      <li key={`${l.line}:${l.reason}`} className="flex flex-col gap-1">
+                        <span className={cn("flex min-w-0 items-center gap-2", l.reason === "ignored" && "text-muted-foreground")}>
+                          <Mark state={l.reason === "ignored" ? "ignored" : "off"} />
+                          <span className="min-w-0">{leftoverText(l)}</span>
+                          {inline}
+                        </span>
+                        {note && <span className="pl-6">{note}</span>}
+                      </li>
+                    );
+                  })}
                 </ul>
               )
             ))}
           {report && report.stats.length > 0 && (
             <RoundMoves
               lines={report.stats}
+              action={(key) => {
+                const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
+                return leftover && leftoverParts(leftover).inline;
+              }}
               note={(key) => {
                 const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
-                return leftover && leftoverNote(leftover, false);
+                return leftover && leftoverParts(leftover).note;
               }}
             />
           )}
@@ -402,7 +405,7 @@ export function ReviewPhase({
 
         <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
           <div className={SECTION_SHEET}>
-            <ShoppingList cart={cart} pinActions onBuy={onBuy} saved={buySaved} />
+            <ShoppingList cart={cart} pinActions buy={false} />
           </div>
         </aside>
 
