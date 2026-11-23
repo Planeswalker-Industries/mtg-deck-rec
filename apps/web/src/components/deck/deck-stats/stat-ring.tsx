@@ -1,0 +1,357 @@
+"use client";
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
+import { AnimatePresence, motion, useAnimationControls, useInView, useReducedMotion } from "motion/react";
+import { Check, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
+import { ringWorsens, statRing, towardTarget, type RingZone, type StatLine } from "@mtg/core/journey";
+import { cn } from "cn";
+import { MANA_SYMBOL_URL } from "@/components/deck/color-identity";
+
+/**
+ * Deck stats as rings (owner, 2026-11-23), drawn the way an activity ring reads: the first lap closes at the bottom of a
+ * line's range and its count gives way to a check, then OK; a darker green second lap fills across the range; past the
+ * top the ring turns red, shakes and shows a warning. Short lines are amber, far short ones red. Every colour comes with
+ * a word or an icon: the count, OK, or "4 short" / "3 over" under the label.
+ */
+
+/** Ring diameters in px: the main lines, the card types, the colour sources. */
+const RING_PX = { lg: 72, sm: 56, mana: 48 } as const;
+/** Ring stroke widths in px, at the same sizes. */
+const STROKE_PX = { lg: 7, sm: 6, mana: 5 } as const;
+/** How long a ring takes to fill when it comes into view, or to move to a new count. */
+const FILL_S = 0.8;
+/** Each ring in a group starts this much after the one before it, so a group fills as a ripple. */
+const STAGGER_S = 0.05;
+/** A card on screen moves the rings after this pause, so the eye can catch which ones move. */
+const PREVIEW_DELAY_MS = 300;
+const MS_PER_S = 1000;
+/** A ring that closes shows its check this long before it settles on OK. */
+const CHECK_HOLD_MS = 700;
+/** The shake when a ring steps toward a bad end: offsets in px, over this long. */
+const SHAKE_X_PX = [0, -4, 4, -3, 3, -1, 0];
+const SHAKE_S = 0.45;
+/** The check's grow as it appears: from this scale, past full size, back. */
+const CHECK_GROW = [0.5, 1.15, 1];
+/** What the centre shrinks to as one content gives way to the next (count, check, OK). */
+const CENTRE_SWAP_SCALE = 0.85;
+const CENTRE_SWAP_S = 0.35;
+/** A ring that opens over its range shakes once it is this far through filling. */
+const OVER_SHAKE_AT = 0.5;
+/** The mana symbol under a colour ring, in px. */
+const SYMBOL_PX = 16;
+/** The table's curve (`--ease-table` in globals.css). */
+const EASE_TABLE = [0.2, 0.7, 0.2, 1] as const;
+
+export type RingSize = keyof typeof RING_PX;
+
+const LAP_STROKE: Record<RingZone, string> = {
+  severe: "stroke-destructive",
+  low: "stroke-warning",
+  ok: "stroke-success",
+  over: "stroke-success",
+};
+const COUNT_TEXT: Record<RingZone, string> = {
+  severe: "text-destructive",
+  low: "text-warning",
+  ok: "text-success",
+  over: "text-destructive",
+};
+/** The second lap: a darker green inside the range, red once over it. */
+const EXTRA_STROKE: Record<RingZone, string> = {
+  severe: "stroke-transparent",
+  low: "stroke-transparent",
+  ok: "stroke-[color-mix(in_oklch,var(--success)_62%,var(--ink))]",
+  over: "stroke-destructive",
+};
+
+/**
+ * "4 short", "3 over": whole cards against the target as shown. An off line is never "0 short": a colour line shows its
+ * sources rounded down but is judged on the exact count, so it can be just under a target it seems to meet.
+ */
+const offWords = (value: number, target: number, over: boolean) => {
+  const delta = value - Math.round(target);
+  return over ? `${Math.max(1, delta)} over` : `${Math.max(1, -delta)} short`;
+};
+
+/** The sentence a screen reader hears for a ring. */
+function spokenRing(line: StatLine, zone: RingZone, minimum: boolean, preview: { value: number; better: boolean } | null): string {
+  const target = Math.round(line.target);
+  const where =
+    line.state === "ignored"
+      ? "ignored"
+      : zone === "ok"
+        ? "in line"
+        : `${offWords(line.value, line.target, zone === "over")} ${minimum ? `of ${target} needed` : `against a target of ${target}`}`;
+  const withCard = preview ? `; ${preview.value} with this card, ${preview.better ? "toward" : "away from"} the target` : "";
+  return `${line.label}: ${line.value}, ${where}${withCard}`;
+}
+
+type Shown = Pick<StatLine, "value" | "target" | "ok">;
+const sameShown = (a: Shown, b: Shown) => a.value === b.value && a.target === b.target && a.ok === b.ok;
+
+/** Holds a ring's count back for `delayMs` after it changes, so a preview lands a beat after the card does. */
+function useDelayedShown(next: Shown, delayMs: number): Shown {
+  const [shown, setShown] = useState<Shown>(next);
+  const { value, target, ok } = next;
+  useEffect(() => {
+    if (sameShown(shown, { value, target, ok })) return;
+    const timer = setTimeout(() => setShown({ value, target, ok }), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, target, ok, shown, delayMs]);
+  return shown;
+}
+
+/**
+ * One line as a ring, with its label (or mana symbol) under it and, when it's off, how far off and what to do about it.
+ * `after` is the line as it would stand with the card on screen answered: the ring moves to it after a short pause,
+ * shakes when that is a step toward a bad end, and a chevron says which way the count would go. A ring in range can be
+ * tapped to show its count in place of OK.
+ */
+export function StatRing({
+  line,
+  after,
+  size,
+  index = 0,
+  action,
+}: {
+  line: StatLine;
+  after?: StatLine | undefined;
+  size: RingSize;
+  /** Its place in its group, for the ripple as a group fills. */
+  index?: number;
+  /** Beside the label: Fix, Count it. */
+  action?: ReactNode;
+}) {
+  const reduceMotion = useReducedMotion() ?? false;
+  const box = useRef<HTMLLIElement>(null);
+  const inView = useInView(box, { once: true });
+  const minimum = line.group === "colours";
+  const ignored = line.state === "ignored";
+
+  const previewing = after !== undefined && !sameShown(after, line);
+  const shown = useDelayedShown(previewing ? after : line, reduceMotion ? 0 : PREVIEW_DELAY_MS);
+  const ring = statRing(shown.value, shown.target, shown.ok, minimum);
+  const zone = ignored ? "low" : ring.zone;
+  /** The line's own zone, without the card on screen. */
+  const ownZone = statRing(line.value, line.target, line.ok, minimum).zone;
+
+  // A shake for each step toward a bad end: a preview that would make things worse than the line is, or the line itself
+  // getting worse (a card answered). A preview ending, the ring going back to the line's own zone, never shakes. A ring
+  // that opens over its range shakes once it has filled.
+  const shake = useAnimationControls();
+  const lastShown = useRef<RingZone | null>(null);
+  const lastOwn = useRef<RingZone | null>(null);
+  useEffect(() => {
+    if (!inView) return;
+    const opening = lastShown.current === null;
+    const fromShown = lastShown.current ?? (ring.zone === "over" ? "ok" : ring.zone);
+    const fromOwn = lastOwn.current ?? ownZone;
+    lastShown.current = ring.zone;
+    lastOwn.current = ownZone;
+    if (reduceMotion || ignored || !ringWorsens(fromShown, ring.zone)) return;
+    const previewWorse = ring.zone !== ownZone && ringWorsens(ownZone, ring.zone);
+    const lineWorse = ring.zone === ownZone && (opening || ringWorsens(fromOwn, ownZone));
+    if (!previewWorse && !lineWorse) return;
+    void shake.start({ x: SHAKE_X_PX, transition: { duration: SHAKE_S, delay: opening ? FILL_S * OVER_SHAKE_AT : 0 } });
+  }, [inView, ring.zone, ownZone, reduceMotion, ignored, shake]);
+
+  // In range: a check grows in, then OK takes its place. Tapped: the count.
+  const [revealed, setRevealed] = useState(false);
+  /** Where a closing ring's centre is: still the count while the lap closes, the check, then OK. */
+  const [closing, setClosing] = useState<"count" | "check" | "ok">("count");
+  const okNow = zone === "ok" && !ignored && inView;
+  // Out of range again: the next closing starts from the count. Adjusted while rendering, not in an effect.
+  if (!okNow && closing !== "count") setClosing("count");
+  const closedMs = (FILL_S + index * STAGGER_S) * MS_PER_S;
+  useEffect(() => {
+    if (!okNow || reduceMotion) return;
+    const toCheck = setTimeout(() => setClosing("check"), closedMs);
+    const toOk = setTimeout(() => setClosing("ok"), closedMs + CHECK_HOLD_MS);
+    return () => {
+      clearTimeout(toCheck);
+      clearTimeout(toOk);
+    };
+  }, [okNow, reduceMotion, closedMs]);
+  const centreState = reduceMotion ? "ok" : closing;
+
+  const px = RING_PX[size];
+  const stroke = STROKE_PX[size];
+  const r = (px - stroke) / 2;
+  const fill = (to: number) => ({
+    // A round cap draws a dot at zero length: an empty lap is hidden instead.
+    animate: { pathLength: inView ? to : 0, opacity: inView && to > 0 ? 1 : 0 },
+    initial: { pathLength: 0, opacity: 0 },
+    transition: { duration: reduceMotion ? 0 : FILL_S, ease: EASE_TABLE, delay: reduceMotion ? 0 : index * STAGGER_S },
+  });
+  const arc = (className: string) => ({
+    cx: px / 2,
+    cy: px / 2,
+    r,
+    fill: "none",
+    strokeWidth: stroke,
+    strokeLinecap: "round" as const,
+    className: cn("transition-[stroke] duration-500 motion-reduce:transition-none", className),
+  });
+
+  const moved = previewing ? after.value - line.value : 0;
+  const Chevron = moved > 0 ? ChevronUp : ChevronDown;
+  const better = moved !== 0 && towardTarget(line.value, line.target, moved, minimum, after?.target);
+  const countClass = cn("font-mono leading-none", size === "lg" ? "text-xl" : size === "sm" ? "text-base" : "text-sm");
+  const centreKey = ignored ? "ignored" : okNow && !revealed && centreState !== "count" ? centreState : `count-${shown.value}`;
+  const spoken = spokenRing(line, zone, minimum, previewing ? { value: after.value, better } : null);
+
+  const ringBody = (
+    <motion.span animate={shake} className="relative block" style={{ width: px, height: px }}>
+      <svg aria-hidden width={px} height={px} className="-rotate-90">
+        <circle cx={px / 2} cy={px / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-seam" />
+        <motion.circle {...arc(ignored ? "stroke-muted-foreground/50" : LAP_STROKE[zone])} {...fill(ring.lap)} />
+        {!ignored && ring.extra > 0 && <motion.circle {...arc(EXTRA_STROKE[zone])} {...fill(ring.extra)} />}
+      </svg>
+      <span aria-hidden className="absolute inset-0 flex items-center justify-center">
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.span
+            key={centreKey}
+            initial={reduceMotion ? false : { opacity: 0, scale: centreKey === "check" ? CHECK_GROW[0] : CENTRE_SWAP_SCALE }}
+            animate={{ opacity: 1, scale: centreKey === "check" ? CHECK_GROW : 1 }}
+            exit={{ opacity: 0, scale: CENTRE_SWAP_SCALE }}
+            transition={{ duration: reduceMotion ? 0 : CENTRE_SWAP_S, ease: "easeOut" }}
+            className={cn("flex items-center justify-center", ignored ? "text-muted-foreground" : COUNT_TEXT[zone])}
+          >
+            {centreKey === "check" ? (
+              <Check className={size === "lg" ? "size-7" : "size-5"} strokeWidth={3} />
+            ) : centreKey === "ok" ? (
+              <span className={cn("font-semibold", size === "lg" ? "text-base" : "text-sm")}>OK</span>
+            ) : (
+              <span className={countClass}>{shown.value}</span>
+            )}
+          </motion.span>
+        </AnimatePresence>
+      </span>
+      {/* Over its range: the warning sits on the ring's shoulder. */}
+      {zone === "over" && !ignored && (
+        <TriangleAlert aria-hidden className="absolute -top-1 -right-1 size-4 rounded-full bg-background text-destructive" strokeWidth={2.5} />
+      )}
+      {moved !== 0 && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm",
+            better ? "text-success" : "text-destructive",
+          )}
+        >
+          <Chevron className="size-4" strokeWidth={3} />
+        </span>
+      )}
+    </motion.span>
+  );
+
+  const label =
+    size === "mana" ? (
+      <Image src={MANA_SYMBOL_URL(line.key.replace("sources:", ""))} alt="" width={SYMBOL_PX} height={SYMBOL_PX} unoptimized className="size-4" />
+    ) : (
+      <span className="line-clamp-2 text-xs leading-tight">{line.label}</span>
+    );
+
+  return (
+    <li ref={box} className="flex min-w-0 flex-col items-center gap-1 text-center">
+      {zone === "ok" && !ignored ? (
+        <button
+          type="button"
+          aria-pressed={revealed}
+          aria-label={`${spoken}. Show the count`}
+          onClick={() => setRevealed((r) => !r)}
+          className="cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          {ringBody}
+        </button>
+      ) : (
+        <>
+          {/* First, so the item's text starts with the line's name. */}
+          <span className="sr-only">{spoken}</span>
+          {ringBody}
+        </>
+      )}
+      <span aria-hidden className={cn("flex items-start justify-center", ignored && "text-muted-foreground")}>
+        {label}
+      </span>
+      {/* How far off and what to do about it, on one line where it fits. */}
+      {(ignored || zone !== "ok" || action) && (
+        <span className="flex flex-wrap items-center justify-center gap-x-1.5 text-xs">
+          {ignored ? (
+            <span className="text-muted-foreground">Ignored</span>
+          ) : (
+            zone !== "ok" && (
+              <span aria-hidden className={cn("inline-flex items-center gap-0.5 font-semibold", COUNT_TEXT[zone])}>
+                {zone === "over" && <TriangleAlert className="size-3" strokeWidth={2.75} />}
+                {offWords(shown.value, shown.target, zone === "over")}
+              </span>
+            )
+          )}
+          {action}
+        </span>
+      )}
+    </li>
+  );
+}
+
+const GRID: Record<RingSize, string> = {
+  lg: "grid-cols-3 sm:grid-cols-4",
+  sm: "grid-cols-4 sm:grid-cols-5",
+  mana: "grid-cols-5",
+};
+
+/**
+ * Every line as rings, by group, each under a small heading: the main lines (mana and roles) big, the card types
+ * smaller, the colour sources by their mana symbol. Finish shows the deck this way; the Deck stats sheet places the
+ * groups among its other parts itself.
+ */
+export function StatRingGroups({
+  lines,
+  actionFor,
+}: {
+  lines: readonly StatLine[];
+  actionFor?: (line: StatLine) => ReactNode;
+}) {
+  const groups: { title: string; size: RingSize; lines: StatLine[] }[] = [
+    { title: "Mana and roles", size: "lg", lines: lines.filter((l) => l.group === "mana" || l.group === "roles") },
+    { title: "Types", size: "sm", lines: lines.filter((l) => l.group === "types") },
+    { title: "Colour sources", size: "mana", lines: lines.filter((l) => l.group === "colours") },
+  ];
+  return (
+    <div className="flex flex-col gap-4">
+      {groups
+        .filter((g) => g.lines.length > 0)
+        .map((g) => (
+          <section key={g.title} className="flex flex-col gap-2">
+            <h4 className="text-sm font-semibold text-muted-foreground">{g.title}</h4>
+            <StatRings label={g.title} lines={g.lines} size={g.size} {...(actionFor ? { actionFor } : {})} />
+          </section>
+        ))}
+    </div>
+  );
+}
+
+/** A group of rings in a grid: big for the main lines, smaller for the card types, mana symbols for the colours. */
+export function StatRings({
+  lines,
+  size,
+  afterFor,
+  actionFor,
+  label,
+}: {
+  lines: readonly StatLine[];
+  size: RingSize;
+  afterFor?: (line: StatLine) => StatLine | undefined;
+  actionFor?: (line: StatLine) => ReactNode;
+  label: string;
+}) {
+  if (lines.length === 0) return null;
+  return (
+    <ul aria-label={label} className={cn("grid gap-x-2 gap-y-4", GRID[size])}>
+      {lines.map((line, i) => (
+        <StatRing key={line.key} line={line} after={afterFor?.(line)} size={size} index={i} action={actionFor?.(line)} />
+      ))}
+    </ul>
+  );
+}

@@ -24,7 +24,6 @@ import {
   builtBuys,
   deckKey,
   missingSpendUsd,
-  statDeltas,
   toTallyCard,
   withSpent,
   type JourneyPhase,
@@ -533,10 +532,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   /** The card on screen in a swipe view, which Deck stats previews answering. */
   const [statPreview, setStatPreview] = useState<StatPreview | null>(null);
   const tallyOf = (card: CardSummary | null) => (card && analysis ? toTallyCard(card, card.roles ?? analysis.cardRoles[card.id] ?? []) : null);
-  const previewDeltas =
-    deckStats && statPreview
-      ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove), deckStats.mana.deck)
-      : null;
   /** The deck graded again with the card on screen in and out: the score and the lines it would flip, for Deck stats. */
   const previewReport = useMemo(
     () => (statPreview ? fix.reportWith([{ in: statPreview.add, out: statPreview.remove }]) : null),
@@ -574,7 +569,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         curveAction,
         bracketAction,
         combosAction,
-        preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null,
         after: previewReport,
         money: {
           totalUsd: cart.totalUsd,

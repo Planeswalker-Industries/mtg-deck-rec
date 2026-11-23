@@ -92,7 +92,7 @@ test.describe("deck stats on a phone", () => {
     await expectAboveFooter(page, [
       move.getByRole("button", { name: FIX_SWAP }),
       move.getByRole("button", { name: FIX_SKIP }),
-      move.getByRole("button", { name: "Fix the rest for me" }),
+      move.getByRole("button", { name: "Auto-Fix" }),
     ]);
     // Closed, the footer reads one score (T091): the result the move on screen would give, or the score now when it
     // changes nothing. No per-line text.
@@ -107,7 +107,8 @@ test.describe("deck stats on a phone", () => {
     const colours = sheet.getByRole("region", { name: "Colours" });
     await expect(colours).toBeVisible();
     await expect(colours.getByText("Estimate")).toBeVisible();
-    await expect(colours.getByText(/ sources$/).first()).toBeVisible();
+    // One ring per colour, marked by its mana symbol.
+    await expect(colours.getByRole("list", { name: "Colour sources" }).getByRole("listitem").first()).toBeVisible();
     await expect(colours.getByText(/3 by turn 3/)).toBeVisible();
     const hard = colours.getByRole("listitem").filter({ hasText: /% · turn \d+$/ });
     await expect(hard.first()).toBeVisible();

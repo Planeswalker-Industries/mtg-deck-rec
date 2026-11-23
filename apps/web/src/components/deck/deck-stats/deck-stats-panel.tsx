@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { motion, useInView, useReducedMotion } from "motion/react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import {
   BRACKET_LINE,
@@ -9,10 +10,9 @@ import {
   stateFlips,
   towardTarget,
   type DeckStatsReport,
-  type StatDelta,
   type StatLine,
 } from "@mtg/core/journey";
-import { ArrowDown, ArrowRight, ArrowUp, Check, CircleHelp, X } from "lucide-react";
+import { ArrowRight, Check, CircleHelp, X } from "lucide-react";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { Button } from "@/components/ui/button";
@@ -20,12 +20,18 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { LevelBadge, Mark } from "./level";
 import { BudgetRow, type RoundBudget } from "./budget-row";
-import { STRIPES, StatBar } from "./stat-bar";
+import { StatRings } from "./stat-ring";
+
+/** The stripes on a previewed piece of a curve column: the card on screen would add it, or take it away. */
+const STRIPES = "repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 4px)";
 
 /** A whole in percent: a curve column's full height, a chance of 1. */
 const PERCENT = 100;
-/** Room above the tallest bar or tick, so a tick at the curve's maximum stays inside the box (as StatBar's track). */
+/** Room above the tallest bar or tick, so a tick at the curve's maximum stays inside the box. */
 const COLUMN_HEADROOM = 1.15;
+/** How long a curve column takes to grow in, and how far behind the one to its left it starts. */
+const CURVE_GROW_S = 0.5;
+const CURVE_STAGGER_S = 0.06;
 /** Hard-to-cast cards shown before "Show all" (owner, 2026-11-02). */
 const HARD_TO_CAST_SHOWN = 5;
 /** Rendered width of a hard-to-cast thumbnail (w-10), for CardImage's sizes. */
@@ -49,89 +55,6 @@ function ActionLink({ action, className }: { action: StatAction; className?: str
     <button type="button" className={cn(TEXT_LINK, PHONE_HIT_AREA, "cursor-pointer", className)} onClick={action.onSelect}>
       {action.label}
     </button>
-  );
-}
-
-/**
- * What answering the card on screen would do to a line: "+1" or "−1", green with an up arrow when it moves the count
- * toward its target, red with a down arrow when away. A colour row whose requirement moves names the new one.
- */
-export function PreviewDelta({
-  value,
-  target,
-  preview,
-  minimum = false,
-}: {
-  value: number;
-  target: number;
-  preview: StatDelta;
-  minimum?: boolean;
-}) {
-  const better = towardTarget(value, target, preview.delta, minimum, preview.target);
-  const Icon = better ? ArrowUp : ArrowDown;
-  const { delta } = preview;
-  return (
-    <span className={cn("inline-flex items-center gap-0.5 font-mono text-xs", better ? "text-success" : "text-destructive")}>
-      <Icon aria-hidden className="size-3" strokeWidth={2.75} />
-      {delta > 0 ? `+${delta}` : delta < 0 ? `−${-delta}` : null}
-      {preview.target !== undefined && `${delta !== 0 ? " " : ""}needs ${Math.round(preview.target)}`}
-      <span className="sr-only">{better ? ", toward the target" : ", away from the target"}</span>
-    </span>
-  );
-}
-
-/**
- * One stat on one line: its mark, its name, what to do about it when it's off, then the count against the target (amber
- * when off) with how far it moved this round. A thin bar under it. When a card is on screen, what answering it would
- * change shows beside the count and as a striped piece of the bar, and the state it would end in when it flips.
- */
-function Row({
-  stat,
-  action,
-  preview,
-  flip,
-}: {
-  stat: StatLine;
-  action: StatAction | null;
-  preview: StatDelta | undefined;
-  flip: Flip | undefined;
-}) {
-  const moved = stat.value - stat.start;
-  const minimum = stat.group === "colours";
-  const off = stat.state === "off";
-  return (
-    <li className={cn("flex flex-col gap-1 rounded-md", (preview || flip) && PREVIEWED)}>
-      <div className={cn("flex items-center gap-2 text-sm", stat.state === "ignored" && "text-muted-foreground")}>
-        <Mark state={stat.state} />
-        <span className="min-w-0 truncate">{stat.label}</span>
-        {stat.state === "ignored" && <span className="shrink-0 text-xs">Ignored</span>}
-        {action && <ActionLink action={action} className="shrink-0 text-xs" />}
-        <span className="ml-auto flex shrink-0 items-baseline gap-2">
-          {moved !== 0 && (
-            <span className="font-mono text-xs text-muted-foreground">
-              {moved > 0 ? `+${moved}` : `−${-moved}`}
-              <span className="sr-only"> this round</span>
-            </span>
-          )}
-          {preview && <PreviewDelta value={stat.value} target={stat.target} preview={preview} minimum={minimum} />}
-          {flip && <FlipTag to={flip} />}
-          <span className="font-mono">
-            <span className={cn(off && "text-warning")}>{stat.value}</span>
-            <span className="text-muted-foreground"> / {Math.round(stat.target)}</span>
-          </span>
-        </span>
-      </div>
-      <StatBar
-        value={stat.value}
-        target={stat.target}
-        start={stat.start}
-        ok={!off}
-        preview={preview?.delta ?? 0}
-        targetAfter={preview?.target}
-        minimum={minimum}
-      />
-      {off && <span className="sr-only">{offBy(stat.value, stat.target)}</span>}
-    </li>
   );
 }
 
@@ -170,6 +93,9 @@ function CurveRows({
   const scale = Math.max(1, ...bars.flatMap((b, i) => [b.value + Math.max(0, moved[i]!), b.target, b.start])) * COLUMN_HEADROOM;
   const off = bars.filter((b) => !b.ok).map((b) => barLabel(b.manaValue, b.manaValue === lastIndex));
   const ignored = report.curve.state === "ignored";
+  const reduceMotion = useReducedMotion() ?? false;
+  const columns = useRef<HTMLDivElement>(null);
+  const inView = useInView(columns, { once: true });
   return (
     <div className={cn("flex flex-col gap-1.5", previewed && PREVIEWED)}>
       <div className={cn("flex items-center gap-2 text-sm", ignored && "text-muted-foreground")}>
@@ -183,12 +109,15 @@ function CurveRows({
         </span>
         {flip && <FlipTag to={flip} />}
       </div>
-      <div aria-hidden className="flex h-12 items-end gap-1 border-b border-seam">
+      <div ref={columns} aria-hidden className="flex h-12 items-end gap-1 border-b border-seam">
         {bars.map((b, i) => (
           <div key={b.manaValue} className="relative flex h-full flex-1 items-end">
-            <div
+            {/* Each column grows in as the curve comes into view, left to right (owner, 2026-11-23: a nice-to-have). */}
+            <motion.div
               className={cn("w-full rounded-t-sm", b.ok || ignored ? "bg-muted-foreground/60" : "bg-warning/80")}
-              style={{ height: columnPct(b.value, scale) }}
+              initial={reduceMotion ? false : { height: 0 }}
+              animate={{ height: inView || reduceMotion ? columnPct(b.value, scale) : 0 }}
+              transition={{ duration: reduceMotion ? 0 : CURVE_GROW_S, delay: reduceMotion ? 0 : i * CURVE_STAGGER_S, ease: "easeOut" }}
             />
             {moved[i] !== 0 && (
               <div
@@ -327,7 +256,6 @@ export function DeckStatsPanel({
   curveAction,
   bracketAction,
   combosAction,
-  preview,
   after = null,
   money = null,
 }: {
@@ -342,8 +270,6 @@ export function DeckStatsPanel({
   bracketAction?: StatAction | null;
   /** "Find combos": opens Add's Combos, in the deck tool when it has any. */
   combosAction?: StatAction | null;
-  /** How answering the card on screen would move each line (statDeltas), when one is on screen. */
-  preview?: ReadonlyMap<string, StatDelta> | null;
   /**
    * The deck graded with the card on screen answered (`reportWithMoves`), when one is on screen: the lines it would flip
    * and the curve it would leave. Only its values and states are read.
@@ -358,16 +284,19 @@ export function DeckStatsPanel({
   const colours = report.stats.filter((s) => s.group === "colours");
   // The rail and the phone sheet can both be mounted: the heading id must be unique.
   const coloursHeading = useId();
+  // Each ring moves to its line in the deck as the card on screen would leave it.
+  const afterByKey = after ? new Map(after.stats.map((s) => [s.key, s])) : null;
+  const afterFor = (line: StatLine) => afterByKey?.get(line.key);
+  const actionNode = (line: StatLine) => {
+    const action = actionFor?.(line);
+    return action ? <ActionLink action={action} /> : null;
+  };
   return (
     <div className="flex flex-col gap-4">
       {money && <BudgetRow money={money} />}
       <p className="text-sm text-muted-foreground">Compared with {report.label}</p>
       <Group title="Mana">
-        <ul className="flex flex-col gap-2.5">
-          {mana.map((s) => (
-            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} flip={flips?.get(s.key)} />
-          ))}
-        </ul>
+        <StatRings label="Mana" lines={mana} size="lg" afterFor={afterFor} actionFor={actionNode} />
       </Group>
       {(colours.length > 0 || report.mana.hardToCast.length > 0) && (
         <section className="flex flex-col gap-2" aria-labelledby={coloursHeading}>
@@ -378,11 +307,7 @@ export function DeckStatsPanel({
             <span className="text-xs text-muted-foreground">Estimate</span>
             <ColoursHelp />
           </div>
-          <ul className="flex flex-col gap-2.5">
-            {colours.map((s) => (
-              <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} flip={flips?.get(s.key)} />
-            ))}
-          </ul>
+          <StatRings label="Colour sources" lines={colours} size="mana" afterFor={afterFor} actionFor={actionNode} />
           <p className="text-xs text-muted-foreground">
             {report.mana.byTurn.map((b, i) => (
               <span key={b.turn}>
@@ -395,22 +320,14 @@ export function DeckStatsPanel({
         </section>
       )}
       <Group title="Roles">
-        <ul className="flex flex-col gap-2.5">
-          {roles.map((s) => (
-            <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} flip={flips?.get(s.key)} />
-          ))}
-        </ul>
+        <StatRings label="Roles" lines={roles} size="lg" afterFor={afterFor} actionFor={actionNode} />
       </Group>
       <Group title="Curve">
         <CurveRows report={report} action={curveAction ?? null} after={after} flip={flips?.get(CURVE_LINE)} />
       </Group>
       {types.length > 0 && (
         <Group title="Types">
-          <ul className="flex flex-col gap-2.5">
-            {types.map((s) => (
-              <Row key={s.key} stat={s} action={actionFor?.(s) ?? null} preview={preview?.get(s.key)} flip={flips?.get(s.key)} />
-            ))}
-          </ul>
+          <StatRings label="Types" lines={types} size="sm" afterFor={afterFor} actionFor={actionNode} />
         </Group>
       )}
       <Group title="Bracket">

@@ -130,7 +130,7 @@ test("walks a short deck through add, fix, swap and finish, then starts over", a
   await expect(steps.getByRole("button", { name: "Finish" })).toHaveAttribute("aria-current", "step", { timeout: 60_000 });
 });
 
-test("a deck at 100 opens on Fix, and Fix the rest previews its moves before one Undo takes them back", async ({ page }) => {
+test("a deck at 100 opens on Fix, and Auto-Fix previews its moves before one Undo takes them back", async ({ page }) => {
   const recs = await analyzeDeck(page, deckWith(FORESTS_TO_100));
   const steps = recs.getByRole("navigation", { name: "Deck upgrade steps" });
   // Nothing to add and nothing to cut: the round is Fix, Swap and Finish.
@@ -144,8 +144,8 @@ test("a deck at 100 opens on Fix, and Fix the rest previews its moves before one
   const undo = recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" });
   await expect(undo).toBeDisabled();
 
-  await move.getByRole("button", { name: "Fix the rest for me" }).click();
-  const sheet = page.getByRole("dialog", { name: "Fix the rest" });
+  await move.getByRole("button", { name: "Auto-Fix" }).click();
+  const sheet = page.getByRole("dialog", { name: "Auto-Fix" });
   const apply = sheet.getByRole("button", { name: /^Apply \d+$/ });
   await expect(apply).toBeVisible();
   const planned = Number((await apply.innerText()).replace("Apply ", ""));
@@ -179,7 +179,7 @@ test("Finish names each line still off with its reason, and its Fix opens Fix at
   await steps.getByRole("button", { name: "Swap" }).click();
   await steps.getByRole("button", { name: "Finish" }).click();
 
-  // Rules and the curve are listed by name; a stat line carries its reason under its own bar.
+  // Rules and the curve are listed by name; a stat line carries its reason under its own ring.
   const stats = recs.getByRole("region", { name: "Deck stats" });
   const left = stats.getByRole("list", { name: "Lines still off" });
   await expect(left.getByRole("listitem").filter({ hasText: "Not legal here" }).getByRole("button", { name: "Fix", exact: true })).toBeVisible({

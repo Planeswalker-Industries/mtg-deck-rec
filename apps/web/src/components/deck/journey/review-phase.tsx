@@ -19,7 +19,8 @@ import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
 import { LevelBadge, Mark } from "../deck-stats/level";
 import { CopySaveStatus, RoundControls, type RoundSave } from "./round-bar";
-import { judge, Move, RoundMoves } from "./round-moves";
+import { StatRingGroups } from "../deck-stats/stat-ring";
+import { judge, Move } from "./round-moves";
 import { Upgrades } from "./upgrades";
 import type { DeckJourney } from "./use-deck-journey";
 import type { Fix, FixLineLabel } from "./use-fix";
@@ -438,17 +439,27 @@ export function ReviewPhase({
             )
           ))}
         {report && report.stats.length > 0 && (
-          <RoundMoves
-            lines={report.stats}
-            action={(key) => {
-              const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
-              return leftover && leftoverParts(leftover).inline;
-            }}
-            note={(key) => {
-              const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
-              return leftover && leftoverParts(leftover).note;
-            }}
-          />
+          <>
+            {/* The rings fill as the section comes into view: closed to OK, or what is left to do (owner, 2026-11-23). */}
+            <StatRingGroups
+              lines={report.stats}
+              actionFor={(line) => {
+                const leftover = fix.ready ? leftoverByLine.get(line.key) : undefined;
+                return leftover && leftoverParts(leftover).inline;
+              }}
+            />
+            {/* A reason that needs buttons of its own goes under the rings, named by its line. */}
+            {report.stats.map((line) => {
+              const leftover = fix.ready ? leftoverByLine.get(line.key) : undefined;
+              const note = leftover && leftoverParts(leftover).note;
+              return note ? (
+                <div key={line.key} className="flex flex-col gap-1 border-t border-seam pt-2 text-sm">
+                  <span className="font-semibold">{line.label}</span>
+                  {note}
+                </div>
+              ) : null;
+            })}
+          </>
         )}
       </section>
 
