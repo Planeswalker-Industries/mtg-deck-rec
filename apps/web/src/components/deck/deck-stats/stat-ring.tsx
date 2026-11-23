@@ -2,17 +2,22 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
+import { Popover } from "radix-ui";
 import { AnimatePresence, motion, useAnimationControls, useInView, useReducedMotion } from "motion/react";
 import { Check, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
-import { ringWorsens, statRing, towardTarget, type RingZone, type StatLine } from "@mtg/core/journey";
+import { ringRange, ringWorsens, statRing, towardTarget, type RingZone, type StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { MANA_SYMBOL_URL } from "@/components/deck/color-identity";
+import { TIP_HOVER_DELAY_MS } from "@/lib/constants";
+import { Mark } from "./level";
+import { ringTip } from "./stat-chip-copy";
 
 /**
  * Deck stats as rings (owner, 2026-11-23), drawn the way an activity ring reads: the first lap closes at the bottom of a
  * line's range and its count gives way to a check, then OK; a darker green second lap fills across the range; past the
  * top the ring turns red, shakes and shows a warning. Short lines are amber, far short ones red. Every colour comes with
- * a word or an icon: the count, OK, or "4 short" / "3 over" under the label.
+ * a word or an icon: the count, a check, OK or the warning. What to do about a line is in its tip, opened by a hover or
+ * a tap, so the rings sit close and read at a glance (owner, 2026-11-23).
  */
 
 /** Ring diameters in px: the main lines, the card types, the colour sources. */
@@ -40,6 +45,8 @@ const CENTRE_SWAP_S = 0.35;
 const OVER_SHAKE_AT = 0.5;
 /** The mana symbol under a colour ring, in px. */
 const SYMBOL_PX = 16;
+/** A tip opened by hovering stays this long after the pointer leaves its ring, so the pointer can reach its Fix. */
+const TIP_LEAVE_MS = 150;
 /** The table's curve (`--ease-table` in globals.css). */
 const EASE_TABLE = [0.2, 0.7, 0.2, 1] as const;
 
@@ -157,7 +164,6 @@ export function StatRing({
   }, [inView, ring.zone, ownZone, reduceMotion, ignored, shake]);
 
   // In range: a check grows in, then OK takes its place. Tapped: the count.
-  const [revealed, setRevealed] = useState(false);
   /** Where a closing ring's centre is: still the count while the lap closes, the check, then OK. */
   const [closing, setClosing] = useState<"count" | "check" | "ok">("count");
   const okNow = zone === "ok" && !ignored && inView;
@@ -198,7 +204,7 @@ export function StatRing({
   const Chevron = moved > 0 ? ChevronUp : ChevronDown;
   const better = moved !== 0 && towardTarget(line.value, line.target, moved, minimum, after?.target);
   const countClass = cn("font-mono leading-none", size === "lg" ? "text-xl" : size === "sm" ? "text-base" : "text-sm");
-  const centreKey = ignored ? "ignored" : okNow && !revealed && centreState !== "count" ? centreState : `count-${shown.value}`;
+  const centreKey = ignored ? "ignored" : okNow && centreState !== "count" ? centreState : `count-${shown.value}`;
   const spoken = spokenRing(line, zone, minimum, previewing ? { value: after.value, better } : null);
 
   const ringBody = (
@@ -252,53 +258,83 @@ export function StatRing({
     ) : (
       <span className="line-clamp-2 text-xs leading-tight">{line.label}</span>
     );
+  const range = ringRange(line.target, minimum);
+  const tip = ringTip({
+    group: line.group,
+    label: line.label,
+    value: line.value,
+    low: range.low,
+    high: range.high,
+    zone: ignored ? "low" : ownZone,
+    ignored,
+    preview: previewing ? { value: after.value, zone: statRing(after.value, after.target, after.ok, minimum).zone, better } : undefined,
+  });
 
   return (
-    <li ref={box} className="flex min-w-0 flex-col items-center gap-1 text-center">
-      {zone === "ok" && !ignored ? (
-        <button
-          type="button"
-          aria-pressed={revealed}
-          aria-label={`${spoken}. Show the count`}
-          onClick={() => setRevealed((r) => !r)}
-          className="cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          {ringBody}
-        </button>
-      ) : (
-        <>
-          {/* First, so the item's text starts with the line's name. */}
-          <span className="sr-only">{spoken}</span>
-          {ringBody}
-        </>
-      )}
+    <li ref={box} className="flex min-w-0 flex-col items-center gap-0.5 text-center">
+      <RingTip tip={tip} action={action} spoken={spoken}>
+        {ringBody}
+      </RingTip>
       <span aria-hidden className={cn("flex items-start justify-center", ignored && "text-muted-foreground")}>
         {label}
       </span>
-      {/* How far off and what to do about it, on one line where it fits. */}
-      {(ignored || zone !== "ok" || action) && (
-        <span className="flex flex-wrap items-center justify-center gap-x-1.5 text-xs">
-          {ignored ? (
-            <span className="text-muted-foreground">Ignored</span>
-          ) : (
-            zone !== "ok" && (
-              <span aria-hidden className={cn("inline-flex items-center gap-0.5 font-semibold", COUNT_TEXT[zone])}>
-                {zone === "over" && <TriangleAlert className="size-3" strokeWidth={2.75} />}
-                {offWords(shown.value, shown.target, zone === "over")}
-              </span>
-            )
-          )}
-          {action}
-        </span>
-      )}
+      {/* An ignored line is grey: the mark says why, as everywhere else in Deck stats. */}
+      {ignored && <Mark state="ignored" />}
     </li>
   );
 }
 
+/**
+ * The ring as the trigger of its tip: a hover opens it after a moment, a tap or Enter opens and closes it, and it stays
+ * up while the pointer moves onto it, so its Fix can be reached.
+ */
+function RingTip({ tip, action, spoken, children }: { tip: string; action: ReactNode; spoken: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<number | null>(null);
+  const clear = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+  const later = (next: boolean, ms: number) => {
+    clear();
+    timer.current = window.setTimeout(() => setOpen(next), ms);
+  };
+  useEffect(() => clear, []);
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger
+        type="button"
+        aria-label={spoken}
+        onPointerEnter={(e) => e.pointerType === "mouse" && later(true, TIP_HOVER_DELAY_MS)}
+        onPointerLeave={(e) => e.pointerType === "mouse" && later(false, TIP_LEAVE_MS)}
+        className="cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        {children}
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="top"
+          sideOffset={6}
+          collisionPadding={16}
+          // A tip leaves focus where it was, so the swipe keys keep working.
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerEnter={(e) => e.pointerType === "mouse" && clear()}
+          onPointerLeave={(e) => e.pointerType === "mouse" && later(false, TIP_LEAVE_MS)}
+          className="z-50 flex max-w-64 flex-col items-start gap-1 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm text-foreground shadow-lift"
+        >
+          <p>{tip}</p>
+          {action && <span className="flex flex-wrap items-center gap-x-2 text-xs">{action}</span>}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+/** As many rings to a row as fit, each column just wider than its ring, so a row reads in one sweep. */
 const GRID: Record<RingSize, string> = {
-  lg: "grid-cols-3 sm:grid-cols-4",
-  sm: "grid-cols-4 sm:grid-cols-5",
-  mana: "grid-cols-5",
+  lg: "grid-cols-[repeat(auto-fill,minmax(5rem,1fr))]",
+  sm: "grid-cols-[repeat(auto-fill,minmax(4rem,1fr))]",
+  mana: "grid-cols-[repeat(auto-fill,minmax(3.5rem,1fr))]",
 };
 
 /**
@@ -319,11 +355,11 @@ export function StatRingGroups({
     { title: "Colour sources", size: "mana", lines: lines.filter((l) => l.group === "colours") },
   ];
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {groups
         .filter((g) => g.lines.length > 0)
         .map((g) => (
-          <section key={g.title} className="flex flex-col gap-2">
+          <section key={g.title} className="flex flex-col gap-1.5">
             <h4 className="text-sm font-semibold text-muted-foreground">{g.title}</h4>
             <StatRings label={g.title} lines={g.lines} size={g.size} {...(actionFor ? { actionFor } : {})} />
           </section>
@@ -348,7 +384,7 @@ export function StatRings({
 }) {
   if (lines.length === 0) return null;
   return (
-    <ul aria-label={label} className={cn("grid gap-x-2 gap-y-4", GRID[size])}>
+    <ul aria-label={label} className={cn("grid gap-x-1 gap-y-2.5", GRID[size])}>
       {lines.map((line, i) => (
         <StatRing key={line.key} line={line} after={afterFor?.(line)} size={size} index={i} action={actionFor?.(line)} />
       ))}

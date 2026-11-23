@@ -295,8 +295,9 @@ export function DeckStatsPanel({
     <div className="flex flex-col gap-4">
       {money && <BudgetRow money={money} />}
       <p className="text-sm text-muted-foreground">Compared with {report.label}</p>
-      <Group title="Mana">
-        <StatRings label="Mana" lines={mana} size="lg" afterFor={afterFor} actionFor={actionNode} />
+      {/* The main lines in one block of big rings, so a short group doesn't leave a half-empty row. */}
+      <Group title="Mana and roles">
+        <StatRings label="Mana and roles" lines={[...mana, ...roles]} size="lg" afterFor={afterFor} actionFor={actionNode} />
       </Group>
       {(colours.length > 0 || report.mana.hardToCast.length > 0) && (
         <section className="flex flex-col gap-2" aria-labelledby={coloursHeading}>
@@ -319,9 +320,6 @@ export function DeckStatsPanel({
           <HardToCast report={report} cards={cards} />
         </section>
       )}
-      <Group title="Roles">
-        <StatRings label="Roles" lines={roles} size="lg" afterFor={afterFor} actionFor={actionNode} />
-      </Group>
       <Group title="Curve">
         <CurveRows report={report} action={curveAction ?? null} after={after} flip={flips?.get(CURVE_LINE)} />
       </Group>

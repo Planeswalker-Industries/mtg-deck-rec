@@ -342,9 +342,12 @@ test("the start form's budget validates", async ({ page }) => {
   await page.goto("/deck");
   await expect(page.getByRole("combobox", { name: "Bracket" })).toHaveText("3 Upgraded");
   const perCard = page.getByRole("textbox", { name: "Max per card" });
-  // By text: Next's route announcer is a role="alert" too.
-  await perCard.fill("-1");
-  await expect(page.getByText("A budget can't be negative.")).toBeVisible();
+  // By text: Next's route announcer is a role="alert" too. The collection offer can open over the form as the first
+  // value goes in and swallow it, so that one is retried until it lands.
+  await expect(async () => {
+    await perCard.fill("-1");
+    await expect(page.getByText("A budget can't be negative.")).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
   await perCard.fill("abc");
   await expect(page.getByText("Enter a price per card.")).toBeVisible();
   await perCard.fill("5");

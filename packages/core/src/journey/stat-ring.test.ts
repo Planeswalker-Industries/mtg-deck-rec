@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ringWorsens, statRing } from './stat-ring';
+import { ringRange, ringWorsens, statRing } from './stat-ring';
 import { withinTolerance } from './deck-tally';
 
 describe('statRing', () => {
@@ -46,5 +46,23 @@ describe('ringWorsens', () => {
     expect(ringWorsens('ok', 'over')).toBe(true);
     expect(ringWorsens('low', 'ok')).toBe(false);
     expect(ringWorsens('severe', 'over')).toBe(false);
+  });
+});
+
+describe('ringRange', () => {
+  it('gives the whole counts in line', () => {
+    expect(ringRange(10)).toEqual({ low: 8, high: 12 });
+    expect(ringRange(32)).toEqual({ low: 26, high: 38 });
+    expect(ringRange(1)).toEqual({ low: 0, high: 2 });
+    expect(ringRange(27, true)).toEqual({ low: 27, high: null });
+  });
+
+  it('agrees with withinTolerance', () => {
+    for (const target of [1, 7, 10, 32, 35]) {
+      const { low, high } = ringRange(target);
+      expect(withinTolerance(low, target) && withinTolerance(high!, target)).toBe(true);
+      expect(withinTolerance(high! + 1, target)).toBe(false);
+      if (low > 0) expect(withinTolerance(low - 1, target)).toBe(false);
+    }
   });
 });

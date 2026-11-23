@@ -42,3 +42,9 @@ const ZONE_RANK: Record<RingZone, number> = { ok: 0, low: 1, severe: 2, over: 2 
 
 /** True when going from `from` to `to` is a step toward a bad end: the ring shakes. */
 export const ringWorsens = (from: RingZone, to: RingZone): boolean => ZONE_RANK[to] > ZONE_RANK[from];
+
+/** The whole-card counts a line is in line at: from `low` up to `high` (null for a minimum line, which has no top). */
+export function ringRange(target: number, minimum = false): { low: number; high: number | null } {
+  const reach = Math.max(target * STAT_TOLERANCE_SHARE, STAT_TOLERANCE_MIN_CARDS);
+  return minimum ? { low: Math.ceil(target), high: null } : { low: Math.max(0, Math.ceil(target - reach)), high: Math.floor(target + reach) };
+}

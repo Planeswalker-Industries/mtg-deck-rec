@@ -130,9 +130,11 @@ test("a collection build asks about each gap: Allow buying adds cards to buy, Ig
   const ignoredLine = async () => {
     await page.getByRole("button", { name: FOOTER_NAME }).click();
     const sheet = page.getByRole("dialog", { name: "Deck stats" });
-    const line = sheet.getByRole("listitem").filter({ has: page.getByText(label, { exact: true }) }).first();
+    // Each line is a ring named "<line>: <count>, <where it stands>".
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const ring = sheet.getByRole("button", { name: new RegExp(`^${escaped}: \\d+, ignored`) });
+    const line = sheet.getByRole("listitem").filter({ has: ring }).first();
     await expect(line.getByRole("img", { name: "Ignored" })).toBeVisible({ timeout: RECS_WAIT_MS });
-    await expect(line.getByText("Ignored", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(sheet).toBeHidden();
   };
