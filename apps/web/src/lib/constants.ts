@@ -138,7 +138,7 @@ export const OG_IMAGE_SIZE = { width: 1200, height: 630 } as const;
 
 /** The preview image every page shares unless it sets its own: the homepage hero after its cards fall in (T101). */
 export const DEFAULT_OG_IMAGE = {
-  url: "/og/hero.png",
+  url: "/og/hero.jpg",
   ...OG_IMAGE_SIZE,
   alt: `Magic cards falling onto a walnut table: ${SITE_NAME}`,
 };

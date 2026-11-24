@@ -7,7 +7,7 @@ const localData = Boolean(process.env.E2E_LOCAL_DATA);
 test("every page has the default preview image", async ({ page }) => {
   for (const path of ["/", "/privacy"]) {
     await page.goto(path);
-    expect(await meta(page, "og:image"), path).toMatch(/\/og\/hero\.png$/);
+    expect(await meta(page, "og:image"), path).toMatch(/\/og\/hero\.jpg$/);
     expect(await meta(page, "og:image:width"), path).toBe("1200");
     expect(await meta(page, "og:image:height"), path).toBe("630");
     expect(await meta(page, "og:site_name"), path).toBe("Spell Chasm");
