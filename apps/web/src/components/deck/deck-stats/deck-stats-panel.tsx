@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { motion, useInView, useReducedMotion } from "motion/react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import {
@@ -18,6 +18,7 @@ import { CardImage } from "@/components/cards/card-image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
+import { markRingHintSeen, readRingHintSeen } from "@/lib/ring-hint";
 import { LevelBadge, Mark } from "./level";
 import { BudgetRow, type RoundBudget } from "./budget-row";
 import { StatRings } from "./stat-ring";
@@ -198,6 +199,37 @@ function ColoursHelp() {
   );
 }
 
+/** Nothing to subscribe to: `useSyncExternalStore` only keeps the server render (no hint) apart from the client's. */
+const subscribeNothing = () => () => {};
+
+/**
+ * Whether this panel shows the first-time hint. Read after hydration (the server never shows it), and kept for as long
+ * as the panel stays mounted, so marking the hint seen doesn't take it away from the screen it's on.
+ */
+function useRingHint(): boolean {
+  const seen = useSyncExternalStore(subscribeNothing, readRingHintSeen, () => true);
+  const [shown, setShown] = useState(false);
+  if (!seen && !shown) setShown(true);
+  return shown;
+}
+
+/**
+ * "Close every ring.", in the buddy's voice, once per browser (owner, 2026-11-23). Marked seen only once it is on
+ * screen: the rail is mounted but hidden on phones, and must not use the hint up there.
+ */
+function RingHint() {
+  const line = useRef<HTMLParagraphElement>(null);
+  const inView = useInView(line, { once: true });
+  useEffect(() => {
+    if (inView) markRingHintSeen();
+  }, [inView]);
+  return (
+    <p ref={line} className="font-drama text-base text-foreground/85 italic">
+      Close every ring.
+    </p>
+  );
+}
+
 /** The state a line would end in with the card on screen answered, when that differs from now. */
 type Flip = "ok" | "off";
 
@@ -333,6 +365,7 @@ export function DeckStatsPanel({
   // Each ring moves to its line in the deck as the card on screen would leave it.
   const afterByKey = after ? new Map(after.stats.map((s) => [s.key, s])) : null;
   const afterFor = (line: StatLine) => afterByKey?.get(line.key);
+  const hint = useRingHint();
   const actionNode = (line: StatLine) => {
     const action = actionFor?.(line);
     return action ? <ActionLink action={action} /> : null;
@@ -341,6 +374,7 @@ export function DeckStatsPanel({
     <div className="flex flex-col gap-4">
       {money && <BudgetRow money={money} />}
       <p className="text-sm text-muted-foreground">Compared with {report.label}</p>
+      {hint && <RingHint />}
       {/* The main lines in one block of big rings, so a short group doesn't leave a half-empty row. */}
       <Group title="Mana and roles">
         <StatRings
