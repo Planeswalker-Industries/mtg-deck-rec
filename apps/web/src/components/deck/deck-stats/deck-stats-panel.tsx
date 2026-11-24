@@ -12,7 +12,7 @@ import {
   type DeckStatsReport,
   type StatLine,
 } from "@mtg/core/journey";
-import { ArrowRight, Check, CircleHelp, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, CircleHelp, X } from "lucide-react";
 import { cn } from "cn";
 import { CardImage } from "@/components/cards/card-image";
 import { Button } from "@/components/ui/button";
@@ -164,6 +164,15 @@ function CurveRows({
 
 const pct = (chance: number) => `${Math.round(chance * PERCENT)}%`;
 
+/** The Lands line's key: its tip carries the odds of hitting land drops. */
+const LANDS_LINE = "lands";
+
+/** "Odds: 3 lands by turn 3 93% · 4 by turn 4 80% · …", for the Lands ring's tip; undefined without odds. */
+const landOdds = (byTurn: DeckStatsReport["mana"]["byTurn"]) =>
+  byTurn.length === 0
+    ? undefined
+    : `Odds: ${byTurn.map((b, i) => `${b.turn}${i === 0 ? " lands" : ""} by turn ${b.turn} ${pct(b.chance)}`).join(" · ")}.`;
+
 /** What the colour estimate rests on, behind a (?) so the group stays short. */
 function ColoursHelp() {
   return (
@@ -213,17 +222,53 @@ function FlipTag({ to }: { to: Flip }) {
   );
 }
 
-/** The cards least likely to be cast on curve, worst first, each with its image. */
+/**
+ * The cards least likely to be cast on curve, worst first, each with its image. Folded by default behind its count, so
+ * the Colours group stays short (owner, 2026-11-23).
+ */
 function HardToCast({ report, cards }: { report: DeckStatsReport; cards: ReadonlyMap<CardId, CardSummary> }) {
+  const [open, setOpen] = useState(false);
   const [all, setAll] = useState(false);
+  const panelId = useId();
   // Every card shown shows its image: one the panel can't find is left out.
   const listed = report.mana.hardToCast.filter((h) => cards.has(h.cardId));
   if (listed.length === 0) return null;
   const shown = all ? listed : listed.slice(0, HARD_TO_CAST_SHOWN);
   return (
     <div className="flex flex-col gap-2">
-      <h4 className="text-sm">Hard to cast on curve</h4>
-      <ul className="flex flex-col gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((o) => !o)}
+        className="flex min-h-11 cursor-pointer items-center gap-2 self-start rounded-md text-left text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        Hard to cast ({listed.length})
+        <ChevronDown aria-hidden className={cn("size-4 shrink-0 transition-transform", !open && "-rotate-90")} />
+      </button>
+      {open && <HardToCastList id={panelId} listed={listed} shown={shown} cards={cards} all={all} onAll={() => setAll(true)} />}
+    </div>
+  );
+}
+
+function HardToCastList({
+  id,
+  listed,
+  shown,
+  cards,
+  all,
+  onAll,
+}: {
+  id: string;
+  listed: DeckStatsReport["mana"]["hardToCast"];
+  shown: DeckStatsReport["mana"]["hardToCast"];
+  cards: ReadonlyMap<CardId, CardSummary>;
+  all: boolean;
+  onAll: () => void;
+}) {
+  return (
+    <div id={id} className="flex flex-col gap-2">
+      <ul aria-label="Hard to cast on curve" className="flex flex-col gap-2">
         {shown.map((h) => {
           const card = cards.get(h.cardId)!;
           return (
@@ -241,7 +286,7 @@ function HardToCast({ report, cards }: { report: DeckStatsReport; cards: Readonl
         })}
       </ul>
       {listed.length > HARD_TO_CAST_SHOWN && !all && (
-        <Button type="button" variant="ghost" className={cn(PHONE_HIT_AREA, "self-start text-xs")} onClick={() => setAll(true)}>
+        <Button type="button" variant="ghost" className={cn(PHONE_HIT_AREA, "self-start text-xs")} onClick={onAll}>
           Show all ({listed.length})
         </Button>
       )}
@@ -297,7 +342,14 @@ export function DeckStatsPanel({
       <p className="text-sm text-muted-foreground">Compared with {report.label}</p>
       {/* The main lines in one block of big rings, so a short group doesn't leave a half-empty row. */}
       <Group title="Mana and roles">
-        <StatRings label="Mana and roles" lines={[...mana, ...roles]} size="lg" afterFor={afterFor} actionFor={actionNode} />
+        <StatRings
+          label="Mana and roles"
+          lines={[...mana, ...roles]}
+          size="lg"
+          afterFor={afterFor}
+          actionFor={actionNode}
+          tipExtraFor={(line) => (line.key === LANDS_LINE ? landOdds(report.mana.byTurn) : undefined)}
+        />
       </Group>
       {(colours.length > 0 || report.mana.hardToCast.length > 0) && (
         <section className="flex flex-col gap-2" aria-labelledby={coloursHeading}>
@@ -309,14 +361,6 @@ export function DeckStatsPanel({
             <ColoursHelp />
           </div>
           <StatRings label="Colour sources" lines={colours} size="mana" afterFor={afterFor} actionFor={actionNode} />
-          <p className="text-xs text-muted-foreground">
-            {report.mana.byTurn.map((b, i) => (
-              <span key={b.turn}>
-                {i > 0 && " · "}
-                {b.turn} by turn {b.turn} <span className="font-mono text-foreground">{pct(b.chance)}</span>
-              </span>
-            ))}
-          </p>
           <HardToCast report={report} cards={cards} />
         </section>
       )}

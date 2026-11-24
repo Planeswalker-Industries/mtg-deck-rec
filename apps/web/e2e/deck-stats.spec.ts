@@ -109,8 +109,17 @@ test.describe("deck stats on a phone", () => {
     await expect(colours.getByText("Estimate")).toBeVisible();
     // One ring per colour, marked by its mana symbol.
     await expect(colours.getByRole("list", { name: "Colour sources" }).getByRole("listitem").first()).toBeVisible();
-    await expect(colours.getByText(/3 by turn 3/)).toBeVisible();
-    const hard = colours.getByRole("listitem").filter({ hasText: /% · turn \d+$/ });
+    // The land-drop odds sit in the Lands ring's tip.
+    const lands = sheet.getByRole("list", { name: "Mana and roles" }).getByRole("button", { name: /^Lands:/ });
+    await lands.click();
+    await expect(page.getByText(/^Odds: 3 lands by turn 3 \d+%/)).toBeVisible();
+    await lands.click();
+    // Hard to cast opens from its count.
+    const hardToggle = colours.getByRole("button", { name: /^Hard to cast \(\d+\)$/ });
+    await expect(hardToggle).toHaveAttribute("aria-expanded", "false");
+    await hardToggle.click();
+    await expect(hardToggle).toHaveAttribute("aria-expanded", "true");
+    const hard = colours.getByRole("list", { name: "Hard to cast on curve" }).getByRole("listitem");
     await expect(hard.first()).toBeVisible();
     await expect(hard.first().locator("img")).toBeVisible();
     await colours.getByRole("button", { name: "About the colour estimate" }).click();

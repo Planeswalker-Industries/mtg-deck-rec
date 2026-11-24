@@ -120,6 +120,7 @@ export function StatRing({
   size,
   index = 0,
   action,
+  tipExtra,
 }: {
   line: StatLine;
   after?: StatLine | undefined;
@@ -128,6 +129,8 @@ export function StatRing({
   index?: number;
   /** Beside the label: Fix, Count it. */
   action?: ReactNode;
+  /** A second paragraph in the tip: the Lands ring's land-drop odds. */
+  tipExtra?: string | undefined;
 }) {
   const reduceMotion = useReducedMotion() ?? false;
   const box = useRef<HTMLLIElement>(null);
@@ -300,7 +303,7 @@ export function StatRing({
 
   return (
     <li ref={box} className="flex min-w-0 flex-col items-center gap-0.5 text-center">
-      <RingTip tip={tip} action={action} spoken={spoken}>
+      <RingTip tip={tip} extra={tipExtra} action={action} spoken={spoken}>
         {ringBody}
       </RingTip>
       <span aria-hidden className={cn("flex items-start justify-center", ignored && "text-muted-foreground")}>
@@ -316,7 +319,19 @@ export function StatRing({
  * The ring as the trigger of its tip: a hover opens it after a moment, a tap or Enter opens and closes it, and it stays
  * up while the pointer moves onto it, so its Fix can be reached.
  */
-function RingTip({ tip, action, spoken, children }: { tip: string; action: ReactNode; spoken: string; children: ReactNode }) {
+function RingTip({
+  tip,
+  extra,
+  action,
+  spoken,
+  children,
+}: {
+  tip: string;
+  extra: string | undefined;
+  action: ReactNode;
+  spoken: string;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const timer = useRef<number | null>(null);
   const clear = () => {
@@ -351,6 +366,7 @@ function RingTip({ tip, action, spoken, children }: { tip: string; action: React
           className="z-50 flex max-w-64 flex-col items-start gap-1 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm text-foreground shadow-lift"
         >
           <p>{tip}</p>
+          {extra && <p className="text-xs text-muted-foreground">{extra}</p>}
           {action && <span className="flex flex-wrap items-center gap-x-2 text-xs">{action}</span>}
         </Popover.Content>
       </Popover.Portal>
@@ -396,19 +412,22 @@ export function StatRings({
   size,
   afterFor,
   actionFor,
+  tipExtraFor,
   label,
 }: {
   lines: readonly StatLine[];
   size: RingSize;
   afterFor?: (line: StatLine) => StatLine | undefined;
   actionFor?: (line: StatLine) => ReactNode;
+  /** A second paragraph for a ring's tip. */
+  tipExtraFor?: (line: StatLine) => string | undefined;
   label: string;
 }) {
   if (lines.length === 0) return null;
   return (
     <ul aria-label={label} className={cn("grid gap-x-1 gap-y-2.5", GRID[size])}>
       {lines.map((line, i) => (
-        <StatRing key={line.key} line={line} after={afterFor?.(line)} size={size} index={i} action={actionFor?.(line)} />
+        <StatRing key={line.key} line={line} after={afterFor?.(line)} size={size} index={i} action={actionFor?.(line)} tipExtra={tipExtraFor?.(line)} />
       ))}
     </ul>
   );
