@@ -1,70 +1,97 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useInView, useReducedMotion } from "motion/react";
 import { Coins, Crown, Shuffle } from "lucide-react";
 import { cn } from "cn";
 import { SheetSection } from "@/components/ui/sheet-section";
 
-/** Wide screens get the higher-quality file; the recordings share one pixel size, so it is the colours that differ. */
-const HI_RES_MEDIA = "(min-width: 1024px)";
+/** The clips' folder under `public`: each as WebM (VP9), MP4 (H.264) and a PNG still (owner, 2026-11-24). */
+const CLIP_DIR = "/home";
 
-interface StepMedia {
-  /** Phones and small screens. */
-  src: string;
-  /** Wide screens, where the step cards are large enough to show the extra quality. */
-  hiSrc?: string;
+interface StepClip {
+  /** Muted and looping, offered as WebM first (smaller) and MP4 for browsers without it (iPhone Safari). */
+  webm: string;
+  mp4: string;
+  /** What shows before it plays, and all that shows under reduced motion. Cropped to the clip's shape. */
+  poster: string;
   width: number;
   height: number;
+  /**
+   * The frame's ground around a clip narrower than it: the paper the clip was recorded on, so the clip's edges melt into
+   * the frame rather than sitting between dark bars.
+   */
+  matte: string;
 }
 
-/**
- * The three tabs, each with its line and a recording of the app. The budget and tune recordings are placeholders until
- * the owner replaces them (2026-11-23).
- */
-const TABS: { id: string; label: string; line: string; icon: typeof Crown; media: StepMedia }[] = [
+/** Clip `n`'s three files. */
+const clipFiles = (n: number) => ({
+  webm: `${CLIP_DIR}/home_webm_${n}.webm`,
+  mp4: `${CLIP_DIR}/home_mp4_${n}.mp4`,
+  poster: `${CLIP_DIR}/home_png_${n}.png`,
+});
+
+/** The three tabs, each with its line and a recording of the app (the owner's clips, 2026-11-24). */
+const TABS: { id: string; label: string; line: string; icon: typeof Crown; clip: StepClip }[] = [
   {
     id: "commander",
     label: "Choose any commander",
     line: "Any bracket. Any commander. Build more decks and buy fewer singles.",
     icon: Crown,
-    media: { src: "/commander_gif.gif", hiSrc: "/commander_gif_hi.gif", width: 598, height: 446 },
+    clip: { ...clipFiles(1), width: 596, height: 500, matte: "paper-ground" },
   },
   {
     id: "budget",
     label: "Build it on a budget",
     line: "Sometimes a few more cards bring a deck together. Set a budget per card or per deck, so there are no surprises.",
     icon: Coins,
-    media: { src: "/cut_gif.gif", hiSrc: "/cut_gif_hi.gif", width: 566, height: 346 },
+    clip: { ...clipFiles(2), width: 566, height: 468, matte: "paper-ground" },
   },
   {
     id: "tune",
     label: "Add, Cut, Swap & Share",
     line: "Start fresh or paste a decklist, and we'll take it to the next level without breaking the bank.",
     icon: Shuffle,
-    media: { src: "/swipe_gif.gif", hiSrc: "/swipe_gif_hi.gif", width: 374, height: 378 },
+    clip: { ...clipFiles(3), width: 608, height: 564, matte: "bg-(--paper-raised)" },
   },
 ];
 
 /**
  * One recording, contained (never cropped) in a frame shared by all three; absolute, so the recording's own size can't
- * stretch the frame. Lazy: the recordings are megabytes and sit below the hero, and one inside a `display: none` panel
- * never loads at all. A plain <picture>, since next/image can't pick a file by media query and does not optimise GIFs.
+ * stretch the frame. It plays only while it is on screen: a clip below the hero or in a `display: none` panel (a phone's
+ * other tabs) loads nothing but its poster, and one scrolled away pauses. Under reduced motion it never plays: the
+ * poster stands still.
  */
-function StepRecording({ media }: { media: StepMedia }) {
+function StepRecording({ clip }: { clip: StepClip }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const inView = useInView(video);
+  const reduceMotion = useReducedMotion() ?? false;
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    if (!inView || reduceMotion) el.pause();
+    // A browser that refuses to play (data saver) leaves the poster up.
+    else void el.play().catch(() => undefined);
+  }, [inView, reduceMotion]);
   return (
-    <picture className="absolute inset-1">
-      {media.hiSrc && <source media={HI_RES_MEDIA} srcSet={media.hiSrc} />}
-      <img
-        src={media.src}
-        alt=""
-        width={media.width}
-        height={media.height}
-        loading="lazy"
-        decoding="async"
-        draggable={false}
+    <div className={cn("absolute inset-1 overflow-hidden rounded-sm", clip.matte)}>
+      <video
+        ref={video}
+        poster={clip.poster}
+        width={clip.width}
+        height={clip.height}
+        muted
+        loop
+        playsInline
+        disablePictureInPicture
+        disableRemotePlayback
+        preload="none"
         className="size-full object-contain"
-      />
-    </picture>
+      >
+        <source src={clip.webm} type="video/webm" />
+        <source src={clip.mp4} type="video/mp4" />
+      </video>
+    </div>
   );
 }
 
@@ -152,7 +179,7 @@ export function HowItWorks() {
                   i % 2 === 1 ? "rotate-[1.2deg]" : "-rotate-[1deg]",
                 )}
               >
-                <StepRecording media={tab.media} />
+                <StepRecording clip={tab.clip} />
               </div>
             </div>
           );
