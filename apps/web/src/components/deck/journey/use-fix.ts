@@ -8,8 +8,10 @@ import {
   comboPiecesToKeep,
   deckBeforeFixes,
   deckKey,
+  fixBrowser,
   fixLines,
-  nextFixMove,
+  MAX_FIX_IN_OPTIONS,
+  MAX_FIX_OUT_OPTIONS,
   nextPhase,
   planFixes,
   reportWithMoves,
@@ -18,6 +20,7 @@ import {
   workingDeck,
   type BracketInput,
   type DeckStatsReport,
+  type FixBrowser,
   type FixInput,
   type FixLine,
   type FixMove,
@@ -44,6 +47,44 @@ export interface FixLineLabel {
 }
 
 const NO_ADDS: ReadonlyMap<CardId, readonly ComboRef[]> = new Map();
+
+/** Cards found ahead of the one on screen on each list, after it shows: › and a swipe have the next ones ready. */
+const BROWSE_AHEAD = 2;
+
+/** The pair on screen: an index into the browser's cards to take out, and one into that card's cards to put in. */
+interface FixCursor {
+  browser: FixBrowser | null;
+  out: number;
+  in: number;
+}
+
+/** How long the browser's lists are, once their ends are found: the cards to take out, and each one's cards to put in. */
+interface FixLengths {
+  browser: FixBrowser | null;
+  outs: number | null;
+  ins: ReadonlyMap<number, number>;
+}
+
+/**
+ * A list's length, once the cards found up to `BROWSE_AHEAD` past `at` show its end (a null past the last card, or
+ * the cap reached); null while it runs on past them. Finds those cards, which the browser keeps.
+ */
+function lengthAhead(cardAt: (index: number) => CardSummary | null, at: number, cap: number): number | null {
+  for (let index = at + 1; index <= at + BROWSE_AHEAD; index += 1) {
+    if (index >= cap) return cap;
+    if (cardAt(index) === null) return index;
+  }
+  return null;
+}
+
+/** The lengths learned with the pair at (`out`, `in`) on screen, kept with the ones learned before for the same browser. */
+function learnLengths(known: FixLengths, browser: FixBrowser, out: number, inIndex: number): FixLengths {
+  const base = known.browser === browser ? known : { browser, outs: null, ins: new Map<number, number>() };
+  const outs = base.outs ?? lengthAhead((o) => browser.out(o), out, MAX_FIX_OUT_OPTIONS);
+  const ins = base.ins.get(out) ?? lengthAhead((i) => browser.in(out, i), inIndex, MAX_FIX_IN_OPTIONS);
+  if (base === known && outs === known.outs && ins === (known.ins.get(out) ?? null)) return known;
+  return { browser, outs, ins: ins === null ? base.ins : new Map(base.ins).set(out, ins) };
+}
 
 /** The settings a pool was read with, as one comparable value: a change asks for the pool again. */
 function settingsKey(context: RecContext): string {
@@ -143,7 +184,11 @@ export function useFix({
       analysis && chosenBracket !== null ? { chosen: chosenBracket, signals: analysis.bracketSignals, combos: analysis.combos, overBracketAdds } : null,
     [analysis, chosenBracket, overBracketAdds],
   );
-  const protectedPieces = journey.protectedPieces;
+  // The journey builds its protected pieces afresh each render: keyed by their ids, so the browser (and the pair the
+  // player browsed to) lasts until they change.
+  const protectedKey = [...journey.protectedPieces.keys()].join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- read through its key, which changes when the ids do
+  const protectedPieceIds = useMemo(() => [...journey.protectedPieces.keys()], [protectedKey]);
   const spendLeftUsd = context?.budget?.spendLeftUsd;
 
   const input = useMemo((): FixInput | null => {
@@ -156,13 +201,55 @@ export function useFix({
       skipped: state.declinedFixes,
       choices,
       addedIds: roundAddedIds(state),
-      protectedIds: [...new Set([...comboPiecesToKeep(bracket, targets.bracketLimits), ...protectedPieces.keys()])],
+      protectedIds: [...new Set([...comboPiecesToKeep(bracket, targets.bracketLimits), ...protectedPieceIds])],
       illegalIds: result.illegalIds,
       spendLeftUsd,
     };
-  }, [result, state, tally, targets, bracket, choices, protectedPieces, spendLeftUsd]);
+  }, [result, state, tally, targets, bracket, choices, protectedPieceIds, spendLeftUsd]);
 
-  const move = useMemo(() => (input ? nextFixMove(focus === null ? input : { ...input, focusLine: focus }) : null), [input, focus]);
+  // The pairs to browse, first nextFixMove's. A new browser (after a move, a skip or a new focus) starts both lists over.
+  const browser = useMemo(() => (input ? fixBrowser(focus === null ? input : { ...input, focusLine: focus }) : null), [input, focus]);
+  // A cursor set on an earlier browser reads as (0, 0): no state is written while rendering.
+  const [cursor, setCursor] = useState<FixCursor>({ browser, out: 0, in: 0 });
+  const outIndex = cursor.browser === browser ? cursor.out : 0;
+  const inIndex = cursor.browser === browser ? cursor.in : 0;
+  const [lengths, setLengths] = useState<FixLengths>({ browser, outs: null, ins: new Map() });
+  const known = lengths.browser === browser ? lengths : null;
+  const outCount = known?.outs ?? null;
+  const inCount = known?.ins.get(outIndex) ?? null;
+
+  /** The pair on screen, which Swap makes and Skip passes on. Every index the cursor reaches has a card. */
+  const move = useMemo((): FixMove | null => {
+    const out = browser?.out(outIndex) ?? null;
+    const cardIn = browser?.in(outIndex, inIndex) ?? null;
+    return browser && out && cardIn ? { line: browser.line, out, in: cardIn } : null;
+  }, [browser, outIndex, inIndex]);
+
+  // After the pair shows, find the cards a browse would show next, so the tap that asks for them doesn't wait.
+  useEffect(() => {
+    if (!browser) return;
+    const timer = setTimeout(() => setLengths((l) => learnLengths(l, browser, outIndex, inIndex)));
+    return () => clearTimeout(timer);
+  }, [browser, outIndex, inIndex]);
+
+  /** Moves the cursor, when the card it moves to exists; at an end it learns the list's length instead. */
+  const browseTo = (out: number, inAt: number) => {
+    if (!browser || out < 0 || inAt < 0) return;
+    if (browser.out(out) !== null && browser.in(out, inAt) !== null) setCursor({ browser, out, in: inAt });
+    else setLengths((l) => learnLengths(l, browser, outIndex, inIndex));
+  };
+  // No count is shown (owner, 2026-11-24): a list's length, once known, only says whether › has a card to go to.
+  const browse = {
+    canNextOut: outCount === null || outIndex + 1 < outCount,
+    canPreviousOut: outIndex > 0,
+    canNextIn: inCount === null || inIndex + 1 < inCount,
+    canPreviousIn: inIndex > 0,
+    nextOut: () => browseTo(outIndex + 1, 0),
+    previousOut: () => browseTo(outIndex - 1, 0),
+    nextIn: () => browseTo(outIndex, inIndex + 1),
+    previousIn: () => browseTo(outIndex, inIndex - 1),
+  };
+
   const lines = useMemo((): FixLine[] => (input ? fixLines(input) : []), [input]);
 
   /** A round's first arrival on Fix with nothing to fix goes on to the next step, once. */
@@ -232,8 +319,10 @@ export function useFix({
     /** The pool for the deck on screen: loading until it is in. */
     status: (noTargets ? "ready" : (current?.status ?? (wanted ? "loading" : "idle"))) as Async<never>["status"],
     message: current?.status === "error" ? current.message : null,
-    /** The next move, or null when no line has one left (or the pool isn't in). */
+    /** The pair on screen, or null when no line has a move left (or the pool isn't in). */
     move,
+    /** The browse to the line's other pairs. Browsing records nothing. */
+    browse,
     /** The in card as the pool sent it: whether it is owned, and the lines it would be bought for. */
     inCard: move ? (fixCards.get(move.in.id) ?? null) : null,
     /** Every counted line outside its band, with why it has no move when it has none. */

@@ -5,6 +5,7 @@ import { ArrowLeftRight, WandSparkles } from "lucide-react";
 import { compareCards, type FixMove } from "@mtg/core/journey";
 import { DecisionButtons } from "@/components/cards/card-panel";
 import { MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
+import { useBrowseSwipe } from "@/components/cards/use-browse-swipe";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { PriceTag } from "@/components/cards/buy-price";
@@ -38,10 +39,28 @@ function LineCount({ line }: { line: FixLineLabel }) {
  * Fix: one paired move at a time, a card out on the left and a card in on the right, for the Deck stats line named in
  * the header. Swap makes the move, Skip passes on the pair (either card may come back in another), and Auto-Fix
  * previews every move left to apply together. The chips under the cards name every line the move changes.
+ *
+ * Swiping browses and never decides (owner, 2026-11-24): a swipe on the card going out shows the next or previous card
+ * to take out for the line, one on the card going in (or its ‹ ›, or the arrow keys) the next or previous card to put
+ * in. Swap and Skip act on the pair on screen.
  */
 export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney; fix: Fix; hasCollection: boolean }) {
-  const { move } = fix;
+  const { move, browse } = fix;
   const lastAt = useRef(0);
+  const outSwipe = useBrowseSwipe({
+    onNext: browse.nextOut,
+    onPrevious: browse.previousOut,
+    canNext: browse.canNextOut,
+    canPrevious: browse.canPreviousOut,
+    tourTarget: "fix.out",
+  });
+  const inSwipe = useBrowseSwipe({
+    onNext: browse.nextIn,
+    onPrevious: browse.previousIn,
+    canNext: browse.canNextIn,
+    canPrevious: browse.canPreviousIn,
+    tourTarget: "fix.in",
+  });
   /** The plan the auto-fix sheet previews, made when it is asked for; null while the sheet is shut. */
   const [plan, setPlan] = useState<FixMove[] | null>(null);
   useStatPreview(move?.in ?? null, move?.out ?? null);
@@ -54,15 +73,16 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
     else fix.skip();
   };
 
-  // Arrow keys do what the buttons do, unless the player is typing somewhere.
+  // Arrow keys browse the cards to put in (as ‹ ›), unless the player is typing somewhere or the auto-fix sheet is open.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
-      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      if ((e.key !== "ArrowRight" && e.key !== "ArrowLeft") || !move || plan !== null) return;
       e.preventDefault();
-      act(e.key === "ArrowRight");
+      if (e.key === "ArrowRight") browse.nextIn();
+      else browse.previousIn();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -137,11 +157,19 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
       />
       <section aria-label="Fix: one card out, one card in" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
         <div aria-live="polite" className={MOVE_PAIR_GRID}>
-          <MoveCard card={move.out} side="out" />
+          <MoveCard
+            card={move.out}
+            side="out"
+            swipe={outSwipe.bind}
+            tourTarget="fix.out"
+          />
           <SwapMark />
           <MoveCard
             card={move.in}
             side="in"
+            browse={{ canPrevious: browse.canPreviousIn, canNext: browse.canNextIn, onPrevious: browse.previousIn, onNext: browse.nextIn }}
+            swipe={inSwipe.bind}
+            tourTarget="fix.in"
             owned={hasCollection && inCard !== null && inCard.owned !== null}
             note={
               notOwned ? (

@@ -50,7 +50,7 @@ Friends trying the app don't know where to tap and miss features: how to upload 
 - [x] `useBrowseSwipe`, and browsing in Add and Cut
 - [x] Browsing in Swap
 - [x] `fixBrowser` in `@mtg/core/journey`
-- [ ] Browsing in Fix
+- [x] Browsing in Fix
 - [ ] Tour state, provider and the Tutorials toggle
 - [ ] Tour overlay, and the Commander page tour
 - [ ] Tours: deck start and build start

@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowLeftRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeftRight, ChevronLeft } from "lucide-react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { compareCards } from "@mtg/core/journey";
 import { ownedOnly, swapMatchLabel } from "@mtg/core/scoring";
 import { BuyPrice } from "@/components/cards/buy-price";
 import { useBrowseSwipe } from "@/components/cards/use-browse-swipe";
 import { DecisionButtons } from "@/components/cards/card-panel";
-import { MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
+import { BrowseCount, MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
@@ -183,19 +183,9 @@ export function SwipeRater({
       : [];
   const skipLabel = `Skip ${targetName}`;
 
-  /** Over Remove: which card of the list this is ("1 of 14"; the word "Card" is read out, not shown, owner 2026-11-18). */
-  const cardCount = (
-    <p className="font-mono text-xs text-muted-foreground">
-      <span className="sr-only">Card </span>
-      {rater.targetIndex + 1} of {rater.targetCount}
-    </p>
-  );
-  const optionCount = (
-    <span className="font-mono text-xs text-muted-foreground">
-      <span className="sr-only">Option </span>
-      {rater.candidateIndex + 1} of {rater.candidateCount}
-    </span>
-  );
+  /** The rater's counts over each card ("1 of 14"); the deck tool shows none (owner, 2026-11-24). */
+  const cardCount = inRater ? <BrowseCount word="Card" index={rater.targetIndex} count={rater.targetCount} /> : undefined;
+  const optionCount = inRater ? <BrowseCount word="Option" index={rater.candidateIndex} count={rater.candidateCount} /> : undefined;
   const targetCard = (
     <MoveCard
       card={target.card}
@@ -225,11 +215,9 @@ export function SwipeRater({
           {targetCard}
           <SwapMark />
           <div role="status" aria-label="Finding replacements" className="flex min-w-0 flex-col items-center gap-1.5">
-            {/* As tall as the Add word and the options row on the card going in, so both sides stay level. */}
-            <span aria-hidden className="invisible text-xs font-semibold">
-              Add
-            </span>
-            <div aria-hidden className="-my-1.5 min-h-11" />
+            {/* As tall as the word row (and the rater's count row) on the card going in, so both sides stay level. */}
+            <div aria-hidden className="min-h-11" />
+            {inRater && <div aria-hidden className="-my-1.5 min-h-11" />}
             <Skeleton className="aspect-[488/680] w-full max-w-28 rounded-[4.75%/3.4%] bg-seam sm:max-w-52" />
           </div>
         </div>
@@ -281,36 +269,11 @@ export function SwipeRater({
               side="in"
               owned={markOwned && candidate.owned !== null}
               {...(inRater ? {} : { swipe: optionSwipe.bind, tourTarget: "swap.in" })}
-              nav={
-                inRater ? (
-                  optionCount
-                ) : (
-                  // Solid primary, so the other options are seen (owner, 2026-11-24: testers missed them until swap 9 of 10).
-                  <div role="group" aria-label="Replacement options" className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      aria-label="Previous option"
-                      // aria-disabled rather than disabled, so the button keeps focus as it reaches the first option.
-                      aria-disabled={!rater.canBackOption}
-                      onClick={rater.back}
-                      className="aria-disabled:cursor-default aria-disabled:opacity-50"
-                    >
-                      <ChevronLeft aria-hidden className="size-4" />
-                    </Button>
-                    {optionCount}
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      aria-label="Next option"
-                      aria-disabled={!rater.canNextOption}
-                      onClick={rater.nextOption}
-                      className="aria-disabled:cursor-default aria-disabled:opacity-50"
-                    >
-                      <ChevronRight aria-hidden className="size-4" />
-                    </Button>
-                  </div>
-                )
+              nav={optionCount}
+              browse={
+                inRater
+                  ? undefined
+                  : { canPrevious: rater.canBackOption, canNext: rater.canNextOption, onPrevious: rater.back, onNext: rater.nextOption }
               }
               note={
                 <>
