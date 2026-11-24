@@ -9,11 +9,11 @@ import { OG_IMAGE_SIZE, USER_AGENT } from "@/lib/constants";
  * The share plate (T101) for card, commander and saved-deck pages: a paper sheet on the walnut table, the card's art
  * in a gilded frame on the left, the Spell Chasm wordmark on the right, the artist's credit under the art. Rendered
  * once per art and cached; a share crawler's repeat visit costs no Scryfall fetch. Satori draws a PNG; the photo textures
- * and art make that about 1.2 MB, so it is sent as a JPEG instead (about 75 KB, no visible change).
+ * and art make that about 1.2 MB, so it is sent as a JPEG instead (about 70-100 KB, no visible change).
  */
 
 export const PLATE_CONTENT_TYPE = "image/jpeg";
-/** mozjpeg quality: 80 keeps the gilt and the wordmark's edges clean at a sixteenth of the PNG's size. */
+/** mozjpeg quality: 80 keeps the gilt and the wordmark's edges clean at about 70-100 KB. */
 const PLATE_JPEG_QUALITY = 80;
 
 /** Wood, paper and brass tokens from globals.css; Satori reads no CSS variables. */
@@ -58,8 +58,10 @@ const WALNUT_TILE = "900px 480px";
 
 /** A share crawler waits only a few seconds; a slow Scryfall answer gives the plate without art instead. */
 const IMAGE_TIMEOUT_MS = 8_000;
-/** An art crop and its artist almost never change, so a recrawl should be a CDN HIT, not a re-render (Fast Origin Transfer and CPU). */
+/** A card's or commander's art crop and artist almost never change, so a recrawl should be a CDN HIT, not a re-render (Fast Origin Transfer and CPU). */
 export const PLATE_CACHE_CONTROL = "public, max-age=3600, s-maxage=2592000, stale-while-revalidate=604800";
+/** A saved deck's lead commander can be changed, and the deck made private or deleted, so its plate keeps a one-day CDN life. */
+export const DECK_PLATE_CACHE_CONTROL = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
 
 // Static TTF, JPEG and PNG: Satori reads neither woff2, variable fonts nor webp.
 const asset = (file: string) => readFile(join(process.cwd(), "assets/og", file));
@@ -171,7 +173,11 @@ async function cachedPlate(artUrl: string, artist: string | null): Promise<Uint8
  * The plate as a response. No art (Scryfall has no crop) gives the sheet with the wordmark alone; Scryfall not
  * answering gives the same, uncached, so the next request tries the art again.
  */
-export async function plateResponse(artUrl: string | null | undefined, artist: string | null): Promise<Response> {
+export async function plateResponse(
+  artUrl: string | null | undefined,
+  artist: string | null,
+  cacheControl: string = PLATE_CACHE_CONTROL,
+): Promise<Response> {
   let plate: Uint8Array;
   if (!artUrl) plate = await renderPlate(null, null);
   else {
@@ -183,6 +189,6 @@ export async function plateResponse(artUrl: string | null | undefined, artist: s
     }
   }
   return new Response(plate as Uint8Array<ArrayBuffer>, {
-    headers: { "Content-Type": PLATE_CONTENT_TYPE, "Cache-Control": PLATE_CACHE_CONTROL },
+    headers: { "Content-Type": PLATE_CONTENT_TYPE, "Cache-Control": cacheControl },
   });
 }

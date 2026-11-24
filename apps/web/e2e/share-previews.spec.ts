@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { CRAWLER_UA, expect, headMeta as meta, test } from "./fixtures";
 
-/** A JPEG plate is about 100 KB; twice that means the encoder setting or the format regressed. */
+/** A JPEG plate is about 70-100 KB; twice that means the encoder setting or the format regressed. */
 const MAX_PLATE_BYTES = 200_000;
 const localData = Boolean(process.env.E2E_LOCAL_DATA);
 test("every page has the default preview image", async ({ page }) => {
