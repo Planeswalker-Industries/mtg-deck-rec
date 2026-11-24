@@ -49,7 +49,7 @@ Friends trying the app don't know where to tap and miss features: how to upload 
 - [x] Espresso on every journey control at rest (the Swap ‹ › were off colour)
 - [x] `useBrowseSwipe`, and browsing in Add and Cut
 - [x] Browsing in Swap
-- [ ] `fixMoveOptions` in `@mtg/core/journey`
+- [x] `fixBrowser` in `@mtg/core/journey`
 - [ ] Browsing in Fix
 - [ ] Tour state, provider and the Tutorials toggle
 - [ ] Tour overlay, and the Commander page tour
