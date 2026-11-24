@@ -13,10 +13,15 @@ interface StepClip {
   /** Muted and looping, offered as WebM first (smaller) and MP4 for browsers without it (iPhone Safari). */
   webm: string;
   mp4: string;
-  /** What shows before it plays, and all that shows under reduced motion. */
+  /** What shows before it plays, and all that shows under reduced motion. Cropped to the clip's shape. */
   poster: string;
   width: number;
   height: number;
+  /**
+   * The frame's ground around a clip narrower than it: the paper the clip was recorded on, so the clip's edges melt into
+   * the frame rather than sitting between dark bars.
+   */
+  matte: string;
 }
 
 /** Clip `n`'s three files. */
@@ -33,21 +38,21 @@ const TABS: { id: string; label: string; line: string; icon: typeof Crown; clip:
     label: "Choose any commander",
     line: "Any bracket. Any commander. Build more decks and buy fewer singles.",
     icon: Crown,
-    clip: { ...clipFiles(1), width: 596, height: 500 },
+    clip: { ...clipFiles(1), width: 596, height: 500, matte: "paper-ground" },
   },
   {
     id: "budget",
     label: "Build it on a budget",
     line: "Sometimes a few more cards bring a deck together. Set a budget per card or per deck, so there are no surprises.",
     icon: Coins,
-    clip: { ...clipFiles(2), width: 566, height: 468 },
+    clip: { ...clipFiles(2), width: 566, height: 468, matte: "paper-ground" },
   },
   {
     id: "tune",
     label: "Add, Cut, Swap & Share",
     line: "Start fresh or paste a decklist, and we'll take it to the next level without breaking the bank.",
     icon: Shuffle,
-    clip: { ...clipFiles(3), width: 608, height: 564 },
+    clip: { ...clipFiles(3), width: 608, height: 564, matte: "bg-(--paper-raised)" },
   },
 ];
 
@@ -69,7 +74,7 @@ function StepRecording({ clip }: { clip: StepClip }) {
     else void el.play().catch(() => undefined);
   }, [inView, reduceMotion]);
   return (
-    <div className="absolute inset-1">
+    <div className={cn("absolute inset-1 overflow-hidden rounded-sm", clip.matte)}>
       <video
         ref={video}
         poster={clip.poster}
