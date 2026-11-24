@@ -1,6 +1,6 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T103.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T104.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
@@ -228,6 +228,16 @@ What a replacement has to cover, from `apps/worker/src/jobs/serve.ts`:
 - [x] The Vercel cron (`/api/cron/*-scrape`) is off: the owner disabled it in the Vercel dashboard on 2026-11-18, and the worker starts the daily crawl at `crawlHourUtc` (08:00 UTC, 3 AM EST, since 2026-11-23; 10:00 before); its entries left `apps/web/vercel.json` on 2026-11-19
 - [x] The worker started the 2026-11-19 and 2026-11-20 crawls (`crawl.runs` 56 at 10:00:03 and 57 at 10:00:06 UTC; 57 succeeded at 16:00 UTC)
 - [x] Pushes to `main` redeploy the worker (2026-11-18): the Dokploy `worker` app has Auto Deploy on and Watch Paths empty, its Webhook URL is the `DOKPLOY_WORKER_WEBHOOK_URL` repository secret, and a manual run of `.github/workflows/worker-deploy.yml` got Dokploy's "Compose deployed successfully"
+
+## T103: Vercel usage after the CDN transfer release
+
+**MEDIUM** · Ops · Due 2026-11-27, three full days after PR #245 reached `main` (2026-11-24)
+
+PR #243 (released in #245) cut what crawlers download: share plates as JPEG (about 70–100 KB instead of 1.2–1.5 MB as PNG), cached 30 days at the CDN (saved-deck plates 1 day), `og/hero.jpg`, the image optimizer locked to local files, and `robots.txt` rules for SEO crawlers. A Vercel Firewall rule, "Deny AhrefsBot", has blocked AhrefsBot since 2026-11-24. On 2026-11-24 production served `/card/sol-ring/opengraph-image` as `image/jpeg`, 72,601 B, and a repeat fetch was a CDN HIT.
+
+- [ ] On or after 2026-11-27: `vercel usage --scope steve-briscoes-projects --from 2026-11-24 --to 2026-11-27 --breakdown daily`, and compare each day's Fast Data Transfer and Fast Origin Transfer with 2026-11-23 (FDT $2.08, FOT $1.11)
+- [ ] Record the numbers here or in the closing line. The 2026-11-23 baseline includes AhrefsBot (45,716 requests and 25.4 GB of FOT on 2026-11-22/23), so the drop comes from the bot block and the smaller images together
+- [ ] If FDT is still high: `vercel metrics vercel.request.fdt_total_bytes -a sum --group-by route` and `--group-by clientUserAgent` (`--scope steve-briscoes-projects -p mtg-app`) to find the next source
 
 ## T003: Deck report link destination
 
