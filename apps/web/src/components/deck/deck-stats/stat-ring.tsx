@@ -9,6 +9,7 @@ import { ringRange, ringWorsens, statRing, towardTarget, type RingZone, type Sta
 import { cn } from "cn";
 import { MANA_SYMBOL_URL } from "@/components/deck/color-identity";
 import { EASE_SINE, RING_CHECK_GROW, TIP_HOVER_DELAY_MS } from "@/lib/constants";
+import { buzz } from "@/lib/haptics";
 import { Mark } from "./level";
 import { ringTip } from "./stat-chip-copy";
 
@@ -21,7 +22,8 @@ import { ringTip } from "./stat-chip-copy";
  * a tap, so the rings sit close and read at a glance (owner, 2026-11-23).
  *
  * A group fills the way the owner's Godot tween does (2026-11-23): one ring at a time, each on a sine curve, popping
- * from a little larger back to its size as it fills, the next starting as it ends.
+ * from a little larger back to its size as it fills, the next starting as it ends. On phones that can, a shake buzzes and a
+ * close ticks (`buzz`, never under reduced motion).
  */
 
 /** Ring diameters in px: the main lines, the card types, the colour sources. */
@@ -168,6 +170,7 @@ export function StatRing({
   const shake = useAnimationControls();
   const lastShown = useRef<RingZone | null>(null);
   const lastOwn = useRef<RingZone | null>(null);
+  const shakeBuzz = useRef<number | null>(null);
   useEffect(() => {
     if (!inView) return;
     const opening = lastShown.current === null;
@@ -179,8 +182,18 @@ export function StatRing({
     const previewWorse = ring.zone !== ownZone && ringWorsens(ownZone, ring.zone);
     const lineWorse = ring.zone === ownZone && (opening || ringWorsens(fromOwn, ownZone));
     if (!previewWorse && !lineWorse) return;
-    void shake.start({ x: SHAKE_X_PX, transition: { duration: SHAKE_S, delay: opening ? turnS + FILL_S * OVER_SHAKE_AT : 0 } });
+    const delayS = opening ? turnS + FILL_S * OVER_SHAKE_AT : 0;
+    void shake.start({ x: SHAKE_X_PX, transition: { duration: SHAKE_S, delay: delayS } });
+    // The buzz goes with the shake, when it starts. Not cleared on a re-run: the shake it goes with isn't either.
+    if (delayS === 0) buzz("shake");
+    else shakeBuzz.current = window.setTimeout(() => buzz("shake"), delayS * MS_PER_S);
   }, [inView, ring.zone, ownZone, reduceMotion, ignored, shake, turnS]);
+  useEffect(
+    () => () => {
+      if (shakeBuzz.current !== null) window.clearTimeout(shakeBuzz.current);
+    },
+    [],
+  );
 
   // In range: a check grows in, then OK takes its place. Tapped: the count.
   /** Where a closing ring's centre is: still the count while the lap closes, the check, then OK. */
@@ -191,7 +204,10 @@ export function StatRing({
   const closedMs = (delayS + FILL_S) * MS_PER_S;
   useEffect(() => {
     if (!okNow || reduceMotion) return;
-    const toCheck = setTimeout(() => setClosing("check"), closedMs);
+    const toCheck = setTimeout(() => {
+      setClosing("check");
+      buzz("close");
+    }, closedMs);
     const toOk = setTimeout(() => setClosing("ok"), closedMs + CHECK_HOLD_MS);
     return () => {
       clearTimeout(toCheck);
