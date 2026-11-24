@@ -8,6 +8,8 @@ const RECS_WAIT_MS = 90_000;
 const FOOTER_NAME = /^Deck stats/;
 /** Rounding slack for comparing layout boxes, in CSS pixels. */
 const LAYOUT_SLACK_PX = 1;
+/** The build start's Max to spend for Any commander when nothing was typed (`budget-prefs.ts`). */
+const ANY_COMMANDER_SPEND_USD = 100;
 /** A collection far too small for a deck: the commander, two rocks and a land. */
 const SMALL_COLLECTION = ["1 Chulane, Teller of Tales", "1 Sol Ring", "1 Arcane Signet", "1 Command Tower"].join("\n");
 
@@ -203,6 +205,22 @@ test("the build start's budget starts at each list's default and remembers what 
   await lists.getByRole("button", { name: "Any commander" }).click();
   await expect(perCard).toHaveValue("25");
   await expect(spend).toHaveValue("100");
+});
+
+test("a build with the default budget stays within it", async ({ page }) => {
+  await page.goto("/deck?start=build");
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  // No collection: Any commander's default, left as it is.
+  const spend = page.getByRole("textbox", { name: "Max to spend" });
+  await expect(spend).toHaveValue(String(ANY_COMMANDER_SPEND_USD), { timeout: COLLECTION_WAIT_MS });
+  await page.getByRole("button", { name: "Build deck" }).click();
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
+  const cart = built.getByText(/^\d+ cards? to buy, \$/);
+  await expect(cart).toBeVisible({ timeout: RECS_WAIT_MS });
+  const total = Number((await cart.textContent())!.match(/\$([\d,.]+)/)![1]!.replace(/,/g, ""));
+  expect(total).toBeLessThanOrEqual(ANY_COMMANDER_SPEND_USD);
 });
 
 test("a built deck shows its bracket estimate, and a card's score on tap", async ({ page }) => {

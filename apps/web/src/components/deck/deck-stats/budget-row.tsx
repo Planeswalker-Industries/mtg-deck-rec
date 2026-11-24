@@ -143,7 +143,8 @@ export function BudgetRow({ money }: { money: RoundBudget }) {
   const panelId = useId();
   const spend = budget?.spendUsd;
   const over = overBudget(money);
-  const spent = !over && spend !== undefined && totalUsd >= spend;
+  // A $0 budget means cards the player owns only: nothing to spend, so it is never "spent".
+  const spent = !over && spend !== undefined && spend > 0 && totalUsd >= spend;
   const status = over ? "Over budget" : spent ? "Budget spent" : null;
   const amount = spend !== undefined ? `${formatUsd(totalUsd)} of ${formatUsd(spend)}` : `${formatUsd(totalUsd)}, no limit`;
   // The line's words for a screen reader, in the order the eye reads them; the mark's state is in the status.

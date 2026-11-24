@@ -91,6 +91,8 @@ export function ringTip(tip: RingTipInput): string {
   const { stat, one, many, bulk, much } = tipWords(tip);
   const count = (n: number) => `${n} ${n === 1 ? one : many}`;
   const short = tip.zone === "low" || tip.zone === "severe";
+  // An ignored line reads as ignored whatever card is on screen: the player set it aside.
+  if (tip.ignored) return `IGNORE: ${stat} Limit.`;
   const { preview } = tip;
   if (preview && preview.value !== tip.value) {
     const adding = preview.value > tip.value;
@@ -101,7 +103,6 @@ export function ringTip(tip: RingTipInput): string {
     if (preview.better) return adding ? `RECOMMENDATION: ADD this ${one}.` : preview.zone === "ok" ? "RECOMMENDATION: REMOVE OK." : "REMOVE: OK.";
     return short ? `WARNING: ${stat} SHORTAGE.` : `WARNING: TOO ${much} ${bulk}.`;
   }
-  if (tip.ignored) return `IGNORE: ${stat} Limit.`;
   if (tip.zone === "severe") return `WARNING: MASSIVE ${stat} SHORTAGE.`;
   if (tip.zone === "low") {
     const need = Math.max(1, tip.low - tip.value);

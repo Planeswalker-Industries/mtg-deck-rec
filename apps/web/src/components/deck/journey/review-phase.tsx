@@ -335,14 +335,19 @@ export function ReviewPhase({
           2026-11-23): the heading steps down a size on phones so both fit the 390 px width.
         */}
         <div className="flex items-center justify-between gap-2">
-          {/* The card count beside the heading, as the Decklist's: before → after only when the round changed it. */}
-          <h2 id="review-ready" className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 leading-none">
-            <span className="font-heading text-xl font-semibold sm:text-2xl">{overBy > 0 ? "Almost ready" : "Deck Complete!"}</span>
+          {/*
+            The card count beside the heading, as the Decklist's: before → after only when the round changed it. Outside
+            the <h2>, so the heading (and the section it names) keeps its plain name.
+          */}
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 leading-none">
+            <h2 id="review-ready" className="font-heading text-xl font-semibold sm:text-2xl">
+              {overBy > 0 ? "Almost ready" : "Deck Complete!"}
+            </h2>
             <span className="text-base font-normal">
               <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
               <span className="text-sm text-muted-foreground"> cards</span>
             </span>
-          </h2>
+          </div>
           <RoundControls
             canUndo={journey.canUndo}
             onUndo={journey.undo}
@@ -405,7 +410,15 @@ export function ReviewPhase({
       <section aria-labelledby="review-deck-stats" className={cn(SECTION_SHEET, "flex flex-col gap-4 xl:col-start-1")}>
         <h3 id="review-deck-stats" className="flex items-center justify-between gap-3">
           <span className="font-heading text-xl leading-none font-semibold">Deck stats</span>
-          {report && <FinishScore level={report.level} okCount={report.okCount} total={report.total} />}
+          {report && (
+            <FinishScore
+              level={report.level}
+              okCount={report.okCount}
+              total={report.total}
+              celebrated={journey.celebrated}
+              onCelebrate={journey.markCelebrated}
+            />
+          )}
         </h3>
         {/*
           Whole dollars: cents are noise on an estimate. The whole deck, basics and owned cards included, so it is named

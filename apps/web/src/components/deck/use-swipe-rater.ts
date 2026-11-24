@@ -116,6 +116,8 @@ export function useSwipeRater({
   const sessionId = useRef<string | null>(null);
   /** Deck tool: each card's replacements as recorded for the accept rate (T065), once per sitting. */
   const batches = useRef(new Map<number, RecBatch>());
+  /** Deck tool: the replacements passed on in this sitting, by "target:replacement", so a ‹ back and › again is one pass. */
+  const passed = useRef(new Set<string>());
   /** Whether this sitting has put a replacement in front of the player. */
   const dealt = useRef(false);
 
@@ -220,8 +222,11 @@ export function useSwipeRater({
         if (!r.ok) setVoteError(r.error.message);
       });
     onVote?.({ target: target.card, replacement: candidate.card, value });
+    const pair = `${target.card.id}:${candidate.card.id}`;
+    const passedAgain = value === -1 && passed.current.has(pair);
+    if (value === -1) passed.current.add(pair);
     const batch = mode === "deck" ? batches.current.get(target.card.id) : undefined;
-    if (batch) recordDecision(batch, candidate.card.id, value === 1, context, candidate.score);
+    if (batch && !passedAgain) recordDecision(batch, candidate.card.id, value === 1, context, candidate.score);
 
     if (mode === "rater") {
       if (candidateIndex + 1 >= candidates.length) nextTarget();
@@ -230,7 +235,7 @@ export function useSwipeRater({
       onPick?.({ target: target.card, replacement: candidate.card });
       nextTarget();
     } else {
-      onDecline?.(target.card, candidate.card);
+      if (!passedAgain) onDecline?.(target.card, candidate.card);
       setCandidateIndex(candidateIndex + 1);
     }
   }

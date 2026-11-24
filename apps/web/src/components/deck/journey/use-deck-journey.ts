@@ -281,6 +281,8 @@ export function useDeckJourney({
   const replace = current && replaceFor?.round === current.id ? replaceFor.value : idle;
 
   const overBracketAdds = current && overBracket?.round === current.id ? overBracket.adds : NO_ADDS;
+  /** The round whose Finish has played its all-in-line celebration: once a round, not on every return to Finish. */
+  const [celebratedRound, setCelebratedRound] = useState<number | null>(null);
   /** Combos this round completed by adding their missing card, from either part of Add: their pieces and result. */
   const [completed, setCompleted] = useState<{ round: number; combos: readonly CompletedCombo[] } | null>(null);
   /** The round's starting combos and the ones completed since, for `protectedPiecesOf`. */
@@ -832,6 +834,12 @@ export function useDeckJourney({
     phases,
     /** The current step's own way on. */
     nextStep,
+    /** Whether Finish has already celebrated every line in line this round. */
+    celebrated: current !== null && celebratedRound === current.id,
+    /** Finish's celebration has played: it shows the closed ring alone from now on, this round. */
+    markCelebrated: () => {
+      if (current) setCelebratedRound(current.id);
+    },
     /** The deck as it stands, counted for Deck stats' lines; null before an analysis. */
     tally,
     stepper: {

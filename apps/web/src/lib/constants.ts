@@ -70,6 +70,12 @@ export const REMOVE_ARM_MS = 3000;
 /** A pointer resting on a tip's trigger this long opens it; passing over a row of them opens none. */
 export const TIP_HOVER_DELAY_MS = 200;
 
+/** Seconds to ms, for motion timings given in seconds (motion/react) that a timer has to match. */
+export const MS_PER_S = 1000;
+/** Icon strokes heavier than lucide's default 2, for icons that carry a status inside a ring: bold, then heavier. */
+export const ICON_STROKE_BOLD = 2.5;
+export const ICON_STROKE_HEAVY = 3;
+
 /** Sine in and out, the curve Deck stats rings fill on (owner's Godot tween, `TRANS_SINE`, 2026-11-23). */
 export const EASE_SINE = [0.37, 0, 0.63, 1] as const;
 /** A check's grow as it appears in a closed ring (Deck stats): from this scale, past full size, back. */

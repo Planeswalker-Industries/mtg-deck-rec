@@ -697,15 +697,28 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         ? "collection"
         : "any";
   const appliedBudgetPref = useRef<BudgetPrefMode | null>(null);
+  /** A budget typed before the list was known: kept for that list once it is, rather than replaced by its stored one. */
+  const typedBudget = useRef<{ budget: DeckBudget | undefined } | null>(null);
   useEffect(() => {
-    if (budgetPrefMode === null || budgetPrefMode === appliedBudgetPref.current) return;
+    if (budgetPrefMode === null) {
+      // The picker closed: opening it again fills the fields afresh.
+      if (!showPicker) appliedBudgetPref.current = null;
+      return;
+    }
+    if (budgetPrefMode === appliedBudgetPref.current) return;
     appliedBudgetPref.current = budgetPrefMode;
+    if (typedBudget.current) {
+      writeBudgetPref(budgetPrefMode, typedBudget.current.budget);
+      typedBudget.current = null;
+      return;
+    }
     tool.changeBudget(readBudgetPref(budgetPrefMode), { keepSavedDeck: true });
-  }, [budgetPrefMode, tool]);
+  }, [budgetPrefMode, showPicker, tool]);
   /** A budget typed on the build start: used now and remembered for the list it was typed under. */
   function chooseBuildBudget(budget: DeckBudget | undefined) {
     tool.changeBudget(budget, { keepSavedDeck: true });
     if (budgetPrefMode) writeBudgetPref(budgetPrefMode, budget);
+    else typedBudget.current = { budget };
   }
   // On the opening screens a player with no collection is offered an import first; the resume question waits for the
   // collection to load and the offer to be answered, so the two never stack and the offer never pops up mid-analysis.

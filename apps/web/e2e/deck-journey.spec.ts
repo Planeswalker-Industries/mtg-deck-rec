@@ -192,7 +192,7 @@ test("Finish names each line still off with its reason, and its Fix opens Fix at
   // The deck is nearly all Forests: Lands is far over, and its Fix opens Fix on that line, ahead of the rule break.
   // Its ring's tip, opened by a tap, carries the Fix.
   await stats.getByRole("button", { name: /^Lands: / }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Fix", exact: true }).click();
+  await page.getByRole("dialog", { name: /^Lands: / }).getByRole("button", { name: "Fix", exact: true }).click();
   await expect(steps.getByRole("button", { name: "Fix" })).toHaveAttribute("aria-current", "step");
   await expect(recs.getByRole("status").filter({ hasText: /Line \d+ of \d+/ })).toContainText("Lands", { timeout: 60_000 });
 });

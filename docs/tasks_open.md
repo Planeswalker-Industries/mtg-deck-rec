@@ -145,9 +145,8 @@ Tab 1 ("Choose any commander") plays the new recording (`commander_gif*.gif`, 20
 Owner decision 2026-11-23: serve the clips as MP4 (H.264) only, one file per clip, high quality on every screen. A muted looping video is typically 10–20x smaller than the GIF, plays everywhere (iPhone Safari included) and is hardware-decoded. WebM saves only about 20–30% more and would still need the MP4 beside it, so it is left out; it can be added later as a first `<source>`.
 
 - [ ] Record the budget clip (tab 2) and the Add, Cut, Swap clip (tab 3) in the current UI
-- [ ] Install ffmpeg (`winget install ffmpeg` or `scoop install ffmpeg`)
-- [ ] Convert each `_hi` GIF to MP4 (H.264, `yuv420p`, no audio track, `+faststart`) and save its first frame as a poster image; check the file sizes
-- [ ] `StepRecording` in `components/home/how-it-works.tsx`: a `<video autoplay muted loop playsinline preload="none" poster>` in place of the `<picture>`, one `src` per clip; drop `hiSrc` and `HI_RES_MEDIA`. Keep it lazy (only the selected tab's clip loads on a phone) and still under reduced motion (poster only)
+- [ ] Convert each `_hi` GIF to MP4 with ffmpeg (H.264, `yuv420p`, no audio track, `+faststart`) and save its first frame as a poster image; check the file sizes
+- [ ] `StepRecording` in `components/home/how-it-works.tsx`: a `<video autoplay muted loop playsinline preload="none" poster>` in place of the `<picture>`, one `src` per clip; drop `hiSrc` and `HI_RES_MEDIA`. Keep it lazy: `autoplay` overrides `preload`, and from `md` all three panels show, so start each clip only once its panel is in view (an IntersectionObserver) and still under reduced motion (poster only)
 - [ ] Delete the GIFs and the unused `add.png` from `apps/web/public`
 
 ## T039: Take votes off the Server Action queue

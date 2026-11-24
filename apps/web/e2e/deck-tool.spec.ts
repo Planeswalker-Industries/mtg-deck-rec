@@ -3,6 +3,10 @@ import { clearBuildBudget, expect, openSwap, test, toDeckbuilder, type Page } fr
 
 /** Tailwind's `lg` breakpoint, where the deckbuilder shows search beside the deck instead of its own tab. */
 const LG_BREAKPOINT_PX = 1024;
+/** One try at the first budget value waits this long for its error before filling again. */
+const BUDGET_TRY_MS = 1_000;
+/** The tries at the first budget value give up after this long: the collection offer opens within it. */
+const BUDGET_RETRY_MS = 15_000;
 
 /** Analyzes the sample deck and opens the deckbuilder through Save. Returns the recommendations region. */
 async function openDeckbuilder(page: Page) {
@@ -346,8 +350,8 @@ test("the start form's budget validates", async ({ page }) => {
   // value goes in and swallow it, so that one is retried until it lands.
   await expect(async () => {
     await perCard.fill("-1");
-    await expect(page.getByText("A budget can't be negative.")).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
+    await expect(page.getByText("A budget can't be negative.")).toBeVisible({ timeout: BUDGET_TRY_MS });
+  }).toPass({ timeout: BUDGET_RETRY_MS });
   await perCard.fill("abc");
   await expect(page.getByText("Enter a price per card.")).toBeVisible();
   await perCard.fill("5");

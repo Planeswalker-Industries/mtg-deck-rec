@@ -204,7 +204,12 @@ export function SwipeRater({
         <div className={MOVE_PAIR_GRID}>
           {targetCard}
           <SwapMark />
-          <div role="status" aria-label="Finding replacements" className="flex justify-center self-center">
+          <div role="status" aria-label="Finding replacements" className="flex min-w-0 flex-col items-center gap-1.5">
+            {/* As tall as the Add word and the options row on the card going in, so both sides stay level. */}
+            <span aria-hidden className="invisible text-xs font-semibold">
+              Add
+            </span>
+            <div aria-hidden className="-my-1.5 min-h-11" />
             <Skeleton className="aspect-[488/680] w-full max-w-28 rounded-[4.75%/3.4%] bg-seam sm:max-w-52" />
           </div>
         </div>
@@ -227,7 +232,16 @@ export function SwipeRater({
           <div className="flex flex-wrap justify-center gap-2">
             {/* Passed on every option: one tap goes back to the last, to think again. */}
             {!inRater && rater.candidateIndex > 0 && loaded.status === "ready" && (
-              <Button type="button" size="lg" variant="outline" onClick={rater.back}>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={rater.back}
+                // Passing on the last option took away the › that had focus: it lands here rather than on the page.
+                ref={(el) => {
+                  if (el && document.activeElement === document.body) el.focus();
+                }}
+              >
                 <ChevronLeft aria-hidden />
                 Back to the options
               </Button>
@@ -256,9 +270,10 @@ export function SwipeRater({
                       variant="ghost"
                       size="icon"
                       aria-label="Previous option"
-                      disabled={rater.candidateIndex === 0}
+                      // aria-disabled rather than disabled, so the button keeps focus as it reaches the first option.
+                      aria-disabled={rater.candidateIndex === 0}
                       onClick={rater.back}
-                      className="size-11"
+                      className="size-11 aria-disabled:cursor-default aria-disabled:opacity-50"
                     >
                       <ChevronLeft aria-hidden className="size-5" />
                     </Button>

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
 import type { DeckStatsLevel, StatState } from "@mtg/core/journey";
 import { ArrowDown, ArrowRight, ArrowUp, Check, EyeOff, X } from "lucide-react";
 import { cn } from "cn";
+import { MS_PER_S } from "@/lib/constants";
 import { CLOSED_AT_S, LEVEL, ScoreRing, type RingClosing } from "./score-ring";
 
 export { LEVEL };
@@ -13,7 +14,6 @@ export { LEVEL };
 const WORDS_FADE_S = 0.3;
 /** It stays up this long between, long enough to read. */
 const WORDS_HOLD_S = 1.2;
-const MS_PER_S = 1000;
 
 /**
  * A Deck stats line's mark: a green check in line, a red X off, or a grey eye when the player chose to ignore the line
@@ -56,25 +56,41 @@ export function LevelBadge({
 }
 
 /**
- * Finish's score: the level badge, until every line is in line. Then, once (the first time it happens while Finish is
- * up, as the heading comes into view), the ring closes into a check, "All rings closed!" fades in and out,
+ * Finish's score: the level badge, until every line is in line. Then, once a round (the first time it happens while
+ * Finish is up, as the heading comes into view; owner, 2026-11-24), the ring closes into a check, "All rings closed!" fades in and out,
  * leaving the closed ring: its check says it, no second one (owner, 2026-11-23). A deck that falls out of line and
  * back, or reduced motion, shows the closed ring alone at once.
  */
-export function FinishScore({ level, okCount, total }: { level: DeckStatsLevel; okCount: number; total: number }) {
+export function FinishScore({
+  level,
+  okCount,
+  total,
+  celebrated,
+  onCelebrate,
+}: {
+  level: DeckStatsLevel;
+  okCount: number;
+  total: number;
+  /** The round has celebrated already (an earlier visit to Finish): the closed ring shows at once. */
+  celebrated: boolean;
+  /** Called as the celebration starts, so the round plays it once. */
+  onCelebrate: () => void;
+}) {
   const reduceMotion = useReducedMotion() ?? false;
   const box = useRef<HTMLSpanElement>(null);
   const inView = useInView(box, { once: true });
   const allIn = total > 0 && okCount === total;
   // "live" from the first time every line is in line, "spent" once it no longer is. Adjusted while rendering.
-  const [run, setRun] = useState<"fresh" | "live" | "spent">("fresh");
+  const [run, setRun] = useState<"fresh" | "live" | "spent">(() => (celebrated ? "spent" : "fresh"));
   if (allIn && run === "fresh") setRun("live");
   if (!allIn && run === "live") setRun("spent");
   const closing: RingClosing = reduceMotion || run !== "live" ? "done" : inView ? "play" : "wait";
   // Beside the ring while it plays: nothing, then the words, then nothing again.
   const [beside, setBeside] = useState<"none" | "words" | "gone">("none");
+  const celebrate = useEffectEvent(onCelebrate);
   useEffect(() => {
     if (closing !== "play") return;
+    celebrate();
     const toWords = setTimeout(() => setBeside("words"), CLOSED_AT_S * MS_PER_S);
     const toGone = setTimeout(() => setBeside("gone"), (CLOSED_AT_S + WORDS_FADE_S + WORDS_HOLD_S) * MS_PER_S);
     return () => {

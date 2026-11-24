@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { Check, CircleAlert, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { DeckStatsLevel } from "@mtg/core/journey";
 import { cn } from "cn";
-import { EASE_SINE, RING_CHECK_GROW } from "@/lib/constants";
+import { EASE_SINE, ICON_STROKE_BOLD, ICON_STROKE_HEAVY, RING_CHECK_GROW } from "@/lib/constants";
 
 /**
  * The deck's score as one ring (owner, 2026-11-23): a segment per counted line, filled in the level's colour for each
@@ -137,10 +137,10 @@ export function ScoreRing({
           animate={run ? { opacity: 1, scale: RING_CHECK_GROW } : { opacity: 0, scale: RING_CHECK_GROW[0] }}
           transition={{ duration: CLOSE_CHECK_S, delay: CLOSE_FILL_S + CLOSE_SEAL_S, ease: "easeOut" }}
         >
-          <Icon className={iconClass} strokeWidth={3} />
+          <Icon className={iconClass} strokeWidth={ICON_STROKE_HEAVY} />
         </motion.span>
       ) : (
-        <Icon className={cn("relative", iconClass)} strokeWidth={closing === "done" ? 3 : 2.5} />
+        <Icon className={cn("relative", iconClass)} strokeWidth={closing === "done" ? ICON_STROKE_HEAVY : ICON_STROKE_BOLD} />
       )}
     </span>
   );

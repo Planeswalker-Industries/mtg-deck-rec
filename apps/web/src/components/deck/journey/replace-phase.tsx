@@ -60,8 +60,8 @@ export function ReplacePhase({
 
   const intro = (
     <PhaseIntro title="Swap" brief={view === "swipe" ? "Swap or skip each card. ‹ › shows other options." : undefined}>
-      Cards that do their job less well than something else could. Swipe right on a replacement to swap it in, left to see the next one, or
-      keep the card.
+      Cards that do their job less well than something else could. Swap one for the replacement shown, or skip it; ‹ › shows the other
+      replacements.
     </PhaseIntro>
   );
 

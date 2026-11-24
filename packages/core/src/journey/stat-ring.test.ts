@@ -35,6 +35,26 @@ describe('statRing', () => {
     expect(statRing(0, 1, true)).toEqual({ zone: 'ok', lap: 1, extra: 0 });
   });
 
+  it('handles a target of 0: in line at 0 or 1, over past it', () => {
+    // Target 0: the tolerance floor of 1 card gives the range 0 to 1.
+    expect(statRing(0, 0, true)).toEqual({ zone: 'ok', lap: 1, extra: 0 });
+    expect(statRing(1, 0, true)).toEqual({ zone: 'ok', lap: 1, extra: 1 });
+    expect(statRing(2, 0, false)).toEqual({ zone: 'over', lap: 1, extra: 1 });
+  });
+
+  it('handles a fractional target, as 0.4 planeswalkers', () => {
+    // Range 0 to 1.4: one planeswalker sits partway across it.
+    const ring = statRing(1, 0.4, withinTolerance(1, 0.4));
+    expect(ring.zone).toBe('ok');
+    expect(ring.extra).toBeCloseTo(1 / 1.4);
+    expect(statRing(2, 0.4, withinTolerance(2, 0.4)).zone).toBe('over');
+  });
+
+  it('never divides by zero on a minimum line with target 0', () => {
+    expect(statRing(0, 0, true, true)).toEqual({ zone: 'ok', lap: 1, extra: 0 });
+    expect(statRing(0, 0, false, true)).toEqual({ zone: 'low', lap: 0, extra: 0 });
+  });
+
   it('closes a minimum line at its target, with no second lap and no top', () => {
     expect(statRing(21, 30, false, true)).toEqual({ zone: 'low', lap: 0.7, extra: 0 });
     expect(statRing(40, 30, true, true)).toEqual({ zone: 'ok', lap: 1, extra: 0 });
@@ -57,6 +77,12 @@ describe('ringRange', () => {
     expect(ringRange(32)).toEqual({ low: 26, high: 38 });
     expect(ringRange(1)).toEqual({ low: 0, high: 2 });
     expect(ringRange(27, true)).toEqual({ low: 27, high: null });
+  });
+
+  it('gives whole counts for a target of 0 and a fractional one', () => {
+    expect(ringRange(0)).toEqual({ low: 0, high: 1 });
+    expect(ringRange(0.4)).toEqual({ low: 0, high: 1 });
+    expect(ringRange(0.4, true)).toEqual({ low: 1, high: null });
   });
 
   it('agrees with withinTolerance', () => {

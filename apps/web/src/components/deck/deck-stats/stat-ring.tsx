@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { Popover } from "radix-ui";
 import { AnimatePresence, motion, useAnimationControls, useInView, useReducedMotion } from "motion/react";
@@ -8,7 +8,7 @@ import { Check, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
 import { ringRange, ringWorsens, statRing, towardTarget, type RingZone, type StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { MANA_SYMBOL_URL } from "@/components/deck/color-identity";
-import { EASE_SINE, RING_CHECK_GROW, TIP_HOVER_DELAY_MS } from "@/lib/constants";
+import { EASE_SINE, ICON_STROKE_BOLD, ICON_STROKE_HEAVY, MS_PER_S, RING_CHECK_GROW, TIP_HOVER_DELAY_MS } from "@/lib/constants";
 import { buzz } from "@/lib/haptics";
 import { Mark } from "./level";
 import { ringTip } from "./stat-chip-copy";
@@ -36,7 +36,6 @@ const FILL_S = 0.4;
 const POP_FROM_SCALE = 1.1;
 /** A card on screen moves the rings after this pause, so the eye can catch which ones move. */
 const PREVIEW_DELAY_MS = 300;
-const MS_PER_S = 1000;
 /** A ring that closes shows its check this long before it settles on OK. */
 const CHECK_HOLD_MS = 700;
 /** The shake when a ring steps toward a bad end: offsets in px, over this long. */
@@ -70,7 +69,7 @@ const COUNT_TEXT: Record<RingZone, string> = {
 const EXTRA_STROKE: Record<RingZone, string> = {
   severe: "stroke-transparent",
   low: "stroke-transparent",
-  ok: "stroke-[color-mix(in_oklch,var(--success)_62%,var(--ink))]",
+  ok: "stroke-success-deep",
   over: "stroke-destructive",
 };
 
@@ -174,6 +173,12 @@ export function StatRing({
   useEffect(() => {
     if (!inView) return;
     const opening = lastShown.current === null;
+    // The shown ring lags the line by PREVIEW_DELAY_MS, so the own zone it moved from is kept until it moves: it is
+    // reset only where both agree (a preview answered), never while the shown ring is still catching up.
+    if (!opening && lastShown.current === ring.zone) {
+      if (ring.zone === ownZone) lastOwn.current = ownZone;
+      return;
+    }
     const fromShown = lastShown.current ?? (ring.zone === "over" ? "ok" : ring.zone);
     const fromOwn = lastOwn.current ?? ownZone;
     lastShown.current = ring.zone;
@@ -201,19 +206,22 @@ export function StatRing({
   const okNow = zone === "ok" && !ignored && inView;
   // Out of range again: the next closing starts from the count. Adjusted while rendering, not in an effect.
   if (!okNow && closing !== "count") setClosing("count");
-  const closedMs = (delayS + FILL_S) * MS_PER_S;
+  // Read when the ring comes in range, not a dependency: the fill delay drops to 0 as the ring opens, often at the very
+  // moment the check is due, and rescheduling then would show it late or tick twice.
+  const closedMs = useEffectEvent(() => (delayS + FILL_S) * MS_PER_S);
   useEffect(() => {
     if (!okNow || reduceMotion) return;
+    const atMs = closedMs();
     const toCheck = setTimeout(() => {
       setClosing("check");
       buzz("close");
-    }, closedMs);
-    const toOk = setTimeout(() => setClosing("ok"), closedMs + CHECK_HOLD_MS);
+    }, atMs);
+    const toOk = setTimeout(() => setClosing("ok"), atMs + CHECK_HOLD_MS);
     return () => {
       clearTimeout(toCheck);
       clearTimeout(toOk);
     };
-  }, [okNow, reduceMotion, closedMs]);
+  }, [okNow, reduceMotion]);
   const centreState = reduceMotion ? "ok" : closing;
 
   const px = RING_PX[size];
@@ -264,7 +272,7 @@ export function StatRing({
               className={cn("flex items-center justify-center", ignored ? "text-muted-foreground" : COUNT_TEXT[zone])}
             >
               {centreKey === "check" ? (
-                <Check className={size === "lg" ? "size-7" : "size-5"} strokeWidth={3} />
+                <Check className={size === "lg" ? "size-7" : "size-5"} strokeWidth={ICON_STROKE_HEAVY} />
               ) : centreKey === "ok" ? (
                 <span className={cn("font-semibold", size === "lg" ? "text-base" : "text-sm")}>OK</span>
               ) : warned ? (
@@ -286,7 +294,7 @@ export function StatRing({
                       reveal,
                       "group-hover:opacity-0 group-focus-visible:opacity-0 group-data-[state=open]:opacity-0",
                     )}
-                    strokeWidth={2.5}
+                    strokeWidth={ICON_STROKE_BOLD}
                   />
                 </span>
               ) : (
@@ -303,7 +311,7 @@ export function StatRing({
               better ? "text-success" : "text-destructive",
             )}
           >
-            <Chevron className="size-4" strokeWidth={3} />
+            <Chevron className="size-4" strokeWidth={ICON_STROKE_HEAVY} />
           </span>
         )}
       </motion.span>
@@ -351,7 +359,9 @@ export function StatRing({
 
 /**
  * The ring as the trigger of its tip: a hover opens it after a moment, a tap or Enter opens and closes it, and it stays
- * up while the pointer moves onto it, so its Fix can be reached.
+ * up while the pointer moves onto it, so its Fix can be reached. A click on a tip a hover opened keeps it up (it no
+ * longer closes as the pointer leaves). Opened from the keyboard, a tip with a Fix takes focus, so Tab reaches it; any
+ * other tip leaves focus where it was, so the swipe keys keep working.
  */
 function RingTip({
   tip,
@@ -368,35 +378,73 @@ function RingTip({
 }) {
   const [open, setOpen] = useState(false);
   const timer = useRef<number | null>(null);
+  /** The tip is up from a hover, so the pointer leaving closes it. */
+  const hovered = useRef(false);
+  /** The last press on the ring was a key (Enter or Space), not a pointer. */
+  const byKey = useRef(false);
   const clear = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
   };
   const later = (next: boolean, ms: number) => {
     clear();
-    timer.current = window.setTimeout(() => setOpen(next), ms);
+    timer.current = window.setTimeout(() => {
+      hovered.current = next;
+      setOpen(next);
+    }, ms);
+  };
+  const leave = () => {
+    if (!open) clear();
+    else if (hovered.current) later(false, TIP_LEAVE_MS);
   };
   useEffect(() => clear, []);
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root
+      open={open}
+      onOpenChange={(next) => {
+        clear();
+        hovered.current = false;
+        setOpen(next);
+      }}
+    >
       <Popover.Trigger
         type="button"
         aria-label={spoken}
-        onPointerEnter={(e) => e.pointerType === "mouse" && later(true, TIP_HOVER_DELAY_MS)}
-        onPointerLeave={(e) => e.pointerType === "mouse" && later(false, TIP_LEAVE_MS)}
+        onPointerEnter={(e) => {
+          if (e.pointerType !== "mouse") return;
+          if (!open) later(true, TIP_HOVER_DELAY_MS);
+          else clear();
+        }}
+        onPointerLeave={(e) => e.pointerType === "mouse" && leave()}
+        onPointerDown={() => {
+          byKey.current = false;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") byKey.current = true;
+        }}
+        onClick={(e) => {
+          clear();
+          // A click on a tip a hover opened keeps it up rather than toggling it shut.
+          if (open && hovered.current) {
+            e.preventDefault();
+            hovered.current = false;
+          }
+        }}
         className="group cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         {children}
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
+          aria-label={spoken}
           side="top"
           sideOffset={6}
           collisionPadding={16}
-          // A tip leaves focus where it was, so the swipe keys keep working.
-          onOpenAutoFocus={(e) => e.preventDefault()}
+          onOpenAutoFocus={(e) => {
+            if (!(byKey.current && action)) e.preventDefault();
+          }}
           onPointerEnter={(e) => e.pointerType === "mouse" && clear()}
-          onPointerLeave={(e) => e.pointerType === "mouse" && later(false, TIP_LEAVE_MS)}
+          onPointerLeave={(e) => e.pointerType === "mouse" && leave()}
           className="z-50 flex max-w-64 flex-col items-start gap-1 rounded-lg border border-seam bg-sleeve px-3 py-2 text-sm text-foreground shadow-lift"
         >
           <p>{tip}</p>
