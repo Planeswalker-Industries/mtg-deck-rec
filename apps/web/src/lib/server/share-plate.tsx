@@ -58,8 +58,8 @@ const WALNUT_TILE = "900px 480px";
 
 /** A share crawler waits only a few seconds; a slow Scryfall answer gives the plate without art instead. */
 const IMAGE_TIMEOUT_MS = 8_000;
-/** Lets the CDN keep a plate for a day and serve it stale for a week while it re-renders. */
-export const PLATE_CACHE_CONTROL = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
+/** An art crop and its artist almost never change, so a recrawl should be a CDN HIT, not a re-render (Fast Origin Transfer and CPU). */
+export const PLATE_CACHE_CONTROL = "public, max-age=3600, s-maxage=2592000, stale-while-revalidate=604800";
 
 // Static TTF, JPEG and PNG: Satori reads neither woff2, variable fonts nor webp.
 const asset = (file: string) => readFile(join(process.cwd(), "assets/og", file));
