@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { Download, RefreshCw, TriangleAlert } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { ChevronDown, Download, RefreshCw, TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
 import { CURVE_LINE, deckDiff, deckStats, type DeckStatsReport, type FixBlock } from "@mtg/core/journey";
@@ -90,6 +90,43 @@ function leftoversOf(fix: Fix, report: DeckStatsReport | null, choices: StatChoi
     .filter(([line, choice]) => choice === "ignore" && offKeys.has(line))
     .map(([line]) => ({ line, label: fix.lineLabel(line), reason: "ignored" }));
   return [...counted, ...ignored];
+}
+
+/**
+ * Finish's lines without a ring (rules, the curve) as one line above the rings: "2 rules to fix" in red with its X,
+ * the ignored ones counted apart in grey. It opens the list with each line's Fix (owner, 2026-11-23).
+ */
+function RulesToFix({ off, ignored, children }: { off: number; ignored: number; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((o) => !o)}
+        className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-md text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        {off > 0 && (
+          <span className="flex items-center gap-2 font-semibold text-destructive">
+            <Mark state="off" />
+            {off} {off === 1 ? "rule" : "rules"} to fix
+          </span>
+        )}
+        {ignored > 0 && (
+          <span className="flex items-center gap-2 text-muted-foreground">
+            {off === 0 && <Mark state="ignored" />}
+            {off > 0 && <span aria-hidden>·</span>}
+            {ignored} ignored
+          </span>
+        )}
+        {/* At the right edge, as Budget's and Hard to cast's. */}
+        <ChevronDown aria-hidden className={cn("ml-auto size-4 shrink-0 text-primary transition-transform", !open && "-rotate-90")} />
+      </button>
+      {open && <div id={panelId}>{children}</div>}
+    </div>
+  );
 }
 
 /** The round's changes as pairs: each Fix move and each swap with its replacement, then the cuts and the adds left over. */
@@ -422,21 +459,26 @@ export function ReviewPhase({
             null
           ) : (
             otherLeftovers.length > 0 && (
-              <ul aria-label="Lines still off" className="flex flex-col gap-2 text-sm">
-                {otherLeftovers.map((l) => {
-                  const { inline, note } = leftoverParts(l);
-                  return (
-                    <li key={`${l.line}:${l.reason}`} className="flex flex-col gap-1">
-                      <span className={cn("flex min-w-0 items-center gap-2", l.reason === "ignored" && "text-muted-foreground")}>
-                        <Mark state={l.reason === "ignored" ? "ignored" : "off"} />
-                        <span className="min-w-0">{leftoverText(l)}</span>
-                        {inline}
-                      </span>
-                      {note && <span className="pl-6">{note}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
+              <RulesToFix
+                off={otherLeftovers.filter((l) => l.reason !== "ignored").length}
+                ignored={otherLeftovers.filter((l) => l.reason === "ignored").length}
+              >
+                <ul aria-label="Lines still off" className="flex flex-col gap-2 text-sm">
+                  {otherLeftovers.map((l) => {
+                    const { inline, note } = leftoverParts(l);
+                    return (
+                      <li key={`${l.line}:${l.reason}`} className="flex flex-col gap-1">
+                        <span className={cn("flex min-w-0 items-center gap-2", l.reason === "ignored" && "text-muted-foreground")}>
+                          <Mark state={l.reason === "ignored" ? "ignored" : "off"} />
+                          <span className="min-w-0">{leftoverText(l)}</span>
+                          {inline}
+                        </span>
+                        {note && <span className="pl-6">{note}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </RulesToFix>
             )
           ))}
         {report && report.stats.length > 0 && (
