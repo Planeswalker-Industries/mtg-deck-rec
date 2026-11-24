@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useInView, useReducedMotion } from "motion/react";
+import { getImageProps } from "next/image";
 import { Coins, Crown, Shuffle } from "lucide-react";
 import { cn } from "cn";
 import { SheetSection } from "@/components/ui/sheet-section";
@@ -66,6 +67,8 @@ function StepRecording({ clip }: { clip: StepClip }) {
   const video = useRef<HTMLVideoElement>(null);
   const inView = useInView(video);
   const reduceMotion = useReducedMotion() ?? false;
+  // The poster through the image optimizer: AVIF or WebP at the size the frame needs, not the raw PNG.
+  const poster = getImageProps({ src: clip.poster, alt: "", width: clip.width, height: clip.height }).props.src;
   useEffect(() => {
     const el = video.current;
     if (!el) return;
@@ -77,7 +80,7 @@ function StepRecording({ clip }: { clip: StepClip }) {
     <div className={cn("absolute inset-1 overflow-hidden rounded-sm", clip.matte)}>
       <video
         ref={video}
-        poster={clip.poster}
+        poster={poster}
         width={clip.width}
         height={clip.height}
         muted
