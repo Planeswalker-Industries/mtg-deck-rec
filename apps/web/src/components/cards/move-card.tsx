@@ -6,6 +6,7 @@ import { displayName } from "@/lib/cards";
 import { CardImage } from "./card-image";
 import { ZoomableCard } from "./card-zoom";
 import { OwnedCorner } from "./owned-corner";
+import type { BrowseSwipeBind } from "./use-browse-swipe";
 
 /**
  * One side of a swap, as Fix and Swap lay it out side by side: Remove or Add in its job's colour (with its icon and
@@ -13,6 +14,9 @@ import { OwnedCorner } from "./owned-corner";
  *
  * `nav` adds a row between the word and the card (Swap's options, its count of cards). Pass it on both sides, `null`
  * where there is nothing to show, so the two cards stay level.
+ *
+ * `swipe` makes the card swipeable to browse (Swap: the cards to replace on the card going out, the options on the one
+ * going in); `tourTarget` names it for the tours.
  */
 export function MoveCard({
   card,
@@ -20,12 +24,16 @@ export function MoveCard({
   owned,
   nav,
   note,
+  swipe,
+  tourTarget,
 }: {
   card: CardSummary;
   side: "out" | "in";
   owned?: boolean;
   nav?: ReactNode;
   note?: ReactNode;
+  swipe?: BrowseSwipeBind;
+  tourTarget?: string;
 }) {
   const Icon = side === "out" ? Minus : Plus;
   const word = side === "out" ? "Remove" : "Add";
@@ -37,7 +45,7 @@ export function MoveCard({
       </span>
       {nav !== undefined && <div className="-my-1.5 flex min-h-11 items-center justify-center">{nav}</div>}
       {/* The width is capped so both cards, the chips and the buttons fit a phone above the Deck stats footer. */}
-      <div className="relative w-full max-w-28 sm:max-w-52">
+      <div data-tour={tourTarget} {...swipe} className={cn("relative w-full max-w-28 sm:max-w-52", swipe?.className)}>
         <ZoomableCard card={card}>
           <CardImage
             card={card}

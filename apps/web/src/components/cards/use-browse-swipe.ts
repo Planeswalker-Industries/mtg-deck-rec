@@ -105,3 +105,6 @@ export function useBrowseSwipe({
 
   return { bind };
 }
+
+/** What `useBrowseSwipe` binds to the swiped element: spread it on the element, `className` merged with its own. */
+export type BrowseSwipeBind = ReturnType<typeof useBrowseSwipe>["bind"];

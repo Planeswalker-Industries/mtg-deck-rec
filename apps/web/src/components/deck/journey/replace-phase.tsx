@@ -83,10 +83,13 @@ export function ReplacePhase({
   }
 
   const picked = swaps.map((s) => ({ target: s.target, replacement: s.replacement }));
-  const onPick = (swap: { target: CardSummary; replacement: CardSummary }) =>
-    journey.dispatch({ type: "swap", target: swap.target, replacement: swap.replacement });
+  // The swap and the options passed over for it are one choice, so one Undo takes both back.
+  const onPick = (swap: { target: CardSummary; replacement: CardSummary }, passedOver: readonly CardId[]) =>
+    journey.dispatch(
+      { type: "swap", target: swap.target, replacement: swap.replacement },
+      ...passedOver.map((replacementId) => ({ type: "declineSwap" as const, targetId: swap.target.id, replacementId })),
+    );
   const onKeep = (card: CardSummary) => journey.replace.keep(card.id);
-  const onDecline = (target: CardSummary, replacement: CardSummary) => journey.replace.decline(target.id, replacement.id);
   // A card swapped out or kept is decided, and so is one an undone addition took back out of the deck. The swipe view
   // steps over decided cards when their turn comes, since it deals by position, so coming back picks up at the first
   // card still open.
@@ -173,7 +176,6 @@ export function ReplacePhase({
             picked={picked}
             onPick={onPick}
             onKeep={onKeep}
-            onDecline={onDecline}
             declined={declined}
             onFinish={() => setFocus(null)}
           />
@@ -234,7 +236,6 @@ export function ReplacePhase({
             picked={picked}
             onPick={onPick}
             onKeep={onKeep}
-            onDecline={onDecline}
             declined={declined}
             skipTarget={skipTarget}
             // A card with no replacement on any rung is stepped over, never dealt empty; when that is every card, the
