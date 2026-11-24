@@ -241,10 +241,11 @@ function HardToCast({ report, cards }: { report: DeckStatsReport; cards: Readonl
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((o) => !o)}
-        className="flex min-h-11 cursor-pointer items-center gap-2 self-start rounded-md text-left text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-md text-left text-sm text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Hard to cast ({listed.length})
-        <ChevronDown aria-hidden className={cn("size-4 shrink-0 transition-transform", !open && "-rotate-90")} />
+        {/* At the right edge, as Budget's. */}
+        <ChevronDown aria-hidden className={cn("ml-auto size-4 shrink-0 transition-transform", !open && "-rotate-90")} />
       </button>
       {open && <HardToCastList id={panelId} listed={listed} shown={shown} cards={cards} all={all} onAll={() => setAll(true)} />}
     </div>
