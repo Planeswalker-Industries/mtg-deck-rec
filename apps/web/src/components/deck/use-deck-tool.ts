@@ -584,12 +584,13 @@ export function useDeckTool(
 
   /**
    * The player's budget changed (the start form, the Deck stats sheet): kept with the remembered deck and the open
-   * account deck, and the lists on screen are asked for again within it.
+   * account deck, and the lists on screen are asked for again within it. The build start passes `keepSavedDeck`: its
+   * budget belongs to the deck about to be built, not to the pasted deck the browser remembers.
    */
-  function changeBudget(next: DeckBudget | undefined) {
+  function changeBudget(next: DeckBudget | undefined, { keepSavedDeck = false }: { keepSavedDeck?: boolean } = {}) {
     if (budgetKey(next) === budgetKey(budgetRef.current)) return;
     trackBudget(next);
-    updateSavedDeck({ budget: next });
+    if (!keepSavedDeck) updateSavedDeck({ budget: next });
     if (!analysis) return;
     reloadFor(contextFor(analysis, bracketOverride, ownership), ownership, { kind: "budget" });
     if (openDeckRef.current) pendingSave.current = persist(analysis, bracketOverride);

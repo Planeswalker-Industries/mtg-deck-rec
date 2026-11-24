@@ -24,7 +24,6 @@ import {
   builtBuys,
   deckKey,
   missingSpendUsd,
-  statDeltas,
   toTallyCard,
   withSpent,
   type JourneyPhase,
@@ -56,6 +55,7 @@ import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
 import { SPEND_FIELD_LABEL, StartSettings } from "./start-settings";
+import { readBudgetPref, writeBudgetPref, type BudgetPrefMode } from "@/lib/budget-prefs";
 import { asOfSuffix, formatUsd } from "@/lib/format";
 import { SelectedCommander } from "./selected-commander";
 import { BuildView } from "./build/build-view";
@@ -532,10 +532,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   /** The card on screen in a swipe view, which Deck stats previews answering. */
   const [statPreview, setStatPreview] = useState<StatPreview | null>(null);
   const tallyOf = (card: CardSummary | null) => (card && analysis ? toTallyCard(card, card.roles ?? analysis.cardRoles[card.id] ?? []) : null);
-  const previewDeltas =
-    deckStats && statPreview
-      ? statDeltas(deckStats.stats, tallyOf(statPreview.add), tallyOf(statPreview.remove), deckStats.mana.deck)
-      : null;
   /** The deck graded again with the card on screen in and out: the score and the lines it would flip, for Deck stats. */
   const previewReport = useMemo(
     () => (statPreview ? fix.reportWith([{ in: statPreview.add, out: statPreview.remove }]) : null),
@@ -573,7 +569,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         curveAction,
         bracketAction,
         combosAction,
-        preview: previewDeltas && previewDeltas.size > 0 ? previewDeltas : null,
         after: previewReport,
         money: {
           totalUsd: cart.totalUsd,
@@ -689,6 +684,42 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   const showInput = editing || !analysis;
   // Building from nothing asks for a commander in place of the decklist box, until there is a deck to build on.
   const showPicker = buildStart && !analysis;
+
+  /**
+   * The build start's budget follows the list it builds from, each remembered in this browser (`budget-prefs.ts`):
+   * opening the picker or switching lists fills the fields with that list's budget. Waits until the collection is
+   * known, so the fields don't flash the Any commander budget first.
+   */
+  const budgetPrefMode: BudgetPrefMode | null =
+    !showPicker || !collectionLoaded || ((source.kind === "browser" || source.kind === "account") && tool.ownedOnly === null)
+      ? null
+      : tool.ownedOnly && pickFrom === "owned"
+        ? "collection"
+        : "any";
+  const appliedBudgetPref = useRef<BudgetPrefMode | null>(null);
+  /** A budget typed before the list was known: kept for that list once it is, rather than replaced by its stored one. */
+  const typedBudget = useRef<{ budget: DeckBudget | undefined } | null>(null);
+  useEffect(() => {
+    if (budgetPrefMode === null) {
+      // The picker closed: opening it again fills the fields afresh.
+      if (!showPicker) appliedBudgetPref.current = null;
+      return;
+    }
+    if (budgetPrefMode === appliedBudgetPref.current) return;
+    appliedBudgetPref.current = budgetPrefMode;
+    if (typedBudget.current) {
+      writeBudgetPref(budgetPrefMode, typedBudget.current.budget);
+      typedBudget.current = null;
+      return;
+    }
+    tool.changeBudget(readBudgetPref(budgetPrefMode), { keepSavedDeck: true });
+  }, [budgetPrefMode, showPicker, tool]);
+  /** A budget typed on the build start: used now and remembered for the list it was typed under. */
+  function chooseBuildBudget(budget: DeckBudget | undefined) {
+    tool.changeBudget(budget, { keepSavedDeck: true });
+    if (budgetPrefMode) writeBudgetPref(budgetPrefMode, budget);
+    else typedBudget.current = { budget };
+  }
   // On the opening screens a player with no collection is offered an import first; the resume question waits for the
   // collection to load and the offer to be answered, so the two never stack and the offer never pops up mid-analysis.
   const offersCollection = source.kind === "none" && !collectionRefreshing && !collectionOfferAnswered && (showPicker || showInput);
@@ -888,28 +919,26 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   }
 
   /**
-   * Ends a journey round. Save and Re-analyze put the result in the decklist and analyze it, which starts a new round
-   * at Add. Save then opens the editor: an open account deck has just been written back by the analysis, and a deck
-   * that isn't saved yet gets the name form.
+   * Ends a journey round by saving: the result goes in the decklist and is analyzed, which starts a new round at Add,
+   * then the editor opens: an open account deck has just been written back by the analysis, and a deck that isn't
+   * saved yet gets the name form. (Finish's Re-analyze went, owner 2026-11-24: it read as a second Start over.)
    */
   /** `open`: the deck the save writes to, when it was opened in this same handler (the state has yet to show it). */
-  async function commitJourney(kind: "save" | "reanalyze", open: { code: string } | null = tool.openDeck) {
+  async function commitJourney(open: { code: string } | null = tool.openDeck) {
     const text = journey.resultText();
     if (text === null) return;
     setCommitting(true);
     const outcome = await tool.commitText(text);
     setCommitting(false);
     if (!outcome.parsed) return;
-    if (kind === "save") {
-      // An open deck was just written back by the analysis; once that lands, its editor has the result.
-      if (open) {
-        await tool.whenSaved();
-        router.push(editorUrl(open.code));
-        return;
-      }
-      setMode("edit");
-      setSaveAsked(true);
+    // An open deck was just written back by the analysis; once that lands, its editor has the result.
+    if (open) {
+      await tool.whenSaved();
+      router.push(editorUrl(open.code));
+      return;
     }
+    setMode("edit");
+    setSaveAsked(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1024,17 +1053,17 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     const saved = buyDeck.current;
     if (!tool.openDeck && saved && analysis && saved.commanders === commandersOf(analysis)) {
       tool.trackSavedDeck(saved);
-      void commitJourney("save", saved);
+      void commitJourney(saved);
       return;
     }
-    void commitJourney("save");
+    void commitJourney();
   }
 
   const roundSave: RoundSave = tool.openDeck
     ? {
         kind: "open",
         deckName: tool.openDeck.name,
-        onSaveChanges: () => void commitJourney("save"),
+        onSaveChanges: () => void commitJourney(),
         onSaveCopy: () => void saveCopy(),
         copy,
       }
@@ -1134,7 +1163,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               bracket={tool.startBracket}
               onBracket={tool.setStartBracket}
               budget={tool.budget}
-              onBudget={tool.changeBudget}
+              onBudget={chooseBuildBudget}
               importHref={tool.ownedOnly ? null : buildImportHref}
             />
             {/* The page's main action, so the seal. The Bracket and budget are read at the tap, so a change after the pick still counts. */}
@@ -1455,7 +1484,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                       busy={committing}
                       stale={tool.stale}
                       save={roundSave}
-                      onReanalyze={() => void commitJourney("reanalyze")}
                       fix={fix}
                       choices={tool.statChoices}
                       onChoice={tool.setStatChoice}

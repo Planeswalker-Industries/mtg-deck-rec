@@ -136,13 +136,18 @@ The `/rate` rater deals a card's top 6 replacements shuffled, our ranking hidden
 - [ ] Recruit 2 raters, run 50 cases × 5 commanders, and record precision@5 and MRR here
 - [ ] Then read vote counts per (target, replacement) into `rankSwaps` (`apps/web/src/lib/server/votes.ts` through `recs.ts`), check the ramp in `swap.ts` against the real votes, extend `scoring.test.ts`, and pass `eval:holdout`
 
-## T049: Re-record the How it works clips
+## T049: How it works clips: re-record, serve as MP4
 
 **LOW** · Content · Owner
 
-The clips (`apps/web/public/add.png`, `cut_gif*.gif`, `swipe_gif*.gif`, last changed 2026-09-28) show the old UI and step order; the steps are now Add, Cut, Swap and Finish, in the blue palette.
+Tab 1 ("Choose any commander") plays the new recording (`commander_gif*.gif`, 2026-11-23). Tabs 2 and 3 still show the old UI (`cut_gif*.gif`, `swipe_gif*.gif`, 2026-09-28). Every clip ships as a GIF in two qualities, the `_hi` one at 1024 px and up; the new `_hi` GIF is 12.3 MB.
 
-- [ ] Add, Cut and Swap, one clip each at one pixel size (`StepMedia` in `components/home/how-it-works.tsx`), each with a `_hi` version for 1024 px and up; check the file sizes
+Owner decision 2026-11-23: serve the clips as MP4 (H.264) only, one file per clip, high quality on every screen. A muted looping video is typically 10–20x smaller than the GIF, plays everywhere (iPhone Safari included) and is hardware-decoded. WebM saves only about 20–30% more and would still need the MP4 beside it, so it is left out; it can be added later as a first `<source>`.
+
+- [ ] Record the budget clip (tab 2) and the Add, Cut, Swap clip (tab 3) in the current UI
+- [ ] Convert each `_hi` GIF to MP4 with ffmpeg (H.264, `yuv420p`, no audio track, `+faststart`) and save its first frame as a poster image; check the file sizes
+- [ ] `StepRecording` in `components/home/how-it-works.tsx`: a `<video autoplay muted loop playsinline preload="none" poster>` in place of the `<picture>`, one `src` per clip; drop `hiSrc` and `HI_RES_MEDIA`. Keep it lazy: `autoplay` overrides `preload`, and from `md` all three panels show, so start each clip only once its panel is in view (an IntersectionObserver) and still under reduced motion (poster only)
+- [ ] Delete the GIFs and the unused `add.png` from `apps/web/public`
 
 ## T039: Take votes off the Server Action queue
 

@@ -5,7 +5,7 @@ const FOOTER_NAME = /^Deck stats/;
 /** The Add swipe's gesture buttons, "Add <card>" and "Skip <card>", inside its sitting. */
 const ADD_CARD = /^Add /;
 const SKIP_CARD = /^Skip /;
-/** The Swap swipe's buttons, "Swap in <card>" and "Pass on <card>". */
+/** The Swap step's Swap button ("Swap in <card>") and its next-option arrow ("Pass on <card>"). */
 const SWAP_IN = /^Swap in /;
 const PASS_ON = /^Pass on /;
 /** The Fix step's buttons, "Swap <out> for <in>" and "Skip swapping <out> for <in>". */
@@ -92,7 +92,7 @@ test.describe("deck stats on a phone", () => {
     await expectAboveFooter(page, [
       move.getByRole("button", { name: FIX_SWAP }),
       move.getByRole("button", { name: FIX_SKIP }),
-      move.getByRole("button", { name: "Fix the rest for me" }),
+      move.getByRole("button", { name: "Auto-Fix" }),
     ]);
     // Closed, the footer reads one score (T091): the result the move on screen would give, or the score now when it
     // changes nothing. No per-line text.
@@ -107,9 +107,19 @@ test.describe("deck stats on a phone", () => {
     const colours = sheet.getByRole("region", { name: "Colours" });
     await expect(colours).toBeVisible();
     await expect(colours.getByText("Estimate")).toBeVisible();
-    await expect(colours.getByText(/ sources$/).first()).toBeVisible();
-    await expect(colours.getByText(/3 by turn 3/)).toBeVisible();
-    const hard = colours.getByRole("listitem").filter({ hasText: /% · turn \d+$/ });
+    // One ring per colour, marked by its mana symbol.
+    await expect(colours.getByRole("list", { name: "Colour sources" }).getByRole("listitem").first()).toBeVisible();
+    // The land-drop odds sit in the Lands ring's tip.
+    const lands = sheet.getByRole("list", { name: "Mana and roles" }).getByRole("button", { name: /^Lands:/ });
+    await lands.click();
+    await expect(page.getByText(/^Odds: 3 lands by turn 3 \d+%/)).toBeVisible();
+    await lands.click();
+    // Hard to cast opens from its count.
+    const hardToggle = colours.getByRole("button", { name: /^Hard to cast \(\d+\)$/ });
+    await expect(hardToggle).toHaveAttribute("aria-expanded", "false");
+    await hardToggle.click();
+    await expect(hardToggle).toHaveAttribute("aria-expanded", "true");
+    const hard = colours.getByRole("list", { name: "Hard to cast on curve" }).getByRole("listitem");
     await expect(hard.first()).toBeVisible();
     await expect(hard.first().locator("img")).toBeVisible();
     await colours.getByRole("button", { name: "About the colour estimate" }).click();
@@ -169,6 +179,8 @@ test.describe("the round's budget (T091)", () => {
     const sheet = page.getByRole("dialog", { name: "Deck stats" });
     const budget = sheet.getByRole("region", { name: "Budget" });
     await expect(budget).toBeVisible();
+    // Budget opens folded to its one line; the fields are behind it.
+    await budget.getByRole("button", { name: /^Budget:/ }).click();
     // $0 a card leaves only basics and owned cards: Add asks again within it, and the priced card on screen goes.
     await budget.getByRole("textbox", { name: "Max per card" }).fill("0");
     await sheet.getByRole("button", { name: "Close deck stats", exact: true }).click();

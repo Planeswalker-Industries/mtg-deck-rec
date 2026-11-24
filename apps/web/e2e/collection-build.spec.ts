@@ -1,4 +1,4 @@
-import { expect, fillDecklist, ignoreBuildGaps, openSwap, test, type Locator, type Page } from "./fixtures";
+import { clearBuildBudget, expect, fillDecklist, ignoreBuildGaps, openSwap, test, type Locator, type Page } from "./fixtures";
 
 /** Collection parsing and catalog loading may take this long in the production mock build. */
 const COLLECTION_WAIT_MS = 30_000;
@@ -8,6 +8,8 @@ const RECS_WAIT_MS = 90_000;
 const FOOTER_NAME = /^Deck stats/;
 /** Rounding slack for comparing layout boxes, in CSS pixels. */
 const LAYOUT_SLACK_PX = 1;
+/** The build start's Max to spend for Any commander when nothing was typed (`budget-prefs.ts`). */
+const ANY_COMMANDER_SPEND_USD = 100;
 /** A collection far too small for a deck: the commander, two rocks and a land. */
 const SMALL_COLLECTION = ["1 Chulane, Teller of Tales", "1 Sol Ring", "1 Arcane Signet", "1 Command Tower"].join("\n");
 
@@ -35,6 +37,7 @@ test("a short collection build: Add runs out, offers singles, then basics for th
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  await clearBuildBudget(page);
   await page.getByRole("button", { name: "Build deck" }).click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
@@ -90,6 +93,7 @@ test("a collection build asks about each gap: Allow buying adds cards to buy, Ig
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  await clearBuildBudget(page);
   await page.getByRole("button", { name: "Build deck" }).click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
@@ -128,9 +132,12 @@ test("a collection build asks about each gap: Allow buying adds cards to buy, Ig
   const ignoredLine = async () => {
     await page.getByRole("button", { name: FOOTER_NAME }).click();
     const sheet = page.getByRole("dialog", { name: "Deck stats" });
-    const line = sheet.getByRole("listitem").filter({ has: page.getByText(label, { exact: true }) }).first();
+    // Each line is a ring named "<line>: <count>, <where it stands>".
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Relative to the item it filters, so from the page, not the sheet.
+    const ring = page.getByRole("button", { name: new RegExp(`^${escaped}: \\d+, ignored`) });
+    const line = sheet.getByRole("listitem").filter({ has: ring }).first();
     await expect(line.getByRole("img", { name: "Ignored" })).toBeVisible({ timeout: RECS_WAIT_MS });
-    await expect(line.getByText("Ignored", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(sheet).toBeHidden();
   };
@@ -171,10 +178,56 @@ test("owned suggestions carry the corner marker where they mix with cards to buy
   await expect(adds.getByRole("img", { name: "Owned" })).toHaveCount(0);
 });
 
+test("the build start's budget starts at each list's default and remembers what was typed under it", async ({ page }) => {
+  await page.goto("/collection/import");
+  await page.getByLabel("Collection import").fill(SMALL_COLLECTION);
+  await page.getByRole("button", { name: "Import collection", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Saved collection" })).toBeVisible({ timeout: COLLECTION_WAIT_MS });
+
+  await page.goto("/deck?start=build");
+  const perCard = page.getByRole("textbox", { name: "Max per card" });
+  const spend = page.getByRole("textbox", { name: "Max to spend" });
+  const lists = page.getByRole("group", { name: "Which commanders to list" });
+  // From my collection: $0 each, so the build sticks to owned cards until the player says otherwise.
+  await expect(perCard).toHaveValue("0", { timeout: COLLECTION_WAIT_MS });
+  await expect(spend).toHaveValue("0");
+  // Any commander: $10 a card, $100 in all.
+  await lists.getByRole("button", { name: "Any commander" }).click();
+  await expect(perCard).toHaveValue("10");
+  await expect(spend).toHaveValue("100");
+  await perCard.fill("25");
+  await lists.getByRole("button", { name: "From my collection" }).click();
+  await expect(perCard).toHaveValue("0");
+
+  // A later visit gets back what was typed under each list.
+  await page.reload();
+  await expect(perCard).toHaveValue("0", { timeout: COLLECTION_WAIT_MS });
+  await lists.getByRole("button", { name: "Any commander" }).click();
+  await expect(perCard).toHaveValue("25");
+  await expect(spend).toHaveValue("100");
+});
+
+test("a build with the default budget stays within it", async ({ page }) => {
+  await page.goto("/deck?start=build");
+  await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
+  await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  // No collection: Any commander's default, left as it is.
+  const spend = page.getByRole("textbox", { name: "Max to spend" });
+  await expect(spend).toHaveValue(String(ANY_COMMANDER_SPEND_USD), { timeout: COLLECTION_WAIT_MS });
+  await page.getByRole("button", { name: "Build deck" }).click();
+  const built = page.getByRole("region", { name: "Your built deck" });
+  await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
+  const cart = built.getByText(/^\d+ cards? to buy, \$/);
+  await expect(cart).toBeVisible({ timeout: RECS_WAIT_MS });
+  const total = Number((await cart.textContent())!.match(/\$([\d,.]+)/)![1]!.replace(/,/g, ""));
+  expect(total).toBeLessThanOrEqual(ANY_COMMANDER_SPEND_USD);
+});
+
 test("a built deck shows its bracket estimate, and a card's score on tap", async ({ page }) => {
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  await clearBuildBudget(page);
   await page.getByRole("button", { name: "Build deck" }).click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
@@ -196,6 +249,7 @@ test("a refresh after Tune it offers the deck back with its choices", async ({ p
   await page.goto("/deck?start=build");
   await page.getByRole("combobox", { name: "Commander", exact: true }).fill("Chulane");
   await page.getByRole("option", { name: /Chulane/ }).first().click({ timeout: COLLECTION_WAIT_MS });
+  await clearBuildBudget(page);
   await page.getByRole("button", { name: "Build deck" }).click();
   const built = page.getByRole("region", { name: "Your built deck" });
   await expect(built).toBeVisible({ timeout: RECS_WAIT_MS });
