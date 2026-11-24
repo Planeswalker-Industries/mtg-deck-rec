@@ -136,14 +136,13 @@ The `/rate` rater deals a card's top 6 replacements shuffled, our ranking hidden
 - [ ] Recruit 2 raters, run 50 cases × 5 commanders, and record precision@5 and MRR here
 - [ ] Then read vote counts per (target, replacement) into `rankSwaps` (`apps/web/src/lib/server/votes.ts` through `recs.ts`), check the ramp in `swap.ts` against the real votes, extend `scoring.test.ts`, and pass `eval:holdout`
 
-## T049: How it works clips: poster and faststart
+## T049: How it works clips: faststart MP4s
 
 **LOW** · Content · Owner
 
-The three tabs play the owner's MP4 clips (`home_mp4_1..3.mp4`, 2026-11-24) in place of the GIFs, only while on screen, and stand still under reduced motion. Left:
+The three tabs play the owner's clips from `apps/web/public/home` (WebM first, MP4 for Safari, a PNG still each; 2026-11-24), only while on screen, and stand still under reduced motion. Left:
 
-- [ ] A poster for tab 1 (`home_png_1.png`, its first frame): without one it loads the clip's metadata and shows the first frame, which iPhone Safari may leave blank under reduced motion
-- [ ] Re-export the three clips with `-movflags +faststart` and no audio track (`-an`): each has its index at the end and an empty audio track, so a browser reads the end of the file before the first frame
+- [ ] Re-export the MP4s with `-movflags +faststart -an`: each has its index at the end and an empty audio track, so Safari reads the end of the file before the first frame (the WebMs carry an empty audio track too; `-an` there as well)
 
 ## T039: Take votes off the Server Action queue
 

@@ -6,14 +6,25 @@ import { Coins, Crown, Shuffle } from "lucide-react";
 import { cn } from "cn";
 import { SheetSection } from "@/components/ui/sheet-section";
 
+/** The clips' folder under `public`: each as WebM (VP9), MP4 (H.264) and a PNG still (owner, 2026-11-24). */
+const CLIP_DIR = "/home";
+
 interface StepClip {
-  /** A muted, looping MP4 (H.264): about a tenth of the GIF it replaced (owner, 2026-11-23). */
-  src: string;
-  /** Its first frame: what shows before it plays, and all that shows under reduced motion. */
-  poster?: string;
+  /** Muted and looping, offered as WebM first (smaller) and MP4 for browsers without it (iPhone Safari). */
+  webm: string;
+  mp4: string;
+  /** What shows before it plays, and all that shows under reduced motion. */
+  poster: string;
   width: number;
   height: number;
 }
+
+/** Clip `n`'s three files. */
+const clipFiles = (n: number) => ({
+  webm: `${CLIP_DIR}/home_webm_${n}.webm`,
+  mp4: `${CLIP_DIR}/home_mp4_${n}.mp4`,
+  poster: `${CLIP_DIR}/home_png_${n}.png`,
+});
 
 /** The three tabs, each with its line and a recording of the app (the owner's clips, 2026-11-24). */
 const TABS: { id: string; label: string; line: string; icon: typeof Crown; clip: StepClip }[] = [
@@ -22,21 +33,21 @@ const TABS: { id: string; label: string; line: string; icon: typeof Crown; clip:
     label: "Choose any commander",
     line: "Any bracket. Any commander. Build more decks and buy fewer singles.",
     icon: Crown,
-    clip: { src: "/home_mp4_1.mp4", width: 596, height: 500 },
+    clip: { ...clipFiles(1), width: 596, height: 500 },
   },
   {
     id: "budget",
     label: "Build it on a budget",
     line: "Sometimes a few more cards bring a deck together. Set a budget per card or per deck, so there are no surprises.",
     icon: Coins,
-    clip: { src: "/home_mp4_2.mp4", poster: "/home_png_2.png", width: 566, height: 468 },
+    clip: { ...clipFiles(2), width: 566, height: 468 },
   },
   {
     id: "tune",
     label: "Add, Cut, Swap & Share",
     line: "Start fresh or paste a decklist, and we'll take it to the next level without breaking the bank.",
     icon: Shuffle,
-    clip: { src: "/home_mp4_3.mp4", poster: "/home_png_3.png", width: 500, height: 412 },
+    clip: { ...clipFiles(3), width: 608, height: 564 },
   },
 ];
 
@@ -44,7 +55,7 @@ const TABS: { id: string; label: string; line: string; icon: typeof Crown; clip:
  * One recording, contained (never cropped) in a frame shared by all three; absolute, so the recording's own size can't
  * stretch the frame. It plays only while it is on screen: a clip below the hero or in a `display: none` panel (a phone's
  * other tabs) loads nothing but its poster, and one scrolled away pauses. Under reduced motion it never plays: the
- * poster (or, without one, the first frame) stands still.
+ * poster stands still.
  */
 function StepRecording({ clip }: { clip: StepClip }) {
   const video = useRef<HTMLVideoElement>(null);
@@ -61,7 +72,6 @@ function StepRecording({ clip }: { clip: StepClip }) {
     <div className="absolute inset-1">
       <video
         ref={video}
-        src={clip.src}
         poster={clip.poster}
         width={clip.width}
         height={clip.height}
@@ -70,10 +80,12 @@ function StepRecording({ clip }: { clip: StepClip }) {
         playsInline
         disablePictureInPicture
         disableRemotePlayback
-        // Without a poster, the first frame is the still: only the clip's metadata loads until it plays.
-        preload={clip.poster ? "none" : "metadata"}
+        preload="none"
         className="size-full object-contain"
-      />
+      >
+        <source src={clip.webm} type="video/webm" />
+        <source src={clip.mp4} type="video/mp4" />
+      </video>
     </div>
   );
 }
