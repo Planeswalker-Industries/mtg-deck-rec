@@ -23,7 +23,7 @@ const loadMyDecks = cache(async () => {
 export default function DecksPage() {
   return (
     <div className="flex flex-col gap-5 md:gap-8">
-      <section aria-labelledby="decks-heading" className={`${PAGE_SHEET} sm:flex-row sm:flex-wrap sm:items-end sm:justify-between`}>
+      <section aria-labelledby="decks-heading" className={`${PAGE_SHEET} sm:flex-row sm:flex-wrap sm:items-center sm:justify-between`}>
         <div className="flex items-baseline gap-3">
           <h1 id="decks-heading" className="font-heading text-2xl leading-none font-semibold tracking-tight">
             My decks

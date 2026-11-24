@@ -11,13 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getApis } from "@/lib/api/client";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
-import { DeckTile, WUBRG, identityOf, type MenuUp } from "./deck-tile";
+import { DeckTile, WUBRG, identityOf } from "./deck-tile";
 
 /** Below this many decks the filter and sort tools are clutter; the cap is 100, so they earn their place well before then. */
 const FILTER_FROM = 8;
-/** The grid's columns from sm and from lg up (phones have 2, and open the actions as a sheet, so their rows don't matter). */
-const COLUMNS_SM = 3;
-const COLUMNS_LG = 4;
 /** Colourless, as a filter: decks whose identity is empty. */
 const COLORLESS = "C";
 const COLOR_FILTERS = [...WUBRG, COLORLESS];
@@ -28,10 +25,6 @@ const SORT_LABELS: Record<Sort, string> = { recent: "Last updated", name: "Name"
 /** WUBRG order by colour count first, so mono decks come before pairs: "" < "W" < "U" < … < "WU" < … */
 function colorKey(identity: string): string {
   return `${identity.length}${[...identity].map((c) => WUBRG.indexOf(c)).join("")}`;
-}
-
-function isLastRow(index: number, count: number, columns: number): boolean {
-  return index >= count - (count % columns || columns);
 }
 
 export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
@@ -167,17 +160,12 @@ export function DeckList({ decks }: { decks: SavedDeckSummary[] }) {
         </p>
       ) : (
         <ul className={cn("grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 sm:gap-x-8 lg:grid-cols-4", pending && "opacity-60")}>
-          {shown.map((deck, index) => {
-            const menuUp: MenuUp = {
-              sm: isLastRow(index, shown.length, COLUMNS_SM),
-              lg: isLastRow(index, shown.length, COLUMNS_LG),
-            };
+          {shown.map((deck) => {
             return (
               <DeckTile
                 key={deck.id}
                 deck={deck}
                 active={active === deck.id}
-                menuUp={menuUp}
                 now={now}
                 onActivate={() => setActive(deck.id)}
                 onDeactivate={() => setActive((current) => (current === deck.id ? null : current))}

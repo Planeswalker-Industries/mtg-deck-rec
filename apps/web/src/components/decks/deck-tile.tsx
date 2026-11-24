@@ -43,6 +43,10 @@ const LEAN_STYLE: React.CSSProperties = {
   transform: `perspective(${LEAN.perspectiveCqw}cqw) rotateX(${LEAN.rotateXDeg}deg) rotateY(${LEAN.rotateYDeg}deg) rotateZ(${LEAN.rotateZDeg}deg) scale(${LEAN.overscan})`,
 };
 const STACK_ASPECT = `${STACK.width} / ${STACK.height}`;
+/** The stack's widest, in rem: the tile's `max-w-56`, so wide tiles keep the photo a modest size. */
+const STACK_MAX_REM = 14;
+/** The popover's top in the tile (its wrapper is the container): the stack's height, the stack being the tile's width up to its cap. */
+const POPOVER_TOP = `calc(min(100cqw, ${STACK_MAX_REM}rem) * ${STACK.height} / ${STACK.width} + 0.25rem)`;
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -74,19 +78,14 @@ function updatedAgo(iso: string, now: number): string {
 
 const MENU_ITEM_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
-/** Which way the actions open from sm up: below the tile, or above it on the grid's last row (3 columns, then 4 from lg). */
-export type MenuUp = { sm: boolean; lg: boolean };
-
 /**
- * Up opens above the tile; the padding bridges tile and menu, so a mouse crossing onto the menu never leaves the tile.
- * Above, it also clears the tile's growth: the tile scales from its bottom edge, so its top rises into that gap.
+ * Depth for the stack photo, which is otherwise a flat cut-out on the paper: a soft contact shadow under it and a wider
+ * one further out. The selected tile's is deeper, as if lifted. Shadow colour is the onyx of the wood bar.
  */
-function popoverPlacement({ sm, lg }: MenuUp): string {
-  if (sm && lg) return "bottom-full pb-8";
-  if (sm) return "sm:max-lg:bottom-full sm:max-lg:pb-8 lg:top-full lg:pt-3";
-  if (lg) return "sm:max-lg:top-full sm:max-lg:pt-3 lg:bottom-full lg:pb-8";
-  return "top-full pt-3";
-}
+const STACK_SHADOW = "drop-shadow-[0_3px_3px_rgb(19_17_17/0.35)] drop-shadow-[0_14px_14px_rgb(19_17_17/0.3)]";
+const STACK_SHADOW_LIFTED = "drop-shadow-[0_5px_5px_rgb(19_17_17/0.35)] drop-shadow-[0_24px_22px_rgb(19_17_17/0.35)]";
+/** The commander leaning on the stack casts its own shadow back onto it, to the left and down. */
+const LEAN_SHADOW = "shadow-[-6px_6px_12px_rgb(19_17_17/0.45)]";
 
 type MenuItem = { key: string; label: string; aria: string; icon: LucideIcon; destructive?: boolean } & (
   { href: Route } | { onClick: () => void }
@@ -98,7 +97,7 @@ type MenuItem = { key: string; label: string; aria: string; icon: LucideIcon; de
  */
 export function DeckStack({ cardSrc, className }: { cardSrc: string; className?: string }) {
   return (
-    <span className={cn("@container relative block", className)} style={{ aspectRatio: STACK_ASPECT }}>
+    <span className={cn("@container relative block", STACK_SHADOW, className)} style={{ aspectRatio: STACK_ASPECT }}>
       <Image src={STACK.src} alt="" width={STACK.width} height={STACK.height} unoptimized className="absolute inset-0 size-full" />
       <Image
         src={cardSrc}
@@ -107,7 +106,7 @@ export function DeckStack({ cardSrc, className }: { cardSrc: string; className?:
         height={CARD_PX.height}
         unoptimized
         style={LEAN_STYLE}
-        className="absolute rounded-[4.75%/3.4%] bg-seam object-cover"
+        className={cn("absolute rounded-[4.75%/3.4%] bg-seam object-cover", LEAN_SHADOW)}
       />
     </span>
   );
@@ -121,13 +120,12 @@ export function DeckStack({ cardSrc, className }: { cardSrc: string; className?:
  * hovering and opens the deck on click. A touch selects on the first tap and opens on the second; a tap outside any
  * tile clears it. The keyboard selects on focus. On touch screens a ⋯ button selects too, for anyone who doesn't guess
  * the first tap; where a pointer can hover, hovering already shows the actions, so the button is hidden there.
- * From sm up the actions open as a small popover; on phones as a sheet along the bottom of the screen, so they never
- * cover the next row's cards.
+ * From sm up the actions open as a small popover over the tile's own name and colours, just under its cards; on phones
+ * as a sheet along the bottom of the screen. Either way they never cover the next row's cards.
  */
 export function DeckTile({
   deck,
   active,
-  menuUp,
   now,
   onActivate,
   onDeactivate,
@@ -136,7 +134,6 @@ export function DeckTile({
 }: {
   deck: SavedDeckSummary;
   active: boolean;
-  menuUp: MenuUp;
   /** The list's clock, so every tile's "Updated …" agrees. */
   now: number;
   onActivate: () => void;
@@ -214,7 +211,7 @@ export function DeckTile({
           <span className="relative mx-auto block w-full max-w-56">
             <DeckStack
               cardSrc={commander?.images?.front.normal ?? CARD_BACK_SRC}
-              className={cn("transition-[filter] duration-200", active ? "drop-shadow-xl" : "drop-shadow-md")}
+              className={cn("transition-[filter] duration-200", active && STACK_SHADOW_LIFTED)}
             />
             {!deck.isPublic && (
               // The photo's top left corner is empty table, so the badge covers no card.
@@ -283,13 +280,17 @@ export function DeckTile({
             </div>
           </div>
 
-          {/* From sm up: a small popover under the tile (over it on the last row), its actions in a 3 by 2 grid. */}
-          <div className={cn("absolute inset-x-0 max-sm:hidden", popoverPlacement(menuUp))}>
+          {/* From sm up: a popover the tile's width over its name and colours, its actions in a 3 by 2 grid, starting
+              where the cards end. */}
+          {/* The tile's width as a container, on this wrapper alone: on the tile, containment would trap the phone sheet. */}
+          <div className="@container absolute inset-x-0 top-0 max-sm:hidden">
             <div
               id={ids.popover}
               role="group"
               aria-label={`Actions for ${deck.name}`}
-              className="mx-auto grid max-w-64 grid-cols-3 gap-1 rounded-lg bg-popover p-1 text-popover-foreground shadow-lift ring-1 ring-foreground/10 duration-150 animate-in fade-in-0 zoom-in-95 motion-reduce:animate-none"
+              style={{ top: POPOVER_TOP }}
+              // A little wider than the tile: the selected tile grows, and its name with it.
+              className="absolute -inset-x-2 grid grid-cols-3 gap-1 rounded-lg bg-popover p-1 text-popover-foreground shadow-lift ring-1 ring-foreground/10 duration-150 animate-in fade-in-0 zoom-in-95 motion-reduce:animate-none"
             >
               {items.map((item) => (
                 <MenuEntry key={item.key} item={item} className="min-h-14 flex-col justify-center gap-1 px-1 text-xs" />
