@@ -1,9 +1,7 @@
+import sharp from "sharp";
 import { CRAWLER_UA, expect, headMeta as meta, test } from "./fixtures";
 
 const localData = Boolean(process.env.E2E_LOCAL_DATA);
-/** A PNG's IHDR holds its width and height as big-endian 32-bit integers at these byte offsets. */
-const PNG_WIDTH_OFFSET = 16;
-const PNG_HEIGHT_OFFSET = 20;
 test("every page has the default preview image", async ({ page }) => {
   for (const path of ["/", "/privacy"]) {
     await page.goto(path);
@@ -19,10 +17,9 @@ test("a card page shares its plate", async ({ browser, request }) => {
   test.skip(!localData, "needs the synced catalog");
   const res = await request.get("/card/sol-ring/opengraph-image");
   expect(res.status()).toBe(200);
-  expect(res.headers()["content-type"]).toBe("image/png");
-  const png = await res.body();
-  expect(png.readUInt32BE(PNG_WIDTH_OFFSET)).toBe(1200);
-  expect(png.readUInt32BE(PNG_HEIGHT_OFFSET)).toBe(630);
+  expect(res.headers()["content-type"]).toBe("image/jpeg");
+  const { format, width, height } = await sharp(await res.body()).metadata();
+  expect({ format, width, height }).toEqual({ format: "jpeg", width: 1200, height: 630 });
 
   const crawler = await browser.newContext({ userAgent: CRAWLER_UA });
   const page = await crawler.newPage();
@@ -42,7 +39,7 @@ test("a commander page shares its plate", async ({ browser, request }) => {
   test.skip(!localData, "needs the synced catalog");
   const res = await request.get("/commander/liesa-forgotten-archangel/opengraph-image");
   expect(res.status()).toBe(200);
-  expect(res.headers()["content-type"]).toBe("image/png");
+  expect(res.headers()["content-type"]).toBe("image/jpeg");
   const crawler = await browser.newContext({ userAgent: CRAWLER_UA });
   const page = await crawler.newPage();
   await page.goto("/commander/liesa-forgotten-archangel");
