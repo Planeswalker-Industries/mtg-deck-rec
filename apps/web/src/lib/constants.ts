@@ -70,8 +70,8 @@ export const REMOVE_ARM_MS = 3000;
 /** A pointer resting on a tip's trigger this long opens it; passing over a row of them opens none. */
 export const TIP_HOVER_DELAY_MS = 200;
 
-/** The table's curve (`--ease-table` in globals.css), for motion's `ease`. */
-export const EASE_TABLE = [0.2, 0.7, 0.2, 1] as const;
+/** Sine in and out, the curve Deck stats rings fill on (owner's Godot tween, `TRANS_SINE`, 2026-11-23). */
+export const EASE_SINE = [0.37, 0, 0.63, 1] as const;
 /** A check's grow as it appears in a closed ring (Deck stats): from this scale, past full size, back. */
 export const RING_CHECK_GROW = [0.5, 1.15, 1];
 

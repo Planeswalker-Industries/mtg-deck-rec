@@ -1,16 +1,22 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { motion, useInView, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
 import type { DeckStatsLevel, StatState } from "@mtg/core/journey";
 import { ArrowDown, ArrowRight, ArrowUp, Check, EyeOff, X } from "lucide-react";
 import { cn } from "cn";
-import { CLOSE_WORDS_DELAY_S, LEVEL, ScoreRing, type RingClosing } from "./score-ring";
+import { RING_CHECK_GROW } from "@/lib/constants";
+import { CLOSED_AT_S, LEVEL, ScoreRing, type RingClosing } from "./score-ring";
 
 export { LEVEL };
 
-/** The closing's words fade in over this long. */
-const CLOSE_WORDS_S = 0.3;
+/** "All rings closed!" fades in and out over this long each way. */
+const WORDS_FADE_S = 0.3;
+/** It stays up this long between, long enough to read. */
+const WORDS_HOLD_S = 1.2;
+/** The ✅ grows in over this long. */
+const MARK_GROW_S = 0.35;
+const MS_PER_S = 1000;
 
 /**
  * A Deck stats line's mark: a green check in line, a red X off, or a grey eye when the player chose to ignore the line
@@ -53,9 +59,9 @@ export function LevelBadge({
 }
 
 /**
- * Finish's score: the level badge, until every line is in line. Then the ring closes into a check beside "All lines in
- * line", once: the first time it happens while Finish is up, as the heading comes into view. A deck that falls out of
- * line and back shows the closed ring at once, and so does reduced motion.
+ * Finish's score: the level badge, until every line is in line. Then, once (the first time it happens while Finish is
+ * up, as the heading comes into view), the ring closes into a check, "All rings closed!" fades in and out, and a ✅
+ * takes its place (owner, 2026-11-23). A deck that falls out of line and back, or reduced motion, shows the ✅ at once.
  */
 export function FinishScore({ level, okCount, total }: { level: DeckStatsLevel; okCount: number; total: number }) {
   const reduceMotion = useReducedMotion() ?? false;
@@ -67,21 +73,54 @@ export function FinishScore({ level, okCount, total }: { level: DeckStatsLevel; 
   if (allIn && run === "fresh") setRun("live");
   if (!allIn && run === "live") setRun("spent");
   const closing: RingClosing = reduceMotion || run !== "live" ? "done" : inView ? "play" : "wait";
+  // Beside the ring while it plays: nothing, then the words, then the ✅.
+  const [beside, setBeside] = useState<"none" | "words" | "mark">("none");
+  useEffect(() => {
+    if (closing !== "play") return;
+    const toWords = setTimeout(() => setBeside("words"), CLOSED_AT_S * MS_PER_S);
+    const toMark = setTimeout(() => setBeside("mark"), (CLOSED_AT_S + WORDS_FADE_S + WORDS_HOLD_S) * MS_PER_S);
+    return () => {
+      clearTimeout(toWords);
+      clearTimeout(toMark);
+    };
+  }, [closing]);
+  const shown = closing === "done" ? "mark" : beside;
   return (
     <span ref={box} className="inline-flex">
       {allIn ? (
         <span className={cn("inline-flex items-center gap-2", LEVEL.ok.text)}>
-          <ScoreRing level="ok" okCount={okCount} total={total} size="heading" closing={closing} />
-          <motion.span
-            className="text-sm font-semibold"
-            initial={closing === "done" ? false : { opacity: 0 }}
-            animate={{ opacity: closing === "wait" ? 0 : 1 }}
-            transition={{ duration: CLOSE_WORDS_S, delay: closing === "play" ? CLOSE_WORDS_DELAY_S : 0 }}
-          >
-            All lines in line
+          <motion.span layout={!reduceMotion} className="inline-flex">
+            <ScoreRing level="ok" okCount={okCount} total={total} size="heading" closing={closing} />
           </motion.span>
+          <AnimatePresence mode="wait" initial={false}>
+            {shown === "words" && (
+              <motion.span
+                key="words"
+                aria-hidden
+                className="text-sm font-semibold"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: WORDS_FADE_S }}
+              >
+                All rings closed!
+              </motion.span>
+            )}
+            {shown === "mark" && (
+              <motion.span
+                key="mark"
+                aria-hidden
+                className="inline-flex size-6 items-center justify-center rounded-md bg-success text-background"
+                initial={closing === "done" ? false : { opacity: 0, scale: RING_CHECK_GROW[0] }}
+                animate={{ opacity: 1, scale: RING_CHECK_GROW }}
+                transition={{ duration: MARK_GROW_S, ease: "easeOut" }}
+              >
+                <Check className="size-4" strokeWidth={3} />
+              </motion.span>
+            )}
+          </AnimatePresence>
           <span className="sr-only">
-            , {okCount} of {total}
+            All rings closed, {okCount} of {total} in line
           </span>
         </span>
       ) : (

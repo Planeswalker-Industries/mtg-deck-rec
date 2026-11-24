@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { Check, CircleAlert, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { DeckStatsLevel } from "@mtg/core/journey";
 import { cn } from "cn";
-import { RING_CHECK_GROW } from "@/lib/constants";
+import { EASE_SINE, RING_CHECK_GROW } from "@/lib/constants";
 
 /**
  * The deck's score as one ring (owner, 2026-11-23): a segment per counted line, filled in the level's colour for each
@@ -34,14 +34,14 @@ const HALF_TURN_DEG = 180;
 const TOP_DEG = -90;
 /** Coordinates rounded to this many decimals, so the server and the client draw the same path. */
 const PATH_DECIMALS = 3;
-/** The closing: how long the segments take to fill, all together, one after another. */
+/** The closing: how long the segments take to fill, all together, one after another, each on a sine curve. */
 const CLOSE_FILL_S = 0.8;
 /** Then the gaps close into one ring this fast. */
 const CLOSE_SEAL_S = 0.25;
 /** Then the check grows in over this long. */
 const CLOSE_CHECK_S = 0.35;
-/** When the closing's words appear: as the check grows in. */
-export const CLOSE_WORDS_DELAY_S = CLOSE_FILL_S + CLOSE_SEAL_S;
+/** When the ring has closed: its check has grown in. */
+export const CLOSED_AT_S = CLOSE_FILL_S + CLOSE_SEAL_S + CLOSE_CHECK_S;
 
 type ScoreRingSize = keyof typeof RING_PX;
 
@@ -110,7 +110,7 @@ export function ScoreRing({
                 stroke="currentColor"
                 initial={{ pathLength: 0, opacity: 0 }}
                 animate={{ pathLength: run ? 1 : 0, opacity: run ? 1 : 0 }}
-                transition={{ duration: step, delay: i * step, ease: "linear" }}
+                transition={{ duration: step, delay: i * step, ease: EASE_SINE }}
               />
             ) : (
               <path key={`ok-${i}`} d={d} stroke="currentColor" />

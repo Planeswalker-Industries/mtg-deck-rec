@@ -8,7 +8,7 @@ import { Check, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
 import { ringRange, ringWorsens, statRing, towardTarget, type RingZone, type StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { MANA_SYMBOL_URL } from "@/components/deck/color-identity";
-import { EASE_TABLE, RING_CHECK_GROW, TIP_HOVER_DELAY_MS } from "@/lib/constants";
+import { EASE_SINE, RING_CHECK_GROW, TIP_HOVER_DELAY_MS } from "@/lib/constants";
 import { Mark } from "./level";
 import { ringTip } from "./stat-chip-copy";
 
@@ -18,16 +18,19 @@ import { ringTip } from "./stat-chip-copy";
  * top the ring turns red, shakes and shows a warning. Short lines are amber, far short ones red. Every colour comes with
  * a word or an icon: the count, a check, OK or the warning. What to do about a line is in its tip, opened by a hover or
  * a tap, so the rings sit close and read at a glance (owner, 2026-11-23).
+ *
+ * A group fills the way the owner's Godot tween does (2026-11-23): one ring at a time, each on a sine curve, popping
+ * from a little larger back to its size as it fills, the next starting as it ends.
  */
 
 /** Ring diameters in px: the main lines, the card types, the colour sources. */
 const RING_PX = { lg: 72, sm: 56, mana: 48 } as const;
 /** Ring stroke widths in px, at the same sizes. */
 const STROKE_PX = { lg: 7, sm: 6, mana: 5 } as const;
-/** How long a ring takes to fill when it comes into view, or to move to a new count. */
-const FILL_S = 0.8;
-/** Each ring in a group starts this much after the one before it, so a group fills as a ripple. */
-const STAGGER_S = 0.05;
+/** How long a ring takes to fill when its turn comes, or to move to a new count; the next ring starts as it ends. */
+const FILL_S = 0.4;
+/** A ring pops to this scale as its turn comes, and settles back to its size as it fills. */
+const POP_FROM_SCALE = 1.1;
 /** A card on screen moves the rings after this pause, so the eye can catch which ones move. */
 const PREVIEW_DELAY_MS = 300;
 const MS_PER_S = 1000;
@@ -121,7 +124,7 @@ export function StatRing({
   line: StatLine;
   after?: StatLine | undefined;
   size: RingSize;
-  /** Its place in its group, for the ripple as a group fills. */
+  /** Its place in its group: the rings fill in turn. */
   index?: number;
   /** Beside the label: Fix, Count it. */
   action?: ReactNode;
@@ -131,6 +134,22 @@ export function StatRing({
   const inView = useInView(box, { once: true });
   const minimum = line.group === "colours";
   const ignored = line.state === "ignored";
+  // Its turn in the group's first fill; once filled, a ring moves at once.
+  const turnS = index * FILL_S;
+  const [opened, setOpened] = useState(false);
+  useEffect(() => {
+    if (!inView || opened) return;
+    const timer = setTimeout(() => setOpened(true), (turnS + FILL_S) * MS_PER_S);
+    return () => clearTimeout(timer);
+  }, [inView, opened, turnS]);
+  const delayS = reduceMotion || opened ? 0 : turnS;
+
+  // The pop as its turn comes: from a little larger back to its size, while it fills.
+  const pop = useAnimationControls();
+  useEffect(() => {
+    if (!inView || reduceMotion) return;
+    void pop.start({ scale: [POP_FROM_SCALE, 1], transition: { duration: FILL_S, delay: turnS, ease: EASE_SINE } });
+  }, [inView, reduceMotion, pop, turnS]);
 
   const previewing = after !== undefined && !sameShown(after, line);
   const shown = useDelayedShown(previewing ? after : line, reduceMotion ? 0 : PREVIEW_DELAY_MS);
@@ -156,8 +175,8 @@ export function StatRing({
     const previewWorse = ring.zone !== ownZone && ringWorsens(ownZone, ring.zone);
     const lineWorse = ring.zone === ownZone && (opening || ringWorsens(fromOwn, ownZone));
     if (!previewWorse && !lineWorse) return;
-    void shake.start({ x: SHAKE_X_PX, transition: { duration: SHAKE_S, delay: opening ? FILL_S * OVER_SHAKE_AT : 0 } });
-  }, [inView, ring.zone, ownZone, reduceMotion, ignored, shake]);
+    void shake.start({ x: SHAKE_X_PX, transition: { duration: SHAKE_S, delay: opening ? turnS + FILL_S * OVER_SHAKE_AT : 0 } });
+  }, [inView, ring.zone, ownZone, reduceMotion, ignored, shake, turnS]);
 
   // In range: a check grows in, then OK takes its place. Tapped: the count.
   /** Where a closing ring's centre is: still the count while the lap closes, the check, then OK. */
@@ -165,7 +184,7 @@ export function StatRing({
   const okNow = zone === "ok" && !ignored && inView;
   // Out of range again: the next closing starts from the count. Adjusted while rendering, not in an effect.
   if (!okNow && closing !== "count") setClosing("count");
-  const closedMs = (FILL_S + index * STAGGER_S) * MS_PER_S;
+  const closedMs = (delayS + FILL_S) * MS_PER_S;
   useEffect(() => {
     if (!okNow || reduceMotion) return;
     const toCheck = setTimeout(() => setClosing("check"), closedMs);
@@ -184,7 +203,7 @@ export function StatRing({
     // A round cap draws a dot at zero length: an empty lap is hidden instead.
     animate: { pathLength: inView ? to : 0, opacity: inView && to > 0 ? 1 : 0 },
     initial: { pathLength: 0, opacity: 0 },
-    transition: { duration: reduceMotion ? 0 : FILL_S, ease: EASE_TABLE, delay: reduceMotion ? 0 : index * STAGGER_S },
+    transition: { duration: reduceMotion ? 0 : FILL_S, ease: EASE_SINE, delay: delayS },
   });
   const arc = (className: string) => ({
     cx: px / 2,
@@ -204,53 +223,66 @@ export function StatRing({
   const spoken = spokenRing(line, zone, minimum, previewing ? { value: after.value, better } : null);
 
   const ringBody = (
-    <motion.span animate={shake} className="relative block" style={{ width: px, height: px }}>
-      <svg aria-hidden width={px} height={px} className="-rotate-90">
-        <circle cx={px / 2} cy={px / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-seam" />
-        <motion.circle {...arc(ignored ? "stroke-muted-foreground/50" : LAP_STROKE[zone])} {...fill(ring.lap)} />
-        {!ignored && ring.extra > 0 && <motion.circle {...arc(EXTRA_STROKE[zone])} {...fill(ring.extra)} />}
-      </svg>
-      <span aria-hidden className="absolute inset-0 flex items-center justify-center">
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.span
-            key={centreKey}
-            initial={reduceMotion ? false : { opacity: 0, scale: centreKey === "check" ? RING_CHECK_GROW[0] : CENTRE_SWAP_SCALE }}
-            animate={{ opacity: 1, scale: centreKey === "check" ? RING_CHECK_GROW : 1 }}
-            exit={{ opacity: 0, scale: CENTRE_SWAP_SCALE }}
-            transition={{ duration: reduceMotion ? 0 : CENTRE_SWAP_S, ease: "easeOut" }}
-            className={cn("flex items-center justify-center", ignored ? "text-muted-foreground" : COUNT_TEXT[zone])}
-          >
-            {centreKey === "check" ? (
-              <Check className={size === "lg" ? "size-7" : "size-5"} strokeWidth={3} />
-            ) : centreKey === "ok" ? (
-              <span className={cn("font-semibold", size === "lg" ? "text-base" : "text-sm")}>OK</span>
-            ) : (
-              <span className={countClass}>{shown.value}</span>
-            )}
-          </motion.span>
-        </AnimatePresence>
-      </span>
-      {/* Over its range: the warning sits on the ring's shoulder. */}
-      {zone === "over" && !ignored && (
-        <TriangleAlert aria-hidden className="absolute -top-1 -right-1 size-4 rounded-full bg-background text-destructive" strokeWidth={2.5} />
-      )}
-      {moved !== 0 && (
-        <span
-          aria-hidden
-          className={cn(
-            "absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm",
-            better ? "text-success" : "text-destructive",
-          )}
-        >
-          <Chevron className="size-4" strokeWidth={3} />
+    <motion.span animate={pop} className="block">
+      <motion.span animate={shake} className="relative block" style={{ width: px, height: px }}>
+        <svg aria-hidden width={px} height={px} className="-rotate-90">
+          <circle cx={px / 2} cy={px / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-seam" />
+          <motion.circle {...arc(ignored ? "stroke-muted-foreground/50" : LAP_STROKE[zone])} {...fill(ring.lap)} />
+          {!ignored && ring.extra > 0 && <motion.circle {...arc(EXTRA_STROKE[zone])} {...fill(ring.extra)} />}
+        </svg>
+        <span aria-hidden className="absolute inset-0 flex items-center justify-center">
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.span
+              key={centreKey}
+              initial={reduceMotion ? false : { opacity: 0, scale: centreKey === "check" ? RING_CHECK_GROW[0] : CENTRE_SWAP_SCALE }}
+              animate={{ opacity: 1, scale: centreKey === "check" ? RING_CHECK_GROW : 1 }}
+              exit={{ opacity: 0, scale: CENTRE_SWAP_SCALE }}
+              transition={{ duration: reduceMotion ? 0 : CENTRE_SWAP_S, ease: "easeOut" }}
+              className={cn("flex items-center justify-center", ignored ? "text-muted-foreground" : COUNT_TEXT[zone])}
+            >
+              {centreKey === "check" ? (
+                <Check className={size === "lg" ? "size-7" : "size-5"} strokeWidth={3} />
+              ) : centreKey === "ok" ? (
+                <span className={cn("font-semibold", size === "lg" ? "text-base" : "text-sm")}>OK</span>
+              ) : (
+                <span className={countClass}>{shown.value}</span>
+              )}
+            </motion.span>
+          </AnimatePresence>
         </span>
-      )}
+        {/* Over its range: the warning sits on the ring's shoulder. */}
+        {zone === "over" && !ignored && (
+          <TriangleAlert
+            aria-hidden
+            className="absolute -top-1 -right-1 size-4 rounded-full bg-background text-destructive"
+            strokeWidth={2.5}
+          />
+        )}
+        {moved !== 0 && (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-background shadow-sm",
+              better ? "text-success" : "text-destructive",
+            )}
+          >
+            <Chevron className="size-4" strokeWidth={3} />
+          </span>
+        )}
+      </motion.span>
     </motion.span>
   );
 
   const label =
     size === "mana" ? (
-      <Image src={MANA_SYMBOL_URL(line.key.replace("sources:", ""))} alt="" width={SYMBOL_PX} height={SYMBOL_PX} unoptimized className="size-4" />
+      <Image
+        src={MANA_SYMBOL_URL(line.key.replace("sources:", ""))}
+        alt=""
+        width={SYMBOL_PX}
+        height={SYMBOL_PX}
+        unoptimized
+        className="size-4"
+      />
     ) : (
       <span className="line-clamp-2 text-xs leading-tight">{line.label}</span>
     );
@@ -338,13 +370,7 @@ const GRID: Record<RingSize, string> = {
  * smaller, the colour sources by their mana symbol. Finish shows the deck this way; the Deck stats sheet places the
  * groups among its other parts itself.
  */
-export function StatRingGroups({
-  lines,
-  actionFor,
-}: {
-  lines: readonly StatLine[];
-  actionFor?: (line: StatLine) => ReactNode;
-}) {
+export function StatRingGroups({ lines, actionFor }: { lines: readonly StatLine[]; actionFor?: (line: StatLine) => ReactNode }) {
   const groups: { title: string; size: RingSize; lines: StatLine[] }[] = [
     { title: "Mana and roles", size: "lg", lines: lines.filter((l) => l.group === "mana" || l.group === "roles") },
     { title: "Types", size: "sm", lines: lines.filter((l) => l.group === "types") },
