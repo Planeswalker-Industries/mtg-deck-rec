@@ -538,6 +538,30 @@ test("fix: arrow keys browse the cards to put in, and Skip passes the pair on sc
   await expect(fix.previous).toHaveAttribute("aria-disabled", "true");
 });
 
+/** Every Scryfall card image, held back by the test that deals cards face down. */
+const SCRYFALL_IMAGES = "https://cards.scryfall.io/**";
+/** A 1×1 transparent PNG, served for every held image once the test lets them load. */
+const PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+
+test("journey cards lie face down until their image loads, then turn over", async ({ page }) => {
+  let release = () => {};
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await page.route(SCRYFALL_IMAGES, async (route) => {
+    await released;
+    await route.fulfill({ contentType: "image/png", body: PIXEL_PNG });
+  });
+  const recs = await analyzeDeck(page);
+  const add = swipeView(recs, "Cards to add", /^Add /);
+  await expect(add.accept).toBeVisible({ timeout: 60_000 });
+  const dealt = add.card.locator("[data-dealt]");
+  await expect(dealt).toHaveAttribute("data-dealt", "down");
+  // The face is in place under the back, so the card keeps its name while it loads.
+  await expect(add.card.getByRole("img", { name: (await add.name()).replace(/^Add /, "") })).toBeAttached();
+
+  release();
+  await expect(dealt).toHaveAttribute("data-dealt", "up");
+});
+
 test("add: ArrowRight browses", async ({ page }) => {
   const recs = await analyzeDeck(page);
   const add = swipeView(recs, "Cards to add", /^Add /);

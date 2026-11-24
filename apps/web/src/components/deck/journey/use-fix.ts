@@ -26,7 +26,9 @@ import {
   type FixMove,
   type TallyMove,
 } from "@mtg/core/journey";
+import { preloadCardImages } from "@/components/cards/dealt-card";
 import { getApis } from "@/lib/api/client";
+import { CARD_IMAGES_AHEAD } from "@/lib/constants";
 import type { Async } from "../use-deck-tool";
 import type { DeckJourney } from "./use-deck-journey";
 
@@ -75,6 +77,19 @@ function lengthAhead(cardAt: (index: number) => CardSummary | null, at: number, 
     if (cardAt(index) === null) return index;
   }
   return null;
+}
+
+/**
+ * The cards a browse from (`out`, `in`) deals next, whose images are fetched ahead (T104): the next cards to take out
+ * (each with its first card to put in, as › on OUT shows it) and the next cards to put in for this one.
+ */
+function cardsAhead(browser: FixBrowser, out: number, inIndex: number): (CardSummary | null)[] {
+  const cards: (CardSummary | null)[] = [];
+  for (let step = 1; step <= CARD_IMAGES_AHEAD; step += 1) {
+    if (out + step < MAX_FIX_OUT_OPTIONS && browser.out(out + step)) cards.push(browser.out(out + step), browser.in(out + step, 0));
+    if (inIndex + step < MAX_FIX_IN_OPTIONS) cards.push(browser.in(out, inIndex + step));
+  }
+  return cards;
 }
 
 /** The lengths learned with the pair at (`out`, `in`) on screen, kept with the ones learned before for the same browser. */
@@ -225,10 +240,14 @@ export function useFix({
     return browser && out && cardIn ? { line: browser.line, out, in: cardIn } : null;
   }, [browser, outIndex, inIndex]);
 
-  // After the pair shows, find the cards a browse would show next, so the tap that asks for them doesn't wait.
+  // After the pair shows, find the cards a browse would show next, so the tap that asks for them doesn't wait, and fetch
+  // their images, so they are dealt face up.
   useEffect(() => {
     if (!browser) return;
-    const timer = setTimeout(() => setLengths((l) => learnLengths(l, browser, outIndex, inIndex)));
+    const timer = setTimeout(() => {
+      setLengths((l) => learnLengths(l, browser, outIndex, inIndex));
+      preloadCardImages(cardsAhead(browser, outIndex, inIndex));
+    });
     return () => clearTimeout(timer);
   }, [browser, outIndex, inIndex]);
 

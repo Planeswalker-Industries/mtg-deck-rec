@@ -142,3 +142,9 @@ export const DEFAULT_OG_IMAGE = {
   ...OG_IMAGE_SIZE,
   alt: `Magic cards falling onto a walnut table: ${SITE_NAME}`,
 };
+
+/**
+ * How many of the cards a journey swipe would deal next have their images fetched ahead (T104): a browse a card or two
+ * ahead finds its face already loaded, and a card's `normal` image is about 93 KB.
+ */
+export const CARD_IMAGES_AHEAD = 2;

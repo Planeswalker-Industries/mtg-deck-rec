@@ -306,7 +306,7 @@ export function AddPhase({
         label="Cards to add"
         tone="add"
         previewAs="add"
-        upcoming={shown.slice(at + 1, at + PREFETCH_CARDS + 1).map((s) => s.card.id)}
+        upcoming={shown.slice(at + 1, at + PREFETCH_CARDS + 1).map((s) => s.card)}
         acceptLabel={`Add ${next.card.name}`}
         passLabel={`Skip ${next.card.name}`}
         acceptWord="Add"

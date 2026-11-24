@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import type { CardId, CardSummary } from "@mtg/core/contract";
+import type { CardSummary } from "@mtg/core/contract";
 import { CardPanel, DecisionButtons, type DecisionTone } from "@/components/cards/card-panel";
+import { usePreloadCardImages } from "@/components/cards/dealt-card";
 import { useBrowseSwipe } from "@/components/cards/use-browse-swipe";
 import { useCardRules } from "@/lib/card-rules";
+import { CARD_IMAGES_AHEAD } from "@/lib/constants";
 import { StatChips } from "../deck-stats/stat-chips";
 import { useStatPreview } from "../deck-stats/stat-preview";
 import { SWIPE_COOLDOWN_MS } from "../swipe-rater";
@@ -15,7 +17,8 @@ import { SWIPE_COOLDOWN_MS } from "../swipe-rater";
  * (or the arrow keys) browses without deciding: left shows the next card, right the previous. The parent owns the list
  * and the cursor into it, and clamps the cursor when an accept shortens the list.
  *
- * `upcoming` names the next few cards, whose rules are fetched now so they are in hand when they are dealt.
+ * `upcoming` names the next few cards, whose rules are fetched now so they are in hand when they are dealt; the first
+ * `CARD_IMAGES_AHEAD` have their images fetched too, so they are dealt face up.
  */
 export function SingleSwipe({
   card,
@@ -42,7 +45,7 @@ export function SingleSwipe({
   passIcon,
 }: {
   card: CardSummary;
-  upcoming?: readonly CardId[];
+  upcoming?: readonly CardSummary[];
   /** What accepting does to the deck, for Deck stats' preview: puts the card in, or takes it out. */
   previewAs: "add" | "remove";
   /** The job the swipe does, which colours the accept button. */
@@ -76,7 +79,8 @@ export function SingleSwipe({
   passIcon?: LucideIcon;
 }) {
   const lastAt = useRef(0);
-  const rulesFor = useCardRules([card.id, ...upcoming]);
+  const rulesFor = useCardRules([card.id, ...upcoming.map((c) => c.id)]);
+  usePreloadCardImages(upcoming.slice(0, CARD_IMAGES_AHEAD));
   useStatPreview(previewAs === "add" ? card : null, previewAs === "remove" ? card : null);
 
   const browse = useBrowseSwipe({ onNext, onPrevious, canNext, canPrevious, tourTarget });

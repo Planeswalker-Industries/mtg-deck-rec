@@ -253,7 +253,7 @@ export function CutPhase({
           // ✂ cuts the card; ✓ keeps it. A ✓ on the cut side read as "keep" and the ✕ as "remove".
           acceptIcon={Scissors}
           passIcon={Check}
-          upcoming={dealt.slice(at + 1, at + PREFETCH_CARDS + 1).map((c) => c.id)}
+          upcoming={dealt.slice(at + 1, at + PREFETCH_CARDS + 1)}
           acceptLabel={`Cut ${next.name}`}
           passLabel={`Keep ${next.name}`}
           acceptWord="Cut"

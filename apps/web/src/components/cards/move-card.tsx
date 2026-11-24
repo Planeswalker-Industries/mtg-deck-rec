@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { CardImage } from "./card-image";
 import { ZoomableCard } from "./card-zoom";
+import { DealtCard } from "./dealt-card";
 import { OwnedCorner } from "./owned-corner";
 import type { BrowseSwipeBind } from "./use-browse-swipe";
 
@@ -33,7 +34,8 @@ export interface MoveBrowse {
  * (the rater's counts); pass it on both sides, `null` where there is nothing to show, so the two cards stay level.
  *
  * `swipe` makes the card swipeable to browse (Swap and Fix: the cards to take out on the card going out, the options
- * on the one going in); `tourTarget` names it for the tours.
+ * on the one going in); `tourTarget` names it for the tours. `deal` lays the card face down until its image has loaded
+ * (`DealtCard`): the journey's cards; the rater's stay as they are.
  */
 export function MoveCard({
   card,
@@ -44,6 +46,7 @@ export function MoveCard({
   note,
   swipe,
   tourTarget,
+  deal = true,
 }: {
   card: CardSummary;
   side: "out" | "in";
@@ -53,7 +56,9 @@ export function MoveCard({
   note?: ReactNode;
   swipe?: BrowseSwipeBind;
   tourTarget?: string;
+  deal?: boolean;
 }) {
+  const Face = deal ? DealtCard : CardImage;
   const word = side === "out" ? "Out" : "In";
   return (
     <div className="flex min-w-0 flex-col items-center gap-1.5">
@@ -98,7 +103,7 @@ export function MoveCard({
       {/* The width is capped so both cards, the chips and the buttons fit a phone above the Deck stats footer. */}
       <div data-tour={tourTarget} {...swipe} className={cn("relative w-full max-w-28 sm:max-w-52", swipe?.className)}>
         <ZoomableCard card={card}>
-          <CardImage
+          <Face
             card={card}
             variant="normal"
             alt={`${word}: ${card.name}`}

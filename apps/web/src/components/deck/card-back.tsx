@@ -1,12 +1,14 @@
 import Image from "next/image";
 import { cn } from "cn";
 
-/** The card back art in public/, at its own pixel size. Next resizes it per `sizes`, so one source covers every use. */
-const CARD_BACK = { src: "/card_lg.png", width: 671, height: 970 } as const;
+/**
+ * The card back art in public/, at its own pixel size: Scryfall's `normal` size (488×680), enough for a back up to
+ * 244 px wide at 2x. Its corners are transparent. Next resizes it per `sizes`, so one source covers every use.
+ */
+const CARD_BACK = { src: "/card_back.webp", width: 488, height: 680 } as const;
 
 /**
- * A card seen from the back. The art is slightly taller than a real card, so it's cropped to card proportions and
- * rounded like one.
+ * A card seen from the back, at card proportions and rounded like one.
  */
 export function CardBack({
   sizes = "112px",

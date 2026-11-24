@@ -308,6 +308,8 @@ export function useSwipeRater({
     candidate,
     candidateIndex,
     candidateCount: candidates.length,
+    /** The options after the one on screen, in the order a browse shows them. */
+    nextCandidates: candidates.slice(candidateIndex + 1),
     targetIndex: index,
     targetCount: targets.length,
     voteError,

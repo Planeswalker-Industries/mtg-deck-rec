@@ -6,6 +6,7 @@ import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/
 import { compareCards } from "@mtg/core/journey";
 import { ownedOnly, swapMatchLabel } from "@mtg/core/scoring";
 import { BuyPrice } from "@/components/cards/buy-price";
+import { usePreloadCardImages } from "@/components/cards/dealt-card";
 import { useBrowseSwipe } from "@/components/cards/use-browse-swipe";
 import { DecisionButtons } from "@/components/cards/card-panel";
 import { BrowseCount, MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
 import { useCardRules } from "@/lib/card-rules";
+import { CARD_IMAGES_AHEAD } from "@/lib/constants";
 import { StatChips, compareCardOf } from "./deck-stats/stat-chips";
 import { useStatPreview } from "./deck-stats/stat-preview";
 import { cutReasonShortLabel, emptySwapMessage } from "@/lib/labels";
@@ -131,6 +133,11 @@ export function SwipeRater({
   const nextTarget = targets[rater.targetIndex + 1]?.card.id;
   const rulesFor = useCardRules([...(target ? [target.card.id] : []), ...upcoming, ...(nextTarget === undefined ? [] : [nextTarget])]);
   useStatPreview(candidate?.card ?? null, candidate && target ? target.card : null);
+  // The cards a browse deals next, on either side, so they show face up (T104).
+  usePreloadCardImages([
+    ...rater.nextCandidates.slice(0, CARD_IMAGES_AHEAD).map((s) => s.card),
+    ...targets.slice(rater.targetIndex + 1, rater.targetIndex + 1 + CARD_IMAGES_AHEAD).map((t) => t.card),
+  ]);
 
   /** Every answer waits out the cooldown, so a double tap can't answer what came up after the first. */
   const act = (answer: "swap" | "pass" | "skip") => {
@@ -192,6 +199,7 @@ export function SwipeRater({
       side="out"
       nav={cardCount}
       note={reasons.length > 0 ? <span>{reasons.join(", ")}</span> : null}
+      deal={!inRater}
       {...(inRater ? {} : { swipe: targetSwipe.bind, tourTarget: "swap.out" })}
     />
   );
@@ -268,6 +276,7 @@ export function SwipeRater({
               card={candidate.card}
               side="in"
               owned={markOwned && candidate.owned !== null}
+              deal={!inRater}
               {...(inRater ? {} : { swipe: optionSwipe.bind, tourTarget: "swap.in" })}
               nav={optionCount}
               browse={

@@ -6,8 +6,8 @@ import type { CardFace, CardRules, CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
-import { CardImage } from "./card-image";
 import { ZoomableCard } from "./card-zoom";
+import { DealtCard } from "./dealt-card";
 import { ManaCost } from "./mana-cost";
 import { OwnedCorner } from "./owned-corner";
 import { RulesText } from "./rules-text";
@@ -129,7 +129,8 @@ export function CardPanel({
     <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)] items-start gap-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4">
       <div className="relative">
         <ZoomableCard card={card}>
-          <CardImage card={card} variant="normal" alt={card.name} sizes="(max-width: 640px) 40vw, 208px" eager />
+          {/* Dealt face down until its image has loaded (T104): every CardPanel is a journey swipe card. */}
+          <DealtCard card={card} variant="normal" alt={card.name} sizes="(max-width: 640px) 40vw, 208px" eager />
         </ZoomableCard>
         {owned && <OwnedCorner />}
       </div>

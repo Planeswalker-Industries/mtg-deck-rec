@@ -51,6 +51,7 @@ Friends trying the app don't know where to tap and miss features: how to upload 
 - [x] Browsing in Swap
 - [x] `fixBrowser` in `@mtg/core/journey`
 - [x] Browsing in Fix
+- [x] Journey cards dealt face down until their image loads
 - [ ] Tour state, provider and the Tutorials toggle
 - [ ] Tour overlay, and the Commander page tour
 - [ ] Tours: deck start and build start
