@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
+import { notifyTour } from "@/components/tour/tour-provider";
 
 /** How far a finger has to travel for a swipe to browse: past a stray wobble, under half a phone card. */
 const BROWSE_SWIPE_MIN_PX = 48;
@@ -26,13 +27,14 @@ interface Drag {
  * a mouse keeps its clicks and the arrow keys. The bound element follows the finger, a mostly vertical drag is left to
  * the page to scroll (`touch-pan-y`), and a short drag, or one toward a side with nothing there, springs back.
  *
- * `tourTarget` names the element's `data-tour` id, for the tours to hear a completed swipe (not wired yet).
+ * `tourTarget` names the element's `data-tour` id: a swipe that browses tells the tours (`notifyTour`).
  */
 export function useBrowseSwipe({
   onNext,
   onPrevious,
   canNext,
   canPrevious,
+  tourTarget,
 }: {
   onNext: () => void;
   onPrevious: () => void;
@@ -86,8 +88,11 @@ export function useBrowseSwipe({
       reset();
       if (!start.horizontal || !(far || flick)) return;
       swiped.current = true;
-      if (moveX < 0 && canNext) onNext();
-      else if (moveX > 0 && canPrevious) onPrevious();
+      const browsed = moveX < 0 ? canNext : canPrevious;
+      if (!browsed) return;
+      if (moveX < 0) onNext();
+      else onPrevious();
+      if (tourTarget) notifyTour(tourTarget, "swipe");
     },
     onPointerCancel: reset,
     onClickCapture: (e: MouseEvent) => {

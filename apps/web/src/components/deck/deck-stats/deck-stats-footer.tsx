@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { notifyTour } from "@/components/tour/tour-provider";
 import { LevelBadge, ScoreAfter, ScoreResult } from "./level";
 import { DeckStatsPanel, type StatAction } from "./deck-stats-panel";
 import { MoneySlot } from "./budget-row";
@@ -64,6 +65,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
       >
         <button
           type="button"
+          data-tour="deck-stats.bar"
           aria-expanded={open}
           // The sheet is only in the document while open, so the reference is too.
           aria-controls={open ? "deck-stats-sheet" : undefined}
@@ -78,6 +80,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             if (startY.current !== null && startY.current - e.clientY > SWIPE_OPEN_PX) {
               swiped.current = true;
               setOpen(true);
+              notifyTour("deck-stats.bar", "swipe");
             }
             startY.current = null;
           }}

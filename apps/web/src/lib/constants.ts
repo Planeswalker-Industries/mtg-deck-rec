@@ -148,3 +148,11 @@ export const DEFAULT_OG_IMAGE = {
  * ahead finds its face already loaded, and a card's `normal` image is about 93 KB.
  */
 export const CARD_IMAGES_AHEAD = 2;
+
+/**
+ * Whether this browser shows the first-time tours: "0" off, anything else (or nothing) on. The account page's
+ * Tutorials switch writes it; e2e and smoke set it to "0" (playwright.config.ts) so no test meets a tour.
+ */
+export const TOURS_ENABLED_KEY = "spellchasm:tours:enabled";
+/** The tours this browser has finished or skipped, a JSON array of tour ids. Turning tutorials on empties it. */
+export const TOURS_SEEN_KEY = "spellchasm:tours:seen";
