@@ -581,16 +581,47 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
           .map((c) => scored(c, 'pick'))
           .sort((a, b) => b.score.total - a.score.total || a.card.name.localeCompare(b.card.name));
         const room = Math.max(0, slots - MOCK_BUILD_LANDS - kept.length);
-        const picks = candidates.filter((s) => !owned || owned.has(s.card.id)).slice(0, room);
+        // The budget (v37), spent as the real build spends it: an unowned card comes in only under the card cap and
+        // what is left to spend, and what it costs comes off what is left. Owned cards are free.
+        const cardCap = context.budget?.cardCapUsd;
+        let spendLeft = context.budget?.spendLeftUsd;
+        const affordable = (s: BuildCard) => {
+          const supplied = owned?.has(s.card.id) ?? false;
+          const cap = effectiveCapUsd({
+            ...(cardCap !== undefined ? { cardCapUsd: cardCap } : {}),
+            ...(spendLeft !== undefined ? { spendLeftUsd: spendLeft } : {}),
+          });
+          if (!withinBudget(s.card, supplied, false, cap)) return false;
+          if (!supplied && spendLeft !== undefined) spendLeft -= s.card.price?.usd ?? 0;
+          return true;
+        };
+        /** The first `n` of `list` the budget allows, in order. */
+        const takeAffordable = (list: readonly BuildCard[], n: number) => {
+          const taken: BuildCard[] = [];
+          for (const s of list) {
+            if (taken.length >= n) break;
+            if (affordable(s)) taken.push(s);
+          }
+          return taken;
+        };
+        const picks = takeAffordable(
+          candidates.filter((s) => !owned || owned.has(s.card.id)),
+          room,
+        );
         const unownedLeft = owned ? candidates.filter((s) => !owned.has(s.card.id)) : [];
         const isRamp = (s: BuildCard) => MOCK_RAMP_NAMES.has(s.card.name);
         // A collection build reports ramp short when cards outside the collection could have filled it; a line opened
         // to buying (`buyFor`) takes those cards first, as the real build does.
         const buyingRamp = owned !== null && (context.buyFor ?? []).includes(MOCK_RAMP_ROLE);
-        const bought = buyingRamp ? unownedLeft.filter(isRamp).slice(0, room - picks.length) : [];
+        const bought = buyingRamp ? takeAffordable(unownedLeft.filter(isRamp), room - picks.length) : [];
         const fills = [
           ...bought,
-          ...(owned && fill === 'value' ? unownedLeft.filter((s) => !bought.includes(s)).slice(0, room - picks.length - bought.length) : []),
+          ...(owned && fill === 'value'
+            ? takeAffordable(
+                unownedLeft.filter((s) => !bought.includes(s)),
+                room - picks.length - bought.length,
+              )
+            : []),
         ];
         const cards = [...kept.map((c) => scored(c, 'kept')), ...picks, ...fills.map((s) => ({ ...s, origin: 'fill' as const }))];
         const collectionGaps = owned && unownedLeft.some((s) => isRamp(s) && !fills.includes(s)) ? [MOCK_RAMP_ROLE] : [];
