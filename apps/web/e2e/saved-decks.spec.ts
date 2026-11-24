@@ -27,7 +27,7 @@ test("signed out, the deck list asks you to sign in", async ({ page }) => {
   expect(new URL(page.url()).searchParams.get("next")).toBe("/decks");
 });
 
-test("saves a deck with its last edit, the deckbuilder saves every change, and the list renames, duplicates and deletes", async ({ page, request }) => {
+test("saves a deck with its last edit, the deckbuilder saves every change, and the list copies and deletes", async ({ page, request }) => {
   const email = `decks-${Date.now()}@test.invalid`;
   await signIn(page, request, email, "/decks");
 
@@ -38,7 +38,11 @@ test("saves a deck with its last edit, the deckbuilder saves every change, and t
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 10_000 })
+    .catch(() => undefined);
 
   // The round's Save opens the deckbuilder with the name form up.
   const recs = await toDeckbuilder(page);
@@ -48,6 +52,7 @@ test("saves a deck with its last edit, the deckbuilder saves every change, and t
   await expect(name).toBeVisible();
   // The name is prefilled from the commander, so saving is one click.
   await expect(name).not.toHaveValue("");
+  const deckName = await name.inputValue();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   // Fail here, not on the list, if the save itself was refused. Saving hands the deck to the tool, which says so.
   await expectEditor(page);
@@ -71,21 +76,22 @@ test("saves a deck with its last edit, the deckbuilder saves every change, and t
   const list = page.getByRole("listitem");
   await expect(list).toHaveCount(1);
 
-  // Rename.
-  await page.getByRole("button", { name: /^Rename / }).click();
-  const rename = page.getByRole("textbox", { name: /^New name for / });
-  await rename.fill("Renamed Deck");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("link", { name: "Renamed Deck", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: deckName, exact: true })).toBeVisible();
 
-  // Duplicate.
-  await page.getByRole("button", { name: /^Duplicate / }).first().click();
+  // Each tile's ⋯ button shows its actions (as a hover or a first tap does). Copy.
+  await page.getByRole("button", { name: `Actions for ${deckName}`, exact: true }).click();
+  await page
+    .getByRole("button", { name: /^Copy / })
+    .first()
+    .click();
   await expect(page.getByRole("listitem")).toHaveCount(2);
-  await expect(page.getByRole("link", { name: "Renamed Deck (copy)", exact: true })).toBeVisible();
+  const copy = page.getByRole("link", { name: `${deckName} (copy)`, exact: true });
+  await expect(copy).toBeVisible();
 
   // Delete, which confirms first.
   page.once("dialog", (d) => void d.accept());
-  await page.getByRole("button", { name: "Delete Renamed Deck (copy)" }).click();
+  await page.getByRole("button", { name: `Actions for ${deckName} (copy)`, exact: true }).click();
+  await page.getByRole("button", { name: `Delete ${deckName} (copy)`, exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(1);
 });
 
@@ -96,7 +102,11 @@ test("a saved deck has its own page, and hiding it keeps strangers out", async (
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 10_000 })
+    .catch(() => undefined);
   await toDeckbuilder(page);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expectEditor(page);
@@ -176,14 +186,19 @@ test("reopens a saved deck in the tool, and edits go back to it", async ({ page,
   await page.getByRole("button", { name: "Use sample deck" }).click();
   const decklist = await page.getByRole("textbox", { name: "Decklist" }).inputValue();
   await page.getByRole("button", { name: "Analyze deck" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 10_000 })
+    .catch(() => undefined);
   await toDeckbuilder(page);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expectEditor(page);
 
   // Come back to it from the list, by its own link rather than the deck page.
   await page.goto("/decks");
-  await page.getByRole("link", { name: /^Open .* in the deck tool$/ }).click();
+  await page.getByRole("button", { name: /^Actions for / }).first().click();
+  await page.getByRole("link", { name: /^Upgrade .* in the deck tool$/ }).click();
   await page.waitForURL(/\/deck\?deck=[A-Za-z0-9]{8,32}$/);
 
   const bar = page.getByRole("region", { name: "Saved deck" });
@@ -195,9 +210,18 @@ test("reopens a saved deck in the tool, and edits go back to it", async ({ page,
   // An edit is written back to the same deck, without another Save.
   await page.getByRole("button", { name: "Edit decklist" }).click();
   const box = page.getByRole("textbox", { name: "Decklist" });
-  await box.fill(decklist.split("\n").filter((line) => line.trim() !== "1 Sol Ring").join("\n"));
+  await box.fill(
+    decklist
+      .split("\n")
+      .filter((line) => line.trim() !== "1 Sol Ring")
+      .join("\n"),
+  );
   await page.getByRole("button", { name: "Analyze deck" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 10_000 })
+    .catch(() => undefined);
   await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 60_000 });
 
   // And the stored deck really did change: the deck page is a card short, and no longer has the cut card.
@@ -217,15 +241,26 @@ test("saving a journey's result keeps the original, which the deck page compares
   await page.goto("/deck");
   await page
     .getByRole("textbox", { name: "Decklist" })
-    .fill(["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Arcane Signet", "1 Lightning Bolt", "1 Command Tower"].join("\n"));
+    .fill(
+      ["Commander", "1 Chulane, Teller of Tales", "", "Deck", "1 Sol Ring", "1 Arcane Signet", "1 Lightning Bolt", "1 Command Tower"].join(
+        "\n",
+      ),
+    );
   await page.getByRole("button", { name: "Analyze deck" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 10_000 })
+    .catch(() => undefined);
 
   const recs = page.getByRole("region", { name: "Recommendations" });
   await expect(recs.getByRole("navigation", { name: "Deck upgrade steps" })).toBeVisible({ timeout: 60_000 });
   // The deck is short of 100, so leaving Add asks first.
   await openFix(page);
-  await recs.getByRole("region", FIX_MOVE).getByRole("button", { name: /^Swap Lightning Bolt for / }).click({ timeout: 60_000 });
+  await recs
+    .getByRole("region", FIX_MOVE)
+    .getByRole("button", { name: /^Swap Lightning Bolt for / })
+    .click({ timeout: 60_000 });
   await openSwap(page);
   await leaveSwap(page);
 
@@ -267,7 +302,11 @@ test("saving asks to add the cards the collection lacks, and explicit add adds t
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 10_000 })
+    .catch(() => undefined);
   await toDeckbuilder(page);
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
@@ -290,7 +329,11 @@ test("a saved deck shows its owner's collection coverage in its deckbuilder, not
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 10_000 })
+    .catch(() => undefined);
   await toDeckbuilder(page);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expectEditor(page);
@@ -315,7 +358,11 @@ test("a saved deck page offers its missing cards to buy", async ({ page, request
   await page.goto("/deck");
   await page.getByRole("button", { name: "Use sample deck" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Not now" }).click({ timeout: 10_000 }).catch(() => undefined);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Not now" })
+    .click({ timeout: 10_000 })
+    .catch(() => undefined);
   await toDeckbuilder(page);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expectEditor(page);
