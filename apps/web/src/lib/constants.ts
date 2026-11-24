@@ -70,6 +70,11 @@ export const REMOVE_ARM_MS = 3000;
 /** A pointer resting on a tip's trigger this long opens it; passing over a row of them opens none. */
 export const TIP_HOVER_DELAY_MS = 200;
 
+/** The table's curve (`--ease-table` in globals.css), for motion's `ease`. */
+export const EASE_TABLE = [0.2, 0.7, 0.2, 1] as const;
+/** A check's grow as it appears in a closed ring (Deck stats): from this scale, past full size, back. */
+export const RING_CHECK_GROW = [0.5, 1.15, 1];
+
 /**
  * A word that opens its own explanation (a switch's "Public"): the text stays ink, an espresso dotted underline says it
  * can be pressed and that it explains rather than goes somewhere. Tapped or clicked, never hover-only: phones have no

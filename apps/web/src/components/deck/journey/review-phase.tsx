@@ -17,7 +17,7 @@ import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
-import { LevelBadge, Mark } from "../deck-stats/level";
+import { FinishScore, Mark } from "../deck-stats/level";
 import { CopySaveStatus, RoundControls, type RoundSave } from "./round-bar";
 import { StatRingGroups } from "../deck-stats/stat-ring";
 import { judge, Move } from "./round-moves";
@@ -379,7 +379,7 @@ export function ReviewPhase({
       <section aria-labelledby="review-deck-stats" className={cn(SECTION_SHEET, "flex flex-col gap-4 xl:col-start-1")}>
         <h3 id="review-deck-stats" className="flex items-center justify-between gap-3">
           <span className="font-heading text-xl leading-none font-semibold">Deck stats</span>
-          {report && <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />}
+          {report && <FinishScore level={report.level} okCount={report.okCount} total={report.total} />}
         </h3>
         <dl className={cn("grid gap-3", cart.fromCollection ? "grid-cols-3" : "grid-cols-2")}>
           <Figure label="Cards">
@@ -418,7 +418,8 @@ export function ReviewPhase({
               Checking what is left to fix…
             </p>
           ) : leftovers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Every line is in line.</p>
+            // Nothing left to fix: the heading's closed ring says so.
+            null
           ) : (
             otherLeftovers.length > 0 && (
               <ul aria-label="Lines still off" className="flex flex-col gap-2 text-sm">

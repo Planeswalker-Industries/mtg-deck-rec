@@ -1,6 +1,16 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { motion, useInView, useReducedMotion } from "motion/react";
 import type { DeckStatsLevel, StatState } from "@mtg/core/journey";
-import { ArrowDown, ArrowRight, ArrowUp, Check, CircleAlert, EyeOff, TriangleAlert, X, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Check, EyeOff, X } from "lucide-react";
 import { cn } from "cn";
+import { CLOSE_WORDS_DELAY_S, LEVEL, ScoreRing, type RingClosing } from "./score-ring";
+
+export { LEVEL };
+
+/** The closing's words fade in over this long. */
+const CLOSE_WORDS_S = 0.3;
 
 /**
  * A Deck stats line's mark: a green check in line, a red X off, or a grey eye when the player chose to ignore the line
@@ -15,14 +25,7 @@ export function Mark({ state }: { state: StatState }) {
   );
 }
 
-/** Each level's icon, word and colour: the colour never stands alone. */
-export const LEVEL: Record<DeckStatsLevel, { icon: LucideIcon; word: string; text: string }> = {
-  ok: { icon: Check, word: "OK", text: "text-stat-ok" },
-  mild: { icon: TriangleAlert, word: "Mild", text: "text-stat-mild" },
-  urgent: { icon: CircleAlert, word: "Urgent", text: "text-stat-urgent" },
-};
-
-/** `compact`: the icon and count only (the docked bar); the word stays for screen readers. */
+/** `compact`: the ring and count only (the docked bar); the word stays for screen readers. */
 export function LevelBadge({
   level,
   okCount,
@@ -34,10 +37,10 @@ export function LevelBadge({
   total: number;
   compact?: boolean;
 }) {
-  const { icon: Icon, word, text } = LEVEL[level];
+  const { word, text } = LEVEL[level];
   return (
     <span className={`inline-flex items-center gap-1.5 ${text}`}>
-      <Icon aria-hidden className="size-4" />
+      <ScoreRing level={level} okCount={okCount} total={total} size={compact ? "dock" : "heading"} />
       <span className={compact ? "sr-only" : "text-sm"}>{word}</span>
       <span aria-hidden className="font-mono text-sm text-foreground">
         {okCount}/{total}
@@ -45,6 +48,45 @@ export function LevelBadge({
       <span className="sr-only">
         , {okCount} of {total} in line
       </span>
+    </span>
+  );
+}
+
+/**
+ * Finish's score: the level badge, until every line is in line. Then the ring closes into a check beside "All lines in
+ * line", once: the first time it happens while Finish is up, as the heading comes into view. A deck that falls out of
+ * line and back shows the closed ring at once, and so does reduced motion.
+ */
+export function FinishScore({ level, okCount, total }: { level: DeckStatsLevel; okCount: number; total: number }) {
+  const reduceMotion = useReducedMotion() ?? false;
+  const box = useRef<HTMLSpanElement>(null);
+  const inView = useInView(box, { once: true });
+  const allIn = total > 0 && okCount === total;
+  // "live" from the first time every line is in line, "spent" once it no longer is. Adjusted while rendering.
+  const [run, setRun] = useState<"fresh" | "live" | "spent">("fresh");
+  if (allIn && run === "fresh") setRun("live");
+  if (!allIn && run === "live") setRun("spent");
+  const closing: RingClosing = reduceMotion || run !== "live" ? "done" : inView ? "play" : "wait";
+  return (
+    <span ref={box} className="inline-flex">
+      {allIn ? (
+        <span className={cn("inline-flex items-center gap-2", LEVEL.ok.text)}>
+          <ScoreRing level="ok" okCount={okCount} total={total} size="heading" closing={closing} />
+          <motion.span
+            className="text-sm font-semibold"
+            initial={closing === "done" ? false : { opacity: 0 }}
+            animate={{ opacity: closing === "wait" ? 0 : 1 }}
+            transition={{ duration: CLOSE_WORDS_S, delay: closing === "play" ? CLOSE_WORDS_DELAY_S : 0 }}
+          >
+            All lines in line
+          </motion.span>
+          <span className="sr-only">
+            , {okCount} of {total}
+          </span>
+        </span>
+      ) : (
+        <LevelBadge level={level} okCount={okCount} total={total} />
+      )}
     </span>
   );
 }

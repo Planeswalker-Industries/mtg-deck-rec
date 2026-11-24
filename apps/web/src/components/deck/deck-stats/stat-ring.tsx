@@ -8,7 +8,7 @@ import { Check, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
 import { ringRange, ringWorsens, statRing, towardTarget, type RingZone, type StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { MANA_SYMBOL_URL } from "@/components/deck/color-identity";
-import { TIP_HOVER_DELAY_MS } from "@/lib/constants";
+import { EASE_TABLE, RING_CHECK_GROW, TIP_HOVER_DELAY_MS } from "@/lib/constants";
 import { Mark } from "./level";
 import { ringTip } from "./stat-chip-copy";
 
@@ -36,8 +36,6 @@ const CHECK_HOLD_MS = 700;
 /** The shake when a ring steps toward a bad end: offsets in px, over this long. */
 const SHAKE_X_PX = [0, -4, 4, -3, 3, -1, 0];
 const SHAKE_S = 0.45;
-/** The check's grow as it appears: from this scale, past full size, back. */
-const CHECK_GROW = [0.5, 1.15, 1];
 /** What the centre shrinks to as one content gives way to the next (count, check, OK). */
 const CENTRE_SWAP_SCALE = 0.85;
 const CENTRE_SWAP_S = 0.35;
@@ -47,8 +45,6 @@ const OVER_SHAKE_AT = 0.5;
 const SYMBOL_PX = 16;
 /** A tip opened by hovering stays this long after the pointer leaves its ring, so the pointer can reach its Fix. */
 const TIP_LEAVE_MS = 150;
-/** The table's curve (`--ease-table` in globals.css). */
-const EASE_TABLE = [0.2, 0.7, 0.2, 1] as const;
 
 export type RingSize = keyof typeof RING_PX;
 
@@ -218,8 +214,8 @@ export function StatRing({
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.span
             key={centreKey}
-            initial={reduceMotion ? false : { opacity: 0, scale: centreKey === "check" ? CHECK_GROW[0] : CENTRE_SWAP_SCALE }}
-            animate={{ opacity: 1, scale: centreKey === "check" ? CHECK_GROW : 1 }}
+            initial={reduceMotion ? false : { opacity: 0, scale: centreKey === "check" ? RING_CHECK_GROW[0] : CENTRE_SWAP_SCALE }}
+            animate={{ opacity: 1, scale: centreKey === "check" ? RING_CHECK_GROW : 1 }}
             exit={{ opacity: 0, scale: CENTRE_SWAP_SCALE }}
             transition={{ duration: reduceMotion ? 0 : CENTRE_SWAP_S, ease: "easeOut" }}
             className={cn("flex items-center justify-center", ignored ? "text-muted-foreground" : COUNT_TEXT[zone])}
