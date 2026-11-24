@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { AddSuggestion, CardSummary } from "@mtg/core/contract";
@@ -213,7 +214,13 @@ export function AddPhase({
   uploadHref: Route;
 }) {
   const { state: addState, queue, shown, filter, setFilter, landsShort, accept, pass, undo } = journey.add;
-  const onClearFilter = () => setFilter(null);
+  /** The swipe view's place in the cards it deals, moved by browsing; clamped below when the list shortens. */
+  const [cursor, setCursor] = useState(0);
+  const changeFilter = (next: AddFilter | null) => {
+    setCursor(0);
+    setFilter(next);
+  };
+  const onClearFilter = () => changeFilter(null);
   const adds = journey.state?.adds ?? [];
   const open = journey.openSlots;
   // Add stops at 100: the room left is the slots still open.
@@ -240,7 +247,7 @@ export function AddPhase({
   if (journey.add.part === "combos") return <CombosPhase journey={journey} uploadHref={uploadHref} nextLabel={fixLabel} />;
 
   const intro = (
-    <PhaseIntro title="Add" brief={view === "swipe" && room > 0 ? "Swipe right to add, left to skip." : undefined}>
+    <PhaseIntro title="Add" brief={view === "swipe" && room > 0 ? "Tap ✓ to add, ✕ to skip. Swipe to browse." : undefined}>
       Cards decks like yours run and this one doesn&apos;t, best first{landsShort ? ", lands first while the mana base is short" : ""}. Each
       card you add changes what&apos;s suggested next.
       {view === "list" && room > 0 && asOf && ` Prices from ${formatAsOf(asOf)}.`}
@@ -290,16 +297,16 @@ export function AddPhase({
       );
     }
 
-    const next = shown[0]!;
+    const at = Math.min(cursor, shown.length - 1);
+    const next = shown[at]!;
     return (
       <SingleSwipe
         card={next.card}
-        position={adds.length + 1}
-        total={adds.length + Math.min(room, shown.length)}
+        // No "n of m" (owner): Add encourages adding, and the step's status already shows the deck's size.
         label="Cards to add"
         tone="add"
         previewAs="add"
-        upcoming={shown.slice(1, PREFETCH_CARDS + 1).map((s) => s.card.id)}
+        upcoming={shown.slice(at + 1, at + PREFETCH_CARDS + 1).map((s) => s.card.id)}
         acceptLabel={`Add ${next.card.name}`}
         passLabel={`Skip ${next.card.name}`}
         acceptWord="Add"
@@ -308,6 +315,11 @@ export function AddPhase({
         owned={markOwned && next.owned !== null}
         onAccept={() => accept(next.card)}
         onPass={() => pass(next.card)}
+        onNext={() => setCursor(at + 1)}
+        onPrevious={() => setCursor(at - 1)}
+        canNext={at < shown.length - 1}
+        canPrevious={at > 0}
+        tourTarget="add.card"
       />
     );
   })();
@@ -322,7 +334,7 @@ export function AddPhase({
           </button>
         )}
       </StepStatus>
-      {room > 0 && <RolePills short={short} filter={filter} onChange={setFilter} />}
+      {room > 0 && <RolePills short={short} filter={filter} onChange={changeFilter} />}
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}
       {view === "list" && room > 0 && (

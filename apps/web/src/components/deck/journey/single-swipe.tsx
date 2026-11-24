@@ -4,16 +4,16 @@ import { useEffect, useRef, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { CardId, CardSummary } from "@mtg/core/contract";
 import { CardPanel, DecisionButtons, type DecisionTone } from "@/components/cards/card-panel";
+import { useBrowseSwipe } from "@/components/cards/use-browse-swipe";
 import { useCardRules } from "@/lib/card-rules";
 import { StatChips } from "../deck-stats/stat-chips";
 import { useStatPreview } from "../deck-stats/stat-preview";
 import { SWIPE_COOLDOWN_MS } from "../swipe-rater";
 
 /**
- * One card at a time, in full (image beside its rules text), answered with the two buttons under it or the arrow keys:
- * right accepts (cut it, add it), left passes. The parent owns the queue: accepting or passing changes its state, and
- * the next card is simply whatever comes first. So there is no index here to drift out of step when the list is
- * recomputed after an accept, as the Add step's is.
+ * One card at a time, in full (image beside its rules text), answered with the two buttons under it. Swiping the card
+ * (or the arrow keys) browses without deciding: left shows the next card, right the previous. The parent owns the list
+ * and the cursor into it, and clamps the cursor when an accept shortens the list.
  *
  * `upcoming` names the next few cards, whose rules are fetched now so they are in hand when they are dealt.
  */
@@ -21,8 +21,7 @@ export function SingleSwipe({
   card,
   upcoming = [],
   previewAs,
-  position,
-  total,
+  counter,
   label,
   acceptLabel,
   passLabel,
@@ -33,6 +32,11 @@ export function SingleSwipe({
   footer,
   onAccept,
   onPass,
+  onNext,
+  onPrevious,
+  canNext,
+  canPrevious,
+  tourTarget,
   tone,
   acceptIcon,
   passIcon,
@@ -43,9 +47,8 @@ export function SingleSwipe({
   previewAs: "add" | "remove";
   /** The job the swipe does, which colours the accept button. */
   tone: DecisionTone;
-  /** 1-based, for "Card 2 of 5". */
-  position: number;
-  total: number;
+  /** The browsed place, 1-based, for "Card 2 of 5". Absent where the step has no set end to count toward (Add). */
+  counter?: { position: number; total: number };
   /** What the sitting is, for the section's accessible name. */
   label: string;
   /** The buttons' accessible names, naming the card ("Cut Sol Ring"), and their visible words ("Cut"). */
@@ -61,12 +64,22 @@ export function SingleSwipe({
   footer?: ReactNode;
   onAccept: () => void;
   onPass: () => void;
+  /** Browse: show the next card in the list, or the previous one. Neither decides anything. */
+  onNext: () => void;
+  onPrevious: () => void;
+  /** False at the list's end (or start): a swipe that way springs back. */
+  canNext: boolean;
+  canPrevious: boolean;
+  /** The card's `data-tour` id, for the tours. */
+  tourTarget?: string;
   acceptIcon?: LucideIcon;
   passIcon?: LucideIcon;
 }) {
   const lastAt = useRef(0);
   const rulesFor = useCardRules([card.id, ...upcoming]);
   useStatPreview(previewAs === "add" ? card : null, previewAs === "remove" ? card : null);
+
+  const browse = useBrowseSwipe({ onNext, onPrevious, canNext, canPrevious, tourTarget });
 
   // A double tap would otherwise answer the card that just came up, which the player never saw.
   const act = (accept: boolean) => {
@@ -76,7 +89,7 @@ export function SingleSwipe({
     else onPass();
   };
 
-  // Arrow keys do what the buttons do, unless the player is typing somewhere.
+  // Arrow keys browse as the swipe does (right is the next card), unless the player is typing somewhere.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -84,7 +97,9 @@ export function SingleSwipe({
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
-      act(e.key === "ArrowRight");
+      if (e.key === "ArrowRight") {
+        if (canNext) onNext();
+      } else if (canPrevious) onPrevious();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -92,12 +107,14 @@ export function SingleSwipe({
 
   return (
     <section aria-label={label} className="mx-auto flex w-full max-w-2xl scroll-mt-44 flex-col gap-3">
-      <p className="text-sm text-muted-foreground font-mono">
-        {/* "1 of 14": the word "Card" is read out, not shown (owner, 2026-11-18). */}
-        <span className="sr-only">Card </span>
-        {position} of {total}
-      </p>
-      <div aria-live="polite">
+      {counter && (
+        <p className="text-sm text-muted-foreground font-mono">
+          {/* "1 of 14": the word "Card" is read out, not shown (owner, 2026-11-18). */}
+          <span className="sr-only">Card </span>
+          {counter.position} of {counter.total}
+        </p>
+      )}
+      <div aria-live="polite" data-tour={tourTarget} {...browse.bind}>
         <CardPanel card={card} rules={rulesFor(card.id)} owned={owned}>
           {caption}
         </CardPanel>

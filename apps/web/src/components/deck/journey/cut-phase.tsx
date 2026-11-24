@@ -81,6 +81,8 @@ export function CutPhase({
   const { recommended, undecided, isMarked, cutCopies, owed: owedAfterRuleBreaks, restore, toggle, take, finish } = journey.cut;
   /** The player passed on cutting lands, so Cut deals the rest of the deck instead. */
   const [landsPassed, setLandsPassed] = useState(false);
+  /** The swipe view's place in the cards it deals, moved by browsing; clamped below when the list shortens. */
+  const [cursor, setCursor] = useState(0);
 
   if (cutState.status === "loading" || cutState.status === "idle") return <ShuffleDeck label="Checking the deck for cards to cut" />;
   if (cutState.status === "error") return <PanelError message={cutState.message} />;
@@ -228,29 +230,30 @@ export function CutPhase({
     );
   }
 
-  const mandatoryNext = undecided[0];
-  const trimNext = trimOwed > 0 ? trimQueue[0] : undefined;
-  const next = mandatoryNext?.card ?? trimNext;
+  // The rule breaks first, then the trims the deck still owes. Browsing moves through them; deciding takes the one on screen.
+  const dealt: CardSummary[] = [...undecided.map((sug) => sug.card), ...trimQueue.slice(0, trimOwed)];
+  const at = Math.max(0, Math.min(cursor, dealt.length - 1));
+  const next = dealt[at];
+  const mandatoryNext = next ? undecided.find((sug) => sug.card.id === next.id) : undefined;
   const cutCount = state.cuts.length;
 
   return (
     <div className="flex flex-col gap-3">
-      <PhaseIntro title="Cut" brief="Swipe right to cut, left to keep.">
+      <PhaseIntro title="Cut" brief="Tap ✂ to cut, ✓ to keep. Swipe to browse.">
         Cards that break a rule, then the weakest cards in the roles the deck has too much of, until the deck is at 100.
       </PhaseIntro>
       {statusLine}
       {next ? (
         <SingleSwipe
           card={next}
-          position={cutCount + 1}
-          total={cutCount + undecided.length + Math.min(trimOwed, trimQueue.length)}
+          counter={{ position: cutCount + at + 1, total: cutCount + dealt.length }}
           label="Cards to cut"
           tone="cut"
           previewAs="remove"
           // ✂ cuts the card; ✓ keeps it. A ✓ on the cut side read as "keep" and the ✕ as "remove".
           acceptIcon={Scissors}
           passIcon={Check}
-          upcoming={[...undecided.slice(1).map((sug) => sug.card.id), ...trimQueue.slice(0, PREFETCH_CARDS).map((c) => c.id)]}
+          upcoming={dealt.slice(at + 1, at + PREFETCH_CARDS + 1).map((c) => c.id)}
           acceptLabel={`Cut ${next.name}`}
           passLabel={`Keep ${next.name}`}
           acceptWord="Cut"
@@ -258,6 +261,11 @@ export function CutPhase({
           caption={withWarning(next, mandatoryNext ? reasonText(mandatoryNext.reasons) : trimCaption(next))}
           onAccept={() => take(next)}
           onPass={() => journey.dispatch({ type: "keep", cardId: next.id })}
+          onNext={() => setCursor(at + 1)}
+          onPrevious={() => setCursor(at - 1)}
+          canNext={at < dealt.length - 1}
+          canPrevious={at > 0}
+          tourTarget="cut.card"
           footer={
             // Moving on needs the deck at 100, so the way out appears once the cuts on the table get it there.
             owedAfterRuleBreaks === 0 ? (

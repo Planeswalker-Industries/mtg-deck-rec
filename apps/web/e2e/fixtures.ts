@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Locator, type Page } from "@playwright/test";
 
 export * from "@playwright/test";
 
@@ -27,6 +27,28 @@ export const CRAWLER_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/ext
 /** The content of one head meta tag, by its `property` (Open Graph) or `name` (X) attribute. */
 export const headMeta = (page: Page, key: string) =>
   page.locator(`head meta[property="${key}"], head meta[name="${key}"]`).first().getAttribute("content");
+
+/** Touch moves between a swipe's start and end, so the drag passes the direction check before it lands. */
+const SWIPE_MOVES = 5;
+
+/**
+ * A real touch swipe across `target`, from its centre by (dx, dy) px, sent through Chrome's input pipeline (CDP), so
+ * the browser turns it into pointer events and scrolls a vertical drag itself, as on a phone. Playwright's touchscreen
+ * only taps. Needs `hasTouch: true`.
+ */
+export async function swipe(target: Locator, dx: number, dy: number) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error("swipe: the target is not on screen");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const cdp = await target.page().context().newCDPSession(target.page());
+  const touch = (type: "touchStart" | "touchMove" | "touchEnd", px: number, py: number) =>
+    cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x: px, y: py }] });
+  await touch("touchStart", x, y);
+  for (let i = 1; i <= SWIPE_MOVES; i++) await touch("touchMove", x + (dx * i) / SWIPE_MOVES, y + (dy * i) / SWIPE_MOVES);
+  await touch("touchEnd", x + dx, y + dy);
+  await cdp.detach();
+}
 
 /** The Fix step's pair on screen: one card out, one card in. */
 export const FIX_MOVE = { name: "Fix: one card out, one card in" } as const;

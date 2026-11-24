@@ -47,7 +47,7 @@ Hosted `crawl.runs` on 2026-11-17, runs 29–54 (the slower pace) — 26 runs:
 Friends trying the app don't know where to tap and miss features: how to upload a collection, what Fix means, that Swap has more than one option per card, how to name a deck. The app should teach itself the way a game teaches its controls. The first time a player opens a page or a journey step, a short tour dims the page except the element it explains, with a bubble, a tap pulse or a SWIPE arrow. A horizontal swipe means browse everywhere and never decides; deciding is always a tap. Tour state lives in the browser, with an all-or-none Tutorials toggle on the account page. Each tour's steps go to the owner for approval before it is built.
 
 - [x] Espresso on every journey control at rest (the Swap ‹ › were off colour)
-- [ ] `useBrowseSwipe`, and browsing in Add and Cut
+- [x] `useBrowseSwipe`, and browsing in Add and Cut
 - [ ] Browsing in Swap
 - [ ] `fixMoveOptions` in `@mtg/core/journey`
 - [ ] Browsing in Fix

@@ -1,4 +1,4 @@
-import { FIX_MOVE, expect, fillDecklist, openFix, leaveSwap, openSwap, skipCollectionOffer, test, type Locator, type Page } from "./fixtures";
+import { FIX_MOVE, expect, fillDecklist, openFix, leaveSwap, openSwap, skipCollectionOffer, swipe, test, type Locator, type Page } from "./fixtures";
 
 /** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
 const CUT_CARD = /^Cut (?!the rest and move on$)/;
@@ -271,6 +271,124 @@ test("a deck over 100 opens on Cut, which deals the rule break first and stops a
   await expect(cuts.getByRole("button", { name: CUT_CARD })).toBeVisible({ timeout: 60_000 });
   await cuts.getByRole("button", { name: "Cut Lightning Bolt", exact: true }).click();
   await expect(recs.getByRole("status").getByText(DECK_COUNT)).toHaveText("104 / 100");
+});
+
+/** Far enough to browse, past the swipe's minimum travel. */
+const BROWSE_PX = 120;
+/** A drag that is mostly vertical: a scroll, not a swipe. */
+const SCROLL_DX_PX = 10;
+const SCROLL_DY_PX = -200;
+/** How long a browse key press gets to show a new card before the browse counts as at its end. */
+const BROWSE_SETTLE_MS = 1_000;
+/** More presses than any test list deals, so a browse to the end always stops. */
+const MAX_BROWSE_PRESSES = 200;
+
+/** The swipe view of one step: its card (the swipe target), the accept button naming the card, and the line over it. */
+function swipeView(recs: Locator, region: string, verb: RegExp) {
+  const view = recs.getByRole("region", { name: region });
+  const accept = view.getByRole("button", { name: verb });
+  return {
+    card: view.locator("[data-tour]"),
+    accept,
+    /** The card on screen, by the accept button's accessible name ("Add Sol Ring"). */
+    name: async () => (await accept.getAttribute("aria-label")) ?? "",
+    counter: view.getByText(/^Card \d+ of \d+$/),
+  };
+}
+
+test.describe("browsing by touch", () => {
+  test.use({ hasTouch: true });
+
+  test("add: a swipe browses without adding", async ({ page }) => {
+    const recs = await analyzeDeck(page);
+    const add = swipeView(recs, "Cards to add", /^Add /);
+    await expect(add.accept).toBeVisible({ timeout: 60_000 });
+    const size = await deckCount(recs);
+    // Add has no "n of m" over the card.
+    await expect(add.counter).toBeHidden();
+    const first = await add.name();
+
+    await swipe(add.card, -BROWSE_PX, 0);
+    await expect(add.accept).not.toHaveAttribute("aria-label", first);
+    const second = await add.name();
+    expect(await deckCount(recs)).toBe(size);
+
+    await swipe(add.card, BROWSE_PX, 0);
+    await expect(add.accept).toHaveAttribute("aria-label", first);
+    expect(await deckCount(recs)).toBe(size);
+
+    // A swiped-past card is still there to decide: browse back to it and add it.
+    await swipe(add.card, -BROWSE_PX, 0);
+    await expect(add.accept).toHaveAttribute("aria-label", second);
+    await add.accept.click();
+    await expect(recs.getByRole("status").getByText(DECK_COUNT)).toHaveText(`${size + 1} / 100`);
+  });
+
+  test("add: a vertical drag scrolls", async ({ page }) => {
+    const recs = await analyzeDeck(page);
+    const add = swipeView(recs, "Cards to add", /^Add /);
+    await expect(add.accept).toBeVisible({ timeout: 60_000 });
+    const first = await add.name();
+    // The step scrolls itself into view, which can leave the page at its foot: start from the top so it can scroll.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await swipe(add.card, SCROLL_DX_PX, SCROLL_DY_PX);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect(add.accept).toHaveAttribute("aria-label", first);
+  });
+
+  test("add: the first and last cards spring back", async ({ page }) => {
+    const recs = await analyzeDeck(page);
+    const add = swipeView(recs, "Cards to add", /^Add /);
+    await expect(add.accept).toBeVisible({ timeout: 60_000 });
+    const first = await add.name();
+    await swipe(add.card, BROWSE_PX, 0);
+    await expect(add.accept).toHaveAttribute("aria-label", first);
+
+    // Browse to the end: a press that no longer changes the card is the last one.
+    let last = first;
+    for (let i = 0; i < MAX_BROWSE_PRESSES; i++) {
+      await page.keyboard.press("ArrowRight");
+      const moved = await expect(add.accept)
+        .not.toHaveAttribute("aria-label", last, { timeout: BROWSE_SETTLE_MS })
+        .then(() => true)
+        .catch(() => false);
+      if (!moved) break;
+      last = await add.name();
+    }
+    expect(last).not.toBe(first);
+    await swipe(add.card, -BROWSE_PX, 0);
+    await expect(add.accept).toHaveAttribute("aria-label", last);
+  });
+
+  test("cut: a swipe browses without cutting", async ({ page }) => {
+    const recs = await analyzeDeck(page, deckWith(FORESTS_OVER_100));
+    const cut = swipeView(recs, "Cards to cut", CUT_CARD);
+    await expect(cut.accept).toBeVisible({ timeout: 60_000 });
+    const count = recs.getByRole("status").getByText(DECK_COUNT);
+    await expect(count).toHaveText("105 / 100");
+    // The rule break comes first.
+    await expect(cut.accept).toHaveAttribute("aria-label", "Cut Lightning Bolt");
+    await expect(cut.counter).toHaveText(/^Card 1 of \d+$/);
+    await swipe(cut.card, -BROWSE_PX, 0);
+    await expect(cut.accept).not.toHaveAttribute("aria-label", "Cut Lightning Bolt");
+    await expect(cut.counter).toHaveText(/^Card 2 of \d+$/);
+    await expect(count).toHaveText("105 / 100");
+    await swipe(cut.card, BROWSE_PX, 0);
+    await expect(cut.accept).toHaveAttribute("aria-label", "Cut Lightning Bolt");
+  });
+});
+
+test("add: ArrowRight browses", async ({ page }) => {
+  const recs = await analyzeDeck(page);
+  const add = swipeView(recs, "Cards to add", /^Add /);
+  await expect(add.accept).toBeVisible({ timeout: 60_000 });
+  const size = await deckCount(recs);
+  const first = await add.name();
+  await page.keyboard.press("ArrowRight");
+  await expect(add.accept).not.toHaveAttribute("aria-label", first);
+  expect(await deckCount(recs)).toBe(size);
+  await page.keyboard.press("ArrowLeft");
+  await expect(add.accept).toHaveAttribute("aria-label", first);
 });
 
 test("the Cut list crosses out recommended cuts and lets any card be cut", async ({ page }) => {
