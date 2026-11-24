@@ -136,18 +136,14 @@ The `/rate` rater deals a card's top 6 replacements shuffled, our ranking hidden
 - [ ] Recruit 2 raters, run 50 cases × 5 commanders, and record precision@5 and MRR here
 - [ ] Then read vote counts per (target, replacement) into `rankSwaps` (`apps/web/src/lib/server/votes.ts` through `recs.ts`), check the ramp in `swap.ts` against the real votes, extend `scoring.test.ts`, and pass `eval:holdout`
 
-## T049: How it works clips: re-record, serve as MP4
+## T049: How it works clips: poster and faststart
 
 **LOW** · Content · Owner
 
-Tab 1 ("Choose any commander") plays the new recording (`commander_gif*.gif`, 2026-11-23). Tabs 2 and 3 still show the old UI (`cut_gif*.gif`, `swipe_gif*.gif`, 2026-09-28). Every clip ships as a GIF in two qualities, the `_hi` one at 1024 px and up; the new `_hi` GIF is 12.3 MB.
+The three tabs play the owner's MP4 clips (`home_mp4_1..3.mp4`, 2026-11-24) in place of the GIFs, only while on screen, and stand still under reduced motion. Left:
 
-Owner decision 2026-11-23: serve the clips as MP4 (H.264) only, one file per clip, high quality on every screen. A muted looping video is typically 10–20x smaller than the GIF, plays everywhere (iPhone Safari included) and is hardware-decoded. WebM saves only about 20–30% more and would still need the MP4 beside it, so it is left out; it can be added later as a first `<source>`.
-
-- [ ] Record the budget clip (tab 2) and the Add, Cut, Swap clip (tab 3) in the current UI
-- [ ] Convert each `_hi` GIF to MP4 with ffmpeg (H.264, `yuv420p`, no audio track, `+faststart`) and save its first frame as a poster image; check the file sizes
-- [ ] `StepRecording` in `components/home/how-it-works.tsx`: a `<video autoplay muted loop playsinline preload="none" poster>` in place of the `<picture>`, one `src` per clip; drop `hiSrc` and `HI_RES_MEDIA`. Keep it lazy: `autoplay` overrides `preload`, and from `md` all three panels show, so start each clip only once its panel is in view (an IntersectionObserver) and still under reduced motion (poster only)
-- [ ] Delete the GIFs and the unused `add.png` from `apps/web/public`
+- [ ] A poster for tab 1 (`home_png_1.png`, its first frame): without one it loads the clip's metadata and shows the first frame, which iPhone Safari may leave blank under reduced motion
+- [ ] Re-export the three clips with `-movflags +faststart` and no audio track (`-an`): each has its index at the end and an empty audio track, so a browser reads the end of the file before the first frame
 
 ## T039: Take votes off the Server Action queue
 
