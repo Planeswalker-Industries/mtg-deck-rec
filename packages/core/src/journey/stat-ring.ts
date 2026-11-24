@@ -6,8 +6,11 @@ import { STAT_TOLERANCE_MIN_CARDS, STAT_TOLERANCE_SHARE } from './deck-tally';
  */
 export type RingZone = 'severe' | 'low' | 'ok' | 'over';
 
-/** Below this share of the range's bottom, a short line reads as far short (red rather than amber). */
-export const RING_SEVERE_SHARE = 0.5;
+/**
+ * Below this share of the range's bottom, a short line reads as far short (red rather than amber). 0.6 (owner,
+ * 2026-11-24, after the Liesa sample, a pasted Gwenom deck and a Torbran build): red sooner, e.g. Ramp at 4 of 8.
+ */
+export const RING_SEVERE_SHARE = 0.6;
 
 export interface StatRing {
   zone: RingZone;

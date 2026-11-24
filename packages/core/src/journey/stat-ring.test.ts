@@ -8,8 +8,10 @@ describe('statRing', () => {
     expect(statRing(6, 10, false)).toEqual({ zone: 'low', lap: 0.75, extra: 0 });
   });
 
-  it('reads far short as severe', () => {
-    expect(statRing(3, 10, false).zone).toBe('severe');
+  it('reads far short as severe, below 0.6 of the bottom', () => {
+    // Bottom 8: severe under 4.8.
+    expect(statRing(4, 10, false).zone).toBe('severe');
+    expect(statRing(5, 10, false).zone).toBe('low');
   });
 
   it('closes at the bottom of the range and fills the second lap across it', () => {
