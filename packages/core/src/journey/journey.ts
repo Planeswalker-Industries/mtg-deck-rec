@@ -193,6 +193,8 @@ function reduce(state: JourneyState, action: JourneyAction): JourneyState {
         ...state,
         swaps: [...swaps, { target: action.target, replacement: action.replacement }],
         keptInReplace: without(state.keptInReplace, action.target.id),
+        // A replacement passed on and then swapped in after all (‹ back to it) is no longer declined for that card.
+        declinedSwaps: state.declinedSwaps.filter((d) => d.targetId !== action.target.id || d.replacementId !== action.replacement.id),
       };
     }
     case 'unswap':

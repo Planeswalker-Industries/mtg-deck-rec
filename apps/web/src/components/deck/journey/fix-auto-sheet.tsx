@@ -28,7 +28,7 @@ function byLine(moves: readonly FixMove[]): { line: string; moves: PlannedMove[]
 const scoreText = (score: StatScore | null) => (score ? `${score.okCount}/${score.total}` : "–");
 
 /**
- * "Fix the rest for me": every move Fix has left, previewed before any is made. The moves sit under the line each is
+ * Auto-Fix: every move Fix has left, previewed before any is made. The moves sit under the line each is
  * for, as a row of two card plates, out then in. Every move starts selected; tapping either plate takes the move out of
  * the plan or puts it back. The header's score is the deck with the selected moves made, graded again on every change.
  * Apply makes them as one choice, so one Undo takes them all back.
@@ -69,7 +69,7 @@ export function FixAutoSheet({
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-seam px-4 py-3">
           <div className="min-w-0">
-            <SheetTitle className="text-base font-semibold">Fix the rest</SheetTitle>
+            <SheetTitle className="text-base font-semibold">Auto-Fix</SheetTitle>
             <SheetDescription className="text-xs">Tap a move to leave it out.</SheetDescription>
           </div>
           <p className="flex shrink-0 items-center gap-1.5 font-mono text-sm">
@@ -86,8 +86,8 @@ export function FixAutoSheet({
           ) : (
             <div className="flex flex-col gap-4">
               <div aria-hidden className="grid grid-cols-2 gap-1.5 text-xs font-semibold">
-                <span className="text-cut">Out</span>
-                <span className="text-add">In</span>
+                <span className="text-cut">Remove</span>
+                <span className="text-add">Add</span>
               </div>
               {byLine(moves).map((group) => (
                 <section key={group.line} aria-label={lineLabel(group.line)} className="flex flex-col gap-1.5">

@@ -31,6 +31,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
+  --color-success-deep: var(--success-deep);
   --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
@@ -212,6 +213,9 @@
      espresso, which only marks what can be pressed. Each comes with an icon and a word. */
   --destructive: var(--cut);
   --success: var(--add);
+  /* The Deck stats ring's second lap inside the range: the add green darkened toward ink, so it reads apart from the
+     first lap. */
+  --success-deep: color-mix(in oklch, var(--success) 62%, var(--ink));
   --warning: var(--gc);
   --save: var(--add);
   --gc: var(--brass-deep); /* champagne mist 700: amber */

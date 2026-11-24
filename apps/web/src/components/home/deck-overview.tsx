@@ -7,6 +7,7 @@ import type { CardCategory } from "@mtg/core/contract";
 import { cn } from "cn";
 import { cardCategoryLabel } from "@/lib/labels";
 import type { ColorKey } from "@/lib/featured-decks";
+import { MS_PER_S } from "@/lib/constants";
 import { COLOR_NAMES, MANA_SYMBOL_URL } from "@/components/deck/color-identity";
 
 /** Legend and ring order, matching the homepage mock: lands first, battle last. */
@@ -56,7 +57,6 @@ const DIMMED_OPACITY = 0.25;
 const HOVER_TRANSITION_S = 0.18;
 /** Switching decks empties the ring over this long, then fills it with the new deck over the same again. */
 const RING_SWAP_S = 0.35;
-const MS_PER_S = 1000;
 /** A commander deck: the centre reads "cards in the deck / this". */
 const DECK_SIZE = 100;
 

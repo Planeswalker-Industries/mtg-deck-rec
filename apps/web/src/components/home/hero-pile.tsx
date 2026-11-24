@@ -67,10 +67,17 @@ const EASE_TABLE = [0.2, 0.7, 0.2, 1] as const;
 
 /**
  * Below `md` (phones and small tablets, one column) the table is the whole hero, headline included: a card's middle
- * lands anywhere in it, and up to this far past each edge (as a fraction of the hero's width or height), so some cards
- * hang out of frame and the hero clips them.
+ * lands anywhere in it but this far in from each edge (as a fraction of the hero's width or height). Tilted cards near
+ * an edge still hang out of frame, but most of every card shows: the middle never reaches the edge itself.
  */
-const PHONE_OVERHANG = 0.1;
+const PHONE_INSET = 0.08;
+/**
+ * A card tries to land at least this far from the last one's middle, as a fraction of the hero's width (about one card
+ * width on a 390 px phone), so the pile spreads across the hero instead of stacking where chance put it twice.
+ */
+const PHONE_MIN_GAP = 0.35;
+/** Random spots tried before taking the farthest one, when none is far enough from the last card. */
+const PHONE_PLACE_TRIES = 8;
 /** On a phone a card is placed by its middle: offset by half its own size, in %. */
 const PHONE_CENTRE_PCT = -50;
 /**
@@ -115,20 +122,45 @@ type Fall = {
   y: number;
   rotate: number;
   spin: number;
+  /** Where its middle landed on a phone, as fractions of the hero's width and height; null beside the headline. */
+  point: Point | null;
 };
+
+type Point = { x: number; y: number };
 
 /** A value in [-1, 1] weighted toward 0, so the pile is thickest in the middle of the table. */
 function centred(): number {
   return Math.random() + Math.random() - 1;
 }
 
-/** A value in [-PHONE_OVERHANG, 1 + PHONE_OVERHANG], even across the range. */
-function anywhere(): number {
-  return -PHONE_OVERHANG + Math.random() * (1 + 2 * PHONE_OVERHANG);
+/** A value in [PHONE_INSET, 1 - PHONE_INSET], even across the range. */
+function inside(): number {
+  return PHONE_INSET + Math.random() * (1 - 2 * PHONE_INSET);
 }
 
-/** Where a card rests: anywhere in the hero on a phone, anywhere across the table beside the headline. */
-function restingPlace(): Pick<Fall, "left" | "top" | "x" | "y"> {
+/**
+ * A phone landing spot: the first of a few random spots inside the hero that is at least `PHONE_MIN_GAP` from the last
+ * card's middle, or the farthest of them when none is. Every spot tried is inside the hero, so the gap never pushes a
+ * card off it. Distance is measured in hero widths, with `aspect` (height over width) scaling the vertical part.
+ */
+function spreadPoint(last: Point | null, aspect: number): Point {
+  if (!last) return { x: inside(), y: inside() };
+  let best: Point | null = null;
+  let bestGap = -1;
+  for (let i = 0; i < PHONE_PLACE_TRIES; i++) {
+    const spot = { x: inside(), y: inside() };
+    const gap = Math.hypot(spot.x - last.x, (spot.y - last.y) * aspect);
+    if (gap >= PHONE_MIN_GAP) return spot;
+    if (gap > bestGap) {
+      best = spot;
+      bestGap = gap;
+    }
+  }
+  return best!;
+}
+
+/** Where a card rests: spread across the hero on a phone, anywhere across the table beside the headline. */
+function restingPlace(last: Point | null, aspect: number): Pick<Fall, "left" | "top" | "x" | "y" | "point"> {
   if (window.matchMedia(BESIDE_QUERY).matches) {
     return {
       // The card's left edge sits along the table's free width (its width less one card's), so it stays on the table.
@@ -136,26 +168,35 @@ function restingPlace(): Pick<Fall, "left" | "top" | "x" | "y"> {
       top: "0%",
       x: 0,
       y: PILE_DROP_Y_PCT + centred() * SPREAD_Y_PCT,
+      point: null,
     };
   }
+  const point = spreadPoint(last, aspect);
   return {
-    left: `${anywhere() * 100}%`,
-    top: `${anywhere() * 100}%`,
+    left: `${point.x * 100}%`,
+    top: `${point.y * 100}%`,
     x: PHONE_CENTRE_PCT,
     y: PHONE_CENTRE_PCT,
+    point,
   };
 }
 
-function newFall(key: number): Fall {
+function newFall(key: number, last: Point | null, aspect: number): Fall {
   const cardIndex = key % POOL.length;
   return {
     key,
     cardIndex,
     card: POOL[cardIndex]!,
-    ...restingPlace(),
+    ...restingPlace(last, aspect),
     rotate: centred() * REST_TILT_DEG,
     spin: (Math.random() * 2 - 1) * FALL_SPIN_DEG,
   };
+}
+
+/** The table's height over its width, for measuring gaps on a phone; square until it has a size. */
+function tableAspect(table: HTMLDivElement | null): number {
+  const rect = table?.getBoundingClientRect();
+  return rect && rect.width > 0 ? rect.height / rect.width : 1;
 }
 
 /**
@@ -266,7 +307,10 @@ export function HeroPile() {
     if (reduceMotion) {
       if (nextKey.current > 0) return;
       timer = setTimeout(() => {
-        setFalls(Array.from({ length: MAX_ON_TABLE }, (_, i) => newFall(i)));
+        const aspect = tableAspect(table.current);
+        const pile: Fall[] = [];
+        for (let i = 0; i < MAX_ON_TABLE; i++) pile.push(newFall(i, pile.at(-1)?.point ?? null, aspect));
+        setFalls(pile);
         nextKey.current = MAX_ON_TABLE;
       }, 0);
       return () => clearTimeout(timer);
@@ -274,7 +318,8 @@ export function HeroPile() {
     if (!onScreen || !visible) return;
     const drop = () => {
       const key = nextKey.current++;
-      setFalls((prev) => [...prev.slice(-(MAX_ON_TABLE - 1)), newFall(key)]);
+      const aspect = tableAspect(table.current);
+      setFalls((prev) => [...prev.slice(-(MAX_ON_TABLE - 1)), newFall(key, prev.at(-1)?.point ?? null, aspect)]);
       timer = setTimeout(drop, nextKey.current < QUICK_FALLS ? QUICK_FALL_GAP_MS : FALL_GAP_MS);
     };
     timer = setTimeout(drop, nextKey.current === 0 ? 0 : FALL_GAP_MS);

@@ -24,7 +24,8 @@ interface Schedule {
 
 const DEFAULT_SCHEDULE: Schedule = {
   pollSeconds: 5,
-  crawlHourUtc: 10,
+  // 3 AM EST (owner, 2026-11-23): the 6-hour run ends before the working day, when merges redeploy the crawl host.
+  crawlHourUtc: 8,
   crawlSources: ['archidekt'],
   collateEveryMinutes: 30,
   baselineHourUtc: 4,

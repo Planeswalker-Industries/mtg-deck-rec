@@ -87,6 +87,18 @@ export async function ignoreBuildGaps(page: Page) {
 }
 
 /**
+ * Clears the build start's budget, for tests about something other than the budget: the picker fills in a default (or
+ * the last one typed) once it knows about the collection, so this waits for that before clearing both fields.
+ */
+export async function clearBuildBudget(page: Page) {
+  for (const name of ["Max per card", "Max to spend"]) {
+    const field = page.getByRole("textbox", { name });
+    await expect(field).not.toHaveValue("", { timeout: STEP_WAIT_MS });
+    await field.fill("");
+  }
+}
+
+/**
  * From Upgrade into the deckbuilder: the round's Save is the only way there for a deck that isn't saved yet. It
  * opens with the deck name form up in the deck bar, which the caller may fill or leave. Returns the recommendations
  * region.

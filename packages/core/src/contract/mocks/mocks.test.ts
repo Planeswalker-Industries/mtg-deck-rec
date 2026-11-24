@@ -304,6 +304,17 @@ describe('mock build', () => {
     const filled = await apis.recs.build({ context: commanderOnly, fill: 'value' });
     expect(filled.ok && filled.data.fillCost !== undefined && filled.data.feasibility.filledByValue > 0).toBe(true);
   });
+
+  it('spends no more than the budget, as the real build does', async () => {
+    const { apis, context } = await setup();
+    const base = context({ budget: { cardCapUsd: 10, spendLeftUsd: 100 } });
+    const r = await apis.recs.build({ context: { ...base, deck: { ...base.deck, cards: [] } } });
+    if (!r.ok) throw new Error(r.error.message);
+    const prices = r.data.groups.flatMap((g) => g.cards).map((c) => c.card.price?.usd ?? 0);
+    expect(prices.length).toBeGreaterThan(0);
+    expect(prices.every((usd) => usd <= 10)).toBe(true);
+    expect(prices.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(100);
+  });
 });
 
 describe('mock combos', () => {

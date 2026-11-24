@@ -187,6 +187,16 @@ describe('journey reducer', () => {
     expect(run(decline, decline).declinedSwaps).toEqual([{ targetId: 3, replacementId: 20 }]);
   });
 
+  it('forgets a declined replacement once it is swapped in after all', () => {
+    const other: JourneyAction = { type: 'declineSwap', targetId: 3 as CardId, replacementId: 21 as CardId };
+    const state = run(
+      { type: 'declineSwap', targetId: 3 as CardId, replacementId: 20 as CardId },
+      other,
+      { type: 'swap', target: card(3), replacement: card(20) },
+    );
+    expect(state.declinedSwaps).toEqual([{ targetId: 3, replacementId: 21 }]);
+  });
+
   it('moves between phases and resets to a new round', () => {
     const state = run({ type: 'cut', card: card(2) }, { type: 'goto', phase: 'review' });
     expect(state.phase).toBe('review');

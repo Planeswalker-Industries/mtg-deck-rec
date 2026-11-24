@@ -66,7 +66,7 @@ interface FixtureFile {
      */
     swaps?: { target: string; includeTop?: TopExpectation; excludeTop?: TopExpectation; minSuggestions?: number; match?: SwapMatch[] }[];
     /**
-     * Fix's whole plan ("Fix the rest for me") on the deck. Always checked: every line still off after the plan has a
+     * Fix's whole plan ("Auto-Fix") on the deck. Always checked: every line still off after the plan has a
      * reason (no move is left for it). `inLine`: Deck stats lines, by label, the plan must leave in line. `noMove`: the
      * plan is empty. `gapsAsked`: every line Fix can't bring in is one the build reported (`collectionGaps`), so the
      * build page asks about it.
@@ -307,7 +307,7 @@ async function runFixture(file: string, fixture: FixtureFile): Promise<Check[]> 
       illegalIds: result.illegalIds,
       spendLeftUsd: fixture.budget?.spendLeftUsd,
     };
-    // "Fix the rest for me": the whole plan, applied.
+    // "Auto-Fix": the whole plan, applied.
     const moves = planFixes(input);
     const spend = fixture.budget?.spendLeftUsd;
     if (spend !== undefined) {

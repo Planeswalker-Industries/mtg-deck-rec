@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { Download, RefreshCw, TriangleAlert } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { ChevronDown, Download, TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
 import { CURVE_LINE, deckDiff, deckStats, type DeckStatsReport, type FixBlock } from "@mtg/core/journey";
@@ -17,15 +17,14 @@ import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
 import { formatAsOf } from "@/lib/format";
 import { byCost, groupHeading } from "../deck-group-id";
-import { LevelBadge, Mark } from "../deck-stats/level";
+import { FinishScore, Mark } from "../deck-stats/level";
 import { CopySaveStatus, RoundControls, type RoundSave } from "./round-bar";
-import { judge, Move, RoundMoves } from "./round-moves";
+import { StatRingGroups } from "../deck-stats/stat-ring";
+import { judge, Move } from "./round-moves";
 import { Upgrades } from "./upgrades";
 import type { DeckJourney } from "./use-deck-journey";
 import type { Fix, FixLineLabel } from "./use-fix";
 
-/** Average mana value is shown to one decimal: finer than that is noise at deck scale. */
-const MANA_VALUE_DECIMALS = 1;
 /** One part of the result: a sheet of paper on the wood, padded like the journey's other sheets (`Panel` sm). */
 const SECTION_SHEET = "sheet p-4";
 /**
@@ -91,6 +90,43 @@ function leftoversOf(fix: Fix, report: DeckStatsReport | null, choices: StatChoi
   return [...counted, ...ignored];
 }
 
+/**
+ * Finish's lines without a ring (rules, the curve) as one line above the rings: "2 rules to fix" in red with its X,
+ * the ignored ones counted apart in grey. It opens the list with each line's Fix (owner, 2026-11-23).
+ */
+function RulesToFix({ off, ignored, children }: { off: number; ignored: number; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((o) => !o)}
+        className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-md text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        {off > 0 && (
+          <span className="flex items-center gap-2 font-semibold text-destructive">
+            <Mark state="off" />
+            {off} {off === 1 ? "rule" : "rules"} to fix
+          </span>
+        )}
+        {ignored > 0 && (
+          <span className="flex items-center gap-2 text-muted-foreground">
+            {off === 0 && <Mark state="ignored" />}
+            {off > 0 && <span aria-hidden>·</span>}
+            {ignored} ignored
+          </span>
+        )}
+        {/* At the right edge, as Budget's and Hard to cast's. */}
+        <ChevronDown aria-hidden className={cn("ml-auto size-4 shrink-0 text-primary transition-transform", !open && "-rotate-90")} />
+      </button>
+      {open && <div id={panelId}>{children}</div>}
+    </div>
+  );
+}
+
 /** The round's changes as pairs: each Fix move and each swap with its replacement, then the cuts and the adds left over. */
 function changesOf(journey: DeckJourney): Change[] {
   const state = journey.state;
@@ -128,10 +164,10 @@ export function roundInIds(journey: DeckJourney): CardId[] {
 /**
  * Finish: the round's result, shown rather than told. It leads with "Deck Complete!" and the round's Undo, Start over and
  * Save in its top right (owner, 2026-11-23), the cart total and Buy on TCGplayer as the seal (or, when the collection
- * supplies every card, the upgrades worth buying and their Buy), with Copy, Download and Re-analyze in one outline row
- * beside it (T102). Then one Deck stats sheet: cards, mana value and the deck's value before and after, each stat line as
- * a read-only bar from where the round started to where it ends against its aim, and each line still off with its
- * reason and what the player can do about it (T087). Then the shopping list, every change as card plates (Out beside
+ * supplies every card, the upgrades worth buying and their Buy), with Copy and Download in one outline row
+ * beside it (T102); the card count sits on the heading's line (owner, 2026-11-24). Then one Deck stats sheet: the deck's
+ * value before and after (with a collection), each stat line as a ring from where the round started to where it ends
+ * against its aim, and each line still off with its reason and what the player can do about it (T087). Then the shopping list, every change as card plates (Out beside
  * In) and the finished decklist laid out by type on the plates the deck editor uses.
  */
 export function ReviewPhase({
@@ -140,7 +176,6 @@ export function ReviewPhase({
   busy,
   stale = false,
   save,
-  onReanalyze,
   fix,
   choices,
   onChoice,
@@ -174,7 +209,6 @@ export function ReviewPhase({
   stale?: boolean;
   /** What saving does: write back to the open saved deck (or save a copy), or save a new deck. */
   save: RoundSave;
-  onReanalyze: () => void;
 }) {
   const state = journey.state;
   const deck = journey.deck;
@@ -255,7 +289,6 @@ export function ReviewPhase({
   const outs = changes.flatMap((c) => (c.out ? [c.out] : []));
   const ins = changes.flatMap((c) => (c.into ? [c.into] : []));
   const addedIds = new Set(deckDiff(state.base, deck).added.map((c) => c.cardId));
-  const rounded = (n: number) => Number(n.toFixed(MANA_VALUE_DECIMALS));
 
   const commanderIds = new Set<CardId>(deck.commanders);
   const commanders = journey.after.filter((e) => commanderIds.has(e.card.id));
@@ -302,9 +335,19 @@ export function ReviewPhase({
           2026-11-23): the heading steps down a size on phones so both fit the 390 px width.
         */}
         <div className="flex items-center justify-between gap-2">
-          <h2 id="review-ready" className="min-w-0 font-heading text-xl leading-none font-semibold sm:text-2xl">
-            {overBy > 0 ? "Almost ready" : "Deck Complete!"}
-          </h2>
+          {/*
+            The card count beside the heading, as the Decklist's: before → after only when the round changed it. Outside
+            the <h2>, so the heading (and the section it names) keeps its plain name.
+          */}
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 leading-none">
+            <h2 id="review-ready" className="font-heading text-xl font-semibold sm:text-2xl">
+              {overBy > 0 ? "Almost ready" : "Deck Complete!"}
+            </h2>
+            <span className="text-base font-normal">
+              <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
+              <span className="text-sm text-muted-foreground"> cards</span>
+            </span>
+          </div>
           <RoundControls
             canUndo={journey.canUndo}
             onUndo={journey.undo}
@@ -355,49 +398,36 @@ export function ReviewPhase({
             >
               <Download aria-hidden />
             </Button>
-            <Button
-              type="button"
-              size="icon-lg"
-              variant="outline"
-              onClick={onReanalyze}
-              disabled={blocked}
-              aria-label="Re-analyze"
-              title="Re-analyze"
-            >
-              <RefreshCw aria-hidden />
-            </Button>
           </div>
         </div>
         <CopySaveStatus save={save} />
         {stale && (
           <p role="status" className="text-sm text-muted-foreground">
-            The decklist has changed since this deck was analyzed. Analyze it to save or re-analyze from here.
+            The decklist has changed since this deck was analyzed. Analyze it to save from here.
           </p>
         )}
       </section>
       <section aria-labelledby="review-deck-stats" className={cn(SECTION_SHEET, "flex flex-col gap-4 xl:col-start-1")}>
         <h3 id="review-deck-stats" className="flex items-center justify-between gap-3">
           <span className="font-heading text-xl leading-none font-semibold">Deck stats</span>
-          {report && <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />}
-        </h3>
-        <dl className={cn("grid gap-3", cart.fromCollection ? "grid-cols-3" : "grid-cols-2")}>
-          <Figure label="Cards">
-            <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
-          </Figure>
-          <Figure label="Avg mana value">
-            <Move
-              before={rounded(before.averageManaValue)}
-              after={rounded(after.averageManaValue)}
-              verdict={judge(rounded(before.averageManaValue), rounded(after.averageManaValue), null)}
-              format={(n) => n.toFixed(MANA_VALUE_DECIMALS)}
+          {report && (
+            <FinishScore
+              level={report.level}
+              okCount={report.okCount}
+              total={report.total}
+              celebrated={journey.celebrated}
+              onCelebrate={journey.markCelebrated}
             />
-          </Figure>
-          {/*
-              Whole dollars: cents are noise on an estimate. The whole deck, basics and owned cards included, so it is
-              named apart from the cart total the shopping list and Deck stats show. Only with a collection: without
-              one the cart is the deck but its basics, and two near-equal totals read as a mistake.
-            */}
-          {cart.fromCollection && (
+          )}
+        </h3>
+        {/*
+          Whole dollars: cents are noise on an estimate. The whole deck, basics and owned cards included, so it is named
+          apart from the cart total the shopping list and Deck stats show. Only with a collection: without one the cart
+          is the deck but its basics, and two near-equal totals read as a mistake. Cards moved to the heading and the
+          average mana value went (owner, 2026-11-24: neither told the player anything here).
+        */}
+        {cart.fromCollection && (
+          <dl>
             <Figure
               label="Deck value"
               note={asOf ? `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` : undefined}
@@ -409,46 +439,62 @@ export function ReviewPhase({
                 format={wholeUsd}
               />
             </Figure>
-          )}
-        </dl>
+          </dl>
+        )}
         {report &&
           (!fix.ready ? (
             <p role="status" className="text-sm text-muted-foreground">
               Checking what is left to fix…
             </p>
           ) : leftovers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Every line is in line.</p>
+            // Nothing left to fix: the heading's closed ring says so.
+            null
           ) : (
             otherLeftovers.length > 0 && (
-              <ul aria-label="Lines still off" className="flex flex-col gap-2 text-sm">
-                {otherLeftovers.map((l) => {
-                  const { inline, note } = leftoverParts(l);
-                  return (
-                    <li key={`${l.line}:${l.reason}`} className="flex flex-col gap-1">
-                      <span className={cn("flex min-w-0 items-center gap-2", l.reason === "ignored" && "text-muted-foreground")}>
-                        <Mark state={l.reason === "ignored" ? "ignored" : "off"} />
-                        <span className="min-w-0">{leftoverText(l)}</span>
-                        {inline}
-                      </span>
-                      {note && <span className="pl-6">{note}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
+              <RulesToFix
+                off={otherLeftovers.filter((l) => l.reason !== "ignored").length}
+                ignored={otherLeftovers.filter((l) => l.reason === "ignored").length}
+              >
+                <ul aria-label="Lines still off" className="flex flex-col gap-2 text-sm">
+                  {otherLeftovers.map((l) => {
+                    const { inline, note } = leftoverParts(l);
+                    return (
+                      <li key={`${l.line}:${l.reason}`} className="flex flex-col gap-1">
+                        <span className={cn("flex min-w-0 items-center gap-2", l.reason === "ignored" && "text-muted-foreground")}>
+                          <Mark state={l.reason === "ignored" ? "ignored" : "off"} />
+                          <span className="min-w-0">{leftoverText(l)}</span>
+                          {inline}
+                        </span>
+                        {note && <span className="pl-6">{note}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </RulesToFix>
             )
           ))}
         {report && report.stats.length > 0 && (
-          <RoundMoves
-            lines={report.stats}
-            action={(key) => {
-              const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
-              return leftover && leftoverParts(leftover).inline;
-            }}
-            note={(key) => {
-              const leftover = fix.ready ? leftoverByLine.get(key) : undefined;
-              return leftover && leftoverParts(leftover).note;
-            }}
-          />
+          <>
+            {/* The rings fill as the section comes into view: closed to OK, or what is left to do (owner, 2026-11-23). */}
+            <StatRingGroups
+              lines={report.stats}
+              actionFor={(line) => {
+                const leftover = fix.ready ? leftoverByLine.get(line.key) : undefined;
+                return leftover && leftoverParts(leftover).inline;
+              }}
+            />
+            {/* A reason that needs buttons of its own goes under the rings, named by its line. */}
+            {report.stats.map((line) => {
+              const leftover = fix.ready ? leftoverByLine.get(line.key) : undefined;
+              const note = leftover && leftoverParts(leftover).note;
+              return note ? (
+                <div key={line.key} className="flex flex-col gap-1 border-t border-seam pt-2 text-sm">
+                  <span className="font-semibold">{line.label}</span>
+                  {note}
+                </div>
+              ) : null;
+            })}
+          </>
         )}
       </section>
 

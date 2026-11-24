@@ -11,3 +11,4 @@ export * from './fix';
 export * from './buy-for';
 export * from './round-spend';
 export * from './card-sort';
+export * from './stat-ring';

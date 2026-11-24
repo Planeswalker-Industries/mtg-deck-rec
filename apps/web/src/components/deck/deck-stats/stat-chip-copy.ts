@@ -46,3 +46,68 @@ const MARK_TIPS: Readonly<Record<CompareMark["key"], Record<CompareMark["tone"],
 export function markTip(mark: Pick<CompareMark, "key" | "tone">): string {
   return MARK_TIPS[mark.key][mark.tone];
 }
+
+/** What a ring's tip is about: the line now, its whole-card range, and the line with the card on screen answered. */
+export interface RingTipInput {
+  group: StatGroup;
+  label: string;
+  value: number;
+  /** Whole counts in line: `low` up to `high` (null: a minimum, no top). */
+  low: number;
+  high: number | null;
+  zone: "severe" | "low" | "ok" | "over";
+  ignored: boolean;
+  /** With the card on screen answered, when it moves the line. */
+  preview?: { value: number; zone: "severe" | "low" | "ok" | "over"; better: boolean } | undefined;
+}
+
+/** Role names as a kind of card ("3 DRAW CARDS"); the rest are the label. */
+const ROLE_CARD_NOUNS: Readonly<Record<string, string>> = { "Card advantage": "draw" };
+
+/** "Sorceries" → "Sorcery", "Basic lands" → "Basic land", "White sources" → "White source". */
+const singular = (plural: string) => (plural.endsWith("ies") ? `${plural.slice(0, -3)}y` : plural.replace(/s$/, ""));
+
+/**
+ * A line's words in a tip, upper case: `stat` names the line ("LAND", "RAMP"), `one` and `many` count its cards ("RAMP
+ * CARD", "RAMP CARDS"), `bulk` is the line as a quantity ("LANDS", "RAMP"), `much` says how it piles up.
+ */
+function tipWords({ group, label }: Pick<RingTipInput, "group" | "label">) {
+  if (group === "roles") {
+    const stat = (ROLE_NOUNS[label] ?? label).toUpperCase();
+    const card = `${(ROLE_CARD_NOUNS[label] ?? label).toUpperCase()} CARD`;
+    return { stat, one: card, many: `${card}S`, bulk: stat, much: "MUCH" };
+  }
+  const many = label.toUpperCase();
+  const one = singular(label).toUpperCase();
+  return { stat: one, one, many, bulk: many, much: "MANY" };
+}
+
+/**
+ * A ring's tip, opened by a hover or a tap, in the owner's words (2026-11-24): a label, a colon and what to do. With a
+ * card on screen that moves the line: what answering it does ("ADD: TOO MANY LANDS WARNING."). Otherwise what would
+ * bring the line in ("WARNING: NEED 3 More LANDS."), or, in range, "LAND Stat: OK.".
+ */
+export function ringTip(tip: RingTipInput): string {
+  const { stat, one, many, bulk, much } = tipWords(tip);
+  const count = (n: number) => `${n} ${n === 1 ? one : many}`;
+  const short = tip.zone === "low" || tip.zone === "severe";
+  // An ignored line reads as ignored whatever card is on screen: the player set it aside.
+  if (tip.ignored) return `IGNORE: ${stat} Limit.`;
+  const { preview } = tip;
+  if (preview && preview.value !== tip.value) {
+    const adding = preview.value > tip.value;
+    const verb = adding ? "ADD" : "REMOVE";
+    if (preview.zone === "over" && tip.zone !== "over") return `${verb}: TOO ${much} ${bulk} WARNING.`;
+    if (preview.zone !== "ok" && preview.zone !== "over" && tip.zone === "ok") return `${verb}: LOW ${bulk} WARNING.`;
+    if (preview.zone === "ok" && tip.zone === "ok") return `${verb}: OK.`;
+    if (preview.better) return adding ? `RECOMMENDATION: ADD this ${one}.` : preview.zone === "ok" ? "RECOMMENDATION: REMOVE OK." : "REMOVE: OK.";
+    return short ? `WARNING: ${stat} SHORTAGE.` : `WARNING: TOO ${much} ${bulk}.`;
+  }
+  if (tip.zone === "severe") return `WARNING: MASSIVE ${stat} SHORTAGE.`;
+  if (tip.zone === "low") {
+    const need = Math.max(1, tip.low - tip.value);
+    return `WARNING: NEED ${need} More ${need === 1 ? one : many}.`;
+  }
+  if (tip.zone === "over" && tip.high !== null) return `RECOMMENDATION: REMOVE ${count(tip.value - tip.high)}.`;
+  return `${stat} Stat: OK.`;
+}

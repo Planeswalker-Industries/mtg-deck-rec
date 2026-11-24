@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeftRight, Minus, Plus } from "lucide-react";
-import type { CardSummary } from "@mtg/core/contract";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeftRight, WandSparkles } from "lucide-react";
 import { compareCards, type FixMove } from "@mtg/core/journey";
-import { cn } from "cn";
 import { DecisionButtons } from "@/components/cards/card-panel";
-import { CardImage } from "@/components/cards/card-image";
-import { ZoomableCard } from "@/components/cards/card-zoom";
-import { OwnedCorner } from "@/components/cards/owned-corner";
+import { MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { PriceTag } from "@/components/cards/buy-price";
@@ -38,39 +34,10 @@ function LineCount({ line }: { line: FixLineLabel }) {
   );
 }
 
-/** One side of a move: Out or In in its job's colour (with its icon and word), the card, and its name. */
-function MoveCard({ card, side, owned, note }: { card: CardSummary; side: "out" | "in"; owned?: boolean; note?: ReactNode }) {
-  const Icon = side === "out" ? Minus : Plus;
-  return (
-    <div className="flex min-w-0 flex-col items-center gap-1.5">
-      <span className={cn("inline-flex items-center gap-1 text-xs font-semibold", side === "out" ? "text-cut" : "text-add")}>
-        <Icon aria-hidden className="size-3.5" strokeWidth={2.75} />
-        {side === "out" ? "Out" : "In"}
-      </span>
-      {/* The width is capped so both cards, the chips and the buttons fit a phone above the Deck stats footer. */}
-      <div className="relative w-full max-w-28 sm:max-w-52">
-        <ZoomableCard card={card}>
-          <CardImage
-            card={card}
-            variant="normal"
-            alt={`${side === "out" ? "Out" : "In"}: ${card.name}`}
-            sizes="(max-width: 640px) 40vw, 208px"
-            eager
-            className={side === "out" ? "opacity-80 saturate-50" : undefined}
-          />
-        </ZoomableCard>
-        {owned && <OwnedCorner />}
-      </div>
-      <p className="w-full text-center text-sm leading-tight font-semibold text-balance">{displayName(card)}</p>
-      {note && <p className="text-center font-mono text-xs text-muted-foreground">{note}</p>}
-    </div>
-  );
-}
-
 /**
  * Fix: one paired move at a time, a card out on the left and a card in on the right, for the Deck stats line named in
- * the header. Swap makes the move, Skip passes on the pair (either card may come back in another), and "Fix the rest
- * for me" previews every move left to apply together. The chips under the cards name every line the move changes.
+ * the header. Swap makes the move, Skip passes on the pair (either card may come back in another), and Auto-Fix
+ * previews every move left to apply together. The chips under the cards name every line the move changes.
  */
 export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney; fix: Fix; hasCollection: boolean }) {
   const { move } = fix;
@@ -169,17 +136,18 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
         }
       />
       <section aria-label="Fix: one card out, one card in" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <div aria-live="polite" className="grid grid-cols-2 items-start gap-3">
+        <div aria-live="polite" className={MOVE_PAIR_GRID}>
           <MoveCard card={move.out} side="out" />
+          <SwapMark />
           <MoveCard
             card={move.in}
             side="in"
             owned={hasCollection && inCard !== null && inCard.owned !== null}
             note={
               notOwned ? (
-                <>
+                <span className="font-mono">
                   Not owned · <PriceTag price={price} lower />
-                </>
+                </span>
               ) : null
             }
           />
@@ -196,11 +164,11 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
           pass={{ word: "Skip", label: `Skip swapping ${outName} for ${inName}`, onClick: () => act(false) }}
           accept={{ word: "Swap", label: `Swap ${outName} for ${inName}`, icon: ArrowLeftRight, onClick: () => act(true) }}
         />
-        <div className="-mt-1 flex flex-wrap justify-center gap-2">
-          <Button type="button" size="sm" variant="link" onClick={() => setPlan(fix.plan())}>
-            Fix the rest for me
-          </Button>
-        </div>
+        {/* Outline, under the pair: a way out of going one move at a time, never louder than Swap. */}
+        <Button type="button" size="lg" variant="outline" onClick={() => setPlan(fix.plan())} className="self-center">
+          <WandSparkles aria-hidden />
+          Auto-Fix
+        </Button>
       </section>
       {plan !== null && (
         <FixAutoSheet

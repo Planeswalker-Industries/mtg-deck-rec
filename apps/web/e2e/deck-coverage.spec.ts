@@ -232,6 +232,8 @@ test("a pasted deck whose missing cards cost more than Max to spend warns, and R
   // The Deck stats sheet's Budget shows the raised amount, and the cart is within it.
   await page.getByRole("button", { name: /^Deck stats/ }).click();
   const sheet = page.getByRole("dialog", { name: "Deck stats" });
-  await expect(sheet.getByRole("region", { name: "Budget" }).getByRole("textbox", { name: "Max to spend" })).toHaveValue(String(raised));
+  const budget = sheet.getByRole("region", { name: "Budget" });
+  await budget.getByRole("button", { name: /^Budget:/ }).click();
+  await expect(budget.getByRole("textbox", { name: "Max to spend" })).toHaveValue(String(raised));
   await expect(sheet.getByText("Over budget")).toHaveCount(0);
 });
