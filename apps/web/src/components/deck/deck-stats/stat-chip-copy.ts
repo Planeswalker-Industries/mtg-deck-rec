@@ -61,37 +61,52 @@ export interface RingTipInput {
   preview?: { value: number; zone: "severe" | "low" | "ok" | "over"; better: boolean } | undefined;
 }
 
-/** Role names as a kind of card ("3 draw cards"); the rest are the label in lower case. */
+/** Role names as a kind of card ("3 DRAW CARDS"); the rest are the label. */
 const ROLE_CARD_NOUNS: Readonly<Record<string, string>> = { "Card advantage": "draw" };
 
-/** "3 creatures", "1 creature", "2 ramp cards", "1 white source". */
-function cardsOf(group: StatGroup, label: string, n: number): string {
-  if (group === "roles") return `${n} ${ROLE_CARD_NOUNS[label] ?? label.toLowerCase()} ${n === 1 ? "card" : "cards"}`;
-  const plural = nounOf({ group, label });
-  if (n !== 1) return `${n} ${plural}`;
-  return `1 ${plural.endsWith("ies") ? `${plural.slice(0, -3)}y` : plural.replace(/s$/, "")}`;
+/** "Sorceries" → "Sorcery", "Basic lands" → "Basic land", "White sources" → "White source". */
+const singular = (plural: string) => (plural.endsWith("ies") ? `${plural.slice(0, -3)}y` : plural.replace(/s$/, ""));
+
+/**
+ * A line's words in a tip, upper case: `stat` names the line ("LAND", "RAMP"), `one` and `many` count its cards ("RAMP
+ * CARD", "RAMP CARDS"), `bulk` is the line as a quantity ("LANDS", "RAMP"), `much` says how it piles up.
+ */
+function tipWords({ group, label }: Pick<RingTipInput, "group" | "label">) {
+  if (group === "roles") {
+    const stat = (ROLE_NOUNS[label] ?? label).toUpperCase();
+    const card = `${(ROLE_CARD_NOUNS[label] ?? label).toUpperCase()} CARD`;
+    return { stat, one: card, many: `${card}S`, bulk: stat, much: "MUCH" };
+  }
+  const many = label.toUpperCase();
+  const one = singular(label).toUpperCase();
+  return { stat: one, one, many, bulk: many, much: "MANY" };
 }
 
 /**
- * A ring's tip, opened by a hover or a tap (owner, 2026-11-23). With a card on screen that moves the line: what answering
- * it does ("Adding this gives you too many creatures."). Otherwise what would bring the line in ("Add 3 ramp cards to
- * bring it in line."), or, in range, its count and range.
+ * A ring's tip, opened by a hover or a tap, in the owner's words (2026-11-24): a label, a colon and what to do. With a
+ * card on screen that moves the line: what answering it does ("ADD: TOO MANY LANDS WARNING."). Otherwise what would
+ * bring the line in ("WARNING: NEED 3 More LANDS."), or, in range, "LAND Stat: OK.".
  */
 export function ringTip(tip: RingTipInput): string {
-  const noun = nounOf(tip);
-  const countable = COUNTABLE_GROUPS.has(tip.group);
+  const { stat, one, many, bulk, much } = tipWords(tip);
+  const count = (n: number) => `${n} ${n === 1 ? one : many}`;
+  const short = tip.zone === "low" || tip.zone === "severe";
   const { preview } = tip;
   if (preview && preview.value !== tip.value) {
-    const verb = preview.value > tip.value ? "Adding this" : "Removing this";
-    if (preview.zone === "over" && tip.zone !== "over") return `${verb} gives you too ${countable ? "many" : "much"} ${noun}.`;
-    if (preview.zone !== "ok" && preview.zone !== "over" && tip.zone === "ok") return `${verb} leaves you too ${countable ? "few" : "little"} ${noun}.`;
-    if (preview.zone === "ok" && tip.zone !== "ok") return `${verb} brings ${noun} in line.`;
-    if (preview.zone === "ok") return `${verb} keeps ${noun} in range.`;
-    return preview.better ? `${verb} gets ${noun} closer to its range.` : `${verb} takes ${noun} further from its range.`;
+    const adding = preview.value > tip.value;
+    const verb = adding ? "ADD" : "REMOVE";
+    if (preview.zone === "over" && tip.zone !== "over") return `${verb}: TOO ${much} ${bulk} WARNING.`;
+    if (preview.zone !== "ok" && preview.zone !== "over" && tip.zone === "ok") return `${verb}: LOW ${bulk} WARNING.`;
+    if (preview.zone === "ok" && tip.zone === "ok") return `${verb}: OK.`;
+    if (preview.better) return adding ? `RECOMMENDATION: ADD this ${one}.` : preview.zone === "ok" ? "RECOMMENDATION: REMOVE OK." : "REMOVE: OK.";
+    return short ? `WARNING: ${stat} SHORTAGE.` : `WARNING: TOO ${much} ${bulk}.`;
   }
-  const ignored = tip.ignored ? " Ignored: it doesn't count toward the score." : "";
-  if (tip.zone === "over" && tip.high !== null) return `Remove ${cardsOf(tip.group, tip.label, tip.value - tip.high)} to bring it in line.${ignored}`;
-  if (tip.zone !== "ok") return `Add ${cardsOf(tip.group, tip.label, Math.max(1, tip.low - tip.value))} to bring it in line.${ignored}`;
-  const range = tip.high === null ? `${tip.low} or more` : `${tip.low}–${tip.high}`;
-  return `${cardsOf(tip.group, tip.label, tip.value)}, in range (${range}).`;
+  if (tip.ignored) return `IGNORE: ${stat} Limit.`;
+  if (tip.zone === "severe") return `WARNING: MASSIVE ${stat} SHORTAGE.`;
+  if (tip.zone === "low") {
+    const need = Math.max(1, tip.low - tip.value);
+    return `WARNING: NEED ${need} More ${need === 1 ? one : many}.`;
+  }
+  if (tip.zone === "over" && tip.high !== null) return `RECOMMENDATION: REMOVE ${count(tip.value - tip.high)}.`;
+  return `${stat} Stat: OK.`;
 }
