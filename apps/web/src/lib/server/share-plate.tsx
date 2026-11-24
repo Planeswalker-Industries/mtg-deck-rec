@@ -2,15 +2,19 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cacheLife, cacheTag } from "next/cache";
 import { ImageResponse } from "next/og";
+import sharp from "sharp";
 import { OG_IMAGE_SIZE, USER_AGENT } from "@/lib/constants";
 
 /**
  * The share plate (T101) for card, commander and saved-deck pages: a paper sheet on the walnut table, the card's art
  * in a gilded frame on the left, the Spell Chasm wordmark on the right, the artist's credit under the art. Rendered
- * once per art and cached; a share crawler's repeat visit costs no Scryfall fetch.
+ * once per art and cached; a share crawler's repeat visit costs no Scryfall fetch. Satori draws a PNG; the photo textures
+ * and art make that about 1.2 MB, so it is sent as a JPEG instead (about 70-100 KB, no visible change).
  */
 
-export const PLATE_CONTENT_TYPE = "image/png";
+export const PLATE_CONTENT_TYPE = "image/jpeg";
+/** mozjpeg quality: 80 keeps the gilt and the wordmark's edges clean at about 70-100 KB. */
+const PLATE_JPEG_QUALITY = 80;
 
 /** Wood, paper and brass tokens from globals.css; Satori reads no CSS variables. */
 const COLOURS = {
@@ -54,8 +58,10 @@ const WALNUT_TILE = "900px 480px";
 
 /** A share crawler waits only a few seconds; a slow Scryfall answer gives the plate without art instead. */
 const IMAGE_TIMEOUT_MS = 8_000;
-/** Lets the CDN keep a plate for a day and serve it stale for a week while it re-renders. */
-export const PLATE_CACHE_CONTROL = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
+/** A card's or commander's art crop and artist almost never change, so a recrawl should be a CDN HIT, not a re-render (Fast Origin Transfer and CPU). */
+export const PLATE_CACHE_CONTROL = "public, max-age=3600, s-maxage=2592000, stale-while-revalidate=604800";
+/** A saved deck's lead commander can be changed, and the deck made private or deleted, so its plate keeps a one-day CDN life. */
+export const DECK_PLATE_CACHE_CONTROL = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
 
 // Static TTF, JPEG and PNG: Satori reads neither woff2, variable fonts nor webp.
 const asset = (file: string) => readFile(join(process.cwd(), "assets/og", file));
@@ -77,6 +83,7 @@ async function fetchArt(url: string): Promise<string> {
   return `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`;
 }
 
+/** The plate as JPEG bytes. */
 async function renderPlate(art: string | null, artist: string | null): Promise<Uint8Array> {
   // Beside the art, the wordmark fills what's left of the sheet; alone, it sits twice as wide.
   const besideArt = OG_IMAGE_SIZE.width - 2 * (TABLE_PX + SHEET_PAD_PX) - FRAME_WIDTH_PX - GAP_PX;
@@ -150,7 +157,8 @@ async function renderPlate(art: string | null, artist: string | null): Promise<U
     </div>,
     { ...OG_IMAGE_SIZE, fonts: [{ name: "Cormorant Garamond", data: await cormorantBold, weight: 700, style: "normal" }] },
   );
-  return new Uint8Array(await response.arrayBuffer());
+  const png = Buffer.from(await response.arrayBuffer());
+  return new Uint8Array(await sharp(png).jpeg({ quality: PLATE_JPEG_QUALITY, mozjpeg: true }).toBuffer());
 }
 
 /** One art's plate, cached by its Scryfall URL and artist (tag "catalog"). */
@@ -165,18 +173,22 @@ async function cachedPlate(artUrl: string, artist: string | null): Promise<Uint8
  * The plate as a response. No art (Scryfall has no crop) gives the sheet with the wordmark alone; Scryfall not
  * answering gives the same, uncached, so the next request tries the art again.
  */
-export async function plateResponse(artUrl: string | null | undefined, artist: string | null): Promise<Response> {
-  let png: Uint8Array;
-  if (!artUrl) png = await renderPlate(null, null);
+export async function plateResponse(
+  artUrl: string | null | undefined,
+  artist: string | null,
+  cacheControl: string = PLATE_CACHE_CONTROL,
+): Promise<Response> {
+  let plate: Uint8Array;
+  if (!artUrl) plate = await renderPlate(null, null);
   else {
     try {
-      png = await cachedPlate(artUrl, artist);
+      plate = await cachedPlate(artUrl, artist);
     } catch (err) {
       console.error(err);
-      png = await renderPlate(null, null);
+      plate = await renderPlate(null, null);
     }
   }
-  return new Response(png as Uint8Array<ArrayBuffer>, {
-    headers: { "Content-Type": PLATE_CONTENT_TYPE, "Cache-Control": PLATE_CACHE_CONTROL },
+  return new Response(plate as Uint8Array<ArrayBuffer>, {
+    headers: { "Content-Type": PLATE_CONTENT_TYPE, "Cache-Control": cacheControl },
   });
 }

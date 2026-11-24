@@ -1,6 +1,6 @@
 import { loadDeckPage } from "@/lib/server/deck-page";
 import { createPublicClient } from "@/lib/server/supabase";
-import { PLATE_CONTENT_TYPE, plateResponse } from "@/lib/server/share-plate";
+import { DECK_PLATE_CACHE_CONTROL, PLATE_CONTENT_TYPE, plateResponse } from "@/lib/server/share-plate";
 import { OG_IMAGE_SIZE, SITE_NAME } from "@/lib/constants";
 
 /**
@@ -17,5 +17,5 @@ export default async function Image({ params }: { params: Promise<{ commander: s
   const deck = await loadDeckPage(createPublicClient(), code, null);
   const lead = deck?.commanders[0];
   if (!deck || !lead) return new Response(null, { status: 404 });
-  return plateResponse(lead.images?.front.artCrop, deck.artists[lead.id] ?? null);
+  return plateResponse(lead.images?.front.artCrop, deck.artists[lead.id] ?? null, DECK_PLATE_CACHE_CONTROL);
 }
