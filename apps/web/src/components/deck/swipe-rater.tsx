@@ -264,29 +264,27 @@ export function SwipeRater({
                 inRater ? (
                   optionCount
                 ) : (
-                  <div role="group" aria-label="Replacement options" className="flex items-center">
+                  // Solid primary, so the other options are seen (owner, 2026-11-24: testers missed them until swap 9 of 10).
+                  <div role="group" aria-label="Replacement options" className="flex items-center gap-2">
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon"
+                      size="icon-sm"
                       aria-label="Previous option"
                       // aria-disabled rather than disabled, so the button keeps focus as it reaches the first option.
                       aria-disabled={rater.candidateIndex === 0}
                       onClick={rater.back}
-                      className="size-11 aria-disabled:cursor-default aria-disabled:opacity-50"
+                      className="aria-disabled:cursor-default aria-disabled:opacity-50"
                     >
-                      <ChevronLeft aria-hidden className="size-5" />
+                      <ChevronLeft aria-hidden className="size-4" />
                     </Button>
                     {optionCount}
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon"
+                      size="icon-sm"
                       aria-label={`Pass on ${candidate.card.name}`}
                       onClick={() => act("pass")}
-                      className="size-11"
                     >
-                      <ChevronRight aria-hidden className="size-5" />
+                      <ChevronRight aria-hidden className="size-4" />
                     </Button>
                   </div>
                 )

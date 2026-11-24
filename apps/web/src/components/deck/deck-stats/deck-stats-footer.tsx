@@ -90,7 +90,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             setOpen((o) => !o);
           }}
         >
-          <span className="justify-self-start text-base font-semibold">Deck stats</span>
+          <span className="justify-self-start text-base font-semibold text-primary">Deck stats</span>
           {panel.money ? <MoneySlot money={panel.money} /> : <span />}
           <span className="flex shrink-0 items-center gap-2 justify-self-end">
             {after ? (
@@ -98,7 +98,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             ) : (
               <LevelBadge level={report.level} okCount={report.okCount} total={report.total} compact />
             )}
-            <ChevronUp aria-hidden className="size-5 text-muted-foreground" />
+            <ChevronUp aria-hidden className="size-5 text-primary" />
           </span>
         </button>
       </div>
@@ -133,7 +133,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             <span className="flex items-center gap-3">
               <LevelBadge level={report.level} okCount={report.okCount} total={report.total} />
               {scoreAfter}
-              <ChevronDown aria-hidden className="size-5 text-muted-foreground" />
+              <ChevronDown aria-hidden className="size-5 text-primary" />
             </span>
           </button>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
