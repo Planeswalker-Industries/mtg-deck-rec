@@ -78,8 +78,8 @@ test("saves a deck with its last edit, the deckbuilder saves every change, and t
 
   await expect(page.getByRole("link", { name: deckName, exact: true })).toBeVisible();
 
-  // Each tile's ⋯ button shows its actions (as a hover or a first tap does). Copy.
-  await page.getByRole("button", { name: `Actions for ${deckName}`, exact: true }).click();
+  // A mouse shows a tile's actions by hovering it (a touch, by a first tap or the tile's ⋯ button). Copy.
+  await page.getByRole("link", { name: deckName, exact: true }).hover();
   await page
     .getByRole("button", { name: /^Copy / })
     .first()
@@ -90,7 +90,9 @@ test("saves a deck with its last edit, the deckbuilder saves every change, and t
 
   // Delete, which confirms first.
   page.once("dialog", (d) => void d.accept());
-  await page.getByRole("button", { name: `Actions for ${deckName} (copy)`, exact: true }).click();
+  // Off the grid first: the copy took the first tile's place under the pointer, and only a move selects it.
+  await page.mouse.move(0, 0);
+  await copy.hover();
   await page.getByRole("button", { name: `Delete ${deckName} (copy)`, exact: true }).click();
   await expect(page.getByRole("listitem")).toHaveCount(1);
 });
@@ -197,7 +199,7 @@ test("reopens a saved deck in the tool, and edits go back to it", async ({ page,
 
   // Come back to it from the list, by its own link rather than the deck page.
   await page.goto("/decks");
-  await page.getByRole("button", { name: /^Actions for / }).first().click();
+  await page.getByRole("listitem").first().hover();
   await page.getByRole("link", { name: /^Upgrade .* in the deck tool$/ }).click();
   await page.waitForURL(/\/deck\?deck=[A-Za-z0-9]{8,32}$/);
 

@@ -119,7 +119,8 @@ export function DeckStack({ cardSrc, className }: { cardSrc: string; className?:
  *
  * Selecting a tile grows it and shows its actions; the list keeps one tile selected at a time. A mouse selects by
  * hovering and opens the deck on click. A touch selects on the first tap and opens on the second; a tap outside any
- * tile clears it. The keyboard selects on focus. The ⋯ button selects too, for anyone who doesn't guess the first tap.
+ * tile clears it. The keyboard selects on focus. On touch screens a ⋯ button selects too, for anyone who doesn't guess
+ * the first tap; where a pointer can hover, hovering already shows the actions, so the button is hidden there.
  * From sm up the actions open as a small popover; on phones as a sheet along the bottom of the screen, so they never
  * cover the next row's cards.
  */
@@ -240,7 +241,8 @@ export function DeckTile({
           </span>
         </Link>
 
-        {/* Over the stack's top right corner: the photo's frame, so the button sits on the same spot at every size. */}
+        {/* Over the stack's top right corner: the photo's frame, so the button sits on the same spot at every size. Touch
+            screens only: a hover shows the actions before a mouse could reach it, so there its click would do nothing. */}
         <span className="pointer-events-none absolute inset-x-0 top-0 mx-auto block w-full max-w-56" style={{ aspectRatio: STACK_ASPECT }}>
           <button
             type="button"
@@ -254,7 +256,7 @@ export function DeckTile({
               else onActivate();
             }}
             className={cn(
-              "pointer-events-auto absolute -top-1 -right-1 flex size-11 items-center justify-center rounded-full bg-popover text-primary shadow-md ring-1 ring-foreground/10 transition-colors hover:bg-primary/10 sm:size-9",
+              "pointer-events-auto absolute -top-1 -right-1 flex size-11 [@media(hover:hover)]:hidden items-center justify-center rounded-full bg-popover text-primary shadow-md ring-1 ring-foreground/10 transition-colors hover:bg-primary/10 sm:size-9",
               MENU_ITEM_FOCUS,
               active && "ring-2 ring-primary",
             )}
