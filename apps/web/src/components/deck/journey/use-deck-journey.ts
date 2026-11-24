@@ -818,7 +818,7 @@ export function useDeckJourney({
     replace.status === "ready" ? replace.data.suggestions.filter((s) => s.severity === "suggested") : [];
 
   // ── Result ─────────────────────────────────────────────────────────────────────────────────────────────────────
-  /** The decklist the round ends with, for committing (save, re-analyze). */
+  /** The decklist the round ends with, for committing (save) and export. */
   function resultText(): string | null {
     return deck ? decklistFor(deck, (id) => cards.get(id)?.name ?? null) : null;
   }

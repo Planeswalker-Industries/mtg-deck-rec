@@ -59,7 +59,7 @@ interface RoundControlsProps {
   onUndo: () => void;
   onStartOver: () => void;
   save: RoundSave;
-  /** A save or re-analyze is under way: Save waits for it. */
+  /** A save is under way: Save waits for it. */
   busy: boolean;
   /** Receives the element between Start over and Save that the step's `StepStatus` renders into. */
   slotRef?: (el: HTMLElement | null) => void;

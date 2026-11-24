@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import { ChevronDown, Download, RefreshCw, TriangleAlert } from "lucide-react";
+import { ChevronDown, Download, TriangleAlert } from "lucide-react";
 import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, StatChoice, StatChoices } from "@mtg/core/contract";
 import { CURVE_LINE, deckDiff, deckStats, type DeckStatsReport, type FixBlock } from "@mtg/core/journey";
@@ -25,8 +25,6 @@ import { Upgrades } from "./upgrades";
 import type { DeckJourney } from "./use-deck-journey";
 import type { Fix, FixLineLabel } from "./use-fix";
 
-/** Average mana value is shown to one decimal: finer than that is noise at deck scale. */
-const MANA_VALUE_DECIMALS = 1;
 /** One part of the result: a sheet of paper on the wood, padded like the journey's other sheets (`Panel` sm). */
 const SECTION_SHEET = "sheet p-4";
 /**
@@ -166,10 +164,10 @@ export function roundInIds(journey: DeckJourney): CardId[] {
 /**
  * Finish: the round's result, shown rather than told. It leads with "Deck Complete!" and the round's Undo, Start over and
  * Save in its top right (owner, 2026-11-23), the cart total and Buy on TCGplayer as the seal (or, when the collection
- * supplies every card, the upgrades worth buying and their Buy), with Copy, Download and Re-analyze in one outline row
- * beside it (T102). Then one Deck stats sheet: cards, mana value and the deck's value before and after, each stat line as
- * a read-only bar from where the round started to where it ends against its aim, and each line still off with its
- * reason and what the player can do about it (T087). Then the shopping list, every change as card plates (Out beside
+ * supplies every card, the upgrades worth buying and their Buy), with Copy and Download in one outline row
+ * beside it (T102); the card count sits on the heading's line (owner, 2026-11-24). Then one Deck stats sheet: the deck's
+ * value before and after (with a collection), each stat line as a ring from where the round started to where it ends
+ * against its aim, and each line still off with its reason and what the player can do about it (T087). Then the shopping list, every change as card plates (Out beside
  * In) and the finished decklist laid out by type on the plates the deck editor uses.
  */
 export function ReviewPhase({
@@ -178,7 +176,6 @@ export function ReviewPhase({
   busy,
   stale = false,
   save,
-  onReanalyze,
   fix,
   choices,
   onChoice,
@@ -212,7 +209,6 @@ export function ReviewPhase({
   stale?: boolean;
   /** What saving does: write back to the open saved deck (or save a copy), or save a new deck. */
   save: RoundSave;
-  onReanalyze: () => void;
 }) {
   const state = journey.state;
   const deck = journey.deck;
@@ -293,7 +289,6 @@ export function ReviewPhase({
   const outs = changes.flatMap((c) => (c.out ? [c.out] : []));
   const ins = changes.flatMap((c) => (c.into ? [c.into] : []));
   const addedIds = new Set(deckDiff(state.base, deck).added.map((c) => c.cardId));
-  const rounded = (n: number) => Number(n.toFixed(MANA_VALUE_DECIMALS));
 
   const commanderIds = new Set<CardId>(deck.commanders);
   const commanders = journey.after.filter((e) => commanderIds.has(e.card.id));
@@ -340,8 +335,13 @@ export function ReviewPhase({
           2026-11-23): the heading steps down a size on phones so both fit the 390 px width.
         */}
         <div className="flex items-center justify-between gap-2">
-          <h2 id="review-ready" className="min-w-0 font-heading text-xl leading-none font-semibold sm:text-2xl">
-            {overBy > 0 ? "Almost ready" : "Deck Complete!"}
+          {/* The card count beside the heading, as the Decklist's: before → after only when the round changed it. */}
+          <h2 id="review-ready" className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 leading-none">
+            <span className="font-heading text-xl font-semibold sm:text-2xl">{overBy > 0 ? "Almost ready" : "Deck Complete!"}</span>
+            <span className="text-base font-normal">
+              <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
+              <span className="text-sm text-muted-foreground"> cards</span>
+            </span>
           </h2>
           <RoundControls
             canUndo={journey.canUndo}
@@ -393,23 +393,12 @@ export function ReviewPhase({
             >
               <Download aria-hidden />
             </Button>
-            <Button
-              type="button"
-              size="icon-lg"
-              variant="outline"
-              onClick={onReanalyze}
-              disabled={blocked}
-              aria-label="Re-analyze"
-              title="Re-analyze"
-            >
-              <RefreshCw aria-hidden />
-            </Button>
           </div>
         </div>
         <CopySaveStatus save={save} />
         {stale && (
           <p role="status" className="text-sm text-muted-foreground">
-            The decklist has changed since this deck was analyzed. Analyze it to save or re-analyze from here.
+            The decklist has changed since this deck was analyzed. Analyze it to save from here.
           </p>
         )}
       </section>
@@ -418,24 +407,14 @@ export function ReviewPhase({
           <span className="font-heading text-xl leading-none font-semibold">Deck stats</span>
           {report && <FinishScore level={report.level} okCount={report.okCount} total={report.total} />}
         </h3>
-        <dl className={cn("grid gap-3", cart.fromCollection ? "grid-cols-3" : "grid-cols-2")}>
-          <Figure label="Cards">
-            <Move before={before.cards} after={after.cards} verdict={judge(before.cards, after.cards, COMMANDER_DECK_SIZE)} />
-          </Figure>
-          <Figure label="Avg mana value">
-            <Move
-              before={rounded(before.averageManaValue)}
-              after={rounded(after.averageManaValue)}
-              verdict={judge(rounded(before.averageManaValue), rounded(after.averageManaValue), null)}
-              format={(n) => n.toFixed(MANA_VALUE_DECIMALS)}
-            />
-          </Figure>
-          {/*
-              Whole dollars: cents are noise on an estimate. The whole deck, basics and owned cards included, so it is
-              named apart from the cart total the shopping list and Deck stats show. Only with a collection: without
-              one the cart is the deck but its basics, and two near-equal totals read as a mistake.
-            */}
-          {cart.fromCollection && (
+        {/*
+          Whole dollars: cents are noise on an estimate. The whole deck, basics and owned cards included, so it is named
+          apart from the cart total the shopping list and Deck stats show. Only with a collection: without one the cart
+          is the deck but its basics, and two near-equal totals read as a mistake. Cards moved to the heading and the
+          average mana value went (owner, 2026-11-24: neither told the player anything here).
+        */}
+        {cart.fromCollection && (
+          <dl>
             <Figure
               label="Deck value"
               note={asOf ? `Scryfall, ${formatAsOf(asOf)}${after.unpriced > 0 ? `, ${after.unpriced} unpriced` : ""}` : undefined}
@@ -447,8 +426,8 @@ export function ReviewPhase({
                 format={wholeUsd}
               />
             </Figure>
-          )}
-        </dl>
+          </dl>
+        )}
         {report &&
           (!fix.ready ? (
             <p role="status" className="text-sm text-muted-foreground">

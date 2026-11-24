@@ -906,28 +906,26 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   }
 
   /**
-   * Ends a journey round. Save and Re-analyze put the result in the decklist and analyze it, which starts a new round
-   * at Add. Save then opens the editor: an open account deck has just been written back by the analysis, and a deck
-   * that isn't saved yet gets the name form.
+   * Ends a journey round by saving: the result goes in the decklist and is analyzed, which starts a new round at Add,
+   * then the editor opens: an open account deck has just been written back by the analysis, and a deck that isn't
+   * saved yet gets the name form. (Finish's Re-analyze went, owner 2026-11-24: it read as a second Start over.)
    */
   /** `open`: the deck the save writes to, when it was opened in this same handler (the state has yet to show it). */
-  async function commitJourney(kind: "save" | "reanalyze", open: { code: string } | null = tool.openDeck) {
+  async function commitJourney(open: { code: string } | null = tool.openDeck) {
     const text = journey.resultText();
     if (text === null) return;
     setCommitting(true);
     const outcome = await tool.commitText(text);
     setCommitting(false);
     if (!outcome.parsed) return;
-    if (kind === "save") {
-      // An open deck was just written back by the analysis; once that lands, its editor has the result.
-      if (open) {
-        await tool.whenSaved();
-        router.push(editorUrl(open.code));
-        return;
-      }
-      setMode("edit");
-      setSaveAsked(true);
+    // An open deck was just written back by the analysis; once that lands, its editor has the result.
+    if (open) {
+      await tool.whenSaved();
+      router.push(editorUrl(open.code));
+      return;
     }
+    setMode("edit");
+    setSaveAsked(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1042,17 +1040,17 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     const saved = buyDeck.current;
     if (!tool.openDeck && saved && analysis && saved.commanders === commandersOf(analysis)) {
       tool.trackSavedDeck(saved);
-      void commitJourney("save", saved);
+      void commitJourney(saved);
       return;
     }
-    void commitJourney("save");
+    void commitJourney();
   }
 
   const roundSave: RoundSave = tool.openDeck
     ? {
         kind: "open",
         deckName: tool.openDeck.name,
-        onSaveChanges: () => void commitJourney("save"),
+        onSaveChanges: () => void commitJourney(),
         onSaveCopy: () => void saveCopy(),
         copy,
       }
@@ -1473,7 +1471,6 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                       busy={committing}
                       stale={tool.stale}
                       save={roundSave}
-                      onReanalyze={() => void commitJourney("reanalyze")}
                       fix={fix}
                       choices={tool.statChoices}
                       onChoice={tool.setStatChoice}
