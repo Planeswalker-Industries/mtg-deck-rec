@@ -2,7 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { markTourSeen, tourSeen, toursEnabled } from "@/lib/tour-store";
-import { tourSteps, type TourId } from "@/lib/tours";
+import { stepTargets, tourSteps, type TourId } from "@/lib/tours";
+import { liveTarget, stepReady } from "./tour-dom";
+import { TourOverlay } from "./tour-overlay";
 
 /**
  * How long a step waits for its element before it is skipped: long enough for a client read to land and render
@@ -44,22 +46,15 @@ export function notifyTour(target: string, action: "tap" | "swipe"): void {
   notifyHandler?.(target, action);
 }
 
-const targetElement = (target: string) => document.querySelector(`[data-tour="${CSS.escape(target)}"]`);
-
-/** A step can show once its element is on the page and no dialog covers it: an open dialog only lets its own through. */
-function stepReady(target: string): boolean {
-  const element = targetElement(target);
-  if (!element) return false;
-  const dialogs = [...document.querySelectorAll('[role="dialog"][data-state="open"]')];
-  return dialogs.length === 0 || dialogs.some((dialog) => dialog.contains(element));
-}
-
 const startable = (id: TourId) => toursEnabled() && !tourSeen(id) && tourSteps(id).length > 0;
 
 /**
  * Runs one tour at a time across the app. A page asks for its tour with `<PageTour id>`; a second request while one
  * runs waits its turn. Each step waits for its element (and for any dialog over it to close), and is skipped when the
  * element never comes. The overlay that draws `active` sits inside this provider.
+ *
+ * A step whose element is already free to light shows at once, so moving between steps on one screen never drops the
+ * overlay for a frame.
  */
 export function TourProvider({ children }: { children: ReactNode }) {
   // The ref is the truth the handlers read and write at once; the state re-renders the overlay.
@@ -92,8 +87,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
       const current = runRef.current;
       if (!current) return;
       // Past the last step: done, and seen only if the player saw any of it.
-      if (index >= tourSteps(current.id).length) close(current.shown);
-      else setRun({ ...current, index, ready: false });
+      const step = tourSteps(current.id)[index];
+      if (!step) close(current.shown);
+      else {
+        const ready = stepReady(step);
+        setRun({ ...current, index, ready, shown: current.shown || ready });
+      }
     },
     [close, setRun],
   );
@@ -129,8 +128,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
     if (!current) return;
     const steps = tourSteps(current.id);
     for (let index = current.index - 1; index >= 0; index--) {
-      if (targetElement(steps[index]!.target)) {
-        setRun({ ...current, index, ready: false });
+      const step = steps[index]!;
+      if (liveTarget(step)) {
+        const ready = stepReady(step);
+        setRun({ ...current, index, ready, shown: current.shown || ready });
         return;
       }
     }
@@ -149,7 +150,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
     const check = () => {
       const current = runRef.current;
       if (!current || current.id !== runId || current.index !== runIndex || current.ready) return;
-      if (stepReady(step.target)) setRun({ ...current, ready: true, shown: true });
+      if (stepReady(step)) setRun({ ...current, ready: true, shown: true });
     };
     // A frame first, so the page that asked has painted.
     const frame = requestAnimationFrame(check);
@@ -162,7 +163,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
     });
     // Skipped only when the element never came; one under a dialog waits for the dialog to close.
     const timer = setTimeout(() => {
-      if (!targetElement(step.target)) goTo(runIndex + 1);
+      if (!liveTarget(step)) goTo(runIndex + 1);
     }, TOUR_TARGET_WAIT_MS);
     return () => {
       cancelAnimationFrame(frame);
@@ -176,7 +177,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
       const current = runRef.current;
       if (!current?.ready) return;
       const step = tourSteps(current.id)[current.index];
-      if (step?.target === target && step.prompt === action) goTo(current.index + 1);
+      if (step?.prompt === action && stepTargets(step).some((candidate) => candidate.target === target)) goTo(current.index + 1);
     };
     return () => {
       notifyHandler = null;
@@ -196,7 +197,24 @@ export function TourProvider({ children }: { children: ReactNode }) {
     [ready, runId, runIndex, request, release, next, previous, end],
   );
 
-  return <TourContext value={api}>{children}</TourContext>;
+  const activeSteps = ready && runId !== undefined ? tourSteps(runId) : [];
+  const activeStep = runIndex === undefined ? undefined : activeSteps[runIndex];
+  return (
+    <TourContext value={api}>
+      {children}
+      {activeStep && runIndex !== undefined && (
+        <TourOverlay
+          key={runId}
+          step={activeStep}
+          index={runIndex}
+          count={activeSteps.length}
+          onNext={next}
+          onPrevious={previous}
+          onEnd={end}
+        />
+      )}
+    </TourContext>
+  );
 }
 
 export function useTour(): TourApi {

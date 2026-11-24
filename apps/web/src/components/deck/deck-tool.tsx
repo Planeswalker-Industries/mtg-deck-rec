@@ -53,6 +53,7 @@ import { SaveDeckButton, deckNameFor, suggestedDeckName } from "@/components/dec
 import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
+import { PageTour } from "@/components/tour/page-tour";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
 import { SPEND_FIELD_LABEL, StartSettings } from "./start-settings";
 import { readBudgetPref, writeBudgetPref, type BudgetPrefMode } from "@/lib/budget-prefs";
@@ -1119,12 +1120,13 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
           id="deck-build-heading"
           heading="Choose commander"
           slimArt
+          tour="build-start"
           aside="We'll deal you a deck."
           intro={
             <>
               {source.kind === "none" && (
                 <p className="text-sm text-muted-foreground">
-                  <Link href={buildImportHref} className={cn(TEXT_LINK, "font-semibold")}>
+                  <Link href={buildImportHref} data-tour="build-start.import" className={cn(TEXT_LINK, "font-semibold")}>
                     Import your collection
                   </Link>{" "}
                   to pick from commanders you own and build from your cards.
@@ -1133,31 +1135,38 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
             </>
           }
         >
+          <PageTour id="build-start" />
           <div className="flex flex-col gap-3">
             {tool.ownedOnly && (
-              <Segmented
-                label="Which commanders to list"
-                options={[
-                  { value: "owned", label: "From my collection" },
-                  { value: "any", label: "Any commander" },
-                ]}
-                value={pickFrom}
-                onChange={(value) => {
-                  // The pick came from the other list; a fresh list starts a fresh pick.
-                  setPicked(null);
-                  setPickFrom(value);
-                }}
-              />
+              <div data-tour="build-start.source">
+                <Segmented
+                  label="Which commanders to list"
+                  options={[
+                    { value: "owned", label: "From my collection" },
+                    { value: "any", label: "Any commander" },
+                  ]}
+                  value={pickFrom}
+                  onChange={(value) => {
+                    // The pick came from the other list; a fresh list starts a fresh pick.
+                    setPicked(null);
+                    setPickFrom(value);
+                  }}
+                />
+              </div>
             )}
             {picked ? (
-              <SelectedCommander commanders={picked} onChange={() => setPicked(null)} />
+              <div data-tour="build-start.picked">
+                <SelectedCommander commanders={picked} onChange={() => setPicked(null)} />
+              </div>
             ) : (
               // The collection offer takes focus while it is up; off again, the cursor goes back into the box.
-              <CommanderPicker
-                autoFocus={!offersCollection}
-                ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
-                onPick={(card) => setPicked([card])}
-              />
+              <div data-tour="build-start.commander">
+                <CommanderPicker
+                  autoFocus={!offersCollection}
+                  ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
+                  onPick={(card) => setPicked([card])}
+                />
+              </div>
             )}
             <StartSettings
               bracket={tool.startBracket}
@@ -1165,10 +1174,12 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               budget={tool.budget}
               onBudget={chooseBuildBudget}
               importHref={tool.ownedOnly ? null : buildImportHref}
+              tour="build-start"
             />
             {/* The page's main action, so the seal. The Bracket and budget are read at the tap, so a change after the pick still counts. */}
             <button
               type="button"
+              data-tour="build-start.build"
               className={cn(SEAL_BUTTON, "w-full disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:self-end")}
               disabled={picked === null}
               onClick={() => {
