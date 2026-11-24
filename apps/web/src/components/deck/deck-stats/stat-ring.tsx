@@ -15,7 +15,8 @@ import { ringTip } from "./stat-chip-copy";
 /**
  * Deck stats as rings (owner, 2026-11-23), drawn the way an activity ring reads: the first lap closes at the bottom of a
  * line's range and its count gives way to a check, then OK; a darker green second lap fills across the range; past the
- * top the ring turns red, shakes and shows a warning. Short lines are amber, far short ones red. Every colour comes with
+ * top the ring turns red, shakes and shows a warning in its centre, which fades to the count on hover, focus or tap
+ * (owner, 2026-11-24). Short lines are amber, far short ones red. Every colour comes with
  * a word or an icon: the count, a check, OK or the warning. What to do about a line is in its tip, opened by a hover or
  * a tap, so the rings sit close and read at a glance (owner, 2026-11-23).
  *
@@ -223,6 +224,9 @@ export function StatRing({
   const better = moved !== 0 && towardTarget(line.value, line.target, moved, minimum, after?.target);
   const countClass = cn("font-mono leading-none", size === "lg" ? "text-xl" : size === "sm" ? "text-base" : "text-sm");
   const centreKey = ignored ? "ignored" : okNow && centreState !== "count" ? centreState : `count-${shown.value}`;
+  const warned = zone === "over" && !ignored;
+  /** The warning gives way to the count while the pointer is on the ring, it has focus, or its tip is open. */
+  const reveal = "transition-opacity duration-200 motion-reduce:transition-none";
   const spoken = spokenRing(line, zone, minimum, previewing ? { value: after.value, better } : null);
 
   const ringBody = (
@@ -247,20 +251,34 @@ export function StatRing({
                 <Check className={size === "lg" ? "size-7" : "size-5"} strokeWidth={3} />
               ) : centreKey === "ok" ? (
                 <span className={cn("font-semibold", size === "lg" ? "text-base" : "text-sm")}>OK</span>
+              ) : warned ? (
+                // Over its range: the warning in the centre, the count under it until the ring is hovered or opened.
+                <span className="relative flex items-center justify-center">
+                  <span
+                    className={cn(
+                      countClass,
+                      reveal,
+                      "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100",
+                    )}
+                  >
+                    {shown.value}
+                  </span>
+                  <TriangleAlert
+                    className={cn(
+                      "absolute",
+                      size === "lg" ? "size-7" : "size-5",
+                      reveal,
+                      "group-hover:opacity-0 group-focus-visible:opacity-0 group-data-[state=open]:opacity-0",
+                    )}
+                    strokeWidth={2.5}
+                  />
+                </span>
               ) : (
                 <span className={countClass}>{shown.value}</span>
               )}
             </motion.span>
           </AnimatePresence>
         </span>
-        {/* Over its range: the warning sits on the ring's shoulder. */}
-        {zone === "over" && !ignored && (
-          <TriangleAlert
-            aria-hidden
-            className="absolute -top-1 -right-1 size-4 rounded-full bg-background text-destructive"
-            strokeWidth={2.5}
-          />
-        )}
         {moved !== 0 && (
           <span
             aria-hidden
@@ -350,7 +368,7 @@ function RingTip({
         aria-label={spoken}
         onPointerEnter={(e) => e.pointerType === "mouse" && later(true, TIP_HOVER_DELAY_MS)}
         onPointerLeave={(e) => e.pointerType === "mouse" && later(false, TIP_LEAVE_MS)}
-        className="cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="group cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         {children}
       </Popover.Trigger>
@@ -382,9 +400,10 @@ const GRID: Record<RingSize, string> = {
 };
 
 /**
- * Every line as rings, by group, each under a small heading: the main lines (mana and roles) big, the card types
- * smaller, the colour sources by their mana symbol. Finish shows the deck this way; the Deck stats sheet places the
- * groups among its other parts itself.
+ * Every line as rings, by group, largest first: the main lines (mana and roles) big, the card types smaller, the colour
+ * sources by their mana symbol. No headings, since every ring is labelled; a seam rule parts the sizes (owner,
+ * 2026-11-24). Each list keeps its group's name for screen readers. Finish shows the deck this way; the Deck stats sheet
+ * places the groups among its other parts itself.
  */
 export function StatRingGroups({ lines, actionFor }: { lines: readonly StatLine[]; actionFor?: (line: StatLine) => ReactNode }) {
   const groups: { title: string; size: RingSize; lines: StatLine[] }[] = [
@@ -393,14 +412,11 @@ export function StatRingGroups({ lines, actionFor }: { lines: readonly StatLine[
     { title: "Colour sources", size: "mana", lines: lines.filter((l) => l.group === "colours") },
   ];
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 [&>*+*]:border-t [&>*+*]:border-seam [&>*+*]:pt-3">
       {groups
         .filter((g) => g.lines.length > 0)
         .map((g) => (
-          <section key={g.title} className="flex flex-col gap-1.5">
-            <h4 className="text-sm font-semibold text-muted-foreground">{g.title}</h4>
-            <StatRings label={g.title} lines={g.lines} size={g.size} {...(actionFor ? { actionFor } : {})} />
-          </section>
+          <StatRings key={g.title} label={g.title} lines={g.lines} size={g.size} {...(actionFor ? { actionFor } : {})} />
         ))}
     </div>
   );
