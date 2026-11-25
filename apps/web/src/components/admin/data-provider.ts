@@ -5,12 +5,18 @@ import { HttpError } from "react-admin";
 import {
   ADMIN_USER_SORTS,
   type AdminAcceptRate,
+  type AdminCollectionItemPage,
+  type AdminCrawlSource,
+  type AdminDeckCard,
+  type AdminSiteStats,
   type AdminSyncRun,
   type AdminSyncRunPage,
   type AdminTag,
   type AdminTagPage,
   type AdminTagSort,
   type AdminUser,
+  type AdminUserCollection,
+  type AdminUserDeck,
   type AdminUserPage,
 } from "@/lib/admin/types";
 
@@ -30,6 +36,9 @@ const USERS = "/api/admin/users";
 const TAGS = "/api/admin/tags";
 const SYNC_RUNS = "/api/admin/sync-runs";
 const ACCEPT_RATES = "/api/admin/accept-rates";
+const DECKS = "/api/admin/decks";
+const HOME = "/api/admin/home";
+const CRAWLS = "/api/admin/crawls";
 
 /** React Admin's default page size, used when a list asks without saying. */
 const DEFAULT_PER_PAGE = 25;
@@ -237,14 +246,36 @@ const provider = {
   async create() {
     throw new HttpError("Nothing in the admin area is created by hand.", 400);
   },
+
+  // Reads of one account's private data, outside React Admin's resource model: each call writes an audit row in the
+  // database, so the screens call these themselves, once, when the tab that shows them opens.
+  getUserDecks: (userId: string) => call<AdminUserDeck[]>(`${recordUrl(USERS, userId)}/decks`),
+  getDeckCards: (deckId: string) => call<AdminDeckCard[]>(`${recordUrl(DECKS, deckId)}/cards`),
+  getUserCollection: (userId: string) => call<AdminUserCollection>(`${recordUrl(USERS, userId)}/collection`),
+  searchUserCollection: (userId: string, search: string, offset: number) =>
+    call<AdminCollectionItemPage>(
+      `${recordUrl(USERS, userId)}/collection/items?${new URLSearchParams({ search, offset: String(offset) })}`,
+    ),
+
+  // The admin home's reads: counts and status, no player's data, so no audit row and free to refresh.
+  getSiteStats: () => call<AdminSiteStats>(HOME),
+  // The crawl page's endpoint answers with a page of decks beside the sources; one deck is the least it will send.
+  getCrawlSources: async () => (await call<{ sources: AdminCrawlSource[] }>(`${CRAWLS}/sources`)).sources,
 };
+
+/** The provider's own methods beside React Admin's, for `useDataProvider<AdminDataProvider>()`. */
+export type AdminDataProvider = DataProvider &
+  Pick<
+    typeof provider,
+    "getUserDecks" | "getDeckCards" | "getUserCollection" | "searchUserCollection" | "getSiteStats" | "getCrawlSources"
+  >;
 
 /**
  * One cast, at the boundary. `DataProvider`'s methods are generic in the record type, so a provider that returns
  * concrete record types can't satisfy them structurally — every real-world provider casts here. The per-resource
  * types above are the ones that matter.
  */
-export const adminDataProvider = provider as unknown as DataProvider;
+export const adminDataProvider = provider as unknown as AdminDataProvider;
 
 /**
  * Only what the form actually changed. The API applies the fields it is given and leaves the rest alone, so sending

@@ -1,4 +1,5 @@
 import type { ApiError } from "@mtg/core/contract";
+import { normalizeName } from "@mtg/core/parse";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ListAdminAcceptRatesInput,
@@ -8,20 +9,24 @@ import type {
   ListAdminSyncRunsInput,
   ListAdminTagsInput,
   ListAdminUsersInput,
+  SearchAdminCollectionInput,
   UpdateAdminTagInput,
   UpdateAdminUserInput,
 } from "@/lib/admin/schemas";
 import type {
   AdminAcceptRate,
+  AdminCollectionItemPage,
   AdminCrawledDeckCard,
   AdminCrawledDeckPage,
   AdminCrawlSource,
+  AdminDeckCard,
   AdminErrorEvent,
   AdminErrorTicket,
   AdminErrorTicketPage,
   AdminFeedbackReply,
   AdminFeedbackReportPage,
   AdminRecMode,
+  AdminSiteStats,
   AdminSyncJob,
   AdminSyncRun,
   AdminSyncRunPage,
@@ -29,6 +34,8 @@ import type {
   AdminTag,
   AdminTagPage,
   AdminUser,
+  AdminUserCollection,
+  AdminUserDeck,
   AdminUserPage,
 } from "@/lib/admin/types";
 import { createAuthClient, getCurrentUser, type CurrentUser } from "./auth";
@@ -328,6 +335,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
+ * The admin home's site numbers: accounts, decks, collections, recent imports and what is open in the inboxes. Live
+ * counts on every load; each is a small table or an index read in `admin_site_stats`.
+ */
+export async function getAdminSiteStats(db: AuthedClient): Promise<AdminSiteStats> {
+  const { data, error } = await db.rpc("admin_site_stats");
+  if (error) throw asAdminError(error);
+  return data as unknown as AdminSiteStats;
+}
+
+/**
  * The crawled corpus, for /admin/crawls.
  *
  * Like every other read here, this runs as the *visitor*: the three `admin_*` crawl functions check
@@ -357,6 +374,9 @@ export async function listAdminCrawlSources(db: AuthedClient): Promise<AdminCraw
             finishedAt: row.last_run_finished_at,
             decksWritten: row.last_run_decks_written ?? 0,
             error: row.last_run_error,
+            progressAt: row.last_run_progress_at,
+            commandersVisited: row.last_run_commanders_visited ?? 0,
+            throttles: row.last_run_throttles ?? 0,
           },
   }));
 }
@@ -396,6 +416,96 @@ export async function getAdminCrawledDeckCards(db: AuthedClient, deckId: number)
     typeLine: row.type_line,
     quantity: row.quantity,
   }));
+}
+
+/** The shape `admin_user_decks` returns for each deck, before commander ids become names. */
+interface UserDeckRow {
+  id: string;
+  code: string;
+  name: string;
+  isPublic: boolean;
+  isBuilt: boolean;
+  commanderIds: number[];
+  cardCount: number;
+  bracket: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Every deck one account saved, public or private, for the user page's Decks tab. Each call writes one audit row in
+ * the database, so the tab asks only when it is opened.
+ *
+ * Commander names and the deck page path are resolved here, from the catalog, rather than in SQL: the path is the
+ * same `/decks/<commander slug>/<code>` the rest of the app links to, and the slug segment is decoration that only
+ * the app knows how to fall back on.
+ */
+export async function getAdminUserDecks(db: AuthedClient, userId: string): Promise<AdminUserDeck[]> {
+  const { data, error } = await db.rpc("admin_user_decks", { p_user_id: userId });
+  if (error) throw asAdminError(error);
+  const rows = (Array.isArray(data) ? data : []) as unknown as UserDeckRow[];
+
+  const ids = [...new Set(rows.flatMap((row) => row.commanderIds))];
+  const commanders = new Map<number, { name: string; slug: string }>();
+  if (ids.length > 0) {
+    const { data: cards, error: cardsError } = await db.from("cards").select("id, name, slug").in("id", ids);
+    if (cardsError) throw asAdminError(cardsError);
+    for (const card of cards ?? []) commanders.set(card.id, { name: card.name, slug: card.slug });
+  }
+
+  return rows.map((row) => {
+    const lead = commanders.get(row.commanderIds[0] ?? -1);
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      isPublic: row.isPublic,
+      isBuilt: row.isBuilt,
+      commanderNames: row.commanderIds.map((id) => commanders.get(id)?.name ?? `Card ${id}`),
+      cardCount: row.cardCount,
+      bracket: row.bracket,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      path: row.isPublic ? `/decks/${encodeURIComponent(lead?.slug ?? "deck")}/${encodeURIComponent(row.code)}` : null,
+    };
+  });
+}
+
+/** One saved deck's cards, commanders first. One audit row per call, naming the deck and its owner. */
+export async function getAdminDeckCards(db: AuthedClient, deckId: string): Promise<AdminDeckCard[]> {
+  const { data, error } = await db.rpc("admin_deck_cards", { p_deck_id: deckId });
+  if (error) throw asAdminError(error);
+  return (Array.isArray(data) ? data : []) as unknown as AdminDeckCard[];
+}
+
+/**
+ * One account's collection totals and import history, for the user page's Collection tab. One audit row per call.
+ * The entries themselves are reached only through a search (`searchAdminUserCollection`).
+ */
+export async function getAdminUserCollection(db: AuthedClient, userId: string): Promise<AdminUserCollection> {
+  const { data, error } = await db.rpc("admin_user_collection", { p_user_id: userId });
+  if (error) throw asAdminError(error);
+  return data as unknown as AdminUserCollection;
+}
+
+/**
+ * Entries of one account's collection whose card name contains the search, a page at a time. The search is
+ * normalized the way `cards.name_normalized` is built, so "Seance" finds "Séance". One audit row per call, holding the
+ * search's length, never its text.
+ */
+export async function searchAdminUserCollection(
+  db: AuthedClient,
+  userId: string,
+  input: SearchAdminCollectionInput,
+): Promise<AdminCollectionItemPage> {
+  const { data, error } = await db.rpc("admin_user_collection_items", {
+    p_user_id: userId,
+    p_search: normalizeName(input.search),
+    p_offset: input.offset,
+    p_limit: input.limit,
+  });
+  if (error) throw asAdminError(error);
+  return data as unknown as AdminCollectionItemPage;
 }
 
 export async function listAdminFeedbackReports(

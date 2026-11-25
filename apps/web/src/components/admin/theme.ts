@@ -47,6 +47,7 @@ const CSS = {
   cut: "var(--cut)",
   add: "var(--add)",
   replace: "var(--replace)",
+  warning: "var(--warning)",
   ink: "var(--ink)",
   lift: "var(--lift)",
   // The bar over the wood: the same fill, rule, ink and brass links as the site header and footer.

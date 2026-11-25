@@ -41,7 +41,7 @@ function deckUrl(source: string, id: string): string | null {
   return null;
 }
 
-function ago(iso: string | null): string {
+export function ago(iso: string | null): string {
   if (!iso) return "never";
   const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   const steps: [number, string][] = [
@@ -60,6 +60,17 @@ function ago(iso: string | null): string {
   return `${Math.floor(value)}${unit} ago`;
 }
 
+const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * A running crawl's progress in one line: how far it has got and when it last said so. A last sign of life that keeps
+ * getting older is how a stuck crawl shows here before the next run's sweep closes it.
+ */
+export function crawlProgressLine(run: NonNullable<AdminCrawlSource["lastRun"]>): string {
+  const seen = run.progressAt ? `last progress ${ago(run.progressAt)}` : "no progress yet";
+  return `Running · ${plural(run.commandersVisited, "commander")} · ${plural(run.decksWritten, "deck")} written · ${seen}`;
+}
+
 /** A source's state in the job colours: add for a healthy run, cut for a failed or stopped one. */
 function stateTone(state: string | undefined, disabled: boolean): string {
   if (disabled) return "text-cut";
@@ -71,6 +82,8 @@ function stateTone(state: string | undefined, disabled: boolean): string {
 function SourceCard({ source, index }: { source: AdminCrawlSource; index: number }) {
   const reduce = useReducedMotion();
   const running = source.runningRunId !== null;
+  // The overview's last run is the newest row; while a claim is held that is the run doing the work.
+  const live = running && source.lastRun?.id === source.runningRunId ? source.lastRun : null;
   return (
     <motion.li
       initial={reduce ? false : { opacity: 0, y: 8 }}
@@ -101,6 +114,8 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
         <span className="text-sm text-muted-foreground">decks</span>
       </div>
 
+      {live && <p className="text-sm text-foreground">{crawlProgressLine(live)}</p>}
+
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <dt className="text-muted-foreground">Last deck</dt>
         <dd className="text-right font-mono">{ago(source.lastFetchedAt)}</dd>
@@ -110,6 +125,12 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
           <>
             <dt className="text-muted-foreground">Written</dt>
             <dd className="text-right font-mono">{source.lastRun.decksWritten}</dd>
+          </>
+        )}
+        {source.lastRun && source.lastRun.throttles > 0 && (
+          <>
+            <dt className="text-muted-foreground">Throttled</dt>
+            <dd className="text-right font-mono">{source.lastRun.throttles}×</dd>
           </>
         )}
       </dl>

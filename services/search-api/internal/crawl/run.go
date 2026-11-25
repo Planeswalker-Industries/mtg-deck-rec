@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strconv"
@@ -155,8 +156,8 @@ func (r *Runner) Preflight(ctx context.Context) error {
 }
 
 // Run performs one crawl. A disabled source or an already-running crawl is a Result with no error; an unexpected
-// failure is both a Result with a failed summary and an error.
-func (r *Runner) Run(ctx context.Context) (Result, error) {
+// failure, a recovered panic included, is both a Result with a failed summary and an error.
+func (r *Runner) Run(ctx context.Context) (res Result, err error) {
 	policy, err := r.store.Policy(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("reading crawl policy: %w", err)
@@ -169,6 +170,14 @@ func (r *Runner) Run(ctx context.Context) (Result, error) {
 	}
 	if state.Disabled {
 		return Result{Summary: RunSummary{State: "failed", Error: "disabled"}}, nil
+	}
+
+	// Runs a dead process left open (a redeploy mid-crawl, a crash) are closed first, with the window the claim uses
+	// to call a claim stale. Bookkeeping only: a failed sweep must not stop the crawl.
+	if closed, err := r.store.CloseStaleRuns(ctx, policy.StaleClaim); err != nil {
+		r.log.Error("closing stale crawl runs", "source", r.src.Name(), "err", err)
+	} else if closed > 0 {
+		r.log.Warn("closed crawl runs no process owned", "source", r.src.Name(), "runs", closed)
 	}
 
 	runID, err := r.store.CreateRun(ctx)
@@ -196,6 +205,15 @@ func (r *Runner) Run(ctx context.Context) (Result, error) {
 
 	summary := RunSummary{State: "running"}
 	defer func() {
+		// Every return sets succeeded or failed, so a summary still running here means the crawl never returned: a
+		// panic (recovered here, logged and not re-raised, so the run still closes) or runtime.Goexit.
+		if p := recover(); p != nil {
+			summary.State, summary.Error = "failed", fmt.Sprintf("crashed: %v", p)
+			r.log.Error("crawl crashed", "source", r.src.Name(), "run", runID, "panic", p, "stack", string(debug.Stack()))
+			res, err = Result{RunID: runID, Summary: summary}, fmt.Errorf("crawl run %d %s", runID, summary.Error)
+		} else if summary.State == "running" {
+			summary.State, summary.Error = "failed", "interrupted"
+		}
 		// Detached from ctx on purpose: these two writes are how a run stops being "running", so they have to
 		// survive the cancellation that ended the crawl.
 		done, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
@@ -207,6 +225,11 @@ func (r *Runner) Run(ctx context.Context) (Result, error) {
 			r.log.Error("releasing crawl claim", "err", err)
 		}
 	}()
+
+	// The row says running from the claim on, not queued with zero counters until the run ends hours later.
+	if err := r.store.RunProgress(ctx, runID, summary); err != nil {
+		r.log.Error("writing crawl progress", "run", runID, "err", err)
+	}
 
 	blocks := r.crawl(ctx, policy, runID, &summary)
 	// A single 403 or challenge is a definitive block - the source decided it, so the crawl switches it off until a
@@ -300,6 +323,9 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 			done, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 			if ferr := r.store.FinishCommander(done, runID, commander.CardID, result); ferr != nil {
 				r.log.Error("recording a commander visit", "commander", commander.Name, "err", ferr)
+			}
+			if perr := r.store.RunProgress(done, runID, *summary); perr != nil {
+				r.log.Error("writing crawl progress", "run", runID, "err", perr)
 			}
 			cancel()
 			switch {
