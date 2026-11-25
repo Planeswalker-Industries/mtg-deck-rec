@@ -64,8 +64,47 @@ const BUILD_START: readonly TourStep[] = [
   { target: "build-start.build", prompt: "tap", text: "Once you're ready, tap this and we're off to the races!" },
 ];
 
+/** The paste screen (Upgrade a deck), approved by the owner 2026-11-24. */
+const DECK_START: readonly TourStep[] = [
+  { target: "deck-start.heading", prompt: "read", text: "Got a deck already? Let's make it better." },
+  {
+    target: "deck-start.owned",
+    prompt: "tap",
+    text: "Upload your collection and improve your deck with the cards you already own!",
+  },
+  { target: "deck-start.online", prompt: "tap", text: "Or we can use the absolute best cards out there. Your choice!" },
+  {
+    target: "deck-start.paste",
+    prompt: "read",
+    text: "Paste your decklist here. A list from any site works: ManaBox, Archidekt, Moxfield, Notepad. Whatever!",
+  },
+  {
+    target: "deck-start.bracket",
+    prompt: "tap",
+    text: "Set how strong you want your deck to be. If you don't know what brackets are, pick 3!",
+  },
+  {
+    target: "deck-start.budget",
+    prompt: "read",
+    text: "Set a Max per card and a Max to spend. We never suggest a card above the first, and the cards we add never top the second.",
+  },
+  { target: "deck-start.budget", prompt: "read", text: "Set them both to ZERO and we'll only use cards you own." },
+  { target: "deck-start.budget", prompt: "read", text: "Leave them blank and the sky's the limit brother!" },
+  {
+    target: "deck-start.file",
+    prompt: "read",
+    text: "Apps like ManaBox let you export a deck as a CSV file. Drop it here and we'll load it in automatically!",
+  },
+  {
+    target: "deck-start.go",
+    prompt: "tap",
+    text: "Once your list is in, tap Analyze deck. No list handy? Try the app out by trying our sample deck.",
+  },
+];
+
 export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-start": BUILD_START,
+  "deck-start": DECK_START,
 };
 
 /** A tour's steps; none for an id without a tour. */

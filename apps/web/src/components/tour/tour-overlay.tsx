@@ -143,12 +143,21 @@ export function TourOverlay({
     return () => cancelAnimationFrame(id);
   }, [element, step]);
 
-  // A tap step moves on once the element's own click handler has run.
+  // A tap step moves on once the element's own click handler has run. A select opens on the press itself and takes
+  // the release, so no click reaches the element: a press that opens a list over it counts as the tap too.
   useEffect(() => {
     if (!element || step.prompt !== "tap") return;
     const onClick = () => setTimeout(() => handlers.current.onNext());
+    const onPress = () =>
+      requestAnimationFrame(() => {
+        if (covered(element)) handlers.current.onNext();
+      });
     element.addEventListener("click", onClick, { capture: true });
-    return () => element.removeEventListener("click", onClick, { capture: true });
+    element.addEventListener("pointerdown", onPress, { capture: true });
+    return () => {
+      element.removeEventListener("click", onClick, { capture: true });
+      element.removeEventListener("pointerdown", onPress, { capture: true });
+    };
   }, [element, step.prompt]);
 
   const standAside = frame?.covered ?? true;

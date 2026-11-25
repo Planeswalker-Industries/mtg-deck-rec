@@ -1195,6 +1195,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         <PageHero
           id="deck-input-heading"
           heading="Upgrade a deck"
+          tour="deck-start"
           aside="From the best cards online, or with cards you already own."
           intro={
             <>
@@ -1213,7 +1214,13 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
           }
         >
           <div className="flex flex-col gap-4">
-            <UpgradePathPicker value={upgradePath} onChange={choosePath} hasCollection={tool.collectionMode !== null} />
+            <PageTour id="deck-start" />
+            <UpgradePathPicker
+              value={upgradePath}
+              onChange={choosePath}
+              hasCollection={tool.collectionMode !== null}
+              tour="deck-start"
+            />
             <form
               className="flex flex-col gap-3"
               onSubmit={(e) => {
@@ -1228,6 +1235,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               {!textHidden && (
                 <Textarea
                   id="decklist"
+                  data-tour="deck-start.paste"
                   rows={DECKLIST_ROWS}
                   value={tool.text}
                   onChange={(e) => {
@@ -1253,6 +1261,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                 onBudget={chooseBudget}
                 importHref={tool.collectionMode === null ? collectionImportHref : null}
                 bracketRef={bracketSelect}
+                tour="deck-start"
               />
               {fileInBox ? (
                 <LoadedFile
@@ -1268,19 +1277,21 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                 />
               ) : (
                 // A CSV deck export collapses to quantity and name: a deck is oracle-level, so the printing is noise.
-                <FileDrop
-                  note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer."
-                  maxBytes={MAX_DECK_FILE_BYTES}
-                  disabled={tool.parse.status === "loading"}
-                  onFile={(contents, name) => {
-                    const text = decklistFromFile(contents);
-                    if (text.length > MAX_DECKLIST_CHARS) return charLimitError(MAX_DECKLIST_CHARS);
-                    deckLimit.clearError();
-                    tool.setText(text);
-                    setDeckFile({ name, text });
-                    setFileTextShown(false);
-                  }}
-                />
+                <div data-tour="deck-start.file">
+                  <FileDrop
+                    note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer."
+                    maxBytes={MAX_DECK_FILE_BYTES}
+                    disabled={tool.parse.status === "loading"}
+                    onFile={(contents, name) => {
+                      const text = decklistFromFile(contents);
+                      if (text.length > MAX_DECKLIST_CHARS) return charLimitError(MAX_DECKLIST_CHARS);
+                      deckLimit.clearError();
+                      tool.setText(text);
+                      setDeckFile({ name, text });
+                      setFileTextShown(false);
+                    }}
+                  />
+                </div>
               )}
               {upgradePath === "owned" && tool.collectionMode === null && (
                 <p className="text-sm text-muted-foreground">
@@ -1289,7 +1300,11 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               )}
               <div className="flex flex-wrap gap-2">
                 {upgradePath === "owned" && tool.collectionMode === null ? (
-                  <Link href={collectionImportHref} className={buttonVariants({ size: "lg", className: "lit gap-2" })}>
+                  <Link
+                    href={collectionImportHref}
+                    data-tour="deck-start.go"
+                    className={buttonVariants({ size: "lg", className: "lit gap-2" })}
+                  >
                     <Library aria-hidden className="size-4" />
                     Upload your collection
                   </Link>
@@ -1298,6 +1313,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                     type="submit"
                     size="lg"
                     className="lit"
+                    data-tour="deck-start.go"
                     disabled={!tool.text.trim() || tool.parse.status === "loading"}
                   >
                     {/* The chosen tile says which path; the action is the same name either way. */}

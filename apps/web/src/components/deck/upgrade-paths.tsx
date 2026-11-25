@@ -24,10 +24,13 @@ export function UpgradePathPicker({
   value,
   onChange,
   hasCollection,
+  tour,
 }: {
   value: UpgradePath;
   onChange: (path: UpgradePath) => void;
   hasCollection: boolean;
+  /** The screen's tour id: each tile carries `<tour>.<path>` (`.online`, `.owned`). */
+  tour?: string;
 }) {
   return (
     <div role="radiogroup" aria-label="Upgrade with" className="grid grid-cols-2 gap-2">
@@ -39,6 +42,7 @@ export function UpgradePathPicker({
             type="button"
             role="radio"
             aria-checked={chosen}
+            data-tour={tour && `${tour}.${path}`}
             onClick={() => onChange(path)}
             className={cn(
               "flex min-h-11 flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors duration-180 ease-table",

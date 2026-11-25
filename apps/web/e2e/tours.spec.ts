@@ -215,3 +215,66 @@ test("tours off: no overlay", async ({ page }) => {
   await page.waitForTimeout(TOUR_SETTLE_MS);
   await expect(tour(page)).toHaveCount(0);
 });
+
+// The paste screen's tour (`deck-start`): the path tiles and Bracket move on when tapped, the rest on ›.
+const DECK_START = "/deck";
+const DECK_START_TARGETS = [
+  "deck-start.heading",
+  "deck-start.owned",
+  "deck-start.online",
+  "deck-start.paste",
+  "deck-start.bracket",
+  "deck-start.budget",
+  "deck-start.file",
+  "deck-start.go",
+] as const;
+
+async function openDeckStartTour(page: Page) {
+  await page.goto(DECK_START);
+  await expect(tour(page)).toContainText("Got a deck already?", { timeout: PAGE_WAIT_MS });
+}
+
+test("deck start tour runs once", async ({ page }) => {
+  await openDeckStartTour(page);
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await expect(tour(page)).toBeHidden();
+  expect(await seen(page)).toContain("deck-start");
+
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Decklist" })).toBeVisible({ timeout: PAGE_WAIT_MS });
+  await page.waitForTimeout(TOUR_SETTLE_MS);
+  await expect(tour(page)).toHaveCount(0);
+});
+
+test("deck start tour elements are on the page", async ({ page }) => {
+  await openDeckStartTour(page);
+  for (const target of DECK_START_TARGETS) await expect(page.locator(`[data-tour="${target}"]`)).toBeVisible();
+});
+
+test("deck start tour: tapping the tiles, Bracket and Analyze deck moves on", async ({ page }) => {
+  await openDeckStartTour(page);
+  await nextUntil(page, "Upload your collection and improve");
+  await expectBubbleBeside(page, "deck-start.owned");
+  await page.getByRole("radio", { name: /Cards I own/ }).click();
+  await expect(tour(page)).toContainText("absolute best cards out there");
+  await page.getByRole("radio", { name: /Best cards online/ }).click();
+  await expect(tour(page)).toContainText("Paste your decklist here");
+  // The lit box takes typing.
+  await page.getByRole("textbox", { name: "Decklist" }).fill("Commander
+1 Atraxa, Praetors' Voice
+
+Deck
+1 Sol Ring");
+
+  await nextUntil(page, "pick 3!");
+  await page.getByRole("combobox", { name: "Bracket" }).click();
+  await page.getByRole("option", { name: /^2/ }).click();
+  await expect(tour(page)).toContainText("Set a Max per card");
+  await expect(page.getByRole("combobox", { name: "Bracket" })).toHaveText(/^2/);
+
+  await nextUntil(page, "Once your list is in");
+  await expectRingOn(page, "deck-start.go");
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await expect(tour(page)).toBeHidden();
+  expect(await seen(page)).toContain("deck-start");
+});
