@@ -46,6 +46,33 @@ export const MAX_DISPLAY_NAME_CHARS = 60;
 export const MAX_ADMIN_NOTE_CHARS = 200;
 export const ADMIN_PER_PAGE_MAX = 200;
 
+/** Decks listed on one account's Decks tab, all on one page. Far above any real account; `admin_user_decks` caps here. */
+export const MAX_ADMIN_USER_DECKS = 500;
+
+/** One saved deck on an account's Decks tab: public or private, because the admin is there to fix a problem. */
+export interface AdminUserDeck {
+  id: string;
+  code: string;
+  name: string;
+  isPublic: boolean;
+  isBuilt: boolean;
+  /** Resolved on the server from the deck's commander ids; empty for a deck saved without one. */
+  commanderNames: string[];
+  cardCount: number;
+  bracket: number | null;
+  createdAt: string;
+  updatedAt: string;
+  /** The deck's public page. Null for a private deck: its page answers 404 to everyone but its owner. */
+  path: string | null;
+}
+
+export interface AdminDeckCard {
+  cardId: number;
+  name: string;
+  section: "commander" | "main";
+  quantity: number;
+}
+
 /** A deck search is an id or a commander name; longer than this is not either of those. */
 export const MAX_ADMIN_SEARCH_CHARS = 80;
 

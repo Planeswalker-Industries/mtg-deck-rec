@@ -16,6 +16,7 @@ import type {
   AdminCrawledDeckCard,
   AdminCrawledDeckPage,
   AdminCrawlSource,
+  AdminDeckCard,
   AdminErrorEvent,
   AdminErrorTicket,
   AdminErrorTicketPage,
@@ -29,6 +30,7 @@ import type {
   AdminTag,
   AdminTagPage,
   AdminUser,
+  AdminUserDeck,
   AdminUserPage,
 } from "@/lib/admin/types";
 import { createAuthClient, getCurrentUser, type CurrentUser } from "./auth";
@@ -399,6 +401,66 @@ export async function getAdminCrawledDeckCards(db: AuthedClient, deckId: number)
     typeLine: row.type_line,
     quantity: row.quantity,
   }));
+}
+
+/** The shape `admin_user_decks` returns for each deck, before commander ids become names. */
+interface UserDeckRow {
+  id: string;
+  code: string;
+  name: string;
+  isPublic: boolean;
+  isBuilt: boolean;
+  commanderIds: number[];
+  cardCount: number;
+  bracket: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Every deck one account saved, public or private, for the user page's Decks tab. Each call writes one audit row in
+ * the database, so the tab asks only when it is opened.
+ *
+ * Commander names and the deck page path are resolved here, from the catalog, rather than in SQL: the path is the
+ * same `/decks/<commander slug>/<code>` the rest of the app links to, and the slug segment is decoration that only
+ * the app knows how to fall back on.
+ */
+export async function getAdminUserDecks(db: AuthedClient, userId: string): Promise<AdminUserDeck[]> {
+  const { data, error } = await db.rpc("admin_user_decks", { p_user_id: userId });
+  if (error) throw asAdminError(error);
+  const rows = (Array.isArray(data) ? data : []) as unknown as UserDeckRow[];
+
+  const ids = [...new Set(rows.flatMap((row) => row.commanderIds))];
+  const commanders = new Map<number, { name: string; slug: string }>();
+  if (ids.length > 0) {
+    const { data: cards, error: cardsError } = await db.from("cards").select("id, name, slug").in("id", ids);
+    if (cardsError) throw asAdminError(cardsError);
+    for (const card of cards ?? []) commanders.set(card.id, { name: card.name, slug: card.slug });
+  }
+
+  return rows.map((row) => {
+    const lead = commanders.get(row.commanderIds[0] ?? -1);
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      isPublic: row.isPublic,
+      isBuilt: row.isBuilt,
+      commanderNames: row.commanderIds.map((id) => commanders.get(id)?.name ?? `Card ${id}`),
+      cardCount: row.cardCount,
+      bracket: row.bracket,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      path: row.isPublic ? `/decks/${encodeURIComponent(lead?.slug ?? "deck")}/${encodeURIComponent(row.code)}` : null,
+    };
+  });
+}
+
+/** One saved deck's cards, commanders first. One audit row per call, naming the deck and its owner. */
+export async function getAdminDeckCards(db: AuthedClient, deckId: string): Promise<AdminDeckCard[]> {
+  const { data, error } = await db.rpc("admin_deck_cards", { p_deck_id: deckId });
+  if (error) throw asAdminError(error);
+  return (Array.isArray(data) ? data : []) as unknown as AdminDeckCard[];
 }
 
 export async function listAdminFeedbackReports(

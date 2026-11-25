@@ -17,7 +17,7 @@ Goal: an admin can open any account and see its decks and collection, open `/adm
 Owner decisions (2026-11-25): collection view is totals, import history and a card-name search, no full grid. Every admin view of a player's decks or collection writes an audit row, and `/privacy` says admins may look. Site numbers are live counts.
 
 - [x] Crawl runs report progress while running and never stay open after the process dies
-- [ ] User page: Decks tab
+- [x] User page: Decks tab
 - [ ] User page: Collection tab, and the `/privacy` line
 - [ ] Admin home: site numbers, worker and crawler status
 

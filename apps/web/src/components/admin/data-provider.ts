@@ -5,12 +5,14 @@ import { HttpError } from "react-admin";
 import {
   ADMIN_USER_SORTS,
   type AdminAcceptRate,
+  type AdminDeckCard,
   type AdminSyncRun,
   type AdminSyncRunPage,
   type AdminTag,
   type AdminTagPage,
   type AdminTagSort,
   type AdminUser,
+  type AdminUserDeck,
   type AdminUserPage,
 } from "@/lib/admin/types";
 
@@ -30,6 +32,7 @@ const USERS = "/api/admin/users";
 const TAGS = "/api/admin/tags";
 const SYNC_RUNS = "/api/admin/sync-runs";
 const ACCEPT_RATES = "/api/admin/accept-rates";
+const DECKS = "/api/admin/decks";
 
 /** React Admin's default page size, used when a list asks without saying. */
 const DEFAULT_PER_PAGE = 25;
@@ -237,14 +240,22 @@ const provider = {
   async create() {
     throw new HttpError("Nothing in the admin area is created by hand.", 400);
   },
+
+  // Reads of one account's private data, outside React Admin's resource model: each call writes an audit row in the
+  // database, so the screens call these themselves, once, when the tab that shows them opens.
+  getUserDecks: (userId: string) => call<AdminUserDeck[]>(`${recordUrl(USERS, userId)}/decks`),
+  getDeckCards: (deckId: string) => call<AdminDeckCard[]>(`${recordUrl(DECKS, deckId)}/cards`),
 };
+
+/** The provider's own methods beside React Admin's, for `useDataProvider<AdminDataProvider>()`. */
+export type AdminDataProvider = DataProvider & Pick<typeof provider, "getUserDecks" | "getDeckCards">;
 
 /**
  * One cast, at the boundary. `DataProvider`'s methods are generic in the record type, so a provider that returns
  * concrete record types can't satisfy them structurally — every real-world provider casts here. The per-resource
  * types above are the ones that matter.
  */
-export const adminDataProvider = provider as unknown as DataProvider;
+export const adminDataProvider = provider as unknown as AdminDataProvider;
 
 /**
  * Only what the form actually changed. The API applies the fields it is given and leaves the rest alone, so sending

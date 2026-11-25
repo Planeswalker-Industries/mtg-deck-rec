@@ -14,8 +14,11 @@ test("signed out, /admin redirects to sign in", async ({ page }) => {
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fadmin$/);
 });
 
+/** A well-formed id that names nothing: the guard answers before any lookup. */
+const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+
 /** Every admin endpoint, so a new one can't ship without the same guard. */
-const ADMIN_API = ["/api/admin/users", "/api/admin/tags", "/api/admin/sync-runs", "/api/admin/accept-rates", "/api/admin/crawls", "/api/admin/crawls/decks?deckId=1", "/api/admin/reports", "/api/admin/errors", "/api/admin/errors/1"] as const;
+const ADMIN_API = ["/api/admin/users", "/api/admin/tags", "/api/admin/sync-runs", "/api/admin/accept-rates", "/api/admin/crawls", "/api/admin/crawls/decks?deckId=1", "/api/admin/reports", "/api/admin/errors", "/api/admin/errors/1", `/api/admin/users/${ZERO_UUID}/decks`, `/api/admin/decks/${ZERO_UUID}/cards`] as const;
 
 test("signed out, the admin API refuses", async ({ request }) => {
   for (const path of ADMIN_API) {

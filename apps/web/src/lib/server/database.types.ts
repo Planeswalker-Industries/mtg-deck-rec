@@ -2136,6 +2136,7 @@ export type Database = {
           type_line: string
         }[]
       }
+      admin_deck_cards: { Args: { p_deck_id: string }; Returns: Json }
       admin_delete_user: { Args: { p_user_id: string }; Returns: undefined }
       admin_error_ticket_events: {
         Args: { p_ticket_id: number }
@@ -2342,6 +2343,7 @@ export type Database = {
           report_page_path: string
         }[]
       }
+      admin_user_decks: { Args: { p_user_id: string }; Returns: Json }
       bracket_cards: { Args: never; Returns: Json }
       card_category: { Args: { p_type_line: string }; Returns: string }
       card_functional_tags: {
