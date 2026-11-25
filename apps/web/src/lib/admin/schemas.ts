@@ -1,4 +1,5 @@
 import type { InputSchema } from "@mtg/core/schemas";
+import { WORKER_REQUEST_DUTY } from "@mtg/core/worker";
 import { z } from "zod";
 import {
   ADMIN_ACCEPT_RATE_DAYS,
@@ -228,4 +229,13 @@ export interface UpdateAdminErrorTicketInput {
 
 export const updateAdminErrorTicketInputSchema: InputSchema<UpdateAdminErrorTicketInput> = z.object({
   resolved: z.boolean({ error: "Say whether the ticket is resolved." }),
+});
+
+export interface RequestWorkerRunInput {
+  duty: string;
+}
+
+/** A worker duty or `crawl:<source>`, as worker_requests.duty's check takes it. */
+export const requestWorkerRunInputSchema: InputSchema<RequestWorkerRunInput> = z.object({
+  duty: z.string({ error: "Say which duty to run." }).regex(WORKER_REQUEST_DUTY, "That isn't a duty the worker runs."),
 });

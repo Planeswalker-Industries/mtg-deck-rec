@@ -29,6 +29,7 @@ import {
   parseInput,
   recEventInputSchema,
   recEventsInputSchema,
+  recordJourneyStartInputSchema,
   resolveCollectionRowsInputSchema,
 } from "@mtg/core/schemas";
 import {
@@ -290,6 +291,29 @@ export async function recordRecEventsAction(input: Parameters<ActionsApi["record
   } catch (err) {
     if (err instanceof RecEventRefused) return failure("VALIDATION", "That event isn't valid.");
     return unavailable("deck.recordRecEvents", err);
+  }
+}
+
+/**
+ * Counts one journey started (v42): a counter per hour and per account, for the admin home. Shares the events budget
+ * with the rec events, since it fires at the same pace. Written with the service role: no visitor can call the count
+ * directly, so the numbers only move through this rate-limited door.
+ */
+export async function recordJourneyStartAction(input: Parameters<ActionsApi["recordJourneyStart"]>[0]): Promise<Result<null>> {
+  const parsed = parseInput(recordJourneyStartInputSchema, input);
+  if (!parsed.ok) return parsed;
+  try {
+    const db = await createAuthClient();
+    const [limited, claims] = await Promise.all([checkRateLimit(db, "events", visitorKey(await headers())), db.auth.getClaims()]);
+    if (limited) return { ok: false, error: limited };
+    const { error } = await createAdminClient().rpc("record_journey_start", {
+      p_kind: parsed.data.kind,
+      ...(claims.data?.claims?.sub ? { p_user_id: claims.data.claims.sub } : {}),
+    });
+    if (error) throw error;
+    return { ok: true, data: null };
+  } catch (err) {
+    return unavailable("deck.recordJourneyStart", err);
   }
 }
 
