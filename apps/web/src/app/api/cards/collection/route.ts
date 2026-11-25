@@ -5,6 +5,7 @@ import { checkRateLimit } from "@/lib/server/rate-limit";
 import { errorResponse } from "@/lib/server/recs-route";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
+import { logError } from "@/lib/server/error-log";
 
 /**
  * POST /api/cards/collection: cards with their tag labels, and set names, for the collection view. A POST because a
@@ -25,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
       headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" },
     });
   } catch (err) {
-    console.error(err);
+    logError({ area: "api.cards.collection", error: err });
     return errorResponse({ code: "UPSTREAM_UNAVAILABLE", message: "Couldn't load your collection's cards. Try again in a moment." });
   }
 }

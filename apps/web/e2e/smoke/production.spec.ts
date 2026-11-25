@@ -93,10 +93,10 @@ test("the deck tool offers the decklist box", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Analyze deck", exact: true })).toBeVisible();
 });
 
-test("sign-in offers Google only (T080)", async ({ page }) => {
+test("sign-in offers Google and an emailed code (T033)", async ({ page }) => {
   await page.goto("/sign-in", { timeout: PAGE_TIMEOUT_MS });
   await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible({ timeout: PAGE_TIMEOUT_MS });
-  await expect(page.getByLabel("Email")).toHaveCount(0);
+  await expect(page.getByLabel("Email")).toBeVisible();
 });
 
 for (const path of MISSING) {

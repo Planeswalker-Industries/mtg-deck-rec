@@ -9,7 +9,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle, SheetTri
 import { TEXT_LINK } from "@/lib/constants";
 
 interface NavItem {
-  href: "/deck" | "/decks" | "/collection" | "/admin/reports";
+  href: "/deck" | "/decks" | "/collection" | "/admin/reports" | "/admin/errors";
   label: string;
   /** One line under the label in the phone menu, where there is room to say what the page is for. */
   hint: string;
@@ -59,27 +59,29 @@ function InlineLinksAtPath({ items }: { items: readonly NavItem[] }) {
 export function MainNav({
   signedIn,
   openReports = 0,
+  openErrors = 0,
   children,
 }: {
   signedIn: boolean;
   /** Open feedback reports, for platform admins (0 for everyone else): a count on the phone menu and an item in it. */
   openReports?: number;
+  /** Open error tickets, for platform admins (0 for everyone else): added to the phone menu's count, with its own item. */
+  openErrors?: number;
   children: ReactNode;
 }) {
   const items = NAV_ITEMS.filter((item) => signedIn || !item.accountOnly);
-  const menuItems: readonly NavItem[] =
-    openReports > 0
-      ? [
-          ...items,
-          {
-            href: "/admin/reports",
-            label: "Feedback reports",
-            hint: `${openReports} open`,
-            accountOnly: true,
-          },
-        ]
-      : items;
-  const reportsLabel = `${openReports} open feedback report${openReports === 1 ? "" : "s"}`;
+  const adminItems: NavItem[] = [
+    ...(openReports > 0 ? [{ href: "/admin/reports" as const, label: "Feedback reports", hint: `${openReports} open`, accountOnly: true }] : []),
+    ...(openErrors > 0 ? [{ href: "/admin/errors" as const, label: "Error tickets", hint: `${openErrors} open`, accountOnly: true }] : []),
+  ];
+  const menuItems: readonly NavItem[] = [...items, ...adminItems];
+  const openAdmin = openReports + openErrors;
+  const reportsLabel = [
+    openReports > 0 ? `${openReports} open feedback report${openReports === 1 ? "" : "s"}` : null,
+    openErrors > 0 ? `${openErrors} open error ticket${openErrors === 1 ? "" : "s"}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <>
@@ -93,14 +95,14 @@ export function MainNav({
       <div className="order-3 flex shrink-0 items-center gap-1 sm:gap-2">
         {children}
         <Sheet>
-          <SheetTrigger className={cn(ICON_BUTTON, "relative lg:hidden")} aria-label={openReports > 0 ? `Menu, ${reportsLabel}` : "Menu"}>
+          <SheetTrigger className={cn(ICON_BUTTON, "relative lg:hidden")} aria-label={openAdmin > 0 ? `Menu, ${reportsLabel}` : "Menu"}>
             <Menu aria-hidden className="size-5" />
-            {openReports > 0 && (
+            {openAdmin > 0 && (
               <span
                 aria-hidden
                 className="absolute top-1 right-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-xs leading-4 text-primary-foreground"
               >
-                {openReports}
+                {openAdmin}
               </span>
             )}
           </SheetTrigger>

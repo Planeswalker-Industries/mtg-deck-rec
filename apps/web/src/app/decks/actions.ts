@@ -28,6 +28,7 @@ import {
 } from "@/lib/server/saved-decks";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
+import { logError } from "@/lib/server/error-log";
 
 const failure = (code: ApiError["code"], message: string): Result<never> => ({ ok: false, error: { code, message } });
 
@@ -39,9 +40,10 @@ const refusals: Record<DeckRefusal, Result<never>> = {
   TOO_MANY_DECKS: failure("VALIDATION", "You've reached the limit on saved decks. Delete one to make room."),
 };
 
-function failed(err: unknown, message: string): Result<never> {
+/** The answer for a failed deck write, and its error ticket. A refusal (not the owner, over a limit) isn't a failure. */
+function failed(area: string, err: unknown, message: string): Result<never> {
   if (err instanceof DeckRefused) return refusals[err.reason];
-  console.error(err);
+  logError({ area, error: err, code: "UPSTREAM_UNAVAILABLE", shown: message });
   return failure("UPSTREAM_UNAVAILABLE", message);
 }
 
@@ -68,7 +70,7 @@ export async function saveDeckAction(
     refreshList();
     return { ok: true, data: saved };
   } catch (err) {
-    return failed(err, "Couldn't save that deck. Try again in a moment.");
+    return failed("decks.saveDeck", err, "Couldn't save that deck. Try again in a moment.");
   }
 }
 
@@ -88,7 +90,7 @@ export async function openSavedDeckAction(
     if (!user) return refusals.NOT_SIGNED_IN;
     return { ok: true, data: await openSavedDeck(await createAuthClient(), parsed.data.code, user.id) };
   } catch (err) {
-    return failed(err, "Couldn't open that deck. Try again in a moment.");
+    return failed("decks.openSavedDeck", err, "Couldn't open that deck. Try again in a moment.");
   }
 }
 
@@ -104,7 +106,7 @@ export async function renameDeckAction(
     refreshList();
     return { ok: true, data: null };
   } catch (err) {
-    return failed(err, "Couldn't rename that deck. Try again in a moment.");
+    return failed("decks.renameDeck", err, "Couldn't rename that deck. Try again in a moment.");
   }
 }
 
@@ -120,7 +122,7 @@ export async function duplicateDeckAction(
     refreshList();
     return { ok: true, data: { deckId } };
   } catch (err) {
-    return failed(err, "Couldn't copy that deck. Try again in a moment.");
+    return failed("decks.duplicateDeck", err, "Couldn't copy that deck. Try again in a moment.");
   }
 }
 
@@ -136,7 +138,7 @@ export async function setDeckVisibilityAction(
     refreshList();
     return { ok: true, data: null };
   } catch (err) {
-    return failed(err, "Couldn't change who can see that deck. Try again in a moment.");
+    return failed("decks.setDeckVisibility", err, "Couldn't change who can see that deck. Try again in a moment.");
   }
 }
 
@@ -152,7 +154,7 @@ export async function setDeckBuiltAction(
     refreshList();
     return { ok: true, data: null };
   } catch (err) {
-    return failed(err, "Couldn't mark that deck. Try again in a moment.");
+    return failed("decks.setDeckBuilt", err, "Couldn't mark that deck. Try again in a moment.");
   }
 }
 
@@ -168,6 +170,6 @@ export async function deleteDeckAction(
     refreshList();
     return { ok: true, data: null };
   } catch (err) {
-    return failed(err, "Couldn't delete that deck. Try again in a moment.");
+    return failed("decks.deleteDeck", err, "Couldn't delete that deck. Try again in a moment.");
   }
 }

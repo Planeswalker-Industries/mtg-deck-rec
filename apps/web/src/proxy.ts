@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/server/database.types";
+import { logError, type RequestFacts } from "@/lib/server/error-log";
 import { fromIndex } from "@/lib/server/search-index";
 import { createPublicClient, type PublicClient } from "@/lib/server/supabase";
 
@@ -38,7 +39,7 @@ export async function proxy(request: NextRequest) {
         return NextResponse.rewrite(new URL("/_missing", request.url));
       }
     } catch (err) {
-      console.error(err);
+      logError({ area: "proxy.deckExists", error: err, level: "warning" }, proxyFacts(request));
     }
   }
 
@@ -51,7 +52,7 @@ export async function proxy(request: NextRequest) {
       if (status !== "shared") return NextResponse.rewrite(new URL("/_missing", request.url));
     } catch (err) {
       // The page asks for the collection itself and says when it can't be found.
-      console.error(err);
+      logError({ area: "proxy.collectionShare", error: err, level: "warning" }, proxyFacts(request));
     }
   }
 
@@ -72,7 +73,7 @@ export async function proxy(request: NextRequest) {
       }
     } catch (err) {
       // A database hiccup leaves the decision to the page, which refuses rather than guesses.
-      console.error(err);
+      logError({ area: "proxy.adminCheck", error: err, level: "warning" }, proxyFacts(request));
     }
   }
 
@@ -84,7 +85,7 @@ export async function proxy(request: NextRequest) {
         return NextResponse.rewrite(new URL("/_missing", request.url));
       }
     } catch (err) {
-      console.error(err);
+      logError({ area: `proxy.${section}Exists`, error: err, level: "warning" }, proxyFacts(request));
     }
   }
 
@@ -196,9 +197,24 @@ async function refreshSession(request: NextRequest): Promise<NextResponse> {
     // Reading the claims refreshes an expired access token and writes the new session cookies through setAll.
     await supabase.auth.getClaims();
   } catch (err) {
-    console.error("Refreshing the session failed:", err);
+    logError({ area: "proxy.refreshSession", error: err, level: "warning" }, proxyFacts(request));
   }
   return response;
+}
+
+/**
+ * What an error ticket needs from a request the proxy holds. Each check above falls back to letting the page decide,
+ * so these are warnings: the visitor wasn't stopped, but the check didn't run.
+ */
+function proxyFacts(request: NextRequest): RequestFacts {
+  return {
+    pagePath: request.nextUrl.pathname,
+    method: request.method,
+    routeType: "proxy",
+    userAgent: request.headers.get("user-agent") ?? undefined,
+    requestId: request.headers.get("x-vercel-id") ?? undefined,
+    cookieHeader: request.headers.get("cookie") ?? undefined,
+  };
 }
 
 export const config = {

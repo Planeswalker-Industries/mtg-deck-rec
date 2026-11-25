@@ -6,6 +6,7 @@ import { MAX_COLLECTION_CARD_IDS } from "@mtg/core/schemas";
 import { getApis } from "@/lib/api/client";
 import type { StoredCollection } from "@/lib/collection-store";
 import { useCollectionSource, type CollectionSource } from "./use-collection-source";
+import { reportClientError } from "@/lib/client-error-report";
 
 /** How many card chunks load at once: a large collection shouldn't spend its rate-limit budget in one burst. */
 const CONCURRENT_CHUNKS = 3;
@@ -176,7 +177,10 @@ export function useCollectionView(): CollectionViewState {
     }
 
     void load()
-      .catch((): CollectionViewState => ({ status: "error", message: "Couldn't load your collection. Try again in a moment." }))
+      .catch((err: unknown): CollectionViewState => {
+        reportClientError("collection.view", err);
+        return { status: "error", message: "Couldn't load your collection. Try again in a moment." };
+      })
       .then((next) => {
         if (active) setState(next);
       });
@@ -212,7 +216,10 @@ export function useSharedCollectionView(code: string): SharedCollectionViewState
     }
 
     void load()
-      .catch((): SharedCollectionViewState => ({ status: "error", message: "Couldn't load this collection. Try again in a moment." }))
+      .catch((err: unknown): SharedCollectionViewState => {
+        reportClientError("collection.sharedView", err);
+        return { status: "error", message: "Couldn't load this collection. Try again in a moment." };
+      })
       .then((next) => {
         if (active) setState(next);
       });

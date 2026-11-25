@@ -33,7 +33,7 @@ test("a player's report reaches the admin list and can be resolved", async ({ pa
   const admin = await browser.newPage();
   await signIn(admin, admin.request, "admin@test.local", "/decks");
   // Admins see how many reports are open: on a phone (the suite's width) the menu button carries the count.
-  await expect(admin.getByRole("button", { name: /^Menu, \d+ open feedback reports?$/ })).toBeVisible();
+  await expect(admin.getByRole("button", { name: /^Menu, \d+ open feedback reports?(, \d+ open error tickets?)?$/ })).toBeVisible();
   await admin.goto("/admin/reports");
   const row = admin.getByRole("listitem").filter({ hasText: message });
   await expect(row).toBeVisible({ timeout: 30_000 });
@@ -49,4 +49,47 @@ test("a player's report reaches the admin list and can be resolved", async ({ pa
   await admin.getByRole("button", { name: "All" }).click();
   await expect(admin.getByRole("listitem").filter({ hasText: message })).toBeVisible({ timeout: 30_000 });
   await admin.close();
+});
+
+test("an admin's reply reaches the player by email, with their report quoted", async ({ page, request, browser }) => {
+  test.skip(!mailpit, "needs the local mail catcher (E2E_MAILPIT_URL)");
+  test.setTimeout(120_000);
+
+  const stamp = Date.now();
+  const player = `e2e-reply-${stamp}@example.com`;
+  const message = `e2e reply wanted ${stamp}`;
+  const reply = `e2e answer ${stamp}`;
+  await signIn(page, request, player, "/decks");
+  await page.goto("/feedback?from=%2Fcollection");
+  await page.getByLabel("What should we know?").fill(message);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("status").getByText("Sent. Thanks!")).toBeVisible();
+
+  const admin = await browser.newPage();
+  await signIn(admin, admin.request, "admin@test.local", "/decks");
+  await admin.goto("/admin/reports");
+  const row = admin.getByRole("listitem").filter({ hasText: message }).first();
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  const replyButton = row.getByRole("button", { name: "Reply by email" });
+  // Sending needs EMAIL_FROM and MAILPIT_URL in apps/web/.env.local; without them the button says why it's off.
+  test.skip(await replyButton.isDisabled(), "email isn't set up for the app (EMAIL_FROM, MAILPIT_URL)");
+
+  await replyButton.click();
+  await row.getByLabel("Reply to the sender").fill(reply);
+  await row.getByRole("button", { name: "Send reply" }).click();
+  await expect(row.getByText("Emailed")).toBeVisible({ timeout: 30_000 });
+  await expect(row.getByText("Resolved")).toBeVisible();
+  // The admin never sees where it went.
+  await expect(admin.getByText(player)).toHaveCount(0);
+  await admin.close();
+
+  // The email is in the player's inbox, with the reply and the report it answers.
+  await expect(async () => {
+    const search = await request.get(`${mailpit}/api/v1/search?query=${encodeURIComponent(`to:${player} subject:feedback`)}&limit=1`);
+    const id = (await search.json()).messages?.[0]?.ID as string | undefined;
+    expect(id).toBeTruthy();
+    const email = await (await request.get(`${mailpit}/api/v1/message/${id}`)).json();
+    expect(email.Text).toContain(reply);
+    expect(email.Text).toContain(`> ${message}`);
+  }).toPass({ timeout: 30_000 });
 });

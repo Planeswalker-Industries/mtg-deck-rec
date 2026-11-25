@@ -4,6 +4,7 @@ import { deckBudgetSchema, statChoicesSchema } from "@mtg/core/schemas";
 import { decklistText } from "@mtg/core/parse";
 import { fetchCardsById, toCardSummary } from "./cards";
 import type { createAuthClient } from "./auth";
+import { logError } from "./error-log";
 
 /** The cookie-backed client; row-level security scopes every read here to the signed-in user. */
 type AuthClient = Awaited<ReturnType<typeof createAuthClient>>;
@@ -144,7 +145,7 @@ export async function openSavedDeck(db: AuthClient, code: string, userId: string
 async function loadBudget(db: AuthClient, deckId: string): Promise<DeckBudget | undefined> {
   const { data, error } = await db.rpc("my_deck_budget", { p_deck_id: deckId });
   if (error) {
-    console.error("Loading the deck's budget failed; the deck opens without it.", error.message);
+    logError({ area: "savedDeck.budget", error, level: "warning", shown: "The deck opened without its budget." });
     return undefined;
   }
   const parsed = deckBudgetSchema.safeParse(data ?? {});
@@ -158,7 +159,7 @@ async function loadBudget(db: AuthClient, deckId: string): Promise<DeckBudget | 
 async function loadStatChoices(db: AuthClient, deckId: string): Promise<StatChoices> {
   const { data, error } = await db.from("decks").select("stat_choices").eq("id", deckId).maybeSingle();
   if (error) {
-    console.error("Loading the deck's Deck stats choices failed; the deck opens without them.", error.message);
+    logError({ area: "savedDeck.statChoices", error, level: "warning", shown: "The deck opened without its Deck stats choices." });
     return {};
   }
   const parsed = statChoicesSchema.safeParse(data?.stat_choices ?? {});

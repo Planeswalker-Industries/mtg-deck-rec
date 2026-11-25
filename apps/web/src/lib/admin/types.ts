@@ -219,9 +219,71 @@ export interface AdminFeedbackReport {
   createdAt: string;
   /** Null while the report is open. */
   resolvedAt: string | null;
+  /** Replies emailed to the sender, oldest first. */
+  replies: AdminFeedbackReply[];
+}
+
+/**
+ * A reply an admin sent to a report's sender, by email to the address on their account. The address itself never
+ * reaches the admin: the server looks it up and hands it to the mail service.
+ */
+export interface AdminFeedbackReply {
+  id: number;
+  message: string;
+  /** 'sending' only if the server stopped between recording the reply and hearing back from the mail service. */
+  status: "sending" | "sent" | "failed";
+  /** Why it wasn't sent, when it wasn't. */
+  failure: string | null;
+  createdAt: string;
 }
 
 export interface AdminFeedbackReportPage {
   reports: AdminFeedbackReport[];
   total: number;
+  /** Whether this deployment can send email, so Reply can be offered. */
+  replyEnabled: boolean;
+}
+
+/**
+ * Error tickets, for /admin/errors: one per kind of failure, with every time it happened (the newest kept). Unlike a
+ * feedback report, an event names the account it happened to, by id only, so its data can be looked at; never by email.
+ */
+export interface AdminErrorTicket {
+  id: number;
+  level: "error" | "warning";
+  /** Where it was caught: the server, or a visitor's browser (whose reports the server can't vouch for). */
+  source: "server" | "client";
+  /** What was running: 'collection.saveBatch', 'render:/deck/page'. */
+  area: string;
+  code: string | null;
+  /** The newest occurrence's message. */
+  message: string;
+  /** The newest occurrence's page, when it had one. */
+  pagePath: string | null;
+  occurrences: number;
+  /** Signed-in accounts among the kept events: a floor, since older events are dropped. */
+  accounts: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  /** The resolved ticket this failure came back after, if any. */
+  recurrenceOf: number | null;
+  /** Null while the ticket is open. */
+  resolvedAt: string | null;
+}
+
+export interface AdminErrorTicketPage {
+  tickets: AdminErrorTicket[];
+  total: number;
+}
+
+/** One time a ticket's failure happened, in full. */
+export interface AdminErrorEvent {
+  id: number;
+  occurredAt: string;
+  /** The account signed in at the time, or null. */
+  userId: string | null;
+  pagePath: string | null;
+  message: string;
+  /** The stack and causes (`error`), what the visitor saw (`shown`), `context`, `request` and `deployment`. */
+  detail: Record<string, unknown>;
 }

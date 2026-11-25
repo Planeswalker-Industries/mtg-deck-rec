@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import type { ApiError, Result } from "@mtg/core/contract";
 import { createAuthClient, safeNextPath } from "@/lib/server/auth";
+import { logError } from "@/lib/server/error-log";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
@@ -36,14 +37,14 @@ export async function sendSignInEmailAction(input: { email: string; next?: strin
     confirm.searchParams.set("next", safeNextPath(input.next));
     const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: confirm.toString(), shouldCreateUser: true } });
     if (error) {
-      console.error(`Sending a sign-in email failed: ${error.message}`);
+      logError({ area: "signIn.sendEmail", error, level: error.status === 429 ? "warning" : "error", code: error.code });
       return error.status === 429
         ? failure("RATE_LIMITED", "Too many sign-in emails were sent recently. Wait a few minutes and try again.")
         : failure("UPSTREAM_UNAVAILABLE", "Couldn't send the sign-in email. Try again in a moment.");
     }
     return { ok: true, data: null };
   } catch (err) {
-    console.error(err);
+    logError({ area: "signIn.sendEmail", error: err, code: "UPSTREAM_UNAVAILABLE" });
     return failure("UPSTREAM_UNAVAILABLE", "Couldn't send the sign-in email. Try again in a moment.");
   }
 }
@@ -62,7 +63,7 @@ export async function verifySignInCodeAction(input: { email: string; code: strin
     if (error) return failure("VALIDATION", "That code didn't work. It may have expired; send yourself a new one.");
     return { ok: true, data: null };
   } catch (err) {
-    console.error(err);
+    logError({ area: "signIn.verifyCode", error: err, code: "UPSTREAM_UNAVAILABLE" });
     return failure("UPSTREAM_UNAVAILABLE", "Couldn't check the code. Try again in a moment.");
   }
 }
@@ -79,12 +80,12 @@ export async function startGoogleSignInAction(input: { next?: string }): Promise
       options: { redirectTo: callback.toString(), skipBrowserRedirect: true },
     });
     if (error || !data.url) {
-      console.error(`Starting Google sign-in failed: ${error?.message ?? "no URL returned"}`);
+      logError({ area: "signIn.startGoogle", error: error ?? new Error("Google sign-in returned no URL") });
       return failure("UPSTREAM_UNAVAILABLE", "Couldn't start Google sign-in. Try again in a moment.");
     }
     return { ok: true, data: { url: data.url } };
   } catch (err) {
-    console.error(err);
+    logError({ area: "signIn.startGoogle", error: err, code: "UPSTREAM_UNAVAILABLE" });
     return failure("UPSTREAM_UNAVAILABLE", "Couldn't start Google sign-in. Try again in a moment.");
   }
 }
@@ -95,7 +96,7 @@ export async function signOutAction(): Promise<Result<null>> {
     await supabase.auth.signOut();
     return { ok: true, data: null };
   } catch (err) {
-    console.error(err);
+    logError({ area: "signIn.signOut", error: err, code: "UPSTREAM_UNAVAILABLE" });
     return failure("UPSTREAM_UNAVAILABLE", "Couldn't sign out. Try again in a moment.");
   }
 }

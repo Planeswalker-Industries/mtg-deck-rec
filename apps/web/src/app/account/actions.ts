@@ -8,6 +8,7 @@ import { createAuthClient } from "@/lib/server/auth";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
+import { logError } from "@/lib/server/error-log";
 
 const failure = (code: ApiError["code"], message: string): Result<never> => ({ ok: false, error: { code, message } });
 
@@ -30,7 +31,7 @@ export async function deleteAccountAction(input: { confirmation: string }): Prom
 
     const { error } = await supabase.rpc("delete_my_account");
     if (error) {
-      console.error(`Deleting an account failed: ${error.message}`);
+      logError({ area: "account.delete", error, level: error.code === "23514" ? "warning" : "error" });
       // check_violation carries a message written for the visitor (the last platform admin is refused).
       return error.code === "23514"
         ? failure("FORBIDDEN", error.message)
@@ -43,7 +44,7 @@ export async function deleteAccountAction(input: { confirmation: string }): Prom
     revalidatePath("/decks");
     return { ok: true, data: null };
   } catch (err) {
-    console.error(err);
+    logError({ area: "account.delete", error: err, code: "UPSTREAM_UNAVAILABLE" });
     return failure("UPSTREAM_UNAVAILABLE", "Couldn't delete your account. Try again in a moment.");
   }
 }

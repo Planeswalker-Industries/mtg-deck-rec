@@ -3,6 +3,7 @@ import { AdminError, requirePlatformAdmin, type AdminSession } from "./admin";
 import { checkRateLimit } from "./rate-limit";
 import { createPublicClient } from "./supabase";
 import { visitorKey } from "./visitor";
+import { logError } from "./error-log";
 
 const STATUS: Partial<Record<ApiError["code"], number>> = {
   VALIDATION: 400,
@@ -42,7 +43,7 @@ export function adminErrorResponse(failure: ApiError | unknown): Response {
 function toApiError(failure: ApiError | unknown): ApiError {
   if (failure instanceof AdminError) return { code: failure.code, message: failure.message };
   if (isApiError(failure)) return failure;
-  console.error(failure);
+  logError({ area: "admin.route", error: failure, code: "UPSTREAM_UNAVAILABLE" });
   return { code: "UPSTREAM_UNAVAILABLE", message: "That didn't work. Try again in a moment." };
 }
 

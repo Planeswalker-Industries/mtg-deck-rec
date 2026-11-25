@@ -4,6 +4,7 @@ import { loadRoleTargets } from "./recs";
 import { loadScoringConfig } from "./scoring-config";
 import { loadCardRoles } from "./serving";
 import type { PublicClient } from "./supabase";
+import { logError } from "./error-log";
 
 /** Commander keys per deck: one commander or a partner pair, as the corpus read allows. */
 const MAX_COMMANDERS = 2;
@@ -51,7 +52,7 @@ async function loadKeyTypeProfiles(db: PublicClient, commanderIds: readonly numb
     .select("id, commander_stats(type_profile)")
     .or(`commander_1.in.(${idList}),commander_2.in.(${idList})`);
   if (error) {
-    console.error("Loading the commanders' type profiles failed; Deck stats leaves the types out.", error.message);
+    logError({ area: "deckStats.typeProfiles", error, level: "warning", shown: "Deck stats left the card types out." });
     return new Map();
   }
   return new Map((data as { id: number; commander_stats: { type_profile: unknown } | null }[]).map((k) => [k.id, k.commander_stats?.type_profile]));
@@ -67,7 +68,7 @@ export async function loadStatInputs(db: PublicClient, commanderIds: readonly nu
     loadRoleTargets(db),
     loadScoringConfig(),
     Promise.all([loadTypicalProfile(db), loadCardRoles(db, cardIds)]).catch((cause: unknown) => {
-      console.error("Deck stats inputs failed to load; the readout is hidden.", cause);
+      logError({ area: "deckStats.inputs", error: cause, level: "warning", shown: "Deck stats was hidden." });
       return null;
     }),
     loadKeyTypeProfiles(db, commanderIds),

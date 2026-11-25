@@ -1,19 +1,112 @@
 <!doctype html>
 <html lang="en">
-  <body style="margin:0;padding:24px;background:#e9eef3;font-family:Arial,Helvetica,sans-serif;color:#18212b;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #cfd8e1;border-radius:12px;">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light only" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Sign in to Spell Chasm</title>
+  </head>
+  <body style="margin:0;padding:0;background:#1c120c;" bgcolor="#1c120c">
+    <!-- Preheader: the inbox preview line. Hidden in the email itself. -->
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#1c120c;">
+      Your Spell Chasm code is {{ .Token }}. It works once and expires in an hour.
+    </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#1c120c" style="background:#1c120c;">
       <tr>
-        <td style="padding:24px;">
-          <h1 style="margin:0 0 12px;font-size:22px;">Sign in to Spell Chasm</h1>
-          <p style="margin:0 0 8px;font-size:15px;">Enter this code on the sign-in page:</p>
-          <p style="margin:0 0 20px;font-size:32px;font-weight:700;letter-spacing:6px;">{{ .Token }}</p>
-          <p style="margin:0 0 20px;font-size:15px;">
-            Or <a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email" style="color:#27509b;font-weight:700;">sign in with this link</a>. It works on
-            any device.
-          </p>
-          <p style="margin:0;font-size:13px;color:#5b6773;">
-            The code and link work once and expire in an hour. If you didn't ask to sign in, you can ignore this email.
-          </p>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+            <!-- Wood bar with the logo -->
+            <tr>
+              <td align="center" bgcolor="#131111" style="background:#131111;padding:24px 24px 20px;border-bottom:2px solid #9f702d;">
+                <a href="https://www.spellchasm.com" style="text-decoration:none;">
+                  <img
+                    src="https://www.spellchasm.com/logo-stacked.png"
+                    width="200"
+                    height="58"
+                    alt="Spell Chasm"
+                    style="display:block;border:0;width:200px;height:auto;color:#f4e8d7;font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;letter-spacing:2px;"
+                  />
+                </a>
+              </td>
+            </tr>
+            <!-- The paper sheet -->
+            <tr>
+              <td bgcolor="#f4e8d7" style="background:#f4e8d7;border:1px solid #775422;border-top:0;padding:32px 28px 28px;">
+                <h1
+                  style="margin:0 0 12px;font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;font-size:30px;line-height:1.15;font-weight:700;color:#1b1918;"
+                >
+                  Sign in to Spell Chasm
+                </h1>
+                <p style="margin:0 0 24px;font-family:'Alegreya Sans',Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#1b1918;">
+                  Enter this code on the sign-in page:
+                </p>
+
+                <!-- The code -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td
+                      align="center"
+                      bgcolor="#f9f3eb"
+                      style="background:#f9f3eb;border:1px solid #9f702d;padding:18px 12px;font-family:'DM Mono',Consolas,'Courier New',monospace;font-size:34px;line-height:1;letter-spacing:10px;color:#1b1918;"
+                    >
+                      {{ .Token }}
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Brass rule with "or" -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+                  <tr>
+                    <td width="45%" style="border-bottom:1px solid #d2a360;font-size:0;line-height:0;">&nbsp;</td>
+                    <td
+                      width="10%"
+                      align="center"
+                      style="font-family:'Alegreya Sans',Helvetica,Arial,sans-serif;font-size:13px;line-height:1;color:#524b47;padding:0 8px;"
+                    >
+                      or
+                    </td>
+                    <td width="45%" style="border-bottom:1px solid #d2a360;font-size:0;line-height:0;">&nbsp;</td>
+                  </tr>
+                </table>
+
+                <!-- Button -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
+                  <tr>
+                    <td align="center" bgcolor="#633636" style="background:#633636;">
+                      <a
+                        href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email"
+                        style="display:inline-block;padding:14px 28px;font-family:'Alegreya Sans',Helvetica,Arial,sans-serif;font-size:16px;line-height:1.2;font-weight:700;color:#f9f3eb;text-decoration:none;"
+                        >Sign in</a
+                      >
+                    </td>
+                  </tr>
+                </table>
+                <p
+                  style="margin:12px 0 0;text-align:center;font-family:'Alegreya Sans',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.4;color:#524b47;"
+                >
+                  Works on any device.
+                </p>
+
+                <!-- Seam -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 16px;">
+                  <tr>
+                    <td style="border-bottom:1px solid #d9c4a5;font-size:0;line-height:0;">&nbsp;</td>
+                  </tr>
+                </table>
+                <p style="margin:0;font-family:'Alegreya Sans',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#524b47;">
+                  The code and link work once and expire in an hour. Didn't ask to sign in? Ignore this email.
+                </p>
+              </td>
+            </tr>
+            <!-- Under the sheet, on the wood -->
+            <tr>
+              <td align="center" style="padding:20px 16px 0;font-family:'Alegreya Sans',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#b8b1ad;">
+                Spell Chasm: Commander deck help ·
+                <a href="https://www.spellchasm.com" style="color:#d2a360;text-decoration:underline;">spellchasm.com</a>
+              </td>
+            </tr>
+          </table>
         </td>
       </tr>
     </table>

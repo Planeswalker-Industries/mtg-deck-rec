@@ -1,4 +1,5 @@
 import { SearchClient, type TagDocument } from "@mtg/core/search";
+import { logError } from "./error-log";
 
 /**
  * The read side of the search index.
@@ -44,7 +45,8 @@ export async function fromIndex<T>(label: string, run: (index: SearchClient) => 
   try {
     return { value: await run(index) };
   } catch (err) {
-    console.warn(`${label}: the search index didn't answer, falling back to the database.`, err);
+    // A warning: the visitor still gets an answer, from the database. One ticket gathers every miss while the index is down.
+    logError({ area: `searchIndex.${label}`, error: err, level: "warning" });
     return null;
   }
 }

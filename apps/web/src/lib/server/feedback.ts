@@ -1,4 +1,5 @@
 import type { createAuthClient } from "./auth";
+import { logError } from "./error-log";
 
 type AuthClient = Awaited<ReturnType<typeof createAuthClient>>;
 
@@ -9,15 +10,30 @@ export async function submitFeedbackReport(db: AuthClient, message: string, page
   return Number(data);
 }
 
+/** Open feedback reports and open error tickets, for a platform admin's header. */
+export interface OpenAdminCounts {
+  reports: number;
+  errors: number;
+}
+
 /**
- * How many reports are open, for the header's badge. Null for anyone who isn't a platform admin, and when the read
- * fails: the badge is a convenience and never stands in the header's way.
+ * How many reports and error tickets are open, for the header's badges. Null for anyone who isn't a platform admin,
+ * and when the read fails: the badges are a convenience and never stand in the header's way.
+ *
+ * A preview deploy runs against main's schema, which may not have admin_open_counts yet: then the reports count comes
+ * from the older function and errors read 0.
  */
-export async function openFeedbackReportCount(db: AuthClient): Promise<number | null> {
-  const { data, error } = await db.rpc("admin_open_feedback_report_count");
-  if (error) {
-    console.error(`Counting open feedback reports failed: ${error.message}`);
+export async function openAdminCounts(db: AuthClient): Promise<OpenAdminCounts | null> {
+  const { data, error } = await db.rpc("admin_open_counts");
+  if (!error) {
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+    const counts = data as Record<string, unknown>;
+    return { reports: Number(counts.reports ?? 0), errors: Number(counts.errors ?? 0) };
+  }
+  const older = await db.rpc("admin_open_feedback_report_count");
+  if (older.error) {
+    logError({ area: "admin.openCounts", error, level: "warning" });
     return null;
   }
-  return data ?? null;
+  return older.data === null ? null : { reports: older.data, errors: 0 };
 }

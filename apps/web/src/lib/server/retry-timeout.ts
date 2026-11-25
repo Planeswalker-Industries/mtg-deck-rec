@@ -1,3 +1,4 @@
+import { logError } from "./error-log";
 /**
  * Retries a database call that the API role's statement timeout cancelled. Card tags use it when the search index is
  * down (`card-tags.ts`); the recommendation functions it was written for retired with T055.
@@ -39,7 +40,7 @@ export async function retryOnTimeout<T extends { error: Failure | null }>(
   let result = await call();
   for (let attempt = 2; attempt <= MAX_ATTEMPTS && isStatementTimeout(result.error); attempt++) {
     // No backoff: nothing is going to settle by waiting, and the caller is holding a request open.
-    console.warn(`${label}: statement timed out, retrying (attempt ${attempt} of ${MAX_ATTEMPTS})`);
+    logError({ area: `timeout.${label}`, error: result.error, level: "warning", context: { attempt, maxAttempts: MAX_ATTEMPTS } });
     result = await call();
   }
   return result;

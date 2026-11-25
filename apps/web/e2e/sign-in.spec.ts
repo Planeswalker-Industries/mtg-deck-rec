@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { mailpit, signIn } from "./mailpit";
 
-test("sign-in offers Google only, and its button starts the Google flow", async ({ page }) => {
+test("sign-in offers Google and an emailed code, and the Google button starts the Google flow", async ({ page }) => {
   await page.goto("/sign-in?next=/account");
   const google = page.getByRole("button", { name: "Continue with Google" });
   test.skip((await google.count()) === 0, "this build has Google sign-in off (NEXT_PUBLIC_AUTH_GOOGLE)");
-  await expect(page.getByLabel("Email")).toHaveCount(0);
+  await expect(page.getByLabel("Email")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Email me a code" })).toBeVisible();
 
   // Stop at the auth server's authorize step: what lies beyond it is Google's, which a test never drives.
   let authorize: URL | undefined;
