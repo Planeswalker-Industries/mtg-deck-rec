@@ -436,6 +436,8 @@ function RingTip({
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
+          // A hover tip: the tours stay up over it (`tour-dom.ts`).
+          data-tip=""
           aria-label={spoken}
           side="top"
           sideOffset={6}

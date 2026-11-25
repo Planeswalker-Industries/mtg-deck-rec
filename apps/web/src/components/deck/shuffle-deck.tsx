@@ -34,6 +34,8 @@ export function ShuffleDeck({
       id={id}
       role="status"
       aria-label={label}
+      // A tour waits behind it (`tour-dom.ts`): nothing on the page is ready to explain yet.
+      data-shuffle
       className={cn(
         "fixed inset-0 z-[60] flex touch-none flex-col items-center justify-center gap-4 overscroll-contain bg-background/80 backdrop-blur-sm",
         className,

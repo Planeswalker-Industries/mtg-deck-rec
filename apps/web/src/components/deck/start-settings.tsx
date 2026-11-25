@@ -159,6 +159,7 @@ export function StartSettings({
   onBudget,
   importHref,
   bracketRef,
+  tour,
 }: {
   bracket: Bracket;
   onBracket: (bracket: Bracket) => void;
@@ -168,12 +169,14 @@ export function StartSettings({
   importHref: Route | null;
   /** The Bracket select, for the above-bracket warning's Cancel to bring the player back to it. */
   bracketRef?: Ref<HTMLButtonElement>;
+  /** The screen's tour id: the Bracket row and the budget fields carry `<tour>.bracket` and `<tour>.budget`. */
+  tour?: string;
 }) {
   const id = useId();
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <div data-tour={tour && `${tour}.bracket`} className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <HintLabel label="Bracket" title="Bracket" htmlFor={`${id}-bracket`}>
           How strong the deck should play. Suggestions keep to it, and a deck above it is brought down to it. 3 (Upgraded) suits most
           tables.
@@ -191,7 +194,7 @@ export function StartSettings({
           </SelectContent>
         </Select>
       </div>
-      <div role="group" aria-labelledby={`${id}-budget`} className="flex flex-col gap-1">
+      <div role="group" aria-labelledby={`${id}-budget`} data-tour={tour && `${tour}.budget`} className="flex flex-col gap-1">
         <h3 id={`${id}-budget`} className="text-sm font-semibold">
           Budget
         </h3>

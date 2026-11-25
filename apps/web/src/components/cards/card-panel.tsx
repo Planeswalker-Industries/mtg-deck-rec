@@ -6,8 +6,8 @@ import type { CardFace, CardRules, CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
-import { CardImage } from "./card-image";
 import { ZoomableCard } from "./card-zoom";
+import { DealtCard } from "./dealt-card";
 import { ManaCost } from "./mana-cost";
 import { OwnedCorner } from "./owned-corner";
 import { RulesText } from "./rules-text";
@@ -129,7 +129,8 @@ export function CardPanel({
     <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)] items-start gap-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4">
       <div className="relative">
         <ZoomableCard card={card}>
-          <CardImage card={card} variant="normal" alt={card.name} sizes="(max-width: 640px) 40vw, 208px" eager />
+          {/* Dealt face down until its image has loaded (T104): every CardPanel is a journey swipe card. */}
+          <DealtCard card={card} variant="normal" alt={card.name} sizes="(max-width: 640px) 40vw, 208px" eager />
         </ZoomableCard>
         {owned && <OwnedCorner />}
       </div>
@@ -158,7 +159,10 @@ export function DecisionButtons({
   pass,
   accept,
   disabled = false,
+  tour,
 }: {
+  /** The screen's tour id: the two buttons together carry `<tour>.decide`. */
+  tour?: string | undefined;
   tone: DecisionTone;
   pass: { word: string; label: string; icon?: LucideIcon; onClick: () => void };
   accept: { word: string; label: string; icon?: LucideIcon; onClick: () => void };
@@ -169,7 +173,7 @@ export function DecisionButtons({
   const base =
     "flex h-12 items-center justify-center gap-2 rounded-lg text-base font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-40";
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div data-tour={tour && `${tour}.decide`} className="grid grid-cols-2 gap-2">
       <button type="button" aria-label={pass.label} title={pass.label} disabled={disabled} onClick={pass.onClick} className={cn(base, "border-2 border-primary/70 text-primary hover:bg-primary/10")}>
         <PassIcon aria-hidden className="size-5" strokeWidth={2.75} />
         {pass.word}

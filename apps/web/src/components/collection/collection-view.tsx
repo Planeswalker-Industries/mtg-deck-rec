@@ -27,6 +27,7 @@ import { COLOR_NAMES, MANA_SYMBOL_URL } from "@/components/deck/color-identity";
 import { DeckViewToggle, useDeckView } from "@/components/decks/deck-view";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PageHero } from "@/components/ui/page-hero";
+import { PageTour } from "@/components/tour/page-tour";
 import { COLLECTION_VISTA } from "@/lib/landing-art";
 import { Input } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -111,7 +112,7 @@ function EmptyView({ signedIn }: { signedIn: boolean }) {
             Start with a few cards by name, or import an export from ManaBox, Moxfield, Archidekt or TCGplayer.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Link href="/collection/import" className={buttonVariants({ size: "lg", className: "lit" })}>
+            <Link href="/collection/import" data-tour="collection.import" className={buttonVariants({ size: "lg", className: "lit" })}>
               Import your collection
             </Link>
             <Button type="button" size="lg" variant="outline" aria-expanded={adding} onClick={() => setAdding(true)}>
@@ -120,6 +121,7 @@ function EmptyView({ signedIn }: { signedIn: boolean }) {
           </div>
         </div>
       </PageHero>
+      <PageTour id="collection" />
       {adding && (
         <div className={COLLECTION_SHEET}>
           {editor.error ? (

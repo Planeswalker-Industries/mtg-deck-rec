@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { cn } from "cn";
 import { DeleteAccount } from "@/components/auth/delete-account";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { TutorialsToggle } from "@/components/tour/tutorials-toggle";
 import { isPlatformAdmin } from "@/lib/server/admin";
 import { getCurrentUser } from "@/lib/server/auth";
 import { buttonVariants } from "@/components/ui/button";
@@ -42,6 +43,7 @@ async function AccountDetails() {
       <p>
         Signed in as <span className="font-semibold">{user.email ?? "your Google account"}</span>.
       </p>
+      <TutorialsToggle />
       {/* The link to /admin itself. The header only links an admin to /admin/reports, and only while reports are
           open. */}
       {(await isPlatformAdmin()) && (

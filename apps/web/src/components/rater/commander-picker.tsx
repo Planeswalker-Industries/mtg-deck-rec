@@ -129,7 +129,8 @@ export function CommanderPicker({
         spellCheck={false}
         className="h-11 bg-sleeve text-base"
       />
-      <p aria-live="polite" className="min-h-5 text-sm text-muted-foreground">
+      {/* Out of the flow while the list is open, so the results sit right under the box (above a phone's keyboard). */}
+      <p aria-live="polite" className={cn("text-sm text-muted-foreground", open ? "sr-only" : "min-h-5")}>
         {hint}
       </p>
       {open && (

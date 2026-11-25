@@ -385,27 +385,40 @@ function valid(work: Work, snap: Snapshot, line: Line, cardIn: Candidate, cardOu
   return counts + colourTotal < snap.total - GAP_EPSILON && lineGap < line.gap - GAP_EPSILON;
 }
 
-/** The first valid pair for a line; with `withSkipped`, the pairs the player passed on count too. */
-function moveFor(work: Work, snap: Snapshot, line: Line, withSkipped = false): { in: Candidate; out: Candidate } | null {
+interface Pair {
+  in: Candidate;
+  out: Candidate;
+}
+
+/**
+ * The cards a line's pairs are made from, in the order Fix tries them. A line under its band: the in cards on it, each
+ * against every out card (`outMajor` false). A line over it: the out cards on it, each against the in cards that help
+ * a short line, then the rest.
+ */
+function pairOrder(work: Work, snap: Snapshot, line: Line): { ins: Candidate[]; outs: Candidate[]; outMajor: boolean } {
   const ins = liveIns(work, line);
   const outs = liveOuts(work);
-  const allowed = (cardIn: Candidate, cardOut: Candidate) => withSkipped || !work.skipped.has(pairKey(cardIn.card.id, cardOut.card.id));
-  if (line.over) {
-    const short = brokenLines(snap).filter((l) => !l.over);
-    const helps = (c: Candidate) => short.some((l) => onLine(c, l.key, work, snap));
-    const ordered = [...ins.filter(helps), ...ins.filter((c) => !helps(c))];
-    for (const cardOut of outs.filter((c) => onLine(c, line.key, work, snap))) {
-      for (const cardIn of ordered) {
-        if (allowed(cardIn, cardOut) && valid(work, snap, line, cardIn, cardOut)) return { in: cardIn, out: cardOut };
-      }
-    }
+  if (!line.over) return { ins: ins.filter((c) => onLine(c, line.key, work, snap)), outs, outMajor: false };
+  const short = brokenLines(snap).filter((l) => !l.over);
+  const helps = (c: Candidate) => short.some((l) => onLine(c, l.key, work, snap));
+  return { ins: [...ins.filter(helps), ...ins.filter((c) => !helps(c))], outs: outs.filter((c) => onLine(c, line.key, work, snap)), outMajor: true };
+}
+
+/** Whether Fix may offer a pair for a line: valid, and not passed on unless `withSkipped`. */
+const pairCheck =
+  (work: Work, snap: Snapshot, line: Line, withSkipped: boolean) =>
+  (cardIn: Candidate, cardOut: Candidate): boolean =>
+    (withSkipped || !work.skipped.has(pairKey(cardIn.card.id, cardOut.card.id))) && valid(work, snap, line, cardIn, cardOut);
+
+/** The first valid pair for a line; with `withSkipped`, the pairs the player passed on count too. */
+function moveFor(work: Work, snap: Snapshot, line: Line, withSkipped = false): Pair | null {
+  const { ins, outs, outMajor } = pairOrder(work, snap, line);
+  const check = pairCheck(work, snap, line, withSkipped);
+  if (outMajor) {
+    for (const cardOut of outs) for (const cardIn of ins) if (check(cardIn, cardOut)) return { in: cardIn, out: cardOut };
     return null;
   }
-  for (const cardIn of ins.filter((c) => onLine(c, line.key, work, snap))) {
-    for (const cardOut of outs) {
-      if (allowed(cardIn, cardOut) && valid(work, snap, line, cardIn, cardOut)) return { in: cardIn, out: cardOut };
-    }
-  }
+  for (const cardIn of ins) for (const cardOut of outs) if (check(cardIn, cardOut)) return { in: cardIn, out: cardOut };
   return null;
 }
 
@@ -442,11 +455,15 @@ function start(input: FixInput): Work {
   };
 }
 
+/** The lines outside their bands in the order Fix takes them, `focusLine` first. */
+function linesInOrder(snap: Snapshot, focusLine?: string): Line[] {
+  const broken = brokenLines(snap);
+  return focusLine === undefined ? broken : [...broken.filter((l) => l.line === focusLine), ...broken.filter((l) => l.line !== focusLine)];
+}
+
 function nextMove(work: Work, focusLine?: string): { move: FixMove; in: Candidate; out: Candidate } | null {
   const snap = snapshot(work);
-  const broken = brokenLines(snap);
-  const lines = focusLine === undefined ? broken : [...broken.filter((l) => l.line === focusLine), ...broken.filter((l) => l.line !== focusLine)];
-  for (const line of lines) {
+  for (const line of linesInOrder(snap, focusLine)) {
     const pair = moveFor(work, snap, line);
     if (pair) return { move: { line: line.line, in: pair.in.fix.card, out: pair.out.fix.card }, ...pair };
   }
@@ -456,6 +473,107 @@ function nextMove(work: Work, focusLine?: string): { move: FixMove; in: Candidat
 /** The next move: the first line, in order (`focusLine` first), that has a valid pair. Null when no line has one. */
 export function nextFixMove(input: FixInput): FixMove | null {
   return nextMove(start(input), input.focusLine)?.move ?? null;
+}
+
+/**
+ * The pairs Fix lets the player browse for one line, found as they are asked for and kept, so going back costs
+ * nothing. Each pair found runs a simulated move (`valid`, about 0.3 ms), so the screen asks for a couple ahead of the
+ * one on screen rather than for all of them.
+ */
+export interface FixBrowser {
+  /** The line the pairs are for, as `nextFixMove` names it. */
+  readonly line: string;
+  /** The card to take out at `outIndex`; 0 is `nextFixMove`'s. Null past the last one. */
+  out(outIndex: number): CardSummary | null;
+  /** The card to bring in at `inIndex` for the card to take out at `outIndex`; (0, 0) is `nextFixMove`'s. Null past the last one. */
+  in(outIndex: number, inIndex: number): CardSummary | null;
+}
+
+/** Cards to take out Fix lists for one line: more than a player browses before choosing. */
+export const MAX_FIX_OUT_OPTIONS = 10;
+/** Cards to bring in it lists for each card going out, for the same reason. */
+export const MAX_FIX_IN_OPTIONS = 10;
+/**
+ * Pairs one step may check before its list counts as ended. On the test decks a step takes under 2 ms; at about
+ * 0.3 ms a check, this keeps one that finds nothing (cards no in fits) near a frame.
+ */
+export const MAX_FIX_STEP_CHECKS = 64;
+
+/** A card to take out, the ins found for it so far, and where the search for the next one goes on. */
+interface OutSlot {
+  out: Candidate;
+  ins: Candidate[];
+  /** Index into the line's ins the next search starts at; past the end, or `ended`, nothing more is looked for. */
+  from: number;
+  ended: boolean;
+}
+
+/**
+ * The first line, in order (`focusLine` first), that has a valid pair, as a browser over its pairs. Its first card to
+ * take out is `nextFixMove`'s, then the rest in the order Fix tries them (weakest first); each one's ins in the order
+ * Fix tries them (best first). Null when no line has a pair.
+ */
+export function fixBrowser(input: FixInput): FixBrowser | null {
+  const work = start(input);
+  const snap = snapshot(work);
+  for (const line of linesInOrder(snap, input.focusLine)) {
+    const first = moveFor(work, snap, line);
+    if (!first) continue;
+    const { ins, outs, outMajor } = pairOrder(work, snap, line);
+    const check = pairCheck(work, snap, line, false);
+    // No in ahead of the first pair's fits its out (over the band it is the out's first valid in; under it, an earlier
+    // in fits no out at all), so its search goes on after it.
+    const slots: OutSlot[] = [{ out: first.out, ins: [first.in], from: ins.indexOf(first.in) + 1, ended: false }];
+    // The search for more outs skips what the first pair already ruled out: over the band, every out ahead of its out
+    // has no in; under it, every in ahead of its in fits no out. Rechecking those would spend the step's checks.
+    let nextOut = outMajor ? outs.indexOf(first.out) + 1 : 0;
+    const firstIn = outMajor ? 0 : ins.indexOf(first.in);
+    let outsEnded = false;
+
+    /** Finds the next in for a slot, within one step's checks; marks the slot ended when there is none. */
+    const findIn = (slot: OutSlot): void => {
+      for (let checks = 0; slot.from < ins.length && checks < MAX_FIX_STEP_CHECKS; checks += 1) {
+        const cardIn = ins[slot.from++]!;
+        if (check(cardIn, slot.out)) {
+          slot.ins.push(cardIn);
+          return;
+        }
+      }
+      slot.ended = true;
+    };
+    /** Finds the next card to take out that has an in, within one step's checks; marks the list ended when there is none. */
+    const findOut = (): void => {
+      let checks = 0;
+      while (nextOut < outs.length && checks < MAX_FIX_STEP_CHECKS) {
+        const cardOut = outs[nextOut++]!;
+        if (cardOut === first.out) continue;
+        for (let from = firstIn; from < ins.length && checks < MAX_FIX_STEP_CHECKS; from += 1) {
+          checks += 1;
+          if (check(ins[from]!, cardOut)) {
+            slots.push({ out: cardOut, ins: [ins[from]!], from: from + 1, ended: false });
+            return;
+          }
+        }
+      }
+      outsEnded = true;
+    };
+    const slotAt = (outIndex: number): OutSlot | undefined => {
+      while (slots.length <= outIndex && slots.length < MAX_FIX_OUT_OPTIONS && !outsEnded) findOut();
+      return slots[outIndex];
+    };
+
+    return {
+      line: line.line,
+      out: (outIndex) => slotAt(outIndex)?.out.fix.card ?? null,
+      in: (outIndex, inIndex) => {
+        const slot = slotAt(outIndex);
+        if (!slot) return null;
+        while (slot.ins.length <= inIndex && slot.ins.length < MAX_FIX_IN_OPTIONS && !slot.ended) findIn(slot);
+        return slot.ins[inIndex]?.fix.card ?? null;
+      },
+    };
+  }
+  return null;
 }
 
 /**

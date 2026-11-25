@@ -58,9 +58,9 @@ function ActionLink({ action, className }: { action: StatAction; className?: str
   );
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+function Group({ title, tour, children }: { title: string; tour?: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section data-tour={tour} className="flex flex-col gap-2">
       <h3 className="text-sm font-semibold text-muted-foreground">{title}</h3>
       {children}
     </section>
@@ -342,7 +342,7 @@ export function DeckStatsPanel({
       {money && <BudgetRow money={money} />}
       <p className="text-sm text-muted-foreground">Compared with {report.label}</p>
       {/* The main lines in one block of big rings, so a short group doesn't leave a half-empty row. */}
-      <Group title="Mana and roles">
+      <Group title="Mana and roles" tour="deck-stats.rings">
         <StatRings
           label="Mana and roles"
           lines={[...mana, ...roles]}

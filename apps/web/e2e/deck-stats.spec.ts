@@ -5,9 +5,9 @@ const FOOTER_NAME = /^Deck stats/;
 /** The Add swipe's gesture buttons, "Add <card>" and "Skip <card>", inside its sitting. */
 const ADD_CARD = /^Add /;
 const SKIP_CARD = /^Skip /;
-/** The Swap step's Swap button ("Swap in <card>") and its next-option arrow ("Pass on <card>"). */
+/** The Swap step's Swap button ("Swap in <card>") and its next-option arrow. */
 const SWAP_IN = /^Swap in /;
-const PASS_ON = /^Pass on /;
+const NEXT_OPTION = "Next option";
 /** The Fix step's buttons, "Swap <out> for <in>" and "Skip swapping <out> for <in>". */
 const FIX_SWAP = /^Swap .+ for /;
 const FIX_SKIP = /^Skip swapping /;
@@ -137,7 +137,7 @@ test.describe("deck stats on a phone", () => {
     const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
     await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 20_000 });
     test.skip(await nothingLeft.isVisible(), "no replacements in this data");
-    await expectAboveFooter(page, [swapIn, rater.getByRole("button", { name: PASS_ON })]);
+    await expectAboveFooter(page, [swapIn, rater.getByRole("button", { name: NEXT_OPTION })]);
   });
 });
 

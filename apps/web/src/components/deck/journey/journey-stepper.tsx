@@ -52,6 +52,8 @@ export function JourneyStepper({
                 type="button"
                 disabled={i > at && !canOpen(step)}
                 aria-current={current ? "step" : undefined}
+                // The journey tour lights the step the round is on: `journey.step.add`.
+                data-tour={current ? `journey.step.${step}` : undefined}
                 onClick={() => onSelect(step)}
                 className={cn(
                   "flex min-h-9 w-full items-center justify-center gap-1 rounded-lg border px-1.5 py-1 text-sm font-semibold transition-colors max-sm:min-h-11 sm:gap-1.5 sm:px-2",
@@ -116,13 +118,24 @@ export function PhaseIntro({
  * right, any control of its own (Combos) after the buttons. The `reason` ("Cut 3 to get back to 100") is read out but
  * not shown: the card on the sheet already says why (owner, 2026-11-21).
  */
-export function StepStatus({ reason, count, children }: { reason?: ReactNode; count?: ReactNode; children?: ReactNode }) {
+export function StepStatus({
+  reason,
+  count,
+  children,
+  tour,
+}: {
+  reason?: ReactNode;
+  count?: ReactNode;
+  children?: ReactNode;
+  /** The step's tour id: the count carries `<tour>.count`. */
+  tour?: string;
+}) {
   const slot = useContext(StepStatusSlot);
   if (!slot) return null;
   return createPortal(
     <>
       {children}
-      <p role="status" className="ml-auto shrink-0 text-sm text-foreground">
+      <p role="status" data-tour={tour && `${tour}.count`} className="ml-auto shrink-0 text-sm text-foreground">
         {reason !== undefined && <span className="sr-only">{reason} </span>}
         {count !== undefined && <span className="font-mono">{count}</span>}
       </p>

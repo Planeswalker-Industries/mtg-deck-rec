@@ -114,6 +114,7 @@ export function ShoppingList({
   saved,
   buy = true,
   foldAt,
+  tour,
 }: {
   title?: string;
   /** The title's heading level: 3 inside Finish, 2 where the list is one of the page's own sections. */
@@ -138,6 +139,8 @@ export function ShoppingList({
   buy?: boolean;
   /** From this many cards, open on the first group with "Show all" (Finish, where the Decklist repeats a long list). */
   foldAt?: number;
+  /** The page's tour id: the title carries `<tour>.list`. */
+  tour?: string;
 }) {
   const coarse = useCoarsePointer();
   const { list, carts, scope, setScope, scopeToggle, removed } = cart;
@@ -160,12 +163,13 @@ export function ShoppingList({
   }, [undoShown, removed]);
 
   const Title = headingLevel === 2 ? "h2" : "h3";
+  const titleTour = tour && `${tour}.list`;
   const GroupTitle = headingLevel === 2 ? "h3" : "h4";
 
   if (list === null) {
     return (
       <section aria-label={title} className="flex flex-col gap-2">
-        <Title className="font-heading text-xl leading-none font-semibold">{title}</Title>
+        <Title data-tour={titleTour} className="w-fit font-heading text-xl leading-none font-semibold">{title}</Title>
         <p role="status" className="text-sm text-muted-foreground">
           Checking your collection…
         </p>
@@ -302,7 +306,7 @@ export function ShoppingList({
     return (
       <section aria-labelledby={headingId} className="@container flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <Title id={headingId} className="font-heading text-xl leading-none font-semibold">
+          <Title id={headingId} data-tour={titleTour} className="w-fit font-heading text-xl leading-none font-semibold">
             {title}
           </Title>
           <p className="text-sm text-muted-foreground">
@@ -343,7 +347,7 @@ export function ShoppingList({
   return (
     // A container: one column in Finish's aside, two where the list has the page's width.
     <section aria-labelledby={headingId} className="@container flex flex-col gap-3">
-      <Title id={headingId} className="font-heading text-xl leading-none font-semibold">
+      <Title id={headingId} data-tour={titleTour} className="w-fit font-heading text-xl leading-none font-semibold">
         {/* The count alone, as Decklist shows it: the total and its date lead the page this list sits on. */}
         {title} <span className="font-mono text-base font-normal text-muted-foreground">{list.count}</span>
       </Title>

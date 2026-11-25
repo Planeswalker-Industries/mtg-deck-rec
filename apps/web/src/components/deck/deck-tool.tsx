@@ -53,12 +53,13 @@ import { SaveDeckButton, deckNameFor, suggestedDeckName } from "@/components/dec
 import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { ShuffleDeck } from "./shuffle-deck";
 import { PageHero } from "@/components/ui/page-hero";
+import { PageTour } from "@/components/tour/page-tour";
 import { UpgradePathPicker, type UpgradePath } from "./upgrade-paths";
 import { SPEND_FIELD_LABEL, StartSettings } from "./start-settings";
 import { readBudgetPref, writeBudgetPref, type BudgetPrefMode } from "@/lib/budget-prefs";
 import { asOfSuffix, formatUsd } from "@/lib/format";
 import { SelectedCommander } from "./selected-commander";
-import { BuildView } from "./build/build-view";
+import { BuildView, OPENING_COPY } from "./build/build-view";
 import { buildEntries, useDeckBuild, type BuildState } from "./build/use-deck-build";
 import { ToolDeckEditor, type EditorHandle } from "@/components/deckbuilder/tool-deck-editor";
 import { DeckStatsFooter } from "./deck-stats/deck-stats-footer";
@@ -364,6 +365,8 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   const [openError, setOpenError] = useState<string | null>(null);
   const [view, setView] = useState<ReviewView>(readReviewView);
   const [mode, setMode] = useState<ToolMode>("upgrade");
+  /** Tune it opened the round: the opening shuffle stays up until the round's first step has its cards. */
+  const [openingRound, setOpeningRound] = useState(false);
   const router = useRouter();
   /**
    * The inline deckbuilder's waiting edit, while it is on screen: flushed so Save and the decklist box see the deck as
@@ -676,7 +679,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     ).then((r) => {
       setResuming(false);
       if (!r) return;
-      if (r.ok) router.replace(`/decks/deck/${r.data.code}/edit` as Route);
+      if (r.ok) router.replace(`/decks/deck/${r.data.code}` as Route);
       else setOpenError(`Couldn't save your deck: ${r.error.message}`);
     });
   }, [resumeSave, source, router]);
@@ -733,6 +736,8 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
   /** A saved deck's deckbuilder has its own address; the commander segment is decoration, the code finds the deck. */
   const editorUrl = (code: string, slug = analysis?.commanderKey.commanders[0]?.slug) =>
     `/decks/${slug ?? "deck"}/${code}/edit` as Route;
+  /** A saved deck's own page, where a save lands (owner, 2026-11-25). */
+  const deckUrl = (code: string, slug = analysis?.commanderKey.commanders[0]?.slug) => `/decks/${slug ?? "deck"}/${code}` as Route;
 
   /**
    * Back to Upgrade when the player cancels saving: the deckbuilder's waiting edit goes in first, with the cuts Upgrade
@@ -881,6 +886,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     if (buildStart) router.replace("/deck" as Route, { scroll: false });
     setEditing(false);
     setMode(next);
+    if (next === "upgrade" && outcome.analysis) setOpeningRound(true);
     checkLookup(outcome.analysis);
     return true;
   }
@@ -934,7 +940,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     // An open deck was just written back by the analysis; once that lands, its editor has the result.
     if (open) {
       await tool.whenSaved();
-      router.push(editorUrl(open.code));
+      router.push(deckUrl(open.code));
       return;
     }
     setMode("edit");
@@ -1079,6 +1085,21 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     />
   );
 
+  // Whether the round's step on screen has its cards, so the opening shuffle can lift (a step that failed counts).
+  const loadingStatus = (status: string) => status === "loading" || status === "idle";
+  const roundPhase = mode === "upgrade" ? journey.state?.phase : undefined;
+  const roundReady =
+    roundPhase === undefined ||
+    (roundPhase === "cut"
+      ? !loadingStatus(tool.cut.status)
+      : roundPhase === "add"
+        ? !loadingStatus(journey.add.state.status)
+        : roundPhase === "fix"
+          ? !loadingStatus(fix.status)
+          : true);
+  // Lifted once, during render: a later step's loading has its own shuffle.
+  if (openingRound && roundReady) setOpeningRound(false);
+
   return (
     <div className="flex flex-col gap-5">
       {/* The open deck stays named while its decklist is being edited: it is still the deck being worked on. */}
@@ -1119,12 +1140,13 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
           id="deck-build-heading"
           heading="Choose commander"
           slimArt
+          tour="build-start"
           aside="We'll deal you a deck."
           intro={
             <>
               {source.kind === "none" && (
                 <p className="text-sm text-muted-foreground">
-                  <Link href={buildImportHref} className={cn(TEXT_LINK, "font-semibold")}>
+                  <Link href={buildImportHref} data-tour="build-start.import" className={cn(TEXT_LINK, "font-semibold")}>
                     Import your collection
                   </Link>{" "}
                   to pick from commanders you own and build from your cards.
@@ -1133,31 +1155,39 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
             </>
           }
         >
+          <PageTour id="build-start" />
           <div className="flex flex-col gap-3">
             {tool.ownedOnly && (
-              <Segmented
-                label="Which commanders to list"
-                options={[
-                  { value: "owned", label: "From my collection" },
-                  { value: "any", label: "Any commander" },
-                ]}
-                value={pickFrom}
-                onChange={(value) => {
-                  // The pick came from the other list; a fresh list starts a fresh pick.
-                  setPicked(null);
-                  setPickFrom(value);
-                }}
-              />
+              <div data-tour="build-start.source">
+                <Segmented
+                  label="Which commanders to list"
+                  options={[
+                    { value: "owned", label: "From my collection" },
+                    { value: "any", label: "Any commander" },
+                  ]}
+                  value={pickFrom}
+                  onChange={(value) => {
+                    // The pick came from the other list; a fresh list starts a fresh pick.
+                    setPicked(null);
+                    setPickFrom(value);
+                  }}
+                />
+              </div>
             )}
+            {/* Keyed apart: the same div reused would keep the tour lighting it under the other step's text. */}
             {picked ? (
-              <SelectedCommander commanders={picked} onChange={() => setPicked(null)} />
+              <div key="picked" data-tour="build-start.picked">
+                <SelectedCommander commanders={picked} onChange={() => setPicked(null)} />
+              </div>
             ) : (
               // The collection offer takes focus while it is up; off again, the cursor goes back into the box.
-              <CommanderPicker
-                autoFocus={!offersCollection}
-                ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
-                onPick={(card) => setPicked([card])}
-              />
+              <div key="picker" data-tour="build-start.commander">
+                <CommanderPicker
+                  autoFocus={!offersCollection}
+                  ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}
+                  onPick={(card) => setPicked([card])}
+                />
+              </div>
             )}
             <StartSettings
               bracket={tool.startBracket}
@@ -1165,10 +1195,12 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               budget={tool.budget}
               onBudget={chooseBuildBudget}
               importHref={tool.ownedOnly ? null : buildImportHref}
+              tour="build-start"
             />
             {/* The page's main action, so the seal. The Bracket and budget are read at the tap, so a change after the pick still counts. */}
             <button
               type="button"
+              data-tour="build-start.build"
               className={cn(SEAL_BUTTON, "w-full disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:self-end")}
               disabled={picked === null}
               onClick={() => {
@@ -1184,6 +1216,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         <PageHero
           id="deck-input-heading"
           heading="Upgrade a deck"
+          tour="deck-start"
           aside="From the best cards online, or with cards you already own."
           intro={
             <>
@@ -1202,7 +1235,13 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
           }
         >
           <div className="flex flex-col gap-4">
-            <UpgradePathPicker value={upgradePath} onChange={choosePath} hasCollection={tool.collectionMode !== null} />
+            <PageTour id="deck-start" />
+            <UpgradePathPicker
+              value={upgradePath}
+              onChange={choosePath}
+              hasCollection={tool.collectionMode !== null}
+              tour="deck-start"
+            />
             <form
               className="flex flex-col gap-3"
               onSubmit={(e) => {
@@ -1217,6 +1256,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               {!textHidden && (
                 <Textarea
                   id="decklist"
+                  data-tour="deck-start.paste"
                   rows={DECKLIST_ROWS}
                   value={tool.text}
                   onChange={(e) => {
@@ -1242,6 +1282,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                 onBudget={chooseBudget}
                 importHref={tool.collectionMode === null ? collectionImportHref : null}
                 bracketRef={bracketSelect}
+                tour="deck-start"
               />
               {fileInBox ? (
                 <LoadedFile
@@ -1257,19 +1298,21 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                 />
               ) : (
                 // A CSV deck export collapses to quantity and name: a deck is oracle-level, so the printing is noise.
-                <FileDrop
-                  note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer."
-                  maxBytes={MAX_DECK_FILE_BYTES}
-                  disabled={tool.parse.status === "loading"}
-                  onFile={(contents, name) => {
-                    const text = decklistFromFile(contents);
-                    if (text.length > MAX_DECKLIST_CHARS) return charLimitError(MAX_DECKLIST_CHARS);
-                    deckLimit.clearError();
-                    tool.setText(text);
-                    setDeckFile({ name, text });
-                    setFileTextShown(false);
-                  }}
-                />
+                <div data-tour="deck-start.file">
+                  <FileDrop
+                    note=".csv or .txt from ManaBox, Moxfield, Archidekt or TCGplayer."
+                    maxBytes={MAX_DECK_FILE_BYTES}
+                    disabled={tool.parse.status === "loading"}
+                    onFile={(contents, name) => {
+                      const text = decklistFromFile(contents);
+                      if (text.length > MAX_DECKLIST_CHARS) return charLimitError(MAX_DECKLIST_CHARS);
+                      deckLimit.clearError();
+                      tool.setText(text);
+                      setDeckFile({ name, text });
+                      setFileTextShown(false);
+                    }}
+                  />
+                </div>
               )}
               {upgradePath === "owned" && tool.collectionMode === null && (
                 <p className="text-sm text-muted-foreground">
@@ -1278,7 +1321,11 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               )}
               <div className="flex flex-wrap gap-2">
                 {upgradePath === "owned" && tool.collectionMode === null ? (
-                  <Link href={collectionImportHref} className={buttonVariants({ size: "lg", className: "lit gap-2" })}>
+                  <Link
+                    href={collectionImportHref}
+                    data-tour="deck-start.go"
+                    className={buttonVariants({ size: "lg", className: "lit gap-2" })}
+                  >
                     <Library aria-hidden className="size-4" />
                     Upload your collection
                   </Link>
@@ -1287,6 +1334,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                     type="submit"
                     size="lg"
                     className="lit"
+                    data-tour="deck-start.go"
                     disabled={!tool.text.trim() || tool.parse.status === "loading"}
                   >
                     {/* The chosen tile says which path; the action is the same name either way. */}
@@ -1355,7 +1403,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
       <ResolutionIssues
         unresolved={tool.unresolvedLines}
         issues={analysis?.issues ?? []}
-        issuesInDeckBar={Boolean(analysis && context)}
+        hideIssues={Boolean(analysis && context)}
       />
 
       {analysis && context && deckBuild.state.status === "idle" && !roundHeld && (
@@ -1387,8 +1435,8 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                   onSaved={(deck) => {
                     setSaveAsked(false);
                     tool.trackSavedDeck(deck);
-                    // Saving opens the deck in its deckbuilder, at the address it keeps from now on.
-                    router.push(editorUrl(deck.code));
+                    // Saving lands on the deck's own page (owner, 2026-11-25); Edit there opens its deckbuilder.
+                    router.push(deckUrl(deck.code));
                   }}
                   defaultOpen={saveAsked}
                   original={tool.original}
@@ -1633,6 +1681,8 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
           onDismiss={() => setCollectionOfferAnswered(true)}
         />
       )}
+      {/* Last, so it sits over the step's own loading shuffle: one shuffle from Tune it to the step's first card. */}
+      {openingRound && !roundReady && <ShuffleDeck {...OPENING_COPY.upgrade} loader />}
     </div>
   );
 }

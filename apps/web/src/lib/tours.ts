@@ -1,0 +1,423 @@
+/**
+ * The first-time tours: one list of steps per page (or per screen inside one). A step names its element only by the
+ * `data-tour` id on that element and holds what the bubble says; the overlay measures the element live, so a tour
+ * follows the page as it changes. Pages start their tour with `<PageTour id>`.
+ */
+
+/**
+ * What a step asks for: a tap on the lit element, a swipe across it, or just a read. A read and a sideways swipe move
+ * on with the bubble's ›; a tap, and a swipe up, move on by themselves.
+ */
+export type TourPrompt = "tap" | "swipe" | "read";
+
+/** An element a step can light, by its `data-tour` id, and what the bubble says beside it. */
+export interface TourTarget {
+  target: string;
+  text: string;
+  /** A stand-in that asks for something else than its step (a read where the step's own element takes a swipe). */
+  prompt?: TourPrompt;
+}
+
+export interface TourStep extends TourTarget {
+  prompt: TourPrompt;
+  /** Which way a swipe step's arrow points. */
+  swipe?: "horizontal" | "up";
+  /**
+   * Stand-ins for a screen that shows something else in the target's place (a link where a toggle needs a
+   * collection): the first one on the page lights instead, with its own text.
+   */
+  otherwise?: readonly TourTarget[];
+}
+
+/** A tour's id, also its key in the seen list. Narrowed to a union as tours are added. */
+export type TourId = string;
+
+// Every tour's text puts its key words in capitals, as a game would (owner, 2026-11-24): the things the player
+// handles (DECK, COMMANDER, BRACKET, COLLECTION), what they do (TAP, SWIPE, EDIT, SAVE, NEXT, BACK) and the names of
+// steps, buttons and pips (ADD, CUT, FIX, SWAP, FINISH, ALL, SKIP, DECK SHORTAGE PIPS).
+
+/**
+ * The build start (Choose commander), approved by the owner 2026-11-24. Like every tour, top to bottom: the highest
+ * element that needs explaining first.
+ */
+const BUILD_START: readonly TourStep[] = [
+  { target: "build-start.heading", prompt: "read", text: "So you want to BUILD a COMMANDER DECK, huh?" },
+  { target: "build-start.heading", prompt: "read", text: "Well, you've come to the right place." },
+  {
+    target: "build-start.source",
+    prompt: "read",
+    text: "First, choose: BUILD from the cards you already own, or from any card ever printed.",
+    otherwise: [
+      {
+        target: "build-start.import",
+        text: "Want to BUILD from cards you own? IMPORT your COLLECTION first. Otherwise we use any card ever printed.",
+      },
+    ],
+  },
+  {
+    target: "build-start.commander",
+    prompt: "read",
+    text: "Then type part of your COMMANDER's name and pick it.",
+    otherwise: [{ target: "build-start.picked", text: "Here's your COMMANDER. TAP CHANGE to pick another." }],
+  },
+  {
+    target: "build-start.bracket",
+    prompt: "read",
+    text: "Set how strong the DECK should be. If you don't know what BRACKETS are, pick 3!",
+  },
+  {
+    target: "build-start.budget",
+    prompt: "read",
+    text: "Don't want a $10,000 DECK? No problem. Set a MAX PER CARD and a MAX TO SPEND. No card costs more than the first, and what you pay, COLLECTION or not, never tops the second.",
+  },
+  { target: "build-start.build", prompt: "tap", text: "Once you're ready, TAP this and we're off to the races!" },
+];
+
+/** The paste screen (Upgrade a deck), approved by the owner 2026-11-24. */
+const DECK_START: readonly TourStep[] = [
+  { target: "deck-start.heading", prompt: "read", text: "Got a DECK already? Let's make it better." },
+  {
+    target: "deck-start.owned",
+    prompt: "tap",
+    text: "UPLOAD your COLLECTION and improve your DECK with the cards you already own!",
+  },
+  { target: "deck-start.online", prompt: "tap", text: "Or we can use the absolute best cards out there. Your choice!" },
+  {
+    target: "deck-start.paste",
+    prompt: "read",
+    text: "PASTE your decklist here. A list from any site works: ManaBox, Archidekt, Moxfield, Notepad. Whatever!",
+  },
+  {
+    target: "deck-start.bracket",
+    prompt: "tap",
+    text: "Set how strong you want your DECK to be. If you don't know what BRACKETS are, pick 3!",
+  },
+  {
+    target: "deck-start.budget",
+    prompt: "read",
+    text: "Set a MAX PER CARD and a MAX TO SPEND. We never suggest a card above the first, and the cards we ADD never top the second.",
+  },
+  { target: "deck-start.budget", prompt: "read", text: "Set them both to ZERO and we'll only use cards you own." },
+  { target: "deck-start.budget", prompt: "read", text: "Leave them blank and the sky's the limit brother!" },
+  {
+    target: "deck-start.file",
+    prompt: "read",
+    text: "Apps like ManaBox let you export a DECK as a CSV file. DROP it here and we'll load it in automatically!",
+  },
+  {
+    target: "deck-start.go",
+    prompt: "tap",
+    text: "Once your list is in, TAP ANALYZE DECK. No list handy? Try the app out with our SAMPLE DECK.",
+  },
+];
+
+/** The built deck, top to bottom with TUNE IT last (it ends the tour), approved by the owner 2026-11-25. */
+const BUILD_RESULT: readonly TourStep[] = [
+  { target: "build-result.list", prompt: "read", text: "Here's your new DECK, sorted by type. TAP any CARD to see it up close." },
+  { target: "build-result.buy", prompt: "read", text: "Missing a few cards? TAP BUY to get them on TCGplayer." },
+  { target: "build-result.save", prompt: "read", text: "Not ready yet? TAP SAVE FOR LATER and come BACK to it anytime." },
+  {
+    target: "build-result.tune",
+    prompt: "tap",
+    text: "When you're ready, TAP here and we'll fine tune this DECK into a masterpiece!",
+  },
+];
+
+/** The journey tour's line on the steps, before it names the one to tap. */
+const JOURNEY_STEPS = "Your DECK Journey runs left to right, one step at a time.";
+
+/**
+ * The journey page's opening, approved by the owner 2026-11-24: the deck bar, then the step the round starts on, lit
+ * alone in the stepper (the current tab carries `journey.step.<phase>`). Tapping it hands over to that step's tour.
+ */
+const JOURNEY: readonly TourStep[] = [
+  {
+    target: "journey.bar",
+    prompt: "read",
+    text: "Welcome to the DECK Journey! Up here you can rename your DECK, EDIT your decklist and adjust your BRACKET!",
+  },
+  {
+    target: "journey.step.add",
+    prompt: "tap",
+    text: `${JOURNEY_STEPS} TAP ADD to start!`,
+    otherwise: [
+      { target: "journey.step.cut", text: `${JOURNEY_STEPS} TAP CUT to start!` },
+      { target: "journey.step.fix", text: `${JOURNEY_STEPS} TAP FIX to start!` },
+    ],
+  },
+];
+
+/** Add's swipe view, approved by the owner 2026-11-24. Its first card has STAT CHANGE PIPS (`AddPhase`). */
+const ADD: readonly TourStep[] = [
+  {
+    target: "add.roles",
+    prompt: "read",
+    text: "NICE! These are your DECK SHORTAGE PIPS. They show where your DECK falls short.",
+  },
+  {
+    target: "add.roles",
+    prompt: "tap",
+    text: "Ramp 5/10 means it runs 5 of the 10 it should. TAP one to see only those cards.",
+  },
+  { target: "add.all", prompt: "tap", text: "TAP ALL to see every card again." },
+  {
+    target: "add.card",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "Here's a card DECKS like yours run. SWIPE to see more and pick your favorites!",
+  },
+  {
+    target: "add.chips",
+    prompt: "read",
+    text: "These are your STAT CHANGE PIPS. They show how ADDING this card changes your DECK.",
+  },
+  { target: "add.chips", prompt: "read", text: "Green is GOOD! Red, not so much." },
+  { target: "add.decide", prompt: "tap", text: "TAP ADD to put it in your DECK, or SKIP to pass on it!" },
+];
+
+/**
+ * Cut's swipe view, approved by the owner 2026-11-24: the deck's count up in the stepper, then the card, its reason,
+ * its pips and its buttons. Its first card has STAT CHANGE PIPS (`CutPhase`).
+ */
+const CUT: readonly TourStep[] = [
+  {
+    target: "cut.count",
+    prompt: "read",
+    text: "Woah there! Looks like you've got TOO MANY cards! This count shows how far over you are.",
+  },
+  {
+    target: "cut.card",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "I recommend we CUT this card here. If you disagree, SWIPE to see other CUT candidates!",
+  },
+  { target: "cut.why", prompt: "read", text: "The note on the card says WHY it's up for the CUT." },
+  {
+    target: "cut.chips",
+    prompt: "read",
+    text: "Remember these? They're back! RED is BAD. GREEN is GOOD!",
+  },
+  {
+    target: "cut.decide",
+    prompt: "tap",
+    text: "Instead of a SWIPE, you can always TAP these buttons down here.",
+  },
+];
+
+/**
+ * The Save Deck page (the round's Save: the deck name form up in the bar, the decklist below), approved by the owner
+ * 2026-11-24. Top to bottom, then the page's own finish: name it and SAVE. Names only what earlier screens didn't show.
+ */
+const SAVE_DECK: readonly TourStep[] = [
+  { target: "save-deck.bar", prompt: "read", text: "This is your COMMANDER PANEL. RENAME and SAVE your DECK up here." },
+  { target: "save-deck.list", prompt: "read", text: "Here's your DECKLIST, sorted into categories." },
+  { target: "save-deck.card", prompt: "tap", text: "TAP a CARD PLATE to see the full card!" },
+  {
+    target: "save-deck.name",
+    prompt: "read",
+    text: "Great job on this DECK. Let's give it a name.",
+  },
+  { target: "save-deck.save", prompt: "tap", text: "TAP SAVE and your DECK is yours to come BACK to anytime!" },
+];
+
+/** The close-every-ring line both screens end Deck stats on. */
+const ALL_RINGS = "remember - if you close ALL RINGS - you've got a NICE DECK!";
+
+/**
+ * Deck stats, approved by the owner 2026-11-24: on phones the docked bar (its score, then its money, then Swipe up to
+ * open the sheet), on desktop the same parts of the rail, ending on its rings. On desktop it runs on Swap's swipe
+ * view; on a phone only the first time the player taps the bar (owner, 2026-11-25): the sheet stays shut and the tour
+ * runs instead.
+ */
+const DECK_STATS: readonly TourStep[] = [
+  {
+    target: "deck-stats.bar",
+    prompt: "read",
+    text: "Well, looks like you stumbled upon something pretty nifty! This here is the DECK STATS Panel! Let me break it down.",
+    otherwise: [
+      {
+        target: "deck-stats.rail",
+        text: "Well, looks like you stumbled upon something pretty nifty! This here is the DECK STATS Panel! Let me break it down.",
+      },
+    ],
+  },
+  {
+    target: "deck-stats.score",
+    prompt: "read",
+    text: "This is your SCORE: how many of your DECK STATS are right where they should be.",
+  },
+  {
+    target: "deck-stats.score",
+    prompt: "read",
+    text: "With a card on screen, it shows the SCORE that card would give you. Green arrow up? That card helps!",
+  },
+  { target: "deck-stats.money", prompt: "read", text: "This is what your picks cost so far, out of your MAX TO SPEND." },
+  {
+    target: "deck-stats.bar",
+    prompt: "swipe",
+    swipe: "up",
+    text: `SWIPE UP to explore the details, and ${ALL_RINGS}`,
+    otherwise: [{ target: "deck-stats.rings", prompt: "read", text: `Explore the details down here, and ${ALL_RINGS}` }],
+  },
+];
+
+/**
+ * Fix's pair, approved by the owner 2026-11-24 and reworked 2026-11-25: the pair, the card going out, the card going
+ * in, the whole trade with its buttons, then Auto-Fix last. The line the move works on is read out, not shown, so no step lights it.
+ */
+const FIX: readonly TourStep[] = [
+  {
+    target: "fix.pair",
+    prompt: "read",
+    text: "Welcome to FIX. Each move takes one card OUT and puts one IN, so your DECK STATS land right where they should be.",
+  },
+  {
+    target: "fix.out",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "This is the OUT card. We recommend replacing it. SWIPE it to see other OUT candidates.",
+    // The line has one card to take out: nothing to swipe to (owner, 2026-11-25).
+    otherwise: [{ target: "fix.out-only", prompt: "read", text: "This is the OUT card. We recommend replacing it." }],
+  },
+  {
+    target: "fix.in",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "This is the IN card. It will replace the OUT card. SWIPE to see other IN candidates.",
+  },
+  // A read over the whole trade, so the cards stay lit and the player doesn't think a pick is due now (owner, 2026-11-25).
+  { target: "fix.trade", prompt: "read", text: "Like the trade? TAP SWAP. Not feeling it? TAP SKIP for the next one." },
+  {
+    target: "fix.auto",
+    prompt: "tap",
+    text: "If you're short on time, let me handle this. TAP AUTO-FIX and I'll line up every move. You pick which ones to make.",
+  },
+];
+
+/**
+ * Swap, written by the owner 2026-11-25: what Swap is, over the pair; the card going out (a swipe); the card going in;
+ * then the buttons. A deck with nothing to fix comes straight here, so it says OUT and IN again. On desktop Deck stats'
+ * tour follows on the same screen.
+ */
+const SWAP: readonly TourStep[] = [
+  {
+    target: "swap.pair",
+    prompt: "read",
+    text: "Welcome to SWAP! This is where we take cards in your DECK and recommend even better ones!",
+  },
+  {
+    target: "swap.out",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "This is your OUT card. It's already in your DECK and is on the chopping block. SWIPE to see other cards that might be worth switching out!",
+  },
+  {
+    target: "swap.in",
+    prompt: "read",
+    text: "This is your IN card. It will replace your OUT card. You can SWIPE through these options too!",
+  },
+  {
+    target: "swap.decide",
+    prompt: "read",
+    text: "When you've found a SWAP you like, TAP to make the switch! Or TAP SKIP to see the next OUT card.",
+  },
+];
+
+/**
+ * Finish, approved by the owner 2026-11-24. The one tour out of screen order: the score first (its words by the score's
+ * level), then the round's
+ * changes and decklist, what is left to buy, the other ways to take the deck away, Start over, and Save last.
+ */
+const FINISH: readonly TourStep[] = [
+  {
+    // By the score's level: green, amber, red.
+    target: "finish.score.ok",
+    prompt: "read",
+    text: "YOU DID IT! Every ring is closed and your DECK is ready! Let's check out your final SCORE.",
+    otherwise: [
+      { target: "finish.score.mild", text: "YOU DID IT! Your DECK is almost ready! Let's check out your final SCORE." },
+      {
+        target: "finish.score.urgent",
+        text: "YOU MADE IT! But your SCORE says this DECK still needs some work. The rings below show where.",
+      },
+    ],
+  },
+  {
+    target: "finish.changes",
+    prompt: "read",
+    text: "Here's every card that went OUT and came IN this round, side by side.",
+  },
+  { target: "finish.decklist", prompt: "read", text: "And this DECKLIST is actually looking pretty good!" },
+  {
+    target: "finish.buy",
+    prompt: "read",
+    text: "Not bad! These are the cards you still need to snag. TAP BUY and we'll get you set on TCGplayer.",
+    otherwise: [
+      {
+        target: "finish.upgrades",
+        text: "Not bad! But it could be even better... Consider these UPGRADES to take this thing to the next level!",
+      },
+    ],
+  },
+  {
+    target: "finish.list",
+    prompt: "read",
+    text: "If you wanted to look over each missing card, check your BUY LIST here.",
+  },
+  { target: "finish.export", prompt: "read", text: "Oh! I almost forgot, you can also COPY or DOWNLOAD your DECK!" },
+  { target: "finish.start-over", prompt: "read", text: "Or completely START OVER and run it again!" },
+  {
+    target: "finish.save",
+    prompt: "tap",
+    text: "But, this is your NEW DECK! Why not SAVE it? TAP SAVE! Don't forget a NAME!",
+  },
+];
+
+/** The empty collection page, approved by the owner 2026-11-24. A page with cards needs none: its player has imported. */
+const COLLECTION: readonly TourStep[] = [
+  {
+    target: "collection.import",
+    prompt: "tap",
+    text: "Got cards? TAP here to IMPORT your COLLECTION from ManaBox, Moxfield, Archidekt or TCGplayer.",
+  },
+];
+
+export const TOURS: Record<TourId, readonly TourStep[]> = {
+  "build-start": BUILD_START,
+  "deck-start": DECK_START,
+  "build-result": BUILD_RESULT,
+  journey: JOURNEY,
+  add: ADD,
+  cut: CUT,
+  fix: FIX,
+  swap: SWAP,
+  "save-deck": SAVE_DECK,
+  "deck-stats": DECK_STATS,
+  finish: FINISH,
+  collection: COLLECTION,
+};
+
+/** Each tour's chapter name, quiet in its bubble beside the step count. */
+const TOUR_TITLES: Record<TourId, string> = {
+  "build-start": "Build a Deck",
+  "deck-start": "Upgrade a Deck",
+  "build-result": "Your New Deck",
+  journey: "Deck Journey",
+  add: "Add",
+  cut: "Cut",
+  fix: "Fix",
+  swap: "Swap",
+  "save-deck": "Save Deck",
+  "deck-stats": "Deck Stats",
+  finish: "Finish",
+  collection: "Collection",
+};
+
+/** A tour's chapter name; none for an id without one. */
+export const tourTitle = (id: TourId): string => TOUR_TITLES[id] ?? "";
+
+/** A tour's steps; none for an id without a tour. */
+export const tourSteps = (id: TourId): readonly TourStep[] => TOURS[id] ?? [];
+
+/** Every element a step can light, its own first. */
+export const stepTargets = (step: TourStep): readonly TourTarget[] => [step, ...(step.otherwise ?? [])];
