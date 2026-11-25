@@ -9,6 +9,7 @@ import {
   type AdminCrawlSource,
   type AdminDeckCard,
   type AdminSiteStats,
+  AdminWorkerSchedule,
   type AdminSyncRun,
   type AdminSyncRunPage,
   type AdminTag,
@@ -39,6 +40,7 @@ const ACCEPT_RATES = "/api/admin/accept-rates";
 const DECKS = "/api/admin/decks";
 const HOME = "/api/admin/home";
 const CRAWLS = "/api/admin/crawls";
+const WORKER = "/api/admin/worker";
 
 /** React Admin's default page size, used when a list asks without saying. */
 const DEFAULT_PER_PAGE = 25;
@@ -80,6 +82,7 @@ const USER_SORT_FIELDS: Record<string, (typeof ADMIN_USER_SORTS)[number]> = {
   displayName: "display_name",
   deckCount: "deck_count",
   collectionCount: "collection_count",
+  journeyCount: "journey_count",
 };
 
 const TAG_SORT_FIELDS: Record<string, AdminTagSort> = {
@@ -261,13 +264,23 @@ const provider = {
   getSiteStats: () => call<AdminSiteStats>(HOME),
   // The crawl page's endpoint answers with a page of decks beside the sources; one deck is the least it will send.
   getCrawlSources: async () => (await call<{ sources: AdminCrawlSource[] }>(`${CRAWLS}/sources`)).sources,
+  getWorkerSchedule: () => call<AdminWorkerSchedule>(WORKER),
+  requestWorkerRun: (duty: string) =>
+    call<{ duty: string; requestedAt: string }>(`${WORKER}/run`, { method: "POST", body: JSON.stringify({ duty }) }),
 };
 
 /** The provider's own methods beside React Admin's, for `useDataProvider<AdminDataProvider>()`. */
 export type AdminDataProvider = DataProvider &
   Pick<
     typeof provider,
-    "getUserDecks" | "getDeckCards" | "getUserCollection" | "searchUserCollection" | "getSiteStats" | "getCrawlSources"
+    | "getUserDecks"
+    | "getDeckCards"
+    | "getUserCollection"
+    | "searchUserCollection"
+    | "getSiteStats"
+    | "getCrawlSources"
+    | "getWorkerSchedule"
+    | "requestWorkerRun"
   >;
 
 /**

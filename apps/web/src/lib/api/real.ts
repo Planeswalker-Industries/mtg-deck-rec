@@ -17,6 +17,7 @@ import {
   castVoteAction,
   recordRecEventAction,
   recordRecEventsAction,
+  recordJourneyStartAction,
   getCommanderCoverageAction,
   getDeckCoverageAction,
   getCommanderRequestAction,
@@ -95,6 +96,7 @@ export const realActions: ActionsApi = {
   dealRaterCards: (input) => callAction(() => dealRaterCardsAction(input)),
   submitFeedback: (input) => callAction(() => submitFeedbackAction(input)),
   reportClientError: (input) => callAction(() => reportClientErrorAction(input)),
+  recordJourneyStart: (input) => callAction(() => recordJourneyStartAction(input)),
 };
 
 /** Card lookups run as GET Route Handlers, so the CDN can keep results and searches don't queue behind actions. */

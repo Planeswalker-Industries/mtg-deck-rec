@@ -5,6 +5,7 @@ import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
 import type { OwnershipInput, RecBudget, RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
 import type { CardTypeFilter } from './cards';
 import type { ClientErrorReport } from './client-errors';
+import type { JourneyStartKind } from './transport';
 import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
 import {
   ERROR_AREA_PATTERN,
@@ -249,6 +250,11 @@ export const recEventInputSchema: InputSchema<RecEvent> = z
 
 /** The most events one recordRecEvents call carries: a build's 99 cards plus margin, one event each. */
 export const MAX_REC_EVENTS_PER_CALL = 120;
+
+/** Matching journey_starts_hourly.kind's check. */
+export const JOURNEY_START_KINDS = ['paste', 'build'] as const satisfies readonly JourneyStartKind[];
+
+export const recordJourneyStartInputSchema: InputSchema<{ kind: JourneyStartKind }> = z.object({ kind: z.enum(JOURNEY_START_KINDS) }, request);
 
 export const recEventsInputSchema: InputSchema<{ events: RecEvent[] }> = z
   .object(
