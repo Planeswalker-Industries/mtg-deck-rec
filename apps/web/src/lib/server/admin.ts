@@ -26,6 +26,7 @@ import type {
   AdminFeedbackReply,
   AdminFeedbackReportPage,
   AdminRecMode,
+  AdminSiteStats,
   AdminSyncJob,
   AdminSyncRun,
   AdminSyncRunPage,
@@ -332,6 +333,16 @@ function toAdminSyncRun(row: Database["public"]["Functions"]["admin_list_sync_ru
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The admin home's site numbers: accounts, decks, collections, recent imports and what is open in the inboxes. Live
+ * counts on every load; each is a small table or an index read in `admin_site_stats`.
+ */
+export async function getAdminSiteStats(db: AuthedClient): Promise<AdminSiteStats> {
+  const { data, error } = await db.rpc("admin_site_stats");
+  if (error) throw asAdminError(error);
+  return data as unknown as AdminSiteStats;
+}
 
 /**
  * The crawled corpus, for /admin/crawls.

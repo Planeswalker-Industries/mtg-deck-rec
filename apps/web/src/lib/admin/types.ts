@@ -232,6 +232,26 @@ export const ADMIN_SYNC_STATUSES = ["running", "succeeded", "skipped_unchanged",
 export type AdminSyncJob = (typeof ADMIN_SYNC_JOBS)[number];
 export type AdminSyncStatus = (typeof ADMIN_SYNC_STATUSES)[number];
 
+/** A count with how many of it are new: "+N today · +N this week" on the admin home. */
+export interface AdminWindowedCount {
+  total: number;
+  /** Created in the last 24 hours. */
+  last24h: number;
+  /** Created in the last 7 days. */
+  last7d: number;
+}
+
+/** The site's numbers on the admin home, counted live on every load (`admin_site_stats`). */
+export interface AdminSiteStats {
+  users: AdminWindowedCount;
+  decks: AdminWindowedCount & { public: number };
+  /** Accounts with at least one collection entry. */
+  collections: number;
+  importsLast7d: number;
+  openReports: number;
+  openErrors: number;
+}
+
 /**
  * The crawled deck corpus, for the operations page at /admin/crawls.
  *

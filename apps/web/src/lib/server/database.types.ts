@@ -2334,6 +2334,7 @@ export type Database = {
         Args: { p_banned: boolean; p_user_id: string }
         Returns: undefined
       }
+      admin_site_stats: { Args: never; Returns: Json }
       admin_start_feedback_reply: {
         Args: { p_message: string; p_report_id: number }
         Returns: {

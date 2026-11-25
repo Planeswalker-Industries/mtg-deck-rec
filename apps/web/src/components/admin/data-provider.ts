@@ -6,7 +6,9 @@ import {
   ADMIN_USER_SORTS,
   type AdminAcceptRate,
   type AdminCollectionItemPage,
+  type AdminCrawlSource,
   type AdminDeckCard,
+  type AdminSiteStats,
   type AdminSyncRun,
   type AdminSyncRunPage,
   type AdminTag,
@@ -35,6 +37,8 @@ const TAGS = "/api/admin/tags";
 const SYNC_RUNS = "/api/admin/sync-runs";
 const ACCEPT_RATES = "/api/admin/accept-rates";
 const DECKS = "/api/admin/decks";
+const HOME = "/api/admin/home";
+const CRAWLS = "/api/admin/crawls";
 
 /** React Admin's default page size, used when a list asks without saying. */
 const DEFAULT_PER_PAGE = 25;
@@ -252,11 +256,19 @@ const provider = {
     call<AdminCollectionItemPage>(
       `${recordUrl(USERS, userId)}/collection/items?${new URLSearchParams({ search, offset: String(offset) })}`,
     ),
+
+  // The admin home's reads: counts and status, no player's data, so no audit row and free to refresh.
+  getSiteStats: () => call<AdminSiteStats>(HOME),
+  // The crawl page's endpoint answers with a page of decks beside the sources; one deck is the least it will send.
+  getCrawlSources: async () => (await call<{ sources: AdminCrawlSource[] }>(`${CRAWLS}?limit=1`)).sources,
 };
 
 /** The provider's own methods beside React Admin's, for `useDataProvider<AdminDataProvider>()`. */
 export type AdminDataProvider = DataProvider &
-  Pick<typeof provider, "getUserDecks" | "getDeckCards" | "getUserCollection" | "searchUserCollection">;
+  Pick<
+    typeof provider,
+    "getUserDecks" | "getDeckCards" | "getUserCollection" | "searchUserCollection" | "getSiteStats" | "getCrawlSources"
+  >;
 
 /**
  * One cast, at the boundary. `DataProvider`'s methods are generic in the record type, so a provider that returns

@@ -4,7 +4,7 @@ import { Box } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { Suspense, type MouseEvent, type ReactElement } from "react";
 import { AppBar, Inspector, Loading, Menu, MenuItemLink, Sidebar, SkipNavigationButton, TitlePortal, type LayoutProps } from "react-admin";
-import { CircleAlert, Inbox, Layers } from "lucide-react";
+import { CircleAlert, House, Inbox, Layers } from "lucide-react";
 import { MenuIcon } from "./menu-icon";
 
 /**
@@ -82,6 +82,7 @@ export const AdminLayout = ({ children }: LayoutProps) => (
             basename is /admin, and a relative one would resolve to /admin/admin/crawls.
           */}
           <Menu>
+            <Menu.DashboardItem primaryText="Home" leftIcon={<MenuIcon icon={House} />} />
             <Menu.ResourceItems />
             <SitePageMenuItem page="crawls" label="Deck crawls" icon={<MenuIcon icon={Layers} />} />
             <SitePageMenuItem page="reports" label="Feedback reports" icon={<MenuIcon icon={Inbox} />} />

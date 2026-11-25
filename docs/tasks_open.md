@@ -19,7 +19,7 @@ Owner decisions (2026-11-25): collection view is totals, import history and a ca
 - [x] Crawl runs report progress while running and never stay open after the process dies
 - [x] User page: Decks tab
 - [x] User page: Collection tab, and the `/privacy` line
-- [ ] Admin home: site numbers, worker and crawler status
+- [x] Admin home: site numbers, worker and crawler status
 
 ## T074: Archidekt answers the daily crawl with 429s
 

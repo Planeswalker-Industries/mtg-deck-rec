@@ -41,7 +41,7 @@ function deckUrl(source: string, id: string): string | null {
   return null;
 }
 
-function ago(iso: string | null): string {
+export function ago(iso: string | null): string {
   if (!iso) return "never";
   const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   const steps: [number, string][] = [
