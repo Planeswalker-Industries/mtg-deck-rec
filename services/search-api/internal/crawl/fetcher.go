@@ -59,8 +59,9 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("HTTP %d for %s", e.Status, e.URL) }
 
-// ShapeError means a page stopped looking like what the crawler was written against. Quarantine, don't guess: a
-// removed or renamed endpoint should stop the crawl, not be guessed at.
+// ShapeError means a page stopped looking like what the crawler was written against. Never guessed at: a malformed
+// deck is skipped and counted, a malformed list fails its commander, and enough of either ends the run, because a
+// removed or renamed endpoint should stop the crawl.
 type ShapeError struct {
 	What   string
 	Detail string
@@ -230,7 +231,8 @@ func (f *Fetcher) succeeded() time.Duration {
 }
 
 // Get pulls one page with backoff. A 403/challenge returns a Blocked error without retrying; 429 and 5xx retry up
-// to maxFetchRetries times with exponential backoff, widening to the Retry-After value when the server sets one.
+// to maxFetchRetries times with exponential backoff, widening to the Retry-After value when the server sets one. No
+// wait is longer than Policy.BackoffMax.
 func (f *Fetcher) Get(ctx context.Context, rawurl string) ([]byte, error) {
 	delay := f.policy.BackoffStart
 	var lastErr error
@@ -239,9 +241,7 @@ func (f *Fetcher) Get(ctx context.Context, rawurl string) ([]byte, error) {
 			if err := sleepCtx(ctx, delay); err != nil {
 				return nil, err
 			}
-			if delay < f.policy.BackoffMax {
-				delay *= 2
-			}
+			delay = min(delay*2, f.policy.BackoffMax)
 		}
 		body, err := f.visit(ctx, rawurl)
 		if err == nil {
@@ -272,8 +272,10 @@ func (f *Fetcher) Get(ctx context.Context, rawurl string) ([]byte, error) {
 						"status", httpErr.Status, "url", httpErr.URL, "from", was, "to", now)
 				}
 			}
+			// Honoured up to BackoffMax only: a 5xx once asked for a day's wait, and an uncapped Retry-After would hold
+			// the run (and its claim) idle for as long as the server says.
 			if httpErr.RetryAfter > 0 {
-				delay = httpErr.RetryAfter
+				delay = min(httpErr.RetryAfter, f.policy.BackoffMax)
 			}
 			lastErr = httpErr
 			f.log.Warn("source pushback", "status", httpErr.Status, "url", httpErr.URL, "attempt", attempt+1)

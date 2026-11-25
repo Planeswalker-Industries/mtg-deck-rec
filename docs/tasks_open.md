@@ -17,7 +17,7 @@ Hosted on 2026-11-25: every queued commander had one visit, but 15 legal command
 - [x] Commander eligibility follows the current Commander rules (`can_be_commander` matches Scryfall `is:commander`)
 - [x] Archidekt names sent accent-folded; `not_found` opens an error ticket, retries every 30 days, gives up after 300
 - [x] Queue seeded from the catalog; exhausted commanders back after 7–13 days (spread by card id); at-target revisits stalest first
-- [ ] A malformed deck or a failing list page skips one deck or one commander; a streak or a broken adapter ends the run with an error ticket
+- [x] A malformed deck or a failing list page skips one deck or one commander; a streak or a broken adapter ends the run with an error ticket
 - [ ] Crawl RPCs retry transient network and 5xx failures
 - [ ] A failed or interrupted run resumes the same day within the 6-hour budget; lookups still work past it. Ask for the search-api host's restart log for runs 39, 40, 59, 60 (no merge to `main` lines up) and the missing 2026-10-29 run
 

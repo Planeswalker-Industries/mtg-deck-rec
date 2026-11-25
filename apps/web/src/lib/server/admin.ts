@@ -377,6 +377,7 @@ export async function listAdminCrawlSources(db: AuthedClient): Promise<AdminCraw
             progressAt: row.last_run_progress_at,
             commandersVisited: row.last_run_commanders_visited ?? 0,
             throttles: row.last_run_throttles ?? 0,
+            skippedMalformed: row.last_run_skipped_malformed ?? 0,
           },
   }));
 }

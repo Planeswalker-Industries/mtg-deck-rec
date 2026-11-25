@@ -116,6 +116,10 @@ type Commander struct {
 	Visited bool `json:"visited"`
 	// Requested says a deck lookup (commander_requests) asked for this commander; the queue serves those first.
 	Requested bool `json:"requested"`
+	// FailedBefore says the commander's last visit failed. Failing again is about this commander, not the source, so
+	// it does not count toward Policy.MaxFailedCommandersInRow: a few commanders whose pages always fail, queued side
+	// by side, must not end every run in its first visits.
+	FailedBefore bool `json:"failedBefore"`
 	// NotFoundSince is when the source began listing no decks for this commander; nil unless its last complete visit
 	// was not_found. Such a commander comes back on the queue's retry schedule until the queue gives it up.
 	NotFoundSince *time.Time `json:"notFoundSince"`
@@ -131,7 +135,7 @@ const (
 	OutcomePartial    = "partial"      // the run's time ran out mid-visit; the commander comes back first
 	OutcomeNotFound   = "not_found"    // no listings under its name or front face: the verification log
 	OutcomeNoLedDecks = "no_led_decks" // a first visit found listings, but none were decks it leads
-	OutcomeFailed     = "failed"       // the visit hit an error that ended the run
+	OutcomeFailed     = "failed"       // the visit hit an error: a list page that failed or changed shape, or one that ended the run
 	OutcomeFetchCap   = "fetch_cap"    // the visit stopped at Policy.MaxFetchesPerCommander
 )
 
@@ -202,6 +206,9 @@ type RunSummary struct {
 	// Decks fetched but not stored because an id in them is not an oracle id. Apart from the others because it is
 	// worth a look whenever it is above zero: the source sent something its own format does not allow.
 	SkippedUnresolved int `json:"skipped_unresolved"`
+	// Decks whose page no longer parsed (a ShapeError): skipped one by one, and the run fails once they pass the same
+	// floor and share as missing decks.
+	SkippedMalformed  int `json:"skipped_malformed"`
 	CommandersVisited int `json:"commanders_visited"`
 	// How many times the source answered 429, and where the crawl was the last time it did. The pace widens itself in
 	// response (see Fetcher), so these are the record of a run that was slowed down - without them, a crawl that spent

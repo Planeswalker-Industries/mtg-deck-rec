@@ -60,8 +60,8 @@ func foldName(name string) string {
 }
 
 // ParseList reads one page of a commander's decks: ids and listed update times in list order, and whether another
-// page follows. An empty list is a commander with no decks; a body that is not the deck-list shape quarantines rather
-// than yielding an empty run.
+// page follows. An empty list is a commander with no decks; a body that is not the deck-list shape is a ShapeError
+// (the commander fails) rather than an empty list (the commander would read as not found).
 func ParseList(body []byte) (crawl.ListPage, error) {
 	var resp listResponse
 	if err := json.Unmarshal(body, &resp); err != nil {

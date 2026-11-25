@@ -2119,6 +2119,7 @@ export type Database = {
           last_run_finished_at: string
           last_run_id: number
           last_run_progress_at: string
+          last_run_skipped_malformed: number
           last_run_started_at: string
           last_run_state: string
           last_run_throttles: number

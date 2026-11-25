@@ -35,7 +35,7 @@ type Source interface {
 	//
 	// A deck the source can read but that does not belong in the corpus - not Commander, not public, not 100 cards -
 	// is a *NotQualified error, which the runner skips quietly. Only a page that stopped looking like itself is a
-	// ShapeError, which quarantines the run.
+	// ShapeError, which the runner skips and counts; enough of them end the run.
 	ParseDeck(body []byte, id string) (Deck, error)
 }
 
@@ -83,15 +83,41 @@ func (e *NotQualified) Error() string {
 // (the feed is update-ordered, newest first). Past it, every listing is an old, unchanged deck.
 const caughtUpLimit = 10
 
-// When missing decks mean the feed is broken rather than merely stale. Both have to be exceeded together: the share
-// alone would fail a five-deck run that happened to meet three deletions, and the floor alone would fail a healthy
-// thousand-deck backfill that met twenty.
+// When skipped decks (missing, or malformed) mean the adapter is broken rather than unlucky. Both have to be exceeded
+// together: the share alone would fail a five-deck run that happened to meet three deletions, and the floor alone
+// would fail a healthy thousand-deck backfill that met twenty.
 const (
-	// Below this many, a run concludes nothing: decks really do disappear in the minutes a crawl takes.
-	missingDeckFloor = 20
-	// Above this share of the decks a run attempted, the feed is not listing what it claims to.
-	missingDeckShare = 0.5
+	// Below this many, a run concludes nothing: decks really do disappear, or come back odd, in the minutes a crawl takes.
+	brokenAdapterFloor = 20
+	// Above this share of the decks a run attempted, the feed is not listing what it claims to, or the deck page changed.
+	brokenAdapterShare = 0.5
 )
+
+// Why a run ended failed: the code of its error ticket (crawl.<source>.run). A run that stopped for time or an empty
+// queue has none.
+const (
+	causeBlocked   = "blocked"   // a 403 or challenge: the kill switch is flipped
+	causeAdapter   = "adapter"   // missing or malformed decks past the floor and share, or a streak of failed commanders
+	causeDatabase  = "database"  // a crawl RPC failed, so the run cannot record what it does
+	causeCancelled = "cancelled" // the process was told to stop (a redeploy, a shutdown)
+	causeCrashed   = "crashed"   // a panic, or the crawl never returned
+)
+
+// runEnd is how a run ended, for its error ticket: the cause, and the commander it was visiting.
+type runEnd struct {
+	cause    string
+	position string
+}
+
+// storeError marks a failed database call inside a visit. Unlike a failed page it ends the run: a crawl that cannot
+// read what it holds or write what it fetched would only spend requests.
+type storeError struct {
+	what string
+	err  error
+}
+
+func (e *storeError) Error() string { return e.what + ": " + e.err.Error() }
+func (e *storeError) Unwrap() error { return e.err }
 
 // finishTimeout bounds the bookkeeping writes that close a run. They run on a context detached from the crawl's, so
 // a shutdown or a cancelled crawl still records its outcome and releases its claim instead of leaving the source
@@ -204,15 +230,18 @@ func (r *Runner) Run(ctx context.Context) (res Result, err error) {
 	}
 
 	summary := RunSummary{State: "running"}
+	var end runEnd
 	defer func() {
 		// Every return sets succeeded or failed, so a summary still running here means the crawl never returned: a
 		// panic (recovered here, logged and not re-raised, so the run still closes) or runtime.Goexit.
 		if p := recover(); p != nil {
 			summary.State, summary.Error = "failed", fmt.Sprintf("crashed: %v", p)
+			end.cause = causeCrashed
 			r.log.Error("crawl crashed", "source", r.src.Name(), "run", runID, "panic", p, "stack", string(debug.Stack()))
 			res, err = Result{RunID: runID, Summary: summary}, fmt.Errorf("crawl run %d %s", runID, summary.Error)
 		} else if summary.State == "running" {
 			summary.State, summary.Error = "failed", "interrupted"
+			end.cause = causeCrashed
 		}
 		// Detached from ctx on purpose: these two writes are how a run stops being "running", so they have to
 		// survive the cancellation that ended the crawl.
@@ -224,6 +253,9 @@ func (r *Runner) Run(ctx context.Context) (res Result, err error) {
 		if err := r.store.ReleaseClaim(done, runID); err != nil {
 			r.log.Error("releasing crawl claim", "err", err)
 		}
+		if summary.State == "failed" {
+			r.logRunFailure(done, runID, end, summary)
+		}
 	}()
 
 	// The row says running from the claim on, not queued with zero counters until the run ends hours later.
@@ -231,12 +263,12 @@ func (r *Runner) Run(ctx context.Context) (res Result, err error) {
 		r.log.Error("writing crawl progress", "run", runID, "err", err)
 	}
 
-	blocks := r.crawl(ctx, policy, runID, &summary)
+	r.crawl(ctx, policy, runID, &summary, &end)
 	// A single 403 or challenge is a definitive block - the source decided it, so the crawl switches it off until a
 	// human re-enables it. Retries are for 429/5xx (done in the fetcher), never for a wall.
-	if blocks > 0 {
-		summary.Blocks = blocks
-		reason := fmt.Sprintf("%d blocked response(s)", blocks)
+	if end.cause == causeBlocked {
+		summary.Blocks = 1
+		reason := fmt.Sprintf("%d blocked response(s)", summary.Blocks)
 		if err := r.store.Disable(ctx, reason); err != nil {
 			r.log.Error("flipping the kill switch", "err", err)
 		}
@@ -277,12 +309,16 @@ const commanderBatch = 20
 const frontFaceSeparator = " // "
 
 // crawl visits commanders from the queue until the run's time is up or the queue is empty, writing the decks each
-// visit finds. Returns how many 403/challenge blocks were seen - always 0 or 1, because a single definitive block
-// ends the run and (via Run) flips the kill switch.
-func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary *RunSummary) int {
+// visit finds. A visit that fails on a page costs only that commander; the run ends early only on a block (end.cause
+// blocked, and Run flips the kill switch), a broken adapter, a failed database call or a cancellation, and end says
+// which and where.
+func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary *RunSummary, end *runEnd) {
+	fail := func(cause, message string) {
+		summary.State, summary.Error, end.cause = "failed", message, cause
+	}
 	if seeded, err := r.store.SeedCommanders(ctx); err != nil {
-		summary.State, summary.Error = "failed", "seeding the commander queue: "+err.Error()
-		return 0
+		fail(causeDatabase, "seeding the commander queue: "+err.Error())
+		return
 	} else if seeded > 0 {
 		r.log.Info("commander queue seeded", "source", r.src.Name(), "changed", seeded)
 	}
@@ -292,12 +328,13 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 	// The queue leaves out commanders this run already tried, but only once their finish is written; this keeps a
 	// failed write from handing the same commander back for ever.
 	tried := map[int]bool{}
+	failedInRow := 0
 
 	for {
 		batch, err := r.store.NextCommanders(ctx, runID, commanderBatch)
 		if err != nil {
-			summary.State, summary.Error = "failed", "reading the commander queue: "+err.Error()
-			return 0
+			fail(causeDatabase, "reading the commander queue: "+err.Error())
+			return
 		}
 		fresh := 0
 		for _, commander := range batch {
@@ -307,13 +344,14 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 			fresh++
 			tried[commander.CardID] = true
 			if err := ctx.Err(); err != nil {
-				summary.State, summary.Error = "failed", "cancelled"
-				return 0
+				fail(causeCancelled, "cancelled")
+				return
 			}
 			if !r.now().Before(deadline) {
-				return 0
+				return
 			}
 
+			end.position = commander.Name
 			result, err := r.visit(ctx, policy, commander, deadline, summary, &probed)
 			summary.CommandersVisited++
 			if err != nil {
@@ -330,16 +368,38 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 			cancel()
 			switch {
 			case err != nil && isBlockErr(err):
-				return 1
+				end.cause = causeBlocked
+				return
+			case err != nil && ctx.Err() != nil:
+				fail(causeCancelled, "cancelled")
+				return
+			case err != nil && errors.As(err, new(*storeError)):
+				fail(causeDatabase, err.Error())
+				return
+			case summary.State == "failed": // missing or malformed decks past the floor and share (tooManySkipped)
+				end.cause = causeAdapter
+				return
+			case err != nil && commander.FailedBefore:
+				// Failed on its last visit too: evidence about this commander, not the source, so the streak neither
+				// grows nor resets.
+				r.log.Warn("commander visit failed again; moving on", "source", r.src.Name(), "commander", commander.Name,
+					"cardId", commander.CardID, "err", err)
 			case err != nil:
-				summary.State, summary.Error = "failed", err.Error()
-				return 0
-			case summary.State == "failed": // the list or the deck API stopped answering (feedMostlyMissing)
-				return 0
+				// A list page that errored after the fetcher's retries, or no longer parsed: this commander is failed
+				// and the queue moves on. A streak of them is the source or the adapter, not the commanders.
+				failedInRow++
+				r.log.Warn("commander visit failed; moving on", "source", r.src.Name(), "commander", commander.Name,
+					"cardId", commander.CardID, "inRow", failedInRow, "err", err)
+				if failedInRow >= policy.MaxFailedCommandersInRow {
+					fail(causeAdapter, fmt.Sprintf("%d commander visits in a row failed; the last: %v", failedInRow, err))
+					return
+				}
+			default:
+				failedInRow = 0
 			}
 		}
 		if fresh == 0 {
-			return 0
+			return
 		}
 	}
 }
@@ -351,7 +411,8 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 // 2026-10-05). Policy.MaxPagesPerCommander and Policy.MaxFetchesPerCommander bound either. A held deck whose listed
 // update time has not moved is stepped over without a request, and does not count.
 //
-// A returned error ends the run (a block, a list that stopped looking like itself, a failed write); the result
+// A returned error fails the visit: a list page that errored or stopped looking like itself, or a deck page that
+// errored after the fetcher's retries. A block or a *storeError (a failed database call) also ends the run. The result
 // still says what the visit did up to that point.
 func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, deadline time.Time, summary *RunSummary, probed *bool) (CommanderResult, error) {
 	result := CommanderResult{}
@@ -424,7 +485,7 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 		}
 		held, err := r.store.DeckVersions(ctx, ids)
 		if err != nil {
-			return result, fmt.Errorf("reading held decks: %w", err)
+			return result, &storeError{what: "reading held decks", err: err}
 		}
 
 		for _, entry := range page.Entries {
@@ -459,10 +520,25 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 					continue
 				}
 				// Gone since it was listed: deleted, made private, or its id retired in the minutes between.
+				// The deck page no longer parses: skipped and counted, so one odd deck costs one deck. Enough of them
+				// is the deck page changing, and the run stops rather than skip its way through the corpus.
+				var shape *ShapeError
+				if errors.As(err, &shape) {
+					summary.SkippedMalformed++
+					if tooManySkipped(summary.SkippedMalformed, summary.DecksFetched+summary.SkippedMalformed) {
+						summary.State = "failed"
+						summary.Error = fmt.Sprintf("%d of %d fetched decks were malformed: the deck page changed",
+							summary.SkippedMalformed, summary.DecksFetched+summary.SkippedMalformed)
+						result.Outcome = OutcomeFailed
+						return result, nil
+					}
+					r.log.Warn("deck page malformed; skipped", "source", r.src.Name(), "deck", entry.ID, "err", err)
+					continue
+				}
 				var httpErr *HTTPError
 				if errors.As(err, &httpErr) && (httpErr.Status == http.StatusNotFound || httpErr.Status == http.StatusGone) {
 					summary.SkippedMissing++
-					if feedMostlyMissing(summary) {
+					if tooManySkipped(summary.SkippedMissing, summary.DecksListed) {
 						summary.State = "failed"
 						summary.Error = fmt.Sprintf("%d of %d listed decks were missing: the list or the deck API changed",
 							summary.SkippedMissing, summary.DecksListed)
@@ -483,7 +559,7 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 			// next visit steps over the deck instead of fetching it again.
 			unresolved, err := r.store.UpsertDecks(ctx, []DeckRow{row})
 			if err != nil {
-				return result, fmt.Errorf("writing deck: %w", err)
+				return result, &storeError{what: "writing deck", err: err}
 			}
 			// Not stored: an id in it is not an oracle id at all. (A card the catalog merely lacks is stored raw; the
 			// collator holds the deck back from the corpus until it resolves.) Nothing is held for it, so the next
@@ -574,6 +650,29 @@ func (r *Runner) logNotFound(ctx context.Context, commander Commander, nameTried
 	}
 }
 
+// logRunFailure opens (or adds to) the ticket for a run that ended failed. One ticket per cause, so a source that
+// keeps failing the same way adds up in one place; the detail says which run and how far it got. A failed ticket write
+// is logged and nothing more.
+func (r *Runner) logRunFailure(ctx context.Context, runID int64, end runEnd, summary RunSummary) {
+	area := "crawl." + r.src.Name() + ".run"
+	entry := LogEntry{
+		Fingerprint: Fingerprint(area, end.cause),
+		Level:       "error",
+		Area:        area,
+		Code:        end.cause,
+		Message:     fmt.Sprintf("%s crawl run %d failed: %s", sourceTitle(r.src.Name()), runID, summary.Error),
+		Detail: map[string]any{
+			"runId":             runID,
+			"commandersVisited": summary.CommandersVisited,
+			"decksWritten":      summary.DecksWritten,
+			"position":          end.position,
+		},
+	}
+	if err := r.store.LogError(ctx, entry); err != nil {
+		r.log.Error("writing the failed-run ticket", "source", r.src.Name(), "run", runID, "err", err)
+	}
+}
+
 // hoursPerDay turns the streak's length into the whole days its ticket reports.
 const hoursPerDay = 24
 
@@ -605,14 +704,15 @@ func visitEnd(commander Commander, result CommanderResult, hasNext, ceilingBound
 	}
 }
 
-// feedMostlyMissing decides when missing decks stop being ordinary attrition and start being a broken adapter.
+// tooManySkipped decides when skipped decks (skipped of attempted) stop being ordinary attrition and start being a
+// broken adapter.
 //
 // Skipping them without a ceiling would trade one loud failure for a silent nightly no-op: if the deck endpoint moved
 // or started answering 404 for everyone, every deck would be "gone" and the run would report a cheerful success over
 // an empty corpus. The floor exists so a short run cannot conclude anything from bad luck — a handful of decks really
-// can disappear in the minutes a crawl takes.
-func feedMostlyMissing(s *RunSummary) bool {
-	return s.SkippedMissing >= missingDeckFloor && float64(s.SkippedMissing) > missingDeckShare*float64(s.DecksListed)
+// can disappear, or come back odd, in the minutes a crawl takes.
+func tooManySkipped(skipped, attempted int) bool {
+	return skipped >= brokenAdapterFloor && float64(skipped) > brokenAdapterShare*float64(attempted)
 }
 
 // notePushback records that the source answered 429, and where the crawl was when it did.
@@ -650,10 +750,11 @@ func (r *Runner) fetchDeck(ctx context.Context, id string, summary *RunSummary) 
 	if err != nil {
 		return DeckRow{}, err
 	}
-	summary.DecksFetched++
 	if deck.UpdatedAt.IsZero() {
 		return DeckRow{}, &ShapeError{What: "deck", Detail: fmt.Sprintf("%s: no update timestamp", id)}
 	}
+	// Counted only once the page parsed whole, so a malformed deck is a SkippedMalformed and not a fetched deck too.
+	summary.DecksFetched++
 	return DeckRow{
 		SourceDeckID:    id,
 		Commanders:      deck.Commanders,

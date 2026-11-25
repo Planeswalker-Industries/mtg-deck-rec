@@ -281,6 +281,8 @@ export interface AdminCrawlSource {
     commandersVisited: number;
     /** How many times the source answered 429 during the run. */
     throttles: number;
+    /** Decks whose page no longer parsed, skipped one by one; above zero is worth a look. */
+    skippedMalformed: number;
   } | null;
 }
 
