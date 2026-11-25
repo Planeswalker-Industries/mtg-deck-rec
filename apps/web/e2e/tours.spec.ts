@@ -1,5 +1,19 @@
 import { TOURS_ENABLED_KEY, TOURS_SEEN_KEY } from "../src/lib/constants";
-import { CUT_CARD, FORESTS_OVER_100, clearBuildBudget, deckWith, expect, fillDecklist, openSwap, swipe, test, toDeckbuilder, type Page } from "./fixtures";
+import {
+  CUT_CARD,
+  FIX_MOVE,
+  FORESTS_OVER_100,
+  clearBuildBudget,
+  deckWith,
+  expect,
+  fillDecklist,
+  openFix,
+  openSwap,
+  swipe,
+  test,
+  toDeckbuilder,
+  type Page,
+} from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 // Every other spec runs with tours off (playwright.config.ts); these start from an empty browser, where they are on.
@@ -521,5 +535,65 @@ test.describe("deck stats tour on desktop", () => {
     await expectRingOn(page, "deck-stats.rings");
     await tour(page).getByRole("button", { name: "Done" }).click();
     expect(await seen(page)).toContain("deck-stats");
+  });
+});
+
+// Fix's tour (`fix`) on its pair: the Fix tab, the card going out, the card going in, the buttons, Auto-Fix.
+const FIX_FIRST = "Welcome to FIX.";
+const FIX_TARGETS = ["journey.step.fix", "fix.out", "fix.in", "fix.decide", "fix.auto"] as const;
+const fixPair = (page: Page) => page.getByRole("region", FIX_MOVE);
+const fixSwapButton = (page: Page) => fixPair(page).getByRole("button", { name: /^Swap .+ for / });
+
+async function openFixTour(page: Page) {
+  await journeyWithoutTours(page);
+  await openFix(page);
+  await expect(tour(page)).toContainText(FIX_FIRST, { timeout: PAGE_WAIT_MS });
+}
+
+test("fix tour elements are on the page", async ({ page }) => {
+  await openFixTour(page);
+  await expect(tour(page)).toContainText("Fix");
+  for (const target of FIX_TARGETS) await expect(page.locator(`[data-tour="${target}"]`)).toBeVisible();
+});
+
+test("fix tour runs once", async ({ page }) => {
+  await openFixTour(page);
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  expect(await seen(page)).toContain("fix");
+  await fixSwapButton(page).click();
+  await expect(
+    fixPair(page)
+      .or(page.getByRole("button", { name: "Next: swap" }))
+      .first(),
+  ).toBeVisible({ timeout: PAGE_WAIT_MS });
+  await page.waitForTimeout(TOUR_SETTLE_MS);
+  await expect(page.getByText(FIX_FIRST)).toHaveCount(0);
+});
+
+test.describe("fix tour by touch", () => {
+  test.use({ hasTouch: true });
+
+  test("fix tour: each swipe browses its own card, then Auto-Fix ends it", async ({ page }) => {
+    await openFixTour(page);
+    await expectRingOn(page, "journey.step.fix");
+    // A swipe on the card going out browses the cards to take out, and the tour moves on to the card going in.
+    await nextUntil(page, "This is the OUT card.");
+    const before = await fixSwapButton(page).getAttribute("aria-label");
+    await swipe(page.locator('[data-tour="fix.out"]'), -200, 0);
+    await expect(tour(page)).toContainText("This is the IN card.");
+    const afterOut = await fixSwapButton(page).getAttribute("aria-label");
+    expect(afterOut).not.toBe(before);
+
+    // A swipe on the card going in browses the cards to put in.
+    await swipe(page.locator('[data-tour="fix.in"]'), -200, 0);
+    await expect(fixSwapButton(page)).not.toHaveAttribute("aria-label", afterOut!);
+    await expect(tour(page)).toContainText("Like the trade?");
+    await expectRingOn(page, "fix.decide");
+
+    await nextUntil(page, "TAP AUTO-FIX");
+    await expectRingOn(page, "fix.auto");
+    await page.locator('[data-tour="fix.auto"]').click();
+    await expect(tour(page)).toBeHidden();
+    expect(await seen(page)).toContain("fix");
   });
 });

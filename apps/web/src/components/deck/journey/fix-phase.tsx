@@ -6,6 +6,7 @@ import { compareCards, type FixMove } from "@mtg/core/journey";
 import { DecisionButtons } from "@/components/cards/card-panel";
 import { MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
 import { useBrowseSwipe } from "@/components/cards/use-browse-swipe";
+import { PageTour } from "@/components/tour/page-tour";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
 import { PriceTag } from "@/components/cards/buy-price";
@@ -189,15 +190,24 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
         />
         <DecisionButtons
           tone="primary"
+          tour="fix"
           pass={{ word: "Skip", label: `Skip swapping ${outName} for ${inName}`, onClick: () => act(false) }}
           accept={{ word: "Swap", label: `Swap ${outName} for ${inName}`, icon: ArrowLeftRight, onClick: () => act(true) }}
         />
         {/* Outline, under the pair: a way out of going one move at a time, never louder than Swap. */}
-        <Button type="button" size="lg" variant="outline" onClick={() => setPlan(fix.plan())} className="self-center">
+        <Button
+          type="button"
+          size="lg"
+          variant="outline"
+          data-tour="fix.auto"
+          onClick={() => setPlan(fix.plan())}
+          className="self-center"
+        >
           <WandSparkles aria-hidden />
           Auto-Fix
         </Button>
       </section>
+      <PageTour id="fix" />
       {plan !== null && (
         <FixAutoSheet
           moves={plan}

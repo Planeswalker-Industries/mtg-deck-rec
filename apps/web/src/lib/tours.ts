@@ -254,6 +254,36 @@ const DECK_STATS: readonly TourStep[] = [
   },
 ];
 
+/**
+ * Fix's pair, approved by the owner 2026-11-24: the step in the stepper, the card going out, the card going in, the
+ * buttons, then Auto-Fix last. The line the move works on is read out, not shown, so no step lights it.
+ */
+const FIX: readonly TourStep[] = [
+  {
+    target: "journey.step.fix",
+    prompt: "read",
+    text: "Welcome to FIX. Each move takes one card OUT and puts one IN, so your DECK STATS land right where they should be.",
+  },
+  {
+    target: "fix.out",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "This is the OUT card. We recommend replacing it. SWIPE it to see other OUT candidates.",
+  },
+  {
+    target: "fix.in",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "This is the IN card. It will replace the OUT card. SWIPE to see other IN candidates.",
+  },
+  { target: "fix.decide", prompt: "tap", text: "Like the trade? TAP SWAP. Not feeling it? TAP SKIP for the next one." },
+  {
+    target: "fix.auto",
+    prompt: "tap",
+    text: "If you're short on time, let me handle this. TAP AUTO-FIX and I'll line up every move. You pick which ones to make.",
+  },
+];
+
 export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-start": BUILD_START,
   "deck-start": DECK_START,
@@ -261,6 +291,7 @@ export const TOURS: Record<TourId, readonly TourStep[]> = {
   journey: JOURNEY,
   add: ADD,
   cut: CUT,
+  fix: FIX,
   "save-deck": SAVE_DECK,
   "deck-stats": DECK_STATS,
 };
@@ -273,6 +304,7 @@ const TOUR_TITLES: Record<TourId, string> = {
   journey: "Deck Journey",
   add: "Add",
   cut: "Cut",
+  fix: "Fix",
   "save-deck": "Save Deck",
   "deck-stats": "Deck Stats",
 };
