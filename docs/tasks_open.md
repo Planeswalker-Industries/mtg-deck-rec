@@ -74,7 +74,7 @@ Moxfield's whitelist also wants a production domain (T044). `www.spellchasm.com`
 - [x] Resend (free tier) verifies `mail.spellchasm.com` (DNS at Namecheap, DMARC `p=none` on the apex, the `contact@` forwarder's MX kept), Supabase → Authentication → SMTP sends through it from `noreply@mail.spellchasm.com`, and Rate Limits → emails per hour is 30 (owner, 2026-11-25)
 - [x] Hosted Confirm signup template is `supabase/templates/confirm-signup.html` (owner, 2026-11-25)
 - [ ] Hosted Magic link template and subject: paste `supabase/templates/sign-in.html` (subject "Your Spell Chasm sign-in code")
-- [ ] A test email to `contact@spellchasm.com` arrives through the forwarder since the DNS change
+- [x] Mail to `contact@spellchasm.com` still arrives through the forwarder after the DNS change (owner, 2026-11-25)
 - [x] Sign-in emails arrive through Resend, and `/sign-in` offers the emailed code again below Continue with Google (2026-11-25; e2e signs in through the form)
 - [ ] The share-link kill switch activates on 403/409 on hosted (`scripts/share-kill-switch-check.ts` covers it locally)
 
