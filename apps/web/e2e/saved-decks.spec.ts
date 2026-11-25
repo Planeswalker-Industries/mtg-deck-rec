@@ -1,8 +1,13 @@
 import { CRAWLER_UA, FIX_MOVE, expect, headMeta, openFix, leaveSwap, openSwap, test, toDeckbuilder, type Page } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
-/** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */
-const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved deck" }).getByRole("status");
+/** The open deck's menu in the deck bar, named for whether the deck has reached the account ("Saved deck: Saved"). */
+const savedDeckMenu = (page: Page) => page.getByRole("button", { name: /^Saved deck: / });
+/** Opens the deck page from the open deck's menu. */
+async function openDeckPage(page: Page) {
+  await savedDeckMenu(page).click();
+  await page.getByRole("menuitem", { name: "Deck page" }).click();
+}
 
 /** A saved deck's own page, by its address. */
 const DECK_PAGE_URL = /\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/;
@@ -208,9 +213,7 @@ test("reopens a saved deck in the tool, and edits go back to it", async ({ page,
   await page.getByRole("link", { name: /^Upgrade .* in the deck tool$/ }).click();
   await page.waitForURL(/\/deck\?deck=[A-Za-z0-9]{8,32}$/);
 
-  const bar = page.getByRole("region", { name: "Saved deck" });
-  await expect(bar).toBeVisible({ timeout: 60_000 });
-  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 60_000 });
+  await expect(savedDeckMenu(page)).toHaveAccessibleName("Saved deck: Saved", { timeout: 60_000 });
   // The deck came back analysed, not as an empty box.
   await expect(page.getByRole("region", { name: "Recommendations" })).toBeVisible({ timeout: 60_000 });
 
@@ -229,10 +232,10 @@ test("reopens a saved deck in the tool, and edits go back to it", async ({ page,
     .getByRole("button", { name: "Not now" })
     .click({ timeout: 10_000 })
     .catch(() => undefined);
-  await expect(savedDeckStatus(page)).toHaveText("Saved", { timeout: 60_000 });
+  await expect(savedDeckMenu(page)).toHaveAccessibleName("Saved deck: Saved", { timeout: 60_000 });
 
   // And the stored deck really did change: the deck page is a card short, and no longer has the cut card.
-  await bar.getByRole("link", { name: "Deck page" }).click();
+  await openDeckPage(page);
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
   // Scoped to the deck page itself: a client navigation keeps the tool it came from in the DOM for a moment.
   const deckPage = page.getByRole("article");
@@ -277,7 +280,7 @@ test("saving a journey's result keeps the original, which the deck page compares
   await expectEditor(page);
 
   // The deck page shows what changed since the original.
-  await page.getByRole("link", { name: "Deck page" }).click();
+  await openDeckPage(page);
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/);
   const changes = page.getByRole("region", { name: "Changelog" });
   await expect(changes).toBeVisible({ timeout: 30_000 });
