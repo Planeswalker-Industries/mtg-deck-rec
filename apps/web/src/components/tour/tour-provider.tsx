@@ -67,9 +67,20 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [run, setRunState] = useState<Run | null>(null);
   const queue = useRef<TourId[]>([]);
 
+  // Where focus was when the run's overlay first showed. The overlay unmounts while a step waits (behind the enlarged
+  // card, say), so focus goes back here only when the run itself ends, not between steps.
+  const focusBefore = useRef<HTMLElement | null>(null);
   const setRun = useCallback((next: Run | null) => {
+    const ending = runRef.current !== null && runRef.current.id !== next?.id;
     runRef.current = next;
     setRunState(next);
+    if (!ending) return;
+    const before = focusBefore.current;
+    focusBefore.current = null;
+    if (before?.isConnected) before.focus({ preventScroll: true });
+  }, []);
+  const holdFocus = useCallback(() => {
+    if (!focusBefore.current && document.activeElement instanceof HTMLElement) focusBefore.current = document.activeElement;
   }, []);
 
   const close = useCallback(
@@ -228,6 +239,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           onNext={next}
           onPrevious={previous}
           onEnd={end}
+          onOpen={holdFocus}
         />
       )}
     </TourContext>

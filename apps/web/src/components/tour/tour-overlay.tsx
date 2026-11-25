@@ -79,6 +79,7 @@ export function TourOverlay({
   onNext,
   onPrevious,
   onEnd,
+  onOpen,
 }: {
   step: TourStep;
   title: string;
@@ -87,6 +88,8 @@ export function TourOverlay({
   onNext: () => void;
   onPrevious: () => void;
   onEnd: () => void;
+  /** Called when the overlay shows, so the provider can note where focus was. */
+  onOpen: () => void;
 }) {
   // The step's element, found again whenever the step changes (during render, so the frame never lights a stale one).
   const [resolved, setResolved] = useState<{ step: TourStep; live: LiveTarget | null }>(() => ({ step, live: liveTarget(step) }));
@@ -100,13 +103,10 @@ export function TourOverlay({
     handlers.current = { onNext, onEnd };
   });
 
-  // Focus goes back where it was when the tour ends.
+  // The provider notes where focus was, and puts it back there when the tour ends.
   useEffect(() => {
-    const before = document.activeElement;
-    return () => {
-      if (before instanceof HTMLElement && before.isConnected) before.focus({ preventScroll: true });
-    };
-  }, []);
+    onOpen();
+  }, [onOpen]);
 
   // A new step: bring its element into view; none on the page, and the step is skipped.
   const stepElement = resolved.live?.element;
@@ -122,10 +122,11 @@ export function TourOverlay({
   }, [step, stepFound, stepElement]);
 
   // Follow the element every frame; when it leaves, look once more (it may have been replaced), else skip the step.
+  // The first measure runs before paint, so a new step's text never shows for a frame where the last step's bubble was.
   const element = live?.element;
   // What the lit element asks for: a stand-in can ask for something else than its step.
   const prompt = live?.prompt ?? step.prompt;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!element) return;
     const radius = parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
     let id = 0;
@@ -149,12 +150,19 @@ export function TourOverlay({
 
   // A tap step moves on once the element's own click handler has run. A select opens on the press itself and takes
   // the release, so no click reaches the element: a press that opens a list over it counts as the tap too.
+  // A quick click can do both (the layer is open by the frame after the press), so the step moves on once.
   useEffect(() => {
     if (!element || prompt !== "tap") return;
-    const onClick = () => setTimeout(() => handlers.current.onNext());
+    let done = false;
+    const once = () => {
+      if (done) return;
+      done = true;
+      handlers.current.onNext();
+    };
+    const onClick = () => setTimeout(once);
     const onPress = () =>
       requestAnimationFrame(() => {
-        if (covered(element)) handlers.current.onNext();
+        if (covered(element)) once();
       });
     element.addEventListener("click", onClick, { capture: true });
     element.addEventListener("pointerdown", onPress, { capture: true });
@@ -162,7 +170,7 @@ export function TourOverlay({
       element.removeEventListener("click", onClick, { capture: true });
       element.removeEventListener("pointerdown", onPress, { capture: true });
     };
-  }, [element, prompt]);
+  }, [element, prompt, step]);
 
   const standAside = frame?.covered ?? true;
   // Esc ends the tour, unless it belongs to a dialog or list the player opened over it.

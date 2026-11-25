@@ -40,29 +40,6 @@ Hosted `crawl.runs` on 2026-11-17, runs 29–54 (the slower pace) — 26 runs:
 - [ ] The swap ladder's slot rung (T088) reads every legal card when there is no collection: about 300 ms locally for a card with no tags (Doc Ock, Sinister Scientist), cached for hours per card and commanders; Owned only takes about 36 ms. An index or a stored card category would bring it down
 - [ ] Send an add only the pairs that point at its pool and neighbours, each card's row once; or cache each card's corpus pairs for days
 
-## T104: First-time tours and browse swipes
-
-**MEDIUM** · Web / UX · Design and plan in `docs/plan_files/2026-11-24-first-time-tours*` (local); worktree `first-time-tours`
-
-Friends trying the app don't know where to tap and miss features: how to upload a collection, what Fix means, that Swap has more than one option per card, how to name a deck. The app should teach itself the way a game teaches its controls. The first time a player opens a page or a journey step, a short tour dims the page except the element it explains, with a bubble, a tap pulse or a SWIPE arrow. A horizontal swipe means browse everywhere and never decides; deciding is always a tap. Tour state lives in the browser, with an all-or-none Tutorials toggle on the account page. Each tour's steps go to the owner for approval before it is built.
-
-- [x] Espresso on every journey control at rest (the Swap ‹ › were off colour)
-- [x] `useBrowseSwipe`, and browsing in Add and Cut
-- [x] Browsing in Swap
-- [x] `fixBrowser` in `@mtg/core/journey`
-- [x] Browsing in Fix
-- [x] Journey cards dealt face down until their image loads
-- [x] Tour state, provider and the Tutorials toggle
-- [x] Tour overlay, and the build start tour (the Commander page has none)
-- [x] Tour: deck start
-- [x] Tours: the journey and Add, the built deck, and Save
-- [x] Tours: Deck stats and the journey stepper
-- [x] Tours: Add and Cut
-- [x] Tours: Fix and Swap
-- [x] Tour: Finish
-- [x] My decks and the deck page: no tours (they explain themselves)
-- [x] Collection: a tour on the empty page only (the import page explains itself)
-
 ## T067: Drop the retired rec functions
 
 **LOW** · Database · Unblocked: no rollback to the build before PR #140 is wanted (owner, 2026-10-23)

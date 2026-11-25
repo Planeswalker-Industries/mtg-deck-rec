@@ -20,6 +20,10 @@ import { mailpit, signIn } from "./mailpit";
 // Every other spec runs with tours off (playwright.config.ts); these start from an empty browser, where they are on.
 test.use({ storageState: { cookies: [], origins: [] } });
 
+/** Most tests here walk a deck into the journey and then a tour, each wait up to PAGE_WAIT_MS on a cold server. */
+const TOUR_TEST_TIMEOUT_MS = 120_000;
+test.describe.configure({ timeout: TOUR_TEST_TIMEOUT_MS });
+
 const tutorials = (page: Page) => page.getByRole("switch", { name: "Tutorials" });
 const stored = (page: Page, key: string) => page.evaluate((k) => localStorage.getItem(k), key);
 
@@ -33,7 +37,7 @@ test("the Tutorials switch defaults on and turns off", async ({ page, request })
   await signInToAccount(page, request);
   await expect(tutorials(page)).toBeChecked();
 
-  await page.getByRole("button", { name: "Tutorials: What this does" }).click();
+  await page.getByRole("button", { name: /^Tutorials\s*: What this does$/ }).click();
   await expect(page.getByRole("dialog", { name: "Tutorials" })).toContainText("once on this device");
   await page.keyboard.press("Escape");
 
@@ -124,7 +128,7 @@ async function expectRingOn(page: Page, target: string) {
   await expect
     .poll(async () => {
       const ring = await page.locator("[data-tour-ring]").boundingBox();
-      const element = await page.locator(`[data-tour="${target}"]`).boundingBox();
+      const element = await page.locator(`[data-tour="${target}"]:visible`).boundingBox();
       if (!ring || !element) return Infinity;
       return Math.max(
         Math.abs(ring.x - (element.x - CUTOUT_PAD_PX)),
@@ -136,13 +140,22 @@ async function expectRingOn(page: Page, target: string) {
     .toBeLessThanOrEqual(LAYOUT_SLACK_PX);
 }
 
+/**
+ * A swipe on a lit element, once the ring sits on it: until then the page may still be scrolling it into view, or the
+ * bubble still be where the last step put it.
+ */
+async function swipeLit(page: Page, target: string, dx: number, dy: number) {
+  await expectRingOn(page, target);
+  await swipe(page.locator(`[data-tour="${target}"]:visible`), dx, dy);
+}
+
 /** The bubble is inside the viewport and beside the element, not over it. */
 async function expectBubbleBeside(page: Page, target: string) {
   const viewport = page.viewportSize()!;
   await expect
     .poll(async () => {
       const bubble = await tour(page).boundingBox();
-      const element = await page.locator(`[data-tour="${target}"]`).boundingBox();
+      const element = await page.locator(`[data-tour="${target}"]:visible`).boundingBox();
       if (!bubble || !element) return "unmeasured";
       const inside =
         bubble.x >= 0 && bubble.y >= 0 && bubble.x + bubble.width <= viewport.width && bubble.y + bubble.height <= viewport.height;
@@ -167,11 +180,15 @@ test("build start tour shows once", async ({ page }) => {
 test("the scrim ignores taps", async ({ page }) => {
   await openBuildStartTour(page);
   await nextUntil(page, "IMPORT your COLLECTION first");
-  // The Commander box is dimmed on this step: a tap on it neither focuses it nor takes typing.
-  const box = (await commanderBox(page).boundingBox())!;
+  // Max to spend is dimmed on this step, well below the bubble: a tap on it neither focuses it nor takes typing. (The
+  // Commander box is dimmed too, but on a phone the bubble sits over it.)
+  const spend = page.getByRole("textbox", { name: "Max to spend" });
+  const value = await spend.inputValue();
+  const box = (await spend.boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page.keyboard.type("Chulane");
-  await expect(commanderBox(page)).toHaveValue("");
+  await page.keyboard.type("7");
+  await expect(spend).toHaveValue(value);
+  await expect(spend).not.toBeFocused();
   await expect(tour(page)).toContainText("IMPORT your COLLECTION first");
   await expect(page).toHaveURL(/[?&]start=build/);
 });
@@ -293,7 +310,7 @@ test("deck start tour: tapping the tiles, Bracket and Analyze deck moves on", as
   await expectRingOn(page, "deck-start.go");
   await page.getByRole("button", { name: "Analyze deck" }).click();
   // The journey's own tour may follow at once.
-  await expect(tour(page)).not.toContainText("Once your list is in");
+  await expect(tour(page).filter({ hasText: "Once your list is in" })).toHaveCount(0);
   await expect.poll(() => seen(page)).toContain("deck-start");
 });
 
@@ -318,6 +335,10 @@ test("journey tour runs once", async ({ page }) => {
   await openJourneyTour(page);
   await tour(page).getByRole("button", { name: "Skip" }).click();
   expect(await seen(page)).toContain("journey");
+  // Add's tour follows on the step the round opens on: skipped too, so the page is free again.
+  await expect(tour(page)).toContainText("Add", { timeout: PAGE_WAIT_MS });
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await expect(tour(page)).toBeHidden();
 
   await page.getByRole("button", { name: "Edit decklist" }).click();
   await page.getByRole("button", { name: "Analyze deck" }).click();
@@ -356,7 +377,7 @@ test.describe("journey tours by touch", () => {
     const before = await addButton(page).getAttribute("aria-label");
     const status = page.getByRole("region", { name: "Recommendations" }).getByText(/^\d+ \/ 100$/).first();
     const count = await status.innerText();
-    await swipe(page.locator('[data-tour="add.card"]'), -200, 0);
+    await swipeLit(page, "add.card", -200, 0);
     await expect(addButton(page)).not.toHaveAttribute("aria-label", before!);
     await expect(status).toHaveText(count);
     await expect(tour(page)).toContainText("STAT CHANGE PIPS");
@@ -405,7 +426,7 @@ test.describe("cut tour by touch", () => {
     const before = await cutButton(page).getAttribute("aria-label");
     const count = page.locator('[data-tour="cut.count"]');
     const shown = await count.innerText();
-    await swipe(page.locator('[data-tour="cut.card"]'), -200, 0);
+    await swipeLit(page, "cut.card", -200, 0);
     await expect(cutButton(page)).not.toHaveAttribute("aria-label", before!);
     await expect(count).toHaveText(shown);
     await expect(tour(page)).toContainText("says WHY");
@@ -532,6 +553,7 @@ test.describe("deck stats tour by touch", () => {
     await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
     await expectBubbleBeside(page, "deck-stats.bar");
     await nextUntil(page, "SWIPE UP to explore the details");
+    await expectRingOn(page, "deck-stats.bar");
     await swipe(deckStatsBar(page), 0, -120);
     await expect(deckStatsSheet(page)).toBeVisible();
     await expect(tour(page)).toBeHidden();
@@ -596,14 +618,20 @@ test.describe("fix tour by touch", () => {
     await expectRingOn(page, "journey.step.fix");
     // A swipe on the card going out browses the cards to take out, and the tour moves on to the card going in.
     await nextUntil(page, "This is the OUT card.");
+    // The mock deck's first line has one card to take out (Lightning Bolt, off colour): the swipe springs back there,
+    // and the tour stays on its step until › moves it on.
     const before = await fixSwapButton(page).getAttribute("aria-label");
-    await swipe(page.locator('[data-tour="fix.out"]'), -200, 0);
+    await swipeLit(page, "fix.out", -200, 0);
+    await page.waitForTimeout(TOUR_SETTLE_MS);
+    if ((await fixSwapButton(page).getAttribute("aria-label")) === before) {
+      await expect(tour(page)).toContainText("This is the OUT card.");
+      await nextUntil(page, "This is the IN card.");
+    }
     await expect(tour(page)).toContainText("This is the IN card.");
     const afterOut = await fixSwapButton(page).getAttribute("aria-label");
-    expect(afterOut).not.toBe(before);
 
     // A swipe on the card going in browses the cards to put in.
-    await swipe(page.locator('[data-tour="fix.in"]'), -200, 0);
+    await swipeLit(page, "fix.in", -200, 0);
     await expect(fixSwapButton(page)).not.toHaveAttribute("aria-label", afterOut!);
     await expect(tour(page)).toContainText("Like the trade?");
     await expectRingOn(page, "fix.decide");
@@ -638,14 +666,14 @@ test.describe("swap tour by touch", () => {
 
     // A swipe on the card going out shows another card to upgrade, and the tour moves on to its upgrades.
     const before = await skipButton(page).getAttribute("aria-label");
-    await swipe(page.locator('[data-tour="swap.out"]'), -200, 0);
+    await swipeLit(page, "swap.out", -200, 0);
     await expect(skipButton(page)).not.toHaveAttribute("aria-label", before!);
     await expect(tour(page)).toContainText("MORE than one upgrade");
 
     // A swipe on the card going in shows that card's next upgrade.
     await expect(swapButton(page)).toBeVisible({ timeout: PAGE_WAIT_MS });
     const option = await swapButton(page).getAttribute("aria-label");
-    await swipe(page.locator('[data-tour="swap.in"]'), -200, 0);
+    await swipeLit(page, "swap.in", -200, 0);
     await expect(swapButton(page)).not.toHaveAttribute("aria-label", option!);
     await expect(tour(page)).toContainText("Found one you like?");
     await expectRingOn(page, "swap.decide");

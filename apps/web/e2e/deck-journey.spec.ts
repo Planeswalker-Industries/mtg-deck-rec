@@ -294,7 +294,7 @@ function swipeView(recs: Locator, region: string, verb: RegExp) {
   const view = recs.getByRole("region", { name: region });
   const accept = view.getByRole("button", { name: verb });
   return {
-    card: view.locator("[data-tour]"),
+    card: view.locator('[data-tour$=".card"]'),
     accept,
     /** The card on screen, by the accept button's accessible name ("Add Sol Ring"). */
     name: async () => (await accept.getAttribute("aria-label")) ?? "",
@@ -673,8 +673,9 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
   await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 20_000 });
   test.skip(await nothingLeft.isVisible(), "no replacements in this data");
-  const progress = rater.getByText(/^Card \d+ of \d+/);
-  const before = await progress.innerText();
+  // The card going out, by its Skip button's name ("Skip Sol Ring"): Swap shows no count.
+  const skip = rater.getByRole("button", { name: /^Skip / }).first();
+  const before = (await skip.getAttribute("aria-label")) ?? "";
   const candidateBefore = await swapIn.getAttribute("aria-label");
 
   await rater.getByRole("button", { name: /^Enlarge / }).last().click();
@@ -683,8 +684,7 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   // The layer covers the page, so dismissing it can't reach the buttons or the card below.
   await enlarged.click({ position: { x: 10, y: 10 } });
   await expect(enlarged).toBeHidden();
-  // innerText, as `before` was read: the counter hides " to replace" on phones with CSS.
-  await expect(progress).toHaveText(before, { useInnerText: true });
+  await expect(skip).toHaveAttribute("aria-label", before);
   await expect(swapIn).toHaveAttribute("aria-label", candidateBefore ?? "");
 
   // The browser's Back button closes the enlarged card and stays on the page.
@@ -695,7 +695,7 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   await page.goBack();
   await expect(enlarged).toBeHidden();
   expect(page.url()).toBe(url);
-  await expect(progress).toHaveText(before, { useInnerText: true });
+  await expect(skip).toHaveAttribute("aria-label", before);
 
   // Closing it by a tap drops its history entry, so the next Back closes the next card, not the page.
   await rater.getByRole("button", { name: /^Enlarge / }).last().click();

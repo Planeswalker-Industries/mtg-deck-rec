@@ -122,12 +122,14 @@ export function SwipeRater({
     onPrevious: rater.previousTarget,
     canNext: rater.canNextTarget,
     canPrevious: rater.canPreviousTarget,
+    tourTarget: inRater ? undefined : "swap.out",
   });
   const optionSwipe = useBrowseSwipe({
     onNext: rater.nextOption,
     onPrevious: rater.back,
     canNext: rater.canNextOption,
     canPrevious: rater.canBackOption,
+    tourTarget: inRater ? undefined : "swap.in",
   });
   const upcoming = loaded?.status === "ready" ? loaded.suggestions.slice(0, PREFETCH_CANDIDATES + 1).map((s) => s.card.id) : [];
   const nextTarget = targets[rater.targetIndex + 1]?.card.id;

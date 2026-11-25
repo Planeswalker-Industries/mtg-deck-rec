@@ -519,12 +519,15 @@ export function fixBrowser(input: FixInput): FixBrowser | null {
   for (const line of linesInOrder(snap, input.focusLine)) {
     const first = moveFor(work, snap, line);
     if (!first) continue;
-    const { ins, outs } = pairOrder(work, snap, line);
+    const { ins, outs, outMajor } = pairOrder(work, snap, line);
     const check = pairCheck(work, snap, line, false);
     // No in ahead of the first pair's fits its out (over the band it is the out's first valid in; under it, an earlier
     // in fits no out at all), so its search goes on after it.
     const slots: OutSlot[] = [{ out: first.out, ins: [first.in], from: ins.indexOf(first.in) + 1, ended: false }];
-    let nextOut = 0;
+    // The search for more outs skips what the first pair already ruled out: over the band, every out ahead of its out
+    // has no in; under it, every in ahead of its in fits no out. Rechecking those would spend the step's checks.
+    let nextOut = outMajor ? outs.indexOf(first.out) + 1 : 0;
+    const firstIn = outMajor ? 0 : ins.indexOf(first.in);
     let outsEnded = false;
 
     /** Finds the next in for a slot, within one step's checks; marks the slot ended when there is none. */
@@ -544,7 +547,7 @@ export function fixBrowser(input: FixInput): FixBrowser | null {
       while (nextOut < outs.length && checks < MAX_FIX_STEP_CHECKS) {
         const cardOut = outs[nextOut++]!;
         if (cardOut === first.out) continue;
-        for (let from = 0; from < ins.length && checks < MAX_FIX_STEP_CHECKS; from += 1) {
+        for (let from = firstIn; from < ins.length && checks < MAX_FIX_STEP_CHECKS; from += 1) {
           checks += 1;
           if (check(ins[from]!, cardOut)) {
             slots.push({ out: cardOut, ins: [ins[from]!], from: from + 1, ended: false });

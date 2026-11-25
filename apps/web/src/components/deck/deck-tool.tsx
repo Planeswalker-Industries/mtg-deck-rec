@@ -1154,13 +1154,14 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
                 />
               </div>
             )}
+            {/* Keyed apart: the same div reused would keep the tour lighting it under the other step's text. */}
             {picked ? (
-              <div data-tour="build-start.picked">
+              <div key="picked" data-tour="build-start.picked">
                 <SelectedCommander commanders={picked} onChange={() => setPicked(null)} />
               </div>
             ) : (
               // The collection offer takes focus while it is up; off again, the cursor goes back into the box.
-              <div data-tour="build-start.commander">
+              <div key="picker" data-tour="build-start.commander">
                 <CommanderPicker
                   autoFocus={!offersCollection}
                   ownedOnly={pickFrom === "owned" ? (tool.ownedOnly ?? undefined) : undefined}

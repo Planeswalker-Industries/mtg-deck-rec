@@ -126,6 +126,9 @@ export function useSwipeRater({
   const seen = useRef(new Map<CardId, Map<CardId, { suggestion: SwapSuggestion; position: number }>>());
   /** Whether this sitting has put a replacement in front of the player. */
   const dealt = useRef(false);
+  /** The cards, by position, put on screen in this sitting, and the ones answered (swapped or kept). */
+  const shown = useRef(new Set<number>());
+  const answered = useRef(new Set<number>());
 
   // Cards to step over come off the list as their turn comes, rather than out of it: the list is dealt by position.
   // A sitting that skips empties also passes over cards that turn out to have no replacements: there's nothing to
@@ -224,12 +227,24 @@ export function useSwipeRater({
     batches.current.set(target.card.id, recordShown("swap", ids, context, target.card.id));
   }, [mode, target, dealtIds, context]);
 
-  /** After an answer: on to the next card, or the end of the sitting after the last. */
+  useEffect(() => {
+    if (index < targets.length) shown.current.add(index);
+  }, [index, targets.length]);
+
+  /**
+   * After an answer: on to the next card not yet answered. After the last, back round to the cards browsed past without
+   * an answer, which stay open (design, 2026-11-24); the sitting ends when none is left.
+   */
   function advance() {
     setCandidateIndex(0);
     setVoteError(null);
-    if (index + 1 >= targets.length) onFinish();
-    else setTargetIndex(index + 1);
+    answered.current.add(index);
+    const open = (i: number) => !answered.current.has(i) && !skipped(i);
+    let to: number | null = null;
+    for (let i = index + 1; i < targets.length && to === null; i++) if (open(i)) to = i;
+    for (let i = 0; i < index && to === null; i++) if (shown.current.has(i) && open(i)) to = i;
+    if (to === null) onFinish();
+    else setTargetIndex(to);
   }
 
   /** Deck tool: shows another card to replace, its first option up. Nothing is kept or recorded. */

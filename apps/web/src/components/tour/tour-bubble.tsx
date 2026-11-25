@@ -123,7 +123,7 @@ export function TourBubble({
         <div className="flex items-center justify-between gap-2">
           {/* The chapter and the step in it, kept quiet so the eye stays on the text. */}
           <span className="flex min-w-0 items-baseline gap-2 text-muted-foreground">
-            <span className="truncate font-heading text-lg italic">{title}</span>
+            <span className="truncate text-sm font-semibold">{title}</span>
             <span className="font-mono text-sm">
               <span className="sr-only">Step </span>
               {index + 1}/{count}
