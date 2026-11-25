@@ -1,4 +1,5 @@
 import type { ApiError } from "@mtg/core/contract";
+import { logError } from "./error-log";
 import type { PublicClient } from "./supabase";
 
 /** Request budgets per visitor. Limits and windows live in app_config.rate_limits. */
@@ -16,6 +17,7 @@ export type RateLimitBucket =
   | "events"
   | "search"
   | "feedback"
+  | "client_error"
   | "admin";
 
 /** How many spent budgets one server instance remembers; past it, the oldest is forgotten (and asks the database again). */
@@ -58,7 +60,7 @@ export async function checkRateLimit(db: PublicClient, bucket: RateLimitBucket, 
   if (known) return known;
   const { data, error } = await db.rpc("hit_rate_limit", { p_bucket: bucket, p_visitor: visitor });
   if (error) {
-    console.error(`Rate limit check for ${bucket} failed: ${error.message}`);
+    logError({ area: `rateLimit.${bucket}`, error, context: { bucket } });
     return null;
   }
   if (!data) return null;
@@ -69,5 +71,12 @@ export async function checkRateLimit(db: PublicClient, bucket: RateLimitBucket, 
     if (oldest !== undefined) limitedUntil.delete(oldest);
   }
   limitedUntil.set(key, Date.now() + data * MS_PER_SECOND);
-  return rateLimited(data);
+  const refusal = rateLimited(data);
+  // Once per spent budget and instance: the refusals after it come from memory above and log nothing, so a visitor
+  // hammering the site can't turn each refused request into a ticket write. A browser's own reports are left out:
+  // their budget running out is the flood guard working, and logging it would be one more write per flood.
+  if (bucket !== "client_error") {
+    logError({ area: `rateLimit.${bucket}`, error: refusal.message, level: "warning", code: refusal.code, shown: refusal.message, context: { bucket, retryAfterSec: data } });
+  }
+  return refusal;
 }

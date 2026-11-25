@@ -172,3 +172,23 @@ export interface UpdateAdminFeedbackReportInput {
 export const updateAdminFeedbackReportInputSchema: InputSchema<UpdateAdminFeedbackReportInput> = z.object({
   resolved: z.boolean({ error: "Say whether the report is resolved." }),
 });
+
+export interface ListAdminErrorTicketsInput {
+  openOnly: boolean;
+  offset: number;
+  limit: number;
+}
+
+export const listAdminErrorTicketsInputSchema: InputSchema<ListAdminErrorTicketsInput> = z.object({
+  openOnly: z.boolean().default(true),
+  offset: z.int().min(0).max(100_000).default(0),
+  limit: z.int().min(1).max(ADMIN_PER_PAGE_MAX).default(25),
+});
+
+export interface UpdateAdminErrorTicketInput {
+  resolved: boolean;
+}
+
+export const updateAdminErrorTicketInputSchema: InputSchema<UpdateAdminErrorTicketInput> = z.object({
+  resolved: z.boolean({ error: "Say whether the ticket is resolved." }),
+});

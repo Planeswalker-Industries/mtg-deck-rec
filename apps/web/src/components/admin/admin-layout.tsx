@@ -4,7 +4,7 @@ import { Box } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { Suspense, type MouseEvent, type ReactElement } from "react";
 import { AppBar, Inspector, Loading, Menu, MenuItemLink, Sidebar, SkipNavigationButton, TitlePortal, type LayoutProps } from "react-admin";
-import { Inbox, Layers } from "lucide-react";
+import { CircleAlert, Inbox, Layers } from "lucide-react";
 import { MenuIcon } from "./menu-icon";
 
 /**
@@ -28,12 +28,12 @@ import { MenuIcon } from "./menu-icon";
  */
 
 /**
- * A link out of the single-page admin app to one of the site's own admin pages (/admin/crawls, /admin/reports), which
+ * A link out of the single-page admin app to one of the site's own admin pages (/admin/crawls, /admin/reports, /admin/errors), which
  * are ordinary Next routes rather than React Admin resources. MenuItemLink renders a react-router link, and
  * react-router knows nothing about those pages, so the click is handed to Next's router instead — a client
  * navigation, not a reload, since both live under /admin.
  */
-const SitePageMenuItem = ({ page, label, icon }: { page: "crawls" | "reports"; label: string; icon: ReactElement }) => {
+const SitePageMenuItem = ({ page, label, icon }: { page: "crawls" | "reports" | "errors"; label: string; icon: ReactElement }) => {
   const router = useRouter();
   return (
     <MenuItemLink
@@ -85,6 +85,7 @@ export const AdminLayout = ({ children }: LayoutProps) => (
             <Menu.ResourceItems />
             <SitePageMenuItem page="crawls" label="Deck crawls" icon={<MenuIcon icon={Layers} />} />
             <SitePageMenuItem page="reports" label="Feedback reports" icon={<MenuIcon icon={Inbox} />} />
+            <SitePageMenuItem page="errors" label="Error tickets" icon={<MenuIcon icon={CircleAlert} />} />
           </Menu>
         </Sidebar>
         <Box

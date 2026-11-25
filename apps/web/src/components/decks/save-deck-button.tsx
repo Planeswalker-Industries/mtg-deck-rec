@@ -15,6 +15,7 @@ import { displayName } from "@/lib/cards";
 import { addShortfallToCollection, collectionCounts } from "@/lib/deck-collection";
 import { signInToSaveHref, stashPendingSave } from "@/lib/pending-save";
 import { ErrorText } from "@/components/ui/error-text";
+import { reportClientError } from "@/lib/client-error-report";
 
 /** A save waiting on the player's answer about the cards their collection lacks. */
 interface Confirm {
@@ -100,6 +101,7 @@ export function SaveDeckButton({
     try {
       await addShortfallToCollection(collection, signedIn, add, names);
     } catch (err) {
+      reportClientError("decks.saveShortfall", err, { context: { cards: add.length, signedIn } });
       setBusy(false);
       setError(`Couldn't add the cards to your collection: ${err instanceof Error ? err.message : "try again."}`);
       return;

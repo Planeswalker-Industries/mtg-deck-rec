@@ -33,6 +33,7 @@ import { TextLimitCount, useTextLimit } from "@/components/ui/text-limit";
 import { clearCollection, collectionTotals, MAX_UNMATCHED_KEPT, saveCollection, type UnmatchedLine } from "@/lib/collection-store";
 import { notifyCollectionChanged, useCollectionSource, type PendingMove } from "./use-collection-source";
 import { useCollectionParser } from "./use-collection-parser";
+import { reportClientError } from "@/lib/client-error-report";
 
 /** The server accepts at most this many rows per call (it chunks matching internally under PostgREST's row cap). */
 const ROWS_PER_CALL = 2_000;
@@ -115,6 +116,10 @@ export function CollectionTool() {
     } catch (error) {
       // A parse or call that throws (a worker crash, a storage error) must not leave the form stuck mid-import.
       if (!current()) return;
+      // Only the browser saw this one: a call's own failure came back as a result, not a throw, and was ticketed there.
+      reportClientError("collection.import", error, {
+        context: { savedBeforeFailing: savedRun.current === id, fromFile: fileName !== null, signedIn, mode },
+      });
       if (savedRun.current === id) {
         // The collection is in: say so, with what went wrong after, and clear the box so a retry can't add it twice.
         const issue = error instanceof Error && error.message ? error.message : "unknown error";

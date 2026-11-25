@@ -1,4 +1,5 @@
 import type { PublicClient } from "./supabase";
+import { logError } from "./error-log";
 
 /**
  * Each card's cheapest printing's TCGplayer product id, by card id; cards without one are left out. A read error only
@@ -13,7 +14,7 @@ export async function loadTcgplayerProductIds(db: PublicClient, cardIds: readonl
     .select("card_id, cheapest_finish, printing:printings!cheapest_printing_id(tcgplayer_id, tcgplayer_etched_id)")
     .in("card_id", ids);
   if (error) {
-    console.error(`Loading the cheapest printings failed: ${error.message}`);
+    logError({ area: "tcgplayer.productIds", error, level: "warning", context: { cards: ids.length } });
     return new Map();
   }
   return new Map(

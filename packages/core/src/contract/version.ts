@@ -170,5 +170,9 @@
  * of one list in one call, so a build's acceptance no longer queues one Server Action per card. RecsApi.upgrades
  * (POST /api/recs/upgrades): for a deck the collection fully supplies, the unowned replacements that improve it most,
  * ranked by gain, never by price (UpgradesResult, UpgradeSuggestion). Additive.
+ *
+ * v41 (2026-11-25): error tickets (owner asked 2026-11-25). ActionsApi gains `reportClientError` (ClientErrorReport):
+ * a failure in the browser, with where it happened and what was running, opens or joins a ticket at /admin/errors.
+ * Works signed out, rate-limited per visitor. Additive.
  */
-export const CONTRACT_VERSION = 40;
+export const CONTRACT_VERSION = 41;

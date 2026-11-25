@@ -1,5 +1,6 @@
 import type { ApiError } from "@mtg/core/contract";
 import { classifyShareResponse } from "@mtg/core/parse";
+import { logError } from "./error-log";
 import { createAdminClient } from "./supabase-admin";
 import type { PublicClient } from "./supabase";
 import { USER_AGENT } from "@/lib/constants";
@@ -73,8 +74,9 @@ export async function fetchShareLink(
     });
     body = await res.text();
   } catch (err) {
-    console.error(err);
-    return failure("UPSTREAM_UNAVAILABLE", `Couldn't reach ${name}. Try again in a moment.`);
+    const shown = `Couldn't reach ${name}. Try again in a moment.`;
+    logError({ area: `shareImport.${source}`, error: err, level: "warning", code: "UPSTREAM_UNAVAILABLE", shown, context: { what, host: target.hostname } });
+    return failure("UPSTREAM_UNAVAILABLE", shown);
   }
   if (body.length > MAX_BODY_CHARS) return failure("PAYLOAD_TOO_LARGE", `That ${name} ${what} is too large to import.`);
 
@@ -90,16 +92,23 @@ export async function fetchShareLink(
     case "not_public":
     case "not_found":
       return failure("NOT_FOUND", `That ${name} ${what} isn't public, or doesn't exist.`);
-    case "rate_limited":
-      return failure("RATE_LIMITED", `${name} is busy right now. Wait a minute and try the link again.`);
-    default:
-      return failure("UPSTREAM_UNAVAILABLE", `Couldn't load that ${name} ${what}. Try again in a moment.`);
+    case "rate_limited": {
+      const shown = `${name} is busy right now. Wait a minute and try the link again.`;
+      logError({ area: `shareImport.${source}`, error: `${name} answered HTTP ${res.status}`, level: "warning", code: "RATE_LIMITED", shown, context: { what, status: res.status } });
+      return failure("RATE_LIMITED", shown);
+    }
+    default: {
+      const shown = `Couldn't load that ${name} ${what}. Try again in a moment.`;
+      logError({ area: `shareImport.${source}`, error: `${name} answered HTTP ${res.status} with nothing we could read`, code: "UPSTREAM_UNAVAILABLE", shown, context: { what, status: res.status, contentType: res.headers.get("content-type") } });
+      return failure("UPSTREAM_UNAVAILABLE", shown);
+    }
   }
 }
 
 /** Switches a source off and records why. Failing to record it is logged loudly but never hides the block from the user. */
 async function switchOff(source: ShareSource, status: number): Promise<void> {
-  console.warn(`share import: switching off ${source} after a bot-protection response (HTTP ${status})`);
+  // An error, not a warning: imports from this source are off until the owner turns them back on (CLAUDE.md).
+  logError({ area: `shareImport.${source}.switchedOff`, error: `Bot protection answered HTTP ${status}; ${source} imports are now switched off`, code: "UPSTREAM_NOT_AUTHORIZED", context: { status } });
   try {
     const admin = createAdminClient();
     const now = new Date().toISOString();
@@ -109,8 +118,8 @@ async function switchOff(source: ShareSource, status: number): Promise<void> {
       .eq("source", source);
     if (error) throw new Error(error.message);
     const { error: auditError } = await admin.from("audit_log").insert({ action: "share_import_source_disabled", payload: { source, status } });
-    if (auditError) console.error(`Recording that ${source} imports were switched off failed: ${auditError.message}`);
+    if (auditError) logError({ area: "shareImport.auditLog", error: auditError, context: { source } });
   } catch (err) {
-    console.error(`Couldn't switch off ${source} imports:`, err);
+    logError({ area: "shareImport.switchOff", error: err, context: { source } });
   }
 }

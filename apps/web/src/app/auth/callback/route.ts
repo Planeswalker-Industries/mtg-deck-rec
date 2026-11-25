@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAuthClient, safeNextPath } from "@/lib/server/auth";
+import { logError } from "@/lib/server/error-log";
 
 /** Where Google sign-in returns: exchanges the one-time code for a session cookie. */
 export async function GET(request: NextRequest) {
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createAuthClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(new URL(next, request.url));
-    console.error(`Google sign-in failed: ${error.message}`);
+    logError({ area: "auth.googleCallback", error, code: error.code });
   }
   return NextResponse.redirect(new URL("/sign-in?error=google", request.url));
 }

@@ -27,6 +27,7 @@ import {
   saveCollectionBatchInputSchema,
   saveDeckInputSchema,
   submitFeedbackInputSchema,
+  reportClientErrorInputSchema,
   swapInputSchema,
   upgradesInputSchema,
 } from './schemas';
@@ -360,6 +361,27 @@ describe('submitFeedbackInputSchema', () => {
   it('refuses a full URL, a query string or a fragment as the page', () => {
     for (const pagePath of ['https://example.com/', '/deck?d=abc', '/privacy#credits', 'decks', '/a b']) {
       expect(parseInput(submitFeedbackInputSchema, { message: 'Hi', pagePath }).ok, pagePath).toBe(false);
+    }
+  });
+});
+
+describe('reportClientErrorInputSchema', () => {
+  const report = { area: 'window.error', message: 'x is not a function', pagePath: '/deck' };
+
+  it('takes a report and cuts a long message short instead of refusing it', () => {
+    const parsed = parseInput(reportClientErrorInputSchema, { ...report, message: `  ${'y'.repeat(5_000)}  `, context: { rows: 3, ok: true } });
+    expect(parsed.ok && parsed.data.message.length).toBe(2_000);
+  });
+
+  it('refuses what a ticket cannot hold', () => {
+    for (const bad of [
+      { ...report, area: 'has spaces' },
+      { ...report, pagePath: '/deck?list=Sol+Ring' },
+      { ...report, message: '   ' },
+      { ...report, context: { deck: { cards: [] } } },
+      { ...report, context: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, i])) },
+    ]) {
+      expect(parseInput(reportClientErrorInputSchema, bad).ok, JSON.stringify(bad).slice(0, 80)).toBe(false);
     }
   });
 });

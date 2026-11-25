@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { AdSlot } from "@/components/layout/ad-slot";
+import { ClientErrorListener } from "@/components/layout/client-error-listener";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { PasteLimitBubble } from "@/components/ui/paste-limit";
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </div>
         <SiteFooter />
         <PasteLimitBubble />
+        <ClientErrorListener />
       </body>
     </html>
   );

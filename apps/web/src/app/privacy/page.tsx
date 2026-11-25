@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "What Spell Chasm collects, why, who else handles it, and how to delete your account.",
 };
 
-const UPDATED = "16 November 2026";
+const UPDATED = "25 November 2026";
 
 // Boilerplate drafted 2026-09-21 from how the app actually stores data; the owner's decisions are the retention of a
 // deleted account's email (abuse prevention) and the use of submitted data (recommendations only, never sold). The
@@ -74,6 +74,13 @@ export default function PrivacyPage() {
             When you send feedback or report a deck, we keep your message, the page you sent it from, your account and the
             time. Only the site&apos;s admins read it, to fix what it&apos;s about, and they don&apos;t see your email
             address with it.
+          </Item>
+          <Item term="Errors the site runs into">
+            When something fails, on our servers or in your browser, we keep a record so we can fix it: what went wrong,
+            the page it happened on (without anything after a ? in the address), the time, your browser&apos;s name and
+            version, and your account id if you were signed in. Email addresses are taken out of it. We don&apos;t record
+            what you typed or pasted, only facts like how many cards an import had, though an error&apos;s own message can
+            quote a piece of it. Only the site&apos;s admins read it, by account id, to look at what failed for you.
           </Item>
           <Item term="Commander deck lookups">
             When you ask us to gather decks for a commander, we keep the request and that salted hash, to apply limits.
@@ -155,6 +162,7 @@ export default function PrivacyPage() {
             users signing up again or one person running many accounts. They are not used for anything else.
           </li>
           <li>Your votes and the suggestions you took or passed on, with nothing left that links them to you.</li>
+          <li>Records of errors you ran into, with nothing left that links them to you.</li>
           <li>Statistics your decks contributed to, which never contained your name.</li>
         </ul>
       </Section>

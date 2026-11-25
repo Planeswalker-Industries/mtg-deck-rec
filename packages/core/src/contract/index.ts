@@ -7,4 +7,5 @@ export type * from './collection';
 export type * from './account';
 export type * from './transport';
 export type * from './commander-requests';
+export type * from './client-errors';
 export { CONTRACT_VERSION } from './version';

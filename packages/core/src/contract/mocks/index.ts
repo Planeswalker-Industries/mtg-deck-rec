@@ -1052,6 +1052,11 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       feedbackReports += 1;
       return delay(ok({ id: feedbackReports }));
     },
+    // Mocks have no admin page to read reports on: a browser's failure goes to the console instead.
+    async reportClientError(input) {
+      console.warn(`[mock] client error in ${input.area}: ${input.message}`);
+      return ok(null);
+    },
   };
 
   const catalog: CatalogApi = {

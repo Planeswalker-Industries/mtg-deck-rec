@@ -9,6 +9,7 @@ import { submitFeedbackReport } from "@/lib/server/feedback";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
+import { logError } from "@/lib/server/error-log";
 
 /** Sends the site's admins a feedback report. Signed in only, with its own budget in `app_config.rate_limits`. */
 export async function submitFeedbackAction(input: Parameters<ActionsApi["submitFeedback"]>[0]): ReturnType<ActionsApi["submitFeedback"]> {
@@ -25,7 +26,7 @@ export async function submitFeedbackAction(input: Parameters<ActionsApi["submitF
     if (err instanceof NotSignedInError) {
       return { ok: false, error: { code: "UNAUTHENTICATED", message: "Sign in to send feedback." } };
     }
-    console.error(err);
+    logError({ area: "feedback.submit", error: err, code: "UPSTREAM_UNAVAILABLE" });
     return { ok: false, error: { code: "UPSTREAM_UNAVAILABLE", message: "Couldn't send that. Try again in a moment." } };
   }
 }
