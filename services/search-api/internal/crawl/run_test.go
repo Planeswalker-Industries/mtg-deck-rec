@@ -157,6 +157,8 @@ type fakeStore struct {
 	progress       []RunSummary    // every progress report, in order
 	sweeps         []time.Duration // the stale window each sweep was asked for
 	calls          []string        // the run-level calls in order, so a test can check what came first
+	tickets        []LogEntry      // every error ticket written, in order
+	ticketsFail    bool            // log_error_event fails, as when the database is briefly unreachable
 }
 
 func newStore(commanders ...Commander) *fakeStore {
@@ -263,6 +265,13 @@ func (s *fakeStore) SetCursor(_ context.Context, id string) error { s.cursor = i
 func (s *fakeStore) SetProbeOK(context.Context) error             { s.probeOK = true; return nil }
 func (s *fakeStore) Disable(_ context.Context, reason string) error {
 	s.disabledReason = reason
+	return nil
+}
+func (s *fakeStore) LogError(_ context.Context, entry LogEntry) error {
+	if s.ticketsFail {
+		return fmt.Errorf("log_error_event: connection refused")
+	}
+	s.tickets = append(s.tickets, entry)
 	return nil
 }
 
@@ -449,6 +458,86 @@ func TestNotFoundIsLoggedAndTheRunMovesOn(t *testing.T) {
 	}
 	if res.Summary.State != "succeeded" || store.visits[liesa.CardID].Counted != 1 {
 		t.Fatalf("the run should carry on past a commander with no decks: %+v", res.Summary)
+	}
+}
+
+// A not_found visit opens one ticket for that commander, keyed so its retries join the same ticket, with the plain
+// facts an admin needs to look it up.
+func TestNotFoundOpensOneTicketPerCommander(t *testing.T) {
+	ghost := Commander{CardID: 4, OracleID: "oc-ghost", Name: "Nobody Plays Me"}
+	store := newStore(ghost, liesa)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(ghost.Name, 1): []byte(""),
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	run(t, store, getter)
+	if len(store.tickets) != 1 {
+		t.Fatalf("want one ticket, got %+v", store.tickets)
+	}
+	ticket := store.tickets[0]
+	if ticket.Area != "crawl.src.not_found" || ticket.Code != OutcomeNotFound || ticket.Level != "error" {
+		t.Fatalf("ticket: %+v", ticket)
+	}
+	if ticket.Fingerprint != Fingerprint("crawl.src.not_found", "4") || len(ticket.Fingerprint) != 64 {
+		t.Fatalf("fingerprint should key on the area and card id: %s", ticket.Fingerprint)
+	}
+	if ticket.Message != "Src lists no decks for Nobody Plays Me" {
+		t.Fatalf("message: %s", ticket.Message)
+	}
+	d := ticket.Detail
+	if d["cardId"] != 4 || d["oracleId"] != "oc-ghost" || d["nameTried"] != ghost.Name ||
+		d["listUrl"] != src.ListURL(ghost.Name, 1) || d["triedFrontFace"] != false || d["givenUp"] != false {
+		t.Fatalf("detail: %+v", d)
+	}
+	if d["notFoundSince"] == "" || d["notFoundSince"] != d["latestNotFound"] {
+		t.Fatalf("a first miss starts its streak now: %+v", d)
+	}
+}
+
+// A retry that misses again reports when the streak began; the last one says the queue gave the commander up.
+func TestTheLastNotFoundTrySaysItGaveUp(t *testing.T) {
+	since := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	ghost := Commander{CardID: 4, OracleID: "oc-ghost", Name: "Esika // Bridge", Visited: true,
+		NotFoundSince: &since, NotFoundLastTry: true}
+	store := newStore(ghost)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(ghost.Name, 1): []byte(""),
+		src.ListURL("Esika", 1):    []byte(""),
+	}}
+	runner := newFakeRunner(store, getter, src)
+	runner.now = func() time.Time { return since.Add(300 * 24 * time.Hour) }
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.tickets) != 1 {
+		t.Fatalf("want one ticket, got %+v", store.tickets)
+	}
+	ticket := store.tickets[0]
+	if ticket.Message != "Src lists no decks for Esika // Bridge; given up after 300 days" {
+		t.Fatalf("message: %s", ticket.Message)
+	}
+	d := ticket.Detail
+	if d["notFoundSince"] != "2026-01-01T00:00:00Z" || d["givenUp"] != true || d["triedFrontFace"] != true ||
+		d["nameTried"] != "Esika" {
+		t.Fatalf("detail: %+v", d)
+	}
+}
+
+// A ticket that cannot be written costs the crawl nothing: the commander is still recorded and the run goes on.
+func TestAFailedTicketWriteDoesNotStopTheRun(t *testing.T) {
+	ghost := Commander{CardID: 4, OracleID: "oc-ghost", Name: "Nobody Plays Me"}
+	store := newStore(ghost, liesa)
+	store.ticketsFail = true
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(ghost.Name, 1): []byte(""),
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	res := run(t, store, getter)
+	if store.visits[ghost.CardID].Outcome != OutcomeNotFound || store.visits[liesa.CardID].Counted != 1 ||
+		res.Summary.State != "succeeded" {
+		t.Fatalf("the run should carry on: %+v %+v", store.visits, res.Summary)
 	}
 }
 

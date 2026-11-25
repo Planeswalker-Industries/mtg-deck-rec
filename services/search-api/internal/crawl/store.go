@@ -2,8 +2,11 @@ package crawl
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/supabase"
@@ -54,6 +57,30 @@ type Store interface {
 	SetProbeOK(ctx context.Context) error
 	// Disable flips the source's kill switch. Only a human re-enables it (a manual update on the row).
 	Disable(ctx context.Context, reason string) error
+	// LogError adds a failure to its error ticket on /admin/errors (public.log_error_event), opening one for a new
+	// fingerprint. The caller logs a failed write and carries on: a ticket must never stop a crawl.
+	LogError(ctx context.Context, entry LogEntry) error
+}
+
+// LogEntry is one failure for /admin/errors. Detail holds plain facts (ids, names, counts, URLs), never anything a
+// player typed.
+type LogEntry struct {
+	// Fingerprint groups repeats into one ticket: sha256 hex of a string that is stable for the same failure.
+	Fingerprint string
+	Level       string // "error" or "warning"
+	Area        string // dotted, under crawl.<source>.
+	Code        string
+	Message     string
+	Detail      map[string]any
+}
+
+// errorSource is what log_error_event records as the ticket's origin: the crawl runs on the server.
+const errorSource = "server"
+
+// Fingerprint is the sha256 hex of parts joined with ":", the shape log_error_event requires.
+func Fingerprint(parts ...string) string {
+	sum := sha256.Sum256([]byte(strings.Join(parts, ":")))
+	return hex.EncodeToString(sum[:])
 }
 
 // CrawlState mirrors the source's crawl.state row, plus how many decks its raw table holds.
@@ -86,6 +113,11 @@ type Commander struct {
 	QueryName string `json:"queryName"`
 	// Visited is false until the commander's first complete visit, which reads only Policy.FirstVisitPages.
 	Visited bool `json:"visited"`
+	// NotFoundSince is when the source began listing no decks for this commander; nil unless its last complete visit
+	// was not_found. Such a commander comes back on the queue's retry schedule until the queue gives it up.
+	NotFoundSince *time.Time `json:"notFoundSince"`
+	// NotFoundLastTry says that a not_found outcome now is final: the queue's next retry would fall past its give-up.
+	NotFoundLastTry bool `json:"notFoundLastTry"`
 }
 
 // Commander visit outcomes, as crawl.queue.outcome stores them.
@@ -357,6 +389,23 @@ func (s *SupabaseStore) SetProbeOK(ctx context.Context) error {
 
 func (s *SupabaseStore) Disable(ctx context.Context, reason string) error {
 	_, err := s.client.RPC(ctx, "crawl_disable", map[string]any{"p_source": s.source, "p_reason": reason})
+	return err
+}
+
+func (s *SupabaseStore) LogError(ctx context.Context, entry LogEntry) error {
+	detail := entry.Detail
+	if detail == nil {
+		detail = map[string]any{}
+	}
+	_, err := s.client.RPC(ctx, "log_error_event", map[string]any{
+		"p_fingerprint": entry.Fingerprint,
+		"p_level":       entry.Level,
+		"p_source":      errorSource,
+		"p_area":        entry.Area,
+		"p_message":     entry.Message,
+		"p_code":        entry.Code,
+		"p_detail":      detail,
+	})
 	return err
 }
 

@@ -365,9 +365,10 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 		return result, err
 	}
 	// A two-faced card may be listed under its front face alone. Only tried when no earlier visit settled the name.
+	triedFrontFace := false
 	if len(page.Entries) == 0 && commander.QueryName == "" {
 		if front, _, ok := strings.Cut(commander.Name, frontFaceSeparator); ok {
-			name = front
+			name, triedFrontFace = front, true
 			if page, err = r.listPage(ctx, name, 1); err != nil {
 				return result, err
 			}
@@ -377,6 +378,7 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 		// The verification log: a commander the seed list knows that this source has nothing for under that name.
 		r.log.Warn("commander has no decks on the source", "source", r.src.Name(), "commander", commander.Name,
 			"cardId", commander.CardID)
+		r.logNotFound(ctx, commander, name, triedFrontFace)
 		result.Outcome = OutcomeNotFound
 		return result, nil
 	}
@@ -534,6 +536,53 @@ func (r *Runner) visit(ctx context.Context, policy Policy, commander Commander, 
 			return result, nil
 		}
 	}
+}
+
+// logNotFound opens (or adds to) the commander's error ticket: a commander Scryfall says exists that the source lists
+// no decks for is worth a look, a misspelt name or a card the source indexes some other way. Each commander has one
+// ticket, so its monthly retries add up there; the last try says the queue gave up on it. A failed ticket write is
+// logged and nothing more.
+func (r *Runner) logNotFound(ctx context.Context, commander Commander, nameTried string, triedFrontFace bool) {
+	area := "crawl." + r.src.Name() + ".not_found"
+	since := r.now().UTC()
+	if commander.NotFoundSince != nil {
+		since = commander.NotFoundSince.UTC()
+	}
+	message := fmt.Sprintf("%s lists no decks for %s", sourceTitle(r.src.Name()), commander.Name)
+	if commander.NotFoundLastTry {
+		message += fmt.Sprintf("; given up after %d days", int(r.now().Sub(since)/(hoursPerDay*time.Hour)))
+	}
+	entry := LogEntry{
+		Fingerprint: Fingerprint(area, strconv.Itoa(commander.CardID)),
+		Level:       "error",
+		Area:        area,
+		Code:        OutcomeNotFound,
+		Message:     message,
+		Detail: map[string]any{
+			"cardId":         commander.CardID,
+			"oracleId":       commander.OracleID,
+			"nameTried":      nameTried,
+			"listUrl":        r.src.ListURL(nameTried, 1),
+			"triedFrontFace": triedFrontFace,
+			"notFoundSince":  since.Format(time.RFC3339),
+			"latestNotFound": r.now().UTC().Format(time.RFC3339),
+			"givenUp":        commander.NotFoundLastTry,
+		},
+	}
+	if err := r.store.LogError(ctx, entry); err != nil {
+		r.log.Error("writing the not_found ticket", "source", r.src.Name(), "commander", commander.Name, "err", err)
+	}
+}
+
+// hoursPerDay turns the streak's length into the whole days its ticket reports.
+const hoursPerDay = 24
+
+// sourceTitle is a source key as a ticket's message names it: "archidekt" reads "Archidekt".
+func sourceTitle(name string) string {
+	if name == "" {
+		return name
+	}
+	return strings.ToUpper(name[:1]) + name[1:]
 }
 
 // visitEnd names how a visit that read all the pages it was allowed finished.

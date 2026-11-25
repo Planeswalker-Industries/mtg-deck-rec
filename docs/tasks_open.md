@@ -15,7 +15,7 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 Hosted on 2026-11-25: every queued commander had one visit, but 15 legal commanders never enter the queue (it is seeded from EDHREC only), 50 are `not_found` for good (about 40 accented names: Archidekt matches accent-free names), and about 2,600 of the 2,980 commanders at the 60-deck target have not been revisited since mid-October (exhausted commanders go first every run, then the most-played). One network reset, a bad deck page or a stopped process ends the day's run with no resume (runs 39, 40, 59, 60, 63). `cards.can_be_commander` misses legendary Vehicles, Spacecraft and Grist.
 
 - [x] Commander eligibility follows the current Commander rules (`can_be_commander` matches Scryfall `is:commander`)
-- [ ] Archidekt names sent accent-folded; `not_found` opens an error ticket, retries every 30 days, gives up after 300
+- [x] Archidekt names sent accent-folded; `not_found` opens an error ticket, retries every 30 days, gives up after 300
 - [ ] Queue seeded from the catalog; exhausted commanders every 7 days; at-target revisits stalest first
 - [ ] A malformed deck or a failing list page skips one deck or one commander; a streak or a broken adapter ends the run with an error ticket
 - [ ] Crawl RPCs retry transient network and 5xx failures
