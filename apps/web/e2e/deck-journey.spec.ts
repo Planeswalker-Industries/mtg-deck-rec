@@ -833,8 +833,8 @@ test("Swap never deals a piece of a combo the deck holds", async ({ page, browse
   expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
 });
 
-/** Finish's shopping list; its heading reads "Shopping list 8" (the total leads Finish, above it). */
-const SHOPPING_LIST = { name: /^Shopping list \d+$/ };
+/** Finish's shopping list; its heading reads "Cart 8" (the total leads Finish, above it). */
+const SHOPPING_LIST = { name: /^Cart \d+$/ };
 
 /** Straight to Finish from a deck at 100: no changes, so the list offers the whole deck. */
 async function finishAt100(page: Page) {
@@ -933,7 +933,7 @@ test("remove all then undo", async ({ page }) => {
   const removeButtons = list.getByRole("button", { name: /^Remove / });
   while ((await removeButtons.count()) > 0) await removeLine(list, /^Remove /);
 
-  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 0");
+  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Cart 0");
   // Nothing to buy shows no Buy at all, never a greyed one (T102).
   const ready = page.getByRole("region", { name: "Deck Complete!" });
   await expect(ready.getByText("Buy on TCGplayer")).toHaveCount(0);
@@ -941,5 +941,5 @@ test("remove all then undo", async ({ page }) => {
 
   await expect(list.getByText("You removed every card.")).toBeVisible();
   await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
-  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 1");
+  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Cart 1");
 });

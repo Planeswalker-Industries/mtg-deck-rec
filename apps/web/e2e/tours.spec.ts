@@ -7,6 +7,7 @@ import {
   deckWith,
   expect,
   fillDecklist,
+  leaveSwap,
   openFix,
   openSwap,
   swipe,
@@ -654,4 +655,55 @@ test.describe("swap tour by touch", () => {
     await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
     expect(await seen(page)).toContain("swap");
   });
+});
+
+// Finish's tour (`finish`): the score first, then the page's parts, Start over, and Save last (out of screen order).
+// Its first words follow the score's level; the mock deck's is urgent.
+const FINISH_FIRST = /YOU (DID|MADE) IT!/;
+// Changes, Buy and the shopping list depend on the round; these are on every Finish.
+const FINISH_TARGETS = ["finish.score.urgent", "finish.decklist", "finish.export", "finish.start-over", "finish.save"] as const;
+
+/** On to Finish past Fix's, Swap's and Deck stats' tours, to Finish's tour. */
+async function openFinishTour(page: Page) {
+  await journeyWithoutTours(page);
+  await swapPastItsTour(page);
+  await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await leaveSwap(page);
+  await expect(tour(page)).toContainText(FINISH_FIRST, { timeout: PAGE_WAIT_MS });
+}
+
+test("finish tour elements are on the page", async ({ page }) => {
+  await openFinishTour(page);
+  await expect(tour(page)).toContainText("Finish");
+  for (const target of FINISH_TARGETS) await expect(page.locator(`[data-tour="${target}"]`)).toBeVisible();
+});
+
+test("finish tour: the score first, then Save ends it and hands over to Save Deck", async ({ page }) => {
+  await openFinishTour(page);
+  await expectRingOn(page, "finish.score.urgent");
+  await nextUntil(page, "COPY or DOWNLOAD");
+  await expectRingOn(page, "finish.export");
+  await nextUntil(page, "START OVER");
+  await expectRingOn(page, "finish.start-over");
+  await nextUntil(page, "TAP SAVE!");
+  await expectRingOn(page, "finish.save");
+  await page.locator('[data-tour="finish.save"]').click();
+  await expect(tour(page)).toContainText(SAVE_DECK_FIRST, { timeout: PAGE_WAIT_MS });
+  expect(await seen(page)).toContain("finish");
+});
+
+test("finish tour runs once", async ({ page }) => {
+  await openFinishTour(page);
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  expect(await seen(page)).toContain("finish");
+  // Back to Swap through the stepper and on to Finish again.
+  await page
+    .getByRole("region", { name: "Recommendations" })
+    .getByRole("navigation", { name: "Deck upgrade steps" })
+    .getByRole("button", { name: "Swap" })
+    .click();
+  await leaveSwap(page);
+  await page.waitForTimeout(TOUR_SETTLE_MS);
+  await expect(page.getByText(FINISH_FIRST)).toHaveCount(0);
 });

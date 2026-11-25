@@ -305,6 +305,56 @@ const SWAP: readonly TourStep[] = [
   { target: "swap.decide", prompt: "tap", text: "Found one you like? TAP SWAP. Happy with the OUT card? TAP SKIP to keep it." },
 ];
 
+/**
+ * Finish, approved by the owner 2026-11-24. The one tour out of screen order: the score first (its words by the score's
+ * level), then the round's
+ * changes and decklist, what is left to buy, the other ways to take the deck away, Start over, and Save last.
+ */
+const FINISH: readonly TourStep[] = [
+  {
+    // By the score's level: green, amber, red.
+    target: "finish.score.ok",
+    prompt: "read",
+    text: "YOU DID IT! Every ring is closed and your DECK is ready! Let's check out your final SCORE.",
+    otherwise: [
+      { target: "finish.score.mild", text: "YOU DID IT! Your DECK is almost ready! Let's check out your final SCORE." },
+      {
+        target: "finish.score.urgent",
+        text: "YOU MADE IT! But your SCORE says this DECK still needs some work. The rings below show where.",
+      },
+    ],
+  },
+  {
+    target: "finish.changes",
+    prompt: "read",
+    text: "Here's every card that went OUT and came IN this round, side by side.",
+  },
+  { target: "finish.decklist", prompt: "read", text: "And this DECKLIST is actually looking pretty good!" },
+  {
+    target: "finish.buy",
+    prompt: "read",
+    text: "Not bad! These are the cards you still need to snag. TAP BUY and we'll get you set on TCGplayer.",
+    otherwise: [
+      {
+        target: "finish.upgrades",
+        text: "Not bad! But it could be even better... Consider these UPGRADES to take this thing to the next level!",
+      },
+    ],
+  },
+  {
+    target: "finish.list",
+    prompt: "read",
+    text: "If you wanted to look over each missing card, check your BUY LIST here.",
+  },
+  { target: "finish.export", prompt: "read", text: "Oh! I almost forgot, you can also COPY or DOWNLOAD your DECK!" },
+  { target: "finish.start-over", prompt: "read", text: "Or completely START OVER and run it again!" },
+  {
+    target: "finish.save",
+    prompt: "tap",
+    text: "But, this is your NEW DECK! Why not SAVE it? TAP SAVE! Don't forget a NAME!",
+  },
+];
+
 export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-start": BUILD_START,
   "deck-start": DECK_START,
@@ -316,6 +366,7 @@ export const TOURS: Record<TourId, readonly TourStep[]> = {
   swap: SWAP,
   "save-deck": SAVE_DECK,
   "deck-stats": DECK_STATS,
+  finish: FINISH,
 };
 
 /** Each tour's chapter name, quiet in its bubble beside the step count. */
@@ -330,6 +381,7 @@ const TOUR_TITLES: Record<TourId, string> = {
   swap: "Swap",
   "save-deck": "Save Deck",
   "deck-stats": "Deck Stats",
+  finish: "Finish",
 };
 
 /** A tour's chapter name; none for an id without one. */
