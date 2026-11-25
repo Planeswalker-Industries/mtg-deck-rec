@@ -41,7 +41,7 @@ const BUDGET_SHORT_HELP =
   "A competitive deck cannot be assembled at this budget. Increase the budget or upload your collection to build from.";
 
 /** What the overlay says while Tune it or Save for Later opens the deck. */
-const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }> = {
+export const OPENING_COPY: Record<"upgrade" | "save", { label: string; detail: string }> = {
   upgrade: { label: "Opening your deck", detail: "Reading the 100 cards and lining up upgrades. A few seconds." },
   save: { label: "Opening the Deckbuilder", detail: "You'll name the deck next." },
 };
@@ -269,9 +269,22 @@ function BuildCards({
 
 /** The list's cards and the build's, side by side as what went out and what came in. */
 /** A section of the built deck that folds from its heading; every one starts open. */
-function BuildSection({ id, title, className, children }: { id: string; title: ReactNode; className?: string; children: ReactNode }) {
+function BuildSection({
+  id,
+  title,
+  className,
+  tour,
+  children,
+}: {
+  id: string;
+  title: ReactNode;
+  className?: string;
+  /** The section's `data-tour` id, for the one the tour lights. */
+  tour?: string | undefined;
+  children: ReactNode;
+}) {
   return (
-    <section aria-labelledby={id}>
+    <section aria-labelledby={id} data-tour={tour}>
       <details open className="group/section">
         <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 marker:content-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
           <h2 id={id} className={cn("font-heading text-xl leading-none font-semibold", className)}>
@@ -534,6 +547,7 @@ export function BuildView({
             onBuy={() => onBuy(choices)}
             saved={buySaved}
             seal
+            tour="build-result"
             className="max-sm:items-stretch max-sm:[&_a]:flex-1"
           />
           <PageTour id="build-result" />
@@ -553,6 +567,7 @@ export function BuildView({
               size="lg"
               variant="outline"
               className="h-auto px-2"
+              data-tour="build-result.save"
               disabled={opening !== null}
               aria-busy={opening === "save"}
               onClick={() => void openDeck("save", onSave, decklist)}
@@ -641,10 +656,12 @@ export function BuildView({
 
         <FitChanges request={request} result={result} view={view} sort={sort} />
 
-        {result.groups.map((group) => (
+        {result.groups.map((group, i) => (
           <BuildSection
             key={group.category}
             id={`build-${group.category}`}
+            // The tour lights the first group as the list's sample, not the whole sheet.
+            tour={i === 0 ? "build-result.list" : undefined}
             title={
               <>
                 {cardCategoryLabel[group.category]}{" "}

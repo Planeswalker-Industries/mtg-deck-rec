@@ -228,10 +228,13 @@ test("build start tour walks the form; tapping Build deck builds and ends it", a
   expect(await seen(page)).toContain("build-start");
   await expect(page.getByRole("region", { name: "Your built deck" })).toBeVisible({ timeout: BUILD_WAIT_MS });
 
-  // The built deck's own tour lights Tune it.
-  await expect(tour(page)).toContainText("fine tune this DECK", { timeout: PAGE_WAIT_MS });
+  // The built deck's own tour: the list, Buy, Save for Later, then Tune it, whose tap ends it.
+  await expect(tour(page)).toContainText("Here's your new DECK", { timeout: PAGE_WAIT_MS });
+  await expectRingOn(page, "build-result.list");
+  await nextUntil(page, "fine tune this DECK");
   await expectRingOn(page, "build-result.tune");
-  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await page.locator('[data-tour="build-result.tune"]').click();
+  await expect(tour(page)).toBeHidden();
   expect(await seen(page)).toContain("build-result");
 });
 
@@ -376,14 +379,15 @@ test.describe("journey tours by touch", () => {
     await page.locator('[data-tour="add.all"]').click();
     await expect(tour(page)).toContainText("SWIPE to see more");
 
-    // The swipe browses: another card, the deck's count unchanged, and the tour moves on.
+    // The swipe browses: another card, the deck's count unchanged, and the tour stays for more swipes until ›.
     const before = await addButton(page).getAttribute("aria-label");
     const status = page.getByRole("region", { name: "Recommendations" }).getByText(/^\d+ \/ 100$/).first();
     const count = await status.innerText();
     await swipeLit(page, "add.card", -200, 0);
     await expect(addButton(page)).not.toHaveAttribute("aria-label", before!);
     await expect(status).toHaveText(count);
-    await expect(tour(page)).toContainText("STAT CHANGE PIPS");
+    await expect(tour(page)).toContainText("SWIPE to see more");
+    await nextUntil(page, "STAT CHANGE PIPS");
 
     await nextUntil(page, "Green is GOOD!");
     await nextUntil(page, "TAP ADD to put it");
@@ -425,14 +429,15 @@ test.describe("cut tour by touch", () => {
     await expectRingOn(page, "cut.count");
     await nextUntil(page, "SWIPE to see other CUT candidates!");
 
-    // The swipe browses: another card, the deck's count unchanged, and the tour moves on.
+    // The swipe browses: another card, the deck's count unchanged, and the tour stays for more swipes until ›.
     const before = await cutButton(page).getAttribute("aria-label");
     const count = page.locator('[data-tour="cut.count"]');
     const shown = await count.innerText();
     await swipeLit(page, "cut.card", -200, 0);
     await expect(cutButton(page)).not.toHaveAttribute("aria-label", before!);
     await expect(count).toHaveText(shown);
-    await expect(tour(page)).toContainText("says WHY");
+    await expect(tour(page)).toContainText("SWIPE to see other CUT candidates!");
+    await nextUntil(page, "says WHY");
     await expectRingOn(page, "cut.why");
 
     // The pips step is skipped when the card browsed to has none.
@@ -491,7 +496,7 @@ test("save deck tour runs once", async ({ page }) => {
   await expect(page.getByText(SAVE_DECK_FIRST)).toHaveCount(0);
 });
 
-// Deck stats' tour (`deck-stats`): on Swap's swipe view, or the first time the player opens the sheet on their own.
+// Deck stats' tour (`deck-stats`): on desktop on Swap's swipe view; on a phone the first time the player taps the bar.
 // The bar and the rail stamp the same ids, one copy laid out at a time, so the tests read the visible one.
 const DECK_STATS_FIRST = "This here is the DECK STATS Panel!";
 const deckStatsBar = (page: Page) => page.locator('[data-tour="deck-stats.bar"]');
@@ -506,7 +511,7 @@ async function journeyWithoutTours(page: Page) {
   await expect(tour(page)).toBeHidden();
 }
 
-const SWAP_FIRST = "Welcome to SWAP.";
+const SWAP_FIRST = "Welcome to SWAP!";
 
 /** On to Swap past Fix's tour (Skip), to Swap's tour. */
 async function openSwapTour(page: Page) {
@@ -517,7 +522,7 @@ async function openSwapTour(page: Page) {
   await expect(tour(page)).toContainText(SWAP_FIRST, { timeout: PAGE_WAIT_MS });
 }
 
-/** On to Swap past Fix's and Swap's tours, to Deck stats' tour that follows them there. */
+/** On to Swap past Fix's and Swap's tours; on desktop Deck stats' tour follows them there. */
 async function swapPastItsTour(page: Page) {
   await openSwapTour(page);
   await tour(page).getByRole("button", { name: "Skip" }).click();
@@ -530,7 +535,7 @@ test("opening Deck stats first runs its tour instead, once", async ({ page }) =>
   await expect(tour(page)).toContainText("Deck Stats");
   await expect(deckStatsSheet(page)).toBeHidden();
   await expectRingOn(page, "deck-stats.bar");
-  await nextUntil(page, "This is your SCORE.");
+  await nextUntil(page, "This is your SCORE");
   await expectRingOn(page, "deck-stats.score");
   await nextUntil(page, "SWIPE UP to explore the details");
   // A tap opens the sheet as a swipe does, and ends the tour.
@@ -550,10 +555,15 @@ test("opening Deck stats first runs its tour instead, once", async ({ page }) =>
 test.describe("deck stats tour by touch", () => {
   test.use({ hasTouch: true });
 
-  test("deck stats tour runs on Swap and ends on a swipe up", async ({ page }) => {
+  test("on a phone deck stats tour waits for a tap on the bar, and ends on a swipe up", async ({ page }) => {
     await journeyWithoutTours(page);
     await swapPastItsTour(page);
+    // On a phone it doesn't follow Swap's tour (owner, 2026-11-25).
+    await page.waitForTimeout(TOUR_SETTLE_MS);
+    await expect(tour(page)).toBeHidden();
+    await deckStatsBar(page).click();
     await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
+    await expect(deckStatsSheet(page)).toBeHidden();
     await expectBubbleBeside(page, "deck-stats.bar");
     await nextUntil(page, "SWIPE UP to explore the details");
     await expectRingOn(page, "deck-stats.bar");
@@ -572,7 +582,7 @@ test.describe("deck stats tour on desktop", () => {
     await swapPastItsTour(page);
     await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
     await expectRingOn(page, "deck-stats.rail");
-    await nextUntil(page, "This is your SCORE.");
+    await nextUntil(page, "This is your SCORE");
     await expectRingOn(page, "deck-stats.score");
     await nextUntil(page, "Explore the details down here");
     await expectRingOn(page, "deck-stats.rings");
@@ -581,9 +591,11 @@ test.describe("deck stats tour on desktop", () => {
   });
 });
 
-// Fix's tour (`fix`) on its pair: the Fix tab, the card going out, the card going in, the buttons, Auto-Fix.
+// Fix's tour (`fix`) on its pair: the pair, the card going out, the card going in, the whole trade, Auto-Fix.
 const FIX_FIRST = "Welcome to FIX.";
-const FIX_TARGETS = ["journey.step.fix", "fix.out", "fix.in", "fix.decide", "fix.auto"] as const;
+const FIX_TARGETS = ["fix.pair", "fix.in", "fix.trade", "fix.auto"] as const;
+/** The card going out: `fix.out` when there are others to swipe to, `fix.out-only` when it is the line's one card. */
+const fixOut = (page: Page) => page.locator('[data-tour="fix.out"], [data-tour="fix.out-only"]');
 const fixPair = (page: Page) => page.getByRole("region", FIX_MOVE);
 const fixSwapButton = (page: Page) => fixPair(page).getByRole("button", { name: /^Swap .+ for / });
 
@@ -597,6 +609,7 @@ test("fix tour elements are on the page", async ({ page }) => {
   await openFixTour(page);
   await expect(tour(page)).toContainText("Fix");
   for (const target of FIX_TARGETS) await expect(page.locator(`[data-tour="${target}"]`)).toBeVisible();
+  await expect(fixOut(page)).toBeVisible();
 });
 
 test("fix tour runs once", async ({ page }) => {
@@ -606,7 +619,7 @@ test("fix tour runs once", async ({ page }) => {
   await fixSwapButton(page).click();
   await expect(
     fixPair(page)
-      .or(page.getByRole("button", { name: "Next: swap" }))
+      .or(page.getByRole("button", { name: "Let's Go!" }))
       .first(),
   ).toBeVisible({ timeout: PAGE_WAIT_MS });
   await page.waitForTimeout(TOUR_SETTLE_MS);
@@ -618,26 +631,29 @@ test.describe("fix tour by touch", () => {
 
   test("fix tour: each swipe browses its own card, then Auto-Fix ends it", async ({ page }) => {
     await openFixTour(page);
-    await expectRingOn(page, "journey.step.fix");
-    // A swipe on the card going out browses the cards to take out, and the tour moves on to the card going in.
+    await expectRingOn(page, "fix.pair");
+    // The card going out: a swipe step when the line has other cards to take out, a read when it has one (the mock
+    // deck's first line: Lightning Bolt, off colour). A swipe browses and the tour waits for ›.
     await nextUntil(page, "This is the OUT card.");
-    // The mock deck's first line has one card to take out (Lightning Bolt, off colour): the swipe springs back there,
-    // and the tour stays on its step until › moves it on.
-    const before = await fixSwapButton(page).getAttribute("aria-label");
-    await swipeLit(page, "fix.out", -200, 0);
     await page.waitForTimeout(TOUR_SETTLE_MS);
-    if ((await fixSwapButton(page).getAttribute("aria-label")) === before) {
+    if (await page.locator('[data-tour="fix.out-only"]').isVisible()) {
+      await expectRingOn(page, "fix.out-only");
+      await expect(tour(page)).not.toContainText("SWIPE");
+    } else {
+      const before = await fixSwapButton(page).getAttribute("aria-label");
+      await swipeLit(page, "fix.out", -200, 0);
+      await expect(fixSwapButton(page)).not.toHaveAttribute("aria-label", before!);
       await expect(tour(page)).toContainText("This is the OUT card.");
-      await nextUntil(page, "This is the IN card.");
     }
-    await expect(tour(page)).toContainText("This is the IN card.");
+    await nextUntil(page, "This is the IN card.");
     const afterOut = await fixSwapButton(page).getAttribute("aria-label");
 
-    // A swipe on the card going in browses the cards to put in.
+    // A swipe on the card going in browses the cards to put in; the tour stays until ›.
     await swipeLit(page, "fix.in", -200, 0);
     await expect(fixSwapButton(page)).not.toHaveAttribute("aria-label", afterOut!);
-    await expect(tour(page)).toContainText("Like the trade?");
-    await expectRingOn(page, "fix.decide");
+    await expect(tour(page)).toContainText("This is the IN card.");
+    await nextUntil(page, "Like the trade?");
+    await expectRingOn(page, "fix.trade");
 
     await nextUntil(page, "TAP AUTO-FIX");
     await expectRingOn(page, "fix.auto");
@@ -647,8 +663,9 @@ test.describe("fix tour by touch", () => {
   });
 });
 
-// Swap's tour (`swap`): the card going out, the card going in, then Skip and Swap. Deck stats' tour follows it.
-const SWAP_TARGETS = ["swap.out", "swap.in", "swap.decide"] as const;
+// Swap's tour (`swap`): the pair, the card going out, the card going in, then Skip and Swap. On desktop Deck stats'
+// tour follows it.
+const SWAP_TARGETS = ["swap.pair", "swap.out", "swap.in", "swap.decide"] as const;
 const swapButton = (page: Page) => page.getByRole("region", { name: "Swipe through cards to replace" }).getByRole("button", { name: /^Swap in / });
 const skipButton = (page: Page) => page.getByRole("region", { name: "Swipe through cards to replace" }).getByRole("button", { name: /^Skip / });
 
@@ -662,29 +679,34 @@ test("swap tour elements are on the page", async ({ page }) => {
 test.describe("swap tour by touch", () => {
   test.use({ hasTouch: true });
 
-  test("swap tour: each swipe browses its own card, then Deck stats' tour follows", async ({ page }) => {
+  test("swap tour: each swipe browses its own card, and Done ends it", async ({ page }) => {
     await journeyWithoutTours(page);
     await openSwapTour(page);
-    await expectRingOn(page, "swap.out");
+    await expectRingOn(page, "swap.pair");
 
-    // A swipe on the card going out shows another card to upgrade, and the tour moves on to its upgrades.
+    // A swipe on the card going out shows another card to upgrade; the tour waits for ›.
+    await nextUntil(page, "This is your OUT card.");
+    await expectRingOn(page, "swap.out");
     const before = await skipButton(page).getAttribute("aria-label");
     await swipeLit(page, "swap.out", -200, 0);
     await expect(skipButton(page)).not.toHaveAttribute("aria-label", before!);
-    await expect(tour(page)).toContainText("MORE than one upgrade");
+    await expect(tour(page)).toContainText("This is your OUT card.");
 
     // A swipe on the card going in shows that card's next upgrade.
+    await nextUntil(page, "This is your IN card.");
     await expect(swapButton(page)).toBeVisible({ timeout: PAGE_WAIT_MS });
     const option = await swapButton(page).getAttribute("aria-label");
     await swipeLit(page, "swap.in", -200, 0);
     await expect(swapButton(page)).not.toHaveAttribute("aria-label", option!);
-    await expect(tour(page)).toContainText("Found one you like?");
+    await nextUntil(page, "When you've found a SWAP you like");
     await expectRingOn(page, "swap.decide");
 
-    // Done hands over to Deck stats' tour on the same screen.
+    // On a phone Done ends it: Deck stats' tour waits for a tap on its bar.
     await tour(page).getByRole("button", { name: "Done" }).click();
-    await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
+    await expect(tour(page)).toBeHidden();
     expect(await seen(page)).toContain("swap");
+    await page.waitForTimeout(TOUR_SETTLE_MS);
+    await expect(tour(page)).toBeHidden();
   });
 });
 
@@ -694,12 +716,10 @@ const FINISH_FIRST = /YOU (DID|MADE) IT!/;
 // Changes, Buy and the shopping list depend on the round; these are on every Finish.
 const FINISH_TARGETS = ["finish.score.urgent", "finish.decklist", "finish.export", "finish.start-over", "finish.save"] as const;
 
-/** On to Finish past Fix's, Swap's and Deck stats' tours, to Finish's tour. */
+/** On to Finish past Fix's and Swap's tours (on a phone no Deck stats' tour follows), to Finish's tour. */
 async function openFinishTour(page: Page) {
   await journeyWithoutTours(page);
   await swapPastItsTour(page);
-  await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
-  await tour(page).getByRole("button", { name: "Skip" }).click();
   await leaveSwap(page);
   await expect(tour(page)).toContainText(FINISH_FIRST, { timeout: PAGE_WAIT_MS });
 }

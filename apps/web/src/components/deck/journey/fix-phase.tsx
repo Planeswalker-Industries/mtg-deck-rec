@@ -9,6 +9,7 @@ import { useBrowseSwipe } from "@/components/cards/use-browse-swipe";
 import { PageTour } from "@/components/tour/page-tour";
 import { Button } from "@/components/ui/button";
 import { displayName } from "@/lib/cards";
+import { SEAL_BUTTON } from "@/lib/constants";
 import { PriceTag } from "@/components/cards/buy-price";
 import { StatChips, compareCardOf } from "../deck-stats/stat-chips";
 import { useStatPreview } from "../deck-stats/stat-preview";
@@ -120,7 +121,7 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
       <div className="flex flex-col gap-3">
         {intro}
         <SwipeDone
-          title={left === 0 ? "Every line is in line" : fixed > 0 ? "That's every move" : "Nothing to fix here"}
+          title={left === 0 ? "Looking good!" : fixed > 0 ? "That's every move" : "Nothing to fix here"}
           message={
             left === 0
               ? fixed > 0
@@ -129,9 +130,10 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
               : `${left} ${left === 1 ? "line has" : "lines have"} no move left. Finish says why for each.`
           }
         >
-          <Button type="button" size="lg" onClick={toNext}>
-            Next: swap
-          </Button>
+          {/* The screen's one way on, so the seal (owner, 2026-11-25). */}
+          <button type="button" className={SEAL_BUTTON} onClick={toNext}>
+            Let&apos;s Go!
+          </button>
         </SwipeDone>
       </div>
     );
@@ -140,6 +142,7 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
   const inCard = fix.inCard;
   const notOwned = inCard !== null && hasCollection && inCard.owned === null;
   const price = move.in.price;
+  const outBrowsable = browse.canNextOut || browse.canPreviousOut;
   const outName = displayName(move.out);
   const inName = displayName(move.in);
 
@@ -157,12 +160,18 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
         }
       />
       <section aria-label="Fix: one card out, one card in" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <div aria-live="polite" className={MOVE_PAIR_GRID}>
+        {/* The trade the tour reads out: the pair, what it changes and its two buttons, not Auto-Fix. */}
+        <div data-tour="fix.trade" className="flex flex-col gap-3">
+        <div aria-live="polite" data-tour="fix.pair" className={MOVE_PAIR_GRID}>
           <MoveCard
             card={move.out}
             side="out"
+            // One card to take out has nothing to browse to: no ‹ ›, and the tour reads it out instead of asking for a swipe.
+            {...(outBrowsable && {
+              browse: { canPrevious: browse.canPreviousOut, canNext: browse.canNextOut, onPrevious: browse.previousOut, onNext: browse.nextOut },
+            })}
             swipe={outSwipe.bind}
-            tourTarget="fix.out"
+            tourTarget={outBrowsable ? "fix.out" : "fix.out-only"}
           />
           <SwapMark />
           <MoveCard
@@ -194,6 +203,7 @@ export function FixPhase({ journey, fix, hasCollection }: { journey: DeckJourney
           pass={{ word: "Skip", label: `Skip swapping ${outName} for ${inName}`, onClick: () => act(false) }}
           accept={{ word: "Swap", label: `Swap ${outName} for ${inName}`, icon: ArrowLeftRight, onClick: () => act(true) }}
         />
+        </div>
         {/* Outline, under the pair: a way out of going one move at a time, never louder than Swap. */}
         <Button
           type="button"

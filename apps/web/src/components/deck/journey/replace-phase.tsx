@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CardId, CardSummary, CommanderKeyId, CutReason } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { PocketGrid } from "@/components/cards/pocket-grid";
@@ -18,6 +18,21 @@ import type { DeckJourney } from "./use-deck-journey";
 
 /** Reasons under a card in the list. */
 const MAX_REASONS = 2;
+/** Tailwind's `lg`, where Deck stats is the rail beside the round rather than the bar docked at a phone's foot. */
+const RAIL_QUERY = "(min-width: 64rem)";
+
+const onRailChange = (change: () => void) => {
+  const query = window.matchMedia(RAIL_QUERY);
+  query.addEventListener("change", change);
+  return () => query.removeEventListener("change", change);
+};
+/** Whether Deck stats is the rail; false on the server and before hydration. */
+const useRail = () =>
+  useSyncExternalStore(
+    onRailChange,
+    () => window.matchMedia(RAIL_QUERY).matches,
+    () => false,
+  );
 
 function shownReasons(reasons: readonly CutReason[]): CutReason[] {
   const notOwned = reasons.includes("NOT_OWNED");
@@ -43,6 +58,7 @@ export function ReplacePhase({
   commanderKeyId: CommanderKeyId | null;
 }) {
   const { state: replaceState, targets } = journey.replace;
+  const rail = useRail();
   const swaps = journey.state?.swaps ?? [];
   const [focus, setFocus] = useState<CardId | null>(null);
   /** A picked swap the player tapped to take back: the sitting reopens on its card. Belongs to one version of the list. */
@@ -226,9 +242,10 @@ export function ReplacePhase({
         // Keyed by the targets' version: new settings ask for new targets, and replacements already fetched were made
         // with the old ones, so the sitting starts over rather than keep them. A swap taken back reopens it on its card.
         <div ref={sitting} className="scroll-mt-44">
-          {/* Swap's own tour first, then Deck stats', with a swap's card on screen to score (owner, 2026-11-24). */}
+          {/* Swap's own tour first, then on desktop Deck stats', with a swap's card on screen to score. On a phone Deck
+              stats' tour waits for a tap on the docked bar (owner, 2026-11-25). */}
           <PageTour id="swap" />
-          <PageTour id="deck-stats" />
+          {rail && <PageTour id="deck-stats" />}
           <SwipeRater
             key={`${journey.replace.version}:${reopen?.n ?? 0}:${journey.undoCount}`}
             targets={toSwipe}

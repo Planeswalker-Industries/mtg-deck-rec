@@ -4,18 +4,23 @@ import { mailpit, signIn } from "./mailpit";
 /** Whether the tool's open deck has reached the account: "Saved", "Saving…" or the reason it didn't. */
 const savedDeckStatus = (page: Page) => page.getByRole("region", { name: "Saved deck" }).getByRole("status");
 
+/** A saved deck's own page, by its address. */
+const DECK_PAGE_URL = /\/decks\/[^/]+\/[A-Za-z0-9]{8,32}$/;
+
 /**
- * Saving a deck opens it in its deckbuilder, at the address it keeps from then on, with nothing left to write. A new
- * account has no collection, so saving goes straight through; an existing collection may prompt about missing cards.
+ * Saving a deck lands on its own page; its Edit opens the deckbuilder, at the address it keeps from then on, with
+ * nothing left to write. A new account has no collection, so saving goes straight through; an existing collection may
+ * prompt about missing cards.
  */
 async function expectEditor(page: Page) {
   const prompt = page.getByRole("dialog", { name: /\d+ (?:card isn't|cards aren't) in your collection/ });
-  // "All changes saved" is a toast after each save, not a standing line, so the editor is known by its Upgrade link.
-  const editor = page.getByRole("link", { name: "Upgrade this deck" });
-  await expect(prompt.or(editor)).toBeVisible({ timeout: 30_000 });
+  await expect(prompt.or(page.getByRole("link", { name: "Edit", exact: true }))).toBeVisible({ timeout: 30_000 });
   if (await prompt.isVisible()) await prompt.getByRole("button", { name: "Save", exact: true }).click();
+  await page.waitForURL(DECK_PAGE_URL, { timeout: 30_000 });
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
   await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
-  await expect(editor).toBeVisible({ timeout: 30_000 });
+  // "All changes saved" is a toast after each save, not a standing line, so the editor is known by its Upgrade link.
+  await expect(page.getByRole("link", { name: "Upgrade this deck" })).toBeVisible({ timeout: 30_000 });
 }
 
 // Saving needs an account, so these run only where the local mail catcher is up.
@@ -315,7 +320,7 @@ test("saving asks to add the cards the collection lacks, and explicit add adds t
   const prompt = page.getByRole("dialog", { name: /\d+ (?:card isn't|cards aren't) in your collection/ });
   await expect(prompt.getByText("Sol Ring")).toBeVisible({ timeout: 30_000 });
   await prompt.getByRole("button", { name: "I own these — add them and save" }).click();
-  await page.waitForURL(/\/decks\/[^/]+\/[A-Za-z0-9]{8,32}\/edit$/, { timeout: 30_000 });
+  await page.waitForURL(DECK_PAGE_URL, { timeout: 30_000 });
 
   // The new account now owns the deck's cards.
   await page.goto("/collection");

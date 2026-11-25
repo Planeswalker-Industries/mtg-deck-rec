@@ -15,6 +15,8 @@ import { displayName } from "@/lib/cards";
 import { addShortfallToCollection, collectionCounts } from "@/lib/deck-collection";
 import { signInToSaveHref, stashPendingSave } from "@/lib/pending-save";
 import { ErrorText } from "@/components/ui/error-text";
+import { BuyButtons } from "@/components/decks/buy-buttons";
+import { cartLinks } from "@/lib/affiliate";
 import { PageTour } from "@/components/tour/page-tour";
 
 /** A save waiting on the player's answer about the cards their collection lacks. */
@@ -23,6 +25,8 @@ interface Confirm {
   deck: DeckInput;
   shortfall: CollectionShortfall[];
   names: Map<CardId, string>;
+  /** TCGplayer carts for the missing copies, by the cards' full names. */
+  carts: string[];
 }
 
 /** Whether the visitor is signed in, as far as the collection source knows; while it loads, the save finds out. */
@@ -142,9 +146,17 @@ export function SaveDeckButton({
       return;
     }
     const cards = await getApis().catalog.collectionCards({ cardIds: shortfall.map((s) => s.cardId), setCodes: [] });
-    const names = new Map(cards.ok ? cards.data.cards.map(({ card }) => [card.id, displayName(card)] as const) : []);
+    const found = cards.ok ? cards.data.cards.map(({ card }) => card) : [];
+    const names = new Map(found.map((card) => [card.id, displayName(card)] as const));
+    const fullNames = new Map(found.map((card) => [card.id, card.name] as const));
+    const carts = cartLinks(
+      shortfall.flatMap(({ cardId, missing }) => {
+        const cardName = fullNames.get(cardId);
+        return cardName === undefined ? [] : [{ name: cardName, quantity: missing }];
+      }),
+    );
     setBusy(false);
-    setConfirm({ name: deckName, deck, shortfall, names });
+    setConfirm({ name: deckName, deck, shortfall, names, carts });
   }
 
   function cancel() {
@@ -230,9 +242,21 @@ export function SaveDeckButton({
               {error}
             </ErrorText>
           )}
-          <SheetFooter className="mt-4 flex-row flex-wrap justify-end gap-2 p-0">
+          <SheetFooter className="mt-4 flex-row flex-wrap items-start justify-end gap-2 p-0">
+            {/* Buy is the sheet's seal (owner, 2026-11-25): the missing copies go to a TCGplayer cart in a new tab, and
+                the deck saves here as Save does, collection untouched. */}
+            {confirm && (
+              <BuyButtons
+                carts={confirm.carts}
+                onBuy={() => void finish(confirm.name, confirm.deck, [], confirm.names)}
+                seal
+                align="end"
+                className="w-full"
+              />
+            )}
             <Button
               type="button"
+              variant="outline"
               disabled={busy}
               onClick={() => confirm && void finish(confirm.name, confirm.deck, [], confirm.names)}
             >

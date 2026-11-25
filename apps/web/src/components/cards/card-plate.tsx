@@ -68,7 +68,7 @@ function RowButton({ label, onClick, tone, children }: { label: string; onClick:
  * card's art, which fades in from the right, and what can be done to it sits at the end. Pointing at the plate (or
  * focusing it) floats the whole card beside it; pressing it enlarges the card, or selects it where the plate is a choice
  * (`onSelect`). Without actions it is read-only, as on Done. `mark` edges it in the job's colour: a card cut (struck
- * through) or added.
+ * through, unless `struck` is false) or added.
  */
 export function CardPlate({
   card,
@@ -78,6 +78,7 @@ export function CardPlate({
   onQuantity,
   onReplace,
   mark,
+  struck = mark === "cut",
   onSelect,
   selected = false,
   showCost = true,
@@ -104,6 +105,8 @@ export function CardPlate({
   onQuantity?: ((quantity: number) => void) | undefined;
   onReplace?: (() => void) | undefined;
   mark?: "cut" | "add" | undefined;
+  /** Strikes the name through: a cut card's default, off where the card is only proposed to go (Auto-Fix). */
+  struck?: boolean;
   onSelect?: (() => void) | undefined;
   selected?: boolean;
   /** Placement from the list it sits in, e.g. a grid column. */
@@ -182,7 +185,7 @@ export function CardPlate({
       )}
       <span className="relative flex min-w-0 items-center gap-2 text-(--wood-ink) text-on-art">
         {quantity > 1 && <span className="shrink-0 font-mono text-sm tabular-nums">{quantity}×</span>}
-        <span className={cn("truncate text-sm font-semibold", mark === "cut" && "line-through decoration-cut decoration-2")}>{name}</span>
+        <span className={cn("truncate text-sm font-semibold", struck && "line-through decoration-cut decoration-2")}>{name}</span>
         {commander && <Crown aria-label="Commander" className="size-4 shrink-0 text-(--wood-ink)/80" />}
         {showCost && <ManaCost cost={card.manaCost} className="text-sm" />}
         {card.gameChanger && (

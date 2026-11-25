@@ -202,7 +202,18 @@ export function SwipeRater({
       nav={cardCount}
       note={reasons.length > 0 ? <span>{reasons.join(", ")}</span> : null}
       deal={!inRater}
-      {...(inRater ? {} : { swipe: targetSwipe.bind, tourTarget: "swap.out" })}
+      {...(inRater
+        ? {}
+        : {
+            swipe: targetSwipe.bind,
+            tourTarget: "swap.out",
+            browse: {
+              canPrevious: rater.canPreviousTarget,
+              canNext: rater.canNextTarget,
+              onPrevious: rater.previousTarget,
+              onNext: rater.nextTarget,
+            },
+          })}
     />
   );
 
@@ -271,7 +282,7 @@ export function SwipeRater({
         </>
       ) : (
         <>
-          <div aria-live="polite" className={MOVE_PAIR_GRID}>
+          <div aria-live="polite" data-tour={inRater ? undefined : "swap.pair"} className={MOVE_PAIR_GRID}>
             {targetCard}
             <SwapMark />
             <MoveCard

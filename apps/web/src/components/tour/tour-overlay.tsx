@@ -124,6 +124,7 @@ export function TourOverlay({
   // Follow the element every frame; when it leaves, look once more (it may have been replaced), else skip the step.
   // The first measure runs before paint, so a new step's text never shows for a frame where the last step's bubble was.
   const element = live?.element;
+  const target = live?.target;
   // What the lit element asks for: a stand-in can ask for something else than its step.
   const prompt = live?.prompt ?? step.prompt;
   useLayoutEffect(() => {
@@ -131,7 +132,8 @@ export function TourOverlay({
     const radius = parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
     let id = 0;
     const tick = () => {
-      if (!element.isConnected) {
+      // Gone, or the same element now stamped for another target (a card that turns out to have nothing to swipe to).
+      if (!element.isConnected || element.dataset.tour !== target) {
         const again = liveTarget(step);
         if (again) setResolved({ step, live: again });
         else handlers.current.onNext();
@@ -146,7 +148,7 @@ export function TourOverlay({
     };
     tick();
     return () => cancelAnimationFrame(id);
-  }, [element, step]);
+  }, [element, target, step]);
 
   // A tap step moves on once the element's own click handler has run. A select opens on the press itself and takes
   // the release, so no click reaches the element: a press that opens a list over it counts as the tap too.

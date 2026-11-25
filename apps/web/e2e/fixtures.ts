@@ -89,7 +89,7 @@ export async function openSwap(page: Page) {
   // Fix has its pool once it shows a pair, shows its end panel, or has gone on to Swap.
   const settled = recs
     .getByRole("region", FIX_MOVE)
-    .or(recs.getByRole("button", { name: "Next: swap" }))
+    .or(recs.getByRole("button", { name: "Let's Go!" }))
     .or(steps.locator('button[aria-current="step"]', { hasText: "Swap" }));
   await expect(settled.first()).toBeVisible({ timeout: STEP_WAIT_MS });
   const swap = steps.getByRole("button", { name: "Swap" });

@@ -18,6 +18,10 @@ const BROWSE_BUTTON =
   "relative after:absolute after:-inset-2 aria-disabled:cursor-default aria-disabled:opacity-50";
 
 /** The ‹ › on the card going in: its options, as a swipe on the card goes through them. */
+/** The ‹ › names on each side: the options for the card going in, the deck's cards on the one going out. */
+const BROWSE_IN = { group: "Replacement options", previous: "Previous option", next: "Next option" };
+const BROWSE_OUT = { group: "Cards to take out", previous: "Previous card to take out", next: "Next card to take out" };
+
 export interface MoveBrowse {
   canPrevious: boolean;
   canNext: boolean;
@@ -30,7 +34,8 @@ export interface MoveBrowse {
  * 2026-11-24), the card, its name, and a note under it. The card going out reads quieter than the one coming in. How many options
  * there are isn't shown (owner, 2026-11-24): it doesn't help the choice.
  *
- * `browse` puts ‹ › either side of the word, to go through the options. `nav` adds a row between the word and the card
+ * `browse` puts ‹ › either side of the word, to go through the options (on the card going in) or the cards to take
+ * out (on the card going out). `nav` adds a row between the word and the card
  * (the rater's counts); pass it on both sides, `null` where there is nothing to show, so the two cards stay level.
  *
  * `swipe` makes the card swipeable to browse (Swap and Fix: the cards to take out on the card going out, the options
@@ -60,20 +65,21 @@ export function MoveCard({
 }) {
   const Face = deal ? DealtCard : CardImage;
   const word = side === "out" ? "Out" : "In";
+  const names = side === "out" ? BROWSE_OUT : BROWSE_IN;
   return (
     <div className="flex min-w-0 flex-col items-center gap-1.5">
       {/* As tall as the ‹ › on both sides, so the two cards stay level; the word sits in the middle column, centred
           over its card whether or not ‹ › flank it. */}
       <div
         role={browse ? "group" : undefined}
-        aria-label={browse ? "Replacement options" : undefined}
+        aria-label={browse ? names.group : undefined}
         className="grid min-h-11 w-full grid-cols-[1fr_auto_1fr] items-center gap-2"
       >
         {browse && (
           <Button
             type="button"
             size="icon-sm"
-            aria-label="Previous option"
+            aria-label={names.previous}
             // aria-disabled rather than disabled, so the button keeps focus as it reaches the first option.
             aria-disabled={!browse.canPrevious}
             onClick={browse.onPrevious}
@@ -90,7 +96,7 @@ export function MoveCard({
           <Button
             type="button"
             size="icon-sm"
-            aria-label="Next option"
+            aria-label={names.next}
             aria-disabled={!browse.canNext}
             onClick={browse.onNext}
             className={cn("justify-self-start", BROWSE_BUTTON)}

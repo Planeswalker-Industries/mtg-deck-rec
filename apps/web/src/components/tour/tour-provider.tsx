@@ -202,7 +202,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
       const current = runRef.current;
       if (!current?.ready) return;
       const step = tourSteps(current.id)[current.index];
-      const asked = step && stepTargets(step).some((c) => c.target === target && (c.prompt ?? step.prompt) === action);
+      // A browse swipe moves nothing on: the player may swipe through a few cards before › (owner, 2026-11-25). Only
+      // a swipe up, which opens what it lights, ends its step.
+      if (!step || (action === "swipe" && step.swipe !== "up")) return;
+      const asked = stepTargets(step).some((c) => c.target === target && (c.prompt ?? step.prompt) === action);
       if (asked) goTo(current.index + 1);
     };
     return () => {

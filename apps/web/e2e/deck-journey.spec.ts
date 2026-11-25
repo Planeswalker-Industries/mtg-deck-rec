@@ -505,7 +505,7 @@ test.describe("browsing by touch", () => {
     // Bolt is the only card that breaks the rule; the line after it has cards to choose from.
     await fix.swapIt.click();
     await expect(fix.move.getByRole("button", { name: /^Swap Lightning Bolt for / })).toBeHidden({ timeout: 60_000 });
-    const end = fix.recs.getByRole("button", { name: "Next: swap" });
+    const end = fix.recs.getByRole("button", { name: "Let's Go!" });
     await expect(fix.swapIt.or(end)).toBeVisible({ timeout: 60_000 });
     test.skip(await end.isVisible(), "no second line in this data");
     const first = await fix.pair();

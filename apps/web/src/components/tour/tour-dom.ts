@@ -6,11 +6,12 @@ import { stepTargets, type TourStep, type TourTarget } from "@/lib/tours";
  */
 
 /**
- * Layers drawn over the page: open dialogs and sheets, the enlarged card, and the popped-out lists of menus and selects.
- * A hover tip (`data-tip`) is not one: a mouse resting on a lit element opens it, and the tour would hide until it left.
+ * Layers drawn over the page: open dialogs and sheets, the enlarged card, the popped-out lists of menus and selects, and
+ * a loading shuffle. A hover tip (`data-tip`) is not one: a mouse resting on a lit element opens it, and the tour would
+ * hide until it left.
  */
 const LAYERS =
-  '[role="dialog"][data-state="open"]:not([data-tip]), [data-card-zoom], [data-radix-popper-content-wrapper]:not(:has([data-tip]))';
+  '[role="dialog"][data-state="open"]:not([data-tip]), [data-card-zoom], [data-shuffle], [data-radix-popper-content-wrapper]:not(:has([data-tip]))';
 
 /**
  * A target's element: the first one laid out. A page can stamp one id twice when only one copy shows at a time (Deck

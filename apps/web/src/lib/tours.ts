@@ -4,7 +4,10 @@
  * follows the page as it changes. Pages start their tour with `<PageTour id>`.
  */
 
-/** What a step asks for: a tap on the lit element, a swipe across it, or just a read (the bubble's › moves on). */
+/**
+ * What a step asks for: a tap on the lit element, a swipe across it, or just a read. A read and a sideways swipe move
+ * on with the bubble's ›; a tap, and a swipe up, move on by themselves.
+ */
 export type TourPrompt = "tap" | "swipe" | "read";
 
 /** An element a step can light, by its `data-tour` id, and what the bubble says beside it. */
@@ -108,11 +111,14 @@ const DECK_START: readonly TourStep[] = [
   },
 ];
 
-/** The built deck, before TUNE IT opens it in the journey, approved by the owner 2026-11-24. */
+/** The built deck, top to bottom with TUNE IT last (it ends the tour), approved by the owner 2026-11-25. */
 const BUILD_RESULT: readonly TourStep[] = [
+  { target: "build-result.list", prompt: "read", text: "Here's your new DECK, sorted by type. TAP any CARD to see it up close." },
+  { target: "build-result.buy", prompt: "read", text: "Missing a few cards? TAP BUY to get them on TCGplayer." },
+  { target: "build-result.save", prompt: "read", text: "Not ready yet? TAP SAVE FOR LATER and come BACK to it anytime." },
   {
     target: "build-result.tune",
-    prompt: "read",
+    prompt: "tap",
     text: "When you're ready, TAP here and we'll fine tune this DECK into a masterpiece!",
   },
 ];
@@ -219,8 +225,9 @@ const ALL_RINGS = "remember - if you close ALL RINGS - you've got a NICE DECK!";
 
 /**
  * Deck stats, approved by the owner 2026-11-24: on phones the docked bar (its score, then its money, then Swipe up to
- * open the sheet), on desktop the same parts of the rail, ending on its rings. It runs on Swap's swipe view, or the
- * first time the player opens the sheet on their own: the sheet stays shut and the tour runs instead.
+ * open the sheet), on desktop the same parts of the rail, ending on its rings. On desktop it runs on Swap's swipe
+ * view; on a phone only the first time the player taps the bar (owner, 2026-11-25): the sheet stays shut and the tour
+ * runs instead.
  */
 const DECK_STATS: readonly TourStep[] = [
   {
@@ -237,7 +244,7 @@ const DECK_STATS: readonly TourStep[] = [
   {
     target: "deck-stats.score",
     prompt: "read",
-    text: "This is your SCORE. 3/11 means 3 of your 11 stats are right where they should be.",
+    text: "This is your SCORE: how many of your DECK STATS are right where they should be.",
   },
   {
     target: "deck-stats.score",
@@ -255,12 +262,12 @@ const DECK_STATS: readonly TourStep[] = [
 ];
 
 /**
- * Fix's pair, approved by the owner 2026-11-24: the step in the stepper, the card going out, the card going in, the
- * buttons, then Auto-Fix last. The line the move works on is read out, not shown, so no step lights it.
+ * Fix's pair, approved by the owner 2026-11-24 and reworked 2026-11-25: the pair, the card going out, the card going
+ * in, the whole trade with its buttons, then Auto-Fix last. The line the move works on is read out, not shown, so no step lights it.
  */
 const FIX: readonly TourStep[] = [
   {
-    target: "journey.step.fix",
+    target: "fix.pair",
     prompt: "read",
     text: "Welcome to FIX. Each move takes one card OUT and puts one IN, so your DECK STATS land right where they should be.",
   },
@@ -269,6 +276,8 @@ const FIX: readonly TourStep[] = [
     prompt: "swipe",
     swipe: "horizontal",
     text: "This is the OUT card. We recommend replacing it. SWIPE it to see other OUT candidates.",
+    // The line has one card to take out: nothing to swipe to (owner, 2026-11-25).
+    otherwise: [{ target: "fix.out-only", prompt: "read", text: "This is the OUT card. We recommend replacing it." }],
   },
   {
     target: "fix.in",
@@ -276,7 +285,8 @@ const FIX: readonly TourStep[] = [
     swipe: "horizontal",
     text: "This is the IN card. It will replace the OUT card. SWIPE to see other IN candidates.",
   },
-  { target: "fix.decide", prompt: "tap", text: "Like the trade? TAP SWAP. Not feeling it? TAP SKIP for the next one." },
+  // A read over the whole trade, so the cards stay lit and the player doesn't think a pick is due now (owner, 2026-11-25).
+  { target: "fix.trade", prompt: "read", text: "Like the trade? TAP SWAP. Not feeling it? TAP SKIP for the next one." },
   {
     target: "fix.auto",
     prompt: "tap",
@@ -285,24 +295,32 @@ const FIX: readonly TourStep[] = [
 ];
 
 /**
- * Swap's pair, approved by the owner 2026-11-24: the card going out, the card going in (its other options went
- * unnoticed in testing), then the buttons. A deck with nothing to fix comes straight here, so it says OUT and IN again.
- * Deck stats' tour follows on the same screen.
+ * Swap, written by the owner 2026-11-25: what Swap is, over the pair; the card going out (a swipe); the card going in;
+ * then the buttons. A deck with nothing to fix comes straight here, so it says OUT and IN again. On desktop Deck stats'
+ * tour follows on the same screen.
  */
 const SWAP: readonly TourStep[] = [
+  {
+    target: "swap.pair",
+    prompt: "read",
+    text: "Welcome to SWAP! This is where we take cards in your DECK and recommend even better ones!",
+  },
   {
     target: "swap.out",
     prompt: "swipe",
     swipe: "horizontal",
-    text: "Welcome to SWAP. This OUT card could be stronger. SWIPE it to see other cards worth upgrading.",
+    text: "This is your OUT card. It's already in your DECK and is on the chopping block. SWIPE to see other cards that might be worth switching out!",
   },
   {
     target: "swap.in",
-    prompt: "swipe",
-    swipe: "horizontal",
-    text: "Every OUT card has MORE than one upgrade! SWIPE here to see them all.",
+    prompt: "read",
+    text: "This is your IN card. It will replace your OUT card. You can SWIPE through these options too!",
   },
-  { target: "swap.decide", prompt: "tap", text: "Found one you like? TAP SWAP. Happy with the OUT card? TAP SKIP to keep it." },
+  {
+    target: "swap.decide",
+    prompt: "read",
+    text: "When you've found a SWAP you like, TAP to make the switch! Or TAP SKIP to see the next OUT card.",
+  },
 ];
 
 /**
