@@ -23,8 +23,9 @@ type Policy struct {
 	// longer than RunDuration, or a second cron could seize a live claim, and short enough that a container killed
 	// mid-run does not wedge the source until someone notices.
 	StaleClaim time.Duration
-	// RunDuration is how long one run may crawl: the daily allowance. The commander being visited when it runs out is
-	// left partial and comes back first next time.
+	// RunDuration is the daily allowance: how long the source may crawl in a day (UTC), shared by every run that day
+	// (crawl_used_today), so a run after a failed one gets only what is left. The commander being visited when it runs
+	// out is left partial and comes back first next time. Past it, only commanders a deck lookup asked for are visited.
 	RunDuration time.Duration
 	// FirstVisitPages is how many list pages a commander's first visit reads.
 	FirstVisitPages int

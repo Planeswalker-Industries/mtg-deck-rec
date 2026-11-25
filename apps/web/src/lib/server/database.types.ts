@@ -2503,6 +2503,7 @@ export type Database = {
         Args: { p_rows: Json; p_source: string }
         Returns: Json
       }
+      crawl_used_today: { Args: { p_source: string }; Returns: number }
       delete_my_account: { Args: never; Returns: undefined }
       duplicate_deck: {
         Args: { p_deck_id: string; p_name?: string }

@@ -165,6 +165,8 @@ type fakeStore struct {
 	tickets        []LogEntry      // every error ticket written, in order
 	ticketsFail    bool            // log_error_event fails, as when the database is briefly unreachable
 	versionsErr    error           // crawl_deck_versions fails, as when the database drops the connection
+	usedToday      time.Duration   // what crawl_used_today answers: the day's allowance already spent
+	usedTodayErr   error
 }
 
 func newStore(commanders ...Commander) *fakeStore {
@@ -233,6 +235,9 @@ func (s *fakeStore) UpsertDecks(_ context.Context, rows []DeckRow) ([]Unresolved
 		s.upserts = append(s.upserts, row)
 	}
 	return unresolved, nil
+}
+func (s *fakeStore) UsedToday(context.Context) (time.Duration, error) {
+	return s.usedToday, s.usedTodayErr
 }
 func (s *fakeStore) CreateRun(context.Context) (int64, error) {
 	s.calls = append(s.calls, "create")
@@ -784,6 +789,66 @@ func TestRunOutOfTimeLeavesTheCommanderPartial(t *testing.T) {
 	if res.Summary.State != "succeeded" {
 		t.Fatalf("running out of time is how a run ends, not a failure: %+v", res.Summary)
 	}
+}
+
+// The allowance is the day's: a run that follows one that crawled five hours today gets the hour that is left.
+func TestARunGetsWhatIsLeftOfTheDay(t *testing.T) {
+	store := newStore(liesa)
+	store.usedToday = store.policy.RunDuration - time.Hour
+	runner := newFakeRunner(store, &fakeGetter{}, src)
+	// The deadline is read at the clock's start; every later reading is an hour on, the end of what was left.
+	start, readings := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), 0
+	runner.now = func() time.Time {
+		readings++
+		if readings > 1 {
+			return start.Add(time.Hour)
+		}
+		return start
+	}
+	res, err := runner.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(store.visitOrder) != 0 || res.Summary.State != "succeeded" {
+		t.Fatalf("an hour on, the day's time is spent: visits %v, summary %+v", store.visitOrder, res.Summary)
+	}
+}
+
+// Past the day's allowance, a run started for a deck lookup visits the requested commanders (the queue puts them
+// first) and stops at the first one nobody asked for.
+func TestPastTheBudgetOnlyRequestedCommandersAreVisited(t *testing.T) {
+	asked := liesa
+	asked.Requested = true
+	edgar := Commander{CardID: 2, OracleID: "oc-edgar", Name: "Edgar Markov"}
+	store := newStore(asked, edgar)
+	store.usedToday = store.policy.RunDuration + time.Minute
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n222\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+		src.ListURL(edgar.Name, 1): []byte("333\n"),
+	}}
+	res := run(t, store, getter)
+	if len(store.visitOrder) != 1 || store.visitOrder[0] != liesa.CardID {
+		t.Fatalf("only the requested commander should be visited: %v", store.visitOrder)
+	}
+	if visit := store.visits[liesa.CardID]; visit.Outcome == OutcomePartial || res.Summary.DecksWritten != 2 {
+		t.Fatalf("the requested visit is bounded by its caps, not the spent budget: %+v, summary %+v", visit, res.Summary)
+	}
+	if getter.requests[src.ListURL(edgar.Name, 1)] != 0 || res.Summary.State != "succeeded" {
+		t.Fatalf("the run should end before the unrequested commander: %+v", res.Summary)
+	}
+}
+
+// A run that cannot read how much of the day is spent does not crawl: it cannot keep to the allowance.
+func TestUnreadableBudgetFailsTheRun(t *testing.T) {
+	store := newStore(liesa)
+	store.usedTodayErr = fmt.Errorf("read tcp: connection reset by peer")
+	res := run(t, store, &fakeGetter{})
+	if res.Summary.State != "failed" || len(store.visitOrder) != 0 {
+		t.Fatalf("summary %+v, visits %v", res.Summary, store.visitOrder)
+	}
+	assertRunTicket(t, store, causeDatabase)
 }
 
 // An empty queue is a finished crawl, not a failed one.

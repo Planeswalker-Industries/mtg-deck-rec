@@ -36,6 +36,9 @@ type Store interface {
 	// It stores decks raw, in the source's own schema, as the source sent them; only a deck with an id that is not an
 	// oracle id at all is refused, and comes back as unresolved.
 	UpsertDecks(ctx context.Context, rows []DeckRow) ([]UnresolvedDeck, error)
+	// UsedToday is how long the source has crawled today (UTC), the open run included: the part of the day's
+	// allowance (Policy.RunDuration) already spent.
+	UsedToday(ctx context.Context) (time.Duration, error)
 	// CreateRun makes a crawl.runs row for the source and returns its id, so the claim can point at it.
 	CreateRun(ctx context.Context) (int64, error)
 	// FinishRun closes a run with what it saw and did.
@@ -320,6 +323,14 @@ func (s *SupabaseStore) UpsertDecks(ctx context.Context, rows []DeckRow) ([]Unre
 		unresolved = append(unresolved, out.Unresolved...)
 	}
 	return unresolved, nil
+}
+
+func (s *SupabaseStore) UsedToday(ctx context.Context) (time.Duration, error) {
+	var seconds int
+	if err := s.client.RPCInto(ctx, "crawl_used_today", map[string]any{"p_source": s.source}, &seconds); err != nil {
+		return 0, err
+	}
+	return time.Duration(seconds) * time.Second, nil
 }
 
 func (s *SupabaseStore) CreateRun(ctx context.Context) (int64, error) {

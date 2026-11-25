@@ -19,7 +19,8 @@ Hosted on 2026-11-25: every queued commander had one visit, but 15 legal command
 - [x] Queue seeded from the catalog; exhausted commanders back after 7–13 days (spread by card id); at-target revisits stalest first
 - [x] A malformed deck or a failing list page skips one deck or one commander; a streak or a broken adapter ends the run with an error ticket
 - [x] Crawl RPCs retry transient network and 5xx failures
-- [ ] A failed or interrupted run resumes the same day within the 6-hour budget; lookups still work past it. Ask for the search-api host's restart log for runs 39, 40, 59, 60 (no merge to `main` lines up) and the missing 2026-10-29 run
+- [x] A failed or stopped run resumes the same day within the 6-hour budget (`crawl_used_today`); lookups still work past it. A process killed outright (no SIGTERM) still costs the rest of its day: its row stays open until the next day's run takes the stale claim over
+- [ ] Record what the search-api host's restart log (`docker events` / Dokploy deployments) shows for runs 39, 40, 59, 60 (2026-11-02 15:08, 11-03 14:29, 11-22 14:36, 11-23 13:06 UTC; no merge to `main` lines up) and the missing 2026-10-29 run. Asked the owner 2026-11-25
 
 ## T068: Recommendation latency (PR #139 review)
 

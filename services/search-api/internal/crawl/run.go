@@ -314,8 +314,8 @@ const commanderBatch = 20
 // front face alone, which is the second name a visit tries.
 const frontFaceSeparator = " // "
 
-// crawl visits commanders from the queue until the run's time is up or the queue is empty, writing the decks each
-// visit finds. A visit that fails on a page costs only that commander; the run ends early only on a block (end.cause
+// crawl visits commanders from the queue until the day's allowance is spent (requested commanders still after it) or
+// the queue is empty, writing the decks each visit finds. A visit that fails on a page costs only that commander; the run ends early only on a block (end.cause
 // blocked, and Run flips the kill switch), a broken adapter, a failed database call or a cancellation, and end says
 // which and where.
 func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary *RunSummary, end *runEnd) {
@@ -329,7 +329,17 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 		r.log.Info("commander queue seeded", "source", r.src.Name(), "changed", seeded)
 	}
 
-	deadline := r.now().Add(policy.RunDuration)
+	// RunDuration is the day's allowance, not each run's: a run that follows a failed one today gets what is left.
+	used, err := r.store.UsedToday(ctx)
+	if err != nil {
+		fail(causeDatabase, "reading today's crawl time: "+err.Error())
+		return
+	}
+	left := max(policy.RunDuration-used, 0)
+	deadline := r.now().Add(left)
+	if used > 0 {
+		r.log.Info("crawl budget", "source", r.src.Name(), "usedToday", used.Round(time.Second), "left", left.Round(time.Second))
+	}
 	probed := false
 	// The queue leaves out commanders this run already tried, but only once their finish is written; this keeps a
 	// failed write from handing the same commander back for ever.
@@ -353,12 +363,18 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 				fail(causeCancelled, "cancelled")
 				return
 			}
+			visitDeadline := deadline
 			if !r.now().Before(deadline) {
-				return
+				// Past the day's allowance, a deck lookup still gets its commander (the queue puts them first), bounded
+				// by the visit's own page and fetch caps; the first commander nobody asked for ends the run.
+				if !commander.Requested {
+					return
+				}
+				visitDeadline = r.now().Add(policy.RunDuration)
 			}
 
 			end.position = commander.Name
-			result, err := r.visit(ctx, policy, commander, deadline, summary, &probed)
+			result, err := r.visit(ctx, policy, commander, visitDeadline, summary, &probed)
 			summary.CommandersVisited++
 			if err != nil {
 				result.Outcome, result.Error = OutcomeFailed, err.Error()
