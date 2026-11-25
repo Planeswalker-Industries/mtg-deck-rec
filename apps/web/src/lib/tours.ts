@@ -284,6 +284,27 @@ const FIX: readonly TourStep[] = [
   },
 ];
 
+/**
+ * Swap's pair, approved by the owner 2026-11-24: the card going out, the card going in (its other options went
+ * unnoticed in testing), then the buttons. A deck with nothing to fix comes straight here, so it says OUT and IN again.
+ * Deck stats' tour follows on the same screen.
+ */
+const SWAP: readonly TourStep[] = [
+  {
+    target: "swap.out",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "Welcome to SWAP. This OUT card could be stronger. SWIPE it to see other cards worth upgrading.",
+  },
+  {
+    target: "swap.in",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "Every OUT card has MORE than one upgrade! SWIPE here to see them all.",
+  },
+  { target: "swap.decide", prompt: "tap", text: "Found one you like? TAP SWAP. Happy with the OUT card? TAP SKIP to keep it." },
+];
+
 export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-start": BUILD_START,
   "deck-start": DECK_START,
@@ -292,6 +313,7 @@ export const TOURS: Record<TourId, readonly TourStep[]> = {
   add: ADD,
   cut: CUT,
   fix: FIX,
+  swap: SWAP,
   "save-deck": SAVE_DECK,
   "deck-stats": DECK_STATS,
 };
@@ -305,6 +327,7 @@ const TOUR_TITLES: Record<TourId, string> = {
   add: "Add",
   cut: "Cut",
   fix: "Fix",
+  swap: "Swap",
   "save-deck": "Save Deck",
   "deck-stats": "Deck Stats",
 };

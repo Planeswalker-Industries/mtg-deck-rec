@@ -317,6 +317,7 @@ export function SwipeRater({
           ) : (
             <DecisionButtons
               tone="primary"
+              tour="swap"
               pass={{ word: "Skip", label: skipLabel, onClick: () => act("skip") }}
               accept={{ word: "Swap", label: `Swap in ${candidate.card.name}`, icon: ArrowLeftRight, onClick: () => act("swap") }}
             />

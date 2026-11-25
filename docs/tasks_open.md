@@ -58,7 +58,7 @@ Friends trying the app don't know where to tap and miss features: how to upload 
 - [x] Tours: the journey and Add, the built deck, and Save
 - [x] Tours: Deck stats and the journey stepper
 - [x] Tours: Add and Cut
-- [ ] Tours: Fix and Swap
+- [x] Tours: Fix and Swap
 - [ ] Tour: Finish
 - [ ] Tours: My decks and the deck page
 - [ ] Tours: collection and collection import

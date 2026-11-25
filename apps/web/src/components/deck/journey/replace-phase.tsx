@@ -226,7 +226,8 @@ export function ReplacePhase({
         // Keyed by the targets' version: new settings ask for new targets, and replacements already fetched were made
         // with the old ones, so the sitting starts over rather than keep them. A swap taken back reopens it on its card.
         <div ref={sitting} className="scroll-mt-44">
-          {/* Deck stats' tour runs here, with a swap's card on screen to score (owner, 2026-11-24). */}
+          {/* Swap's own tour first, then Deck stats', with a swap's card on screen to score (owner, 2026-11-24). */}
+          <PageTour id="swap" />
           <PageTour id="deck-stats" />
           <SwipeRater
             key={`${journey.replace.version}:${reopen?.n ?? 0}:${journey.undoCount}`}
