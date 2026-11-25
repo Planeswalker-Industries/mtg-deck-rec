@@ -173,6 +173,24 @@ export const updateAdminFeedbackReportInputSchema: InputSchema<UpdateAdminFeedba
   resolved: z.boolean({ error: "Say whether the report is resolved." }),
 });
 
+/** Matching feedback_report_replies.message's check. */
+export const MAX_FEEDBACK_REPLY_CHARS = 5_000;
+
+export interface ReplyAdminFeedbackReportInput {
+  message: string;
+  /** Resolve the report once the reply is sent. */
+  resolve: boolean;
+}
+
+export const replyAdminFeedbackReportInputSchema: InputSchema<ReplyAdminFeedbackReportInput> = z.object({
+  message: z
+    .string({ error: "Write a reply." })
+    .trim()
+    .min(1, "Write a reply.")
+    .max(MAX_FEEDBACK_REPLY_CHARS, `Keep it to ${MAX_FEEDBACK_REPLY_CHARS.toLocaleString("en-US")} characters.`),
+  resolve: z.boolean().default(false),
+});
+
 export interface ListAdminErrorTicketsInput {
   openOnly: boolean;
   offset: number;

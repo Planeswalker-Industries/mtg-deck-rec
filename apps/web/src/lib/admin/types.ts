@@ -219,11 +219,29 @@ export interface AdminFeedbackReport {
   createdAt: string;
   /** Null while the report is open. */
   resolvedAt: string | null;
+  /** Replies emailed to the sender, oldest first. */
+  replies: AdminFeedbackReply[];
+}
+
+/**
+ * A reply an admin sent to a report's sender, by email to the address on their account. The address itself never
+ * reaches the admin: the server looks it up and hands it to the mail service.
+ */
+export interface AdminFeedbackReply {
+  id: number;
+  message: string;
+  /** 'sending' only if the server stopped between recording the reply and hearing back from the mail service. */
+  status: "sending" | "sent" | "failed";
+  /** Why it wasn't sent, when it wasn't. */
+  failure: string | null;
+  createdAt: string;
 }
 
 export interface AdminFeedbackReportPage {
   reports: AdminFeedbackReport[];
   total: number;
+  /** Whether this deployment can send email, so Reply can be offered. */
+  replyEnabled: boolean;
 }
 
 /**
