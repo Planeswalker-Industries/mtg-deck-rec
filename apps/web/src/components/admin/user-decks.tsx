@@ -87,7 +87,6 @@ function DeckRow({ deck }: { deck: AdminUserDeck }) {
           type="button"
           onClick={() => setOpen((was) => !was)}
           aria-expanded={open}
-          aria-label={open ? `Hide the cards in ${deck.name}` : `Show the cards in ${deck.name}`}
           className="flex min-h-11 min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <ChevronDown aria-hidden className={cn("mt-0.5 size-4 shrink-0 text-primary transition-transform", open && "rotate-180")} />

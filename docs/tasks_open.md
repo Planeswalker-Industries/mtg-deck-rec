@@ -8,19 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T106: Admin sprint
-
-**HIGH** · Admin / Ops · Planned 2026-11-25. Plan: `docs/plan_files/2026-11-25-admin-sprint.md` (local).
-
-Goal: an admin can open any account and see its decks and collection, open `/admin` on a home page with the site's numbers and the worker's and crawler's status, and watch a crawl's progress while it runs.
-
-Owner decisions (2026-11-25): collection view is totals, import history and a card-name search, no full grid. Every admin view of a player's decks or collection writes an audit row, and `/privacy` says admins may look. Site numbers are live counts.
-
-- [x] Crawl runs report progress while running and never stay open after the process dies
-- [x] User page: Decks tab
-- [x] User page: Collection tab, and the `/privacy` line
-- [x] Admin home: site numbers, worker and crawler status
-
 ## T074: Archidekt answers the daily crawl with 429s
 
 **HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`; the 429s are solved, the run bookkeeping is not

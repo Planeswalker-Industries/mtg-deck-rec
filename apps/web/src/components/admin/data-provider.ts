@@ -260,7 +260,7 @@ const provider = {
   // The admin home's reads: counts and status, no player's data, so no audit row and free to refresh.
   getSiteStats: () => call<AdminSiteStats>(HOME),
   // The crawl page's endpoint answers with a page of decks beside the sources; one deck is the least it will send.
-  getCrawlSources: async () => (await call<{ sources: AdminCrawlSource[] }>(`${CRAWLS}?limit=1`)).sources,
+  getCrawlSources: async () => (await call<{ sources: AdminCrawlSource[] }>(`${CRAWLS}/sources`)).sources,
 };
 
 /** The provider's own methods beside React Admin's, for `useDataProvider<AdminDataProvider>()`. */

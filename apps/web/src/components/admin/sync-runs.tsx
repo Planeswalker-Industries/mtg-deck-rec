@@ -17,14 +17,8 @@ import {
   useGetList,
   useRecordContext,
 } from "react-admin";
-import { TriangleAlert } from "lucide-react";
-import {
-  ADMIN_SYNC_JOBS,
-  ADMIN_SYNC_STATUSES,
-  type AdminSyncJob,
-  type AdminSyncRun,
-  type AdminSyncStatus,
-} from "@/lib/admin/types";
+import { Ban, CircleCheck, CircleX, TriangleAlert, type LucideIcon } from "lucide-react";
+import { ADMIN_SYNC_JOBS, ADMIN_SYNC_STATUSES, type AdminSyncJob, type AdminSyncRun, type AdminSyncStatus } from "@/lib/admin/types";
 import { Pill, type PillTone } from "./pill";
 import { ADMIN_TOKENS } from "./theme";
 
@@ -75,6 +69,14 @@ const STATUS_TONE: Record<AdminSyncStatus, PillTone> = {
   abandoned: "replace",
 };
 
+/** Every status colour comes with an icon; ink ("running") and muted ("unchanged") are not status colours. */
+const STATUS_ICON: Partial<Record<AdminSyncStatus, LucideIcon>> = {
+  succeeded: CircleCheck,
+  failed: CircleX,
+  failed_sanity: CircleX,
+  abandoned: Ban,
+};
+
 /** The worker heartbeats every few minutes while a job runs; half an hour without one means its process is gone. */
 const STUCK_AFTER_MS = 30 * 60 * 1000;
 
@@ -117,8 +119,7 @@ const syncRunFilters = [
 const tabular = { sx: { fontVariantNumeric: "tabular-nums" } } as const;
 
 /** A run that still says running but has stopped heartbeating: its worker died without closing it. */
-const isStuck = (run: AdminSyncRun) =>
-  run.status === "running" && Date.now() - Date.parse(run.heartbeatAt) > STUCK_AFTER_MS;
+const isStuck = (run: AdminSyncRun) => run.status === "running" && Date.now() - Date.parse(run.heartbeatAt) > STUCK_AFTER_MS;
 
 function RunStatusPill({ run }: { run: AdminSyncRun }) {
   if (isStuck(run)) {
@@ -129,7 +130,13 @@ function RunStatusPill({ run }: { run: AdminSyncRun }) {
       </Pill>
     );
   }
-  return <Pill tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Pill>;
+  const Icon = STATUS_ICON[run.status];
+  return (
+    <Pill tone={STATUS_TONE[run.status]}>
+      {Icon && <Icon aria-hidden size={12} />}
+      {STATUS_LABEL[run.status]}
+    </Pill>
+  );
 }
 
 const StatusPill = () => {
