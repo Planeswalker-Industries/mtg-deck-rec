@@ -355,6 +355,15 @@ const FINISH: readonly TourStep[] = [
   },
 ];
 
+/** The empty collection page, approved by the owner 2026-11-24. A page with cards needs none: its player has imported. */
+const COLLECTION: readonly TourStep[] = [
+  {
+    target: "collection.import",
+    prompt: "tap",
+    text: "Got cards? TAP here to IMPORT your COLLECTION from ManaBox, Moxfield, Archidekt or TCGplayer.",
+  },
+];
+
 export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-start": BUILD_START,
   "deck-start": DECK_START,
@@ -367,6 +376,7 @@ export const TOURS: Record<TourId, readonly TourStep[]> = {
   "save-deck": SAVE_DECK,
   "deck-stats": DECK_STATS,
   finish: FINISH,
+  collection: COLLECTION,
 };
 
 /** Each tour's chapter name, quiet in its bubble beside the step count. */
@@ -382,6 +392,7 @@ const TOUR_TITLES: Record<TourId, string> = {
   "save-deck": "Save Deck",
   "deck-stats": "Deck Stats",
   finish: "Finish",
+  collection: "Collection",
 };
 
 /** A tour's chapter name; none for an id without one. */

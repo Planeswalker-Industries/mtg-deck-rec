@@ -61,7 +61,7 @@ Friends trying the app don't know where to tap and miss features: how to upload 
 - [x] Tours: Fix and Swap
 - [x] Tour: Finish
 - [x] My decks and the deck page: no tours (they explain themselves)
-- [ ] Tours: collection and collection import
+- [x] Collection: a tour on the empty page only (the import page explains itself)
 
 ## T067: Drop the retired rec functions
 

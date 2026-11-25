@@ -707,3 +707,31 @@ test("finish tour runs once", async ({ page }) => {
   await page.waitForTimeout(TOUR_SETTLE_MS);
   await expect(page.getByText(FINISH_FIRST)).toHaveCount(0);
 });
+
+// The collection tour: the empty page only (a browser with no collection), one tap on Import.
+const COLLECTION_FIRST = "IMPORT your COLLECTION from ManaBox";
+
+async function openCollectionTour(page: Page) {
+  await page.goto("/collection");
+  await expect(tour(page)).toContainText(COLLECTION_FIRST, { timeout: PAGE_WAIT_MS });
+}
+
+test("collection tour: tapping Import opens the import page and ends it", async ({ page }) => {
+  await openCollectionTour(page);
+  await expect(tour(page)).toContainText("Collection");
+  await expectRingOn(page, "collection.import");
+  await page.locator('[data-tour="collection.import"]').click();
+  await expect(page).toHaveURL(/\/collection\/import/);
+  await expect(tour(page)).toBeHidden();
+  expect(await seen(page)).toContain("collection");
+});
+
+test("collection tour runs once", async ({ page }) => {
+  await openCollectionTour(page);
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  expect(await seen(page)).toContain("collection");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "No collection yet" })).toBeVisible({ timeout: PAGE_WAIT_MS });
+  await page.waitForTimeout(TOUR_SETTLE_MS);
+  await expect(tour(page)).toHaveCount(0);
+});
