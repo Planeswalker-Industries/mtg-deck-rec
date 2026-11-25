@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import type { StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { notifyTour } from "@/components/tour/tour-provider";
+import { notifyTour, useTour } from "@/components/tour/tour-provider";
 import { LevelBadge, ScoreAfter, ScoreResult } from "./level";
 import { DeckStatsPanel, type StatAction } from "./deck-stats-panel";
 import { MoneySlot } from "./budget-row";
@@ -14,6 +14,9 @@ import { MoneySlot } from "./budget-row";
 const SWIPE_OPEN_PX = 24;
 /** A drag this far down the sheet's handle closes it. */
 const SWIPE_CLOSE_PX = 48;
+/** The tour this bar opens and its element (`lib/tours.ts`). */
+const DECK_STATS_TOUR = "deck-stats";
+const BAR_TARGET = "deck-stats.bar";
 
 type PanelProps = ComponentProps<typeof DeckStatsPanel>;
 
@@ -29,6 +32,9 @@ type PanelProps = ComponentProps<typeof DeckStatsPanel>;
  * changes also sits by the card (`StatChips`).
  *
  * The sheet has one close control: its handle row (tap, or swipe down). SheetContent's own corner button is off.
+ *
+ * The first time the player opens the sheet on their own, it stays shut and the Deck stats tour runs instead (owner,
+ * 2026-11-24). The tour ends on opening it, by swipe or tap.
  */
 export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { className?: string; dock: "lg" | "xl" }) {
   const { report, after } = panel;
@@ -53,6 +59,13 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
   };
   const startY = useRef<number | null>(null);
   const swiped = useRef(false);
+  const { startNow } = useTour();
+  const openSheet = () => {
+    if (startNow(DECK_STATS_TOUR)) return;
+    setOpen(true);
+    // A tap opens the sheet as a swipe does, so it answers the tour's Swipe up step too.
+    notifyTour(BAR_TARGET, "swipe");
+  };
 
   return (
     <>
@@ -65,7 +78,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
       >
         <button
           type="button"
-          data-tour="deck-stats.bar"
+          data-tour={BAR_TARGET}
           aria-expanded={open}
           // The sheet is only in the document while open, so the reference is too.
           aria-controls={open ? "deck-stats-sheet" : undefined}
@@ -79,8 +92,7 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
           onPointerUp={(e) => {
             if (startY.current !== null && startY.current - e.clientY > SWIPE_OPEN_PX) {
               swiped.current = true;
-              setOpen(true);
-              notifyTour("deck-stats.bar", "swipe");
+              openSheet();
             }
             startY.current = null;
           }}
@@ -90,12 +102,13 @@ export function DeckStatsFooter({ className, dock, ...panel }: PanelProps & { cl
             const skip = swiped.current && e.detail > 0;
             swiped.current = false;
             if (skip) return;
-            setOpen((o) => !o);
+            if (open) setOpen(false);
+            else openSheet();
           }}
         >
           <span className="justify-self-start text-base font-semibold text-primary">Deck stats</span>
           {panel.money ? <MoneySlot money={panel.money} /> : <span />}
-          <span className="flex shrink-0 items-center gap-2 justify-self-end">
+          <span data-tour="deck-stats.score" className="flex shrink-0 items-center gap-2 justify-self-end">
             {after ? (
               <ScoreResult okCount={after.okCount} total={after.total} now={report.okCount} level={report.level} />
             ) : (

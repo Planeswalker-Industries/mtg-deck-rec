@@ -123,6 +123,8 @@ export function TourOverlay({
 
   // Follow the element every frame; when it leaves, look once more (it may have been replaced), else skip the step.
   const element = live?.element;
+  // What the lit element asks for: a stand-in can ask for something else than its step.
+  const prompt = live?.prompt ?? step.prompt;
   useEffect(() => {
     if (!element) return;
     const radius = parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
@@ -148,7 +150,7 @@ export function TourOverlay({
   // A tap step moves on once the element's own click handler has run. A select opens on the press itself and takes
   // the release, so no click reaches the element: a press that opens a list over it counts as the tap too.
   useEffect(() => {
-    if (!element || step.prompt !== "tap") return;
+    if (!element || prompt !== "tap") return;
     const onClick = () => setTimeout(() => handlers.current.onNext());
     const onPress = () =>
       requestAnimationFrame(() => {
@@ -160,7 +162,7 @@ export function TourOverlay({
       element.removeEventListener("click", onClick, { capture: true });
       element.removeEventListener("pointerdown", onPress, { capture: true });
     };
-  }, [element, step.prompt]);
+  }, [element, prompt]);
 
   const standAside = frame?.covered ?? true;
   // Esc ends the tour, unless it belongs to a dialog or list the player opened over it.
@@ -192,8 +194,8 @@ export function TourOverlay({
           style={{ borderRadius: hole.radius }}
         />
       </span>
-      {step.prompt === "tap" && <TapPulse rect={frame.rect} />}
-      {step.prompt === "swipe" && <SwipeArrow rect={frame.rect} direction={step.swipe ?? "horizontal"} />}
+      {prompt === "tap" && <TapPulse rect={frame.rect} />}
+      {prompt === "swipe" && <SwipeArrow rect={frame.rect} direction={step.swipe ?? "horizontal"} />}
       <TourBubble
         hole={hole}
         viewport={frame.viewport}

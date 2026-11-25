@@ -1,5 +1,5 @@
 import { TOURS_ENABLED_KEY, TOURS_SEEN_KEY } from "../src/lib/constants";
-import { clearBuildBudget, expect, swipe, test, toDeckbuilder, type Page } from "./fixtures";
+import { clearBuildBudget, expect, openSwap, swipe, test, toDeckbuilder, type Page } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 // Every other spec runs with tours off (playwright.config.ts); these start from an empty browser, where they are on.
@@ -400,4 +400,76 @@ test("save deck tour runs once", async ({ page }) => {
   await toDeckbuilder(page);
   await page.waitForTimeout(TOUR_SETTLE_MS);
   await expect(page.getByText(SAVE_DECK_FIRST)).toHaveCount(0);
+});
+
+// Deck stats' tour (`deck-stats`): on Swap's swipe view, or the first time the player opens the sheet on their own.
+// The bar and the rail stamp the same ids, one copy laid out at a time, so the tests read the visible one.
+const DECK_STATS_FIRST = "This here is the DECK STATS Panel!";
+const deckStatsBar = (page: Page) => page.locator('[data-tour="deck-stats.bar"]');
+const deckStatsSheet = (page: Page) => page.getByRole("dialog", { name: "Deck stats" });
+
+/** The journey on the sample deck with its opening tours skipped. */
+async function journeyWithoutTours(page: Page) {
+  await openJourneyTour(page);
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await expect(tour(page)).toContainText("DECK SHORTAGE PIPS", { timeout: PAGE_WAIT_MS });
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await expect(tour(page)).toBeHidden();
+}
+
+test("opening Deck stats first runs its tour instead, once", async ({ page }) => {
+  await journeyWithoutTours(page);
+  await deckStatsBar(page).click();
+  await expect(tour(page)).toContainText(DECK_STATS_FIRST);
+  await expect(tour(page)).toContainText("Deck Stats");
+  await expect(deckStatsSheet(page)).toBeHidden();
+  await expectRingOn(page, "deck-stats.bar");
+  await nextUntil(page, "This is your SCORE.");
+  await expectRingOn(page, "deck-stats.score");
+  await nextUntil(page, "SWIPE UP to explore the details");
+  // A tap opens the sheet as a swipe does, and ends the tour.
+  await deckStatsBar(page).click();
+  await expect(deckStatsSheet(page)).toBeVisible();
+  await expect(tour(page)).toBeHidden();
+  expect(await seen(page)).toContain("deck-stats");
+
+  // Seen: the bar opens the sheet as usual.
+  await page.keyboard.press("Escape");
+  await expect(deckStatsSheet(page)).toBeHidden();
+  await deckStatsBar(page).click();
+  await expect(deckStatsSheet(page)).toBeVisible();
+  await expect(tour(page)).toBeHidden();
+});
+
+test.describe("deck stats tour by touch", () => {
+  test.use({ hasTouch: true });
+
+  test("deck stats tour runs on Swap and ends on a swipe up", async ({ page }) => {
+    await journeyWithoutTours(page);
+    await openSwap(page);
+    await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
+    await expectBubbleBeside(page, "deck-stats.bar");
+    await nextUntil(page, "SWIPE UP to explore the details");
+    await swipe(deckStatsBar(page), 0, -120);
+    await expect(deckStatsSheet(page)).toBeVisible();
+    await expect(tour(page)).toBeHidden();
+    expect(await seen(page)).toContain("deck-stats");
+  });
+});
+
+test.describe("deck stats tour on desktop", () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+
+  test("deck stats tour lights the rail and ends on its rings", async ({ page }) => {
+    await journeyWithoutTours(page);
+    await openSwap(page);
+    await expect(tour(page)).toContainText(DECK_STATS_FIRST, { timeout: PAGE_WAIT_MS });
+    await expectRingOn(page, "deck-stats.rail");
+    await nextUntil(page, "This is your SCORE.");
+    await expectRingOn(page, "deck-stats.score");
+    await nextUntil(page, "Explore the details down here");
+    await expectRingOn(page, "deck-stats.rings");
+    await tour(page).getByRole("button", { name: "Done" }).click();
+    expect(await seen(page)).toContain("deck-stats");
+  });
 });

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CardId, CardSummary, CommanderKeyId, CutReason } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { PocketGrid } from "@/components/cards/pocket-grid";
+import { PageTour } from "@/components/tour/page-tour";
 import { Button } from "@/components/ui/button";
 import type { JourneySwap } from "@mtg/core/journey";
 import { displayName } from "@/lib/cards";
@@ -225,6 +226,8 @@ export function ReplacePhase({
         // Keyed by the targets' version: new settings ask for new targets, and replacements already fetched were made
         // with the old ones, so the sitting starts over rather than keep them. A swap taken back reopens it on its card.
         <div ref={sitting} className="scroll-mt-44">
+          {/* Deck stats' tour runs here, with a swap's card on screen to score (owner, 2026-11-24). */}
+          <PageTour id="deck-stats" />
           <SwipeRater
             key={`${journey.replace.version}:${reopen?.n ?? 0}:${journey.undoCount}`}
             targets={toSwipe}

@@ -11,6 +11,8 @@ export type TourPrompt = "tap" | "swipe" | "read";
 export interface TourTarget {
   target: string;
   text: string;
+  /** A stand-in that asks for something else than its step (a read where the step's own element takes a swipe). */
+  prompt?: TourPrompt;
 }
 
 export interface TourStep extends TourTarget {
@@ -183,6 +185,46 @@ const SAVE_DECK: readonly TourStep[] = [
   { target: "save-deck.save", prompt: "tap", text: "TAP SAVE and your DECK is yours to come BACK to anytime!" },
 ];
 
+/** The close-every-ring line both screens end Deck stats on. */
+const ALL_RINGS = "remember - if you close ALL RINGS - you've got a NICE DECK!";
+
+/**
+ * Deck stats, approved by the owner 2026-11-24: on phones the docked bar (its score, then its money, then Swipe up to
+ * open the sheet), on desktop the same parts of the rail, ending on its rings. It runs on Swap's swipe view, or the
+ * first time the player opens the sheet on their own: the sheet stays shut and the tour runs instead.
+ */
+const DECK_STATS: readonly TourStep[] = [
+  {
+    target: "deck-stats.bar",
+    prompt: "read",
+    text: "Well, looks like you stumbled upon something pretty nifty! This here is the DECK STATS Panel! Let me break it down.",
+    otherwise: [
+      {
+        target: "deck-stats.rail",
+        text: "Well, looks like you stumbled upon something pretty nifty! This here is the DECK STATS Panel! Let me break it down.",
+      },
+    ],
+  },
+  {
+    target: "deck-stats.score",
+    prompt: "read",
+    text: "This is your SCORE. 3/11 means 3 of your 11 stats are right where they should be.",
+  },
+  {
+    target: "deck-stats.score",
+    prompt: "read",
+    text: "With a card on screen, it shows the SCORE that card would give you. Green arrow up? That card helps!",
+  },
+  { target: "deck-stats.money", prompt: "read", text: "This is what your picks cost so far, out of your MAX TO SPEND." },
+  {
+    target: "deck-stats.bar",
+    prompt: "swipe",
+    swipe: "up",
+    text: `SWIPE UP to explore the details, and ${ALL_RINGS}`,
+    otherwise: [{ target: "deck-stats.rings", prompt: "read", text: `Explore the details down here, and ${ALL_RINGS}` }],
+  },
+];
+
 export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-start": BUILD_START,
   "deck-start": DECK_START,
@@ -190,6 +232,7 @@ export const TOURS: Record<TourId, readonly TourStep[]> = {
   journey: JOURNEY,
   add: ADD,
   "save-deck": SAVE_DECK,
+  "deck-stats": DECK_STATS,
 };
 
 /** Each tour's chapter name, quiet in its bubble beside the step count. */
@@ -200,6 +243,7 @@ const TOUR_TITLES: Record<TourId, string> = {
   journey: "Deck Journey",
   add: "Add",
   "save-deck": "Save Deck",
+  "deck-stats": "Deck Stats",
 };
 
 /** A tour's chapter name; none for an id without one. */

@@ -25,6 +25,11 @@ interface TourApi {
   active: { id: TourId; index: number } | null;
   /** Starts a tour, or queues it behind the one running. Ignored if it was seen, or tours are off. */
   request(id: TourId): void;
+  /**
+   * Starts a tour now if it could run and no tour is running or queued: true when it started. For a tour the player's
+   * own action sets off (opening Deck stats), so that action can give way to it.
+   */
+  startNow(id: TourId): boolean;
   /** Drops a tour whose page went away: out of the queue, or stopped (seen if any step showed). */
   release(id: TourId): void;
   next(): void;
@@ -108,6 +113,15 @@ export function TourProvider({ children }: { children: ReactNode }) {
     [setRun],
   );
 
+  const startNow = useCallback(
+    (id: TourId) => {
+      if (!startable(id) || runRef.current || queue.current.length > 0) return false;
+      setRun({ id, index: 0, ready: false, shown: false });
+      return true;
+    },
+    [setRun],
+  );
+
   const release = useCallback(
     (id: TourId) => {
       queue.current = queue.current.filter((queued) => queued !== id);
@@ -177,7 +191,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
       const current = runRef.current;
       if (!current?.ready) return;
       const step = tourSteps(current.id)[current.index];
-      if (step?.prompt === action && stepTargets(step).some((candidate) => candidate.target === target)) goTo(current.index + 1);
+      const asked = step && stepTargets(step).some((c) => c.target === target && (c.prompt ?? step.prompt) === action);
+      if (asked) goTo(current.index + 1);
     };
     return () => {
       notifyHandler = null;
@@ -189,12 +204,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
     () => ({
       active: ready && runId !== undefined && runIndex !== undefined ? { id: runId, index: runIndex } : null,
       request,
+      startNow,
       release,
       next,
       previous,
       end,
     }),
-    [ready, runId, runIndex, request, release, next, previous, end],
+    [ready, runId, runIndex, request, startNow, release, next, previous, end],
   );
 
   const activeSteps = ready && runId !== undefined ? tourSteps(runId) : [];
