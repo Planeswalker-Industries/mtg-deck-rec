@@ -7,6 +7,7 @@ import { AdminLayout } from "./admin-layout";
 import { adminTheme } from "./theme";
 import { createAdminAuthProvider } from "./auth-provider";
 import { AcceptRateList } from "./accept-rates";
+import { AdminHome } from "./home";
 import { adminDataProvider } from "./data-provider";
 import { SyncRunList, SyncRunShow } from "./sync-runs";
 import { TagEdit, TagList } from "./tags";
@@ -50,6 +51,7 @@ export default function AdminApp({ userId, email }: AdminAppProps) {
         dataProvider={adminDataProvider}
         authProvider={createAdminAuthProvider({ id: userId, fullName: email ?? undefined })}
         layout={AdminLayout}
+        dashboard={AdminHome}
         theme={adminTheme}
         darkTheme={null}
         disableTelemetry

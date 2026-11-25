@@ -1,6 +1,6 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T106.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T107.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
@@ -19,12 +19,11 @@ Hosted `crawl.runs` on 2026-11-17, runs 29–54 (the slower pace) — 26 runs:
 - 20 `succeeded`, each stopped by the 6-hour cap (10:46–16:46 UTC): about 800 commanders visited, 3,000–5,500 decks written, 35–220 throttles absorbed by the backoff.
 - 1 failed on a 429: run 46 (2026-11-09).
 - 2 failed with `context canceled`: runs 39 (2026-11-02) and 40 (2026-11-03). Their times do not match a merge to `main`, so a Dokploy redeploy is not the clear cause.
-- 3 left `running` with a `finished_at`, never closed: runs 29 (2026-10-22), 43 (2026-11-06) and 50 (2026-11-13). Run 20 (2026-10-13) is still `running` too.
 - No run on 2026-10-29.
 
 - [x] Three daily runs in a row without a 429 failure: runs 30–38 (2026-10-23 to 2026-11-01), nine in a row
-- [ ] Find why runs 29, 43 and 50 stopped without closing (process killed or crashed mid-run?) and what stopped runs 39 and 40; check the VPS host's restarts and container logs for those dates
-- [ ] Close runs 20, 29, 43 and 50 as failed, and make a run killed by a redeploy or crash end up marked failed (on shutdown, or by the next run closing stale ones)
+- [ ] Find what stopped runs 39 and 40; check the VPS host's restarts and container logs for those dates
+- [x] Make a run killed by a redeploy or crash end up marked failed (on shutdown, or by the next run closing stale ones)
 - [ ] Find why no run started on 2026-10-29
 
 ## T068: Recommendation latency (PR #139 review)

@@ -14,8 +14,11 @@ test("signed out, /admin redirects to sign in", async ({ page }) => {
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fadmin$/);
 });
 
+/** A well-formed id that names nothing: the guard answers before any lookup. */
+const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+
 /** Every admin endpoint, so a new one can't ship without the same guard. */
-const ADMIN_API = ["/api/admin/users", "/api/admin/tags", "/api/admin/sync-runs", "/api/admin/accept-rates", "/api/admin/crawls", "/api/admin/crawls/decks?deckId=1", "/api/admin/reports", "/api/admin/errors", "/api/admin/errors/1"] as const;
+const ADMIN_API = ["/api/admin/users", "/api/admin/tags", "/api/admin/sync-runs", "/api/admin/accept-rates", "/api/admin/crawls", "/api/admin/crawls/decks?deckId=1", "/api/admin/crawls/sources", "/api/admin/reports", "/api/admin/errors", "/api/admin/errors/1", `/api/admin/users/${ZERO_UUID}/decks`, `/api/admin/decks/${ZERO_UUID}/cards`, `/api/admin/users/${ZERO_UUID}/collection`, `/api/admin/users/${ZERO_UUID}/collection/items?search=sol`, "/api/admin/home"] as const;
 
 test("signed out, the admin API refuses", async ({ request }) => {
   for (const path of ADMIN_API) {
@@ -56,10 +59,12 @@ test("a platform admin sees the user list and can rename someone", async ({ page
   // React Admin's datagrid is a desktop tool; the rest of the suite runs at phone width.
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  // Signed in somewhere neutral first: /admin sends the browser straight on to its default screen, so it is never
-  // the URL the sign-in flow lands on.
+  // /admin opens on the home page; the user list is one menu item away.
   await signIn(page, request, "admin@test.local", "/decks");
   await page.goto("/admin");
+  await expect(page.getByRole("heading", { level: 2, name: "Site" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("menuitem", { name: "Home" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Users" }).click();
   await expect(page).toHaveURL(/\/admin\/users$/, { timeout: 60_000 });
 
   const users = page.getByRole("table");

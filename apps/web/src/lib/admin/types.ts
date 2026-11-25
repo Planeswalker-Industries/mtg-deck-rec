@@ -46,6 +46,86 @@ export const MAX_DISPLAY_NAME_CHARS = 60;
 export const MAX_ADMIN_NOTE_CHARS = 200;
 export const ADMIN_PER_PAGE_MAX = 200;
 
+/** Decks listed on one account's Decks tab, all on one page. Far above any real account; `admin_user_decks` caps here. */
+export const MAX_ADMIN_USER_DECKS = 500;
+
+/** One saved deck on an account's Decks tab: public or private, because the admin is there to fix a problem. */
+export interface AdminUserDeck {
+  id: string;
+  code: string;
+  name: string;
+  isPublic: boolean;
+  isBuilt: boolean;
+  /** Resolved on the server from the deck's commander ids; empty for a deck saved without one. */
+  commanderNames: string[];
+  cardCount: number;
+  bracket: number | null;
+  createdAt: string;
+  updatedAt: string;
+  /** The deck's public page. Null for a private deck: its page answers 404 to everyone but its owner. */
+  path: string | null;
+}
+
+export interface AdminDeckCard {
+  cardId: number;
+  name: string;
+  section: "commander" | "main";
+  quantity: number;
+}
+
+/** Imports listed on one account's Collection tab, newest first. `admin_user_collection` caps here. */
+export const MAX_ADMIN_USER_IMPORTS = 50;
+
+/** A collection search shorter than this matches nothing: one letter would list nearly the whole collection. */
+export const MIN_COLLECTION_SEARCH_CHARS = 2;
+
+/** Entries on one page of a collection search. `admin_user_collection_items` clamps here. */
+export const ADMIN_COLLECTION_PAGE = 50;
+
+/** A collection search is part of a card name; longer than this is no card's name. */
+export const MAX_COLLECTION_SEARCH_CHARS = 150;
+
+export interface AdminCollectionImport {
+  id: number;
+  sourceApp: "manabox" | "moxfield" | "tcgplayer" | "generic_csv" | "generic_json" | "text";
+  mode: "replace" | "merge";
+  /** `open` until the player confirms the import; an open one hours old was abandoned. */
+  status: "open" | "committed";
+  rowsTotal: number;
+  createdAt: string;
+  committedAt: string | null;
+}
+
+/** One account's collection as its Collection tab shows it: totals and import history, never the entries. */
+export interface AdminUserCollection {
+  entries: number;
+  distinctCards: number;
+  totalQuantity: number;
+  /** Quantity times each entry's printing price for its finish; unpriced entries add nothing. */
+  valueUsd: number;
+  unpricedEntries: number;
+  /** When prices were last checked (`prices_checked_at()`); null before the first catalog sync. */
+  pricesAsOf: string | null;
+  shared: boolean;
+  imports: AdminCollectionImport[];
+}
+
+export interface AdminCollectionItem {
+  cardName: string;
+  /** Null for an entry matched by name alone, with no printing. */
+  setCode: string | null;
+  collectorNumber: string | null;
+  finish: "nonfoil" | "foil" | "etched";
+  condition: string;
+  lang: string;
+  quantity: number;
+}
+
+export interface AdminCollectionItemPage {
+  total: number;
+  rows: AdminCollectionItem[];
+}
+
 /** A deck search is an id or a commander name; longer than this is not either of those. */
 export const MAX_ADMIN_SEARCH_CHARS = 80;
 
@@ -152,6 +232,26 @@ export const ADMIN_SYNC_STATUSES = ["running", "succeeded", "skipped_unchanged",
 export type AdminSyncJob = (typeof ADMIN_SYNC_JOBS)[number];
 export type AdminSyncStatus = (typeof ADMIN_SYNC_STATUSES)[number];
 
+/** A count with how many of it are new: "+N today · +N this week" on the admin home. */
+export interface AdminWindowedCount {
+  total: number;
+  /** Created in the last 24 hours. */
+  last24h: number;
+  /** Created in the last 7 days. */
+  last7d: number;
+}
+
+/** The site's numbers on the admin home, counted live on every load (`admin_site_stats`). */
+export interface AdminSiteStats {
+  users: AdminWindowedCount;
+  decks: AdminWindowedCount & { public: number };
+  /** Accounts with at least one collection entry. */
+  collections: number;
+  importsLast7d: number;
+  openReports: number;
+  openErrors: number;
+}
+
 /**
  * The crawled deck corpus, for the operations page at /admin/crawls.
  *
@@ -176,6 +276,11 @@ export interface AdminCrawlSource {
     finishedAt: string | null;
     decksWritten: number;
     error: string | null;
+    /** When the run last reported progress (after its claim and after every commander); null before the first. */
+    progressAt: string | null;
+    commandersVisited: number;
+    /** How many times the source answered 429 during the run. */
+    throttles: number;
   } | null;
 }
 

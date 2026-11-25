@@ -12,7 +12,7 @@ import {
   SearchInput,
   Show,
   SimpleForm,
-  SimpleShowLayout,
+  TabbedShowLayout,
   TextField,
   TextInput,
   TopToolbar,
@@ -20,6 +20,8 @@ import {
 } from "react-admin";
 import { MAX_ADMIN_NOTE_CHARS, MAX_DISPLAY_NAME_CHARS, type AdminUser } from "@/lib/admin/types";
 import { Pill, Pills } from "./pill";
+import { UserCollection } from "./user-collection";
+import { UserDecks } from "./user-decks";
 
 /**
  * User management. The list is the whole account table; the editor exposes exactly the three things an admin can
@@ -98,21 +100,35 @@ export const PlatformAdminList = () => (
   </List>
 );
 
+/**
+ * One account, as tabs. Account is the record itself; Decks reads the account's saved decks, public and private, and
+ * Collection its collection's totals, imports and a card search. Each such read is recorded in the audit log. Tabs
+ * follow the URL, so React Admin mounts only the one shown: an admin who never opens Decks or Collection causes no
+ * read of either.
+ */
 export const UserShow = () => (
   <Show title={<UserTitle />}>
-    <SimpleShowLayout>
-      <EmailField source="email" label="Email" />
-      <TextField source="displayName" label="Display name" emptyText="—" />
-      <FunctionField label="Status" render={() => <StatusPills />} />
-      <TextField source="adminNote" label="Why they have it" emptyText="—" />
-      <DateField source="adminSince" label="Admin since" showTime emptyText="—" />
-      <DateField source="emailConfirmedAt" label="Email confirmed" showTime emptyText="not confirmed" />
-      <DateField source="lastSignInAt" label="Last sign-in" showTime emptyText="never" />
-      <DateField source="createdAt" label="Joined" showTime />
-      <NumberField source="deckCount" label="Saved decks" {...tabular} />
-      <NumberField source="collectionCount" label="Collection entries" {...tabular} />
-      <TextField source="id" label="User id" />
-    </SimpleShowLayout>
+    <TabbedShowLayout>
+      <TabbedShowLayout.Tab label="Account">
+        <EmailField source="email" label="Email" />
+        <TextField source="displayName" label="Display name" emptyText="—" />
+        <FunctionField label="Status" render={() => <StatusPills />} />
+        <TextField source="adminNote" label="Why they have it" emptyText="—" />
+        <DateField source="adminSince" label="Admin since" showTime emptyText="—" />
+        <DateField source="emailConfirmedAt" label="Email confirmed" showTime emptyText="not confirmed" />
+        <DateField source="lastSignInAt" label="Last sign-in" showTime emptyText="never" />
+        <DateField source="createdAt" label="Joined" showTime />
+        <NumberField source="deckCount" label="Saved decks" {...tabular} />
+        <NumberField source="collectionCount" label="Collection entries" {...tabular} />
+        <TextField source="id" label="User id" />
+      </TabbedShowLayout.Tab>
+      <TabbedShowLayout.Tab label="Decks" path="decks">
+        <UserDecks />
+      </TabbedShowLayout.Tab>
+      <TabbedShowLayout.Tab label="Collection" path="collection">
+        <UserCollection />
+      </TabbedShowLayout.Tab>
+    </TabbedShowLayout>
   </Show>
 );
 

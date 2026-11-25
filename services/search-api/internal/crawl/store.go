@@ -36,6 +36,12 @@ type Store interface {
 	CreateRun(ctx context.Context) (int64, error)
 	// FinishRun closes a run with what it saw and did.
 	FinishRun(ctx context.Context, runID int64, summary RunSummary) error
+	// RunProgress writes a still-running run's counters and marks it running. It never touches a finished run.
+	RunProgress(ctx context.Context, runID int64, summary RunSummary) error
+	// CloseStaleRuns marks failed the source's runs no live process owns: open ones that reported nothing for longer
+	// than staleAfter (except the one a fresh claim points at), and running ones that already have a finish time. It
+	// returns how many it closed.
+	CloseStaleRuns(ctx context.Context, staleAfter time.Duration) (int, error)
 	// Claim atomically marks the source as owned by this run, taking over a claim left behind by a crawl that died
 	// without releasing it. It reports whether the claim landed: when another live run holds it, it is false and no
 	// second crawl may start.
@@ -293,6 +299,26 @@ func (s *SupabaseStore) FinishRun(ctx context.Context, runID int64, summary RunS
 	_, err = s.client.RPC(ctx, "crawl_finish_run",
 		map[string]any{"p_run_id": runID, "p_summary": json.RawMessage(payload)})
 	return err
+}
+
+func (s *SupabaseStore) RunProgress(ctx context.Context, runID int64, summary RunSummary) error {
+	summary.State = assertState(summary.State)
+	payload, err := json.Marshal(summary)
+	if err != nil {
+		return err
+	}
+	_, err = s.client.RPC(ctx, "crawl_run_progress",
+		map[string]any{"p_run_id": runID, "p_summary": json.RawMessage(payload)})
+	return err
+}
+
+func (s *SupabaseStore) CloseStaleRuns(ctx context.Context, staleAfter time.Duration) (int, error) {
+	var n int
+	err := s.client.RPCInto(ctx, "crawl_close_stale_runs", map[string]any{
+		"p_source":              s.source,
+		"p_stale_after_seconds": int(staleAfter.Seconds()),
+	}, &n)
+	return n, err
 }
 
 func (s *SupabaseStore) Claim(ctx context.Context, runID int64, clientID string, staleAfter time.Duration) (Claim, error) {

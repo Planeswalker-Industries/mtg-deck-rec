@@ -1290,6 +1290,7 @@ __metadata:
     "@supabase/ssr": "npm:0.12.7"
     "@supabase/supabase-js": "npm:^2.116.0"
     "@tailwindcss/postcss": "npm:^4"
+    "@tanstack/react-query": "npm:5.103.1"
     "@types/node": "npm:^24"
     "@types/react": "npm:^19"
     "@types/react-dom": "npm:^19"
@@ -3322,7 +3323,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tanstack/react-query@npm:^5.83.0":
+"@tanstack/react-query@npm:5.103.1, @tanstack/react-query@npm:^5.83.0":
   version: 5.103.1
   resolution: "@tanstack/react-query@npm:5.103.1"
   dependencies:

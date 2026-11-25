@@ -57,6 +57,9 @@ export const asUserId = (id: string): string | null => (UUID.test(id) ? id : nul
 /** The same check for a tag id: Tagger tags are keyed by uuid too. */
 export const asTagId = asUserId;
 
+/** The same check for a saved deck id: decks are keyed by uuid. */
+export const asDeckId = asUserId;
+
 /** A path segment that is a sync run id (a positive integer), or null. */
 export const asRunId = (id: string): number | null => (/^[1-9][0-9]{0,15}$/.test(id) ? Number(id) : null);
 
