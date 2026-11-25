@@ -1192,6 +1192,147 @@ export type Database = {
           },
         ]
       }
+      error_events: {
+        Row: {
+          detail: Json
+          id: number
+          message: string
+          occurred_at: string
+          page_path: string | null
+          ticket_id: number
+          user_id: string | null
+        }
+        Insert: {
+          detail?: Json
+          id?: never
+          message: string
+          occurred_at?: string
+          page_path?: string | null
+          ticket_id: number
+          user_id?: string | null
+        }
+        Update: {
+          detail?: Json
+          id?: never
+          message?: string
+          occurred_at?: string
+          page_path?: string | null
+          ticket_id?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_events_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "error_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      error_tickets: {
+        Row: {
+          area: string
+          code: string | null
+          fingerprint: string
+          first_seen_at: string
+          id: number
+          last_seen_at: string
+          level: string
+          message: string
+          occurrences: number
+          page_path: string | null
+          recurrence_of: number | null
+          resolved_at: string | null
+          resolved_by: string | null
+          source: string
+        }
+        Insert: {
+          area: string
+          code?: string | null
+          fingerprint: string
+          first_seen_at?: string
+          id?: never
+          last_seen_at?: string
+          level: string
+          message: string
+          occurrences?: number
+          page_path?: string | null
+          recurrence_of?: number | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source: string
+        }
+        Update: {
+          area?: string
+          code?: string | null
+          fingerprint?: string
+          first_seen_at?: string
+          id?: never
+          last_seen_at?: string
+          level?: string
+          message?: string
+          occurrences?: number
+          page_path?: string | null
+          recurrence_of?: number | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_tickets_recurrence_of_fkey"
+            columns: ["recurrence_of"]
+            isOneToOne: false
+            referencedRelation: "error_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feedback_report_replies: {
+        Row: {
+          created_at: string
+          failure: string | null
+          finished_at: string | null
+          id: number
+          message: string
+          provider_message_id: string | null
+          report_id: number
+          sent_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          failure?: string | null
+          finished_at?: string | null
+          id?: never
+          message: string
+          provider_message_id?: string | null
+          report_id: number
+          sent_by?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          failure?: string | null
+          finished_at?: string | null
+          id?: never
+          message?: string
+          provider_message_id?: string | null
+          report_id?: number
+          sent_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_report_replies_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "feedback_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feedback_reports: {
         Row: {
           created_at: string
@@ -1993,6 +2134,37 @@ export type Database = {
         }[]
       }
       admin_delete_user: { Args: { p_user_id: string }; Returns: undefined }
+      admin_error_ticket_events: {
+        Args: { p_ticket_id: number }
+        Returns: {
+          detail: Json
+          id: number
+          message: string
+          occurred_at: string
+          page_path: string
+          user_id: string
+        }[]
+      }
+      admin_feedback_report_replies: {
+        Args: { p_report_ids: number[] }
+        Returns: {
+          created_at: string
+          failure: string
+          id: number
+          message: string
+          report_id: number
+          status: string
+        }[]
+      }
+      admin_finish_feedback_reply: {
+        Args: {
+          p_failure?: string
+          p_provider_message_id?: string
+          p_reply_id: number
+          p_sent: boolean
+        }
+        Returns: undefined
+      }
       admin_list_crawled_decks: {
         Args: {
           p_limit?: number
@@ -2011,6 +2183,25 @@ export type Database = {
           listed_updated_at: string
           source: string
           source_deck_id: string
+          total_count: number
+        }[]
+      }
+      admin_list_error_tickets: {
+        Args: { p_limit?: number; p_offset?: number; p_open_only?: boolean }
+        Returns: {
+          accounts: number
+          area: string
+          code: string
+          first_seen_at: string
+          id: number
+          last_seen_at: string
+          level: string
+          message: string
+          occurrences: number
+          page_path: string
+          recurrence_of: number
+          resolved_at: string
+          source: string
           total_count: number
         }[]
       }
@@ -2103,6 +2294,7 @@ export type Database = {
           total_count: number
         }[]
       }
+      admin_open_counts: { Args: never; Returns: Json }
       admin_open_feedback_report_count: { Args: never; Returns: number }
       admin_rec_accept_rates: {
         Args: { p_days?: number; p_max_position?: number; p_mode?: string }
@@ -2116,6 +2308,10 @@ export type Database = {
       }
       admin_set_display_name: {
         Args: { p_display_name: string; p_user_id: string }
+        Returns: undefined
+      }
+      admin_set_error_ticket_resolved: {
+        Args: { p_id: number; p_resolved: boolean }
         Returns: undefined
       }
       admin_set_feedback_report_resolved: {
@@ -2133,6 +2329,15 @@ export type Database = {
       admin_set_user_banned: {
         Args: { p_banned: boolean; p_user_id: string }
         Returns: undefined
+      }
+      admin_start_feedback_reply: {
+        Args: { p_message: string; p_report_id: number }
+        Returns: {
+          report_created_at: string
+          report_message: string
+          report_page_path: string
+          reply_id: number
+        }[]
       }
       bracket_cards: { Args: never; Returns: Json }
       card_category: { Args: { p_type_line: string }; Returns: string }
@@ -2278,6 +2483,10 @@ export type Database = {
         Args: { p_deck_id: string; p_name?: string }
         Returns: string
       }
+      feedback_report_recipient: {
+        Args: { p_report_id: number }
+        Returns: string
+      }
       get_commander_request: {
         Args: { p_card_id: number; p_client_key: string }
         Returns: Json
@@ -2292,6 +2501,21 @@ export type Database = {
         Returns: number
       }
       is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
+      log_error_event: {
+        Args: {
+          p_area: string
+          p_code?: string
+          p_detail?: Json
+          p_fingerprint: string
+          p_level: string
+          p_message: string
+          p_page_path?: string
+          p_skipped?: number
+          p_source: string
+          p_user_id?: string
+        }
+        Returns: number
+      }
       log_rec_timeout: {
         Args: {
           p_commander_ids?: number[]

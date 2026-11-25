@@ -9,6 +9,7 @@ import {
   setCollectionCardQuantityAction,
   setCollectionSharingAction,
 } from "@/app/collection/actions";
+import { reportClientErrorAction } from "@/app/errors/actions";
 import { submitFeedbackAction } from "@/app/feedback/actions";
 import { dealRaterCardsAction } from "@/app/rate/actions";
 import {
@@ -93,6 +94,7 @@ export const realActions: ActionsApi = {
   adminSetTagDisabled: notYet,
   dealRaterCards: (input) => callAction(() => dealRaterCardsAction(input)),
   submitFeedback: (input) => callAction(() => submitFeedbackAction(input)),
+  reportClientError: (input) => callAction(() => reportClientErrorAction(input)),
 };
 
 /** Card lookups run as GET Route Handlers, so the CDN can keep results and searches don't queue behind actions. */

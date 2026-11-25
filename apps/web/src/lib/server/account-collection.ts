@@ -30,10 +30,11 @@ export class CollectionRefused extends Error {
   }
 }
 
-function writeFailed(action: string, message: string): Error {
-  const reason = REFUSALS.find((r) => message.includes(r));
+/** The database's error as one of ours; the original rides along as the cause, so its code and hint reach the ticket. */
+function writeFailed(action: string, error: { message: string }): Error {
+  const reason = REFUSALS.find((r) => error.message.includes(r));
   if (reason === "NOT_SIGNED_IN") return new NotSignedInError();
-  return reason ? new CollectionRefused(reason) : new Error(`${action} failed: ${message}`);
+  return reason ? new CollectionRefused(reason) : new Error(`${action} failed: ${error.message}`, { cause: error });
 }
 
 /**
@@ -50,7 +51,7 @@ export async function requireUserId(db: AuthClient): Promise<string> {
 
 export async function startImport(db: AuthClient, sourceApp: SourceApp, mode: "replace" | "merge"): Promise<string> {
   const { data, error } = await db.rpc("start_collection_import", { p_source_app: sourceApp, p_mode: mode });
-  if (error) throw writeFailed("Starting a collection import", error.message);
+  if (error) throw writeFailed("Starting a collection import", error);
   return String(data);
 }
 
@@ -64,7 +65,7 @@ export async function saveRows(db: AuthClient, importId: string, rows: readonly 
     quantity: row.quantity,
   }));
   const { error } = await db.rpc("save_collection_rows", { p_import_id: Number(importId), p_rows: payload });
-  if (error) throw writeFailed("Saving collection rows", error.message);
+  if (error) throw writeFailed("Saving collection rows", error);
 }
 
 const toTotals = (value: unknown): CollectionTotals => {
@@ -78,7 +79,7 @@ const toTotals = (value: unknown): CollectionTotals => {
 
 export async function commitImport(db: AuthClient, importId: string): Promise<CollectionTotals> {
   const { data, error } = await db.rpc("commit_collection_import", { p_import_id: Number(importId) });
-  if (error) throw writeFailed("Finishing the collection import", error.message);
+  if (error) throw writeFailed("Finishing the collection import", error);
   return toTotals(data);
 }
 
@@ -126,7 +127,7 @@ export async function accountOwnedCardIds(db: AuthClient): Promise<CardId[]> {
 /** Sets a card's total copies in the caller's collection through set_collection_card_quantity; returns the new total. */
 export async function setAccountCardQuantity(db: AuthClient, cardId: CardId, quantity: number): Promise<number> {
   const { data, error } = await db.rpc("set_collection_card_quantity", { p_card_id: cardId, p_quantity: quantity });
-  if (error) throw writeFailed("Updating the collection", error.message);
+  if (error) throw writeFailed("Updating the collection", error);
   return data ?? 0;
 }
 
@@ -151,7 +152,7 @@ export async function accountCollectionSharing(db: AuthClient): Promise<Collecti
 /** Turns the link to the signed-in user's collection on or off. The code stays the same either way. */
 export async function setAccountCollectionSharing(db: AuthClient, shared: boolean): Promise<CollectionSharing> {
   const { data, error } = await db.rpc("set_collection_sharing", { p_shared: shared });
-  if (error) throw writeFailed("Changing collection sharing", error.message);
+  if (error) throw writeFailed("Changing collection sharing", error);
   const sharing = toSharing(data);
   if (!sharing) throw new Error("Changing collection sharing returned nothing.");
   return sharing;

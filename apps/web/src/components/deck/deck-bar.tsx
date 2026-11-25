@@ -18,6 +18,8 @@ import { ColorIdentity } from "./color-identity";
 import type { CollectionMode } from "./use-deck-tool";
 import { ErrorText } from "@/components/ui/error-text";
 import { PageTour } from "@/components/tour/page-tour";
+import { OpenDeckError, OpenDeckMenu } from "@/components/decks/open-deck-bar";
+import type { OpenDeck } from "./use-deck-tool";
 
 const COLLECTION_MODES: CollectionMode[] = ["first", "only", "off"];
 
@@ -117,6 +119,7 @@ export function DeckBar({
   onCollectionModeChange,
   onEditDecklist,
   saveSlot,
+  openDeck,
   collectionImportHref = "/collection/import?next=/deck",
 }: {
   analysis: DeckAnalysis;
@@ -138,6 +141,8 @@ export function DeckBar({
    * takes the collection select's place, which moves into the builder's search panel.
    */
   saveSlot?: ReactNode;
+  /** The saved deck the tool is editing: its save status beside the name, with Deck page and Close deck. */
+  openDeck?: { deck: OpenDeck; onClose: () => void } | undefined;
   /** Return to the initiating deck after a successful collection import. */
   collectionImportHref?: Route;
 }) {
@@ -189,6 +194,7 @@ export function DeckBar({
       {/* In the Deckbuilder the colours sit beside the name. */}
       <div className="flex min-w-0 items-center gap-2">
         <DeckName key={deckName} name={deckName} onRename={onRename} />
+        {openDeck && <OpenDeckMenu deck={openDeck.deck} onClose={openDeck.onClose} />}
         {building && pips}
       </div>
       <Select value={String(context.bracket)} onValueChange={(value) => onBracketChange(Number(value) as Bracket)}>
@@ -238,6 +244,7 @@ export function DeckBar({
           </SelectContent>
         </Select>
       )}
+      {openDeck && <OpenDeckError deck={openDeck.deck} />}
     </div>
   );
 }

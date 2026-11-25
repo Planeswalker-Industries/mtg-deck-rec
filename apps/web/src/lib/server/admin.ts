@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ListAdminAcceptRatesInput,
   ListAdminCrawledDecksInput,
+  ListAdminErrorTicketsInput,
   ListAdminFeedbackReportsInput,
   ListAdminSyncRunsInput,
   ListAdminTagsInput,
@@ -15,6 +16,10 @@ import type {
   AdminCrawledDeckCard,
   AdminCrawledDeckPage,
   AdminCrawlSource,
+  AdminErrorEvent,
+  AdminErrorTicket,
+  AdminErrorTicketPage,
+  AdminFeedbackReply,
   AdminFeedbackReportPage,
   AdminRecMode,
   AdminSyncJob,
@@ -27,9 +32,11 @@ import type {
   AdminUserPage,
 } from "@/lib/admin/types";
 import { createAuthClient, getCurrentUser, type CurrentUser } from "./auth";
+import { emailConfigured } from "./email";
 import type { Database } from "./database.types";
+import { logError } from "./error-log";
 
-type AuthedClient = SupabaseClient<Database>;
+export type AuthedClient = SupabaseClient<Database>;
 
 /**
  * The admin area's server side. Everything here runs as the *visitor*, not as the service role: `is_platform_admin()`
@@ -56,7 +63,7 @@ export async function requirePlatformAdmin(): Promise<AdminSession | { error: Ap
   const db = await createAuthClient();
   const { data, error } = await db.rpc("is_platform_admin", { p_user: user.id });
   if (error) {
-    console.error(`Checking platform admin for ${user.id} failed: ${error.message}`);
+    logError({ area: "admin.check", error });
     return { error: { code: "UPSTREAM_UNAVAILABLE", message: "Couldn't check your access. Try again in a moment." } };
   }
   if (!data) return { error: { code: "NOT_FOUND", message: "Not found." } };
@@ -143,7 +150,7 @@ interface PostgrestError {
   message: string;
 }
 
-function asAdminError(error: PostgrestError): Error {
+export function asAdminError(error: PostgrestError): Error {
   switch (error.code) {
     // insufficient_privilege: the caller lost admin between the guard and the call.
     case "42501":
@@ -155,7 +162,7 @@ function asAdminError(error: PostgrestError): Error {
     case "23514":
       return new AdminError(error.message, "VALIDATION");
     default:
-      console.error(`Admin call failed (${error.code ?? "no code"}): ${error.message}`);
+      logError({ area: "admin.call", error, code: error.code });
       return new AdminError("That didn't work. Try again in a moment.", "UPSTREAM_UNAVAILABLE");
   }
 }
@@ -402,6 +409,10 @@ export async function listAdminFeedbackReports(
   });
   if (error) throw asAdminError(error);
   const rows = data ?? [];
+  const replies = await feedbackReplies(
+    db,
+    rows.map((row) => Number(row.id)),
+  );
   return {
     reports: rows.map((row) => ({
       id: Number(row.id),
@@ -409,12 +420,87 @@ export async function listAdminFeedbackReports(
       pagePath: row.page_path,
       createdAt: row.created_at,
       resolvedAt: row.resolved_at,
+      replies: replies.get(Number(row.id)) ?? [],
+    })),
+    total: rows[0] ? Number(rows[0].total_count) : 0,
+    replyEnabled: emailConfigured(),
+  };
+}
+
+/**
+ * The replies to a page of reports, by report. A failed read leaves them out rather than failing the list: a preview
+ * deploy runs against main's schema, which may not have replies yet.
+ */
+async function feedbackReplies(db: AuthedClient, reportIds: number[]): Promise<Map<number, AdminFeedbackReply[]>> {
+  const byReport = new Map<number, AdminFeedbackReply[]>();
+  if (reportIds.length === 0) return byReport;
+  const { data, error } = await db.rpc("admin_feedback_report_replies", { p_report_ids: reportIds });
+  if (error) {
+    logError({ area: "admin.feedbackReplies", error, level: "warning" });
+    return byReport;
+  }
+  for (const row of data ?? []) {
+    const reply: AdminFeedbackReply = {
+      id: Number(row.id),
+      message: row.message,
+      status: row.status as AdminFeedbackReply["status"],
+      failure: row.failure,
+      createdAt: row.created_at,
+    };
+    const list = byReport.get(Number(row.report_id));
+    if (list) list.push(reply);
+    else byReport.set(Number(row.report_id), [reply]);
+  }
+  return byReport;
+}
+
+export async function setAdminFeedbackReportResolved(db: AuthedClient, id: number, resolved: boolean): Promise<void> {
+  const { error } = await db.rpc("admin_set_feedback_report_resolved", { p_id: id, p_resolved: resolved });
+  if (error) throw asAdminError(error);
+}
+
+export async function listAdminErrorTickets(db: AuthedClient, input: ListAdminErrorTicketsInput): Promise<AdminErrorTicketPage> {
+  const { data, error } = await db.rpc("admin_list_error_tickets", {
+    p_open_only: input.openOnly,
+    p_offset: input.offset,
+    p_limit: input.limit,
+  });
+  if (error) throw asAdminError(error);
+  const rows = data ?? [];
+  return {
+    tickets: rows.map((row) => ({
+      id: Number(row.id),
+      level: row.level as AdminErrorTicket["level"],
+      source: row.source as AdminErrorTicket["source"],
+      area: row.area,
+      code: row.code,
+      message: row.message,
+      pagePath: row.page_path,
+      occurrences: row.occurrences,
+      accounts: row.accounts,
+      firstSeenAt: row.first_seen_at,
+      lastSeenAt: row.last_seen_at,
+      recurrenceOf: row.recurrence_of === null ? null : Number(row.recurrence_of),
+      resolvedAt: row.resolved_at,
     })),
     total: rows[0] ? Number(rows[0].total_count) : 0,
   };
 }
 
-export async function setAdminFeedbackReportResolved(db: AuthedClient, id: number, resolved: boolean): Promise<void> {
-  const { error } = await db.rpc("admin_set_feedback_report_resolved", { p_id: id, p_resolved: resolved });
+export async function getAdminErrorTicketEvents(db: AuthedClient, ticketId: number): Promise<AdminErrorEvent[]> {
+  const { data, error } = await db.rpc("admin_error_ticket_events", { p_ticket_id: ticketId });
+  if (error) throw asAdminError(error);
+  return (data ?? []).map((row) => ({
+    id: Number(row.id),
+    occurredAt: row.occurred_at,
+    userId: row.user_id,
+    pagePath: row.page_path,
+    message: row.message,
+    detail: typeof row.detail === "object" && row.detail !== null && !Array.isArray(row.detail) ? (row.detail as Record<string, unknown>) : {},
+  }));
+}
+
+export async function setAdminErrorTicketResolved(db: AuthedClient, id: number, resolved: boolean): Promise<void> {
+  const { error } = await db.rpc("admin_set_error_ticket_resolved", { p_id: id, p_resolved: resolved });
   if (error) throw asAdminError(error);
 }

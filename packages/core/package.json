@@ -14,7 +14,8 @@
     "./search": "./src/search/index.ts",
     "./collection": "./src/collection/index.ts",
     "./journey": "./src/journey/index.ts",
-    "./shop": "./src/shop/index.ts"
+    "./shop": "./src/shop/index.ts",
+    "./errors": "./src/errors/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

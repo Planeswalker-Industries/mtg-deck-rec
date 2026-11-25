@@ -7,6 +7,7 @@ import { checkRateLimit, knownRateLimit, type RateLimitBucket } from "./rate-lim
 import { NotFoundError } from "./recs";
 import { createPublicClient, type PublicClient } from "./supabase";
 import { visitorKey } from "./visitor";
+import { logError } from "./error-log";
 
 const STATUS: Partial<Record<ApiError["code"], number>> = {
   VALIDATION: 400,
@@ -83,7 +84,13 @@ export async function handleRecsRequest<I extends { context: RecContext }, T>(
       return Response.json({ ok: true, data: await run(db, input.data, collection) } satisfies Result<T>);
     } catch (err) {
       if (err instanceof NotFoundError) return errorResponse({ code: "NOT_FOUND", message: err.message });
-      console.error(err);
+      logError({
+        area: `recs.${new URL(request.url).pathname.split("/").pop() ?? "unknown"}`,
+        error: err,
+        code: "UPSTREAM_UNAVAILABLE",
+        shown: unavailableMessage,
+        context: { ownership: input.data.context.ownership?.kind ?? "none", commanders: input.data.context.deck.commanders.length, deckCards: input.data.context.deck.cards.length },
+      });
       return errorResponse({ code: "UPSTREAM_UNAVAILABLE", message: unavailableMessage });
     }
   };

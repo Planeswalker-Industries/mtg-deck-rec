@@ -65,7 +65,8 @@ export function FeedbackForm({ fromPath }: { fromPath: string }) {
         aria-describedby={`${id}-page`}
       />
       <p id={`${id}-page`} className="text-sm text-muted-foreground">
-        Sent with the page: <span className="break-all">{fromPath}</span>
+        Sent with the page: <span className="break-all">{fromPath}</span>. We may answer by email, at the address on your
+        account.
       </p>
       {error && <ErrorText>{error}</ErrorText>}
       <div className="flex flex-wrap items-center gap-3">

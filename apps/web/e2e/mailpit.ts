@@ -33,7 +33,8 @@ export async function latestSignInTokenHash(request: APIRequestContext, email: s
     const id = (await search.json()).messages?.[0]?.ID as string | undefined;
     if (id) {
       const message = await (await request.get(`${mailpit}/api/v1/message/${id}`)).json();
-      const hash = String(message.HTML ?? message.Text ?? "").match(/token_hash=([0-9a-f]+)/i)?.[1];
+      // The app's form signs in with PKCE, whose hashes start "pkce_"; a direct /otp call's are plain hex.
+      const hash = String(message.HTML ?? message.Text ?? "").match(/token_hash=([\w-]+)/)?.[1];
       if (hash) return hash;
     }
     await new Promise((resolve) => setTimeout(resolve, MAIL_WAIT_MS));
@@ -57,22 +58,16 @@ export async function clearInbox(request: APIRequestContext, email: string) {
 /**
  * Signs in and waits to land on `next`.
  *
- * Sign-in is Google only for now, and a test can't drive Google's own pages. So it opens /sign-in, checks that the
- * Google button is the way in, then signs in the way a real session starts on the server: a one-time sign-in email
- * from the local auth server, whose link it opens. The app's email form is commented out, not removed, so its server
- * side still works.
+ * A test can't drive Google's own pages, so it signs in through the emailed code: it fills in /sign-in's email form,
+ * then opens the link in the email the local auth server sent to Mailpit.
  */
 export async function signIn(page: Page, request: APIRequestContext, email: string, next: string) {
+  supabaseEnv(); // Refuses unless the app runs against the local database.
   await clearInbox(request, email);
   await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
-  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
-
-  const { url, key } = supabaseEnv();
-  const sent = await request.post(`${url}/auth/v1/otp`, {
-    headers: { apikey: key, "content-type": "application/json" },
-    data: { email, create_user: true },
-  });
-  expect(sent.ok(), `sign-in email request answered ${sent.status()}`).toBe(true);
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("button", { name: "Email me a code" }).click();
+  await expect(page.getByText(/We sent a 6-digit code/)).toBeVisible({ timeout: 30_000 });
 
   const hash = await latestSignInTokenHash(request, email);
   await page.goto(`/auth/confirm?next=${encodeURIComponent(next)}&token_hash=${hash}&type=email`);

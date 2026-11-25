@@ -51,12 +51,15 @@ import { createAdminClient } from "@/lib/server/supabase-admin";
 import { visitorKey } from "@/lib/server/visitor";
 import { recordRecEvent, recordRecEvents, RecEventRefused } from "@/lib/server/rec-events";
 import { castSwapVote, VoteRefused, type VoteRefusal } from "@/lib/server/votes";
+import { logError } from "@/lib/server/error-log";
 
 const failure = (code: ApiError["code"], message: string): Result<never> => ({ ok: false, error: { code, message } });
 
-const unavailable = (err: unknown): Result<never> => {
-  console.error(err);
-  return failure("UPSTREAM_UNAVAILABLE", "Couldn't reach the card database. Try again in a moment.");
+const UNAVAILABLE_MESSAGE = "Couldn't reach the card database. Try again in a moment.";
+
+const unavailable = (area: string, err: unknown): Result<never> => {
+  logError({ area, error: err, code: "UPSTREAM_UNAVAILABLE", shown: UNAVAILABLE_MESSAGE });
+  return failure("UPSTREAM_UNAVAILABLE", UNAVAILABLE_MESSAGE);
 };
 
 interface ActionScope {
@@ -82,7 +85,7 @@ export async function parseDeckAction(input: { text: string }): Promise<Result<P
     if (limited) return limited;
     return { ok: true, data: await resolveDecklist(db, parsed.data.text) };
   } catch (err) {
-    return unavailable(err);
+    return unavailable("deck.parseDeck", err);
   }
 }
 
@@ -108,7 +111,7 @@ export async function importDeckFromUrlAction(input: { url: string }): Promise<R
   try {
     scope = await begin("import");
   } catch (err) {
-    return unavailable(err);
+    return unavailable("deck.importDeckFromUrl", err);
   }
   if (scope.limited) return scope.limited;
 
@@ -118,7 +121,7 @@ export async function importDeckFromUrlAction(input: { url: string }): Promise<R
     if (!fetched.ok) return { ok: false, error: fetched.error };
     body = JSON.parse(fetched.body);
   } catch (err) {
-    console.error(err);
+    logError({ area: "deck.importDeckFromUrl", error: err, code: "UPSTREAM_UNAVAILABLE", context: { source: "archidekt", deckId: id } });
     return failure("UPSTREAM_UNAVAILABLE", "Couldn't load that Archidekt deck. Try again in a moment.");
   }
 
@@ -128,7 +131,7 @@ export async function importDeckFromUrlAction(input: { url: string }): Promise<R
     const resolved = await resolveDecklist(scope.db, decklist.text);
     return { ok: true, data: { ...resolved, source: "archidekt", sourceUrl: `https://archidekt.com/decks/${id}` } };
   } catch (err) {
-    return unavailable(err);
+    return unavailable("deck.importDeckFromUrl", err);
   }
 }
 
@@ -140,7 +143,7 @@ export async function analyzeDeckAction(input: { deck: DeckInput }): Promise<Res
     if (limited) return limited;
     return { ok: true, data: await analyzeDeckById(db, parsed.data.deck) };
   } catch (err) {
-    return unavailable(err);
+    return unavailable("deck.analyzeDeck", err);
   }
 }
 
@@ -161,7 +164,7 @@ export async function getDeckCoverageAction(input: Parameters<ActionsApi["getDec
     return { ok: true, data: await loadDeckCoverage(db, deck, sessionCopies(ownership)!) };
   } catch (err) {
     if (err instanceof CoverageCardNotFound) return failure("NOT_FOUND", err.message);
-    return unavailable(err);
+    return unavailable("deck.getDeckCoverage", err);
   }
 }
 
@@ -174,7 +177,7 @@ export async function resolveCollectionRowsAction(input: { rows: CollectionRowIn
     if (limited) return limited;
     return { ok: true, data: await resolveCollectionRows(db, parsed.data.rows) };
   } catch (err) {
-    return unavailable(err);
+    return unavailable("deck.resolveCollectionRows", err);
   }
 }
 
@@ -205,7 +208,7 @@ export async function getCommanderCoverageAction(input: { commanderId: number })
     refreshCachesAfter(coverage.request);
     return { ok: true, data: coverage };
   } catch (err) {
-    return unavailable(err);
+    return unavailable("deck.getCommanderCoverage", err);
   }
 }
 
@@ -220,7 +223,7 @@ export async function requestCommanderDecksAction(input: { commanderId: number }
     return { ok: true, data: request };
   } catch (err) {
     if (err instanceof CommanderRequestRefused) return refusalMessages[err.reason];
-    return unavailable(err);
+    return unavailable("deck.requestCommanderDecks", err);
   }
 }
 
@@ -245,7 +248,7 @@ export async function castVoteAction(input: Parameters<ActionsApi["castVote"]>[0
     return { ok: true, data: await castSwapVote(db, parsed.data, visitor) };
   } catch (err) {
     if (err instanceof VoteRefused) return voteRefusals[err.reason];
-    return unavailable(err);
+    return unavailable("deck.castVote", err);
   }
 }
 
@@ -266,7 +269,7 @@ export async function recordRecEventAction(input: Parameters<ActionsApi["recordR
     return { ok: true, data: null };
   } catch (err) {
     if (err instanceof RecEventRefused) return failure("VALIDATION", "That event isn't valid.");
-    return unavailable(err);
+    return unavailable("deck.recordRecEvent", err);
   }
 }
 
@@ -286,7 +289,7 @@ export async function recordRecEventsAction(input: Parameters<ActionsApi["record
     return { ok: true, data: null };
   } catch (err) {
     if (err instanceof RecEventRefused) return failure("VALIDATION", "That event isn't valid.");
-    return unavailable(err);
+    return unavailable("deck.recordRecEvents", err);
   }
 }
 
@@ -301,6 +304,6 @@ export async function getCommanderRequestAction(input: { requestId: string }): P
     refreshCachesAfter(request);
     return { ok: true, data: request };
   } catch (err) {
-    return unavailable(err);
+    return unavailable("deck.getCommanderRequest", err);
   }
 }

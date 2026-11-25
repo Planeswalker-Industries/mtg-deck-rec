@@ -234,14 +234,15 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Sign-in emails carry both the 6-digit code and a link to /auth/confirm. New and returning users get the same email.
+# Sign-in emails carry both the 6-digit code and a link to /auth/confirm. New users get the confirmation template
+# (same code and link, welcome wording); returning users get the magic-link one.
 [auth.email.template.magic_link]
 subject = "Your Spell Chasm sign-in code"
 content_path = "./supabase/templates/sign-in.html"
 
 [auth.email.template.confirmation]
-subject = "Your Spell Chasm sign-in code"
-content_path = "./supabase/templates/sign-in.html"
+subject = "Confirm your Spell Chasm email"
+content_path = "./supabase/templates/confirm-signup.html"
 
 # Use a production-ready SMTP server
 # [auth.email.smtp]

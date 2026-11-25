@@ -1099,13 +1099,13 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
           : true);
   // Lifted once, during render: a later step's loading has its own shuffle.
   if (openingRound && roundReady) setOpeningRound(false);
+  // The deck bar (and the open deck's menu in it) is on screen only with an analysed deck outside a build or held round.
+  const deckBarShown = Boolean(analysis && context) && deckBuild.state.status === "idle" && !roundHeld;
 
   return (
     <div className="flex flex-col gap-5">
-      {/* The open deck stays named while its decklist is being edited: it is still the deck being worked on. */}
-      {tool.openDeck && (
-        <OpenDeckBar deck={tool.openDeck} onClose={tool.closeSavedDeck} />
-      )}
+      {/* The open deck stays named while the deck bar is away (loading, a build, a held round); with the bar, its menu says it. */}
+      {tool.openDeck && !deckBarShown && <OpenDeckBar deck={tool.openDeck} onClose={tool.closeSavedDeck} />}
       {deckBuild.state.status !== "idle" ? (
         <BuildView
           state={deckBuild.state}
@@ -1406,13 +1406,14 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
         hideIssues={Boolean(analysis && context)}
       />
 
-      {analysis && context && deckBuild.state.status === "idle" && !roundHeld && (
+      {deckBarShown && analysis && context && (
         <section aria-label="Recommendations" className="flex flex-col gap-2">
           <DeckBar
             collectionImportHref={collectionImportHref}
             analysis={analysis}
             context={context}
             deckName={tool.openDeck?.name ?? tool.deckName ?? suggestedDeckName(analysis)}
+            openDeck={tool.openDeck ? { deck: tool.openDeck, onClose: tool.closeSavedDeck } : undefined}
             onRename={tool.renameDeck}
             coverage={coverageEnabled && journey.deck && (source.kind === "browser" || source.kind === "account")
               ? collectionRefreshing
