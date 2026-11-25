@@ -20,6 +20,7 @@ import {
 } from "react-admin";
 import { MAX_ADMIN_NOTE_CHARS, MAX_DISPLAY_NAME_CHARS, type AdminUser } from "@/lib/admin/types";
 import { Pill, Pills } from "./pill";
+import { UserCollection } from "./user-collection";
 import { UserDecks } from "./user-decks";
 
 /**
@@ -101,8 +102,9 @@ export const PlatformAdminList = () => (
 
 /**
  * One account, as tabs. Account is the record itself; Decks reads the account's saved decks, public and private, and
- * each such read is recorded in the audit log. Tabs follow the URL, so React Admin mounts only the one shown: an
- * admin who never opens Decks causes no deck read at all.
+ * Collection its collection's totals, imports and a card search. Each such read is recorded in the audit log. Tabs
+ * follow the URL, so React Admin mounts only the one shown: an admin who never opens Decks or Collection causes no
+ * read of either.
  */
 export const UserShow = () => (
   <Show title={<UserTitle />}>
@@ -122,6 +124,9 @@ export const UserShow = () => (
       </TabbedShowLayout.Tab>
       <TabbedShowLayout.Tab label="Decks" path="decks">
         <UserDecks />
+      </TabbedShowLayout.Tab>
+      <TabbedShowLayout.Tab label="Collection" path="collection">
+        <UserCollection />
       </TabbedShowLayout.Tab>
     </TabbedShowLayout>
   </Show>

@@ -73,6 +73,59 @@ export interface AdminDeckCard {
   quantity: number;
 }
 
+/** Imports listed on one account's Collection tab, newest first. `admin_user_collection` caps here. */
+export const MAX_ADMIN_USER_IMPORTS = 50;
+
+/** A collection search shorter than this matches nothing: one letter would list nearly the whole collection. */
+export const MIN_COLLECTION_SEARCH_CHARS = 2;
+
+/** Entries on one page of a collection search. `admin_user_collection_items` clamps here. */
+export const ADMIN_COLLECTION_PAGE = 50;
+
+/** A collection search is part of a card name; longer than this is no card's name. */
+export const MAX_COLLECTION_SEARCH_CHARS = 150;
+
+export interface AdminCollectionImport {
+  id: number;
+  sourceApp: "manabox" | "moxfield" | "tcgplayer" | "generic_csv" | "generic_json" | "text";
+  mode: "replace" | "merge";
+  /** `open` until the player confirms the import; an open one hours old was abandoned. */
+  status: "open" | "committed";
+  rowsTotal: number;
+  createdAt: string;
+  committedAt: string | null;
+}
+
+/** One account's collection as its Collection tab shows it: totals and import history, never the entries. */
+export interface AdminUserCollection {
+  entries: number;
+  distinctCards: number;
+  totalQuantity: number;
+  /** Quantity times each entry's printing price for its finish; unpriced entries add nothing. */
+  valueUsd: number;
+  unpricedEntries: number;
+  /** When prices were last checked (`prices_checked_at()`); null before the first catalog sync. */
+  pricesAsOf: string | null;
+  shared: boolean;
+  imports: AdminCollectionImport[];
+}
+
+export interface AdminCollectionItem {
+  cardName: string;
+  /** Null for an entry matched by name alone, with no printing. */
+  setCode: string | null;
+  collectorNumber: string | null;
+  finish: "nonfoil" | "foil" | "etched";
+  condition: string;
+  lang: string;
+  quantity: number;
+}
+
+export interface AdminCollectionItemPage {
+  total: number;
+  rows: AdminCollectionItem[];
+}
+
 /** A deck search is an id or a commander name; longer than this is not either of those. */
 export const MAX_ADMIN_SEARCH_CHARS = 80;
 

@@ -2,6 +2,7 @@ import type { InputSchema } from "@mtg/core/schemas";
 import { z } from "zod";
 import {
   ADMIN_ACCEPT_RATE_DAYS,
+  ADMIN_COLLECTION_PAGE,
   ADMIN_PER_PAGE_MAX,
   ADMIN_REC_MODES,
   ADMIN_SYNC_JOBS,
@@ -10,8 +11,10 @@ import {
   ADMIN_USER_SORTS,
   MAX_ADMIN_NOTE_CHARS,
   MAX_ADMIN_SEARCH_CHARS,
+  MAX_COLLECTION_SEARCH_CHARS,
   MAX_DISPLAY_NAME_CHARS,
   MAX_TAG_REASON_CHARS,
+  MIN_COLLECTION_SEARCH_CHARS,
   type AdminRecMode,
   type AdminSyncJob,
   type AdminSyncStatus,
@@ -151,6 +154,22 @@ export interface AdminCrawledDeckCardsInput {
 
 export const adminCrawledDeckCardsInputSchema: InputSchema<AdminCrawledDeckCardsInput> = z.object({
   deckId: z.int().min(1),
+});
+
+export interface SearchAdminCollectionInput {
+  search: string;
+  offset: number;
+  limit: number;
+}
+
+export const searchAdminCollectionInputSchema: InputSchema<SearchAdminCollectionInput> = z.object({
+  search: z
+    .string()
+    .trim()
+    .min(MIN_COLLECTION_SEARCH_CHARS, `Type at least ${MIN_COLLECTION_SEARCH_CHARS} letters of a card name.`)
+    .max(MAX_COLLECTION_SEARCH_CHARS, "That search is too long."),
+  offset: z.int().min(0).max(100_000).default(0),
+  limit: z.int().min(1).max(ADMIN_COLLECTION_PAGE).default(ADMIN_COLLECTION_PAGE),
 });
 
 export interface ListAdminFeedbackReportsInput {

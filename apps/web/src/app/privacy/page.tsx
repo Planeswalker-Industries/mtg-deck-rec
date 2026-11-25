@@ -76,6 +76,10 @@ export default function PrivacyPage() {
             address with it. An admin may answer: the site emails the reply to the address on your account, with your
             message quoted, and keeps a copy of the reply. The admin writing it still doesn&apos;t see your address.
           </Item>
+          <Item term="When an admin looks at your account">
+            To fix a problem or answer a report, the site&apos;s admins can open your account&apos;s saved decks and
+            collection, private ones included. Each look is recorded: which admin, which account and when.
+          </Item>
           <Item term="Errors the site runs into">
             When something fails, on our servers or in your browser, we keep a record so we can fix it: what went wrong,
             the page it happened on (without anything after a ? in the address), the time, your browser&apos;s name and

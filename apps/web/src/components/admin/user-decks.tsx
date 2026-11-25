@@ -20,7 +20,7 @@ const LOADING_CARD_LINES = 6;
  * Each read writes an audit row, so a look is fetched once and kept: no refetch when the window regains focus or the
  * tab is opened again in the same visit. Reloading the page is a new look, and a new row.
  */
-const ONE_LOOK = { staleTime: Infinity, refetchOnWindowFocus: false, retry: false } as const;
+export const ONE_LOOK = { staleTime: Infinity, refetchOnWindowFocus: false, retry: false } as const;
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 

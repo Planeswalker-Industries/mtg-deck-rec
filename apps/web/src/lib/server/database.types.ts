@@ -2343,6 +2343,16 @@ export type Database = {
           report_page_path: string
         }[]
       }
+      admin_user_collection: { Args: { p_user_id: string }; Returns: Json }
+      admin_user_collection_items: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_search: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       admin_user_decks: { Args: { p_user_id: string }; Returns: Json }
       bracket_cards: { Args: never; Returns: Json }
       card_category: { Args: { p_type_line: string }; Returns: string }

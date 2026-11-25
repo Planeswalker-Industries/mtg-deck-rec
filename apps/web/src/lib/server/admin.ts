@@ -1,4 +1,5 @@
 import type { ApiError } from "@mtg/core/contract";
+import { normalizeName } from "@mtg/core/parse";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ListAdminAcceptRatesInput,
@@ -8,11 +9,13 @@ import type {
   ListAdminSyncRunsInput,
   ListAdminTagsInput,
   ListAdminUsersInput,
+  SearchAdminCollectionInput,
   UpdateAdminTagInput,
   UpdateAdminUserInput,
 } from "@/lib/admin/schemas";
 import type {
   AdminAcceptRate,
+  AdminCollectionItemPage,
   AdminCrawledDeckCard,
   AdminCrawledDeckPage,
   AdminCrawlSource,
@@ -30,6 +33,7 @@ import type {
   AdminTag,
   AdminTagPage,
   AdminUser,
+  AdminUserCollection,
   AdminUserDeck,
   AdminUserPage,
 } from "@/lib/admin/types";
@@ -461,6 +465,36 @@ export async function getAdminDeckCards(db: AuthedClient, deckId: string): Promi
   const { data, error } = await db.rpc("admin_deck_cards", { p_deck_id: deckId });
   if (error) throw asAdminError(error);
   return (Array.isArray(data) ? data : []) as unknown as AdminDeckCard[];
+}
+
+/**
+ * One account's collection totals and import history, for the user page's Collection tab. One audit row per call.
+ * The entries themselves are reached only through a search (`searchAdminUserCollection`).
+ */
+export async function getAdminUserCollection(db: AuthedClient, userId: string): Promise<AdminUserCollection> {
+  const { data, error } = await db.rpc("admin_user_collection", { p_user_id: userId });
+  if (error) throw asAdminError(error);
+  return data as unknown as AdminUserCollection;
+}
+
+/**
+ * Entries of one account's collection whose card name contains the search, a page at a time. The search is
+ * normalized the way `cards.name_normalized` is built, so "Seance" finds "Séance". One audit row per call, holding the
+ * search's length, never its text.
+ */
+export async function searchAdminUserCollection(
+  db: AuthedClient,
+  userId: string,
+  input: SearchAdminCollectionInput,
+): Promise<AdminCollectionItemPage> {
+  const { data, error } = await db.rpc("admin_user_collection_items", {
+    p_user_id: userId,
+    p_search: normalizeName(input.search),
+    p_offset: input.offset,
+    p_limit: input.limit,
+  });
+  if (error) throw asAdminError(error);
+  return data as unknown as AdminCollectionItemPage;
 }
 
 export async function listAdminFeedbackReports(

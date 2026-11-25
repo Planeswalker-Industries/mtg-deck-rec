@@ -5,6 +5,7 @@ import { HttpError } from "react-admin";
 import {
   ADMIN_USER_SORTS,
   type AdminAcceptRate,
+  type AdminCollectionItemPage,
   type AdminDeckCard,
   type AdminSyncRun,
   type AdminSyncRunPage,
@@ -12,6 +13,7 @@ import {
   type AdminTagPage,
   type AdminTagSort,
   type AdminUser,
+  type AdminUserCollection,
   type AdminUserDeck,
   type AdminUserPage,
 } from "@/lib/admin/types";
@@ -245,10 +247,16 @@ const provider = {
   // database, so the screens call these themselves, once, when the tab that shows them opens.
   getUserDecks: (userId: string) => call<AdminUserDeck[]>(`${recordUrl(USERS, userId)}/decks`),
   getDeckCards: (deckId: string) => call<AdminDeckCard[]>(`${recordUrl(DECKS, deckId)}/cards`),
+  getUserCollection: (userId: string) => call<AdminUserCollection>(`${recordUrl(USERS, userId)}/collection`),
+  searchUserCollection: (userId: string, search: string, offset: number) =>
+    call<AdminCollectionItemPage>(
+      `${recordUrl(USERS, userId)}/collection/items?${new URLSearchParams({ search, offset: String(offset) })}`,
+    ),
 };
 
 /** The provider's own methods beside React Admin's, for `useDataProvider<AdminDataProvider>()`. */
-export type AdminDataProvider = DataProvider & Pick<typeof provider, "getUserDecks" | "getDeckCards">;
+export type AdminDataProvider = DataProvider &
+  Pick<typeof provider, "getUserDecks" | "getDeckCards" | "getUserCollection" | "searchUserCollection">;
 
 /**
  * One cast, at the boundary. `DataProvider`'s methods are generic in the record type, so a provider that returns
