@@ -26,8 +26,11 @@ export interface CrawlDay {
   claimHeld: boolean;
   /** Seconds the source crawled today (crawl_used_today). */
   usedSeconds: number;
-  /** Today's newest run, or null when none ran today. */
-  newest: { state: CrawlRunState; finishedAt: Date | null } | null;
+  /**
+   * Today's newest run, or null when none ran today. `throttled`: it ended on 429s its backoff couldn't wait out
+   * (crawl.runs.error starts "throttled: ", run.go throttledErrorPrefix).
+   */
+  newest: { state: CrawlRunState; finishedAt: Date | null; throttled: boolean } | null;
   /** How many of today's runs failed. */
   failedToday: number;
 }
@@ -45,7 +48,7 @@ export interface CrawlSchedule {
 
 /**
  * Whether to start the source's crawl now. Once the hour has come, with the source on and no live claim: the day's
- * first run, or a resume after today's newest run failed, when time is left, it ended at least `resumeAfterMinutes`
+ * first run, or a resume after today's newest run failed (not throttled), when time is left, it ended at least `resumeAfterMinutes`
  * ago, and fewer than `resumesPerDay` resumes happened (each failed run before the newest was followed by one).
  *
  * A run whose process was killed outright (no SIGTERM) never closes its row, so the newest run stays open and nothing
@@ -56,6 +59,8 @@ export function shouldStartCrawl(day: CrawlDay, schedule: CrawlSchedule, now: Da
   if (day.disabled || day.claimHeld) return false;
   if (day.newest === null) return true;
   if (day.newest.state !== 'failed' || day.newest.finishedAt === null) return false;
+  // The source asked us to slow down; a new run would start at the base pace. Tomorrow's run starts fresh.
+  if (day.newest.throttled) return false;
   if (day.usedSeconds >= schedule.budgetSeconds) return false;
   if (now.getTime() - day.newest.finishedAt.getTime() < schedule.resumeAfterMinutes * MS_PER_MINUTE) return false;
   return day.failedToday <= schedule.resumesPerDay;

@@ -167,6 +167,7 @@ type fakeStore struct {
 	versionsErr    error           // crawl_deck_versions fails, as when the database drops the connection
 	usedToday      time.Duration   // what crawl_used_today answers: the day's allowance already spent
 	usedTodayErr   error
+	claimErr       error // crawl_claim fails after the client's retries
 }
 
 func newStore(commanders ...Commander) *fakeStore {
@@ -262,6 +263,9 @@ func (s *fakeStore) CloseStaleRuns(_ context.Context, staleAfter time.Duration) 
 }
 func (s *fakeStore) Claim(_ context.Context, runID int64, _ string, _ time.Duration) (Claim, error) {
 	s.calls = append(s.calls, "claim")
+	if s.claimErr != nil {
+		return Claim{}, s.claimErr
+	}
 	if s.claimLoses {
 		return Claim{Claimed: false, HeldBy: 42}, nil
 	}
@@ -840,6 +844,35 @@ func TestPastTheBudgetOnlyRequestedCommandersAreVisited(t *testing.T) {
 	}
 }
 
+// A requested visit that starts just before the deadline is not cut short by it: the lookup gets its decks.
+func TestARequestedVisitOutlastsTheDeadline(t *testing.T) {
+	asked := liesa
+	asked.Requested = true
+	store := newStore(asked)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n222\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+	}}
+	// An hour of the day is left, and the clock reaches its end after the first fetch.
+	store.usedToday = store.policy.RunDuration - time.Hour
+	runner := newFakeRunner(store, getter, src)
+	start, readings := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), 0
+	runner.now = func() time.Time {
+		readings++
+		if readings > 3 {
+			return start.Add(time.Hour)
+		}
+		return start
+	}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if visit := store.visits[liesa.CardID]; visit.Outcome == OutcomePartial || getter.requests[src.DeckURL("222")] != 1 {
+		t.Fatalf("the requested visit should finish its page: %+v", visit)
+	}
+}
+
 // A run that cannot read how much of the day is spent does not crawl: it cannot keep to the allowance.
 func TestUnreadableBudgetFailsTheRun(t *testing.T) {
 	store := newStore(liesa)
@@ -847,6 +880,43 @@ func TestUnreadableBudgetFailsTheRun(t *testing.T) {
 	res := run(t, store, &fakeGetter{})
 	if res.Summary.State != "failed" || len(store.visitOrder) != 0 {
 		t.Fatalf("summary %+v, visits %v", res.Summary, store.visitOrder)
+	}
+	assertRunTicket(t, store, causeDatabase)
+}
+
+// A 429 the fetcher could not wait out ends the run: the source is saying no, and the next commander would only ask
+// again. Its error starts with the prefix the worker reads to skip that day's resume.
+func TestAThrottleEndsTheRun(t *testing.T) {
+	edgar := Commander{CardID: 2, OracleID: "oc-edgar", Name: "Edgar Markov"}
+	store := newStore(liesa, edgar)
+	getter := &fakeGetter{
+		statuses: map[string]int{src.ListURL(liesa.Name, 1): http.StatusTooManyRequests},
+		pages:    map[string][]byte{src.ListURL(edgar.Name, 1): []byte("111\n")},
+	}
+	res := run(t, store, getter)
+	if res.Summary.State != "failed" || !strings.HasPrefix(res.Summary.Error, throttledErrorPrefix) {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if getter.requests[src.ListURL(edgar.Name, 1)] != 0 {
+		t.Fatalf("the run should stop at the throttle, not move on: %v", getter.requests)
+	}
+	if store.disabledReason != "" {
+		t.Fatalf("a throttle is not a block: the source stays on (%q)", store.disabledReason)
+	}
+	assertRunTicket(t, store, causeThrottled)
+}
+
+// A claim that fails after the client's retries closes the run row it was made for, so no open row reads as a live
+// run or eats the day's allowance, and opens the run's ticket.
+func TestAFailedClaimClosesItsRun(t *testing.T) {
+	store := newStore(liesa)
+	store.claimErr = fmt.Errorf("read tcp: connection reset by peer")
+	_, err := newFakeRunner(store, &fakeGetter{}, src).Run(context.Background())
+	if err == nil {
+		t.Fatal("a failed claim is an error")
+	}
+	if len(store.finished) != 1 || store.finished[0].State != "failed" || len(store.visitOrder) != 0 {
+		t.Fatalf("finished %+v, visits %v", store.finished, store.visitOrder)
 	}
 	assertRunTicket(t, store, causeDatabase)
 }

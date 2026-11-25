@@ -1,6 +1,6 @@
 -- Exercises the crawl queue's seed and order: every commander the catalog says is legal is queued, EDHREC's count
 -- only orders them, and crawl_next_commanders serves requested, partial, never visited, under target (most played
--- first), then the rest stalest first, leaving out fresh exhausted commanders and cards no longer eligible. Runs in a
+-- first), then the rest stalest first (a failed visit counting as fresh), leaving out fresh exhausted commanders and cards no longer eligible. Runs in a
 -- transaction and rolls back, so it leaves nothing behind. Needs the local catalog.
 \set ON_ERROR_STOP on
 begin;
@@ -32,6 +32,8 @@ select v.role, (select id from public.cards where slug = v.slug and deleted_at i
     ('stale_less_played', 'silas-renn-seeker-adept'),
     ('stale_most_played', 'akiri-line-slinger'),
     ('fresh_most_played', 'sisay-weatherlight-captain'),
+    ('failed_stale', 'kydele-chosen-of-kruphix'),
+    ('failed_never', 'ravos-soultender'),
     ('not_a_commander', 'sol-ring'),
     ('banned', 'golos-tireless-pilgrim')
   ) as v (role, slug);
@@ -59,6 +61,9 @@ select 'moxfield', fx.card_id, v.outcome, v.last_visited_at, v.held_decks, v.edh
     ('stale_less_played', 'done', :'stale_at'::timestamptz, 80, 5),
     ('stale_most_played', 'done', :'stale_at'::timestamptz, 80, 500),
     ('fresh_most_played', 'done', now() - interval '1 day', 80, 10000),
+    -- Failed just now (updated_at), however long ago the last full visit was, or with none at all.
+    ('failed_stale', 'failed', now() - interval '60 days', 80, 300),
+    ('failed_never', 'failed', null, 0, 200),
     ('not_a_commander', null, null, 0, 99999),
     ('banned', null, null, 0, 99999)
   ) as v (role, outcome, last_visited_at, held_decks, edhrec_deck_count)
@@ -89,7 +94,7 @@ select fx.role, e.ord, e.q
 select chk('the queue serves the groups in order, staleness before popularity in the last',
   (select string_agg(role, ' > ' order by ord) from served) =
     'requested_new > requested_fresh > partial > never_most_played > never_less_played > under_target'
-    || ' > exhausted_stale > stale_most_played > stale_less_played > fresh_most_played',
+    || ' > exhausted_stale > stale_most_played > stale_less_played > fresh_most_played > failed_stale > failed_never',
   (select string_agg(coalesce(role, q ->> 'name'), ' > ' order by ord) from served));
 select chk('an exhausted commander waits until its own spread wait has passed',
   not exists (select 1 from served where role = 'exhausted_fresh'));

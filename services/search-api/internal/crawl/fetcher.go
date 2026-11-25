@@ -232,7 +232,7 @@ func (f *Fetcher) succeeded() time.Duration {
 
 // Get pulls one page with backoff. A 403/challenge returns a Blocked error without retrying; 429 and 5xx retry up
 // to maxFetchRetries times with exponential backoff, widening to the Retry-After value when the server sets one. No
-// wait is longer than Policy.BackoffMax.
+// wait is longer than Policy.BackoffMax; a 429 that asks for longer is returned at once.
 func (f *Fetcher) Get(ctx context.Context, rawurl string) ([]byte, error) {
 	delay := f.policy.BackoffStart
 	var lastErr error
@@ -272,8 +272,12 @@ func (f *Fetcher) Get(ctx context.Context, rawurl string) ([]byte, error) {
 						"status", httpErr.Status, "url", httpErr.URL, "from", was, "to", now)
 				}
 			}
-			// Honoured up to BackoffMax only: a 5xx once asked for a day's wait, and an uncapped Retry-After would hold
-			// the run (and its claim) idle for as long as the server says.
+			// A 429 asking for longer than BackoffMax is the source saying stop for now: no retry, and the run ends
+			// throttled. A 5xx's Retry-After is honoured up to BackoffMax only: one once asked for a day's wait, and an
+			// uncapped wait would hold the run (and its claim) idle for as long as the server says.
+			if httpErr.Status == http.StatusTooManyRequests && httpErr.RetryAfter > f.policy.BackoffMax {
+				return nil, httpErr
+			}
 			if httpErr.RetryAfter > 0 {
 				delay = min(httpErr.RetryAfter, f.policy.BackoffMax)
 			}

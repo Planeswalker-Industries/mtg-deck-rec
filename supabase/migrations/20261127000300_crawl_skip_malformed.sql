@@ -76,7 +76,9 @@ $$;
 
 -- As in 20261127000200_crawl_queue_order.sql, plus failedBefore: whether the commander's last visit failed. The crawl
 -- does not count such a commander toward its failed-commander streak, so a few commanders whose pages always fail,
--- queued side by side, cannot end every run in its first visits.
+-- queued side by side, cannot end every run in its first visits. A failed visit also sends its commander to the back
+-- of the queue (the last group, stale from when it failed): left in its old place, every run would walk all of
+-- yesterday's failures again before reaching a fresh one, so a broken source would cost more each run.
 create or replace function public.crawl_next_commanders(p_source text, p_run_id bigint, p_limit int)
 returns jsonb
 language plpgsql
@@ -136,14 +138,17 @@ begin
         select g.*
           from (
             select t.commander_card_id, k.oracle_id, k.name, t.query_name, t.last_visited_at, t.edhrec_deck_count,
-                   t.held_decks, t.not_found_since, t.outcome, a.requested,
+                   t.held_decks, t.not_found_since, t.outcome, t.updated_at, a.requested,
                    case when t.outcome = 'partial' then group_partial
+                        when t.outcome = 'failed' then group_rest
                         when t.last_visited_at is null then group_never_visited
                         when t.held_decks < v_target then group_under_target
                         else group_rest
                    end as grp,
-                   -- Staleness orders only the last group; the others go most played first.
-                   case when t.outcome is distinct from 'partial' and t.last_visited_at is not null
+                   -- Staleness orders only the last group; the others go most played first. A failed commander is
+                   -- stale from its failed visit (crawl_finish_commander sets updated_at), not from its last full one.
+                   case when t.outcome = 'failed' then t.updated_at
+                        when t.outcome is distinct from 'partial' and t.last_visited_at is not null
                          and t.held_decks >= v_target
                         then t.last_visited_at
                    end as stale_at

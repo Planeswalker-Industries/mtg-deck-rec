@@ -10,7 +10,7 @@ const FRESH_DAY: CrawlDay = { disabled: false, claimHeld: false, usedSeconds: 0,
 const FAILED_ONCE: CrawlDay = {
   ...FRESH_DAY,
   usedSeconds: 3600,
-  newest: { state: 'failed', finishedAt: minutesBefore(NOON, 30) },
+  newest: { state: 'failed', finishedAt: minutesBefore(NOON, 30), throttled: false },
   failedToday: 1,
 };
 
@@ -31,10 +31,21 @@ describe('shouldStartCrawl', () => {
   });
 
   it('leaves a day whose run succeeded, or is still open', () => {
-    expect(shouldStartCrawl({ ...FAILED_ONCE, newest: { state: 'succeeded', finishedAt: minutesBefore(NOON, 30) } }, SCHEDULE, NOON)).toBe(
+    expect(
+      shouldStartCrawl(
+        { ...FAILED_ONCE, newest: { state: 'succeeded', finishedAt: minutesBefore(NOON, 30), throttled: false } },
+        SCHEDULE,
+        NOON,
+      ),
+    ).toBe(false);
+    expect(shouldStartCrawl({ ...FAILED_ONCE, newest: { state: 'running', finishedAt: null, throttled: false } }, SCHEDULE, NOON)).toBe(
       false,
     );
-    expect(shouldStartCrawl({ ...FAILED_ONCE, newest: { state: 'running', finishedAt: null } }, SCHEDULE, NOON)).toBe(false);
+  });
+
+  it('does not resume a run the source throttled', () => {
+    const throttled: CrawlDay = { ...FAILED_ONCE, newest: { state: 'failed', finishedAt: minutesBefore(NOON, 30), throttled: true } };
+    expect(shouldStartCrawl(throttled, SCHEDULE, NOON)).toBe(false);
   });
 
   it('does not resume once the day’s allowance is spent', () => {
@@ -42,7 +53,7 @@ describe('shouldStartCrawl', () => {
   });
 
   it('waits resumeAfterMinutes after the failure', () => {
-    const justFailed: CrawlDay = { ...FAILED_ONCE, newest: { state: 'failed', finishedAt: minutesBefore(NOON, 9) } };
+    const justFailed: CrawlDay = { ...FAILED_ONCE, newest: { state: 'failed', finishedAt: minutesBefore(NOON, 9), throttled: false } };
     expect(shouldStartCrawl(justFailed, SCHEDULE, NOON)).toBe(false);
     expect(shouldStartCrawl(justFailed, SCHEDULE, new Date(NOON.getTime() + 60_000))).toBe(true);
   });

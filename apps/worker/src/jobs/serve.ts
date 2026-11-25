@@ -111,6 +111,7 @@ async function dailyCrawls(sql: Sql, schedule: Schedule): Promise<void> {
         budget_seconds: number;
         newest_state: CrawlRunState | null;
         newest_finished_at: Date | null;
+        newest_throttled: boolean | null;
         failed_today: number;
       }[]
     >`
@@ -120,7 +121,7 @@ async function dailyCrawls(sql: Sql, schedule: Schedule): Promise<void> {
         from (select (select value from public.app_config where key = ${source}) as value) v
       ),
       today as (
-        select id, state, started_at, finished_at from crawl.runs
+        select id, state, started_at, finished_at, error from crawl.runs
         where source = ${source}
           and started_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'
           and error is distinct from 'already running'
@@ -135,6 +136,7 @@ async function dailyCrawls(sql: Sql, schedule: Schedule): Promise<void> {
              (select budget_seconds from policy) as budget_seconds,
              (select state from today order by started_at desc, id desc limit 1) as newest_state,
              (select finished_at from today order by started_at desc, id desc limit 1) as newest_finished_at,
+             (select error like 'throttled: %' from today order by started_at desc, id desc limit 1) as newest_throttled,
              (select count(*)::int from today where state = 'failed') as failed_today
     `;
     if (!row) continue;
@@ -142,7 +144,10 @@ async function dailyCrawls(sql: Sql, schedule: Schedule): Promise<void> {
       disabled: row.disabled,
       claimHeld: row.claim_held,
       usedSeconds: row.used_seconds,
-      newest: row.newest_state === null ? null : { state: row.newest_state, finishedAt: row.newest_finished_at },
+      newest:
+        row.newest_state === null
+          ? null
+          : { state: row.newest_state, finishedAt: row.newest_finished_at, throttled: row.newest_throttled ?? false },
       failedToday: row.failed_today,
     };
     const start = shouldStartCrawl(

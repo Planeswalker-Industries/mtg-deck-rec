@@ -5,10 +5,10 @@
 -- lookup visits only the requested commanders. The worker's schedule uses the same number to decide whether a run that
 -- failed or was stopped may be followed by another (app_config.worker crawlResumeMinutes, crawlResumesPerDay).
 
--- Seconds the source has crawled today (UTC): each run that started today and held the claim counts from its start to
--- its end, or to now while it is open. A run that never held the claim ('already running') crawled nothing. A run
--- closed as abandoned (crawl_claim's takeover, crawl_close_stale_runs) was dead long before its finished_at, so it
--- counts to its last sign of life instead.
+-- Seconds the source has crawled today (UTC): the part of each run that falls inside today, from its start (or
+-- midnight, for a run that began yesterday) to its end, or to now while it is open. A run that never held the claim
+-- ('already running') crawled nothing. A run closed as abandoned (crawl_claim's takeover, crawl_close_stale_runs) was
+-- dead long before its finished_at, so it counts to its last sign of life instead.
 create or replace function public.crawl_used_today(p_source text)
 returns integer
 language sql
@@ -16,17 +16,26 @@ stable
 security definer
 set search_path = ''
 as $$
-  select coalesce(sum(extract(epoch from greatest(
+  with day as (
+    select date_trunc('day', now() at time zone 'utc') at time zone 'utc' as start
+  ),
+  spans as (
+    select r.started_at,
            case
              when r.finished_at is null then now()
              when r.error like 'abandoned%' then coalesce(r.progress_at, r.started_at)
              else r.finished_at
-           end - r.started_at,
-           interval '0')))::integer, 0)
-    from crawl.runs r
-   where r.source = p_source
-     and r.started_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'
-     and r.error is distinct from 'already running';
+           end as ended_at
+      from crawl.runs r, day d
+     where r.source = p_source
+       and r.error is distinct from 'already running'
+       -- No live run is older than a day (its claim goes stale after hours), so an older row still open is one no
+       -- process closed yet: it is not crawling today.
+       and r.started_at > d.start - interval '1 day'
+  )
+  select coalesce(sum(extract(epoch from s.ended_at - greatest(s.started_at, d.start)))::integer, 0)
+    from spans s, day d
+   where s.ended_at > d.start;
 $$;
 
 -- Only the crawl's own role, as for the other crawl_* functions (20260922000300_deck_crawl_corpus.sql). The worker

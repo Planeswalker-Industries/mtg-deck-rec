@@ -97,6 +97,7 @@ const (
 // queue has none.
 const (
 	causeBlocked   = "blocked"   // a 403 or challenge: the kill switch is flipped
+	causeThrottled = "throttled" // 429s outlasted the fetcher's retries, or asked for a wait past BackoffMax
 	causeAdapter   = "adapter"   // missing or malformed decks past the floor and share, or a streak of failed commanders
 	causeDatabase  = "database"  // a crawl RPC failed, so the run cannot record what it does
 	causeCancelled = "cancelled" // the process was told to stop (a redeploy, a shutdown)
@@ -215,7 +216,16 @@ func (r *Runner) Run(ctx context.Context) (res Result, err error) {
 	// same question atomically.
 	claim, err := r.store.Claim(ctx, runID, r.clientID, policy.StaleClaim)
 	if err != nil {
-		return Result{}, fmt.Errorf("claiming crawl: %w", err)
+		// The run row exists, so close it: an open row would read as a live run to the schedule and count against
+		// the day's allowance until it went stale.
+		summary := RunSummary{State: "failed", Error: "claiming crawl: " + err.Error()}
+		done, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+		defer cancel()
+		if ferr := r.store.FinishRun(done, runID, summary); ferr != nil {
+			r.log.Error("writing the failed claim's run", "run", runID, "err", ferr)
+		}
+		r.logRunFailure(done, runID, runEnd{cause: causeDatabase}, summary)
+		return Result{RunID: runID, Summary: summary}, fmt.Errorf("claiming crawl: %w", err)
 	}
 	// A claim held by this very run is ours: the store retries a dropped call, and when the first try landed but its
 	// reply was lost, the retry finds the claim already taken, by us. Run ids are never reused, so no other run can
@@ -363,14 +373,14 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 				fail(causeCancelled, "cancelled")
 				return
 			}
+			// Past the day's allowance, only a deck lookup's commander is visited (the queue puts them first), and the
+			// first commander nobody asked for ends the run. A requested visit is bounded by its own page and fetch caps,
+			// never cut short by the allowance, so a lookup started near the deadline still gets its decks.
 			visitDeadline := deadline
-			if !r.now().Before(deadline) {
-				// Past the day's allowance, a deck lookup still gets its commander (the queue puts them first), bounded
-				// by the visit's own page and fetch caps; the first commander nobody asked for ends the run.
-				if !commander.Requested {
-					return
-				}
+			if commander.Requested {
 				visitDeadline = r.now().Add(policy.RunDuration)
+			} else if !r.now().Before(deadline) {
+				return
 			}
 
 			end.position = commander.Name
@@ -391,6 +401,11 @@ func (r *Runner) crawl(ctx context.Context, policy Policy, runID int64, summary 
 			switch {
 			case err != nil && isBlockErr(err):
 				end.cause = causeBlocked
+				return
+			case err != nil && isThrottleErr(err):
+				// Pushback the fetcher's backoff could not wait out: the run ends here rather than spending the rest of
+				// the day's requests on a source that is saying no.
+				fail(causeThrottled, throttledErrorPrefix+err.Error())
 				return
 			case err != nil && ctx.Err() != nil:
 				fail(causeCancelled, "cancelled")
@@ -695,6 +710,11 @@ func (r *Runner) logRunFailure(ctx context.Context, runID int64, end runEnd, sum
 	}
 }
 
+// throttledErrorPrefix starts a throttled run's error in crawl.runs. The worker's schedule (apps/worker/src/jobs/serve.ts
+// dailyCrawls) reads it and does not resume that day: the source asked us to slow down, and a new run starts at the
+// base pace.
+const throttledErrorPrefix = "throttled: "
+
 // hoursPerDay turns the streak's length into the whole days its ticket reports.
 const hoursPerDay = 24
 
@@ -815,4 +835,10 @@ func contentHash(commanders []string, cards map[string]int) string {
 
 func isBlockErr(err error) bool {
 	return errors.As(err, new(*Blocked))
+}
+
+// isThrottleErr is a 429 the fetcher gave back: its retries ran out, or the source asked for longer than BackoffMax.
+func isThrottleErr(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.Status == http.StatusTooManyRequests
 }

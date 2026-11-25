@@ -1,6 +1,6 @@
--- The day's crawl budget (20261127000400_crawl_daily_budget.sql): crawl_used_today sums today's (UTC) runs of one
--- source from start to finish, an open run to now, an abandoned run to its last sign of life, and leaves out runs that
--- never held the claim, runs from yesterday and other sources. The worker row carries the resume knobs, and only the
+-- The day's crawl budget (20261127000400_crawl_daily_budget.sql): crawl_used_today sums the part of one source's runs
+-- inside today (UTC), start to finish, an open run to now, an abandoned run to its last sign of life, and leaves out
+-- runs that never held the claim, runs that ended before midnight and other sources. The worker row carries the resume knobs, and only the
 -- service role may call the function. Runs in a transaction and rolls back, so it leaves nothing behind.
 \set ON_ERROR_STOP on
 begin;
@@ -42,10 +42,22 @@ insert into crawl.runs (source, state, started_at, finished_at, error) values
   ('archidekt', 'failed', :'day_start'::timestamptz, :'day_start'::timestamptz + interval '5 hours', 'cancelled');
 select chk('another source does not count', public.crawl_used_today('moxfield') = 3600 + 1800);
 
+
+-- A run that began yesterday counts only its part after midnight.
+insert into crawl.runs (source, state, started_at, finished_at, error) values
+  ('moxfield', 'succeeded', :'day_start'::timestamptz - interval '2 hours', :'day_start'::timestamptz + interval '15 minutes', null);
+select chk('a run across midnight counts only today''s part', public.crawl_used_today('moxfield') = 3600 + 1800 + 900,
+  public.crawl_used_today('moxfield')::text);
+
+-- A row from last week that nothing closed is not crawling today.
+insert into crawl.runs (source, state, started_at) values ('moxfield', 'queued', :'day_start'::timestamptz - interval '7 days');
+select chk('an old row left open does not count', public.crawl_used_today('moxfield') = 3600 + 1800 + 900,
+  public.crawl_used_today('moxfield')::text);
+
 -- An open run counts to now (the transaction's clock).
 insert into crawl.runs (source, state, started_at) values ('moxfield', 'running', :'day_start'::timestamptz);
 select chk('an open run counts to now',
-  public.crawl_used_today('moxfield') = 3600 + 1800 + extract(epoch from now() - :'day_start'::timestamptz)::integer,
+  public.crawl_used_today('moxfield') = 3600 + 1800 + 900 + extract(epoch from now() - :'day_start'::timestamptz)::integer,
   public.crawl_used_today('moxfield')::text);
 
 -- === the worker's knobs ===
