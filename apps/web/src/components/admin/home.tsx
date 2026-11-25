@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Title, useDataProvider } from "react-admin";
 import { Link as RouterLink } from "react-router-dom";
 import { Activity, Ban, ChevronRight } from "lucide-react";
-import { crawlDuty, nextWorkerRuns, type NextRun, type WorkerDuty } from "@mtg/core/worker";
+import { crawlDuty, crawlDutySource, nextWorkerRuns, type NextRun, type WorkerDuty } from "@mtg/core/worker";
 import type { AdminCrawlSource, AdminSiteStats, AdminWindowedCount, AdminWorkerSchedule } from "@/lib/admin/types";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ErrorText } from "@/components/ui/error-text";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ago, crawlProgressLine } from "./crawls-view";
@@ -30,6 +31,24 @@ const DUTY_LABEL: Record<WorkerDuty, string> = {
   edhrec: "EDHREC import",
 };
 const DUTY_ORDER: readonly WorkerDuty[] = ["collate", "baseline", "scores", "global_pairs", "edhrec"];
+
+/**
+ * How long Run now stays off after an ask. The worker takes an ask within seconds and its run then shows above; a
+ * minute keeps a second tap (or a second admin's stale page) from queueing the same duty again behind it.
+ */
+const RUN_NOW_COOLDOWN_MS = 60_000;
+
+/** What each run costs, said in the confirmation before the ask is sent. */
+const DUTY_COST: Record<WorkerDuty, string> = {
+  collate:
+    "Collates new crawled decks into the corpus, then refreshes the commander stats, substitutes, roles, combos and card pairs that changed. Minutes.",
+  baseline: "Rebuilds every card's baseline, then re-scores every commander. Several minutes.",
+  scores: "Re-scores every commander with the current settings. Several minutes.",
+  global_pairs: "Recounts the card pairs over every deck in the corpus. Runs beside the other duties, for a while.",
+  edhrec: "Fetches every commander page from EDHREC again, at one request a second. Hours.",
+};
+const CRAWL_COST =
+  "Starts a crawl run now, at one request a second, for up to six hours. A deploy to main stops it, and the day's scheduled run counts this one as the day's.";
 
 const NEXT_AT = new Intl.DateTimeFormat(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 const SCHEDULE_QUERY = ["admin", "worker-schedule"] as const;
@@ -298,15 +317,33 @@ function WorkerSchedule() {
   );
 }
 
-/** A duty's next run, or the ask still waiting for the worker, beside the button that asks for a run now. */
+/**
+ * A duty's next run, or the ask still waiting for the worker, beside the button that asks for a run now. The button
+ * asks for a confirmation first, then stays off while the ask waits and for a minute after it was sent.
+ */
 function RunNow({ duty, label, next, waitingSince }: { duty: string; label: string; next: NextRun; waitingSince: string | null }) {
   const dataProvider = useDataProvider<AdminDataProvider>();
   const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [coolingDown, setCoolingDown] = useState(false);
   const ask = useMutation({
     mutationFn: () => dataProvider.requestWorkerRun(duty),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SCHEDULE_QUERY }),
+    onSuccess: () => {
+      setCoolingDown(true);
+      return queryClient.invalidateQueries({ queryKey: SCHEDULE_QUERY });
+    },
   });
+
+  useEffect(() => {
+    if (!coolingDown) return;
+    const timer = setTimeout(() => setCoolingDown(false), RUN_NOW_COOLDOWN_MS);
+    return () => clearTimeout(timer);
+  }, [coolingDown]);
+
   const waiting = waitingSince !== null;
+  const off = waiting || coolingDown || ask.isPending;
+  const crawlSource = crawlDutySource(duty);
+  const cost = crawlSource === null ? DUTY_COST[duty as WorkerDuty] : CRAWL_COST;
 
   return (
     <div className="flex min-w-0 flex-col gap-1">
@@ -318,14 +355,39 @@ function RunNow({ duty, label, next, waitingSince }: { duty: string; label: stri
           type="button"
           variant="outline"
           className="h-11 px-4 sm:h-9"
-          disabled={waiting || ask.isPending}
-          onClick={() => ask.mutate()}
+          disabled={off}
+          onClick={() => setConfirming(true)}
           aria-label={`Run ${label} now`}
         >
-          {waiting ? "Asked" : "Run now"}
+          {waiting || coolingDown ? "Asked" : "Run now"}
         </Button>
       </div>
       {ask.isError && <ErrorText className="text-xs">{ask.error.message}</ErrorText>}
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="capitalize">Run {label} now?</DialogTitle>
+            <DialogDescription>{cost}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              disabled={off}
+              onClick={() => {
+                setConfirming(false);
+                ask.mutate();
+              }}
+            >
+              Run now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
