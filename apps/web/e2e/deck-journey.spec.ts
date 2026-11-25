@@ -1,7 +1,21 @@
-import { FIX_MOVE, expect, fillDecklist, openFix, leaveSwap, openSwap, skipCollectionOffer, swipe, test, type Locator, type Page } from "./fixtures";
-
-/** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
-const CUT_CARD = /^Cut (?!the rest and move on$)/;
+import {
+  CUT_CARD,
+  FIX_MOVE,
+  FORESTS_OVER_100,
+  FORESTS_TO_100,
+  SPELLS,
+  deckWith,
+  expect,
+  fillDecklist,
+  openFix,
+  leaveSwap,
+  openSwap,
+  skipCollectionOffer,
+  swipe,
+  test,
+  type Locator,
+  type Page,
+} from "./fixtures";
 
 /** The step's "8 / 100" counter. The slot tray shows the same on desktop; phones hide it to keep the swipe on screen. */
 const DECK_COUNT = /^\d+ \/ 100$/;
@@ -11,16 +25,8 @@ async function deckCount(recs: Locator) {
   return Number((await recs.getByRole("status").getByText(DECK_COUNT).innerText()).split(" / ")[0]);
 }
 
-/** The cards every test deck runs beside its commander: one is off-colour (Lightning Bolt), so it breaks a rule. */
-const SPELLS = ["1 Sol Ring", "1 Arcane Signet", "1 Cultivate", "1 Counterspell", "1 Swords to Plowshares", "1 Lightning Bolt", "1 Command Tower"];
-/** Forests that bring the deck (a commander and the seven cards above) to exactly 100, and to five over it. */
-const FORESTS_TO_100 = 92;
-const FORESTS_OVER_100 = 97;
 /** Past card-zoom's DISMISS_CLICK_GRACE_MS (400), which ignores a click just after a dismissal. */
 const AFTER_DISMISS_GRACE_MS = 500;
-
-const deckWith = (forests: number) =>
-  ["Commander", "1 Chulane, Teller of Tales", "", "Deck", ...SPELLS, ...(forests > 0 ? [`${forests} Forest`] : [])].join("\n");
 
 /**
  * A short Chulane deck with one off-colour card (Lightning Bolt), so Add has room and Fix has a rule break to trade out.

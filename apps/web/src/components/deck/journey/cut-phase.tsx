@@ -6,8 +6,11 @@ import { COMMANDER_DECK_SIZE } from "@mtg/core/commander";
 import type { CardId, CardSummary, CutReason, CutResult } from "@mtg/core/contract";
 import { lastResortCuts, trimCuts, type RoomCard, type StatLine } from "@mtg/core/journey";
 import { isFrontLand } from "@mtg/core/scoring";
+import { PageTour } from "@/components/tour/page-tour";
 import { Button } from "@/components/ui/button";
 import { cutReasonLabel, cutReasonShortLabel } from "@/lib/labels";
+import { tourPending } from "@/lib/tour-store";
+import { useChipsFor } from "../deck-stats/stat-preview";
 import { DeckGroupsPanel } from "../deck-groups-panel";
 import { PanelError } from "../panel-state";
 import { ShuffleDeck } from "../shuffle-deck";
@@ -81,8 +84,15 @@ export function CutPhase({
   const { recommended, undecided, isMarked, cutCopies, owed: owedAfterRuleBreaks, restore, toggle, take, finish } = journey.cut;
   /** The player passed on cutting lands, so Cut deals the rest of the deck instead. */
   const [landsPassed, setLandsPassed] = useState(false);
-  /** The swipe view's place in the cards it deals, moved by browsing; clamped below when the list shortens. */
-  const [cursor, setCursor] = useState(0);
+  /**
+   * The swipe view's place in the cards it deals, moved by browsing; clamped below when the list shortens. Null until
+   * the player browses: the view then opens on the first card, or the tour's.
+   */
+  const [cursor, setCursor] = useState<number | null>(null);
+  // While Cut's tour is still to come, the swipe view opens on the first card with STAT CHANGE PIPS, as Add's does, so
+  // the tour has some to show. Off once the player answers a card.
+  const chipsFor = useChipsFor();
+  const [tourFirst, setTourFirst] = useState(() => tourPending("cut"));
 
   if (cutState.status === "loading" || cutState.status === "idle") return <ShuffleDeck label="Checking the deck for cards to cut" />;
   if (cutState.status === "error") return <PanelError message={cutState.message} />;
@@ -174,7 +184,7 @@ export function CutPhase({
       : state.cuts.length > 0
         ? "Back at 100."
         : "The deck is at 100. Nothing needs cutting.";
-  const statusLine = <StepStatus reason={status} count={`${size} / ${COMMANDER_DECK_SIZE}`} />;
+  const statusLine = <StepStatus reason={status} count={`${size} / ${COMMANDER_DECK_SIZE}`} tour={view === "swipe" ? "cut" : undefined} />;
   const landCuts = (shown: readonly LandCount[], label: string) => <LandCuts lands={shown} label={label} onCut={take} onRestore={restore} />;
 
   if (view === "list") {
@@ -232,7 +242,8 @@ export function CutPhase({
 
   // The rule breaks first, then the trims the deck still owes. Browsing moves through them; deciding takes the one on screen.
   const dealt: CardSummary[] = [...undecided.map((sug) => sug.card), ...trimQueue.slice(0, trimOwed)];
-  const at = Math.max(0, Math.min(cursor, dealt.length - 1));
+  const withChips = tourFirst && chipsFor ? dealt.findIndex((c) => chipsFor(null, c).length > 0) : -1;
+  const at = Math.max(0, Math.min(cursor ?? Math.max(withChips, 0), dealt.length - 1));
   const next = dealt[at];
   const mandatoryNext = next ? undecided.find((sug) => sug.card.id === next.id) : undefined;
   const cutCount = state.cuts.length;
@@ -243,6 +254,8 @@ export function CutPhase({
         Cards that break a rule, then the weakest cards in the roles the deck has too much of, until the deck is at 100.
       </PhaseIntro>
       {statusLine}
+      {/* Cut's tour, once its swipe card is dealt. */}
+      {next && <PageTour id="cut" />}
       {next ? (
         <SingleSwipe
           card={next}
@@ -258,9 +271,16 @@ export function CutPhase({
           passLabel={`Keep ${next.name}`}
           acceptWord="Cut"
           passWord="Keep"
-          caption={withWarning(next, mandatoryNext ? reasonText(mandatoryNext.reasons) : trimCaption(next))}
-          onAccept={() => take(next)}
-          onPass={() => journey.dispatch({ type: "keep", cardId: next.id })}
+          // The reason line carries `cut.why`: the tour points at why the card is up for the cut.
+          caption={<span data-tour="cut.why">{withWarning(next, mandatoryNext ? reasonText(mandatoryNext.reasons) : trimCaption(next))}</span>}
+          onAccept={() => {
+            setTourFirst(false);
+            take(next);
+          }}
+          onPass={() => {
+            setTourFirst(false);
+            journey.dispatch({ type: "keep", cardId: next.id });
+          }}
           onNext={() => setCursor(at + 1)}
           onPrevious={() => setCursor(at - 1)}
           canNext={at < dealt.length - 1}

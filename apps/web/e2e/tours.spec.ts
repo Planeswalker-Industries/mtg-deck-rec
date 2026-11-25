@@ -1,5 +1,5 @@
 import { TOURS_ENABLED_KEY, TOURS_SEEN_KEY } from "../src/lib/constants";
-import { clearBuildBudget, expect, openSwap, swipe, test, toDeckbuilder, type Page } from "./fixtures";
+import { CUT_CARD, FORESTS_OVER_100, clearBuildBudget, deckWith, expect, fillDecklist, openSwap, swipe, test, toDeckbuilder, type Page } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 // Every other spec runs with tours off (playwright.config.ts); these start from an empty browser, where they are on.
@@ -352,6 +352,56 @@ test.describe("journey tours by touch", () => {
     await addButton(page).click();
     await expect(tour(page)).toBeHidden();
     expect(await seen(page)).toEqual(expect.arrayContaining(["journey", "add"]));
+  });
+});
+
+// Cut's tour (`cut`) on a deck over 100: the round opens on Cut, and tapping CUT in the journey's tour hands over.
+const CUT_TARGETS = ["cut.count", "cut.card", "cut.why", "cut.chips", "cut.decide"] as const;
+const CUT_FIRST = "Looks like you've got TOO MANY cards!";
+const cutButton = (page: Page) => page.getByRole("region", { name: "Cards to cut" }).getByRole("button", { name: CUT_CARD });
+
+async function openCutTour(page: Page) {
+  await openDeckStartTour(page);
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await fillDecklist(page, deckWith(FORESTS_OVER_100));
+  await page.getByRole("button", { name: "Analyze deck" }).click();
+  await expect(tour(page)).toContainText(JOURNEY_FIRST, { timeout: PAGE_WAIT_MS });
+  await nextUntil(page, "TAP CUT to start!");
+  await expectRingOn(page, "journey.step.cut");
+  await page.locator('[data-tour="journey.step.cut"]').click();
+  await expect(tour(page)).toContainText(CUT_FIRST, { timeout: PAGE_WAIT_MS });
+}
+
+test("cut tour elements are on the page", async ({ page }) => {
+  await openCutTour(page);
+  await expect(tour(page)).toContainText("Cut");
+  for (const target of CUT_TARGETS) await expect(page.locator(`[data-tour="${target}"]`)).toBeVisible();
+});
+
+test.describe("cut tour by touch", () => {
+  test.use({ hasTouch: true });
+
+  test("cut tour: the swipe browses, then Cut ends it", async ({ page }) => {
+    await openCutTour(page);
+    await expectRingOn(page, "cut.count");
+    await nextUntil(page, "SWIPE to see other CUT candidates!");
+
+    // The swipe browses: another card, the deck's count unchanged, and the tour moves on.
+    const before = await cutButton(page).getAttribute("aria-label");
+    const count = page.locator('[data-tour="cut.count"]');
+    const shown = await count.innerText();
+    await swipe(page.locator('[data-tour="cut.card"]'), -200, 0);
+    await expect(cutButton(page)).not.toHaveAttribute("aria-label", before!);
+    await expect(count).toHaveText(shown);
+    await expect(tour(page)).toContainText("says WHY");
+    await expectRingOn(page, "cut.why");
+
+    // The pips step is skipped when the card browsed to has none.
+    await nextUntil(page, "TAP these buttons");
+    await expectRingOn(page, "cut.decide");
+    await cutButton(page).click();
+    await expect(tour(page)).toBeHidden();
+    expect(await seen(page)).toContain("cut");
   });
 });
 

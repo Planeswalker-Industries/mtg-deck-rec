@@ -170,6 +170,35 @@ const ADD: readonly TourStep[] = [
 ];
 
 /**
+ * Cut's swipe view, approved by the owner 2026-11-24: the deck's count up in the stepper, then the card, its reason,
+ * its pips and its buttons. Its first card has STAT CHANGE PIPS (`CutPhase`).
+ */
+const CUT: readonly TourStep[] = [
+  {
+    target: "cut.count",
+    prompt: "read",
+    text: "Woah there! Looks like you've got TOO MANY cards! This count shows how far over you are.",
+  },
+  {
+    target: "cut.card",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "I recommend we CUT this card here. If you disagree, SWIPE to see other CUT candidates!",
+  },
+  { target: "cut.why", prompt: "read", text: "The note on the card says WHY it's up for the CUT." },
+  {
+    target: "cut.chips",
+    prompt: "read",
+    text: "Remember these? They're back! RED is BAD. GREEN is GOOD!",
+  },
+  {
+    target: "cut.decide",
+    prompt: "tap",
+    text: "Instead of a SWIPE, you can always TAP these buttons down here.",
+  },
+];
+
+/**
  * The Save Deck page (the round's Save: the deck name form up in the bar, the decklist below), approved by the owner
  * 2026-11-24. Top to bottom, then the page's own finish: name it and SAVE. Names only what earlier screens didn't show.
  */
@@ -231,6 +260,7 @@ export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-result": BUILD_RESULT,
   journey: JOURNEY,
   add: ADD,
+  cut: CUT,
   "save-deck": SAVE_DECK,
   "deck-stats": DECK_STATS,
 };
@@ -242,6 +272,7 @@ const TOUR_TITLES: Record<TourId, string> = {
   "build-result": "Your New Deck",
   journey: "Deck Journey",
   add: "Add",
+  cut: "Cut",
   "save-deck": "Save Deck",
   "deck-stats": "Deck Stats",
 };

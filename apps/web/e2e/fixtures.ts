@@ -2,6 +2,19 @@ import { test as base, expect, type Locator, type Page } from "@playwright/test"
 
 export * from "@playwright/test";
 
+/** The cards every test deck runs beside its commander: one is off-colour (Lightning Bolt), so it breaks a rule. */
+export const SPELLS = ["1 Sol Ring", "1 Arcane Signet", "1 Cultivate", "1 Counterspell", "1 Swords to Plowshares", "1 Lightning Bolt", "1 Command Tower"];
+/** Forests that bring the deck (a commander and the seven cards above) to exactly 100, and to five over it. */
+export const FORESTS_TO_100 = 92;
+export const FORESTS_OVER_100 = 97;
+
+/** A Chulane deck of the seven cards above and this many Forests. */
+export const deckWith = (forests: number) =>
+  ["Commander", "1 Chulane, Teller of Tales", "", "Deck", ...SPELLS, ...(forests > 0 ? [`${forests} Forest`] : [])].join("\n");
+
+/** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
+export const CUT_CARD = /^Cut (?!the rest and move on$)/;
+
 /** How long one fill waits for "Analyze deck" to enable before filling again. */
 const FILL_SETTLE_MS = 2_000;
 
