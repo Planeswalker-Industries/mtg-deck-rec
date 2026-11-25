@@ -336,7 +336,7 @@ func TestRunDisabledIsANoop(t *testing.T) {
 }
 
 // The first visit reads page 1 only and writes what it found, and the run records the visit, the probe and where it
-// started. The queue is seeded first so a new EDHREC import reaches it.
+// started. The queue is seeded first so a new catalog commander reaches it.
 func TestFirstVisitReadsTheFirstPageOnly(t *testing.T) {
 	store := newStore(liesa)
 	getter := &fakeGetter{pages: map[string][]byte{

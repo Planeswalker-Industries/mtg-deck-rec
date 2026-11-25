@@ -20,11 +20,12 @@ type Store interface {
 	Policy(ctx context.Context) (Policy, error)
 	// CrawlState is the source's cursor, claim, kill switch, deck count and queue progress.
 	CrawlState(ctx context.Context) (CrawlState, error)
-	// SeedCommanders adds the commanders the seed list (EDHREC) knows to the queue and refreshes their order; it
-	// writes only what changed and returns how many rows that was.
+	// SeedCommanders adds every commander the catalog says is legal to the queue and refreshes the counts that order
+	// it (EDHREC's deck count, the decks held); it writes only what changed and returns how many rows that was.
 	SeedCommanders(ctx context.Context) (int, error)
-	// NextCommanders returns up to limit commanders to visit, in queue order, leaving out those this run already
-	// tried and those the source has no decks for.
+	// NextCommanders returns up to limit commanders to visit, in queue order (requested, partial, never visited, under
+	// the target, then stalest first), leaving out those this run already tried, an exhausted commander visited within
+	// the retry wait, a not_found commander between retries, and cards no longer eligible unless a lookup asks for them.
 	NextCommanders(ctx context.Context, runID int64, limit int) ([]Commander, error)
 	// FinishCommander records one commander's visit.
 	FinishCommander(ctx context.Context, runID int64, cardID int, result CommanderResult) error
@@ -105,14 +106,16 @@ type Commander struct {
 	CardID   int    `json:"cardId"`
 	OracleID string `json:"oracleId"`
 	Name     string `json:"name"`
-	// HeldDecks is how many decks the corpus already holds that this commander leads. The queue orders by it, so a
-	// commander with three decks is served before one with five hundred; it is read here only for the log.
+	// HeldDecks is how many decks the corpus already holds that this commander leads. The queue serves commanders under
+	// the target before those at it; it is read here only for the log.
 	HeldDecks int `json:"heldDecks"`
 	// QueryName is the name that found decks on an earlier visit (the front face of a two-faced card, say); empty
 	// until a visit found listings.
 	QueryName string `json:"queryName"`
 	// Visited is false until the commander's first complete visit, which reads only Policy.FirstVisitPages.
 	Visited bool `json:"visited"`
+	// Requested says a deck lookup (commander_requests) asked for this commander; the queue serves those first.
+	Requested bool `json:"requested"`
 	// NotFoundSince is when the source began listing no decks for this commander; nil unless its last complete visit
 	// was not_found. Such a commander comes back on the queue's retry schedule until the queue gives it up.
 	NotFoundSince *time.Time `json:"notFoundSince"`
