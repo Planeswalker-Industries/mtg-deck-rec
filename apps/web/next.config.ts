@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
     localPatterns: [
       { pathname: "/*_hi_res.jpg", search: "" },
       { pathname: "/*_high_res.jpg", search: "" },
-      { pathname: "/card_lg.png", search: "" },
+      { pathname: "/card_back.webp", search: "" },
       { pathname: "/logo-stacked.png", search: "" },
       { pathname: "/home/home_png_*.png", search: "" },
     ],

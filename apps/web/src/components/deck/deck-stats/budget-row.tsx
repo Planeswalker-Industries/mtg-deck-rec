@@ -50,7 +50,7 @@ export function MoneySlot({ money }: { money: RoundBudget }) {
   if (totalUsd <= 0) return <span />;
   const over = overBudget(money);
   return (
-    <span className={over ? "inline-flex items-center gap-1 font-mono text-sm text-warning" : "font-mono text-sm"}>
+    <span data-tour="deck-stats.money" className={over ? "inline-flex items-center gap-1 font-mono text-sm text-warning" : "font-mono text-sm"}>
       {over && <TriangleAlert aria-hidden className="size-4" />}
       <span className="sr-only">To buy </span>
       {formatUsd(totalUsd)}
@@ -117,6 +117,8 @@ function OverCapMark() {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
+          // A hover tip: the tours stay up over it (`tour-dom.ts`).
+          data-tip=""
           side="top"
           sideOffset={6}
           collisionPadding={16}
@@ -150,7 +152,7 @@ export function BudgetRow({ money }: { money: RoundBudget }) {
   // The line's words for a screen reader, in the order the eye reads them; the mark's state is in the status.
   const name = `Budget: ${amount} to buy${asOfSuffix(asOf)}${status ? `, ${status.toLowerCase()}` : ""}`;
   return (
-    <section className="flex flex-col gap-2" aria-label="Budget">
+    <section data-tour="deck-stats.money" className="flex flex-col gap-2" aria-label="Budget">
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"

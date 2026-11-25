@@ -14,7 +14,7 @@ import { displayName } from "@/lib/cards";
 /** The deck stack photo (public/decks/deck-stack.webp, resized from the owner's deck_preview.png) at its pixel size. */
 const STACK = { src: "/decks/deck-stack.webp", width: 720, height: 679 } as const;
 /** The card back stands in for a deck with no commander, so the stack never shows the photo's blank grey card. */
-export const CARD_BACK_SRC = "/card_lg.png";
+export const CARD_BACK_SRC = "/card_back.webp";
 /** Scryfall's `normal` image size: the leaning card is at most about 125 px wide, and `normal` covers that at 2x. */
 const CARD_PX = { width: 488, height: 680 } as const;
 

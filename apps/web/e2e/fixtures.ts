@@ -1,6 +1,19 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Locator, type Page } from "@playwright/test";
 
 export * from "@playwright/test";
+
+/** The cards every test deck runs beside its commander: one is off-colour (Lightning Bolt), so it breaks a rule. */
+export const SPELLS = ["1 Sol Ring", "1 Arcane Signet", "1 Cultivate", "1 Counterspell", "1 Swords to Plowshares", "1 Lightning Bolt", "1 Command Tower"];
+/** Forests that bring the deck (a commander and the seven cards above) to exactly 100, and to five over it. */
+export const FORESTS_TO_100 = 92;
+export const FORESTS_OVER_100 = 97;
+
+/** A Chulane deck of the seven cards above and this many Forests. */
+export const deckWith = (forests: number) =>
+  ["Commander", "1 Chulane, Teller of Tales", "", "Deck", ...SPELLS, ...(forests > 0 ? [`${forests} Forest`] : [])].join("\n");
+
+/** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
+export const CUT_CARD = /^Cut (?!the rest and move on$)/;
 
 /** How long one fill waits for "Analyze deck" to enable before filling again. */
 const FILL_SETTLE_MS = 2_000;
@@ -28,6 +41,28 @@ export const CRAWLER_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/ext
 export const headMeta = (page: Page, key: string) =>
   page.locator(`head meta[property="${key}"], head meta[name="${key}"]`).first().getAttribute("content");
 
+/** Touch moves between a swipe's start and end, so the drag passes the direction check before it lands. */
+const SWIPE_MOVES = 5;
+
+/**
+ * A real touch swipe across `target`, from its centre by (dx, dy) px, sent through Chrome's input pipeline (CDP), so
+ * the browser turns it into pointer events and scrolls a vertical drag itself, as on a phone. Playwright's touchscreen
+ * only taps. Needs `hasTouch: true`.
+ */
+export async function swipe(target: Locator, dx: number, dy: number) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error("swipe: the target is not on screen");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const cdp = await target.page().context().newCDPSession(target.page());
+  const touch = (type: "touchStart" | "touchMove" | "touchEnd", px: number, py: number) =>
+    cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x: px, y: py }] });
+  await touch("touchStart", x, y);
+  for (let i = 1; i <= SWIPE_MOVES; i++) await touch("touchMove", x + (dx * i) / SWIPE_MOVES, y + (dy * i) / SWIPE_MOVES);
+  await touch("touchEnd", x + dx, y + dy);
+  await cdp.detach();
+}
+
 /** The Fix step's pair on screen: one card out, one card in. */
 export const FIX_MOVE = { name: "Fix: one card out, one card in" } as const;
 /** Fix and Swap wait on a recommendation read, which a cold server takes a while over. */
@@ -54,7 +89,7 @@ export async function openSwap(page: Page) {
   // Fix has its pool once it shows a pair, shows its end panel, or has gone on to Swap.
   const settled = recs
     .getByRole("region", FIX_MOVE)
-    .or(recs.getByRole("button", { name: "Next: swap" }))
+    .or(recs.getByRole("button", { name: "Let's Go!" }))
     .or(steps.locator('button[aria-current="step"]', { hasText: "Swap" }));
   await expect(settled.first()).toBeVisible({ timeout: STEP_WAIT_MS });
   const swap = steps.getByRole("button", { name: "Swap" });

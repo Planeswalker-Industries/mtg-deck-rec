@@ -44,6 +44,11 @@ export function useStatPreview(add: CardSummary | null, remove: CardSummary | nu
   }, [set, addId, removeId]);
 }
 
+/** The chips any card would get, for choosing which card to show first; null outside a provider. */
+export function useChipsFor(): StatPreviewValue["chipsFor"] | null {
+  return useContext(Preview)?.chipsFor ?? null;
+}
+
 /** The lines the card on screen would move; none outside a provider (the card rater). */
 export function useStatChips(add: CardSummary | null, remove: CardSummary | null): StatChip[] {
   return useContext(Preview)?.chipsFor(add, remove) ?? [];

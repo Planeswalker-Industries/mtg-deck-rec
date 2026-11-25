@@ -64,6 +64,8 @@ interface RoundControlsProps {
   /** Receives the element between Start over and Save that the step's `StepStatus` renders into. */
   slotRef?: (el: HTMLElement | null) => void;
   className?: string;
+  /** The page's tour id: Start over carries `<tour>.start-over`, Save `<tour>.save`. */
+  tour?: string;
 }
 
 /**
@@ -72,7 +74,7 @@ interface RoundControlsProps {
  * (owner, 2026-11-23), with the step's status between them when `slotRef` is given. Finish puts them in its top
  * sheet's top right.
  */
-export function RoundControls({ canUndo, onUndo, onStartOver, save, busy, slotRef, className }: RoundControlsProps) {
+export function RoundControls({ canUndo, onUndo, onStartOver, save, busy, slotRef, className, tour }: RoundControlsProps) {
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
@@ -93,13 +95,26 @@ export function RoundControls({ canUndo, onUndo, onStartOver, save, busy, slotRe
             <Undo2 aria-hidden />
             Undo
           </Button>
-          <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={() => setConfirming(true)}>
+          <Button
+            type="button"
+            variant="ghost"
+            className={LABELLED_ICON}
+            data-tour={tour && `${tour}.start-over`}
+            onClick={() => setConfirming(true)}
+          >
             <RotateCcw aria-hidden />
             Start over
           </Button>
           {slotRef && <div ref={slotRef} className="mx-2 flex min-w-0 flex-1 items-center gap-3" />}
           {save.kind === "new" ? (
-            <Button type="button" variant="ghost" className={LABELLED_ICON} onClick={save.onSave} disabled={busy}>
+            <Button
+              type="button"
+              variant="ghost"
+              className={LABELLED_ICON}
+              data-tour={tour && `${tour}.save`}
+              onClick={save.onSave}
+              disabled={busy}
+            >
               <Save aria-hidden />
               Save
             </Button>
@@ -110,6 +125,7 @@ export function RoundControls({ canUndo, onUndo, onStartOver, save, busy, slotRe
                   type="button"
                   variant="ghost"
                   className={LABELLED_ICON}
+                  data-tour={tour && `${tour}.save`}
                   disabled={busy || save.copy.status === "saving"}
                   aria-label={save.copy.status === "saving" ? "Saving" : "Save"}
                 >

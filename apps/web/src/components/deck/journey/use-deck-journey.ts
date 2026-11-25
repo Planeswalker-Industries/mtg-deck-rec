@@ -932,9 +932,8 @@ export function useDeckJourney({
       isKept: (cardId: CardId) => state?.keptInReplace.includes(cardId) ?? false,
       /** The swap picked for a card, if any. */
       swapFor: (cardId: CardId) => state?.swaps.find((s) => s.target.id === cardId) ?? null,
-      /** Replacements passed on this round, which aren't offered for that card again. */
+      /** Replacements passed over for a swap this round, which aren't offered for that card again. */
       declined: state?.declinedSwaps ?? [],
-      decline: (targetId: CardId, replacementId: CardId) => void apply({ type: "declineSwap", targetId, replacementId }),
     },
     undo,
     canUndo: (current?.past.length ?? 0) > 0,

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CardId, CardSummary, CommanderKeyId, CutReason } from "@mtg/core/contract";
 import { CardImage } from "@/components/cards/card-image";
 import { PocketGrid } from "@/components/cards/pocket-grid";
+import { PageTour } from "@/components/tour/page-tour";
 import { Button } from "@/components/ui/button";
 import type { JourneySwap } from "@mtg/core/journey";
 import { displayName } from "@/lib/cards";
@@ -17,6 +18,21 @@ import type { DeckJourney } from "./use-deck-journey";
 
 /** Reasons under a card in the list. */
 const MAX_REASONS = 2;
+/** Tailwind's `lg`, where Deck stats is the rail beside the round rather than the bar docked at a phone's foot. */
+const RAIL_QUERY = "(min-width: 64rem)";
+
+const onRailChange = (change: () => void) => {
+  const query = window.matchMedia(RAIL_QUERY);
+  query.addEventListener("change", change);
+  return () => query.removeEventListener("change", change);
+};
+/** Whether Deck stats is the rail; false on the server and before hydration. */
+const useRail = () =>
+  useSyncExternalStore(
+    onRailChange,
+    () => window.matchMedia(RAIL_QUERY).matches,
+    () => false,
+  );
 
 function shownReasons(reasons: readonly CutReason[]): CutReason[] {
   const notOwned = reasons.includes("NOT_OWNED");
@@ -42,6 +58,7 @@ export function ReplacePhase({
   commanderKeyId: CommanderKeyId | null;
 }) {
   const { state: replaceState, targets } = journey.replace;
+  const rail = useRail();
   const swaps = journey.state?.swaps ?? [];
   const [focus, setFocus] = useState<CardId | null>(null);
   /** A picked swap the player tapped to take back: the sitting reopens on its card. Belongs to one version of the list. */
@@ -83,10 +100,13 @@ export function ReplacePhase({
   }
 
   const picked = swaps.map((s) => ({ target: s.target, replacement: s.replacement }));
-  const onPick = (swap: { target: CardSummary; replacement: CardSummary }) =>
-    journey.dispatch({ type: "swap", target: swap.target, replacement: swap.replacement });
+  // The swap and the options passed over for it are one choice, so one Undo takes both back.
+  const onPick = (swap: { target: CardSummary; replacement: CardSummary }, passedOver: readonly CardId[]) =>
+    journey.dispatch(
+      { type: "swap", target: swap.target, replacement: swap.replacement },
+      ...passedOver.map((replacementId) => ({ type: "declineSwap" as const, targetId: swap.target.id, replacementId })),
+    );
   const onKeep = (card: CardSummary) => journey.replace.keep(card.id);
-  const onDecline = (target: CardSummary, replacement: CardSummary) => journey.replace.decline(target.id, replacement.id);
   // A card swapped out or kept is decided, and so is one an undone addition took back out of the deck. The swipe view
   // steps over decided cards when their turn comes, since it deals by position, so coming back picks up at the first
   // card still open.
@@ -173,7 +193,6 @@ export function ReplacePhase({
             picked={picked}
             onPick={onPick}
             onKeep={onKeep}
-            onDecline={onDecline}
             declined={declined}
             onFinish={() => setFocus(null)}
           />
@@ -223,6 +242,10 @@ export function ReplacePhase({
         // Keyed by the targets' version: new settings ask for new targets, and replacements already fetched were made
         // with the old ones, so the sitting starts over rather than keep them. A swap taken back reopens it on its card.
         <div ref={sitting} className="scroll-mt-44">
+          {/* Swap's own tour first, then on desktop Deck stats', with a swap's card on screen to score. On a phone Deck
+              stats' tour waits for a tap on the docked bar (owner, 2026-11-25). */}
+          <PageTour id="swap" />
+          {rail && <PageTour id="deck-stats" />}
           <SwipeRater
             key={`${journey.replace.version}:${reopen?.n ?? 0}:${journey.undoCount}`}
             targets={toSwipe}
@@ -234,7 +257,6 @@ export function ReplacePhase({
             picked={picked}
             onPick={onPick}
             onKeep={onKeep}
-            onDecline={onDecline}
             declined={declined}
             skipTarget={skipTarget}
             // A card with no replacement on any rung is stepped over, never dealt empty; when that is every card, the

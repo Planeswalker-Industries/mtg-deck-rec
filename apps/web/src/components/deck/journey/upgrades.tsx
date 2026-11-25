@@ -22,6 +22,7 @@ export function Upgrades({
   onBuy,
   saved,
   className,
+  tour,
 }: {
   /** The round's context, the deck as it stands: collection, bracket, budget left and stat choices. */
   context: RecContext;
@@ -29,6 +30,8 @@ export function Upgrades({
   onBuy: () => void;
   saved: BuySaveState;
   className?: string;
+  /** The page's tour id: the heading carries `<tour>.upgrades`. */
+  tour?: string;
 }) {
   const [upgrades, setUpgrades] = useState<UpgradeSuggestion[]>([]);
   useEffect(() => {
@@ -54,7 +57,7 @@ export function Upgrades({
 
   return (
     <section aria-labelledby="review-upgrades" className={cn("flex flex-col gap-3", className)}>
-      <h3 id="review-upgrades" className="font-heading text-xl leading-none font-semibold">
+      <h3 id="review-upgrades" data-tour={tour && `${tour}.upgrades`} className="w-fit font-heading text-xl leading-none font-semibold">
         Upgrades worth buying
       </h3>
       {/* The total and Buy lead, as on the rest of Finish: on a phone the rows would push Buy under the docked bar. */}

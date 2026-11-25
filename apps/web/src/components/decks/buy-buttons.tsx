@@ -38,6 +38,7 @@ export function BuyButtons({
   label = "Buy on TCGplayer",
   align = "start",
   className,
+  tour,
 }: {
   carts: readonly string[];
   /** Called as a cart opens; absent where Buy saves nothing (the saved deck page). */
@@ -49,10 +50,12 @@ export function BuyButtons({
   /** Which side the buttons and the save line sit on. */
   align?: "start" | "end";
   className?: string;
+  /** The page's tour id: the buttons carry `<tour>.buy`. */
+  tour?: string;
 }) {
   if (carts.length === 0) return null;
   return (
-    <div className={cn("flex flex-col gap-1", align === "end" ? "items-end" : "items-start", className)}>
+    <div data-tour={tour && `${tour}.buy`} className={cn("flex flex-col gap-1", align === "end" ? "items-end" : "items-start", className)}>
       <div className={cn("flex flex-wrap gap-2", align === "end" && "justify-end")}>
         {carts.map((href, i) => (
           <a

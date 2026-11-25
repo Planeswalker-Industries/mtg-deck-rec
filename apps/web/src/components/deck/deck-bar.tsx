@@ -8,8 +8,6 @@ import { Pencil } from "lucide-react";
 import type { Bracket, DeckAnalysis, RecContext } from "@mtg/core/contract";
 import { MAX_DECK_NAME_CHARS } from "@mtg/core/schemas";
 import { CommanderArt } from "@/components/cards/commander-plate";
-import { CardCount } from "@/components/deckbuilder/card-count";
-import { deckSize } from "@mtg/core/journey";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,9 +15,9 @@ import { displayName } from "@/lib/cards";
 import { DECK_BAR_HEIGHT_VAR, PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { BRACKETS, bracketLabel, collectionModeLabel } from "@/lib/labels";
 import { ColorIdentity } from "./color-identity";
-import { DeckIssuesChip } from "./resolution-issues";
 import type { CollectionMode } from "./use-deck-tool";
 import { ErrorText } from "@/components/ui/error-text";
+import { PageTour } from "@/components/tour/page-tour";
 
 const COLLECTION_MODES: CollectionMode[] = ["first", "only", "off"];
 
@@ -182,14 +180,16 @@ export function DeckBar({
     <div
       ref={bar}
       data-deck-bar=""
+      data-tour={building ? "save-deck.bar" : "journey.bar"}
       className="wood sticky top-0 isolate z-30 -mx-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 overflow-hidden border-b border-(--wood-bar-rule) bg-(--wood-bar)/95 px-4 py-1.5 backdrop-blur-sm"
     >
+      {/* The journey's tour opens on this bar; the Deckbuilder's bar is no journey. */}
+      {!building && <PageTour id="journey" />}
       <CommanderArt commanders={commanders} className="-z-10" />
-      {/* The deck's issues sit beside the name as a chip, on every screen; in the Deckbuilder the colours come first. */}
+      {/* In the Deckbuilder the colours sit beside the name. */}
       <div className="flex min-w-0 items-center gap-2">
         <DeckName key={deckName} name={deckName} onRename={onRename} />
         {building && pips}
-        <DeckIssuesChip issues={analysis.issues} />
       </div>
       <Select value={String(context.bracket)} onValueChange={(value) => onBracketChange(Number(value) as Bracket)}>
         <SelectTrigger aria-label="Bracket" size="sm" className="justify-self-end bg-sleeve">
@@ -206,9 +206,7 @@ export function DeckBar({
         </SelectContent>
       </Select>
       <p className="flex min-w-0 items-center gap-2 text-xs text-(--wood-muted) text-on-art">
-        {building ? (
-          <CardCount size={deckSize(analysis.deck)} className="paper rounded-md bg-sleeve px-1.5 [text-shadow:none]" />
-        ) : (
+        {!building && (
           <>
             {pips}
             {coverage}

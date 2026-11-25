@@ -1,7 +1,9 @@
 import { defineConfig } from "@playwright/test";
+import { TOURS_ENABLED_KEY } from "./src/lib/constants";
 
 const port = Number(process.env.E2E_PORT ?? 3300);
 const externalServer = process.env.E2E_BASE_URL;
+const baseURL = externalServer ?? `http://localhost:${port}`;
 /** The read-only production smoke run (`yarn smoke`, T082) runs only e2e/smoke; the normal run skips that folder. */
 const smoke = Boolean(process.env.E2E_SMOKE);
 
@@ -18,7 +20,9 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["github"]] : "list",
   use: {
-    baseURL: externalServer ?? `http://localhost:${port}`,
+    baseURL,
+    // Tours off, so no test meets one; tours.spec.ts turns them on with its own storage state.
+    storageState: { cookies: [], origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: TOURS_ENABLED_KEY, value: "0" }] }] },
     viewport: { width: 390, height: 844 },
     reducedMotion: "reduce",
     channel: process.env.CI ? undefined : "chrome",

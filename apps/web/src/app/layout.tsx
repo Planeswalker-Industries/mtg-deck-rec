@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { AdSlot } from "@/components/layout/ad-slot";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { TourProvider } from "@/components/tour/tour-provider";
 import { PasteLimitBubble } from "@/components/ui/paste-limit";
 import { DEFAULT_OG_IMAGE, SITE_NAME } from "@/lib/constants";
 import { SITE_URL } from "@/lib/site";
@@ -29,14 +30,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${body.variable} ${heading.variable} ${drama.variable} ${mono.variable} h-full`}>
       <body className="flex min-h-full flex-col">
-        <SiteHeader />
-        <AdSlot slot="leaderboard" />
-        <div className="page-column flex flex-1 gap-6 pt-4 pb-10">
-          <main className="min-w-0 flex-1">{children}</main>
-          <AdSlot slot="rail" />
-        </div>
-        <SiteFooter />
-        <PasteLimitBubble />
+        <TourProvider>
+          <SiteHeader />
+          <AdSlot slot="leaderboard" />
+          <div className="page-column flex flex-1 gap-6 pt-4 pb-10">
+            <main className="min-w-0 flex-1">{children}</main>
+            <AdSlot slot="rail" />
+          </div>
+          <SiteFooter />
+          <PasteLimitBubble />
+        </TourProvider>
       </body>
     </html>
   );

@@ -1,7 +1,21 @@
-import { FIX_MOVE, expect, fillDecklist, openFix, leaveSwap, openSwap, skipCollectionOffer, test, type Locator, type Page } from "./fixtures";
-
-/** The Cut swipe's accept button, "Cut <card>"; not the "Cut the rest and move on" link under it. */
-const CUT_CARD = /^Cut (?!the rest and move on$)/;
+import {
+  CUT_CARD,
+  FIX_MOVE,
+  FORESTS_OVER_100,
+  FORESTS_TO_100,
+  SPELLS,
+  deckWith,
+  expect,
+  fillDecklist,
+  openFix,
+  leaveSwap,
+  openSwap,
+  skipCollectionOffer,
+  swipe,
+  test,
+  type Locator,
+  type Page,
+} from "./fixtures";
 
 /** The step's "8 / 100" counter. The slot tray shows the same on desktop; phones hide it to keep the swipe on screen. */
 const DECK_COUNT = /^\d+ \/ 100$/;
@@ -11,16 +25,8 @@ async function deckCount(recs: Locator) {
   return Number((await recs.getByRole("status").getByText(DECK_COUNT).innerText()).split(" / ")[0]);
 }
 
-/** The cards every test deck runs beside its commander: one is off-colour (Lightning Bolt), so it breaks a rule. */
-const SPELLS = ["1 Sol Ring", "1 Arcane Signet", "1 Cultivate", "1 Counterspell", "1 Swords to Plowshares", "1 Lightning Bolt", "1 Command Tower"];
-/** Forests that bring the deck (a commander and the seven cards above) to exactly 100, and to five over it. */
-const FORESTS_TO_100 = 92;
-const FORESTS_OVER_100 = 97;
 /** Past card-zoom's DISMISS_CLICK_GRACE_MS (400), which ignores a click just after a dismissal. */
 const AFTER_DISMISS_GRACE_MS = 500;
-
-const deckWith = (forests: number) =>
-  ["Commander", "1 Chulane, Teller of Tales", "", "Deck", ...SPELLS, ...(forests > 0 ? [`${forests} Forest`] : [])].join("\n");
 
 /**
  * A short Chulane deck with one off-colour card (Lightning Bolt), so Add has room and Fix has a rule break to trade out.
@@ -273,6 +279,365 @@ test("a deck over 100 opens on Cut, which deals the rule break first and stops a
   await expect(recs.getByRole("status").getByText(DECK_COUNT)).toHaveText("104 / 100");
 });
 
+/** Far enough to browse, past the swipe's minimum travel. */
+const BROWSE_PX = 120;
+/** A drag that is mostly vertical: a scroll, not a swipe. */
+const SCROLL_DX_PX = 10;
+const SCROLL_DY_PX = -200;
+/** How long a browse key press gets to show a new card before the browse counts as at its end. */
+const BROWSE_SETTLE_MS = 1_000;
+/** More presses than any test list deals, so a browse to the end always stops. */
+const MAX_BROWSE_PRESSES = 200;
+
+/** The swipe view of one step: its card (the swipe target), the accept button naming the card, and the line over it. */
+function swipeView(recs: Locator, region: string, verb: RegExp) {
+  const view = recs.getByRole("region", { name: region });
+  const accept = view.getByRole("button", { name: verb });
+  return {
+    card: view.locator('[data-tour$=".card"]'),
+    accept,
+    /** The card on screen, by the accept button's accessible name ("Add Sol Ring"). */
+    name: async () => (await accept.getAttribute("aria-label")) ?? "",
+    counter: view.getByText(/^Card \d+ of \d+$/),
+  };
+}
+
+/** Whether a button's accessible name moves off `label` within a browse's settle time: false at the end of a list. */
+function movesOff(button: Locator, label: string) {
+  return expect(button)
+    .not.toHaveAttribute("aria-label", label, { timeout: BROWSE_SETTLE_MS })
+    .then(() => true)
+    .catch(() => false);
+}
+
+/** Swap's pair on screen, after a fresh analysis; skips the test when the data has nothing to replace. */
+async function swapView(page: Page) {
+  const recs = await analyzeDeck(page);
+  await openSwap(page);
+  const rater = recs.getByRole("region", { name: "Swipe through cards to replace" });
+  const swapIn = rater.getByRole("button", { name: /^Swap in / });
+  const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
+  await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 60_000 });
+  test.skip(await nothingLeft.isVisible(), "no replacements in this data");
+  const skip = rater.getByRole("button", { name: /^Skip / });
+  const next = rater.getByRole("button", { name: "Next option" });
+  return {
+    recs,
+    rater,
+    swapIn,
+    skip,
+    next,
+    previous: rater.getByRole("button", { name: "Previous option" }),
+    outgoing: rater.locator('[data-tour="swap.out"]'),
+    incoming: rater.locator('[data-tour="swap.in"]'),
+    /** The option on screen and the card it replaces, by their buttons' accessible names. */
+    candidate: async () => (await swapIn.getAttribute("aria-label")) ?? "",
+    target: async () => (await skip.getAttribute("aria-label")) ?? "",
+    /** Whether › has another option to show. */
+    hasNext: async () => (await next.getAttribute("aria-disabled")) !== "true",
+  };
+}
+
+/** Fix's pair on screen, after a fresh analysis: Lightning Bolt goes out first, for the rule it breaks. */
+async function fixView(page: Page) {
+  const recs = await analyzeDeck(page);
+  await openFix(page);
+  const move = recs.getByRole("region", FIX_MOVE);
+  const swapIt = move.getByRole("button", { name: /^Swap .+ for / });
+  await expect(swapIt).toBeVisible({ timeout: 60_000 });
+  const next = move.getByRole("button", { name: "Next option" });
+  return {
+    recs,
+    move,
+    swapIt,
+    skip: move.getByRole("button", { name: /^Skip swapping / }),
+    next,
+    previous: move.getByRole("button", { name: "Previous option" }),
+    outgoing: move.locator('[data-tour="fix.out"]'),
+    incoming: move.locator('[data-tour="fix.in"]'),
+    undo: recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" }),
+    /** The pair on screen, by the Swap button's accessible name ("Swap Lightning Bolt for Ponder"). */
+    pair: async () => (await swapIt.getAttribute("aria-label")) ?? "",
+    /** Whether › has another card to put in to show. */
+    hasNext: async () => (await next.getAttribute("aria-disabled")) !== "true",
+  };
+}
+
+test.describe("browsing by touch", () => {
+  test.use({ hasTouch: true });
+
+  test("add: a swipe browses without adding", async ({ page }) => {
+    const recs = await analyzeDeck(page);
+    const add = swipeView(recs, "Cards to add", /^Add /);
+    await expect(add.accept).toBeVisible({ timeout: 60_000 });
+    const size = await deckCount(recs);
+    // Add has no "n of m" over the card.
+    await expect(add.counter).toBeHidden();
+    const first = await add.name();
+
+    await swipe(add.card, -BROWSE_PX, 0);
+    await expect(add.accept).not.toHaveAttribute("aria-label", first);
+    const second = await add.name();
+    expect(await deckCount(recs)).toBe(size);
+
+    await swipe(add.card, BROWSE_PX, 0);
+    await expect(add.accept).toHaveAttribute("aria-label", first);
+    expect(await deckCount(recs)).toBe(size);
+
+    // A swiped-past card is still there to decide: browse back to it and add it.
+    await swipe(add.card, -BROWSE_PX, 0);
+    await expect(add.accept).toHaveAttribute("aria-label", second);
+    await add.accept.click();
+    await expect(recs.getByRole("status").getByText(DECK_COUNT)).toHaveText(`${size + 1} / 100`);
+  });
+
+  test("add: a vertical drag scrolls", async ({ page }) => {
+    const recs = await analyzeDeck(page);
+    const add = swipeView(recs, "Cards to add", /^Add /);
+    await expect(add.accept).toBeVisible({ timeout: 60_000 });
+    const first = await add.name();
+    // The step scrolls itself into view, which can leave the page at its foot: start from the top so it can scroll.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await swipe(add.card, SCROLL_DX_PX, SCROLL_DY_PX);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect(add.accept).toHaveAttribute("aria-label", first);
+  });
+
+  test("add: the first and last cards spring back", async ({ page }) => {
+    const recs = await analyzeDeck(page);
+    const add = swipeView(recs, "Cards to add", /^Add /);
+    await expect(add.accept).toBeVisible({ timeout: 60_000 });
+    const first = await add.name();
+    await swipe(add.card, BROWSE_PX, 0);
+    await expect(add.accept).toHaveAttribute("aria-label", first);
+
+    // Browse to the end: a press that no longer changes the card is the last one.
+    let last = first;
+    for (let i = 0; i < MAX_BROWSE_PRESSES; i++) {
+      await page.keyboard.press("ArrowRight");
+      const moved = await expect(add.accept)
+        .not.toHaveAttribute("aria-label", last, { timeout: BROWSE_SETTLE_MS })
+        .then(() => true)
+        .catch(() => false);
+      if (!moved) break;
+      last = await add.name();
+    }
+    expect(last).not.toBe(first);
+    await swipe(add.card, -BROWSE_PX, 0);
+    await expect(add.accept).toHaveAttribute("aria-label", last);
+  });
+
+  test("cut: a swipe browses without cutting", async ({ page }) => {
+    const recs = await analyzeDeck(page, deckWith(FORESTS_OVER_100));
+    const cut = swipeView(recs, "Cards to cut", CUT_CARD);
+    await expect(cut.accept).toBeVisible({ timeout: 60_000 });
+    const count = recs.getByRole("status").getByText(DECK_COUNT);
+    await expect(count).toHaveText("105 / 100");
+    // The rule break comes first.
+    await expect(cut.accept).toHaveAttribute("aria-label", "Cut Lightning Bolt");
+    await expect(cut.counter).toHaveText(/^Card 1 of \d+$/);
+    await swipe(cut.card, -BROWSE_PX, 0);
+    await expect(cut.accept).not.toHaveAttribute("aria-label", "Cut Lightning Bolt");
+    await expect(cut.counter).toHaveText(/^Card 2 of \d+$/);
+    await expect(count).toHaveText("105 / 100");
+    await swipe(cut.card, BROWSE_PX, 0);
+    await expect(cut.accept).toHaveAttribute("aria-label", "Cut Lightning Bolt");
+  });
+
+  test("swap: a swipe on the card going in browses options", async ({ page }) => {
+    const swap = await swapView(page);
+    test.skip(!(await swap.hasNext()), "one replacement only in this data");
+    await expect(swap.previous).toHaveAttribute("aria-disabled", "true");
+    const first = await swap.candidate();
+    await swipe(swap.incoming, -BROWSE_PX, 0);
+    await expect(swap.swapIn).not.toHaveAttribute("aria-label", first);
+    await expect(swap.previous).toHaveAttribute("aria-disabled", "false");
+    await swipe(swap.incoming, BROWSE_PX, 0);
+    await expect(swap.swapIn).toHaveAttribute("aria-label", first);
+    await expect(swap.previous).toHaveAttribute("aria-disabled", "true");
+  });
+
+  test("swap: a swipe on the card going out browses the deck", async ({ page }) => {
+    const swap = await swapView(page);
+    const first = await swap.target();
+    // On a later option, so the browse is seen to deal the next card's first.
+    if (await swap.hasNext()) {
+      await swap.next.click();
+      await expect(swap.previous).toHaveAttribute("aria-disabled", "false");
+    }
+    await swipe(swap.outgoing, -BROWSE_PX, 0);
+    test.skip(!(await movesOff(swap.skip, first)), "one card to replace only in this data");
+    await expect(swap.previous).toHaveAttribute("aria-disabled", "true", { timeout: 60_000 });
+    await swipe(swap.outgoing, BROWSE_PX, 0);
+    await expect(swap.skip).toHaveAttribute("aria-label", first);
+  });
+
+  test("swap: browsing records nothing", async ({ page }) => {
+    const swap = await swapView(page);
+    // A pass, keep or swap is a choice Undo can take back; a browse is none.
+    const undo = swap.recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" });
+    await expect(undo).toBeDisabled();
+    await swipe(swap.incoming, -BROWSE_PX, 0);
+    await swipe(swap.outgoing, -BROWSE_PX, 0);
+    await expect(swap.swapIn).toBeVisible({ timeout: 60_000 });
+    await swipe(swap.incoming, -BROWSE_PX, 0);
+    await expect(undo).toBeDisabled();
+  });
+
+  test("fix: a swipe on the card going in browses the cards to put in", async ({ page }) => {
+    const fix = await fixView(page);
+    await expect(fix.undo).toBeDisabled();
+    const first = await fix.pair();
+    expect(first).toMatch(/^Swap Lightning Bolt for /);
+    await swipe(fix.incoming, -BROWSE_PX, 0);
+    test.skip(!(await movesOff(fix.swapIt, first)), "one card to put in only in this data");
+    // The card going out stays, and a browse is no choice for Undo to take back.
+    await expect(fix.swapIt).toHaveAttribute("aria-label", /^Swap Lightning Bolt for /);
+    await expect(fix.previous).toHaveAttribute("aria-disabled", "false");
+    await expect(fix.undo).toBeDisabled();
+    await swipe(fix.incoming, BROWSE_PX, 0);
+    await expect(fix.swapIt).toHaveAttribute("aria-label", first);
+    await expect(fix.previous).toHaveAttribute("aria-disabled", "true");
+  });
+
+  test("fix: a swipe on the card going out browses the cards to take out", async ({ page }) => {
+    const fix = await fixView(page);
+    // Bolt is the only card that breaks the rule; the line after it has cards to choose from.
+    await fix.swapIt.click();
+    await expect(fix.move.getByRole("button", { name: /^Swap Lightning Bolt for / })).toBeHidden({ timeout: 60_000 });
+    const end = fix.recs.getByRole("button", { name: "Let's Go!" });
+    await expect(fix.swapIt.or(end)).toBeVisible({ timeout: 60_000 });
+    test.skip(await end.isVisible(), "no second line in this data");
+    const first = await fix.pair();
+    // On a later card to put in, so the browse is seen to start the next card out at its first.
+    // (Fix finds its cards as they are asked for, so › can be on with nothing past it.)
+    if (await fix.hasNext()) {
+      await fix.next.click();
+      await movesOff(fix.swapIt, first);
+    }
+    const before = await fix.pair();
+    await swipe(fix.outgoing, -BROWSE_PX, 0);
+    test.skip(!(await movesOff(fix.swapIt, before)), "one card to take out only in this data");
+    await expect(fix.previous).toHaveAttribute("aria-disabled", "true");
+    await swipe(fix.outgoing, BROWSE_PX, 0);
+    await expect(fix.swapIt).toHaveAttribute("aria-label", first);
+  });
+});
+
+test("fix: arrow keys browse the cards to put in, and Skip passes the pair on screen", async ({ page }) => {
+  const fix = await fixView(page);
+  // OUT and IN over the cards, and no count: how many options there are doesn't help the choice (owner, 2026-11-24).
+  await expect(fix.move.getByText("Out", { exact: true })).toBeVisible();
+  await expect(fix.move.getByText("In", { exact: true })).toBeVisible();
+  await expect(fix.move.getByText(/\d+ of (\d+|many)$/)).toHaveCount(0);
+  const first = await fix.pair();
+  await page.keyboard.press("ArrowRight");
+  test.skip(!(await movesOff(fix.swapIt, first)), "one card to put in only in this data");
+  const second = await fix.pair();
+  await page.keyboard.press("ArrowLeft");
+  await expect(fix.swapIt).toHaveAttribute("aria-label", first);
+  await fix.next.click();
+  await expect(fix.swapIt).toHaveAttribute("aria-label", second);
+  // Skip passes on the second pair, not the first: the pairs start over, and the first comes back.
+  await fix.skip.click();
+  await expect(fix.swapIt).toHaveAttribute("aria-label", first);
+  await expect(fix.previous).toHaveAttribute("aria-disabled", "true");
+});
+
+/** Every Scryfall card image, held back by the test that deals cards face down. */
+const SCRYFALL_IMAGES = "https://cards.scryfall.io/**";
+/** A 1×1 transparent PNG, served for every held image once the test lets them load. */
+const PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+
+test("journey cards lie face down until their image loads, then turn over", async ({ page }) => {
+  let release = () => {};
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await page.route(SCRYFALL_IMAGES, async (route) => {
+    await released;
+    await route.fulfill({ contentType: "image/png", body: PIXEL_PNG });
+  });
+  const recs = await analyzeDeck(page);
+  const add = swipeView(recs, "Cards to add", /^Add /);
+  await expect(add.accept).toBeVisible({ timeout: 60_000 });
+  const dealt = add.card.locator("[data-dealt]");
+  await expect(dealt).toHaveAttribute("data-dealt", "down");
+  // The face is in place under the back, so the card keeps its name while it loads.
+  await expect(add.card.getByRole("img", { name: (await add.name()).replace(/^Add /, "") })).toBeAttached();
+
+  release();
+  await expect(dealt).toHaveAttribute("data-dealt", "up");
+});
+
+test("add: ArrowRight browses", async ({ page }) => {
+  const recs = await analyzeDeck(page);
+  const add = swipeView(recs, "Cards to add", /^Add /);
+  await expect(add.accept).toBeVisible({ timeout: 60_000 });
+  const size = await deckCount(recs);
+  const first = await add.name();
+  await page.keyboard.press("ArrowRight");
+  await expect(add.accept).not.toHaveAttribute("aria-label", first);
+  expect(await deckCount(recs)).toBe(size);
+  await page.keyboard.press("ArrowLeft");
+  await expect(add.accept).toHaveAttribute("aria-label", first);
+});
+
+test("swap: › and ArrowRight show the next option", async ({ page }) => {
+  const swap = await swapView(page);
+  await expect(swap.rater.getByRole("button", { name: /^Pass on / })).toHaveCount(0);
+  await expect(swap.next).toBeVisible();
+  // OUT and IN over the cards, and no count (owner, 2026-11-24).
+  await expect(swap.rater.getByText("Out", { exact: true })).toBeVisible();
+  await expect(swap.rater.getByText("In", { exact: true })).toBeVisible();
+  await expect(swap.rater.getByText(/\d+ of \d+$/)).toHaveCount(0);
+  test.skip(!(await swap.hasNext()), "one replacement only in this data");
+  const first = await swap.candidate();
+  await swap.next.click();
+  await expect(swap.swapIn).not.toHaveAttribute("aria-label", first);
+  const second = await swap.candidate();
+  await page.keyboard.press("ArrowLeft");
+  await expect(swap.swapIn).toHaveAttribute("aria-label", first);
+  await page.keyboard.press("ArrowRight");
+  await expect(swap.swapIn).toHaveAttribute("aria-label", second);
+});
+
+test("swap: a swap passes on the options seen before it, in one Undo step", async ({ page }) => {
+  const swap = await swapView(page);
+  test.skip(!(await swap.hasNext()), "one replacement only in this data");
+  const first = await swap.candidate();
+  const undo = swap.recs.getByRole("group", { name: "This round" }).getByRole("button", { name: "Undo" });
+  const swaps = swap.recs.getByRole("list", { name: "Swaps picked" }).getByRole("button");
+  const swapSecond = async () => {
+    const before = await swap.candidate();
+    await swap.next.click();
+    await expect(swap.swapIn).not.toHaveAttribute("aria-label", before);
+    const picked = await swap.candidate();
+    await swap.swapIn.click();
+    await expect(swaps).toHaveCount(1);
+    return picked;
+  };
+
+  // The swap and the pass on option 1 are one choice: one Undo takes both back, and option 1 is offered again.
+  await swapSecond();
+  await undo.click();
+  await expect(swaps).toHaveCount(0);
+  await expect(undo).toBeDisabled();
+  await expect(swap.swapIn).toHaveAttribute("aria-label", first, { timeout: 60_000 });
+  await expect(swap.previous).toHaveAttribute("aria-disabled", "true");
+
+  // Reopened, the card deals the picked option first, without the one passed over.
+  const picked = await swapSecond();
+  await swaps.first().click();
+  await expect(swaps).toHaveCount(0);
+  await expect(swap.swapIn).toHaveAttribute("aria-label", picked, { timeout: 60_000 });
+  const seen = [picked];
+  while ((await swap.hasNext()) && seen.length < MAX_BROWSE_PRESSES) {
+    await swap.next.click();
+    await expect(swap.swapIn).not.toHaveAttribute("aria-label", seen.at(-1)!);
+    seen.push(await swap.candidate());
+  }
+  expect(seen).not.toContain(first);
+});
+
 test("the Cut list crosses out recommended cuts and lets any card be cut", async ({ page }) => {
   const recs = await analyzeDeck(page, deckWith(FORESTS_OVER_100));
   await recs.getByRole("button", { name: "Show as a list" }).click();
@@ -308,8 +673,9 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   const nothingLeft = recs.getByRole("button", { name: "Next: finish" });
   await expect(swapIn.or(nothingLeft)).toBeVisible({ timeout: 20_000 });
   test.skip(await nothingLeft.isVisible(), "no replacements in this data");
-  const progress = rater.getByText(/^Card \d+ of \d+/);
-  const before = await progress.innerText();
+  // The card going out, by its Skip button's name ("Skip Sol Ring"): Swap shows no count.
+  const skip = rater.getByRole("button", { name: /^Skip / }).first();
+  const before = (await skip.getAttribute("aria-label")) ?? "";
   const candidateBefore = await swapIn.getAttribute("aria-label");
 
   await rater.getByRole("button", { name: /^Enlarge / }).last().click();
@@ -318,8 +684,7 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   // The layer covers the page, so dismissing it can't reach the buttons or the card below.
   await enlarged.click({ position: { x: 10, y: 10 } });
   await expect(enlarged).toBeHidden();
-  // innerText, as `before` was read: the counter hides " to replace" on phones with CSS.
-  await expect(progress).toHaveText(before, { useInnerText: true });
+  await expect(skip).toHaveAttribute("aria-label", before);
   await expect(swapIn).toHaveAttribute("aria-label", candidateBefore ?? "");
 
   // The browser's Back button closes the enlarged card and stays on the page.
@@ -330,7 +695,7 @@ test("the Replace swipe enlarges a card on tap without swiping the card undernea
   await page.goBack();
   await expect(enlarged).toBeHidden();
   expect(page.url()).toBe(url);
-  await expect(progress).toHaveText(before, { useInnerText: true });
+  await expect(skip).toHaveAttribute("aria-label", before);
 
   // Closing it by a tap drops its history entry, so the next Back closes the next card, not the page.
   await rater.getByRole("button", { name: /^Enlarge / }).last().click();
@@ -468,8 +833,8 @@ test("Swap never deals a piece of a combo the deck holds", async ({ page, browse
   expect(withCombo.some((t) => t.includes("Counterspell"))).toBe(false);
 });
 
-/** Finish's shopping list; its heading reads "Shopping list 8" (the total leads Finish, above it). */
-const SHOPPING_LIST = { name: /^Shopping list \d+$/ };
+/** Finish's shopping list; its heading reads "Cart 8" (the total leads Finish, above it). */
+const SHOPPING_LIST = { name: /^Cart \d+$/ };
 
 /** Straight to Finish from a deck at 100: no changes, so the list offers the whole deck. */
 async function finishAt100(page: Page) {
@@ -568,7 +933,7 @@ test("remove all then undo", async ({ page }) => {
   const removeButtons = list.getByRole("button", { name: /^Remove / });
   while ((await removeButtons.count()) > 0) await removeLine(list, /^Remove /);
 
-  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 0");
+  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Cart 0");
   // Nothing to buy shows no Buy at all, never a greyed one (T102).
   const ready = page.getByRole("region", { name: "Deck Complete!" });
   await expect(ready.getByText("Buy on TCGplayer")).toHaveCount(0);
@@ -576,5 +941,5 @@ test("remove all then undo", async ({ page }) => {
 
   await expect(list.getByText("You removed every card.")).toBeVisible();
   await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
-  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Shopping list 1");
+  await expect(list.getByRole("heading", { level: 3 }).first()).toHaveText("Cart 1");
 });

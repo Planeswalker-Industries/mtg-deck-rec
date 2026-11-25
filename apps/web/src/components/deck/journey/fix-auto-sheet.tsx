@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowLeftRight, ArrowRight, ArrowUp } from "lucide-react";
 import type { CardSummary } from "@mtg/core/contract";
 import type { FixMove } from "@mtg/core/journey";
 import { cn } from "cn";
@@ -85,10 +85,6 @@ export function FixAutoSheet({
             <p className="py-6 text-center text-sm text-muted-foreground">No moves left to make.</p>
           ) : (
             <div className="flex flex-col gap-4">
-              <div aria-hidden className="grid grid-cols-2 gap-1.5 text-xs font-semibold">
-                <span className="text-cut">Remove</span>
-                <span className="text-add">Add</span>
-              </div>
               {byLine(moves).map((group) => (
                 <section key={group.line} aria-label={lineLabel(group.line)} className="flex flex-col gap-1.5">
                   <h3 className="text-sm font-semibold text-muted-foreground">
@@ -100,10 +96,14 @@ export function FixAutoSheet({
                       <ul
                         key={index}
                         aria-label={`${displayName(move.out)} out, ${displayName(move.in)} in`}
-                        className={cn("grid grid-cols-2 gap-1.5", !selected && "opacity-50")}
+                        className={cn("grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5", !selected && "opacity-50")}
                       >
-                        {/* Half a phone's width each: the name gets the room the mana cost would take. */}
-                        <CardPlate card={move.out} quantity={1} mark="cut" selected={selected} showCost={false} onSelect={() => toggle(index)} />
+                        {/* Half a phone's width each: the name gets the room the mana cost would take. The red and
+                            green edges say which goes out and which comes in; the arrows between say they trade. */}
+                        <CardPlate card={move.out} quantity={1} mark="cut" struck={false} selected={selected} showCost={false} onSelect={() => toggle(index)} />
+                        <li aria-hidden className="flex">
+                          <ArrowLeftRight className="size-4 text-muted-foreground" />
+                        </li>
                         <CardPlate card={move.in} quantity={1} mark="add" selected={selected} showCost={false} onSelect={() => toggle(index)} />
                       </ul>
                     );

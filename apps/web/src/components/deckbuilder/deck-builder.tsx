@@ -65,7 +65,10 @@ export function DeckBuilder({
   swapContext,
   showIssues = true,
   collection,
+  tour,
 }: {
+  /** The screen's tour id: the deck list and its first commander's plate carry `<tour>.list` and `<tour>.card`. */
+  tour?: string | undefined;
   builder: DeckBuilderState;
   analysis: DeckAnalysis | null;
   /** Bracket and Game Changer choice for replacements; null hides Replace until the deck has been read. */
@@ -135,7 +138,7 @@ export function DeckBuilder({
           </div>
         </aside>
 
-        <section aria-label="Deck list" className={cn(HALF_SHEET, "min-w-0", tab === "add" && "max-lg:hidden")}>
+        <section aria-label="Deck list" data-tour={tour && `${tour}.list`} className={cn(HALF_SHEET, "min-w-0 scroll-mt-[var(--deck-bar-height,0px)]", tab === "add" && "max-lg:hidden")}>
           <div className={cn(HALF_SCROLL, "flex flex-col gap-5 pt-4")}>
             <section aria-labelledby="builder-commanders" className="flex flex-col gap-2">
               <h2 id="builder-commanders" className="font-heading text-xl leading-none font-semibold">
@@ -147,8 +150,15 @@ export function DeckBuilder({
                 </p>
               ) : (
                 <ul aria-label="Commanders" className="flex flex-col gap-1.5">
-                  {builder.commanders.map((card) => (
-                    <CardPlate key={card.id} card={card} quantity={1} commander onRemove={() => builder.remove(card)} />
+                  {builder.commanders.map((card, i) => (
+                    <CardPlate
+                      key={card.id}
+                      card={card}
+                      quantity={1}
+                      commander
+                      onRemove={() => builder.remove(card)}
+                      tourTarget={tour && i === 0 ? `${tour}.card` : undefined}
+                    />
                   ))}
                 </ul>
               )}

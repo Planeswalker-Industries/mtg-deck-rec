@@ -1,17 +1,20 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowLeftRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeftRight, ChevronLeft } from "lucide-react";
 import type { CardId, CardSummary, CommanderKeyId, RecContext } from "@mtg/core/contract";
 import { compareCards } from "@mtg/core/journey";
 import { ownedOnly, swapMatchLabel } from "@mtg/core/scoring";
 import { BuyPrice } from "@/components/cards/buy-price";
+import { usePreloadCardImages } from "@/components/cards/dealt-card";
+import { useBrowseSwipe } from "@/components/cards/use-browse-swipe";
 import { DecisionButtons } from "@/components/cards/card-panel";
-import { MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
+import { BrowseCount, MOVE_PAIR_GRID, MoveCard, SwapMark } from "@/components/cards/move-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayName } from "@/lib/cards";
 import { useCardRules } from "@/lib/card-rules";
+import { CARD_IMAGES_AHEAD } from "@/lib/constants";
 import { StatChips, compareCardOf } from "./deck-stats/stat-chips";
 import { useStatPreview } from "./deck-stats/stat-preview";
 import { cutReasonShortLabel, emptySwapMessage } from "@/lib/labels";
@@ -35,8 +38,10 @@ const PREFETCH_CANDIDATES = 4;
  * A card to replace and one replacement at a time, side by side as in Fix: the card to remove on the left, the one to
  * add on the right, and green and red marks for how the replacement compares (cheaper to cast, faster, popular). The
  * replacement's ‹ › go through its options; Skip and Swap under them decide about the card (owner, 2026-11-23: browsing
- * sits with what it browses, the bottom row only decides, like a spell checker). The arrow keys do what Skip and Swap
- * do. The rater keeps its own answers: Not a fit and Good fit, with Skip under them.
+ * sits with what it browses, the bottom row only decides, like a spell checker). Swiping browses and never decides
+ * (owner, 2026-11-24): a swipe on the card going out shows the next or previous card to replace, one on the card going
+ * in the next or previous option, as ‹ › and the arrow keys do. The rater keeps its own answers: Not a fit and Good
+ * fit, with Skip under them, and the arrow keys answer them.
  */
 export function SwipeRater({
   targets,
@@ -47,7 +52,6 @@ export function SwipeRater({
   onPick,
   onVote,
   onKeep,
-  onDecline,
   declined,
   skipTarget,
   startAt,
@@ -65,12 +69,11 @@ export function SwipeRater({
   mode?: SwipeMode;
   /** Deck tool: swaps already picked in this sitting, and where new picks go. */
   picked?: readonly PickedSwap[];
-  onPick?: (swap: PickedSwap) => void;
+  /** Deck tool: a swap picked, with the options seen before it, passed over (see useSwipeRater). */
+  onPick?: (swap: PickedSwap, passedOver: readonly CardId[]) => void;
   onVote?: (vote: SwipeVote) => void;
   /** Deck tool: the player kept the card on screen instead of swapping it. */
   onKeep?: (card: CardSummary) => void;
-  /** Deck tool: the player passed on a replacement for the card on screen. */
-  onDecline?: (target: CardSummary, replacement: CardSummary) => void;
   /** Deck tool: replacements passed on in earlier sittings, not offered again for that card. */
   declined?: readonly { targetId: CardId; replacementId: CardId }[];
   /** Deck tool: a card to step over when its turn comes (no longer in the deck). */
@@ -100,7 +103,6 @@ export function SwipeRater({
     onPick,
     onVote,
     onKeep,
-    onDecline,
     declined,
     skipTarget,
     startAt,
@@ -114,10 +116,30 @@ export function SwipeRater({
   const lastAt = useRef(0);
   const { target, loaded, candidate } = rater;
   const inRater = mode === "rater";
+  // Deck tool: left shows the next card or option, right the previous one. The rater doesn't browse.
+  const targetSwipe = useBrowseSwipe({
+    onNext: rater.nextTarget,
+    onPrevious: rater.previousTarget,
+    canNext: rater.canNextTarget,
+    canPrevious: rater.canPreviousTarget,
+    tourTarget: inRater ? undefined : "swap.out",
+  });
+  const optionSwipe = useBrowseSwipe({
+    onNext: rater.nextOption,
+    onPrevious: rater.back,
+    canNext: rater.canNextOption,
+    canPrevious: rater.canBackOption,
+    tourTarget: inRater ? undefined : "swap.in",
+  });
   const upcoming = loaded?.status === "ready" ? loaded.suggestions.slice(0, PREFETCH_CANDIDATES + 1).map((s) => s.card.id) : [];
   const nextTarget = targets[rater.targetIndex + 1]?.card.id;
   const rulesFor = useCardRules([...(target ? [target.card.id] : []), ...upcoming, ...(nextTarget === undefined ? [] : [nextTarget])]);
   useStatPreview(candidate?.card ?? null, candidate && target ? target.card : null);
+  // The cards a browse deals next, on either side, so they show face up (T104).
+  usePreloadCardImages([
+    ...rater.nextCandidates.slice(0, CARD_IMAGES_AHEAD).map((s) => s.card),
+    ...targets.slice(rater.targetIndex + 1, rater.targetIndex + 1 + CARD_IMAGES_AHEAD).map((t) => t.card),
+  ]);
 
   /** Every answer waits out the cooldown, so a double tap can't answer what came up after the first. */
   const act = (answer: "swap" | "pass" | "skip") => {
@@ -128,7 +150,7 @@ export function SwipeRater({
     else rater.keep();
   };
 
-  // Arrow keys do what the buttons do, unless the player is typing somewhere.
+  // Arrow keys browse the options here (as ‹ ›) and answer in the rater, unless the player is typing somewhere.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -136,9 +158,10 @@ export function SwipeRater({
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
-      // As the buttons under the cards: Swap or Skip here, Good fit or Not a fit in the rater.
-      if (e.key === "ArrowRight") act("swap");
-      else act(inRater ? "pass" : "skip");
+      // The rater: Good fit or Not a fit, as the buttons under the cards.
+      if (inRater) act(e.key === "ArrowRight" ? "swap" : "pass");
+      else if (e.key === "ArrowRight") rater.nextOption();
+      else rater.back();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -169,21 +192,29 @@ export function SwipeRater({
       : [];
   const skipLabel = `Skip ${targetName}`;
 
-  /** Over Remove: which card of the list this is ("1 of 14"; the word "Card" is read out, not shown, owner 2026-11-18). */
-  const cardCount = (
-    <p className="font-mono text-xs text-muted-foreground">
-      <span className="sr-only">Card </span>
-      {rater.targetIndex + 1} of {rater.targetCount}
-    </p>
-  );
-  const optionCount = (
-    <span className="font-mono text-xs text-muted-foreground">
-      <span className="sr-only">Option </span>
-      {rater.candidateIndex + 1} of {rater.candidateCount}
-    </span>
-  );
+  /** The rater's counts over each card ("1 of 14"); the deck tool shows none (owner, 2026-11-24). */
+  const cardCount = inRater ? <BrowseCount word="Card" index={rater.targetIndex} count={rater.targetCount} /> : undefined;
+  const optionCount = inRater ? <BrowseCount word="Option" index={rater.candidateIndex} count={rater.candidateCount} /> : undefined;
   const targetCard = (
-    <MoveCard card={target.card} side="out" nav={cardCount} note={reasons.length > 0 ? <span>{reasons.join(", ")}</span> : null} />
+    <MoveCard
+      card={target.card}
+      side="out"
+      nav={cardCount}
+      note={reasons.length > 0 ? <span>{reasons.join(", ")}</span> : null}
+      deal={!inRater}
+      {...(inRater
+        ? {}
+        : {
+            swipe: targetSwipe.bind,
+            tourTarget: "swap.out",
+            browse: {
+              canPrevious: rater.canPreviousTarget,
+              canNext: rater.canNextTarget,
+              onPrevious: rater.previousTarget,
+              onNext: rater.nextTarget,
+            },
+          })}
+    />
   );
 
   return (
@@ -205,11 +236,9 @@ export function SwipeRater({
           {targetCard}
           <SwapMark />
           <div role="status" aria-label="Finding replacements" className="flex min-w-0 flex-col items-center gap-1.5">
-            {/* As tall as the Add word and the options row on the card going in, so both sides stay level. */}
-            <span aria-hidden className="invisible text-xs font-semibold">
-              Add
-            </span>
-            <div aria-hidden className="-my-1.5 min-h-11" />
+            {/* As tall as the word row (and the rater's count row) on the card going in, so both sides stay level. */}
+            <div aria-hidden className="min-h-11" />
+            {inRater && <div aria-hidden className="-my-1.5 min-h-11" />}
             <Skeleton className="aspect-[488/680] w-full max-w-28 rounded-[4.75%/3.4%] bg-seam sm:max-w-52" />
           </div>
         </div>
@@ -230,14 +259,14 @@ export function SwipeRater({
             )}
           </div>
           <div className="flex flex-wrap justify-center gap-2">
-            {/* Passed on every option: one tap goes back to the last, to think again. */}
+            {/* Past the last option (the options grew fewer while one was on screen): one tap goes back to the last. */}
             {!inRater && rater.candidateIndex > 0 && loaded.status === "ready" && (
               <Button
                 type="button"
                 size="lg"
                 variant="outline"
                 onClick={rater.back}
-                // Passing on the last option took away the › that had focus: it lands here rather than on the page.
+                // The › that had focus went with the options: focus lands here rather than on the page.
                 ref={(el) => {
                   if (el && document.activeElement === document.body) el.focus();
                 }}
@@ -253,43 +282,20 @@ export function SwipeRater({
         </>
       ) : (
         <>
-          <div aria-live="polite" className={MOVE_PAIR_GRID}>
+          <div aria-live="polite" data-tour={inRater ? undefined : "swap.pair"} className={MOVE_PAIR_GRID}>
             {targetCard}
             <SwapMark />
             <MoveCard
               card={candidate.card}
               side="in"
               owned={markOwned && candidate.owned !== null}
-              nav={
-                inRater ? (
-                  optionCount
-                ) : (
-                  <div role="group" aria-label="Replacement options" className="flex items-center">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Previous option"
-                      // aria-disabled rather than disabled, so the button keeps focus as it reaches the first option.
-                      aria-disabled={rater.candidateIndex === 0}
-                      onClick={rater.back}
-                      className="size-11 aria-disabled:cursor-default aria-disabled:opacity-50"
-                    >
-                      <ChevronLeft aria-hidden className="size-5" />
-                    </Button>
-                    {optionCount}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Pass on ${candidate.card.name}`}
-                      onClick={() => act("pass")}
-                      className="size-11"
-                    >
-                      <ChevronRight aria-hidden className="size-5" />
-                    </Button>
-                  </div>
-                )
+              deal={!inRater}
+              {...(inRater ? {} : { swipe: optionSwipe.bind, tourTarget: "swap.in" })}
+              nav={optionCount}
+              browse={
+                inRater
+                  ? undefined
+                  : { canPrevious: rater.canBackOption, canNext: rater.canNextOption, onPrevious: rater.back, onNext: rater.nextOption }
               }
               note={
                 <>
@@ -324,6 +330,7 @@ export function SwipeRater({
           ) : (
             <DecisionButtons
               tone="primary"
+              tour="swap"
               pass={{ word: "Skip", label: skipLabel, onClick: () => act("skip") }}
               accept={{ word: "Swap", label: `Swap in ${candidate.card.name}`, icon: ArrowLeftRight, onClick: () => act("swap") }}
             />

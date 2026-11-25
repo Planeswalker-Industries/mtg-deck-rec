@@ -1,4 +1,5 @@
 import Image from "next/image";
+import type { ReactEventHandler, Ref } from "react";
 import type { CardImageSet, CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { displayName } from "@/lib/cards";
@@ -26,6 +27,9 @@ export function CardImage({
   alt,
   eager = false,
   className,
+  ref,
+  onLoad,
+  onError,
 }: {
   card: CardSummary;
   face?: "front" | "back";
@@ -35,6 +39,10 @@ export function CardImage({
   alt?: string;
   eager?: boolean;
   className?: string;
+  /** The image element, for a caller that checks whether it has already loaded (`DealtCard`). */
+  ref?: Ref<HTMLImageElement>;
+  onLoad?: ReactEventHandler<HTMLImageElement>;
+  onError?: ReactEventHandler<HTMLImageElement>;
 }) {
   const set = face === "back" ? card.images?.back : card.images?.front;
   const label = alt ?? (face === "back" ? `${displayName(card)} (back face)` : card.name);
@@ -57,6 +65,7 @@ export function CardImage({
 
   return (
     <Image
+      ref={ref}
       src={set[variant]}
       alt={label}
       width={488}
@@ -65,6 +74,8 @@ export function CardImage({
       unoptimized
       loading={eager ? "eager" : "lazy"}
       fetchPriority={eager ? "high" : "auto"}
+      onLoad={onLoad}
+      onError={onError}
       className={cn("aspect-[488/680] h-auto w-full bg-seam", CARD_CORNERS, className)}
     />
   );

@@ -101,6 +101,57 @@
   --ease-table: cubic-bezier(0.2, 0.7, 0.2, 1);
   /* An unknown-length job: about 1.4 s a pass reads as working without looking frantic. */
   --animate-progress-sweep: progress-sweep 1.4s ease-in-out infinite;
+  /* The tours' cues. A tap pulse every 1.4 s reads as "press here" without nagging; the lit area's echo, slower at
+     1.8 s, draws the eye without competing with it; a swipe's drift, 1.6 s a pass, reads as a finger's sweep. */
+  --animate-tour-tap: tour-tap 1.4s ease-out infinite;
+  --animate-tour-echo: tour-echo 1.8s ease-out infinite;
+  --animate-tour-drift: tour-drift 1.6s ease-in-out infinite;
+  --animate-tour-drift-up: tour-drift-up 1.6s ease-in-out infinite;
+}
+
+/* A tour's tap cue: a ring grows from the element's centre and fades. */
+@keyframes tour-tap {
+  from {
+    transform: scale(0.6);
+    opacity: 0.95;
+  }
+  to {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* A tour's lit area: an outline ripples out from the cut-out's edge and fades. */
+@keyframes tour-echo {
+  from {
+    outline-offset: 0;
+    opacity: 0.9;
+  }
+  to {
+    outline-offset: 14px;
+    opacity: 0;
+  }
+}
+
+/* A tour's swipe cue drifting side to side (or up and back), a fifth of its length each way. */
+@keyframes tour-drift {
+  0%,
+  100% {
+    transform: translateX(-20%);
+  }
+  50% {
+    transform: translateX(20%);
+  }
+}
+
+@keyframes tour-drift-up {
+  0%,
+  100% {
+    transform: translateY(20%);
+  }
+  50% {
+    transform: translateY(-20%);
+  }
 }
 
 /* A third-width pill slides from off the track's left edge to off its right edge (translate is the pill's own width). */
@@ -149,6 +200,9 @@
     color-mix(in oklch, var(--wood-bar) 70%, transparent)
   );
   --wood-bar-rule: color-mix(in oklch, var(--brass) 45%, transparent); /* the brass rule along the bar's edge */
+
+  /* A tour's dimmed page: onyx 950 at 72%, dark enough that the lit element is the one thing to look at. */
+  --tour-scrim: color-mix(in oklch, var(--wood-bar) 72%, transparent);
 }
 
 /*

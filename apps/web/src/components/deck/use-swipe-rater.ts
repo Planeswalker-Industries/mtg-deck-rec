@@ -56,7 +56,6 @@ export function useSwipeRater({
   onPick,
   onVote,
   onKeep,
-  onDecline,
   declined = [],
   skipTarget,
   startAt,
@@ -71,15 +70,17 @@ export function useSwipeRater({
   commanderKeyId: CommanderKeyId | null;
   mode?: SwipeMode | undefined;
   picked?: readonly PickedSwap[] | undefined;
-  onPick?: ((swap: PickedSwap) => void) | undefined;
+  /**
+   * Deck tool: the player swapped a replacement in. `passedOver` names the options seen for that card before it was
+   * picked, which count as passed on (once per sitting), so the host can stop offering them in one step with the swap.
+   */
+  onPick?: ((swap: PickedSwap, passedOver: readonly CardId[]) => void) | undefined;
   onVote?: ((vote: SwipeVote) => void) | undefined;
   /** Deck tool: the player kept the card rather than swap it, so its host can remember the choice. */
   onKeep?: ((card: CardSummary) => void) | undefined;
-  /** Deck tool: the player passed on a replacement for a card, so its host can stop offering it. */
-  onDecline?: ((target: CardSummary, replacement: CardSummary) => void) | undefined;
   /**
-   * Deck tool: replacements already passed on, by card. Read once, when the sitting opens: one passed on during it is
-   * stepped past by position, and dropping it from the list as well would skip the one after it.
+   * Deck tool: replacements already passed on, by card. Read once, when the sitting opens, so options passed over by a
+   * swap in this sitting stay where they are if the card comes up again.
    */
   declined?: readonly { targetId: CardId; replacementId: CardId }[] | undefined;
   /** Deck tool: a card to step over when its turn comes, e.g. one no longer in the deck. */
@@ -116,27 +117,49 @@ export function useSwipeRater({
   const sessionId = useRef<string | null>(null);
   /** Deck tool: each card's replacements as recorded for the accept rate (T065), once per sitting. */
   const batches = useRef(new Map<number, RecBatch>());
-  /** Deck tool: the replacements passed on in this sitting, by "target:replacement", so a ‹ back and › again is one pass. */
+  /** Deck tool: the replacements passed on in this sitting, by "target:replacement", so each is recorded once. */
   const passed = useRef(new Set<string>());
+  /**
+   * Deck tool: the options put on screen for each card in this sitting, with where they stood. Browsing passes on
+   * nothing; a swap passes on the ones seen before it (owner, 2026-11-24).
+   */
+  const seen = useRef(new Map<CardId, Map<CardId, { suggestion: SwapSuggestion; position: number }>>());
   /** Whether this sitting has put a replacement in front of the player. */
   const dealt = useRef(false);
+  /** The cards, by position, put on screen in this sitting, and the ones answered (swapped or kept). */
+  const shown = useRef(new Set<number>());
+  const answered = useRef(new Set<number>());
 
   // Cards to step over come off the list as their turn comes, rather than out of it: the list is dealt by position.
   // A sitting that skips empties also passes over cards that turn out to have no replacements: there's nothing to
   // rate, or to swap in.
-  let index = targetIndex;
-  while (index < targets.length) {
-    const card = targets[index]!.card;
-    if (skipTarget?.(card)) {
-      index++;
-      continue;
-    }
-    if (!skipEmpty) break;
+  const skipped = (i: number) => {
+    const card = targets[i]!.card;
+    if (skipTarget?.(card)) return true;
+    if (!skipEmpty) return false;
     const r = results.get(card.id);
-    if (r?.status !== "ready" || r.suggestions.length > 0) break;
-    index++;
-  }
+    return r?.status === "ready" && r.suggestions.length === 0;
+  };
+  let index = targetIndex;
+  while (index < targets.length && skipped(index)) index++;
   const allSkipped = targets.length > 0 && index >= targets.length;
+
+  // Deck tool: the cards a browse lands on, either side of the one on screen, past the ones to step over.
+  let nextIndex: number | null = null;
+  for (let i = index + 1; i < targets.length; i++) {
+    if (skipped(i)) continue;
+    nextIndex = i;
+    break;
+  }
+  let previousIndex: number | null = null;
+  for (let i = Math.min(index, targets.length) - 1; i >= 0; i--) {
+    if (skipped(i)) continue;
+    previousIndex = i;
+    break;
+  }
+  // A sitting that skips empties only browses onto a card whose replacements are in: one that came back empty would be
+  // stepped past, and at the end of the list that would finish the sitting.
+  const browsable = (i: number | null) => i !== null && (!skipEmpty || results.has(targets[i]!.card.id));
 
   useEffect(() => {
     if (!allSkipped) return;
@@ -144,22 +167,28 @@ export function useSwipeRater({
     else onFinish();
   }, [allSkipped, onFinish, onNothingDealt]);
 
+  // The card on screen, the next ones, and the one a browse back lands on, past the cards to step over.
+  const ahead: CardId[] = [];
+  for (let i = index; i < targets.length && ahead.length < PRELOAD; i++) if (!skipped(i)) ahead.push(targets[i]!.card.id);
+  if (mode === "deck" && previousIndex !== null) ahead.push(targets[previousIndex]!.card.id);
+  const aheadKey = ahead.join(",");
   useEffect(() => {
-    for (const { card } of targets.slice(index, index + PRELOAD)) {
-      if (requested.current.has(card.id)) continue;
-      requested.current.add(card.id);
+    if (aheadKey === "") return;
+    for (const id of aheadKey.split(",").map((s) => Number(s) as CardId)) {
+      if (requested.current.has(id)) continue;
+      requested.current.add(id);
       void getApis()
-        .recs.swap({ context, targetCardId: card.id })
+        .recs.swap({ context, targetCardId: id })
         .then((r) => {
           const next: Candidates = r.ok
             ? { status: "ready", suggestions: mode === "rater" ? shuffled(r.data.suggestions.slice(0, RATER_CANDIDATES)) : r.data.suggestions, emptyReason: r.data.emptyReason }
             : { status: "error", message: r.error.message };
           // A failure isn't kept: the next sitting asks again.
-          if (next.status === "ready") cache?.set(card.id, next);
-          setResults((prev) => new Map(prev).set(card.id, next));
+          if (next.status === "ready") cache?.set(id, next);
+          setResults((prev) => new Map(prev).set(id, next));
         });
     }
-  }, [targets, index, context, mode, cache]);
+  }, [aheadKey, context, mode, cache]);
 
   const target = targets[index] ?? null;
   const loaded = target ? results.get(target.card.id) : undefined;
@@ -183,6 +212,12 @@ export function useSwipeRater({
   useEffect(() => {
     if (dealing) dealt.current = true;
   }, [dealing]);
+  useEffect(() => {
+    if (mode !== "deck" || !target || !candidate) return;
+    const forTarget = seen.current.get(target.card.id) ?? new Map<CardId, { suggestion: SwapSuggestion; position: number }>();
+    if (!forTarget.has(candidate.card.id)) forTarget.set(candidate.card.id, { suggestion: candidate, position: candidateIndex });
+    seen.current.set(target.card.id, forTarget);
+  }, [mode, target, candidate, candidateIndex]);
 
   // The deck tool records a card's replacements the first time this sitting deals them (the rater has votes instead).
   const dealtIds = candidates.map((c) => c.card.id).join(",");
@@ -192,28 +227,57 @@ export function useSwipeRater({
     batches.current.set(target.card.id, recordShown("swap", ids, context, target.card.id));
   }, [mode, target, dealtIds, context]);
 
-  function nextTarget() {
+  useEffect(() => {
+    if (index < targets.length) shown.current.add(index);
+  }, [index, targets.length]);
+
+  /**
+   * After an answer: on to the next card not yet answered. After the last, back round to the cards browsed past without
+   * an answer, which stay open (design, 2026-11-24); the sitting ends when none is left.
+   */
+  function advance() {
     setCandidateIndex(0);
     setVoteError(null);
-    if (index + 1 >= targets.length) onFinish();
-    else setTargetIndex(index + 1);
+    answered.current.add(index);
+    const open = (i: number) => !answered.current.has(i) && !skipped(i);
+    let to: number | null = null;
+    for (let i = index + 1; i < targets.length && to === null; i++) if (open(i)) to = i;
+    for (let i = 0; i < index && to === null; i++) if (shown.current.has(i) && open(i)) to = i;
+    if (to === null) onFinish();
+    else setTargetIndex(to);
   }
 
-  function vote(value: 1 | -1) {
-    if (!target || !candidate) return;
+  /** Deck tool: shows another card to replace, its first option up. Nothing is kept or recorded. */
+  function browseTarget(to: number | null) {
+    if (to === null || !browsable(to)) return;
+    setCandidateIndex(0);
+    setVoteError(null);
+    setTargetIndex(to);
+  }
+
+  /** Deck tool: shows another option for the card on screen. Nothing is passed on or recorded. */
+  function browseOption(to: number) {
+    if (to < 0 || to >= candidates.length) return;
+    setCandidateIndex(to);
+    setVoteError(null);
+  }
+
+  /** Sends one vote on a replacement for the card on screen, as it stood in the options. */
+  function castVote(suggestion: SwapSuggestion, value: 1 | -1, position: number) {
+    if (!target) return;
     sessionId.current ??= crypto.randomUUID();
-    const matchedTagIds = [...new Set(candidate.matchedTags.map((m) => m.candidateTag.id))];
+    const matchedTagIds = [...new Set(suggestion.matchedTags.map((m) => m.candidateTag.id))];
     void getApis()
       .actions.castVote({
         targetCardId: target.card.id,
-        replacementCardId: candidate.card.id,
+        replacementCardId: suggestion.card.id,
         value,
         ...(commanderKeyId !== null ? { commanderKeyId } : {}),
         context: {
           source: mode === "rater" ? "rater" : "deck",
           sessionId: sessionId.current,
           commanderIds: context.deck.commanders,
-          position: candidateIndex,
+          position,
           shownCardIds: candidates.map((c) => c.card.id),
           matchedTagIds,
         },
@@ -221,23 +285,34 @@ export function useSwipeRater({
       .then((r) => {
         if (!r.ok) setVoteError(r.error.message);
       });
-    onVote?.({ target: target.card, replacement: candidate.card, value });
-    const pair = `${target.card.id}:${candidate.card.id}`;
-    const passedAgain = value === -1 && passed.current.has(pair);
-    if (value === -1) passed.current.add(pair);
-    const batch = mode === "deck" ? batches.current.get(target.card.id) : undefined;
-    if (batch && !passedAgain) recordDecision(batch, candidate.card.id, value === 1, context, candidate.score);
+  }
 
+  function vote(value: 1 | -1) {
+    if (!target || !candidate) return;
+    // The deck tool answers an option only by swapping it in: browsing past one passes on nothing.
+    if (mode === "deck" && value === -1) return;
+    castVote(candidate, value, candidateIndex);
+    onVote?.({ target: target.card, replacement: candidate.card, value });
     if (mode === "rater") {
-      if (candidateIndex + 1 >= candidates.length) nextTarget();
+      if (candidateIndex + 1 >= candidates.length) advance();
       else setCandidateIndex(candidateIndex + 1);
-    } else if (value === 1) {
-      onPick?.({ target: target.card, replacement: candidate.card });
-      nextTarget();
-    } else {
-      if (!passedAgain) onDecline?.(target.card, candidate.card);
-      setCandidateIndex(candidateIndex + 1);
+      return;
     }
+
+    const batch = batches.current.get(target.card.id);
+    if (batch) recordDecision(batch, candidate.card.id, true, context, candidate.score);
+    // The options seen before this one was picked were passed over for it, each recorded once a sitting.
+    const passedOver: CardId[] = [];
+    for (const [id, { suggestion, position }] of seen.current.get(target.card.id) ?? []) {
+      const pair = `${target.card.id}:${id}`;
+      if (id === candidate.card.id || passed.current.has(pair)) continue;
+      passed.current.add(pair);
+      castVote(suggestion, -1, position);
+      if (batch) recordDecision(batch, id, false, context, suggestion.score);
+      passedOver.push(id);
+    }
+    onPick?.({ target: target.card, replacement: candidate.card }, passedOver);
+    advance();
   }
 
   return {
@@ -248,24 +323,31 @@ export function useSwipeRater({
     candidate,
     candidateIndex,
     candidateCount: candidates.length,
+    /** The options after the one on screen, in the order a browse shows them. */
+    nextCandidates: candidates.slice(candidateIndex + 1),
     targetIndex: index,
     targetCount: targets.length,
     voteError,
     swapIn: () => vote(1),
+    /** The rater's Not a fit. */
     pass: () => vote(-1),
+    /** Deck tool: browse the options for the card on screen (the swipe on the card going in, ‹ ›, the arrow keys). */
+    nextOption: () => browseOption(candidateIndex + 1),
+    back: () => browseOption(candidateIndex - 1),
+    canNextOption: candidateIndex + 1 < candidates.length,
+    canBackOption: candidateIndex > 0,
     /**
-     * Deck tool: back to the replacement before the one on screen, passed on earlier in this sitting. The pass stays
-     * recorded; swapping it in now records the swap as well.
+     * Deck tool: browse the cards to replace (the swipe on the card going out). Past the last card there is nothing:
+     * only Skip there ends the sitting.
      */
-    back: () => {
-      if (candidateIndex === 0) return;
-      setCandidateIndex(candidateIndex - 1);
-      setVoteError(null);
-    },
+    nextTarget: () => browseTarget(nextIndex),
+    previousTarget: () => browseTarget(previousIndex),
+    canNextTarget: browsable(nextIndex),
+    canPreviousTarget: browsable(previousIndex),
     /** Moves on to the next card without a vote: keeps the card in the deck tool, skips it in the rater. */
     keep: () => {
       if (mode === "deck" && target) onKeep?.(target.card);
-      nextTarget();
+      advance();
     },
   };
 }

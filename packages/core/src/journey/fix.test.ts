@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CardId, CardSummary, ComboRef, DeckCombo, IsoDateTime, OracleId, StatChoices, StatTargets } from '../contract';
 import { applyCard, BRACKET_LINE, buildTally, CURVE_LINE, gradeDeck, reportWithMoves, scoreWithMoves, stateFlips, toTallyCard, type BracketInput, type DeckTally, type TallyEntry } from './deck-tally';
-import { addBreaksBand, comboPiecesToKeep, fixLines, MAX_FIX_MOVES, nextFixMove, planFixes, type FixCard, type FixInput, type FixMove } from './fix';
+import { addBreaksBand, comboPiecesToKeep, fixBrowser, fixLines, MAX_FIX_IN_OPTIONS, MAX_FIX_MOVES, MAX_FIX_OUT_OPTIONS, nextFixMove, planFixes, type FixBrowser, type FixCard, type FixInput, type FixMove } from './fix';
 
 const RAMP = 'ramp-role';
 const DRAW = 'draw-role';
@@ -423,5 +423,74 @@ describe('a spend budget (T091)', () => {
   it('no budget is identical', () => {
     const built = deck({ ramp: 5, draw: 14 });
     expect(planFixes(input(built, { spendLeftUsd: undefined }))).toStrictEqual(planFixes(input(built)));
+  });
+});
+
+/** Every pair a browser lists, grouped by the card going out. */
+function browseAll(browser: FixBrowser): { out: CardSummary; ins: CardSummary[] }[] {
+  const outs: { out: CardSummary; ins: CardSummary[] }[] = [];
+  for (let o = 0; browser.out(o); o += 1) {
+    const ins: CardSummary[] = [];
+    for (let i = 0; browser.in(o, i); i += 1) ins.push(browser.in(o, i)!);
+    outs.push({ out: browser.out(o)!, ins });
+  }
+  return outs;
+}
+
+describe('browsing the pairs Fix offers (T104)', () => {
+  const built = deck({ ramp: 7 });
+  /** The file's other inputs: a short line, an over line, a focus, and none. */
+  const cases: [string, FixInput][] = [
+    ['in line', input(deck())],
+    ['short role', input(deck({ ramp: 5 }))],
+    ['over role', input(deck({ ramp: 16, draw: 5 }))],
+    ['far off', input(deck({ ramp: 0, draw: 22, basics: 30 }))],
+    ['focus', input(deck({ ramp: 5, draw: 5 }), { focusLine: DRAW })],
+    ['focus on a line in band', input(deck({ ramp: 5, draw: 5 }), { focusLine: 'lands' })],
+    ['skipped', input(built, { skipped: [{ inId: 300 as CardId, outId: 2 as CardId }] })],
+    ['kept', input(built, { protectedIds: [2 as CardId] })],
+    ['not legal', input(built, { illegalIds: [built.cards[40]!.card.id] })],
+    ['game changers', input(deck({ spell: (i) => (i >= 50 && i < 54 ? { gameChanger: true } : {}) }))],
+    ['ignored', input(deck({ ramp: 5 }), { choices: { [RAMP]: 'ignore' } })],
+  ];
+
+  it.each(cases)('starts with the move nextFixMove offers: %s', (_, given) => {
+    const move = nextFixMove(given);
+    const browser = fixBrowser(given);
+    if (!move) return expect(browser).toBeNull();
+    expect(browser?.line).toBe(move.line);
+    expect(browser?.out(0)?.id).toBe(move.out.id);
+    expect(browser?.in(0, 0)?.id).toBe(move.in.id);
+  });
+
+  it('leaves out skipped pairs, and every pair it lists breaks no line', () => {
+    const first = browseAll(fixBrowser(input(built))!);
+    const skipped = first.flatMap((o) => o.ins.slice(0, 2).map((i) => ({ inId: i.id, outId: o.out.id })));
+    const given = input(built, { skipped });
+    const browser = fixBrowser(given)!;
+    const listed = browseAll(browser).flatMap((o) => o.ins.map((i) => ({ line: browser.line, in: i, out: o.out })));
+    expect(listed.length).toBeGreaterThan(0);
+    const keys = listed.map((m) => `${m.in.id}>${m.out.id}`);
+    for (const s of skipped) expect(keys).not.toContain(`${s.inId}>${s.outId}`);
+    for (const move of listed) applied(given, [move]);
+  });
+
+  it('caps and dedupes both levels, and gives the same cards going back', () => {
+    for (const [, given] of cases) {
+      const browser = fixBrowser(given);
+      if (!browser) continue;
+      const outs = browseAll(browser);
+      expect(outs.length).toBeLessThanOrEqual(MAX_FIX_OUT_OPTIONS);
+      expect(new Set(outs.map((o) => o.out.id)).size).toBe(outs.length);
+      for (const o of outs) {
+        expect(o.ins.length).toBeLessThanOrEqual(MAX_FIX_IN_OPTIONS);
+        expect(new Set(o.ins.map((i) => i.id)).size).toBe(o.ins.length);
+      }
+      expect(browseAll(browser)).toEqual(outs);
+    }
+    // A deck a little off has more pairs than the screen lists.
+    const many = browseAll(fixBrowser(input(built))!);
+    expect(many).toHaveLength(MAX_FIX_OUT_OPTIONS);
+    expect(many[0]!.ins).toHaveLength(MAX_FIX_IN_OPTIONS);
   });
 });

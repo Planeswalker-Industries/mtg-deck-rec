@@ -18,6 +18,7 @@ export function PageHero({
   children,
   vista = TOOL_VISTA,
   slimArt = false,
+  tour,
 }: {
   /** The heading's id, for the section's accessible name. */
   id: string;
@@ -32,10 +33,13 @@ export function PageHero({
   vista?: Vista;
   /** A thinner banner on phones, for a screen whose form must fit above the fold (the build start, T102). */
   slimArt?: boolean;
+  /** The screen's tour id: the sheet and its heading carry `<tour>.sheet` and `<tour>.heading`. */
+  tour?: string;
 }) {
   return (
     <section
       aria-labelledby={id}
+      data-tour={tour && `${tour}.sheet`}
       className="sheet grid gap-5 p-4 sm:p-6 md:gap-6 lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:gap-8 lg:p-8"
     >
       <ArtPlate
@@ -48,7 +52,7 @@ export function PageHero({
       />
       <div className="flex min-w-0 flex-col gap-6">
         <div className="flex flex-col gap-4">
-          <h1 id={id} className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 id={id} data-tour={tour && `${tour}.heading`} className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
             {heading}
             {aside && (
               <span className="mt-1 block font-drama font-normal tracking-normal text-balance text-muted-foreground italic max-sm:text-xl">

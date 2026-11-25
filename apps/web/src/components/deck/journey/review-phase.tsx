@@ -12,6 +12,7 @@ import { ShoppingList } from "@/components/decks/shopping-list";
 import { BuyButtons, CartTotal, type BuySaveState } from "@/components/decks/buy-buttons";
 import type { ShoppingCart } from "@/components/decks/use-shopping-cart";
 import { CardPlate } from "@/components/cards/card-plate";
+import { PageTour } from "@/components/tour/page-tour";
 import { Button } from "@/components/ui/button";
 import { PHONE_HIT_AREA, TEXT_LINK } from "@/lib/constants";
 import { deckFileName, downloadText } from "@/lib/deck-download";
@@ -24,6 +25,9 @@ import { judge, Move } from "./round-moves";
 import { Upgrades } from "./upgrades";
 import type { DeckJourney } from "./use-deck-journey";
 import type { Fix, FixLineLabel } from "./use-fix";
+
+/** Finish's tour id: its targets carry `finish.<part>`. */
+const TOUR = "finish";
 
 /** One part of the result: a sheet of paper on the wood, padded like the journey's other sheets (`Panel` sm). */
 const SECTION_SHEET = "sheet p-4";
@@ -329,6 +333,7 @@ export function ReviewPhase({
   return (
     // Without the shopping list there is no aside, so the page keeps one column rather than an empty right one.
     <div className={cn("flex flex-col gap-4", listed && "xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start")}>
+      <PageTour id={TOUR} />
       <section aria-labelledby="review-ready" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
         {/*
           The round's Undo, Start over and Save sit in the top right, as on every step, on the heading's line (owner,
@@ -355,6 +360,7 @@ export function ReviewPhase({
             save={save}
             busy={blocked}
             className="shrink-0"
+            tour={TOUR}
           />
         </div>
         {overBy > 0 && (
@@ -379,13 +385,20 @@ export function ReviewPhase({
           with its own Buy in the seal's place.
         */}
         {offerUpgrades && journey.workingContext && (
-          <Upgrades context={journey.workingContext} onBuy={onBuy} saved={buySaved} className="border-t border-seam pt-3" />
+          <Upgrades context={journey.workingContext} onBuy={onBuy} saved={buySaved} className="border-t border-seam pt-3" tour={TOUR} />
         )}
         {/* From sm the outline row sits beside Buy rather than under it, so the sheet isn't half empty on a wide screen. */}
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
-          <BuyButtons carts={cart.carts} onBuy={onBuy} saved={buySaved} seal className="max-sm:items-stretch max-sm:[&_a]:flex-1" />
+          <BuyButtons
+            carts={cart.carts}
+            onBuy={onBuy}
+            saved={buySaved}
+            seal
+            className="max-sm:items-stretch max-sm:[&_a]:flex-1"
+            tour={TOUR}
+          />
           {/* Symbols, not words (owner, 2026-11-23): each names itself to screen readers and on hover. */}
-          <div className="flex flex-wrap gap-2 sm:py-1">
+          <div data-tour={`${TOUR}.export`} className="flex flex-wrap gap-2 sm:py-1">
             <CopyDecklistButton text={journey.resultText} iconOnly outline disabled={blocked} />
             <Button
               type="button"
@@ -411,13 +424,16 @@ export function ReviewPhase({
         <h3 id="review-deck-stats" className="flex items-center justify-between gap-3">
           <span className="font-heading text-xl leading-none font-semibold">Deck stats</span>
           {report && (
-            <FinishScore
-              level={report.level}
-              okCount={report.okCount}
-              total={report.total}
-              celebrated={journey.celebrated}
-              onCelebrate={journey.markCelebrated}
-            />
+            // The tour's first step speaks to the score's level: `finish.score.ok`, `.mild` or `.urgent`.
+            <span data-tour={`${TOUR}.score.${report.level}`} className="inline-flex">
+              <FinishScore
+                level={report.level}
+                okCount={report.okCount}
+                total={report.total}
+                celebrated={journey.celebrated}
+                onCelebrate={journey.markCelebrated}
+              />
+            </span>
           )}
         </h3>
         {/*
@@ -501,14 +517,14 @@ export function ReviewPhase({
       {listed && (
         <aside className="xl:sticky xl:top-[calc(var(--deck-bar-height,0px)+1rem)] xl:col-start-2 xl:row-span-4 xl:row-start-1 xl:max-h-[calc(100dvh-var(--deck-bar-height,0px)-2rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
           <div className={SECTION_SHEET}>
-            <ShoppingList cart={cart} pinActions buy={false} foldAt={FOLD_SHOPPING_LIST_AT} />
+            <ShoppingList title="Cart" cart={cart} pinActions buy={false} foldAt={FOLD_SHOPPING_LIST_AT} tour={TOUR} />
           </div>
         </aside>
       )}
 
       {changes.length > 0 && (
         <section aria-labelledby="review-changes" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
-          <h3 id="review-changes" className="font-heading text-xl leading-none font-semibold">
+          <h3 id="review-changes" data-tour={`${TOUR}.changes`} className="w-fit font-heading text-xl leading-none font-semibold">
             Changes <span className="font-mono text-base font-normal text-muted-foreground">{changes.length}</span>
           </h3>
           {/*
@@ -541,7 +557,7 @@ export function ReviewPhase({
       )}
 
       <section aria-labelledby="review-decklist" className={cn(SECTION_SHEET, "flex flex-col gap-3 xl:col-start-1")}>
-        <h3 id="review-decklist" className="font-heading text-xl leading-none font-semibold">
+        <h3 id="review-decklist" data-tour={`${TOUR}.decklist`} className="w-fit font-heading text-xl leading-none font-semibold">
           Decklist <span className="font-mono text-base font-normal text-muted-foreground">{after.cards}</span>
         </h3>
         {/* Columns like a decklist site: each type stays whole, and the plates flow into as many columns as fit. */}
