@@ -217,6 +217,12 @@ func (r *Runner) Run(ctx context.Context) (res Result, err error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("claiming crawl: %w", err)
 	}
+	// A claim held by this very run is ours: the store retries a dropped call, and when the first try landed but its
+	// reply was lost, the retry finds the claim already taken, by us. Run ids are never reused, so no other run can
+	// hold it under this id.
+	if !claim.Claimed && claim.HeldBy == runID {
+		claim.Claimed = true
+	}
 	if !claim.Claimed {
 		// Another cron holds the claim. Close our own (unclaimed) run row and report busy; nothing crawled.
 		if err := r.store.FinishRun(ctx, runID, RunSummary{State: "failed", Error: "already running"}); err != nil {

@@ -48,7 +48,8 @@ type Store interface {
 	CloseStaleRuns(ctx context.Context, staleAfter time.Duration) (int, error)
 	// Claim atomically marks the source as owned by this run, taking over a claim left behind by a crawl that died
 	// without releasing it. It reports whether the claim landed: when another live run holds it, it is false and no
-	// second crawl may start.
+	// second crawl may start. A retried call whose first try landed answers not claimed and HeldBy runID; the run reads
+	// that as its own claim.
 	Claim(ctx context.Context, runID int64, clientID string, staleAfter time.Duration) (Claim, error)
 	// ReleaseClaim lets the next run go. It releases only a claim runID still holds.
 	ReleaseClaim(ctx context.Context, runID int64) error
@@ -323,7 +324,8 @@ func (s *SupabaseStore) UpsertDecks(ctx context.Context, rows []DeckRow) ([]Unre
 
 func (s *SupabaseStore) CreateRun(ctx context.Context) (int64, error) {
 	var id int64
-	if err := s.client.RPCInto(ctx, "crawl_create_run", map[string]any{"p_source": s.source}, &id); err != nil {
+	// Not retried: each call inserts a run, so a retry after a lost reply would leave an orphan run row behind.
+	if err := s.client.RPCOnceInto(ctx, "crawl_create_run", map[string]any{"p_source": s.source}, &id); err != nil {
 		return 0, err
 	}
 	if id == 0 {
@@ -407,7 +409,9 @@ func (s *SupabaseStore) LogError(ctx context.Context, entry LogEntry) error {
 	if detail == nil {
 		detail = map[string]any{}
 	}
-	_, err := s.client.RPC(ctx, "log_error_event", map[string]any{
+	// Not retried: each call counts one more occurrence on the ticket, so a retry after a lost reply would count the
+	// failure twice. A ticket that does not land is logged by the caller instead.
+	_, err := s.client.RPCOnce(ctx, "log_error_event", map[string]any{
 		"p_fingerprint": entry.Fingerprint,
 		"p_level":       entry.Level,
 		"p_source":      errorSource,

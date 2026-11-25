@@ -155,6 +155,7 @@ type fakeStore struct {
 	claimed        int64 // the run holding the claim, 0 when free
 	claimStale     bool  // the store reports the previous claim as stale and hands it over
 	claimLoses     bool
+	claimRetried   bool // the claim's first try landed but its reply was lost, so the retry finds this run holding it
 	probeOK        bool
 	cursor         string
 	disabledReason string
@@ -259,6 +260,11 @@ func (s *fakeStore) Claim(_ context.Context, runID int64, _ string, _ time.Durat
 	if s.claimLoses {
 		return Claim{Claimed: false, HeldBy: 42}, nil
 	}
+	if s.claimRetried {
+		// What crawl_claim answers when the claim is fresh and held: not claimed, held by the holder (this run).
+		s.claimed = runID
+		return Claim{Claimed: false, HeldBy: runID}, nil
+	}
 	tookOver := s.claimStale
 	s.claimed = runID
 	return Claim{Claimed: true, TookOver: tookOver, HeldBy: runID}, nil
@@ -316,6 +322,27 @@ func TestRunLosesTheClaimIsBusy(t *testing.T) {
 	}
 	if len(store.finished) != 1 || store.finished[0].State != "failed" {
 		t.Fatalf("the loser's own run row should be closed failed: %+v", store.finished)
+	}
+}
+
+// The store retries a claim whose reply was lost. When the first try had landed, crawl_claim answers the retry with
+// "held by" this run: that is this run's claim, and it crawls.
+func TestRunKeepsAClaimItsOwnRetryFindsHeld(t *testing.T) {
+	store := newStore(liesa)
+	store.claimRetried = true
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	res := run(t, store, getter)
+	if res.AlreadyBusy {
+		t.Fatal("a claim held by this run is not someone else's")
+	}
+	if res.Summary.State != "succeeded" || res.Summary.DecksWritten != 1 {
+		t.Fatalf("the run should crawl under its own claim: %+v", res.Summary)
+	}
+	if store.claimed != 0 {
+		t.Fatalf("the run should release its claim at the end: held by %d", store.claimed)
 	}
 }
 
