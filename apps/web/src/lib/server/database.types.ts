@@ -2113,12 +2113,15 @@ export type Database = {
           disabled: boolean
           disabled_reason: string
           last_fetched_at: string
+          last_run_commanders_visited: number
           last_run_decks_written: number
           last_run_error: string
           last_run_finished_at: string
           last_run_id: number
+          last_run_progress_at: string
           last_run_started_at: string
           last_run_state: string
+          last_run_throttles: number
           probe_ok_at: string
           running_run_id: number
           source: string
@@ -2333,10 +2336,10 @@ export type Database = {
       admin_start_feedback_reply: {
         Args: { p_message: string; p_report_id: number }
         Returns: {
+          reply_id: number
           report_created_at: string
           report_message: string
           report_page_path: string
-          reply_id: number
         }[]
       }
       bracket_cards: { Args: never; Returns: Json }
@@ -2437,6 +2440,10 @@ export type Database = {
         }
         Returns: Json
       }
+      crawl_close_stale_runs: {
+        Args: { p_source: string; p_stale_after_seconds: number }
+        Returns: number
+      }
       crawl_create_run: { Args: { p_source: string }; Returns: number }
       crawl_deck_versions: {
         Args: { p_ids: string[]; p_source: string }
@@ -2467,6 +2474,10 @@ export type Database = {
       crawl_release: {
         Args: { p_run_id: number; p_source: string }
         Returns: boolean
+      }
+      crawl_run_progress: {
+        Args: { p_run_id: number; p_summary: Json }
+        Returns: undefined
       }
       crawl_seed_commanders: { Args: { p_source: string }; Returns: number }
       crawl_set_cursor: {

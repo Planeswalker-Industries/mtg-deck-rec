@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -153,6 +154,9 @@ type fakeStore struct {
 	probeOK        bool
 	cursor         string
 	disabledReason string
+	progress       []RunSummary    // every progress report, in order
+	sweeps         []time.Duration // the stale window each sweep was asked for
+	calls          []string        // the run-level calls in order, so a test can check what came first
 }
 
 func newStore(commanders ...Commander) *fakeStore {
@@ -220,6 +224,7 @@ func (s *fakeStore) UpsertDecks(_ context.Context, rows []DeckRow) ([]Unresolved
 	return unresolved, nil
 }
 func (s *fakeStore) CreateRun(context.Context) (int64, error) {
+	s.calls = append(s.calls, "create")
 	s.created++
 	s.runID++
 	return s.runID, nil
@@ -229,7 +234,18 @@ func (s *fakeStore) FinishRun(ctx context.Context, _ int64, summary RunSummary) 
 	s.finished = append(s.finished, summary)
 	return nil
 }
+func (s *fakeStore) RunProgress(_ context.Context, _ int64, summary RunSummary) error {
+	s.calls = append(s.calls, "progress")
+	s.progress = append(s.progress, summary)
+	return nil
+}
+func (s *fakeStore) CloseStaleRuns(_ context.Context, staleAfter time.Duration) (int, error) {
+	s.calls = append(s.calls, "sweep")
+	s.sweeps = append(s.sweeps, staleAfter)
+	return 0, nil
+}
 func (s *fakeStore) Claim(_ context.Context, runID int64, _ string, _ time.Duration) (Claim, error) {
+	s.calls = append(s.calls, "claim")
 	if s.claimLoses {
 		return Claim{Claimed: false, HeldBy: 42}, nil
 	}
@@ -864,5 +880,78 @@ func TestRunToleratesMissingDecksBelowTheFloor(t *testing.T) {
 	// Two of three missing is past the share but nowhere near the floor, so the run carries on and succeeds.
 	if res.Summary.State != "succeeded" || res.Summary.SkippedMissing != 2 || res.Summary.DecksWritten != 1 {
 		t.Fatalf("summary: %+v", res.Summary)
+	}
+}
+
+// A running crawl says how far it has got: once as soon as it holds the claim, then after every commander, so the run
+// row reads `running` with live counters instead of `queued` and zeros for six hours.
+func TestRunReportsProgress(t *testing.T) {
+	edgar := Commander{CardID: 2, OracleID: "oc-edgar", Name: "Edgar Markov"}
+	store := newStore(liesa, edgar)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+		src.ListURL(edgar.Name, 1): []byte("222\n"),
+		src.DeckURL("222"):         ledBy(edgar.OracleID, "bbb"),
+	}}
+	run(t, store, getter)
+	if len(store.progress) != 3 {
+		t.Fatalf("want a report after the claim and after each of two visits, got %d: %+v", len(store.progress), store.progress)
+	}
+	for i, p := range store.progress {
+		if p.State != "running" || p.CommandersVisited != i {
+			t.Fatalf("report %d: %+v", i, p)
+		}
+	}
+	if store.progress[2].DecksWritten != 2 {
+		t.Fatalf("the last report carries the run's counters: %+v", store.progress[2])
+	}
+	if i := slices.Index(store.calls, "progress"); i < 0 || i < slices.Index(store.calls, "claim") {
+		t.Fatalf("progress before the claim: %v", store.calls)
+	}
+}
+
+// panickySource panics while parsing a deck: a bug in an adapter, which must not leave the run row open.
+type panickySource struct{ fakeSource }
+
+func (panickySource) ParseDeck([]byte, string) (Deck, error) { panic("adapter bug") }
+
+// A panic inside the crawl used to reach the deferred finish with the summary still `running`, which wrote a running
+// row with a finished_at. It now closes the run as failed, says why, releases the claim and comes back as an error.
+func TestRunClosesPanickedRunAsFailed(t *testing.T) {
+	store := newStore(liesa)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	res, err := newFakeRunner(store, getter, panickySource{src}).Run(context.Background())
+	if err == nil {
+		t.Fatal("a crashed run should come back as an error")
+	}
+	if len(store.finished) != 1 {
+		t.Fatalf("the run should be closed once: %+v", store.finished)
+	}
+	if got := store.finished[0]; got.State != "failed" || !strings.HasPrefix(got.Error, "crashed:") {
+		t.Fatalf("finished summary: %+v", got)
+	}
+	if res.Summary.State != "failed" || res.RunID == 0 {
+		t.Fatalf("result: %+v", res)
+	}
+	if store.claimed != 0 {
+		t.Fatalf("a crashed run still releases its claim: %d", store.claimed)
+	}
+}
+
+// The sweep runs first, so a run left open by a process that died is closed before the next one starts, with the same
+// window the claim uses to call a claim stale.
+func TestRunSweepsStaleRunsFirst(t *testing.T) {
+	store := newStore(liesa)
+	store.policy.StaleClaim = 7 * time.Hour
+	run(t, store, &fakeGetter{pages: map[string][]byte{src.ListURL(liesa.Name, 1): []byte("")}})
+	if len(store.sweeps) != 1 || store.sweeps[0] != 7*time.Hour {
+		t.Fatalf("sweeps: %v", store.sweeps)
+	}
+	if len(store.calls) == 0 || store.calls[0] != "sweep" {
+		t.Fatalf("the sweep should come before the run is created: %v", store.calls)
 	}
 }

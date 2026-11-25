@@ -357,6 +357,9 @@ export async function listAdminCrawlSources(db: AuthedClient): Promise<AdminCraw
             finishedAt: row.last_run_finished_at,
             decksWritten: row.last_run_decks_written ?? 0,
             error: row.last_run_error,
+            progressAt: row.last_run_progress_at,
+            commandersVisited: row.last_run_commanders_visited ?? 0,
+            throttles: row.last_run_throttles ?? 0,
           },
   }));
 }

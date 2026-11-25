@@ -176,6 +176,11 @@ export interface AdminCrawlSource {
     finishedAt: string | null;
     decksWritten: number;
     error: string | null;
+    /** When the run last reported progress (after its claim and after every commander); null before the first. */
+    progressAt: string | null;
+    commandersVisited: number;
+    /** How many times the source answered 429 during the run. */
+    throttles: number;
   } | null;
 }
 
