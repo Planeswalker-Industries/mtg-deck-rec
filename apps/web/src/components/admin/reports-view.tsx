@@ -4,13 +4,17 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CircleCheck, Inbox } from "lucide-react";
+import { CircleAlert, CircleCheck, Clock, Inbox, MailCheck, Reply } from "lucide-react";
 import type { Result } from "@mtg/core/contract";
 import { cn } from "cn";
-import type { AdminFeedbackReport, AdminFeedbackReportPage } from "@/lib/admin/types";
+import { MAX_FEEDBACK_REPLY_CHARS } from "@/lib/admin/schemas";
+import type { AdminFeedbackReply, AdminFeedbackReport, AdminFeedbackReportPage } from "@/lib/admin/types";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { PAGE_SHEET, TEXT_LINK, TOGGLE_OFF, TOGGLE_ON } from "@/lib/constants";
 import { AdminBackLink } from "./back-link";
 
@@ -35,6 +39,19 @@ async function fetchReports(filter: Filter, offset: number): Promise<Result<Admi
   try {
     const res = await fetch(`/api/admin/reports?${params}`);
     return (await res.json()) as Result<AdminFeedbackReportPage>;
+  } catch {
+    return offline;
+  }
+}
+
+async function postReply(id: number, message: string, resolve: boolean): Promise<Result<AdminFeedbackReply>> {
+  try {
+    const res = await fetch(`/api/admin/reports/${id}/replies`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message, resolve }),
+    });
+    return (await res.json()) as Result<AdminFeedbackReply>;
   } catch {
     return offline;
   }
@@ -79,7 +96,7 @@ export function ReportsView() {
         return;
       }
       setProblem(null);
-      setPage((prev) => (append && prev ? { reports: [...prev.reports, ...body.data.reports], total: body.data.total } : body.data));
+      setPage((prev) => (append && prev ? { ...body.data, reports: [...prev.reports, ...body.data.reports] } : body.data));
     });
   }, []);
 
@@ -107,6 +124,7 @@ export function ReportsView() {
     setPage((prev) =>
       prev
         ? {
+            ...prev,
             reports: prev.reports.map((r) => (r.id === report.id ? { ...r, resolvedAt } : r)),
             // The Open count follows the change at once; All counts every report either way.
             total: filter === "open" ? prev.total + (resolved ? -1 : 1) : prev.total,
@@ -188,6 +206,26 @@ export function ReportsView() {
                   )}
                 </div>
                 <p className="text-sm break-words whitespace-pre-wrap">{report.message}</p>
+                <ReplyThread
+                  report={report}
+                  enabled={page?.replyEnabled ?? false}
+                  onSent={(reply, resolved) => {
+                    setPage((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            reports: prev.reports.map((r) =>
+                              r.id === report.id
+                                ? { ...r, replies: [...r.replies, reply], resolvedAt: resolved ? new Date().toISOString() : r.resolvedAt }
+                                : r,
+                            ),
+                            total: resolved && report.resolvedAt === null && filter === "open" ? prev.total - 1 : prev.total,
+                          }
+                        : prev,
+                    );
+                    if (resolved) router.refresh();
+                  }}
+                />
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Link href={report.pagePath as Route} className={cn(TEXT_LINK, "min-w-0 text-sm break-all")}>
                     {report.pagePath}
@@ -225,5 +263,128 @@ export function ReportsView() {
         )}
       </div>
     </>
+  );
+}
+
+const REPLY_STATUS = {
+  sent: { Icon: MailCheck, label: "Emailed", className: "text-success" },
+  failed: { Icon: CircleAlert, label: "Not sent", className: "text-destructive" },
+  sending: { Icon: Clock, label: "Outcome unknown", className: "text-warning" },
+} as const;
+
+/**
+ * A report's replies, and the box to write one. A reply goes by email to the address on the sender's account; the
+ * server looks it up and sends it, so it never reaches this page.
+ */
+function ReplyThread({
+  report,
+  enabled,
+  onSent,
+}: {
+  report: AdminFeedbackReport;
+  enabled: boolean;
+  onSent: (reply: AdminFeedbackReply, resolved: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [resolve, setResolve] = useState(report.resolvedAt === null);
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const id = `report-${report.id}-reply`;
+
+  async function send() {
+    setSending(true);
+    setProblem(null);
+    const body = await postReply(report.id, message, resolve);
+    setSending(false);
+    if (!body.ok) {
+      setProblem(body.error.message);
+      return;
+    }
+    onSent(body.data, resolve);
+    setMessage("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {report.replies.length > 0 && (
+        <ol aria-label="Replies" className="flex flex-col gap-3 border-l-2 border-seam pl-3">
+          {report.replies.map((reply) => {
+            const status = REPLY_STATUS[reply.status];
+            return (
+              <li key={reply.id} className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="font-semibold">Your reply</span>
+                  <time dateTime={reply.createdAt}>{WHEN.format(new Date(reply.createdAt))}</time>
+                  <span className={cn("flex items-center gap-1 font-semibold", status.className)}>
+                    <status.Icon aria-hidden className="size-3.5" />
+                    {status.label}
+                  </span>
+                </div>
+                <p className="text-sm break-words whitespace-pre-wrap">{reply.message}</p>
+                {reply.failure && <ErrorText>{reply.failure}</ErrorText>}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      {!open ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-11 self-start px-3"
+          disabled={!enabled}
+          aria-describedby={enabled ? undefined : `${id}-off`}
+          onClick={() => setOpen(true)}
+        >
+          <Reply aria-hidden className="size-4" />
+          Reply by email
+        </Button>
+      ) : (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send();
+          }}
+        >
+          <Label htmlFor={id}>Reply to the sender</Label>
+          <Textarea
+            id={id}
+            value={message}
+            maxLength={MAX_FEEDBACK_REPLY_CHARS}
+            rows={4}
+            autoFocus
+            onChange={(event) => setMessage(event.target.value)}
+            aria-describedby={`${id}-note`}
+          />
+          <p id={`${id}-note`} className="text-xs text-muted-foreground">
+            Emailed to the address on their account, with their report quoted. You won&apos;t see the address.
+          </p>
+          <div className="flex min-h-11 items-center gap-2">
+            <Switch id={`${id}-resolve`} checked={resolve} onCheckedChange={setResolve} />
+            <Label htmlFor={`${id}-resolve`} className="font-normal">
+              Resolve the report once it&apos;s sent
+            </Label>
+          </div>
+          {problem && <ErrorText>{problem}</ErrorText>}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" className="h-11 px-5" disabled={sending || message.trim().length === 0}>
+              {sending ? "Sending…" : "Send reply"}
+            </Button>
+            <Button type="button" variant="ghost" className="h-11 px-4" disabled={sending} onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+      {!enabled && (
+        <p id={`${id}-off`} className="text-xs text-muted-foreground">
+          Replies need email set up on this deployment.
+        </p>
+      )}
+    </div>
   );
 }

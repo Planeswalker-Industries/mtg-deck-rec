@@ -1,6 +1,6 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T105.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T106.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
@@ -253,6 +253,17 @@ Every failure opens or joins a ticket at `/admin/errors` (migration `20261125000
 - [ ] After the release to `main`: confirm hosted `SUPABASE_SECRET_KEY` is set for Production (tickets are written with it; without it they reach the console only, with one line per instance saying so), then trigger a failure and see its ticket
 - [ ] Decide how long resolved tickets are kept (none are deleted yet), and whether a nightly job should drop them
 - [ ] Watch the first week's volume: noisy warnings (`searchIndex.*`, `timeout.*`, `rateLimit.*`) may need their own filter on the page or a higher bar
+
+## T105: Email replies to feedback reports
+
+**HIGH** · Ops · Built 2026-11-25 (owner asked for a reply button on reports); off until email is set up
+
+`/admin/reports` has Reply by email: the server reads the sender's account address with the service role (`feedback_report_recipient`) and sends through Resend, so the admin never sees it (migration `20261125000200_feedback_replies.sql`, `apps/web/src/lib/server/email.ts`). Until `EMAIL_FROM` and `RESEND_API_KEY` are set, the button is off and says why.
+
+- [ ] Resend verifies the sending domain (`spellchasm.com`: its DNS records at Namecheap); shared with T033's sign-in SMTP
+- [ ] Vercel Production: `RESEND_API_KEY`, `EMAIL_FROM` (e.g. `Spell Chasm <hello@spellchasm.com>`) and `EMAIL_REPLY_TO` (a mailbox the owner reads; unset, the email asks the player to send feedback again instead); `SUPABASE_SECRET_KEY` is already needed by T104
+- [ ] Reply to report 2 ("my collection won't import") once it works
+- [ ] Locally: `EMAIL_FROM` and `MAILPIT_URL=http://127.0.0.1:56324` in `apps/web/.env.local`, then the reply test in `e2e/feedback.spec.ts` runs instead of skipping
 
 ## T003: Deck report link destination
 

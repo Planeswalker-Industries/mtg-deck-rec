@@ -19,6 +19,7 @@ import type {
   AdminErrorEvent,
   AdminErrorTicket,
   AdminErrorTicketPage,
+  AdminFeedbackReply,
   AdminFeedbackReportPage,
   AdminRecMode,
   AdminSyncJob,
@@ -31,10 +32,11 @@ import type {
   AdminUserPage,
 } from "@/lib/admin/types";
 import { createAuthClient, getCurrentUser, type CurrentUser } from "./auth";
+import { emailConfigured } from "./email";
 import type { Database } from "./database.types";
 import { logError } from "./error-log";
 
-type AuthedClient = SupabaseClient<Database>;
+export type AuthedClient = SupabaseClient<Database>;
 
 /**
  * The admin area's server side. Everything here runs as the *visitor*, not as the service role: `is_platform_admin()`
@@ -148,7 +150,7 @@ interface PostgrestError {
   message: string;
 }
 
-function asAdminError(error: PostgrestError): Error {
+export function asAdminError(error: PostgrestError): Error {
   switch (error.code) {
     // insufficient_privilege: the caller lost admin between the guard and the call.
     case "42501":
@@ -407,6 +409,10 @@ export async function listAdminFeedbackReports(
   });
   if (error) throw asAdminError(error);
   const rows = data ?? [];
+  const replies = await feedbackReplies(
+    db,
+    rows.map((row) => Number(row.id)),
+  );
   return {
     reports: rows.map((row) => ({
       id: Number(row.id),
@@ -414,9 +420,38 @@ export async function listAdminFeedbackReports(
       pagePath: row.page_path,
       createdAt: row.created_at,
       resolvedAt: row.resolved_at,
+      replies: replies.get(Number(row.id)) ?? [],
     })),
     total: rows[0] ? Number(rows[0].total_count) : 0,
+    replyEnabled: emailConfigured(),
   };
+}
+
+/**
+ * The replies to a page of reports, by report. A failed read leaves them out rather than failing the list: a preview
+ * deploy runs against main's schema, which may not have replies yet.
+ */
+async function feedbackReplies(db: AuthedClient, reportIds: number[]): Promise<Map<number, AdminFeedbackReply[]>> {
+  const byReport = new Map<number, AdminFeedbackReply[]>();
+  if (reportIds.length === 0) return byReport;
+  const { data, error } = await db.rpc("admin_feedback_report_replies", { p_report_ids: reportIds });
+  if (error) {
+    logError({ area: "admin.feedbackReplies", error, level: "warning" });
+    return byReport;
+  }
+  for (const row of data ?? []) {
+    const reply: AdminFeedbackReply = {
+      id: Number(row.id),
+      message: row.message,
+      status: row.status as AdminFeedbackReply["status"],
+      failure: row.failure,
+      createdAt: row.created_at,
+    };
+    const list = byReport.get(Number(row.report_id));
+    if (list) list.push(reply);
+    else byReport.set(Number(row.report_id), [reply]);
+  }
+  return byReport;
 }
 
 export async function setAdminFeedbackReportResolved(db: AuthedClient, id: number, resolved: boolean): Promise<void> {

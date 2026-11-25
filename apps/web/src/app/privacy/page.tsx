@@ -73,7 +73,8 @@ export default function PrivacyPage() {
           <Item term="Feedback you send">
             When you send feedback or report a deck, we keep your message, the page you sent it from, your account and the
             time. Only the site&apos;s admins read it, to fix what it&apos;s about, and they don&apos;t see your email
-            address with it.
+            address with it. An admin may answer: the site emails the reply to the address on your account, with your
+            message quoted, and keeps a copy of the reply. The admin writing it still doesn&apos;t see your address.
           </Item>
           <Item term="Errors the site runs into">
             When something fails, on our servers or in your browser, we keep a record so we can fix it: what went wrong,
@@ -133,6 +134,7 @@ export default function PrivacyPage() {
         <ul className="list-disc space-y-1 pl-5">
           <li>Supabase stores the database and handles sign-in.</li>
           <li>Vercel hosts the site and keeps short-lived request logs.</li>
+          <li>Resend sends the site&apos;s own email, such as a reply to your feedback.</li>
           <li>Google, if you choose to sign in with it.</li>
           <li>An email provider, to send your sign-in codes.</li>
           <li>

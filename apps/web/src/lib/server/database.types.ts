@@ -1289,6 +1289,50 @@ export type Database = {
           },
         ]
       }
+      feedback_report_replies: {
+        Row: {
+          created_at: string
+          failure: string | null
+          finished_at: string | null
+          id: number
+          message: string
+          provider_message_id: string | null
+          report_id: number
+          sent_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          failure?: string | null
+          finished_at?: string | null
+          id?: never
+          message: string
+          provider_message_id?: string | null
+          report_id: number
+          sent_by?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          failure?: string | null
+          finished_at?: string | null
+          id?: never
+          message?: string
+          provider_message_id?: string | null
+          report_id?: number
+          sent_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_report_replies_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "feedback_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feedback_reports: {
         Row: {
           created_at: string
@@ -2101,6 +2145,26 @@ export type Database = {
           user_id: string
         }[]
       }
+      admin_feedback_report_replies: {
+        Args: { p_report_ids: number[] }
+        Returns: {
+          created_at: string
+          failure: string
+          id: number
+          message: string
+          report_id: number
+          status: string
+        }[]
+      }
+      admin_finish_feedback_reply: {
+        Args: {
+          p_failure?: string
+          p_provider_message_id?: string
+          p_reply_id: number
+          p_sent: boolean
+        }
+        Returns: undefined
+      }
       admin_list_crawled_decks: {
         Args: {
           p_limit?: number
@@ -2266,6 +2330,15 @@ export type Database = {
         Args: { p_banned: boolean; p_user_id: string }
         Returns: undefined
       }
+      admin_start_feedback_reply: {
+        Args: { p_message: string; p_report_id: number }
+        Returns: {
+          report_created_at: string
+          report_message: string
+          report_page_path: string
+          reply_id: number
+        }[]
+      }
       bracket_cards: { Args: never; Returns: Json }
       card_category: { Args: { p_type_line: string }; Returns: string }
       card_functional_tags: {
@@ -2408,6 +2481,10 @@ export type Database = {
       delete_my_account: { Args: never; Returns: undefined }
       duplicate_deck: {
         Args: { p_deck_id: string; p_name?: string }
+        Returns: string
+      }
+      feedback_report_recipient: {
+        Args: { p_report_id: number }
         Returns: string
       }
       get_commander_request: {

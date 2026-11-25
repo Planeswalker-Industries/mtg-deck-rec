@@ -69,6 +69,7 @@ psql isn't installed locally; use the `docker exec` form above. CI (`.github/wor
 - **Never test account deletion**, locally or hosted: no script or test calls `delete_my_account`.
 - New decks are public, so a deck is only created when the player explicitly saves. `listMyDecks` must filter by `user_id` explicitly (RLS alone would list every public deck). Saving a deck never changes the collection.
 - Hiding a deck does not remove it from the aggregates; the visibility control and `/privacy` must say so.
+- A reply to a feedback report is emailed by the server, which reads the sender's address with the service role (`feedback_report_recipient`); an admin never sees a player's email.
 - Deck URLs carry `decks.code` (random), never anything derived from the name.
 - Every network input is validated by the zod schemas in `@mtg/core/schemas`. Rate limits live in `app_config.rate_limits`; the visitor key is a salted hash of the first `x-forwarded-for` address.
 - Every scoring change goes through `cli eval:holdout` and its gate; a new score component ships at weight 0 until it passes.
