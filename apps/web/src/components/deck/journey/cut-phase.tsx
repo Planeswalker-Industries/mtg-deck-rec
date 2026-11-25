@@ -265,7 +265,7 @@ export function CutPhase({
           onPrevious={() => setCursor(at - 1)}
           canNext={at < dealt.length - 1}
           canPrevious={at > 0}
-          tourTarget="cut.card"
+          tour="cut"
           footer={
             // Moving on needs the deck at 100, so the way out appears once the cuts on the table get it there.
             owedAfterRuleBreaks === 0 ? (

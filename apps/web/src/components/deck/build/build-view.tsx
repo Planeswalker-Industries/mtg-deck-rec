@@ -17,6 +17,7 @@ import { DeckViewToggle, SortMenu, useCardSort, useDeckView, type DeckView } fro
 import { useShoppingCart } from "@/components/decks/use-shopping-cart";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
+import { PageTour } from "@/components/tour/page-tour";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRACKETS, bracketLabel, cardCategoryLabel } from "@/lib/labels";
@@ -535,9 +536,11 @@ export function BuildView({
             seal
             className="max-sm:items-stretch max-sm:[&_a]:flex-1"
           />
+          <PageTour id="build-result" />
           <div className="grid grid-cols-[2fr_1fr] gap-2 sm:w-md">
             <button
               type="button"
+              data-tour="build-result.tune"
               className={cn(buying ? SEAL_OUTLINE_BUTTON : SEAL_BUTTON, "disabled:pointer-events-none disabled:opacity-50")}
               disabled={opening !== null || unanswered}
               aria-busy={opening === "upgrade"}

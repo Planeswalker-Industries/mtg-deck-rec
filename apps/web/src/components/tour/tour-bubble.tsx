@@ -48,13 +48,14 @@ function place(hole: CueRect, size: { width: number; height: number }, viewport:
 }
 
 /**
- * The tour's speech bubble: a square paper sheet beside the lit element, with the step's text, its place in the tour,
- * and ‹ Skip ›. Focus moves to it on every step. Positioned off the element's live rect, so it follows the page.
+ * The tour's speech bubble: a square paper sheet beside the lit element, with the step's text, the tour's chapter name
+ * and the step's place in it, and ‹ Skip ›. Focus moves to it on every step. Positioned off the element's live rect, so it follows the page.
  */
 export function TourBubble({
   hole,
   viewport,
   text,
+  title,
   index,
   count,
   onNext,
@@ -64,6 +65,8 @@ export function TourBubble({
   hole: CueRect;
   viewport: { width: number; height: number };
   text: string;
+  /** The tour's chapter name ("Deck Journey"), quiet beside its count. */
+  title: string;
   index: number;
   count: number;
   onNext: () => void;
@@ -118,8 +121,13 @@ export function TourBubble({
           {text}
         </p>
         <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-sm text-muted-foreground">
-            {index + 1} of {count}
+          {/* The chapter and the step in it, kept quiet so the eye stays on the text. */}
+          <span className="flex min-w-0 items-baseline gap-2 text-muted-foreground">
+            <span className="truncate font-heading text-lg italic">{title}</span>
+            <span className="font-mono text-sm">
+              <span className="sr-only">Step </span>
+              {index + 1}/{count}
+            </span>
           </span>
           <div className="flex items-center">
             <Button type="button" variant="ghost" className={TOUR_BUTTON} onClick={onEnd}>

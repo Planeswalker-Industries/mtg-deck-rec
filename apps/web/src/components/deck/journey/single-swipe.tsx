@@ -39,7 +39,7 @@ export function SingleSwipe({
   onPrevious,
   canNext,
   canPrevious,
-  tourTarget,
+  tour,
   tone,
   acceptIcon,
   passIcon,
@@ -73,8 +73,8 @@ export function SingleSwipe({
   /** False at the list's end (or start): a swipe that way springs back. */
   canNext: boolean;
   canPrevious: boolean;
-  /** The card's `data-tour` id, for the tours. */
-  tourTarget?: string;
+  /** The step's tour id: the card, its chips and the buttons carry `<tour>.card`, `<tour>.chips` and `<tour>.decide`. */
+  tour?: string;
   acceptIcon?: LucideIcon;
   passIcon?: LucideIcon;
 }) {
@@ -83,6 +83,7 @@ export function SingleSwipe({
   usePreloadCardImages(upcoming.slice(0, CARD_IMAGES_AHEAD));
   useStatPreview(previewAs === "add" ? card : null, previewAs === "remove" ? card : null);
 
+  const tourTarget = tour && `${tour}.card`;
   const browse = useBrowseSwipe({ onNext, onPrevious, canNext, canPrevious, tourTarget });
 
   // A double tap would otherwise answer the card that just came up, which the player never saw.
@@ -124,8 +125,9 @@ export function SingleSwipe({
         </CardPanel>
       </div>
       {/* The Deck stats lines this card moves, under it across the mat: the footer only says what it does to the score. */}
-      <StatChips add={previewAs === "add" ? card : null} remove={previewAs === "remove" ? card : null} />
+      <StatChips add={previewAs === "add" ? card : null} remove={previewAs === "remove" ? card : null} tour={tour} />
       <DecisionButtons
+        tour={tour}
         tone={tone}
         pass={{ word: passWord, label: passLabel, icon: passIcon, onClick: () => act(false) }}
         accept={{ word: acceptWord, label: acceptLabel, icon: acceptIcon, onClick: () => act(true) }}

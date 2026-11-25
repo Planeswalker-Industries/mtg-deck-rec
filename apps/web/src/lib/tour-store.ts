@@ -72,6 +72,11 @@ export function tourSeen(id: TourId): boolean {
   return readSeen().includes(id);
 }
 
+/** Whether a tour is still to come: tours are on and this one wasn't seen. */
+export function tourPending(id: TourId): boolean {
+  return toursEnabled() && !tourSeen(id);
+}
+
 export function markTourSeen(id: TourId): void {
   const seen = readSeen();
   if (!seen.includes(id)) writeSeen([...seen, id]);

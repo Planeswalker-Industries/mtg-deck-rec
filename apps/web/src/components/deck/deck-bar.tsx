@@ -20,6 +20,7 @@ import { ColorIdentity } from "./color-identity";
 import { DeckIssuesChip } from "./resolution-issues";
 import type { CollectionMode } from "./use-deck-tool";
 import { ErrorText } from "@/components/ui/error-text";
+import { PageTour } from "@/components/tour/page-tour";
 
 const COLLECTION_MODES: CollectionMode[] = ["first", "only", "off"];
 
@@ -182,8 +183,11 @@ export function DeckBar({
     <div
       ref={bar}
       data-deck-bar=""
+      data-tour="journey.bar"
       className="wood sticky top-0 isolate z-30 -mx-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 overflow-hidden border-b border-(--wood-bar-rule) bg-(--wood-bar)/95 px-4 py-1.5 backdrop-blur-sm"
     >
+      {/* The journey's tour opens on this bar; the Deckbuilder's bar is no journey. */}
+      {!building && <PageTour id="journey" />}
       <CommanderArt commanders={commanders} className="-z-10" />
       {/* The deck's issues sit beside the name as a chip, on every screen; in the Deckbuilder the colours come first. */}
       <div className="flex min-w-0 items-center gap-2">

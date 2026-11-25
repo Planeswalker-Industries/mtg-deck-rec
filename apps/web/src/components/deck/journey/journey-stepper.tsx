@@ -52,6 +52,8 @@ export function JourneyStepper({
                 type="button"
                 disabled={i > at && !canOpen(step)}
                 aria-current={current ? "step" : undefined}
+                // The journey tour lights the step the round is on: `journey.step.add`.
+                data-tour={current ? `journey.step.${step}` : undefined}
                 onClick={() => onSelect(step)}
                 className={cn(
                   "flex min-h-9 w-full items-center justify-center gap-1 rounded-lg border px-1.5 py-1 text-sm font-semibold transition-colors max-sm:min-h-11 sm:gap-1.5 sm:px-2",

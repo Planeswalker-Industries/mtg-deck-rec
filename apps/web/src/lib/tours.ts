@@ -27,85 +27,165 @@ export interface TourStep extends TourTarget {
 /** A tour's id, also its key in the seen list. Narrowed to a union as tours are added. */
 export type TourId = string;
 
+// Every tour's text puts its key words in capitals, as a game would (owner, 2026-11-24): the things the player
+// handles (DECK, COMMANDER, BRACKET, COLLECTION), what they do (TAP, SWIPE, EDIT, SAVE, NEXT, BACK) and the names of
+// steps, buttons and pips (ADD, CUT, FIX, SWAP, FINISH, ALL, SKIP, DECK SHORTAGE PIPS).
+
 /**
  * The build start (Choose commander), approved by the owner 2026-11-24. Like every tour, top to bottom: the highest
  * element that needs explaining first.
  */
 const BUILD_START: readonly TourStep[] = [
-  { target: "build-start.heading", prompt: "read", text: "So you want to build a Commander deck, huh?" },
+  { target: "build-start.heading", prompt: "read", text: "So you want to BUILD a COMMANDER DECK, huh?" },
   { target: "build-start.heading", prompt: "read", text: "Well, you've come to the right place." },
   {
     target: "build-start.source",
     prompt: "read",
-    text: "First, choose: build from the cards you already own, or from any card ever printed.",
+    text: "First, choose: BUILD from the cards you already own, or from any card ever printed.",
     otherwise: [
       {
         target: "build-start.import",
-        text: "Want to build from cards you own? Import your collection first. Otherwise we use any card ever printed.",
+        text: "Want to BUILD from cards you own? IMPORT your COLLECTION first. Otherwise we use any card ever printed.",
       },
     ],
   },
   {
     target: "build-start.commander",
     prompt: "read",
-    text: "Then type part of your commander's name and pick it.",
-    otherwise: [{ target: "build-start.picked", text: "Here's your commander. Tap Change to pick another." }],
+    text: "Then type part of your COMMANDER's name and pick it.",
+    otherwise: [{ target: "build-start.picked", text: "Here's your COMMANDER. TAP CHANGE to pick another." }],
   },
   {
     target: "build-start.bracket",
     prompt: "read",
-    text: "Set how strong the deck should be. If you don't know what brackets are, pick 3!",
+    text: "Set how strong the DECK should be. If you don't know what BRACKETS are, pick 3!",
   },
   {
     target: "build-start.budget",
     prompt: "read",
-    text: "Don't want a $10,000 deck? No problem. Set a Max per card and a Max to spend. No card costs more than the first, and what you pay, collection or not, never tops the second.",
+    text: "Don't want a $10,000 DECK? No problem. Set a MAX PER CARD and a MAX TO SPEND. No card costs more than the first, and what you pay, COLLECTION or not, never tops the second.",
   },
-  { target: "build-start.build", prompt: "tap", text: "Once you're ready, tap this and we're off to the races!" },
+  { target: "build-start.build", prompt: "tap", text: "Once you're ready, TAP this and we're off to the races!" },
 ];
 
 /** The paste screen (Upgrade a deck), approved by the owner 2026-11-24. */
 const DECK_START: readonly TourStep[] = [
-  { target: "deck-start.heading", prompt: "read", text: "Got a deck already? Let's make it better." },
+  { target: "deck-start.heading", prompt: "read", text: "Got a DECK already? Let's make it better." },
   {
     target: "deck-start.owned",
     prompt: "tap",
-    text: "Upload your collection and improve your deck with the cards you already own!",
+    text: "UPLOAD your COLLECTION and improve your DECK with the cards you already own!",
   },
   { target: "deck-start.online", prompt: "tap", text: "Or we can use the absolute best cards out there. Your choice!" },
   {
     target: "deck-start.paste",
     prompt: "read",
-    text: "Paste your decklist here. A list from any site works: ManaBox, Archidekt, Moxfield, Notepad. Whatever!",
+    text: "PASTE your decklist here. A list from any site works: ManaBox, Archidekt, Moxfield, Notepad. Whatever!",
   },
   {
     target: "deck-start.bracket",
     prompt: "tap",
-    text: "Set how strong you want your deck to be. If you don't know what brackets are, pick 3!",
+    text: "Set how strong you want your DECK to be. If you don't know what BRACKETS are, pick 3!",
   },
   {
     target: "deck-start.budget",
     prompt: "read",
-    text: "Set a Max per card and a Max to spend. We never suggest a card above the first, and the cards we add never top the second.",
+    text: "Set a MAX PER CARD and a MAX TO SPEND. We never suggest a card above the first, and the cards we ADD never top the second.",
   },
   { target: "deck-start.budget", prompt: "read", text: "Set them both to ZERO and we'll only use cards you own." },
   { target: "deck-start.budget", prompt: "read", text: "Leave them blank and the sky's the limit brother!" },
   {
     target: "deck-start.file",
     prompt: "read",
-    text: "Apps like ManaBox let you export a deck as a CSV file. Drop it here and we'll load it in automatically!",
+    text: "Apps like ManaBox let you export a DECK as a CSV file. DROP it here and we'll load it in automatically!",
   },
   {
     target: "deck-start.go",
     prompt: "tap",
-    text: "Once your list is in, tap Analyze deck. No list handy? Try the app out by trying our sample deck.",
+    text: "Once your list is in, TAP ANALYZE DECK. No list handy? Try the app out with our SAMPLE DECK.",
   },
+];
+
+/** The built deck, before TUNE IT opens it in the journey, approved by the owner 2026-11-24. */
+const BUILD_RESULT: readonly TourStep[] = [
+  {
+    target: "build-result.tune",
+    prompt: "read",
+    text: "When you're ready, TAP here and we'll fine tune this DECK into a masterpiece!",
+  },
+];
+
+/** The journey tour's line on the steps, before it names the one to tap. */
+const JOURNEY_STEPS = "Your DECK Journey runs left to right, one step at a time.";
+
+/**
+ * The journey page's opening, approved by the owner 2026-11-24: the deck bar, then the step the round starts on, lit
+ * alone in the stepper (the current tab carries `journey.step.<phase>`). Tapping it hands over to that step's tour.
+ */
+const JOURNEY: readonly TourStep[] = [
+  {
+    target: "journey.bar",
+    prompt: "read",
+    text: "Welcome to the DECK Journey! Up here you can rename your DECK, EDIT your decklist and adjust your BRACKET!",
+  },
+  {
+    target: "journey.step.add",
+    prompt: "tap",
+    text: `${JOURNEY_STEPS} TAP ADD to start!`,
+    otherwise: [
+      { target: "journey.step.cut", text: `${JOURNEY_STEPS} TAP CUT to start!` },
+      { target: "journey.step.fix", text: `${JOURNEY_STEPS} TAP FIX to start!` },
+    ],
+  },
+];
+
+/** Add's swipe view, approved by the owner 2026-11-24. Its first card has STAT CHANGE PIPS (`AddPhase`). */
+const ADD: readonly TourStep[] = [
+  {
+    target: "add.roles",
+    prompt: "read",
+    text: "NICE! These are your DECK SHORTAGE PIPS. They show where your DECK falls short.",
+  },
+  {
+    target: "add.roles",
+    prompt: "tap",
+    text: "Ramp 5/10 means it runs 5 of the 10 it should. TAP one to see only those cards.",
+  },
+  { target: "add.all", prompt: "tap", text: "TAP ALL to see every card again." },
+  {
+    target: "add.card",
+    prompt: "swipe",
+    swipe: "horizontal",
+    text: "Here's a card DECKS like yours run. SWIPE to see more and pick your favorites!",
+  },
+  {
+    target: "add.chips",
+    prompt: "read",
+    text: "These are your STAT CHANGE PIPS. They show how ADDING this card changes your DECK.",
+  },
+  { target: "add.chips", prompt: "read", text: "Green is GOOD! Red, not so much." },
+  { target: "add.decide", prompt: "tap", text: "TAP ADD to put it in your DECK, or SKIP to pass on it!" },
 ];
 
 export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-start": BUILD_START,
   "deck-start": DECK_START,
+  "build-result": BUILD_RESULT,
+  journey: JOURNEY,
+  add: ADD,
 };
+
+/** Each tour's chapter name, quiet in its bubble beside the step count. */
+const TOUR_TITLES: Record<TourId, string> = {
+  "build-start": "Build a Deck",
+  "deck-start": "Upgrade a Deck",
+  "build-result": "Your New Deck",
+  journey: "Deck Journey",
+  add: "Add",
+};
+
+/** A tour's chapter name; none for an id without one. */
+export const tourTitle = (id: TourId): string => TOUR_TITLES[id] ?? "";
 
 /** A tour's steps; none for an id without a tour. */
 export const tourSteps = (id: TourId): readonly TourStep[] => TOURS[id] ?? [];

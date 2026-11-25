@@ -8,6 +8,9 @@ import { shortOfTarget, type StatLine } from "@mtg/core/journey";
 import { cn } from "cn";
 import type { Route } from "next";
 import { PocketGrid } from "@/components/cards/pocket-grid";
+import { PageTour } from "@/components/tour/page-tour";
+import { tourPending } from "@/lib/tour-store";
+import { useChipsFor } from "../deck-stats/stat-preview";
 import { Button } from "@/components/ui/button";
 import { ErrorText } from "@/components/ui/error-text";
 import { PHONE_HIT_AREA, PILL_OFF, PILL_ON, TEXT_LINK } from "@/lib/constants";
@@ -162,9 +165,10 @@ function RolePills({
     <div
       role="group"
       aria-label="Show suggestions for"
+      data-tour="add.roles"
       className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 sm:mx-0 sm:flex-wrap sm:px-0"
     >
-      <button type="button" aria-pressed={filter === null} className={pill(filter === null)} onClick={() => onChange(null)}>
+      <button type="button" data-tour="add.all" aria-pressed={filter === null} className={pill(filter === null)} onClick={() => onChange(null)}>
         All
       </button>
       {short.map((role) => {
@@ -214,12 +218,19 @@ export function AddPhase({
   uploadHref: Route;
 }) {
   const { state: addState, queue, shown, filter, setFilter, landsShort, accept, pass, undo } = journey.add;
-  /** The swipe view's place in the cards it deals, moved by browsing; clamped below when the list shortens. */
-  const [cursor, setCursor] = useState(0);
+  /**
+   * The swipe view's place in the cards it deals, moved by browsing; clamped below when the list shortens. Null until
+   * the player browses: the view then opens on `start`.
+   */
+  const [cursor, setCursor] = useState<number | null>(null);
   const changeFilter = (next: AddFilter | null) => {
-    setCursor(0);
+    setCursor(null);
     setFilter(next);
   };
+  // While Add's tour is still to come, the swipe view opens on the first card with STAT CHANGE PIPS, so the tour has
+  // some to show (owner, 2026-11-24). Off once the player answers a card.
+  const chipsFor = useChipsFor();
+  const [tourFirst, setTourFirst] = useState(() => tourPending("add"));
   const onClearFilter = () => changeFilter(null);
   const adds = journey.state?.adds ?? [];
   const open = journey.openSlots;
@@ -297,7 +308,8 @@ export function AddPhase({
       );
     }
 
-    const at = Math.min(cursor, shown.length - 1);
+    const withChips = tourFirst && chipsFor ? shown.findIndex((s) => chipsFor(s.card, null).length > 0) : -1;
+    const at = Math.min(cursor ?? Math.max(withChips, 0), shown.length - 1);
     const next = shown[at]!;
     return (
       <SingleSwipe
@@ -313,13 +325,19 @@ export function AddPhase({
         passWord="Skip"
         caption={<Why suggestion={next} roles={roles} hasCollection={hasCollection} counts={false} />}
         owned={markOwned && next.owned !== null}
-        onAccept={() => accept(next.card)}
-        onPass={() => pass(next.card)}
+        onAccept={() => {
+          setTourFirst(false);
+          accept(next.card);
+        }}
+        onPass={() => {
+          setTourFirst(false);
+          pass(next.card);
+        }}
         onNext={() => setCursor(at + 1)}
         onPrevious={() => setCursor(at - 1)}
         canNext={at < shown.length - 1}
         canPrevious={at > 0}
-        tourTarget="add.card"
+        tour="add"
       />
     );
   })();
@@ -334,6 +352,8 @@ export function AddPhase({
           </button>
         )}
       </StepStatus>
+      {/* Add's tour, once its swipe card is dealt. */}
+      {view === "swipe" && room > 0 && <PageTour id="add" />}
       {room > 0 && <RolePills short={short} filter={filter} onChange={changeFilter} />}
       {slots > 0 && <SlotTray slots={slots} adds={adds} onTakeOut={undo} />}
       {body}

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { markTourSeen, tourSeen, toursEnabled } from "@/lib/tour-store";
-import { stepTargets, tourSteps, type TourId } from "@/lib/tours";
+import { stepTargets, tourSteps, tourTitle, type TourId } from "@/lib/tours";
 import { liveTarget, stepReady } from "./tour-dom";
 import { TourOverlay } from "./tour-overlay";
 
@@ -202,10 +202,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
   return (
     <TourContext value={api}>
       {children}
-      {activeStep && runIndex !== undefined && (
+      {activeStep && runId !== undefined && runIndex !== undefined && (
         <TourOverlay
           key={runId}
           step={activeStep}
+          title={tourTitle(runId)}
           index={runIndex}
           count={activeSteps.length}
           onNext={next}

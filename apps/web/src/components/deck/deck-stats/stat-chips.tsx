@@ -143,16 +143,20 @@ export function ChipList({
   label,
   phoneRow = false,
   className,
+  tour,
 }: {
   chips: readonly StatChip[];
   label: string;
   phoneRow?: boolean;
   className?: string;
+  /** The screen's tour id: the list carries `<tour>.chips`. */
+  tour?: string | undefined;
 }) {
   if (chips.length === 0) return null;
   return (
     <ul
       aria-label={label}
+      data-tour={tour && `${tour}.chips`}
       className={cn("flex flex-wrap items-center gap-1.5", phoneRow && "max-sm:-mx-4 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-4", className)}
     >
       {chips.map((chip) => (
@@ -173,14 +177,17 @@ export function StatChips({
   marks = [],
   all = false,
   className,
+  tour,
 }: {
   add: CardSummary | null;
   remove: CardSummary | null;
   marks?: readonly CompareMark[];
   all?: boolean;
   className?: string;
+  /** The screen's tour id, for the chips' `data-tour`. */
+  tour?: string | undefined;
 }) {
   const lines = useStatChips(add, remove);
   const chips = [...marks.map(markChip), ...lines];
-  return <ChipList chips={chips} label="What this changes" phoneRow={!all} className={className} />;
+  return <ChipList chips={chips} label="What this changes" phoneRow={!all} className={className} tour={tour} />;
 }

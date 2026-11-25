@@ -73,6 +73,7 @@ const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)"
  */
 export function TourOverlay({
   step,
+  title,
   index,
   count,
   onNext,
@@ -80,6 +81,7 @@ export function TourOverlay({
   onEnd,
 }: {
   step: TourStep;
+  title: string;
   index: number;
   count: number;
   onNext: () => void;
@@ -196,6 +198,7 @@ export function TourOverlay({
         hole={hole}
         viewport={frame.viewport}
         text={live.text}
+        title={title}
         index={index}
         count={count}
         onNext={onNext}

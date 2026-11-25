@@ -159,7 +159,10 @@ export function DecisionButtons({
   pass,
   accept,
   disabled = false,
+  tour,
 }: {
+  /** The screen's tour id: the two buttons together carry `<tour>.decide`. */
+  tour?: string | undefined;
   tone: DecisionTone;
   pass: { word: string; label: string; icon?: LucideIcon; onClick: () => void };
   accept: { word: string; label: string; icon?: LucideIcon; onClick: () => void };
@@ -170,7 +173,7 @@ export function DecisionButtons({
   const base =
     "flex h-12 items-center justify-center gap-2 rounded-lg text-base font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-40";
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div data-tour={tour && `${tour}.decide`} className="grid grid-cols-2 gap-2">
       <button type="button" aria-label={pass.label} title={pass.label} disabled={disabled} onClick={pass.onClick} className={cn(base, "border-2 border-primary/70 text-primary hover:bg-primary/10")}>
         <PassIcon aria-hidden className="size-5" strokeWidth={2.75} />
         {pass.word}
