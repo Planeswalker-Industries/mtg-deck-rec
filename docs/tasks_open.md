@@ -71,8 +71,11 @@ Moxfield's whitelist also wants a production domain (T044). `www.spellchasm.com`
 - A Supabase custom domain (paid add-on) would also change the chooser's domain; considered and not chosen (owner, 2026-11-16)
 - [ ] The VPS worker's `WEB_APP_URL` is `https://www.spellchasm.com`; Impact's property URL is the new domain; Archidekt is told the crawl's new User-Agent (`SpellChasm/0.1`)
 - [x] `yarn workspace @mtg/web smoke` passes against `https://www.spellchasm.com` (14/14, 2026-11-16)
-- [ ] Resend (free tier) or equivalent verifies the sending domain, Supabase → Authentication → SMTP uses it, and Rate Limits → emails per hour goes up; the hosted sign-in email template and subject say Spell Chasm
-- [ ] Sign-in emails arrive at a production rate, and the emailed-code form in `apps/web/src/components/auth/sign-in-form.tsx` is uncommented (closed T080 commented it out)
+- [x] Resend (free tier) verifies `mail.spellchasm.com` (DNS at Namecheap, DMARC `p=none` on the apex, the `contact@` forwarder's MX kept), Supabase → Authentication → SMTP sends through it from `noreply@mail.spellchasm.com`, and Rate Limits → emails per hour is 30 (owner, 2026-11-25)
+- [x] Hosted Confirm signup template is `supabase/templates/confirm-signup.html` (owner, 2026-11-25)
+- [ ] Hosted Magic link template and subject: paste `supabase/templates/sign-in.html` (subject "Your Spell Chasm sign-in code")
+- [ ] A test email to `contact@spellchasm.com` arrives through the forwarder since the DNS change
+- [x] Sign-in emails arrive through Resend, and `/sign-in` offers the emailed code again below Continue with Google (2026-11-25; e2e signs in through the form)
 - [ ] The share-link kill switch activates on 403/409 on hosted (`scripts/share-kill-switch-check.ts` covers it locally)
 
 ## T043: A crawl database role that is not `service_role`
@@ -260,8 +263,8 @@ Every failure opens or joins a ticket at `/admin/errors` (migration `20261125000
 
 `/admin/reports` has Reply by email: the server reads the sender's account address with the service role (`feedback_report_recipient`) and sends through Resend, so the admin never sees it (migration `20261125000200_feedback_replies.sql`, `apps/web/src/lib/server/email.ts`). Until `EMAIL_FROM` and `RESEND_API_KEY` are set, the button is off and says why.
 
-- [ ] Resend verifies the sending domain (`spellchasm.com`: its DNS records at Namecheap); shared with T033's sign-in SMTP
-- [ ] Vercel Production: `RESEND_API_KEY`, `EMAIL_FROM` (e.g. `Spell Chasm <hello@spellchasm.com>`) and `EMAIL_REPLY_TO` (a mailbox the owner reads; unset, the email asks the player to send feedback again instead); `SUPABASE_SECRET_KEY` is already needed by T104
+- [x] Resend verifies the sending domain (`mail.spellchasm.com`, 2026-11-25); shared with T033's sign-in SMTP
+- [x] Vercel Production: `RESEND_API_KEY`, `EMAIL_FROM` (`Spell Chasm <hello@mail.spellchasm.com>`) and `EMAIL_REPLY_TO` (`contact@spellchasm.com`) set 2026-11-25; live once this branch reaches `main`
 - [ ] Reply to report 2 ("my collection won't import") once it works
 - [ ] Locally: `EMAIL_FROM` and `MAILPIT_URL=http://127.0.0.1:56324` in `apps/web/.env.local`, then the reply test in `e2e/feedback.spec.ts` runs instead of skipping
 

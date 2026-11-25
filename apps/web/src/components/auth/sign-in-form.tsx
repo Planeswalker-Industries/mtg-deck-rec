@@ -14,7 +14,6 @@ import { safeNextPath } from "@/lib/safe-path";
 import { TEXT_LINK } from "@/lib/constants";
 
 /** The longest email address SMTP allows. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the commented-out email form uses it; keep it for when that returns.
 const MAX_EMAIL_CHARS = 254;
 
 const RETURN_ERRORS: Record<string, string> = {
@@ -27,7 +26,6 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
   const params = useSearchParams();
   const next = safeNextPath(params.get("next"));
   const [step, setStep] = useState<"email" | "code">("email");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the commented-out email form sets it; keep it for when that returns.
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
@@ -124,17 +122,22 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
     );
   }
 
-  // Google is the only way in for now. The emailed-code form stays below, commented out, so it can come back as is; the
-  // code step above still serves anyone mid-way through a code sent before the switch.
+  // Google first when it's on, then the emailed code (sent through Resend's SMTP since T033).
   return (
     <div className="flex flex-col gap-4">
       {googleEnabled && (
-        <Button type="button" size="lg" disabled={pending} onClick={() => void continueWithGoogle()} className="w-full">
-          {pending ? "Opening Google…" : "Continue with Google"}
-        </Button>
+        <>
+          <Button type="button" size="lg" disabled={pending} onClick={() => void continueWithGoogle()} className="w-full">
+            {pending ? "Opening Google…" : "Continue with Google"}
+          </Button>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground" aria-hidden="true">
+            <span className="h-px flex-1 bg-seam" />
+            or
+            <span className="h-px flex-1 bg-seam" />
+          </div>
+        </>
       )}
-      {errorAlert}
-      {/* <form
+      <form
         className="flex flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
@@ -156,11 +159,11 @@ export function SignInForm({ googleEnabled }: { googleEnabled: boolean }) {
         />
         {errorAlert}
         <div>
-          <Button type="submit" size="lg" disabled={pending || !email.trim()}>
+          <Button type="submit" size="lg" variant={googleEnabled ? "outline" : "default"} disabled={pending || !email.trim()}>
             {pending ? "Sending…" : "Email me a code"}
           </Button>
         </div>
-      </form> */}
+      </form>
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { createServerClient } from "@supabase/ssr";
 import { headers } from "next/headers";
 import { after } from "next/server";
@@ -105,6 +104,15 @@ function writeToConsole(report: FailureReport): void {
  * configured, the database down). `facts` stands in for the request's own, where the caller has better ones (the
  * framework's hook, a browser's report).
  */
+/**
+ * SHA-256 as hex through Web Crypto, not node:crypto: the proxy imports this file, and webpack's dev build of the proxy
+ * can't read node: imports (every page 500s under `next dev --webpack`).
+ */
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export async function recordFailure(
   report: FailureReport,
   source: ErrorSource,
@@ -117,7 +125,7 @@ export async function recordFailure(
     const area = cleanArea(report.area);
     const code = report.code ? truncate(report.code, MAX_ERROR_CODE_CHARS) : undefined;
     const message = truncate(redactPersonalData(error.message.trim()) || "(no message)", MAX_ERROR_MESSAGE_CHARS);
-    const fingerprint = createHash("sha256").update(errorFingerprintSource({ source, area, code, message })).digest("hex");
+    const fingerprint = await sha256Hex(errorFingerprintSource({ source, area, code, message }));
     const level = report.level ?? "error";
     const skipped = level === "warning" ? throttleWarning(fingerprint) : 0;
     if (skipped === null) return null;
