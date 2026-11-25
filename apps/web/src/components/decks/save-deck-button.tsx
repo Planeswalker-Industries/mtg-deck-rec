@@ -15,6 +15,7 @@ import { displayName } from "@/lib/cards";
 import { addShortfallToCollection, collectionCounts } from "@/lib/deck-collection";
 import { signInToSaveHref, stashPendingSave } from "@/lib/pending-save";
 import { ErrorText } from "@/components/ui/error-text";
+import { PageTour } from "@/components/tour/page-tour";
 
 /** A save waiting on the player's answer about the cards their collection lacks. */
 interface Confirm {
@@ -175,8 +176,11 @@ export function SaveDeckButton({
           void submit(trimmed);
         }}
       >
+        {/* The name form's tour, the first time it opens. */}
+        <PageTour id="save-deck" />
         <Input
           autoFocus
+          data-tour="save-deck.name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && cancel()}
@@ -184,7 +188,7 @@ export function SaveDeckButton({
           maxLength={MAX_DECK_NAME_CHARS}
           className="h-9 w-56 bg-sleeve"
         />
-        <Button type="submit" size="sm" disabled={busy || name.trim() === ""}>
+        <Button type="submit" size="sm" data-tour="save-deck.save" disabled={busy || name.trim() === ""}>
           {busy ? "Saving…" : "Save"}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={cancel}>

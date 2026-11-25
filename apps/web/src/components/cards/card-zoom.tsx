@@ -51,10 +51,13 @@ export function ZoomableCard({
   trigger = "tap",
   face = "front",
   hover = true,
+  tourTarget,
 }: {
   card: CardSummary;
   children: ReactNode;
   className?: string;
+  /** The card's `data-tour` id, for the tours (tap trigger only). */
+  tourTarget?: string | undefined;
   trigger?: "tap" | "icon";
   /** Which face to enlarge, for a double-faced card shown on its back. */
   face?: "front" | "back";
@@ -119,6 +122,7 @@ export function ZoomableCard({
           role="button"
           tabIndex={0}
           aria-label={`Enlarge ${name}`}
+          data-tour={tourTarget}
           onKeyDown={(e) => {
             if (e.key !== "Enter" && e.key !== " ") return;
             e.preventDefault();

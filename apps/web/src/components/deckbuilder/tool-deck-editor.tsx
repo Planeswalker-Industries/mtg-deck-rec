@@ -105,5 +105,7 @@ export function ToolDeckEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <DeckBuilder builder={builder} analysis={analysis} swapContext={tool.context} showIssues={false} collection={collection} />;
+  return (
+    <DeckBuilder builder={builder} analysis={analysis} swapContext={tool.context} showIssues={false} collection={collection} tour="save-deck" />
+  );
 }

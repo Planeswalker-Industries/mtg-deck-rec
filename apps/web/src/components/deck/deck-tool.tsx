@@ -1382,7 +1382,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
       <ResolutionIssues
         unresolved={tool.unresolvedLines}
         issues={analysis?.issues ?? []}
-        issuesInDeckBar={Boolean(analysis && context)}
+        hideIssues={Boolean(analysis && context)}
       />
 
       {analysis && context && deckBuild.state.status === "idle" && !roundHeld && (

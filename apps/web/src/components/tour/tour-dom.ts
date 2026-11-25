@@ -5,8 +5,8 @@ import { stepTargets, type TourStep, type TourTarget } from "@/lib/tours";
  * covers it. Shared by the provider (when a step can show) and the overlay (when to stand aside).
  */
 
-/** Layers drawn over the page: open dialogs and sheets, and the popped-out lists of menus and selects. */
-const LAYERS = '[role="dialog"][data-state="open"], [data-radix-popper-content-wrapper]';
+/** Layers drawn over the page: open dialogs and sheets, the enlarged card, and the popped-out lists of menus and selects. */
+const LAYERS = '[role="dialog"][data-state="open"], [data-card-zoom], [data-radix-popper-content-wrapper]';
 
 export const targetElement = (target: string) => document.querySelector<HTMLElement>(`[data-tour="${CSS.escape(target)}"]`);
 

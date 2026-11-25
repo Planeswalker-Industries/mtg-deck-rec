@@ -1,5 +1,5 @@
 import { TOURS_ENABLED_KEY, TOURS_SEEN_KEY } from "../src/lib/constants";
-import { clearBuildBudget, expect, swipe, test, type Page } from "./fixtures";
+import { clearBuildBudget, expect, swipe, test, toDeckbuilder, type Page } from "./fixtures";
 import { mailpit, signIn } from "./mailpit";
 
 // Every other spec runs with tours off (playwright.config.ts); these start from an empty browser, where they are on.
@@ -353,4 +353,51 @@ test.describe("journey tours by touch", () => {
     await expect(tour(page)).toBeHidden();
     expect(await seen(page)).toEqual(expect.arrayContaining(["journey", "add"]));
   });
+});
+
+// The Save Deck page's tour (`save-deck`): the round's Save opens the Deckbuilder with the name form up.
+const SAVE_DECK_FIRST = "This is your COMMANDER PANEL.";
+const SAVE_DECK_TARGETS = ["save-deck.bar", "save-deck.list", "save-deck.card", "save-deck.name", "save-deck.save"] as const;
+
+async function openSaveDeckTour(page: Page) {
+  await openJourneyTour(page);
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  // Add's tour follows the journey's; it goes too.
+  await expect(tour(page)).toContainText("DECK SHORTAGE PIPS", { timeout: PAGE_WAIT_MS });
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await toDeckbuilder(page);
+  await expect(tour(page)).toContainText(SAVE_DECK_FIRST, { timeout: PAGE_WAIT_MS });
+}
+
+test("save deck tour elements are on the page", async ({ page }) => {
+  await openSaveDeckTour(page);
+  await expect(tour(page)).toContainText("Save Deck");
+  for (const target of SAVE_DECK_TARGETS) await expect(page.locator(`[data-tour="${target}"]`)).toBeVisible();
+});
+
+test("save deck tour: the card plate opens the full card, then name and Save", async ({ page }) => {
+  await openSaveDeckTour(page);
+  await nextUntil(page, "TAP a CARD PLATE");
+  await expectRingOn(page, "save-deck.card");
+  await page.locator('[data-tour="save-deck.card"]').click();
+  // The tour waits behind the enlarged card, and goes on once it closes.
+  const zoom = page.locator("[data-card-zoom]");
+  await expect(zoom).toBeVisible();
+  await zoom.click();
+  await expect(zoom).toBeHidden();
+  await expect(tour(page)).toContainText("Great job on this DECK.");
+  await expectRingOn(page, "save-deck.name");
+  await nextUntil(page, "TAP SAVE");
+  await expectRingOn(page, "save-deck.save");
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  expect(await seen(page)).toContain("save-deck");
+});
+
+test("save deck tour runs once", async ({ page }) => {
+  await openSaveDeckTour(page);
+  await tour(page).getByRole("button", { name: "Skip" }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await toDeckbuilder(page);
+  await page.waitForTimeout(TOUR_SETTLE_MS);
+  await expect(page.getByText(SAVE_DECK_FIRST)).toHaveCount(0);
 });

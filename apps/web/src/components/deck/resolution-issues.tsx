@@ -1,28 +1,25 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
 import type { DeckIssue, ResolvedLine } from "@mtg/core/contract";
 import { cn } from "cn";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { PHONE_HIT_AREA } from "@/lib/constants";
 
 const issueCount = (n: number) => `${n} deck issue${n === 1 ? "" : "s"}`;
 
 /**
- * `issuesInDeckBar`: the deck bar shows the issues as a chip (`DeckIssuesChip`), so the collapsed list here is only
- * for pages without the bar.
+ * `hideIssues`: the deck tool shows no deck issues once a deck is analysed (owner, 2026-11-24: the deck bar's issues
+ * chip is retired), so the collapsed list here is only for pages without the bar.
  */
 export function ResolutionIssues({
   unresolved,
   issues,
-  issuesInDeckBar = false,
+  hideIssues = false,
 }: {
   unresolved: ResolvedLine[];
   issues: DeckIssue[];
-  issuesInDeckBar?: boolean;
+  hideIssues?: boolean;
 }) {
-  const listIssues = issues.length > 0 && !issuesInDeckBar;
+  const listIssues = issues.length > 0 && !hideIssues;
   if (unresolved.length === 0 && !listIssues) return null;
 
   return (
@@ -63,43 +60,5 @@ function IssueList({ issues, className }: { issues: DeckIssue[]; className?: str
         <li key={`${issue.code}:${issue.cardId ?? i}`}>{issue.message}</li>
       ))}
     </ul>
-  );
-}
-
-/**
- * Deck issues as a chip in the deck bar: the count behind a warning sign, opening the list in a bottom sheet. A
- * full-width row above the bar cost the swipe cards their height on phones, and the same chip on every screen is one
- * look for one thing.
- */
-export function DeckIssuesChip({ issues }: { issues: DeckIssue[] }) {
-  if (issues.length === 0) return null;
-  const label = issueCount(issues.length);
-  return (
-    <Sheet closeOnBack>
-      <SheetTrigger
-        aria-label={label}
-        title={label}
-        className={cn(
-          PHONE_HIT_AREA,
-          // `paper`: a paper tag even on the deck bar, where brick red would not read on the dark.
-          "paper inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-primary/45 bg-sleeve px-2 font-mono text-xs text-primary transition-colors",
-          "hover:border-primary hover:bg-primary/10",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        )}
-      >
-        <TriangleAlert aria-hidden className="size-3.5 text-cut" />
-        {issues.length}
-      </SheetTrigger>
-      <SheetContent
-        side="bottom"
-        className="mx-auto max-h-[92dvh] w-full max-w-xl gap-0 overflow-y-auto rounded-t-2xl border-seam bg-sleeve px-4 pt-5 pb-6"
-      >
-        <SheetHeader className="p-0 pr-8">
-          <SheetTitle className="font-heading text-xl font-semibold tracking-tight">{label}</SheetTitle>
-          <SheetDescription>Worth fixing, but they don&apos;t stop the recommendations.</SheetDescription>
-        </SheetHeader>
-        <IssueList issues={issues} className="mt-3 text-sm" />
-      </SheetContent>
-    </Sheet>
   );
 }

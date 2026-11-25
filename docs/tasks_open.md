@@ -55,7 +55,7 @@ Friends trying the app don't know where to tap and miss features: how to upload 
 - [x] Tour state, provider and the Tutorials toggle
 - [x] Tour overlay, and the build start tour (the Commander page has none)
 - [x] Tour: deck start
-- [ ] Tours: deck bar and Save dialog
+- [x] Tours: the journey and Add, the built deck, and Save
 - [ ] Tours: Deck stats and the journey stepper
 - [ ] Tours: Add and Cut
 - [ ] Tours: Fix and Swap

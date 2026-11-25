@@ -167,12 +167,29 @@ const ADD: readonly TourStep[] = [
   { target: "add.decide", prompt: "tap", text: "TAP ADD to put it in your DECK, or SKIP to pass on it!" },
 ];
 
+/**
+ * The Save Deck page (the round's Save: the deck name form up in the bar, the decklist below), approved by the owner
+ * 2026-11-24. Top to bottom, then the page's own finish: name it and SAVE. Names only what earlier screens didn't show.
+ */
+const SAVE_DECK: readonly TourStep[] = [
+  { target: "save-deck.bar", prompt: "read", text: "This is your COMMANDER PANEL. RENAME and SAVE your DECK up here." },
+  { target: "save-deck.list", prompt: "read", text: "Here's your DECKLIST, sorted into categories." },
+  { target: "save-deck.card", prompt: "tap", text: "TAP a CARD PLATE to see the full card!" },
+  {
+    target: "save-deck.name",
+    prompt: "read",
+    text: "Great job on this DECK. Let's give it a name.",
+  },
+  { target: "save-deck.save", prompt: "tap", text: "TAP SAVE and your DECK is yours to come BACK to anytime!" },
+];
+
 export const TOURS: Record<TourId, readonly TourStep[]> = {
   "build-start": BUILD_START,
   "deck-start": DECK_START,
   "build-result": BUILD_RESULT,
   journey: JOURNEY,
   add: ADD,
+  "save-deck": SAVE_DECK,
 };
 
 /** Each tour's chapter name, quiet in its bubble beside the step count. */
@@ -182,6 +199,7 @@ const TOUR_TITLES: Record<TourId, string> = {
   "build-result": "Your New Deck",
   journey: "Deck Journey",
   add: "Add",
+  "save-deck": "Save Deck",
 };
 
 /** A tour's chapter name; none for an id without one. */

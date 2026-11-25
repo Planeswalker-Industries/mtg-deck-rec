@@ -85,7 +85,10 @@ export function CardPlate({
   trailing,
   onSwipeAway,
   className,
+  tourTarget,
 }: {
+  /** The plate's `data-tour` id, for the tours: on the part a tap enlarges, never the row's buttons. */
+  tourTarget?: string | undefined;
   /** Extra content at the end of the row, in the actions cell (a price and a remove button on the shopping list). */
   trailing?: ReactNode;
   /** A finger dragging the row left past `SWIPE_AWAY_PX` calls this once; the row follows the finger until then. */
@@ -227,6 +230,7 @@ export function CardPlate({
         <ZoomableCard
           card={card}
           hover={false}
+          tourTarget={tourTarget}
           // A row doesn't lift under the pointer like a loose card: the floating preview is its hover.
           className={cn(PLATE_AREA, "[@media(hover:hover)]:hover:translate-y-0")}
         >
