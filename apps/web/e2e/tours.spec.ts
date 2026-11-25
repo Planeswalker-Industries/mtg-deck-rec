@@ -115,10 +115,13 @@ async function openBuildStartTour(page: Page) {
   await expect(tour(page)).toContainText("So you want to BUILD a COMMANDER DECK, huh?", { timeout: PAGE_WAIT_MS });
 }
 
-/** › until the bubble says `text`. */
+/**
+ * › until the bubble says `text`. textContent, not innerText: a new bubble is hidden for its first frame while it is
+ * measured, and innerText would read it as empty and press › once too often.
+ */
 async function nextUntil(page: Page, text: string) {
   await expect(async () => {
-    if (!(await tour(page).innerText()).includes(text)) await tour(page).getByRole("button", { name: "Next step" }).click();
+    if (!((await tour(page).textContent()) ?? "").includes(text)) await tour(page).getByRole("button", { name: "Next step" }).click();
     await expect(tour(page)).toContainText(text, { timeout: 1_000 });
   }).toPass();
 }
