@@ -33,7 +33,8 @@ export async function latestSignInTokenHash(request: APIRequestContext, email: s
     const id = (await search.json()).messages?.[0]?.ID as string | undefined;
     if (id) {
       const message = await (await request.get(`${mailpit}/api/v1/message/${id}`)).json();
-      const hash = String(message.HTML ?? message.Text ?? "").match(/token_hash=([0-9a-f]+)/i)?.[1];
+      // The app's form signs in with PKCE, whose hashes start "pkce_"; a direct /otp call's are plain hex.
+      const hash = String(message.HTML ?? message.Text ?? "").match(/token_hash=([\w-]+)/)?.[1];
       if (hash) return hash;
     }
     await new Promise((resolve) => setTimeout(resolve, MAIL_WAIT_MS));
