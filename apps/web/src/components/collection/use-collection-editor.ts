@@ -7,6 +7,7 @@ import { getApis } from "@/lib/api/client";
 import { loadCollection, saveCollection, updateCollectionRows } from "@/lib/collection-store";
 import { notifyCollectionChanged } from "./use-collection-source";
 import type { CollectionViewItem } from "./use-collection-view";
+import { reportClientError } from "@/lib/client-error-report";
 
 /**
  * A card's count settles this long after its last click before it's written, so tapping + five times is one write of
@@ -62,6 +63,7 @@ export function useCollectionEditor(initial: CollectionViewItem[], where: "brows
       if (starting) created.current = true;
       before.current.delete(card.id);
     } catch (err) {
+      reportClientError("collection.editQuantity", err, { context: { cardId: card.id, quantity } });
       const previous = before.current.get(card.id);
       before.current.delete(card.id);
       setItems((list) => {

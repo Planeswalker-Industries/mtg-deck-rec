@@ -4,6 +4,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { ImageResponse } from "next/og";
 import sharp from "sharp";
 import { OG_IMAGE_SIZE, USER_AGENT } from "@/lib/constants";
+import { logError } from "./error-log";
 
 /**
  * The share plate (T101) for card, commander and saved-deck pages: a paper sheet on the walnut table, the card's art
@@ -184,7 +185,7 @@ export async function plateResponse(
     try {
       plate = await cachedPlate(artUrl, artist);
     } catch (err) {
-      console.error(err);
+      logError({ area: "sharePlate.render", error: err, level: "warning", context: { artUrl } });
       plate = await renderPlate(null, null);
     }
   }

@@ -8,6 +8,7 @@ import { dealRaterCards } from "@/lib/server/rater";
 import { NotFoundError } from "@/lib/server/recs";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
+import { logError } from "@/lib/server/error-log";
 
 /**
  * Deals cards for the card rater: what a commander's decks play, picked by card ids or by commander page slug. The
@@ -34,7 +35,7 @@ export async function dealRaterCardsAction(input: Parameters<ActionsApi["dealRat
     return { ok: true, data: dealt.data };
   } catch (err) {
     if (err instanceof NotFoundError) return { ok: false, error: { code: "NOT_FOUND", message: err.message } };
-    console.error(err);
+    logError({ area: "rate.dealRaterCards", error: err });
     return { ok: false, error: { code: "UPSTREAM_UNAVAILABLE", message: "Couldn't deal cards to rate. Try again in a moment." } };
   }
 }

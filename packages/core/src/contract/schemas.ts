@@ -4,7 +4,20 @@ import type { ApiError, Result } from './errors';
 import type { CardId, CommanderKeyId, DeckId, PrintingId, TagId } from './ids';
 import type { OwnershipInput, RecBudget, RecContext, RecEvent, ScoreComponent, VoteContext } from './recs';
 import type { CardTypeFilter } from './cards';
+import type { ClientErrorReport } from './client-errors';
 import { CURVE_TOP_MANA_VALUE } from '../journey/deck-stats';
+import {
+  ERROR_AREA_PATTERN,
+  MAX_ERROR_AREA_CHARS,
+  MAX_ERROR_CODE_CHARS,
+  MAX_ERROR_CONTEXT_KEYS,
+  MAX_ERROR_CONTEXT_KEY_CHARS,
+  MAX_ERROR_CONTEXT_VALUE_CHARS,
+  MAX_ERROR_MESSAGE_CHARS,
+  MAX_ERROR_NAME_CHARS,
+  MAX_ERROR_PATH_CHARS,
+  MAX_ERROR_STACK_CHARS,
+} from '../errors';
 
 /**
  * Runtime validation for contract inputs that arrive over the network (Route Handler bodies, Server Action arguments).
@@ -522,6 +535,36 @@ export const submitFeedbackInputSchema = z.object(
       .string({ error: 'That page is not valid.' })
       .max(MAX_FEEDBACK_PATH_CHARS, 'That page is not valid.')
       .regex(/^\/[^?#\s]*$/, 'That page is not valid.'),
+  },
+  request,
+);
+
+/**
+ * A browser's failure report (v41). Bounded to what an error ticket stores; the message and stack are cut short rather
+ * than refused, since a report that fails to send is a failure nobody hears about.
+ */
+export const reportClientErrorInputSchema: InputSchema<ClientErrorReport> = z.object(
+  {
+    area: z.string().min(1).max(MAX_ERROR_AREA_CHARS).regex(ERROR_AREA_PATTERN),
+    message: z
+      .string()
+      .trim()
+      .min(1)
+      .transform((m) => m.slice(0, MAX_ERROR_MESSAGE_CHARS)),
+    pagePath: z.string().max(MAX_ERROR_PATH_CHARS).regex(/^\/[^?#\s]*$/),
+    name: z.string().max(MAX_ERROR_NAME_CHARS).optional(),
+    stack: z
+      .string()
+      .transform((s) => s.slice(0, MAX_ERROR_STACK_CHARS))
+      .optional(),
+    code: z.string().min(1).max(MAX_ERROR_CODE_CHARS).optional(),
+    context: z
+      .record(
+        z.string().max(MAX_ERROR_CONTEXT_KEY_CHARS),
+        z.union([z.string().max(MAX_ERROR_CONTEXT_VALUE_CHARS), z.number(), z.boolean(), z.null()]),
+      )
+      .refine((c) => Object.keys(c).length <= MAX_ERROR_CONTEXT_KEYS, 'Too much context.')
+      .optional(),
   },
   request,
 );

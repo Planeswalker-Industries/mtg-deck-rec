@@ -5,6 +5,7 @@ import { checkRateLimit } from "@/lib/server/rate-limit";
 import { accountOwnedIds, errorResponse } from "@/lib/server/recs-route";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
+import { logError } from "@/lib/server/error-log";
 
 /** Public searches are the same for everyone, so the CDN keeps them for an hour and serves stale for a day. */
 const PUBLIC_CACHE = "public, s-maxage=3600, stale-while-revalidate=86400";
@@ -79,7 +80,7 @@ async function respond(request: Request, raw: unknown, cacheControl: string): Pr
       headers: { "Cache-Control": cacheControl, "x-search-source": source },
     });
   } catch (err) {
-    console.error(err);
+    logError({ area: "api.cards.search", error: err });
     return errorResponse({ code: "UPSTREAM_UNAVAILABLE", message: "Couldn't search cards. Try again in a moment." });
   }
 }

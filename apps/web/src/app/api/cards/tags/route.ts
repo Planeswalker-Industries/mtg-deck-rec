@@ -5,6 +5,7 @@ import { errorResponse } from "@/lib/server/recs-route";
 import { createPublicClient } from "@/lib/server/supabase";
 import { visitorKey } from "@/lib/server/visitor";
 import { fetchCardTags } from "@/lib/server/card-tags";
+import { logError } from "@/lib/server/error-log";
 
 /**
  * POST /api/cards/tags: functional tags for a set of cards, so the deck workspace can group a deck by what its
@@ -25,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
       headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" },
     });
   } catch (err) {
-    console.error(err);
+    logError({ area: "api.cards.tags", error: err });
     return errorResponse({ code: "UPSTREAM_UNAVAILABLE", message: "Couldn't load what these cards do. Try again in a moment." });
   }
 }

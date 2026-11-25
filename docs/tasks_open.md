@@ -165,7 +165,12 @@ Server Actions run one at a time per page, so every swipe's `castVote` and the 2
 
 ## T027: 10k-row collection import timing
 
-**LOW** · Performance · The 1,000-row path was fixed 2026-09-20
+**MEDIUM** · Performance · The 1,000-row path was fixed 2026-09-20 · Raised from LOW by feedback report 2 (2026-11-25)
+
+Report 2 (2026-11-25, 05:58 UTC): "my collection won't import". Hosted `collection_imports` 52 and 53 (06:03 and 06:07) each staged all 29,382 rows of a pasted text import (`replace`) and never committed; 54 (06:10) committed in 7 s. The import that prompted the report was dropped when 54 opened (`maxOpenImports` keeps two). Suspected: `commit_collection_import` running into the API roles' 8 s statement timeout on a cold cache. Unconfirmed, because the only trace was Vercel's console line, which had aged out: from T104 on, a failure here opens a ticket at `/admin/errors` with the database error and its code (`57014` for a timeout).
+
+- [ ] Confirm the cause from the next `collection.saveBatch` ticket, or by timing a ~30,000-row replace import against a cold hosted cache
+- [ ] If it is the timeout: raise the statement timeout for `commit_collection_import` alone (`set statement_timeout` on the function), or commit in slices; keep the import all-or-nothing
 
 - [ ] Re-run a 1,000-row import on hosted
 - [ ] Time a 10,000-row import end to end locally, extending `apps/web/scripts/collection-resolve-check.ts`: per-batch resolve and commit times, no statement timeout, a responsive browser. Record the numbers beside `app_config.collections`
@@ -238,6 +243,16 @@ PR #243 (released in #245) cut what crawlers download: share plates as JPEG (abo
 - [ ] On or after 2026-11-27: `vercel usage --scope steve-briscoes-projects --from 2026-11-24 --to 2026-11-27 --breakdown daily`, and compare each day's Fast Data Transfer and Fast Origin Transfer with 2026-11-23 (FDT $2.08, FOT $1.11)
 - [ ] Record the numbers here or in the closing line. The 2026-11-23 baseline includes AhrefsBot (45,716 requests and 25.4 GB of FOT on 2026-11-22/23), so the drop comes from the bot block and the smaller images together
 - [ ] If FDT is still high: `vercel metrics vercel.request.fdt_total_bytes -a sum --group-by route` and `--group-by clientUserAgent` (`--scope steve-briscoes-projects -p mtg-app`) to find the next source
+
+## T104: Error tickets
+
+**MEDIUM** · Ops · Built 2026-11-25 (owner asked: every failure opens a ticket in the admin panel, like reports)
+
+Every failure opens or joins a ticket at `/admin/errors` (migration `20261125000100_error_tickets.sql`): server failures through `logError` (`apps/web/src/lib/server/error-log.ts`) and `instrumentation.ts`, browser failures through `reportClientError` (contract v41). One ticket per kind (fingerprint of source, area, code and the message's shape), the newest `app_config.error_tickets.eventsPerTicket` events kept, new kinds past `maxOpenTickets` folded into one overflow ticket.
+
+- [ ] After the release to `main`: confirm hosted `SUPABASE_SECRET_KEY` is set for Production (tickets are written with it; without it they reach the console only, with one line per instance saying so), then trigger a failure and see its ticket
+- [ ] Decide how long resolved tickets are kept (none are deleted yet), and whether a nightly job should drop them
+- [ ] Watch the first week's volume: noisy warnings (`searchIndex.*`, `timeout.*`, `rateLimit.*`) may need their own filter on the page or a higher bar
 
 ## T003: Deck report link destination
 

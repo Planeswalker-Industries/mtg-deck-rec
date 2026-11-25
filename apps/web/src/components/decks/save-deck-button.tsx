@@ -18,6 +18,7 @@ import { ErrorText } from "@/components/ui/error-text";
 import { BuyButtons } from "@/components/decks/buy-buttons";
 import { cartLinks } from "@/lib/affiliate";
 import { PageTour } from "@/components/tour/page-tour";
+import { reportClientError } from "@/lib/client-error-report";
 
 /** A save waiting on the player's answer about the cards their collection lacks. */
 interface Confirm {
@@ -105,6 +106,7 @@ export function SaveDeckButton({
     try {
       await addShortfallToCollection(collection, signedIn, add, names);
     } catch (err) {
+      reportClientError("decks.saveShortfall", err, { context: { cards: add.length, signedIn } });
       setBusy(false);
       setError(`Couldn't add the cards to your collection: ${err instanceof Error ? err.message : "try again."}`);
       return;

@@ -27,6 +27,7 @@ import {
   startImport,
 } from "@/lib/server/account-collection";
 import { createAuthClient } from "@/lib/server/auth";
+import { logError } from "@/lib/server/error-log";
 import { ARCHIDEKT_MAX_PAGE, fetchArchidektCollection, type CollectionLinkChunk } from "@/lib/server/collection-link";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 import { createPublicClient } from "@/lib/server/supabase";
@@ -41,10 +42,18 @@ const refusals: Record<CollectionRefused["reason"] | "NOT_SIGNED_IN", Result<nev
   CARD_NOT_FOUND: failure("NOT_FOUND", "That card isn't in the catalog any more."),
 };
 
-function failed(err: unknown, message: string): Result<never> {
+/**
+ * The answer for a failed call, and its error ticket: an unexpected failure as an error, a refusal the visitor can't
+ * fix by trying again (a collection over the limit, an expired import) as a warning. Signed out is neither.
+ */
+function failed(area: string, err: unknown, message: string, context?: Record<string, unknown>): Result<never> {
   if (err instanceof NotSignedInError) return refusals.NOT_SIGNED_IN;
-  if (err instanceof CollectionRefused) return refusals[err.reason];
-  console.error(err);
+  if (err instanceof CollectionRefused) {
+    const refusal = refusals[err.reason];
+    if (!refusal.ok) logError({ area, error: err, level: "warning", code: refusal.error.code, shown: refusal.error.message, context: { ...context, reason: err.reason } });
+    return refusal;
+  }
+  logError({ area, error: err, code: "UPSTREAM_UNAVAILABLE", shown: message, context });
   return failure("UPSTREAM_UNAVAILABLE", message);
 }
 
@@ -69,7 +78,7 @@ export async function getAccountCollectionAction(): Promise<Result<AccountCollec
     if (blocked) return blocked;
     return { ok: true, data: { signedIn: true, totals: await accountCollectionTotals(db) } };
   } catch (err) {
-    return failed(err, "Couldn't load your collection. Try again in a moment.");
+    return failed("collection.status", err, "Couldn't load your collection. Try again in a moment.");
   }
 }
 
@@ -93,7 +102,13 @@ export async function saveCollectionBatchAction(
     if (rows.length > 0) await saveRows(db, id, rows);
     return { ok: true, data: { importId: id, totals: final ? await commitImport(db, id) : null } };
   } catch (err) {
-    return failed(err, "Couldn't save your collection. Try again in a moment.");
+    return failed("collection.saveBatch", err, "Couldn't save your collection. Try again in a moment.", {
+      importId: importId ?? null,
+      sourceApp,
+      mode,
+      rows: rows.length,
+      final: final === true,
+    });
   }
 }
 
@@ -106,7 +121,7 @@ export async function getMyCollectionEntriesAction(): Promise<Result<CollectionE
     await requireUserId(db);
     return { ok: true, data: await accountCollectionEntries(db) };
   } catch (err) {
-    return failed(err, "Couldn't load your collection. Try again in a moment.");
+    return failed("collection.entries", err, "Couldn't load your collection. Try again in a moment.");
   }
 }
 
@@ -122,7 +137,7 @@ export async function setCollectionCardQuantityAction(input: unknown): Promise<R
     const quantity = await setAccountCardQuantity(db, parsed.data.cardId, parsed.data.quantity);
     return { ok: true, data: { cardId: parsed.data.cardId, quantity } };
   } catch (err) {
-    return failed(err, "Couldn't update your collection. Try again in a moment.");
+    return failed("collection.setQuantity", err, "Couldn't update your collection. Try again in a moment.");
   }
 }
 
@@ -136,7 +151,7 @@ export async function deleteCollectionAction(): Promise<Result<null>> {
     await deleteAccountCollection(db);
     return { ok: true, data: null };
   } catch (err) {
-    return failed(err, "Couldn't clear your collection. Try again in a moment.");
+    return failed("collection.clear", err, "Couldn't clear your collection. Try again in a moment.");
   }
 }
 
@@ -149,7 +164,7 @@ export async function getMyCollectionSharingAction(): Promise<Result<CollectionS
     await requireUserId(db);
     return { ok: true, data: await accountCollectionSharing(db) };
   } catch (err) {
-    return failed(err, "Couldn't check whether your collection is shared. Try again in a moment.");
+    return failed("collection.sharingStatus", err, "Couldn't check whether your collection is shared. Try again in a moment.");
   }
 }
 
@@ -166,7 +181,7 @@ export async function setCollectionSharingAction(
     await requireUserId(db);
     return { ok: true, data: await setAccountCollectionSharing(db, parsed.data.shared) };
   } catch (err) {
-    return failed(err, "Couldn't change sharing. Try again in a moment.");
+    return failed("collection.setSharing", err, "Couldn't change sharing. Try again in a moment.");
   }
 }
 
@@ -183,7 +198,7 @@ export async function getSharedCollectionAction(
     const shared = await sharedCollection(db, parsed.data.code);
     return shared ? { ok: true, data: shared } : failure("NOT_FOUND", "This collection isn't shared.");
   } catch (err) {
-    return failed(err, "Couldn't load this collection. Try again in a moment.");
+    return failed("collection.shared", err, "Couldn't load this collection. Try again in a moment.");
   }
 }
 
@@ -228,6 +243,6 @@ export async function importCollectionFromLinkAction(input: { url: string; page:
     if (!result.ok) return result;
     return { ok: true, data: { ...result.data, source: "archidekt", sourceUrl: `https://archidekt.com/collection/v2/${link.collectionId}` } };
   } catch (err) {
-    return failed(err, "Couldn't load that Archidekt collection. Try again in a moment.");
+    return failed("collection.importLink", err, "Couldn't load that Archidekt collection. Try again in a moment.", { source: link.source, page });
   }
 }

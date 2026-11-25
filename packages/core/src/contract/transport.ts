@@ -1,6 +1,7 @@
 import type { ExportFormat, FavoriteRef, SyncStatusRow, TagAdminRow } from './account';
 import type { CardDetail, CardRules, CardSummary, TagRef, CardSearchInput } from './cards';
 import type { CommanderCoverage, CommanderRequest } from './commander-requests';
+import type { ClientErrorReport } from './client-errors';
 import type {
   CollectionCardsResult,
   DeckCoverageResult,
@@ -182,6 +183,13 @@ export interface ActionsApi {
    * (a site path, no query string). UNAUTHENTICATED when signed out.
    */
   submitFeedback(input: { message: string; pagePath: string }): Promise<Result<{ id: number }>>;
+
+  /**
+   * v41. Reports a failure in the visitor's browser, which opens or joins an error ticket for the site's admins. Works
+   * without an account; rate-limited per visitor. Always answers ok unless the input or the rate limit refuses it, so
+   * a page never shows an error about reporting an error.
+   */
+  reportClientError(input: ClientErrorReport): Promise<Result<null>>;
 
   adminSetTagDisabled(input: {
     tagId: TagId;

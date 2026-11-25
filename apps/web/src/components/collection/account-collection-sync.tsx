@@ -5,6 +5,7 @@ import { getApis } from "@/lib/api/client";
 import { clearCollection, loadCollection } from "@/lib/collection-store";
 import { withCollectionWrite } from "@/lib/collection-lock";
 import { setBrowserMoveFailed } from "./use-collection-source";
+import { reportClientError } from "@/lib/client-error-report";
 
 /** The server saves at most this many rows per call. */
 const ROWS_PER_CALL = 2_000;
@@ -46,7 +47,10 @@ export function AccountCollectionSync() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void withCollectionWrite(moveToAccount).catch(() => setBrowserMoveFailed(true));
+    void withCollectionWrite(moveToAccount).catch((err: unknown) => {
+      reportClientError("collection.moveToAccount", err);
+      setBrowserMoveFailed(true);
+    });
   }, []);
 
   return null;

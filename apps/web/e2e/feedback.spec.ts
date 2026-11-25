@@ -33,7 +33,7 @@ test("a player's report reaches the admin list and can be resolved", async ({ pa
   const admin = await browser.newPage();
   await signIn(admin, admin.request, "admin@test.local", "/decks");
   // Admins see how many reports are open: on a phone (the suite's width) the menu button carries the count.
-  await expect(admin.getByRole("button", { name: /^Menu, \d+ open feedback reports?$/ })).toBeVisible();
+  await expect(admin.getByRole("button", { name: /^Menu, \d+ open feedback reports?(, \d+ open error tickets?)?$/ })).toBeVisible();
   await admin.goto("/admin/reports");
   const row = admin.getByRole("listitem").filter({ hasText: message });
   await expect(row).toBeVisible({ timeout: 30_000 });

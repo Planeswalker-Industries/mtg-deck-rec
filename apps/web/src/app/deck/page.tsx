@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { DeckTool } from "@/components/deck/deck-tool";
 import { BUILD_COMMANDER_PARAM, DECK_START_BUILD, DECK_START_PARAM } from "@/lib/constants";
 import { getCommanderPage } from "@/lib/server/recs-cache";
+import { logError } from "@/lib/server/error-log";
 
 export const metadata: Metadata = {
   title: "Deck tool",
@@ -39,7 +40,7 @@ async function DeckToolEntry({ searchParams }: Pick<PageProps<"/deck">, "searchP
   const page =
     start === DECK_START_BUILD && typeof commander === "string"
       ? await getCommanderPage(commander).catch((error: unknown) => {
-          console.error(`Prefilling the build start for ${commander} failed; the picker opens empty.`, error);
+          logError({ area: "deck.page.buildPrefill", error, level: "warning", context: { commander } });
           return null;
         })
       : null;
