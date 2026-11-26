@@ -27,10 +27,17 @@ const maxParallelSearches = 4
 // parallel chunks from a few concurrent page loads use, and every connection past it would be closed and reopened.
 const maxIdleConnsPerHost = 16
 
+// SnapshotTimeout bounds an on-demand snapshot, which Typesense answers only once it is written: a RocksDB checkpoint
+// (hard links) plus each collection's metadata. A full local index (4 million documents) took 0.1 s on 2026-11-26; a
+// minute leaves room for a slow disk without letting a hung engine hold the worker for long.
+const SnapshotTimeout = time.Minute
+
 type Client struct {
 	baseURL string
 	apiKey  string
 	http    *http.Client
+	// The same connections, with SnapshotTimeout: the one call allowed to take longer than a search.
+	slow *http.Client
 }
 
 func New(baseURL, apiKey string, timeout time.Duration) *Client {
@@ -40,6 +47,7 @@ func New(baseURL, apiKey string, timeout time.Duration) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 		http:    &http.Client{Timeout: timeout, Transport: transport},
+		slow:    &http.Client{Timeout: max(timeout, SnapshotTimeout), Transport: transport},
 	}
 }
 
@@ -64,6 +72,10 @@ func truncate(s string, n int) string {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body io.Reader, contentType string) ([]byte, error) {
+	return c.send(ctx, c.http, method, path, body, contentType)
+}
+
+func (c *Client) send(ctx context.Context, client *http.Client, method, path string, body io.Reader, contentType string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
 		return nil, err
@@ -72,7 +84,7 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader, co
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	res, err := c.http.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -315,6 +327,20 @@ func (c *Client) ResolveAlias(ctx context.Context, name string) (string, error) 
 func (c *Client) UpsertAlias(ctx context.Context, name, collection string) error {
 	return c.doJSON(ctx, http.MethodPut, "/aliases/"+url.PathEscape(name),
 		map[string]string{"collection_name": collection}, nil)
+}
+
+// Snapshot asks Typesense for an on-demand internal snapshot, which compacts the Raft log into the data directory. A
+// restart then restores from it instead of replaying every write since the last hourly snapshot, and a replay is
+// where an alias was lost (T108).
+//
+// Never with `snapshot_path`: that also exports a full copy of the index to the path given, and a copy per rebuild
+// would fill the VPS disk. Typesense 29.0 takes the bare call (checked 2026-11-26) and answers {"success":true}.
+func (c *Client) Snapshot(ctx context.Context) (json.RawMessage, error) {
+	payload, err := c.send(ctx, c.slow, http.MethodPost, "/operations/snapshot", nil, "")
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(payload), nil
 }
 
 func (c *Client) Health(ctx context.Context) error {

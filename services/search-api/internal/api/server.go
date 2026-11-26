@@ -98,6 +98,7 @@ func New(cfg config.Config, ts *typesense.Client, log *slog.Logger, crawls map[s
 	admin.Delete("/collections/:name/documents/:id", s.deleteDocument)
 	admin.Get("/aliases/:name", s.getAlias)
 	admin.Put("/aliases/:name", s.putAlias)
+	admin.Post("/snapshot", s.snapshot)
 
 	// The deck crawls, triggered by the web app's daily cron, one group per source (:source ∈ {moxfield, archidekt}).
 	// Only the cron token (and the admin token) reach them; the read token on Vercel cannot. They live outside /v1 on

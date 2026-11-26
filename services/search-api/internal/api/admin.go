@@ -137,3 +137,17 @@ func (s *Server) putAlias(c fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"name": name, "collectionName": body.CollectionName})
 }
+
+// snapshot takes no input on purpose: the one thing a caller could add is a path to export to, and that is the call
+// this route must never make (typesense.Client.Snapshot says why). Typesense's own answer is passed back.
+func (s *Server) snapshot(c fiber.Ctx) error {
+	answer, err := s.ts.Snapshot(c.Context())
+	if err != nil {
+		return err
+	}
+	if len(answer) == 0 {
+		return c.JSON(fiber.Map{"success": true})
+	}
+	c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	return c.Send(answer)
+}

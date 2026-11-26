@@ -37,11 +37,15 @@ const (
 // this service builds - the chunking, the filters and the ranking are the parts worth pinning down.
 type fakeTypesense struct {
 	server *httptest.Server
-	// mu guards the two records below: the batched reads send their chunks concurrently.
+	// mu guards the records below: the batched reads send their chunks concurrently.
 	mu       sync.Mutex
 	searches []typesense.SearchParams
 	requests []string
-	respond  func(searches []typesense.SearchParams) []typesense.SearchResult
+	// Each request's method and full URI, query string included: `requests` leaves the query out.
+	uris    []string
+	respond func(searches []typesense.SearchParams) []typesense.SearchResult
+	// fail maps a path to the error status the fake answers it with. Set before the first request.
+	fail map[string]int
 }
 
 func newFakeTypesense(t *testing.T) *fakeTypesense {
@@ -50,10 +54,19 @@ func newFakeTypesense(t *testing.T) *fakeTypesense {
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.requests = append(f.requests, r.Method+" "+r.URL.Path)
+		f.uris = append(f.uris, r.Method+" "+r.URL.RequestURI())
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 
+		if status, ok := f.fail[r.URL.Path]; ok {
+			w.WriteHeader(status)
+			fmt.Fprint(w, `{"message":"the fake was told to fail"}`)
+			return
+		}
 		switch {
+		case r.URL.Path == "/operations/snapshot":
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprint(w, `{"success":true}`)
 		case r.URL.Path == "/health":
 			fmt.Fprint(w, `{"ok":true}`)
 		case r.URL.Path == "/multi_search":
@@ -146,6 +159,9 @@ func TestAuthorization(t *testing.T) {
 		{"a read endpoint with the read token", http.MethodGet, "/v1/tags", readToken, http.StatusOK},
 		{"an admin endpoint with the read token", http.MethodGet, "/v1/admin/collections", readToken, http.StatusForbidden},
 		{"an admin endpoint with the admin token", http.MethodGet, "/v1/admin/collections", adminToken, http.StatusOK},
+		{"snapshot without a token", http.MethodPost, "/v1/admin/snapshot", "", http.StatusUnauthorized},
+		{"snapshot with the read token", http.MethodPost, "/v1/admin/snapshot", readToken, http.StatusForbidden},
+		{"snapshot with the admin token", http.MethodPost, "/v1/admin/snapshot", adminToken, http.StatusOK},
 		// The admin token is strictly more privileged, so it may also read.
 		{"a read endpoint with the admin token", http.MethodGet, "/v1/tags", adminToken, http.StatusOK},
 		// The crawls are a cron/admin affair, deliberately outside /v1. Unconfigured (no runners) they are a 503 for
@@ -583,6 +599,38 @@ func TestDeleteDocumentAcceptsAnEscapedCommanderCardKey(t *testing.T) {
 	}
 	if countRequests(fake.recordedRequests(), "DELETE /collections/commander_cards/documents/22:11555") != 1 {
 		t.Fatalf("Typesense saw %v", fake.recordedRequests())
+	}
+}
+
+// A snapshot_path would export a full copy of the index to disk; the route must reach Typesense with no query at all,
+// whatever the caller tacks on.
+func TestSnapshotSendsNoPath(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	res, decoded := do(t, app, http.MethodPost, "/v1/admin/snapshot?snapshot_path=/data/copy", adminToken, "")
+	if res.StatusCode != http.StatusOK || decoded["success"] != true {
+		t.Fatalf("status %d, body %v; want 200 with Typesense's answer", res.StatusCode, decoded)
+	}
+	fake.mu.Lock()
+	uris := slices.Clone(fake.uris)
+	fake.mu.Unlock()
+	if !slices.Equal(uris, []string{"POST /operations/snapshot"}) {
+		t.Fatalf("Typesense saw %v, want exactly one bare POST /operations/snapshot", uris)
+	}
+}
+
+func TestSnapshotPassesAnUpstreamFailureOn(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.fail = map[string]int{"/operations/snapshot": http.StatusInternalServerError}
+	app := newApp(t, fake)
+
+	res, decoded := do(t, app, http.MethodPost, "/v1/admin/snapshot", adminToken, "")
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status %d, want 502", res.StatusCode)
+	}
+	if decoded["success"] != nil || decoded["error"] == nil {
+		t.Fatalf("a failed snapshot must answer an error, got %v", decoded)
 	}
 }
 
