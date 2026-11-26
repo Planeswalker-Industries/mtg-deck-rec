@@ -134,57 +134,72 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
 
       await db`begin`;
       try {
-        const [changed] = await db<{ n: number }[]>`
-          with upserted as (
-            insert into public.cards as c (${db(CARD_COLUMNS)})
-            select ${db(CARD_COLUMNS)} from stg_cards
-            on conflict (oracle_id) do update set
-              name = excluded.name,
-              name_normalized = excluded.name_normalized,
-              layout = excluded.layout,
-              mana_value = excluded.mana_value,
-              mana_cost = excluded.mana_cost,
-              type_line = excluded.type_line,
-              oracle_text = excluded.oracle_text,
-              card_faces = excluded.card_faces,
-              color_identity = excluded.color_identity,
-              is_basic_land = excluded.is_basic_land,
-              can_be_commander = excluded.can_be_commander,
-              partner_kind = excluded.partner_kind,
-              partner_qualifier = excluded.partner_qualifier,
-              copy_limit = excluded.copy_limit,
-              legal_commander = excluded.legal_commander,
-              legalities = excluded.legalities,
-              game_changer = excluded.game_changer,
-              is_digital_only = excluded.is_digital_only,
-              released_at = excluded.released_at,
-              images = excluded.images,
-              artist = excluded.artist,
-              keywords = excluded.keywords,
-              power = excluded.power,
-              toughness = excluded.toughness,
-              loyalty = excluded.loyalty,
-              defense = excluded.defense,
-              colors = excluded.colors,
-              color_indicator = excluded.color_indicator,
-              produced_mana = excluded.produced_mana,
-              fetchable_mana = excluded.fetchable_mana,
-              fetchable_basic_only = excluded.fetchable_basic_only,
-              reserved = excluded.reserved,
-              scryfall_uri = excluded.scryfall_uri,
-              content_hash = excluded.content_hash,
-              rules_hash = excluded.rules_hash,
+        // Update what changed, then insert what is new. Never `insert … on conflict do update`: Postgres draws a
+        // sequence value for every row it tries to insert, conflict or not, so that burned one id per card on every run
+        // (75 runs took cards_id_seq past 2.6 M for 35 K cards, and past what keyPairs could pack).
+        const [updated] = await db<{ n: number }[]>`
+          with changed as (
+            update public.cards c set
+              name = s.name,
+              name_normalized = s.name_normalized,
+              layout = s.layout,
+              mana_value = s.mana_value,
+              mana_cost = s.mana_cost,
+              type_line = s.type_line,
+              oracle_text = s.oracle_text,
+              card_faces = s.card_faces,
+              color_identity = s.color_identity,
+              is_basic_land = s.is_basic_land,
+              can_be_commander = s.can_be_commander,
+              partner_kind = s.partner_kind,
+              partner_qualifier = s.partner_qualifier,
+              copy_limit = s.copy_limit,
+              legal_commander = s.legal_commander,
+              legalities = s.legalities,
+              game_changer = s.game_changer,
+              is_digital_only = s.is_digital_only,
+              released_at = s.released_at,
+              images = s.images,
+              artist = s.artist,
+              keywords = s.keywords,
+              power = s.power,
+              toughness = s.toughness,
+              loyalty = s.loyalty,
+              defense = s.defense,
+              colors = s.colors,
+              color_indicator = s.color_indicator,
+              produced_mana = s.produced_mana,
+              fetchable_mana = s.fetchable_mana,
+              fetchable_basic_only = s.fetchable_basic_only,
+              reserved = s.reserved,
+              scryfall_uri = s.scryfall_uri,
+              content_hash = s.content_hash,
+              rules_hash = s.rules_hash,
               updated_at = now(),
               deleted_at = null
-            where c.content_hash is distinct from excluded.content_hash
-               or c.rules_hash is distinct from excluded.rules_hash
-               -- Derived from the card, not hashed: a change to the commander rule rewrites only the rows it moves.
-               or c.can_be_commander is distinct from excluded.can_be_commander
-               or c.deleted_at is not null
+            from stg_cards s
+            where s.oracle_id = c.oracle_id
+              and (c.content_hash is distinct from s.content_hash
+                or c.rules_hash is distinct from s.rules_hash
+                -- Derived from the card, not hashed: a change to the commander rule rewrites only the rows it moves.
+                or c.can_be_commander is distinct from s.can_be_commander
+                or c.deleted_at is not null)
             returning 1
           )
-          select count(*)::int as n from upserted
+          select count(*)::int as n from changed
         `;
+        const [inserted] = await db<{ n: number }[]>`
+          with added as (
+            -- The alias keeps postgres.js reading the column list as identifiers: right after "insert into x (" it
+            -- builds rows from the array instead.
+            insert into public.cards as t (${db(CARD_COLUMNS)})
+            select ${db(CARD_COLUMNS)} from stg_cards s
+            where not exists (select 1 from public.cards c where c.oracle_id = s.oracle_id)
+            returning 1
+          )
+          select count(*)::int as n from added
+        `;
+        const changed = (updated?.n ?? 0) + (inserted?.n ?? 0);
 
         // Prices are checked on every run, independent of card changes. Once sync:printings has computed the cheapest
         // printing (card_stats), that price wins; the representative printing's price only fills in until then. Only
@@ -278,7 +293,7 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
 
         const result = {
           ...metrics,
-          changed: changed?.n ?? 0,
+          changed,
           removed: removed?.n ?? 0,
           twinGroups: twins?.groups ?? 0,
           twinCards: twins?.cards ?? 0,

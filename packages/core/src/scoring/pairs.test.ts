@@ -82,6 +82,20 @@ describe('card pairs (T064)', () => {
     expect(keyPairs(decks, always, { ...SETTINGS, liftFloor: 10 })).toEqual([]);
   });
 
+  it('keeps card ids past 2^21 intact (the hosted catalog passed it in November 2026)', () => {
+    // The ids of two November 2026 cards on hosted; under the old 2^21 base the pair unpacked to (2354325, 268753).
+    const [low, high] = [2_354_324, 2_365_905];
+    const shifted = decks.map((d) => ({ ...d, cardIds: d.cardIds.map((id) => (id === 10 ? low : id === 11 ? high : id)) }));
+    const rows = keyPairs(shifted, always, SETTINGS);
+    expect(rows.map((r) => [r.cardA, r.cardB])).toEqual([[low, high]]);
+    expect(rows[0]?.pairDecks).toBe(10);
+  });
+
+  it("refuses a card id the pair key can't hold rather than pairing the wrong cards", () => {
+    const tooBig = [{ cardIds: [1, 2 ** 26], month: '2026-01' }];
+    expect(() => keyPairs(tooBig, always, SETTINGS)).toThrow(RangeError);
+  });
+
   it("keeps a pair among either card's strongest", () => {
     const rows = [
       { cardA: 1, cardB: 2, pairDecks: 5, lift: 3 },

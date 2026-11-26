@@ -62,9 +62,19 @@ export function pairLift(pairDecks: number, decksA: number, decksB: number, deck
   return (pairDecks + prior) / (expected + prior);
 }
 
-/** Numeric key for a pair of card ids (both under 2^21), a < b. */
-const PAIR_KEY_BASE = 2 ** 21;
+/**
+ * Numeric key for a pair of card ids, a < b. Card ids are a sequence with gaps (2.37 M on 2026-11-26 for 35 K cards),
+ * so the base sits far above them; 2^26 keeps every key under 2^52, where a number is still exact.
+ */
+const PAIR_KEY_BASE = 2 ** 26;
 const pairKey = (a: number, b: number) => a * PAIR_KEY_BASE + b;
+
+/** A card id the key can't hold would unpack as two other cards, so it stops the count instead. */
+function assertPackable(cardId: number): void {
+  if (!Number.isInteger(cardId) || cardId < 0 || cardId >= PAIR_KEY_BASE) {
+    throw new RangeError(`card id ${cardId} doesn't fit a pair key (base ${PAIR_KEY_BASE})`);
+  }
+}
 
 /** Keeps each pair that is among either card's `maxPartners` strongest (by lift, then support, then ids). */
 export function topPartners(rows: readonly PairRow[], maxPartners: number): PairRow[] {
@@ -110,6 +120,7 @@ export function keyPairs(
   const support = Math.max(settings.minSupport, Math.ceil(settings.minShare * decks.length));
   const cardDecks = new Map<number, number>();
   for (const d of decks) for (const id of d.cardIds) cardDecks.set(id, (cardDecks.get(id) ?? 0) + 1);
+  for (const id of cardDecks.keys()) assertPackable(id);
   const frequent = (id: number) => (cardDecks.get(id) ?? 0) >= support;
 
   // Decks and each frequent card's decks by month, for the counts after a release month; each pair over every deck.
