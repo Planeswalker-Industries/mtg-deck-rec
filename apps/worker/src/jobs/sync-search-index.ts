@@ -2,6 +2,8 @@ import {
   CARDS_COLLECTION,
   COMMANDERS_COLLECTION,
   COMMANDER_CARDS_COLLECTION,
+  isCollectionVersion,
+  planCollections,
   SCHEMAS,
   TAGS_COLLECTION,
   toCardDocument,
@@ -10,12 +12,14 @@ import {
   toTagDocument,
   type CardIndexRow,
   type CollectionName,
+  type CollectionStep,
   type CommanderCardIndexRow,
   type CommanderIndexRow,
   type SearchClient,
   type TagIndexRow,
 } from '@mtg/core/search';
 import { connect, reserve, type ReservedSql, type Sql } from '../lib/db';
+import { logWorkerError } from '../lib/error-log';
 import { requireSearchClient, searchClient } from '../lib/search-api';
 
 /**
@@ -332,19 +336,75 @@ async function drainUntilEmpty(sql: ReservedSql, index: SearchClient, label?: st
 }
 
 /**
- * Creates any collection the index hasn't got yet, so a first run needs no manual setup.
+ * Makes every collection name usable before a drain writes to it, and returns whether it moved an alias.
  *
  * A name that is only an **alias** counts as present. After a --rebuild the real collections are versioned
  * (`cards_1789…`) and the plain name is an alias pointing at one, so listing collections alone would report `cards`
  * as missing and try to create a collection whose name is already taken by the alias.
+ *
+ * A Typesense restart can lose an alias while keeping every collection (it replays its log after the last snapshot,
+ * and the alias didn't come back). Creating a plain collection then would serve an empty index under the name, so a
+ * missing alias is pointed back at the version `planCollections` picks (the most documents, ties to the newest) and
+ * a ticket says so. Nothing is dropped here: the versions not picked stay until the next --rebuild drops them. Only a
+ * name with no version at all (a first run) gets a plain collection.
  */
-async function ensureCollections(index: SearchClient): Promise<void> {
-  const existing = new Set((await index.listCollections()).map((c) => c.name));
-  for (const [name, schema] of Object.entries(SCHEMAS)) {
-    if (existing.has(name) || (await index.resolveAlias(name)) !== null) continue;
-    console.log(`sync:typesense: creating collection ${name}.`);
-    await index.createCollection(schema);
+async function ensureCollections(sql: ReservedSql, index: SearchClient): Promise<boolean> {
+  const collections = await index.listCollections();
+  const names = Object.keys(SCHEMAS) as CollectionName[];
+  const aliases: Record<string, string | null> = {};
+  for (const name of names) aliases[name] = await index.resolveAlias(name);
+
+  let moved = false;
+  for (const step of planCollections(names, collections, aliases)) {
+    if (step.kind === 'present') continue;
+    if (step.kind === 'create') {
+      console.log(`sync:typesense: creating collection ${step.name}.`);
+      await index.createCollection(SCHEMAS[step.name as CollectionName]);
+      continue;
+    }
+    moved = (await repairAlias(sql, index, step)) || moved;
   }
+  return moved;
+}
+
+/**
+ * Points a lost alias back at its picked version and confirms it took. Opens a warning ticket for a repair and an
+ * error ticket for a failed one; never throws, so one broken name doesn't stop the others or the drain. Returns
+ * whether the alias was written, which is what the caller snapshots on.
+ */
+async function repairAlias(
+  sql: ReservedSql,
+  index: SearchClient,
+  step: Extract<CollectionStep, { kind: 'alias' }>,
+): Promise<boolean> {
+  const detail = {
+    alias: step.name,
+    target: step.target,
+    documents: step.documents,
+    leftovers: step.leftovers.map((c) => ({ name: c.name, documents: c.numDocuments })),
+    leftoversNote: 'left in place; the next sync:typesense --rebuild drops them',
+  };
+  let written = false;
+  try {
+    await index.upsertAlias(step.name, step.target);
+    written = true;
+    const resolved = await index.resolveAlias(step.name);
+    if (resolved !== step.target) throw new Error(`the alias resolves to ${resolved ?? 'nothing'} afterwards`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`sync:typesense: the ${step.name} alias was missing and pointing it at ${step.target} failed: ${reason}`);
+    await logWorkerError(sql, {
+      level: 'error',
+      area: 'worker.search.alias_repair_failed',
+      message: `The ${step.name} search alias was missing and pointing it at ${step.target} failed: ${reason}`,
+      detail,
+    });
+    return written;
+  }
+  const message = `The ${step.name} search alias was missing; re-pointed it at ${step.target} (${step.documents} documents).`;
+  console.warn(`sync:typesense: ${message}`);
+  await logWorkerError(sql, { level: 'warning', area: 'worker.search.alias_repaired', message, detail });
+  return true;
 }
 
 /**
@@ -373,9 +433,8 @@ async function rebuild(sql: ReservedSql, index: SearchClient): Promise<Counts> {
     // Drop every *other* version, not just the one the alias happened to point at. A rebuild that died between
     // creating a collection and moving the alias, or an alias deleted by hand, otherwise leaves a full copy behind
     // — and Typesense loads every collection it has into memory at startup, so an orphan is paid for forever.
-    const versionPattern = new RegExp(`^${collection}_\\d+$`);
     for (const { name: existing } of await index.listCollections()) {
-      if (existing !== versioned && versionPattern.test(existing)) {
+      if (existing !== versioned && isCollectionVersion(collection, existing)) {
         console.log(`sync:typesense: dropping the orphaned ${existing}.`);
         await index.dropCollection(existing);
       }
@@ -412,7 +471,7 @@ export async function syncSearchIndex({ rebuild: doRebuild = false }: { rebuild?
       return;
     }
 
-    await ensureCollections(index);
+    await ensureCollections(sql, index);
     const { cleared, counts } = await drainUntilEmpty(sql, index);
     console.log(
       cleared === 0
@@ -436,7 +495,7 @@ export async function drainSearchIndexQuietly(pool: Sql, job: string): Promise<v
   const sql = await reserve(pool);
   try {
     await stageFunctionalTags(sql);
-    await ensureCollections(index);
+    await ensureCollections(sql, index);
     const { cleared, counts } = await drainUntilEmpty(sql, index, job);
     if (cleared > 0) console.log(`${job}: search index updated (${counts.written} written, ${counts.removed} removed).`);
   } catch (err) {
