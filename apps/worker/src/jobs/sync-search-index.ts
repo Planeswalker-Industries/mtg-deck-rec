@@ -49,8 +49,11 @@ const DRAIN_PROGRESS_MS = 60_000;
 const READ_BATCH = 2_000;
 /** A failed snapshot's error text kept in its ticket: enough for the search API's answer, not a whole HTML page. */
 const SNAPSHOT_ERROR_DETAIL_CHARS = 300;
-/** What a search API from before the snapshot route answers. */
-const HTTP_NOT_FOUND = 404;
+/**
+ * What a search API from before the snapshot route answers: its error handler turns Fiber's unknown-route 404 into a
+ * 500. One with the route answers a Typesense failure as 502, so a 500 here almost always means the old API.
+ */
+const HTTP_OLD_SEARCH_API = 500;
 
 const REINDEX = '*';
 
@@ -416,7 +419,7 @@ async function repairAlias(
  * Asks Typesense, through the search API, for an internal snapshot right after aliases moved. A restart restores the
  * last snapshot and replays its log after it, and that replay once lost an alias (T108); a snapshot taken now puts the
  * new aliases in the part that is restored, not replayed. Never throws: a failure is a warning ticket, and the drain
- * repairs a lost alias anyway. A 404 is a search API from before the route.
+ * repairs a lost alias anyway. A 500 is most likely a search API from before the route.
  */
 async function snapshotIndex(sql: ReservedSql, index: SearchClient, trigger: 'rebuild' | 'alias repair'): Promise<void> {
   try {
@@ -435,7 +438,9 @@ async function snapshotIndex(sql: ReservedSql, index: SearchClient, trigger: 're
         trigger,
         status,
         error: reason.slice(0, SNAPSHOT_ERROR_DETAIL_CHARS),
-        ...(status === HTTP_NOT_FOUND ? { note: 'the search API has no snapshot route yet; it gets one with the next release to main' } : {}),
+        ...(status === HTTP_OLD_SEARCH_API
+          ? { note: 'most likely a search API without the snapshot route yet; it gets one with the next release to main' }
+          : {}),
       },
     });
   }

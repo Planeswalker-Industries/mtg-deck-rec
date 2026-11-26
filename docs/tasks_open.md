@@ -8,14 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T108: A Typesense restart loses a search alias
-
-**URGENT** · Infrastructure · 2026-11-26: a restart 30 min after a `--rebuild` (inside the hourly snapshot window) brought back every collection but not the `commander_cards` alias; `/v1/commander-cards/top` answered 502 until it was put back by hand. The drain would have made an empty plain `commander_cards`. Plan: `docs/plan_files/2026-11-26-search-alias-repair.md`
-
-- [x] The drain re-points a lost alias at the version with the most documents (ties to the newest) and opens a ticket; a plain collection only when no version exists
-- [x] An internal Typesense snapshot right after every alias move (`POST /v1/admin/snapshot`), after trying to reproduce the loss locally. Not reproduced on local Typesense 29.0: a `--rebuild` then a restart before any hourly snapshot replayed the whole rebuild from the log and kept all four aliases. Seen meanwhile: `/health` said `ok:true` about a minute before `commander_cards` finished replaying
-- [ ] Sprint end: review, mock build, PR to `develop`
-
 ## T068: Recommendation latency (PR #139 review)
 
 **MEDIUM** · Backend / Performance

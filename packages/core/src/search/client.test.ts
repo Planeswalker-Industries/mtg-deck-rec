@@ -24,13 +24,13 @@ describe('SearchClient.cardsByID', () => {
 });
 
 describe('SearchClient.snapshot', () => {
-  it('posts to the admin route with no body, and a missing route throws with its status', async () => {
+  it('posts to the admin route with no body, and a failed answer throws with its status', async () => {
     const calls: { url: string; method: string | undefined; body: unknown }[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init: RequestInit) => {
         calls.push({ url, method: init.method, body: init.body });
-        return calls.length === 1 ? new Response('{"success":true}') : new Response('Cannot POST', { status: 404 });
+        return calls.length === 1 ? new Response('{"success":true}') : new Response('{"error":"the search service could not answer"}', { status: 500 });
       }),
     );
     await client().snapshot();
@@ -40,7 +40,7 @@ describe('SearchClient.snapshot', () => {
       .snapshot()
       .catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(SearchError);
-    expect((failure as SearchError).status).toBe(404);
+    expect((failure as SearchError).status).toBe(500);
   });
 });
 

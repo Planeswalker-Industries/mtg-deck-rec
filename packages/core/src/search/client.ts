@@ -263,7 +263,8 @@ export class SearchClient {
 
   /**
    * Asks Typesense for an internal snapshot, so a restart restores the aliases just moved instead of replaying them
-   * from its log. Call it after every alias move. A search API from before the route answers 404.
+   * from its log. Call it after every alias move. A search API from before the route answers 500: its error handler
+   * turns Fiber's unknown-route 404 into one.
    */
   async snapshot(): Promise<void> {
     await this.request("/v1/admin/snapshot", { method: "POST", timeoutMs: SNAPSHOT_TIMEOUT_MS });
