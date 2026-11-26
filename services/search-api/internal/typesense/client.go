@@ -137,10 +137,12 @@ type Hit struct {
 }
 
 type SearchResult struct {
-	Found int    `json:"found"`
-	Hits  []Hit  `json:"hits"`
-	Code  int    `json:"code"`
-	Error string `json:"error"`
+	Found int   `json:"found"`
+	Hits  []Hit `json:"hits"`
+	// The engine's own account of the search, logged beside this service's wall time for it.
+	SearchTimeMS int    `json:"search_time_ms"`
+	Code         int    `json:"code"`
+	Error        string `json:"error"`
 }
 
 // MaxPerPage is Typesense's ceiling on a single page, and therefore the size every batched read chunks to.
@@ -191,6 +193,10 @@ func (c *Client) SearchAll(ctx context.Context, searches []SearchParams) ([]Sear
 		wg.Go(func() {
 			slots <- struct{}{}
 			defer func() { <-slots }()
+			// A slot can come free after another search has already failed; there is no answer left to give.
+			if ctx.Err() != nil {
+				return
+			}
 			result, err := c.Search(ctx, params)
 			if err != nil {
 				// Only the first cause sticks, so the searches this cancels cannot replace it with "context canceled".

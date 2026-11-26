@@ -15,10 +15,22 @@ import type { CardDocument, CollectionSchema, TagDocument } from "./documents";
  * waiting twice. Writes never retry either: the queue the worker drains is the retry.
  */
 
+/**
+ * Where a failed read was when it failed, for the error ticket. `response` means no headers arrived; `body` means
+ * they did and the download did not finish, which is a network or size problem rather than a slow engine.
+ * `serverTiming` is the search API's own account (Typesense, encode) when its headers got here.
+ */
+export interface SearchFailureTiming {
+  phase: "response" | "body";
+  elapsedMs: number;
+  serverTiming?: string;
+}
+
 export class SearchError extends Error {
   constructor(
     message: string,
     readonly status: number | null,
+    readonly timing?: SearchFailureTiming,
   ) {
     super(message);
     this.name = "SearchError";
@@ -58,6 +70,7 @@ export class SearchClient {
       contentType?: string;
     } = {},
   ): Promise<T> {
+    const started = Date.now();
     let response: Response;
     try {
       response = await fetch(`${this.base}${path}`, {
@@ -72,9 +85,20 @@ export class SearchClient {
       });
     } catch (err) {
       // A timeout and a refused connection are the same answer to the caller: use Postgres.
-      throw new SearchError(err instanceof Error ? err.message : String(err), null);
+      throw new SearchError(errorMessage(err), null, { phase: "response", elapsedMs: Date.now() - started });
     }
-    const text = await response.text();
+    const serverTiming = response.headers.get("server-timing") ?? undefined;
+    let text: string;
+    try {
+      // The timeout covers the download too, and a large answer can run out of it after the headers arrived.
+      text = await response.text();
+    } catch (err) {
+      throw new SearchError(errorMessage(err), null, {
+        phase: "body",
+        elapsedMs: Date.now() - started,
+        ...(serverTiming === undefined ? {} : { serverTiming }),
+      });
+    }
     if (!response.ok) throw new SearchError(`HTTP ${response.status}: ${text.slice(0, 300)}`, response.status);
     return (text ? JSON.parse(text) : null) as T;
   }
@@ -87,12 +111,20 @@ export class SearchClient {
 
   // --- reads ---
 
-  /** The hottest call in the app: a swap pool is 220 cards, an add pool 400, a commander page 500. */
-  async cardsByID(ids: readonly number[]): Promise<CardDocument[]> {
+  /**
+   * The hottest call in the app: a swap pool is 220 cards, an add pool 400, a commander page 500.
+   *
+   * Name the `fields` you read. A whole document is about 1.7 KB, most callers read a fraction of it, and both the
+   * engine's time and the download grow with what is sent. A search API from before `fields` ignores it and sends
+   * whole documents, which still carry every field asked for.
+   */
+  async cardsByID(ids: readonly number[]): Promise<CardDocument[]>;
+  async cardsByID<F extends keyof CardDocument>(ids: readonly number[], fields: readonly F[]): Promise<Pick<CardDocument, F>[]>;
+  async cardsByID(ids: readonly number[], fields?: readonly (keyof CardDocument)[]): Promise<Partial<CardDocument>[]> {
     if (ids.length === 0) return [];
-    const result = await this.request<{ cards: CardDocument[] }>("/v1/cards/by-id", {
+    const result = await this.request<{ cards: Partial<CardDocument>[] }>("/v1/cards/by-id", {
       method: "POST",
-      body: JSON.stringify({ ids: [...ids] }),
+      body: JSON.stringify(fields === undefined ? { ids: [...ids] } : { ids: [...ids], fields: [...fields] }),
     });
     return result.cards ?? [];
   }
@@ -226,4 +258,8 @@ export class SearchClient {
       timeoutMs: WRITE_TIMEOUT_MS,
     });
   }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

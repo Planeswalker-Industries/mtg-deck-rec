@@ -212,6 +212,51 @@ func TestCardsByIDKeepsChunkOrder(t *testing.T) {
 	}
 }
 
+// A caller names the fields it reads, and only those come back from Typesense.
+func TestCardsByIDPassesTheFieldsAsked(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1,2],"fields":["card_id","tag_ids"]}`)
+	if len(fake.searches) != 1 || fake.searches[0].IncludeFields != "card_id,tag_ids" {
+		t.Fatalf("got %+v", fake.searches)
+	}
+
+	fake.searches = nil
+	do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1,2]}`)
+	if len(fake.searches) != 1 || fake.searches[0].IncludeFields != "" {
+		t.Fatalf("no fields asked means the whole document: %+v", fake.searches)
+	}
+}
+
+func TestCardsByIDRefusesAFieldThatIsNotAName(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1],"fields":["card_id","name&filter_by=x"]}`)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("got %d, want 400", res.StatusCode)
+	}
+	if len(fake.searches) != 0 {
+		t.Fatal("nothing should have reached Typesense")
+	}
+}
+
+// The hops travel with the answer, so the app can tell a slow engine from a slow network.
+func TestReadsSendServerTiming(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult {
+		return []typesense.SearchResult{{Found: 1, SearchTimeMS: 7, Hits: []typesense.Hit{hit(`{"card_id":1}`)}}}
+	}
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1]}`)
+	got := res.Header.Get("Server-Timing")
+	if !strings.Contains(got, "typesense;dur=") || !strings.Contains(got, "search;dur=7") || !strings.Contains(got, "encode;dur=") {
+		t.Fatalf("Server-Timing %q", got)
+	}
+}
+
 // One failed chunk fails the whole answer: half a pool is worse than the app's Postgres fallback.
 func TestCardsByIDFailsWhenOneChunkFails(t *testing.T) {
 	fake := newFakeTypesense(t)
@@ -527,9 +572,22 @@ func TestRequestsAreLogged(t *testing.T) {
 		t.Fatalf("a served request should be logged: %s", logged)
 	}
 
+	// A read records its hops in the same line.
+	buf.Reset()
+	req := httptest.NewRequest(http.MethodPost, "/v1/cards/by-id", strings.NewReader(idsBody(600)))
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	if res, err := app.Test(req); err == nil {
+		_ = res.Body.Close()
+	}
+	for _, field := range []string{`"typesense_ms":`, `"search_ms":`, `"chunks":3`, `"encode_ms":`, `"compress_ms":`, `"bytes":`, `"wire_bytes":`} {
+		if !strings.Contains(buf.String(), field) {
+			t.Fatalf("the request line should carry %s: %s", field, buf.String())
+		}
+	}
+
 	// A search term is the person's words and must not be in the log.
 	buf.Reset()
-	req := httptest.NewRequest(http.MethodGet, "/v1/cards/search?q=sol+ring", nil)
+	req = httptest.NewRequest(http.MethodGet, "/v1/cards/search?q=sol+ring", nil)
 	req.Header.Set("Authorization", "Bearer "+readToken)
 	if res, err := app.Test(req); err == nil {
 		_ = res.Body.Close()

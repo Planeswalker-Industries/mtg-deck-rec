@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { colorsToMask, identityFilter, maskToColors, SCHEMAS, type CardDocument, type TagDocument } from "./documents";
 import {
+  CARD_ROW_DOCUMENT_FIELDS,
+  type CardRowDocument,
   cardRowFromDocument,
   tagRefsFromDocument,
   toCardDocument,
@@ -65,6 +67,14 @@ describe("colour identity", () => {
 });
 
 describe("card documents", () => {
+  it("builds the same row from only the fields fetchCardsById asks for", () => {
+    const doc = toCardDocument({ ...row, produced_mana: ["W"], partner_kind: "partner" }, 1_700_000_000_000);
+    const trimmed = Object.fromEntries(
+      Object.entries(doc).filter(([key]) => (CARD_ROW_DOCUMENT_FIELDS as readonly string[]).includes(key)),
+    ) as CardRowDocument;
+    expect(cardRowFromDocument(trimmed)).toEqual(cardRowFromDocument(doc));
+  });
+
   it("round-trips a row through a document", () => {
     const doc = toCardDocument(row, 1_700_000_000_000);
     const back = cardRowFromDocument(doc);
