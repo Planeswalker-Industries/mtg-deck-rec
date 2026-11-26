@@ -121,7 +121,8 @@ func documents(results []typesense.SearchResult) []json.RawMessage {
 }
 
 // cardsByID is the hottest endpoint: a swap pool is 220 cards, an add pool 400, a commander page 500. In Postgres
-// each of those is a heap visit in a 92 MB table; here it is one request whose chunking happens on this side.
+// each of those is a heap visit in a 92 MB table; here it is one request whose chunking happens on this side, and
+// whose chunks run in parallel.
 func (s *Server) cardsByID(c fiber.Ctx) error {
 	var body struct {
 		IDs []int `json:"ids"`
@@ -145,7 +146,7 @@ func (s *Server) cardsByID(c fiber.Ctx) error {
 			PerPage:    typesense.MaxPerPage,
 		})
 	}
-	results, err := s.ts.MultiSearch(c.Context(), searches)
+	results, err := s.ts.SearchAll(c.Context(), searches)
 	if err != nil {
 		return err
 	}
@@ -389,7 +390,7 @@ func (s *Server) commanderCardsTop(c fiber.Ctx) error {
 			Page:          page,
 		})
 	}
-	results, err := s.ts.MultiSearch(c.Context(), searches)
+	results, err := s.ts.SearchAll(c.Context(), searches)
 	if err != nil {
 		return err
 	}

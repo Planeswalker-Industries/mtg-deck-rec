@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,7 +36,9 @@ const (
 // fakeTypesense stands in for the real thing and records what it was asked, so the tests can assert on the requests
 // this service builds - the chunking, the filters and the ranking are the parts worth pinning down.
 type fakeTypesense struct {
-	server   *httptest.Server
+	server *httptest.Server
+	// mu guards the two records below: the batched reads send their chunks concurrently.
+	mu       sync.Mutex
 	searches []typesense.SearchParams
 	requests []string
 	respond  func(searches []typesense.SearchParams) []typesense.SearchResult
@@ -42,7 +48,9 @@ func newFakeTypesense(t *testing.T) *fakeTypesense {
 	t.Helper()
 	f := &fakeTypesense{}
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
 		f.requests = append(f.requests, r.Method+" "+r.URL.Path)
+		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 
 		switch {
@@ -54,7 +62,9 @@ func newFakeTypesense(t *testing.T) *fakeTypesense {
 			}
 			payload, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(payload, &body)
+			f.mu.Lock()
 			f.searches = append(f.searches, body.Searches...)
+			f.mu.Unlock()
 			results := []typesense.SearchResult{}
 			if f.respond != nil {
 				results = f.respond(body.Searches)
@@ -162,25 +172,118 @@ func TestCardsByIDChunksToTypesensePageLimit(t *testing.T) {
 	fake := newFakeTypesense(t)
 	app := newApp(t, fake)
 
-	ids := make([]int, 600)
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, idsBody(600))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("got %d", res.StatusCode)
+	}
+	// 600 ids over a 250-document page ceiling is three searches, each its own request: Typesense runs the searches
+	// of one multi_search one after another, so separate requests are what lets them run at the same time.
+	if len(fake.searches) != 3 {
+		t.Fatalf("got %d searches, want 3", len(fake.searches))
+	}
+	if got := countRequests(fake.requests, "POST /multi_search"); got != 3 {
+		t.Fatalf("got %d round trips to Typesense, want 3", got)
+	}
+	if !slices.ContainsFunc(fake.searches, func(s typesense.SearchParams) bool {
+		return strings.HasPrefix(s.FilterBy, "card_id:[1,2,3,")
+	}) {
+		t.Fatalf("no chunk starts at the first id: %v", fake.searches)
+	}
+}
+
+// The chunks answer in whatever order Typesense finishes them; the cards come back in the order they were asked for.
+func TestCardsByIDKeepsChunkOrder(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = firstIDPerChunk(func(first int) {
+		if first == 1 {
+			time.Sleep(50 * time.Millisecond) // The first chunk finishes last.
+		}
+	})
+	app := newApp(t, fake)
+
+	_, decoded := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, idsBody(600))
+	cards, _ := decoded["cards"].([]any)
+	got := make([]float64, 0, len(cards))
+	for _, card := range cards {
+		got = append(got, card.(map[string]any)["card_id"].(float64))
+	}
+	if !slices.Equal(got, []float64{1, 251, 501}) {
+		t.Fatalf("got %v, want [1 251 501]", got)
+	}
+}
+
+// One failed chunk fails the whole answer: half a pool is worse than the app's Postgres fallback.
+func TestCardsByIDFailsWhenOneChunkFails(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult {
+		if strings.HasPrefix(searches[0].FilterBy, "card_id:[251,") {
+			return []typesense.SearchResult{{Code: http.StatusServiceUnavailable, Error: "not ready"}}
+		}
+		return []typesense.SearchResult{{Found: 1, Hits: []typesense.Hit{hit(`{"card_id":1}`)}}}
+	}
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, idsBody(600))
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("got %d, want 502", res.StatusCode)
+	}
+}
+
+// A 500-card answer is most of a megabyte of JSON that compresses about six to one.
+func TestResponsesAreCompressed(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult {
+		hits := make([]typesense.Hit, 0, typesense.MaxPerPage)
+		for i := range typesense.MaxPerPage {
+			hits = append(hits, hit(fmt.Sprintf(`{"card_id":%d,"image":"https://cards.scryfall.io/normal/front/7/0/70b2cdc5.jpg"}`, i)))
+		}
+		return []typesense.SearchResult{{Found: len(hits), Hits: hits}}
+	}
+	app := newApp(t, fake)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/cards/by-id", strings.NewReader(idsBody(250)))
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enc := res.Header.Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding %q, want gzip", enc)
+	}
+	reader, err := gzip.NewReader(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Cards []json.RawMessage `json:"cards"`
+	}
+	if err := json.NewDecoder(reader).Decode(&decoded); err != nil || len(decoded.Cards) != typesense.MaxPerPage {
+		t.Fatalf("decoded %d cards, err %v", len(decoded.Cards), err)
+	}
+}
+
+func idsBody(n int) string {
+	ids := make([]int, n)
 	for i := range ids {
 		ids[i] = i + 1
 	}
 	body, _ := json.Marshal(map[string]any{"ids": ids})
+	return string(body)
+}
 
-	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, string(body))
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("got %d", res.StatusCode)
-	}
-	// 600 ids over a 250-document page ceiling is three searches - and one request, which is the point.
-	if len(fake.searches) != 3 {
-		t.Fatalf("got %d searches, want 3", len(fake.searches))
-	}
-	if got := countRequests(fake.requests, "POST /multi_search"); got != 1 {
-		t.Fatalf("got %d round trips to Typesense, want 1", got)
-	}
-	if !strings.HasPrefix(fake.searches[0].FilterBy, "card_id:[1,2,3,") {
-		t.Fatalf("unexpected filter: %s", fake.searches[0].FilterBy)
+// firstIDPerChunk answers each by-id chunk with one card: the chunk's first id. wait runs before answering.
+func firstIDPerChunk(wait func(first int)) func([]typesense.SearchParams) []typesense.SearchResult {
+	return func(searches []typesense.SearchParams) []typesense.SearchResult {
+		results := make([]typesense.SearchResult, 0, len(searches))
+		for _, search := range searches {
+			first, _, _ := strings.Cut(strings.TrimPrefix(search.FilterBy, "card_id:["), ",")
+			id, _ := strconv.Atoi(first)
+			wait(id)
+			results = append(results, typesense.SearchResult{Found: 1, Hits: []typesense.Hit{hit(fmt.Sprintf(`{"card_id":%d}`, id))}})
+		}
+		return results
 	}
 }
 
@@ -327,6 +430,32 @@ func TestCommanderCardsTopIsOrderedAndDeduplicated(t *testing.T) {
 		t.Fatalf("only the id is needed: %q", fake.searches[0].IncludeFields)
 	}
 }
+
+// A 500-card list is two pages; they run at the same time and still come back page 1 first.
+func TestCommanderCardsTopKeepsPageOrder(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult {
+		results := make([]typesense.SearchResult, 0, len(searches))
+		for _, search := range searches {
+			if search.Page == 1 {
+				time.Sleep(50 * time.Millisecond) // Page 1 finishes last.
+			}
+			results = append(results, typesense.SearchResult{Found: 2, Hits: []typesense.Hit{hit(fmt.Sprintf(`{"card_id":%d}`, search.Page*100))}})
+		}
+		return results
+	}
+	app := newApp(t, fake)
+
+	_, decoded := do(t, app, http.MethodGet, "/v1/commander-cards/top?keyIds=1&limit=500", readToken, "")
+	ids, _ := decoded["cardIds"].([]any)
+	if len(ids) != 2 || ids[0].(float64) != 100 || ids[1].(float64) != 200 {
+		t.Fatalf("got %v, want [100 200]", ids)
+	}
+	if got := countRequests(fake.requests, "POST /multi_search"); got != 2 {
+		t.Fatalf("got %d round trips to Typesense, want 2", got)
+	}
+}
+
 func TestImportReportsRejectedDocuments(t *testing.T) {
 	fake := newFakeTypesense(t)
 	app := newApp(t, fake)

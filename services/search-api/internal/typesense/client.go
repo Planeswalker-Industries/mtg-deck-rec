@@ -15,8 +15,17 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
+
+// maxParallelSearches caps how many searches one SearchAll runs at once. The largest read the app makes (a commander
+// page, 500 cards) is two chunks; the cap keeps a 2,000-id request from opening eight connections at once.
+const maxParallelSearches = 4
+
+// maxIdleConnsPerHost keeps connections to Typesense open between requests. Go's default of 2 is below what
+// parallel chunks from a few concurrent page loads use, and every connection past it would be closed and reopened.
+const maxIdleConnsPerHost = 16
 
 type Client struct {
 	baseURL string
@@ -25,10 +34,12 @@ type Client struct {
 }
 
 func New(baseURL, apiKey string, timeout time.Duration) *Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = maxIdleConnsPerHost
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
-		http:    &http.Client{Timeout: timeout},
+		http:    &http.Client{Timeout: timeout, Transport: transport},
 	}
 }
 
@@ -135,8 +146,8 @@ type SearchResult struct {
 // MaxPerPage is Typesense's ceiling on a single page, and therefore the size every batched read chunks to.
 const MaxPerPage = 250
 
-// MultiSearch sends several searches in one round trip. Every batched read here is built on it: a 500-id fetch is
-// two 250-id filters, and one request beats two.
+// MultiSearch sends several searches in one round trip. Typesense runs them one after another (measured 2026-11-26:
+// two 250-card chunks take twice as long as one), so batched reads that need speed use SearchAll instead.
 func (c *Client) MultiSearch(ctx context.Context, searches []SearchParams) ([]SearchResult, error) {
 	var out struct {
 		Results []SearchResult `json:"results"`
@@ -165,6 +176,35 @@ func (c *Client) Search(ctx context.Context, params SearchParams) (SearchResult,
 		return SearchResult{}, nil
 	}
 	return results[0], nil
+}
+
+// SearchAll runs each search as its own request, up to maxParallelSearches at a time, and returns the results in the
+// order the searches were given. The first failure cancels the rest and is the error returned.
+func (c *Client) SearchAll(ctx context.Context, searches []SearchParams) ([]SearchResult, error) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
+	results := make([]SearchResult, len(searches))
+	slots := make(chan struct{}, maxParallelSearches)
+	var wg sync.WaitGroup
+	for i, params := range searches {
+		wg.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			result, err := c.Search(ctx, params)
+			if err != nil {
+				// Only the first cause sticks, so the searches this cancels cannot replace it with "context canceled".
+				cancel(err)
+				return
+			}
+			results[i] = result
+		})
+	}
+	wg.Wait()
+	if err := context.Cause(ctx); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // --- documents ---

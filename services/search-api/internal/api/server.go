@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/compress"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/crawl"
@@ -72,6 +73,9 @@ func New(cfg config.Config, ts *typesense.Client, log *slog.Logger, crawls map[s
 
 	// Before the routes, so it sees every request including the ones that match nothing.
 	app.Use(s.requestLog())
+	// A 500-card answer is about 850 KB of JSON and compresses about six to one, which is most of the time it spent
+	// crossing to Vercel. Best speed: this box's CPU is the scarcer resource, and it still gets most of the gain.
+	app.Use(compress.New(compress.Config{Level: compress.LevelBestSpeed}))
 
 	app.Get("/v1/health", s.health)
 	app.Get("/v1/health/live", s.live)
