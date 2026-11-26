@@ -27,6 +27,7 @@ import type {
   AdminFeedbackReportPage,
   AdminRecMode,
   AdminSiteStats,
+  AdminWorkerSchedule,
   AdminSyncJob,
   AdminSyncRun,
   AdminSyncRunPage,
@@ -189,6 +190,7 @@ function toAdminUser(row: Database["public"]["Functions"]["admin_list_users"]["R
     bannedUntil: row.banned_until,
     deckCount: row.deck_count,
     collectionCount: row.collection_count,
+    journeyCount: row.journey_count,
   };
 }
 
@@ -344,6 +346,20 @@ export async function getAdminSiteStats(db: AuthedClient): Promise<AdminSiteStat
   return data as unknown as AdminSiteStats;
 }
 
+/** The worker's schedule, each scheduled job's last start and success, the crawl sources and the waiting asks. */
+export async function getAdminWorkerSchedule(db: AuthedClient): Promise<AdminWorkerSchedule> {
+  const { data, error } = await db.rpc("admin_worker_schedule");
+  if (error) throw asAdminError(error);
+  return data as unknown as AdminWorkerSchedule;
+}
+
+/** Asks the worker to run a duty on its next pass; one waiting ask per duty, so asking twice changes nothing. */
+export async function requestAdminWorkerRun(db: AuthedClient, duty: string): Promise<{ duty: string; requestedAt: string }> {
+  const { data, error } = await db.rpc("admin_request_worker_run", { p_duty: duty });
+  if (error) throw asAdminError(error);
+  return data as unknown as { duty: string; requestedAt: string };
+}
+
 /**
  * The crawled corpus, for /admin/crawls.
  *
@@ -377,6 +393,7 @@ export async function listAdminCrawlSources(db: AuthedClient): Promise<AdminCraw
             progressAt: row.last_run_progress_at,
             commandersVisited: row.last_run_commanders_visited ?? 0,
             throttles: row.last_run_throttles ?? 0,
+            skippedMalformed: row.last_run_skipped_malformed ?? 0,
           },
   }));
 }

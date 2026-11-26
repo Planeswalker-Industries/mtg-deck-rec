@@ -4,7 +4,7 @@ Spell Chasm (repo `mtg-deck-rec`): a public, Commander-only web app. Paste or im
 
 Live at https://www.spellchasm.com (the apex redirects to it; the Vercel project is still `mtg-app`). Open work: [`docs/tasks_open.md`](docs/tasks_open.md). When code and this file disagree, the code wins and this file is fixed.
 
-- **Repo:** `Planeswalker-Industries/mtg-deck-rec`, public. In-app links and the search API's Go module path use that address; User-Agent strings are `SpellChasm/0.1` with the domain and that address.
+- **Repo:** `Planeswalker-Industries/mtg-deck-rec`, public. In-app links and the search API's Go module path use that address; User-Agent strings are `SpellChasm/0.1` with the domain, that address and `contact@spellchasm.com`, so a site's maintainers can reach the owner.
 - **Branches:** start every branch from `develop` and open PRs with `--base develop`. `main` is merged from `develop` by the owner; it is what Vercel production, the Supabase GitHub integration and `worker-deploy.yml` (the VPS worker, once hosted has its migrations) deploy.
 
 ## Commands

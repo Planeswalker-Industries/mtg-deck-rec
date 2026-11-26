@@ -1,30 +1,12 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T107.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T108.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
 State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `20261022000100` (current). Hosted `corpus.decks` 212,606, last collated and precomputed by hand 2026-10-21.
 
 ---
-
-## T074: Archidekt answers the daily crawl with 429s
-
-**HIGH** · Data / Ops · Slower pace (`requestIntervalMs` 1000 → 2000) on hosted since migration `20261020000100`; the 429s are solved, the run bookkeeping is not
-
-Runs 22–28 (2026-10-15 to 2026-10-21) failed on 429s, except run 25, that the fetcher's backoff (doubling up to `requestIntervalMaxMs`, 8 s, in `services/search-api/internal/crawl/fetcher.go`) did not outlast.
-
-Hosted `crawl.runs` on 2026-11-17, runs 29–54 (the slower pace) — 26 runs:
-
-- 20 `succeeded`, each stopped by the 6-hour cap (10:46–16:46 UTC): about 800 commanders visited, 3,000–5,500 decks written, 35–220 throttles absorbed by the backoff.
-- 1 failed on a 429: run 46 (2026-11-09).
-- 2 failed with `context canceled`: runs 39 (2026-11-02) and 40 (2026-11-03). Their times do not match a merge to `main`, so a Dokploy redeploy is not the clear cause.
-- No run on 2026-10-29.
-
-- [x] Three daily runs in a row without a 429 failure: runs 30–38 (2026-10-23 to 2026-11-01), nine in a row
-- [ ] Find what stopped runs 39 and 40; check the VPS host's restarts and container logs for those dates
-- [x] Make a run killed by a redeploy or crash end up marked failed (on shutdown, or by the next run closing stale ones)
-- [ ] Find why no run started on 2026-10-29
 
 ## T068: Recommendation latency (PR #139 review)
 
@@ -68,7 +50,7 @@ Moxfield's whitelist also wants a production domain (T044). `www.spellchasm.com`
 - [ ] Google Cloud → Google Auth Platform → Branding: app name Spell Chasm, logo, home page and privacy policy URLs on `https://www.spellchasm.com`, authorized domain `spellchasm.com`; then submit the branding for verification
 - [ ] Once Google approves the branding, signing in on `www.spellchasm.com` shows "to continue to Spell Chasm" in the chooser
 - A Supabase custom domain (paid add-on) would also change the chooser's domain; considered and not chosen (owner, 2026-11-16)
-- [ ] The VPS worker's `WEB_APP_URL` is `https://www.spellchasm.com`; Impact's property URL is the new domain; Archidekt is told the crawl's new User-Agent (`SpellChasm/0.1`)
+- [x] The VPS worker's `WEB_APP_URL` is `https://www.spellchasm.com`; Impact's property URL is the new domain; Archidekt is told the crawl's new User-Agent (`SpellChasm/0.1`) (owner, 2026-11-25)
 - [x] `yarn workspace @mtg/web smoke` passes against `https://www.spellchasm.com` (14/14, 2026-11-16)
 - [x] Resend (free tier) verifies `mail.spellchasm.com` (DNS at Namecheap, DMARC `p=none` on the apex, the `contact@` forwarder's MX kept), Supabase → Authentication → SMTP sends through it from `noreply@mail.spellchasm.com`, and Rate Limits → emails per hour is 30 (owner, 2026-11-25)
 - [x] Hosted Confirm signup template is `supabase/templates/confirm-signup.html` (owner, 2026-11-25)

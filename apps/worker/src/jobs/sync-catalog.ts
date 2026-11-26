@@ -178,6 +178,8 @@ export async function syncCatalog({ force = false }: { force?: boolean } = {}): 
               deleted_at = null
             where c.content_hash is distinct from excluded.content_hash
                or c.rules_hash is distinct from excluded.rules_hash
+               -- Derived from the card, not hashed: a change to the commander rule rewrites only the rows it moves.
+               or c.can_be_commander is distinct from excluded.can_be_commander
                or c.deleted_at is not null
             returning 1
           )

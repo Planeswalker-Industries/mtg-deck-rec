@@ -174,5 +174,9 @@
  * v41 (2026-11-25): error tickets (owner asked 2026-11-25). ActionsApi gains `reportClientError` (ClientErrorReport):
  * a failure in the browser, with where it happened and what was running, opens or joins a ticket at /admin/errors.
  * Works signed out, rate-limited per visitor. Additive.
+ *
+ * v42 (2026-11-25): usage numbers (owner asked 2026-11-25). ActionsApi gains `recordJourneyStart` (JourneyStartKind):
+ * the deck tool counts each journey it starts, from a pasted deck or a commander's build, for the admin home. Works
+ * signed out, rate-limited per visitor. Additive.
  */
-export const CONTRACT_VERSION = 41;
+export const CONTRACT_VERSION = 42;

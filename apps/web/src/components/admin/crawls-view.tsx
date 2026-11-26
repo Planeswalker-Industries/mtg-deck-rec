@@ -133,6 +133,12 @@ function SourceCard({ source, index }: { source: AdminCrawlSource; index: number
             <dd className="text-right font-mono">{source.lastRun.throttles}×</dd>
           </>
         )}
+        {source.lastRun && source.lastRun.skippedMalformed > 0 && (
+          <>
+            <dt className="text-muted-foreground">Malformed</dt>
+            <dd className="text-right font-mono">{source.lastRun.skippedMalformed}</dd>
+          </>
+        )}
       </dl>
 
       {/* A disabled source makes no requests until someone deliberately turns it back on, so say so loudly. */}

@@ -47,6 +47,7 @@ import { buyList } from '../../scoring/rank';
 import { DEFAULT_UPGRADES_LIMIT, pickUpgrades } from '../../shop/upgrades';
 import { effectiveCapUsd, withinBudget } from '../../scoring/budget';
 import { cardTypes } from '../../scoring/add';
+import { canBeCommander } from '../../formats/commander/eligibility';
 import { CURVE_TOP_MANA_VALUE } from '../../journey/deck-stats';
 import { cardQuantity, setCardQuantity } from '../../collection/edit';
 import { deckCoverage, sessionCopies, type CollectionCopies } from '../../collection';
@@ -168,7 +169,9 @@ const unionIdentity = (cards: CardSummary[]) =>
   [...'WUBRG'].filter((color) => cards.some((c) => c.colorIdentity.includes(color))).join('');
 
 const isBasicLand = (card: CardSummary) => card.typeLine.startsWith('Basic Land');
-const isCommanderEligible = (card: CardSummary) => card.typeLine.startsWith('Legendary Creature');
+// Mock cards carry no rules text or power and toughness, so only the type line decides here.
+const isCommanderEligible = (card: CardSummary) =>
+  canBeCommander({ frontTypeLine: card.typeLine.split(' // ')[0] ?? '', oracleText: '', frontPower: null, frontToughness: null });
 
 const categoryOf = (typeLine: string): CardCategory => {
   const order: CardCategory[] = ['land', 'creature', 'planeswalker', 'battle', 'instant', 'sorcery', 'artifact', 'enchantment'];
@@ -1008,6 +1011,11 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
     },
 
     async recordRecEvents() {
+      return delay(ok(null));
+    },
+
+    // Journey counts only feed the admin home, which the mocks don't have.
+    async recordJourneyStart() {
       return delay(ok(null));
     },
 

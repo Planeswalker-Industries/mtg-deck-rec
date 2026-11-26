@@ -40,25 +40,39 @@ insert into corpus.edhrec_commanders (slug, commander_1, commander_2, deck_count
   ('test-pair', least(:c1, :c2), greatest(:c1, :c2), 50, now());
 
 -- === seeding ===
-select chk('a first seed adds every commander', public.crawl_seed_commanders('moxfield') = 2);
+-- The seed queues every commander in the catalog (crawl-queue-order.sql checks that); these checks follow the two.
+select public.crawl_seed_commanders('moxfield') as first_seed \gset
+select chk('a first seed adds both commanders',
+  :first_seed > 0
+    and (select count(*) = 2 from crawl.queue where source = 'moxfield' and commander_card_id in (:c1, :c2)));
 select chk('edhrec_deck_count sums the EDHREC pages a commander is on',
   (select edhrec_deck_count = 550 from crawl.queue where source = 'moxfield' and commander_card_id = :c1));
 select chk('a second seed writes nothing', public.crawl_seed_commanders('moxfield') = 0);
 update corpus.edhrec_commanders set deck_count = 900 where slug = 'test-c2';
 select chk('a changed count is the only row rewritten', public.crawl_seed_commanders('moxfield') = 1);
 
+-- The queue as it serves the two commanders, in its order; every other commander the seed added is left out.
+create temp table ours_ids (card_id int primary key);
+insert into ours_ids values (:c1), (:c2);
+create or replace function ours(p_run bigint) returns jsonb
+language sql as $$
+  select coalesce(jsonb_agg(e order by n), '[]'::jsonb)
+    from jsonb_array_elements(public.crawl_next_commanders('moxfield', p_run, 100000)) with ordinality x (e, n)
+   where (e ->> 'cardId')::int in (select card_id from ours_ids)
+$$;
+
 -- === the queue ===
 insert into crawl.runs (source, state) values ('moxfield', 'running') returning id as run_id \gset
 select chk('most played first',
-  (select public.crawl_next_commanders('moxfield', :run_id, 5) -> 0 ->> 'cardId')::int = :c2);
+  (select ours(:run_id) -> 0 ->> 'cardId')::int = :c2);
 select chk('a queued commander carries its oracle id and is not yet visited',
   (select (q -> 'oracleId') is not null and (q ->> 'visited')::boolean = false
-     from (select public.crawl_next_commanders('moxfield', :run_id, 1) -> 0 as q) x));
+     from (select ours(:run_id) -> 0 as q) x));
 
 select public.crawl_finish_commander('moxfield', :c2, :run_id,
   '{"outcome": "done", "queryName": "Tymna the Weaver", "listed": 60, "counted": 40}'::jsonb);
 select chk('a finished commander is not handed back to the same run',
-  (select jsonb_array_length(public.crawl_next_commanders('moxfield', :run_id, 5)) = 1));
+  (select jsonb_array_length(ours(:run_id)) = 1));
 select chk('a complete visit is stamped and its name kept',
   (select last_visited_at is not null and query_name = 'Tymna the Weaver' and counted = 40
      from crawl.queue where source = 'moxfield' and commander_card_id = :c2));
@@ -68,12 +82,12 @@ select chk('a partial visit is not stamped, so it comes back first',
   (select last_visited_at is null from crawl.queue where source = 'moxfield' and commander_card_id = :c1));
 insert into crawl.runs (source, state) values ('moxfield', 'running') returning id as run2 \gset
 select chk('the next run starts with the unvisited commander',
-  (select public.crawl_next_commanders('moxfield', :run2, 5) -> 0 ->> 'cardId')::int = :c1);
+  (select ours(:run2) -> 0 ->> 'cardId')::int = :c1);
 
 select public.crawl_finish_commander('moxfield', :c1, :run2, '{"outcome": "not_found"}'::jsonb);
 insert into crawl.runs (source, state) values ('moxfield', 'running') returning id as run3 \gset
 select chk('a commander not found stays out of the queue',
-  (select not exists (select 1 from jsonb_array_elements(public.crawl_next_commanders('moxfield', :run3, 5)) e
+  (select not exists (select 1 from jsonb_array_elements(ours(:run3)) e
                        where (e ->> 'cardId')::int = :c1)));
 select chk('the status counts the verification log',
   (select (public.crawl_state('moxfield') ->> 'commandersNotFound')::int = 1));
@@ -106,20 +120,20 @@ select chk('the seed counts what the raw table already holds',
 
 insert into crawl.runs (source, state) values ('moxfield', 'running') returning id as run4 \gset
 select chk('a commander over the target yields to one under it, however played it is',
-  (select public.crawl_next_commanders('moxfield', :run4, 5) -> 0 ->> 'cardId')::int = :c1,
-  public.crawl_next_commanders('moxfield', :run4, 5)::text);
+  (select ours(:run4) -> 0 ->> 'cardId')::int = :c1,
+  ours(:run4)::text);
 
 select chk('the queue reports what it holds, so a log line can say why it chose',
-  (select (public.crawl_next_commanders('moxfield', :run4, 5) -> 1 ->> 'heldDecks')::int = :target + 5),
-  public.crawl_next_commanders('moxfield', :run4, 5)::text);
+  (select (ours(:run4) -> 1 ->> 'heldDecks')::int = :target + 5),
+  ours(:run4)::text);
 
 -- With nothing held they are equally needy and most-played wins again, which is why the first pass is unchanged by any
 -- of this: it starts with an empty raw table.
 delete from moxfield.decks where source_deck_id like 'zz-held-%';
 select public.crawl_seed_commanders('moxfield') as reseeded \gset
 select chk('with nothing held, most played leads again',
-  (select public.crawl_next_commanders('moxfield', :run4, 5) -> 0 ->> 'cardId')::int = :c2,
-  public.crawl_next_commanders('moxfield', :run4, 5)::text);
+  (select ours(:run4) -> 0 ->> 'cardId')::int = :c2,
+  ours(:run4)::text);
 
 select public.crawl_finish_commander('moxfield', :c1, :run4, '{"outcome": "fetch_cap", "fetched": 120}'::jsonb);
 select chk('fetch_cap is an outcome a visit may record',

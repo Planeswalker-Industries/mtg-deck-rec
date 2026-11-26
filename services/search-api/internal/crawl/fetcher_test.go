@@ -128,6 +128,54 @@ func TestGetHonorsRetryAfter(t *testing.T) {
 	}
 }
 
+// A Retry-After is honoured only up to BackoffMax: a server asking for a day's wait must not hold the run idle.
+func TestGetCapsRetryAfterAtTheBackoffCeiling(t *testing.T) {
+	var first atomic.Bool
+	policy := Defaults{}.Policy()
+	policy.RequestInterval = time.Millisecond
+	policy.RequestIntervalMax = 2 * time.Millisecond
+	policy.BackoffStart = time.Millisecond
+	policy.BackoffMax = 20 * time.Millisecond
+	f, base := newFetcherAt(t, policy, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !first.Swap(true) {
+			w.Header().Set("Retry-After", "86400")
+			http.Error(w, "down for the day", http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprint(w, "ok")
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := f.Get(ctx, base+"/deck"); err != nil {
+		t.Fatalf("the retry should come after BackoffMax, not a day: %v", err)
+	}
+}
+
+// A 429 asking for longer than BackoffMax is not retried sooner than asked: Get returns it, and the run ends throttled.
+func TestGetReturnsALongThrottleAtOnce(t *testing.T) {
+	var hits atomic.Int32
+	policy := Defaults{}.Policy()
+	policy.RequestInterval = time.Millisecond
+	policy.RequestIntervalMax = 2 * time.Millisecond
+	policy.BackoffStart = time.Millisecond
+	policy.BackoffMax = 20 * time.Millisecond
+	f, base := newFetcherAt(t, policy, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Retry-After", "3600")
+		http.Error(w, "slow down", http.StatusTooManyRequests)
+	}))
+
+	_, err := f.Get(context.Background(), base+"/deck")
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != http.StatusTooManyRequests {
+		t.Fatalf("want the 429 back, got %v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("got %d requests, want 1: a long throttle is not retried", hits.Load())
+	}
+}
+
 // A challenge wall is an HTML interstitial or a labelled Cloudflare response. It is deliberately not "any body
 // containing the word": the active source answers JSON, a single false positive disables that source until a human
 // clears it by hand, and deck and card names are user-written text that reaches these bodies.

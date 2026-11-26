@@ -4,7 +4,18 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, CircleAlert, CircleCheck, Inbox, MonitorSmartphone, RotateCcw, Server, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  CircleAlert,
+  CircleCheck,
+  ClipboardCopy,
+  Inbox,
+  MonitorSmartphone,
+  RotateCcw,
+  Server,
+  TriangleAlert,
+} from "lucide-react";
 import type { Result } from "@mtg/core/contract";
 import { cn } from "cn";
 import type { AdminErrorEvent, AdminErrorTicket, AdminErrorTicketPage } from "@/lib/admin/types";
@@ -18,6 +29,11 @@ import { AdminBackLink } from "./back-link";
 const PAGE_SIZE = 25;
 /** Rows drawn while the first page loads: enough to fill a phone screen. */
 const SKELETON_ROWS = 3;
+
+/** How long the copy button shows its check before it reads as a clipboard again. */
+const COPIED_NOTICE_MS = 2000;
+/** Indent for the copied JSON: readable when pasted into a chat or an issue. */
+const COPY_JSON_INDENT = 2;
 
 type Filter = "open" | "all";
 
@@ -210,6 +226,54 @@ export function ErrorsView() {
   );
 }
 
+type CopyState = "idle" | "copied" | "failed";
+
+/**
+ * Copies the ticket and every kept event, in full, as JSON: one paste hands the whole failure to whoever fixes it.
+ * Fetches the events first when Details hasn't been opened.
+ */
+function CopyTicketButton({ ticket, loadEvents }: { ticket: AdminErrorTicket; loadEvents: () => Promise<AdminErrorEvent[] | null> }) {
+  const [copy, setCopy] = useState<CopyState>("idle");
+
+  useEffect(() => {
+    if (copy === "idle") return;
+    const timer = setTimeout(() => setCopy("idle"), COPIED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [copy]);
+
+  async function copyTicket() {
+    const events = await loadEvents();
+    if (events === null) return setCopy("failed");
+    try {
+      await navigator.clipboard.writeText(JSON.stringify({ ticket, events }, null, COPY_JSON_INDENT));
+      setCopy("copied");
+    } catch {
+      // Clipboard access can be refused (an insecure origin, a denied permission).
+      setCopy("failed");
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-11"
+        onClick={() => void copyTicket()}
+        aria-label={`Copy ticket #${ticket.id} with its events`}
+        title="Copy ticket with its events"
+      >
+        {copy === "copied" ? <Check aria-hidden /> : <ClipboardCopy aria-hidden />}
+      </Button>
+      {copy === "failed" && <ErrorText className="text-xs">Copy failed.</ErrorText>}
+      <span role="status" aria-live="polite" className="sr-only">
+        {copy === "copied" ? `Ticket #${ticket.id} copied to the clipboard` : ""}
+      </span>
+    </>
+  );
+}
+
 function LevelLabel({ level }: { level: AdminErrorTicket["level"] }) {
   return level === "error" ? (
     <span className="flex items-center gap-1 font-semibold text-destructive">
@@ -240,15 +304,23 @@ function TicketRow({ ticket, saving, onResolve }: { ticket: AdminErrorTicket; sa
   const [problem, setProblem] = useState<string | null>(null);
   const detailsId = `ticket-${ticket.id}-events`;
 
-  async function toggle() {
-    const next = !open;
-    setOpen(next);
-    if (!next || events !== null) return;
+  /** The kept events, fetched once and shared by Details and Copy. */
+  async function loadEvents(): Promise<AdminErrorEvent[] | null> {
+    if (events !== null) return events;
     const body = await fetchEvents(ticket.id);
     if (body.ok) {
       setEvents(body.data);
       setProblem(null);
-    } else setProblem(body.error.message);
+      return body.data;
+    }
+    setProblem(body.error.message);
+    return null;
+  }
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) await loadEvents();
   }
 
   return (
@@ -310,17 +382,20 @@ function TicketRow({ ticket, saving, onResolve }: { ticket: AdminErrorTicket; sa
       </dl>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-11 px-3"
-          aria-expanded={open}
-          aria-controls={detailsId}
-          onClick={() => void toggle()}
-        >
-          <ChevronDown aria-hidden className={cn("size-4 transition-transform", open && "rotate-180")} />
-          Details
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-11 px-3"
+            aria-expanded={open}
+            aria-controls={detailsId}
+            onClick={() => void toggle()}
+          >
+            <ChevronDown aria-hidden className={cn("size-4 transition-transform", open && "rotate-180")} />
+            Details
+          </Button>
+          <CopyTicketButton ticket={ticket} loadEvents={loadEvents} />
+        </div>
         <Button
           type="button"
           variant="outline"

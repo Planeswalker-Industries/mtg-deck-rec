@@ -74,6 +74,7 @@ export const UserList = () => (
       <FunctionField label="Status" render={() => <StatusPills />} sortable={false} />
       <NumberField source="deckCount" label="Decks" {...tabular} />
       <NumberField source="collectionCount" label="Collection" {...tabular} />
+      <NumberField source="journeyCount" label="Journeys" {...tabular} />
       <DateField source="lastSignInAt" label="Last sign-in" showTime emptyText="never" />
       <DateField source="createdAt" label="Joined" />
     </Datagrid>
@@ -120,6 +121,7 @@ export const UserShow = () => (
         <DateField source="createdAt" label="Joined" showTime />
         <NumberField source="deckCount" label="Saved decks" {...tabular} />
         <NumberField source="collectionCount" label="Collection entries" {...tabular} />
+        <NumberField source="journeyCount" label="Journeys started" {...tabular} />
         <TextField source="id" label="User id" />
       </TabbedShowLayout.Tab>
       <TabbedShowLayout.Tab label="Decks" path="decks">

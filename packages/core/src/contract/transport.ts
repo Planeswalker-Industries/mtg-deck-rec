@@ -2,6 +2,9 @@ import type { ExportFormat, FavoriteRef, SyncStatusRow, TagAdminRow } from './ac
 import type { CardDetail, CardRules, CardSummary, TagRef, CardSearchInput } from './cards';
 import type { CommanderCoverage, CommanderRequest } from './commander-requests';
 import type { ClientErrorReport } from './client-errors';
+
+/** How a deck tool journey started (v42): a pasted or linked decklist, or a commander's build. */
+export type JourneyStartKind = 'paste' | 'build';
 import type {
   CollectionCardsResult,
   DeckCoverageResult,
@@ -190,6 +193,13 @@ export interface ActionsApi {
    * a page never shows an error about reporting an error.
    */
   reportClientError(input: ClientErrorReport): Promise<Result<null>>;
+
+  /**
+   * v42. Counts one deck tool journey started, from a pasted (or linked) decklist or a commander's build, for the site's
+   * usage numbers on the admin home and the account's count on its admin page. A counter, never an event log. Works
+   * without an account; rate-limited per visitor.
+   */
+  recordJourneyStart(input: { kind: JourneyStartKind }): Promise<Result<null>>;
 
   adminSetTagDisabled(input: {
     tagId: TagId;

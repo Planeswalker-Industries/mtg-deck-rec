@@ -34,6 +34,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_journey_starts: {
+        Row: {
+          build: number
+          last_started_at: string
+          paste: number
+          user_id: string
+        }
+        Insert: {
+          build?: number
+          last_started_at?: string
+          paste?: number
+          user_id: string
+        }
+        Update: {
+          build?: number
+          last_started_at?: string
+          paste?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_config: {
         Row: {
           is_public: boolean
@@ -1393,6 +1414,27 @@ export type Database = {
         }
         Relationships: []
       }
+      journey_starts_hourly: {
+        Row: {
+          hour: string
+          kind: string
+          signed_in: boolean
+          starts: number
+        }
+        Insert: {
+          hour: string
+          kind: string
+          signed_in: boolean
+          starts?: number
+        }
+        Update: {
+          hour?: string
+          kind?: string
+          signed_in?: boolean
+          starts?: number
+        }
+        Relationships: []
+      }
       partner_card_totals: {
         Row: {
           card_id: number
@@ -2058,6 +2100,30 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_requests: {
+        Row: {
+          duty: string
+          id: number
+          picked_at: string | null
+          requested_at: string
+          requested_by: string | null
+        }
+        Insert: {
+          duty: string
+          id?: never
+          picked_at?: string | null
+          requested_at?: string
+          requested_by?: string | null
+        }
+        Update: {
+          duty?: string
+          id?: never
+          picked_at?: string | null
+          requested_at?: string
+          requested_by?: string | null
+        }
+        Relationships: []
+      }
       worker_status: {
         Row: {
           heartbeat_at: string
@@ -2119,6 +2185,7 @@ export type Database = {
           last_run_finished_at: string
           last_run_id: number
           last_run_progress_at: string
+          last_run_skipped_malformed: number
           last_run_started_at: string
           last_run_state: string
           last_run_throttles: number
@@ -2294,6 +2361,7 @@ export type Database = {
           email_confirmed_at: string
           id: string
           is_admin: boolean
+          journey_count: number
           last_sign_in_at: string
           total_count: number
         }[]
@@ -2310,6 +2378,7 @@ export type Database = {
           shown: number
         }[]
       }
+      admin_request_worker_run: { Args: { p_duty: string }; Returns: Json }
       admin_set_display_name: {
         Args: { p_display_name: string; p_user_id: string }
         Returns: undefined
@@ -2355,6 +2424,7 @@ export type Database = {
         Returns: Json
       }
       admin_user_decks: { Args: { p_user_id: string }; Returns: Json }
+      admin_worker_schedule: { Args: never; Returns: Json }
       bracket_cards: { Args: never; Returns: Json }
       card_category: { Args: { p_type_line: string }; Returns: string }
       card_functional_tags: {
@@ -2502,6 +2572,7 @@ export type Database = {
         Args: { p_rows: Json; p_source: string }
         Returns: Json
       }
+      crawl_used_today: { Args: { p_source: string }; Returns: number }
       delete_my_account: { Args: never; Returns: undefined }
       duplicate_deck: {
         Args: { p_deck_id: string; p_name?: string }
@@ -2626,6 +2697,10 @@ export type Database = {
           staple_score: number
           tag_similarity: number
         }[]
+      }
+      record_journey_start: {
+        Args: { p_kind: string; p_user_id?: string }
+        Returns: undefined
       }
       record_rec_event: {
         Args: {

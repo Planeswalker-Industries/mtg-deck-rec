@@ -15,7 +15,9 @@
     "./collection": "./src/collection/index.ts",
     "./journey": "./src/journey/index.ts",
     "./shop": "./src/shop/index.ts",
-    "./errors": "./src/errors/index.ts"
+    "./errors": "./src/errors/index.ts",
+    "./crawl": "./src/crawl/index.ts",
+    "./worker": "./src/worker/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

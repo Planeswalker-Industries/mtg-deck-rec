@@ -1,3 +1,4 @@
+import type { WorkerScheduleFacts } from "@mtg/core/worker";
 /**
  * The admin area's own view model. It is deliberately not part of the frozen frontend/backend contract in
  * `@mtg/core/contract`: nothing public depends on these shapes, and the admin UI should be free to change without a
@@ -18,6 +19,8 @@ export interface AdminUser {
   bannedUntil: string | null;
   deckCount: number;
   collectionCount: number;
+  /** Journeys the account started in the deck tool, from a pasted deck or a commander's build. */
+  journeyCount: number;
 }
 
 export interface AdminUserPage {
@@ -34,6 +37,7 @@ export const ADMIN_USER_SORTS = [
   "display_name",
   "deck_count",
   "collection_count",
+  "journey_count",
 ] as const;
 
 export type AdminUserSort = (typeof ADMIN_USER_SORTS)[number];
@@ -248,6 +252,8 @@ export interface AdminSiteStats {
   /** Accounts with at least one collection entry. */
   collections: number;
   importsLast7d: number;
+  /** Deck tool journeys started, signed in or not, with how they started. */
+  journeys: AdminWindowedCount & { paste: number; build: number; signedIn: number };
   openReports: number;
   openErrors: number;
 }
@@ -281,6 +287,8 @@ export interface AdminCrawlSource {
     commandersVisited: number;
     /** How many times the source answered 429 during the run. */
     throttles: number;
+    /** Decks whose page no longer parsed, skipped one by one; above zero is worth a look. */
+    skippedMalformed: number;
   } | null;
 }
 
@@ -391,4 +399,10 @@ export interface AdminErrorEvent {
   message: string;
   /** The stack and causes (`error`), what the visitor saw (`shown`), `context`, `request` and `deployment`. */
   detail: Record<string, unknown>;
+}
+
+/** The worker's schedule and the asks waiting for it (`admin_worker_schedule`), for the admin home's Run now. */
+export interface AdminWorkerSchedule extends WorkerScheduleFacts {
+  /** Run-now asks the worker hasn't taken yet: a duty, or `crawl:<source>`. */
+  waiting: { duty: string; requestedAt: string }[];
 }
