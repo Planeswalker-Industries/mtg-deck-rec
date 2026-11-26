@@ -8,20 +8,6 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 
 ---
 
-## T107: Archidekt crawl coverage
-
-**HIGH** · Data / Ops · Plan `docs/plan_files/2026-11-25-crawl-coverage.md` (local), worktree `X:/mtg_proj/wt/crawl-coverage`
-
-Hosted on 2026-11-25: every queued commander had one visit, but 15 legal commanders never enter the queue (it is seeded from EDHREC only), 50 are `not_found` for good (about 40 accented names: Archidekt matches accent-free names), and about 2,600 of the 2,980 commanders at the 60-deck target have not been revisited since mid-October (exhausted commanders go first every run, then the most-played). One network reset, a bad deck page or a stopped process ends the day's run with no resume (runs 39, 40, 59, 60, 63). `cards.can_be_commander` misses legendary Vehicles, Spacecraft and Grist.
-
-- [x] Commander eligibility follows the current Commander rules (`can_be_commander` matches Scryfall `is:commander`)
-- [x] Archidekt names sent accent-folded; `not_found` opens an error ticket, retries every 30 days, gives up after 300
-- [x] Queue seeded from the catalog; exhausted commanders back after 7–13 days (spread by card id); at-target revisits stalest first
-- [x] A malformed deck or a failing list page skips one deck or one commander; a streak or a broken adapter ends the run with an error ticket
-- [x] Crawl RPCs retry transient network and 5xx failures
-- [x] A failed or stopped run resumes the same day within the 6-hour budget (`crawl_used_today`); lookups still work past it. A process killed outright (no SIGTERM) still costs the rest of its day: its row stays open until the next day's run takes the stale claim over
-- [ ] Record what the search-api host's restart log (`docker events` / Dokploy deployments) shows for runs 39, 40, 59, 60 (2026-11-02 15:08, 11-03 14:29, 11-22 14:36, 11-23 13:06 UTC; no merge to `main` lines up) and the missing 2026-10-29 run. Asked the owner 2026-11-25
-
 ## T068: Recommendation latency (PR #139 review)
 
 **MEDIUM** · Backend / Performance
