@@ -160,6 +160,11 @@ func (c *Client) MultiSearch(ctx context.Context, searches []SearchParams) ([]Se
 	if err := c.doJSON(ctx, http.MethodPost, "/multi_search", map[string]any{"searches": searches}, &out); err != nil {
 		return nil, err
 	}
+	// Anything other than one result per search would hand the caller a partial pool as if it were whole; failing
+	// lets the app fall back to Postgres instead.
+	if len(out.Results) != len(searches) {
+		return nil, &Error{Status: http.StatusBadGateway, Body: fmt.Sprintf("multi_search answered %d of %d searches", len(out.Results), len(searches))}
+	}
 	// A multi_search answers 200 even when an individual search failed, so each result carries its own error.
 	for _, r := range out.Results {
 		if r.Error != "" {

@@ -89,7 +89,10 @@ const (
 
 // A document field name as packages/core/src/search/documents.ts spells them. Checked because it reaches the
 // include_fields parameter.
-var fieldName = regexp.MustCompile(`^[a-z_]{1,64}$`)
+var fieldName = regexp.MustCompile(fmt.Sprintf(`^[a-z_]{1,%d}$`, maxFieldNameLength))
+
+// The longest document field name is under 30 characters; this is a ceiling on nonsense, not a schema rule.
+const maxFieldNameLength = 64
 
 func decodeBody(c fiber.Ctx, out any) error {
 	if err := json.Unmarshal(c.Body(), out); err != nil {
@@ -136,7 +139,7 @@ func (s *Server) cardsByID(c fiber.Ctx) error {
 		// The document fields the caller reads. Optional: without it the whole document comes back. Each caller
 		// reads a fraction of a document, and Typesense's time for a chunk grows with what it has to serialise
 		// (measured 2026-11-26: the 27 fields a card row needs halve it and cut the bytes by 39%).
-		Fields []string `json:"fields"`
+		Fields *[]string `json:"fields"`
 	}
 	if err := decodeBody(c, &body); err != nil {
 		return err
@@ -147,10 +150,19 @@ func (s *Server) cardsByID(c fiber.Ctx) error {
 	if len(body.IDs) > maxIDsPerRequest {
 		return badRequest(fmt.Sprintf("at most %d ids per request", maxIDsPerRequest))
 	}
-	if len(body.Fields) > maxFieldsPerRequest {
+	var fields []string
+	if body.Fields != nil {
+		fields = *body.Fields
+		// An empty list would mean include_fields="", which Typesense reads as every field: the opposite of what a
+		// caller naming nothing could have meant.
+		if len(fields) == 0 {
+			return badRequest("fields, when sent, names at least one field")
+		}
+	}
+	if len(fields) > maxFieldsPerRequest {
 		return badRequest(fmt.Sprintf("at most %d fields per request", maxFieldsPerRequest))
 	}
-	for _, field := range body.Fields {
+	for _, field := range fields {
 		if !fieldName.MatchString(field) {
 			return badRequest("a field name is lower-case letters and underscores")
 		}
@@ -163,7 +175,7 @@ func (s *Server) cardsByID(c fiber.Ctx) error {
 			Q:             "*",
 			FilterBy:      "card_id:[" + joinInts(page) + "]",
 			PerPage:       typesense.MaxPerPage,
-			IncludeFields: strings.Join(body.Fields, ","),
+			IncludeFields: strings.Join(fields, ","),
 		})
 	}
 	results, err := s.searchAll(c, searches)
