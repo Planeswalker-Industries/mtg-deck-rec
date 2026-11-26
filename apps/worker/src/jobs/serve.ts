@@ -1,13 +1,12 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
-  DEFAULT_CRAWL_RESUME_MINUTES,
-  DEFAULT_CRAWL_RESUMES_PER_DAY,
   DEFAULT_CRAWL_RUN_MINUTES,
   DEFAULT_CRAWL_STALE_CLAIM_SECONDS,
   shouldStartCrawl,
   type CrawlDay,
   type CrawlRunState,
 } from '@mtg/core/crawl';
+import { crawlDutySource, DEFAULT_WORKER_SCHEDULE, WORKER_DUTIES, type WorkerDuty, type WorkerSchedule as Schedule } from '@mtg/core/worker';
 import { connect, type Sql } from '../lib/db';
 import { abandonOpenRuns } from '../lib/sync-runs';
 import { collate } from './collate';
@@ -19,35 +18,6 @@ import { precomputeSubstitutes } from './precompute-substitutes';
 import { precomputeCombos, precomputeRoles } from './precompute-tables';
 import { syncEdhrec } from './sync-edhrec';
 
-/** app_config.worker; every value has a default, so a missing key never stops the worker. */
-interface Schedule {
-  pollSeconds: number;
-  crawlHourUtc: number;
-  crawlSources: string[];
-  collateEveryMinutes: number;
-  baselineHourUtc: number;
-  edhrecEveryDays: number;
-  globalPairsEveryDays: number;
-  retryHours: number;
-  /** After a failed crawl run, wait this long before starting another with what is left of the day. */
-  crawlResumeMinutes: number;
-  /** Follow a failed crawl run with another at most this many times a day. */
-  crawlResumesPerDay: number;
-}
-
-const DEFAULT_SCHEDULE: Schedule = {
-  pollSeconds: 5,
-  // 3 AM EST (owner, 2026-11-23): the 6-hour run ends before the working day, when merges redeploy the crawl host.
-  crawlHourUtc: 8,
-  crawlSources: ['archidekt'],
-  collateEveryMinutes: 30,
-  baselineHourUtc: 4,
-  edhrecEveryDays: 7,
-  globalPairsEveryDays: 7,
-  retryHours: 6,
-  crawlResumeMinutes: DEFAULT_CRAWL_RESUME_MINUTES,
-  crawlResumesPerDay: DEFAULT_CRAWL_RESUMES_PER_DAY,
-};
 const MS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const MS_PER_MINUTE = 60_000;
@@ -95,7 +65,39 @@ function abandonAndExit(sql: Sql, reason: string): void {
 
 async function loadSchedule(sql: Sql): Promise<Schedule> {
   const [row] = await sql<{ value: Partial<Schedule> }[]>`select value from public.app_config where key = 'worker'`;
-  return { ...DEFAULT_SCHEDULE, ...row?.value };
+  return { ...DEFAULT_WORKER_SCHEDULE, ...row?.value };
+}
+
+/** What an admin asked to run now (the admin home's Run now): the worker's own duties, and crawl sources. */
+interface RunRequests {
+  duties: Set<WorkerDuty>;
+  crawls: string[];
+}
+
+const NO_REQUESTS: RunRequests = { duties: new Set(), crawls: [] };
+
+/**
+ * Takes every waiting ask from `public.worker_requests`, marking each picked so it runs once. A database without the
+ * table yet (the worker can deploy before its migration) or a failed read means no asks this pass.
+ */
+async function takeRunRequests(sql: Sql): Promise<RunRequests> {
+  try {
+    const rows = await sql<{ duty: string }[]>`
+      update public.worker_requests set picked_at = now() where picked_at is null returning duty
+    `;
+    const duties = new Set<WorkerDuty>();
+    const crawls: string[] = [];
+    for (const { duty } of rows) {
+      const source = crawlDutySource(duty);
+      if (source !== null) crawls.push(source);
+      else if ((WORKER_DUTIES as readonly string[]).includes(duty)) duties.add(duty as WorkerDuty);
+      console.log(`worker: an admin asked for ${duty} now`);
+    }
+    return { duties, crawls };
+  } catch (err) {
+    console.error('worker: reading the run-now asks failed:', err);
+    return NO_REQUESTS;
+  }
 }
 
 /** Starts each source's daily crawl once its hour has come, and resumes a failed one with what is left of the day. */
@@ -255,6 +257,7 @@ async function due(name: string, check: () => Promise<boolean>): Promise<boolean
  * The VPS worker's one long-running process (deploy/worker/, T066). Every `pollSeconds` it serves the deck lookups,
  * then runs whatever app_config.worker says is due:
  *
+ * - whatever an admin asked to run now (`public.worker_requests`, the admin home's Run now), on this pass;
  * - each source's daily crawl, started through the search API at `crawlHourUtc` (T042);
  * - a collation every `collateEveryMinutes` (a pass with nothing new records nothing), then the precompute worker's
  *   checks (T055): the stats and scores of commanders whose decks changed, substitute lists that are due (a few
@@ -308,16 +311,18 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
       const schedule = await loadSchedule(sql);
       await duty('check-in', () => checkIn(sql));
       await duty('deck lookups', () => serveLookups(sql));
+      const asked = await takeRunRequests(sql);
       await duty('daily crawl', () => dailyCrawls(sql, schedule));
-      const collating = Date.now() - lastCollate >= schedule.collateEveryMinutes * MS_PER_MINUTE;
+      // An ask starts the crawl at once: no wait for the hour, and no gap after another trigger.
+      for (const source of asked.crawls) await duty(`${source} crawl`, () => triggerCrawl(source, 0));
+      const collating = asked.duties.has('collate') || Date.now() - lastCollate >= schedule.collateEveryMinutes * MS_PER_MINUTE;
       if (collating) {
         lastCollate = Date.now();
         await duty('collation', () => collate(), { announce: true });
         await duty('commander stats', () => precomputeCommanders(sql), { announce: true });
       }
-      if (await due('the nightly baseline', () => baselineDue(sql, schedule)))
-        await duty('nightly baseline', () => precomputeBaseline(sql), { announce: true });
-      if (await due('scores', () => scoreSettingsChanged(sql))) await duty('scores', () => precomputeScores({ sql }), { announce: true });
+      if (asked.duties.has('baseline') || (await due('the nightly baseline', () => baselineDue(sql, schedule)))) await duty('nightly baseline', () => precomputeBaseline(sql), { announce: true });
+      if (asked.duties.has('scores') || (await due('scores', () => scoreSettingsChanged(sql)))) await duty('scores', () => precomputeScores({ sql }), { announce: true });
       if (collating || substitutesPending) {
         await duty(
           'substitutes',
@@ -332,16 +337,13 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
         await duty('combo pieces', () => precomputeCombos(sql), { announce: true });
         await duty('card pairs', () => precomputePairs(sql), { announce: true });
       }
-      if (!globalPairs && (await due('corpus card pairs', () => globalPairsDue(sql, schedule)))) {
-        globalPairs = duty('corpus card pairs', () => precomputeGlobalPairs(sql, { rerun: true }), {
-          announce: true,
-          background: true,
-        }).finally(() => {
+      if (!globalPairs && (asked.duties.has('global_pairs') || (await due('corpus card pairs', () => globalPairsDue(sql, schedule))))) {
+        globalPairs = duty('corpus card pairs', () => precomputeGlobalPairs(sql, { rerun: true }), { announce: true, background: true }).finally(() => {
           globalPairs = null;
         });
         if (once) await globalPairs;
       }
-      if (!edhrec && !once && (await due('the EDHREC fetch', () => edhrecDue(sql, schedule)))) {
+      if (!edhrec && !once && (asked.duties.has('edhrec') || (await due('the EDHREC fetch', () => edhrecDue(sql, schedule))))) {
         edhrec = duty('EDHREC fetch', () => syncEdhrec(), { announce: true, background: true }).finally(() => {
           edhrec = null;
         });

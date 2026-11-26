@@ -774,6 +774,8 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
     editorHandle.current?.discard();
     const outcome = await tool.submit();
     if (!outcome.parsed) return;
+    // The admin home's usage numbers: a journey started from a pasted deck. A count, so a failure is let go.
+    void getApis().actions.recordJourneyStart({ kind: "paste" });
     // A deck stronger than the bracket asked for is said so first: the round would bring it down (T091).
     const estimated = outcome.analysis?.estimatedBracket;
     if (estimated !== undefined && outcome.bracket != null && estimated > outcome.bracket) {
@@ -1206,6 +1208,7 @@ function DeckToolSession({ prefill }: { prefill: CardSummary[] | null }) {
               onClick={() => {
                 if (!picked) return;
                 void deckBuild.build({ commanders: picked, bracket: tool.startBracket, ...(tool.budget ? { budget: tool.budget } : {}) });
+                void getApis().actions.recordJourneyStart({ kind: "build" });
               }}
             >
               Build deck

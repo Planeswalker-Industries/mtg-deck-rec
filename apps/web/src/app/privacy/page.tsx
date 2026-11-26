@@ -66,6 +66,11 @@ export default function PrivacyPage() {
             suggestions are. It is kept like votes: with your account if you are signed in, otherwise with the salted hash
             below, and there is no setting to turn it off.
           </Item>
+          <Item term="How often you use the deck tool">
+            Each time you start a round from a pasted deck or a commander&apos;s build, we add one to a count: a site-wide
+            count per hour, and, if you are signed in, a running count on your account. Nothing about the deck goes with
+            it. The site&apos;s admins see these counts.
+          </Item>
           <Item term="A salted hash of your IP address">
             To stop abuse we count requests per visitor. We never store your IP address itself, only a one-way hash of
             it mixed with a secret value. People sharing one network share one hash.

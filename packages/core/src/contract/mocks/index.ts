@@ -1014,6 +1014,11 @@ export function createMockApis({ latencyMs = 150 }: { latencyMs?: number } = {})
       return delay(ok(null));
     },
 
+    // Journey counts only feed the admin home, which the mocks don't have.
+    async recordJourneyStart() {
+      return delay(ok(null));
+    },
+
     async setFavorite({ kind, refId, on }) {
       const key = `${kind}:${refId}`;
       if (on) favorites.add(key);
