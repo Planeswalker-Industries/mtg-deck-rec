@@ -16,7 +16,7 @@ import (
 )
 
 // The app's honest request identity, matching apps/worker/src/lib/config.ts. Never rotated or spoofed.
-const userAgent = "SpellChasm/0.1 (+https://spellchasm.com; https://github.com/Planeswalker-Industries/mtg-deck-rec)"
+const userAgent = "SpellChasm/0.1 (+https://spellchasm.com; https://github.com/Planeswalker-Industries/mtg-deck-rec; contact@spellchasm.com)"
 
 const (
 	fetchTimeout    = 30 * time.Second

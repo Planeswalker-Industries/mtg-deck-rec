@@ -50,7 +50,7 @@ Moxfield's whitelist also wants a production domain (T044). `www.spellchasm.com`
 - [ ] Google Cloud → Google Auth Platform → Branding: app name Spell Chasm, logo, home page and privacy policy URLs on `https://www.spellchasm.com`, authorized domain `spellchasm.com`; then submit the branding for verification
 - [ ] Once Google approves the branding, signing in on `www.spellchasm.com` shows "to continue to Spell Chasm" in the chooser
 - A Supabase custom domain (paid add-on) would also change the chooser's domain; considered and not chosen (owner, 2026-11-16)
-- [ ] The VPS worker's `WEB_APP_URL` is `https://www.spellchasm.com`; Impact's property URL is the new domain; Archidekt is told the crawl's new User-Agent (`SpellChasm/0.1`)
+- [x] The VPS worker's `WEB_APP_URL` is `https://www.spellchasm.com`; Impact's property URL is the new domain; Archidekt is told the crawl's new User-Agent (`SpellChasm/0.1`) (owner, 2026-11-25)
 - [x] `yarn workspace @mtg/web smoke` passes against `https://www.spellchasm.com` (14/14, 2026-11-16)
 - [x] Resend (free tier) verifies `mail.spellchasm.com` (DNS at Namecheap, DMARC `p=none` on the apex, the `contact@` forwarder's MX kept), Supabase → Authentication → SMTP sends through it from `noreply@mail.spellchasm.com`, and Rate Limits → emails per hour is 30 (owner, 2026-11-25)
 - [x] Hosted Confirm signup template is `supabase/templates/confirm-signup.html` (owner, 2026-11-25)

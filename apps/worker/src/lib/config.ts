@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 /** Sent on every outbound request. Identifies the app honestly; never rotated or spoofed. */
-export const USER_AGENT = 'SpellChasm/0.1 (+https://spellchasm.com; https://github.com/Planeswalker-Industries/mtg-deck-rec)';
+export const USER_AGENT = 'SpellChasm/0.1 (+https://spellchasm.com; https://github.com/Planeswalker-Industries/mtg-deck-rec; contact@spellchasm.com)';
 
 /**
  * Scratch space for Scryfall's bulk downloads, which are fetched again whenever Scryfall publishes new ones. Nothing
