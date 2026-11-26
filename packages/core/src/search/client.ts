@@ -49,6 +49,8 @@ export interface SearchClientConfig {
 const DEFAULT_TIMEOUT_MS = 2_000;
 /** Bulk imports and rebuilds are patient; they run after a sync has already committed. */
 const WRITE_TIMEOUT_MS = 120_000;
+/** Above the search API's own one-minute limit on a snapshot (typesense.SnapshotTimeout), so its answer arrives first. */
+const SNAPSHOT_TIMEOUT_MS = 75_000;
 
 export class SearchClient {
   private readonly base: string;
@@ -257,6 +259,14 @@ export class SearchClient {
       body: JSON.stringify({ collectionName }),
       timeoutMs: WRITE_TIMEOUT_MS,
     });
+  }
+
+  /**
+   * Asks Typesense for an internal snapshot, so a restart restores the aliases just moved instead of replaying them
+   * from its log. Call it after every alias move. A search API from before the route answers 404.
+   */
+  async snapshot(): Promise<void> {
+    await this.request("/v1/admin/snapshot", { method: "POST", timeoutMs: SNAPSHOT_TIMEOUT_MS });
   }
 }
 

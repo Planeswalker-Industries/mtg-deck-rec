@@ -15,6 +15,7 @@ import {
   type CollectionStep,
   type CommanderCardIndexRow,
   type CommanderIndexRow,
+  SearchError,
   type SearchClient,
   type TagIndexRow,
 } from '@mtg/core/search';
@@ -46,6 +47,10 @@ const DRAIN_BATCH = 5_000;
 const DRAIN_PROGRESS_MS = 60_000;
 /** Rows read from Postgres per document batch. */
 const READ_BATCH = 2_000;
+/** A failed snapshot's error text kept in its ticket: enough for the search API's answer, not a whole HTML page. */
+const SNAPSHOT_ERROR_DETAIL_CHARS = 300;
+/** What a search API from before the snapshot route answers. */
+const HTTP_NOT_FOUND = 404;
 
 const REINDEX = '*';
 
@@ -408,6 +413,35 @@ async function repairAlias(
 }
 
 /**
+ * Asks Typesense, through the search API, for an internal snapshot right after aliases moved. A restart restores the
+ * last snapshot and replays its log after it, and that replay once lost an alias (T108); a snapshot taken now puts the
+ * new aliases in the part that is restored, not replayed. Never throws: a failure is a warning ticket, and the drain
+ * repairs a lost alias anyway. A 404 is a search API from before the route.
+ */
+async function snapshotIndex(sql: ReservedSql, index: SearchClient, trigger: 'rebuild' | 'alias repair'): Promise<void> {
+  try {
+    await index.snapshot();
+    console.log(`sync:typesense: snapshot taken after the ${trigger}.`);
+  } catch (err) {
+    const status = err instanceof SearchError ? err.status : null;
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`sync:typesense: the snapshot after the ${trigger} failed, so a Typesense restart could lose the moved aliases: ${reason}`);
+    await logWorkerError(sql, {
+      level: 'warning',
+      area: 'worker.search.snapshot_failed',
+      ...(status === null ? {} : { code: String(status) }),
+      message: `The search index snapshot after the ${trigger} failed; a Typesense restart before the next hourly snapshot could lose the moved aliases.`,
+      detail: {
+        trigger,
+        status,
+        error: reason.slice(0, SNAPSHOT_ERROR_DETAIL_CHARS),
+        ...(status === HTTP_NOT_FOUND ? { note: 'the search API has no snapshot route yet; it gets one with the next release to main' } : {}),
+      },
+    });
+  }
+}
+
+/**
  * Rebuilds every collection into a new versioned one and moves the alias when it is complete, so the site is never
  * reading a half-built index. The old versioned collection is dropped afterwards; a plain collection of the same name
  * (what `ensureCollections` makes on a first run) is dropped too, since the alias takes its place.
@@ -442,6 +476,8 @@ async function rebuild(sql: ReservedSql, index: SearchClient): Promise<Counts> {
     console.log(`sync:typesense: ${collection} rebuilt as ${versioned} (${written.written} documents).`);
     counts = add(counts, written);
   }
+  // Once, after every alias moved. It never throws, so the queue rows below are deleted whatever it answers.
+  await snapshotIndex(sql, index, 'rebuild');
   // Everything queued before the rebuild started is already in it. The counter is read first, for the same reason
   // the drain compares on it: it is the one value that survives the round trip exactly.
   await sql`delete from public.search_index_queue where seq <= ${cutoff}`;
@@ -471,7 +507,7 @@ export async function syncSearchIndex({ rebuild: doRebuild = false }: { rebuild?
       return;
     }
 
-    await ensureCollections(sql, index);
+    if (await ensureCollections(sql, index)) await snapshotIndex(sql, index, 'alias repair');
     const { cleared, counts } = await drainUntilEmpty(sql, index);
     console.log(
       cleared === 0
@@ -495,7 +531,7 @@ export async function drainSearchIndexQuietly(pool: Sql, job: string): Promise<v
   const sql = await reserve(pool);
   try {
     await stageFunctionalTags(sql);
-    await ensureCollections(sql, index);
+    if (await ensureCollections(sql, index)) await snapshotIndex(sql, index, 'alias repair');
     const { cleared, counts } = await drainUntilEmpty(sql, index, job);
     if (cleared > 0) console.log(`${job}: search index updated (${counts.written} written, ${counts.removed} removed).`);
   } catch (err) {

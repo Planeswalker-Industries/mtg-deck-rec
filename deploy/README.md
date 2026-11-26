@@ -113,6 +113,11 @@ The queue drains after each finished sync (`finishRun`), in the daily workflow, 
 `cli:hosted sync:typesense`. Nothing in the index is a source of truth, so there are no backups: losing it costs one
 `--rebuild`.
 
+Each `--rebuild`, and each drain that re-points a lost alias, ends with an internal Typesense snapshot
+(`POST /v1/admin/snapshot`, never with a `snapshot_path`), so a restart restores the new aliases instead of replaying
+them from the log. A failed snapshot is a `worker.search.snapshot_failed` warning on `/admin/errors`, never a failed
+job; Typesense still takes its own hourly one.
+
 | Situation | Do |
 |---|---|
 | Queue growing, not draining | Run the **Search index** workflow without *rebuild* (or `cli:hosted sync:typesense`) and read the error. It stops rather than looping. |
@@ -121,6 +126,7 @@ The queue drains after each finished sync (`finishRun`), in the daily workflow, 
 | Disk or memory filling up | `--rebuild` drops every stale collection version. `GET /collections` should show exactly four. |
 | Upgrading Typesense | Bump the tag in `deploy/typesense/docker-compose.yml`, `docker compose up -d`, then `--rebuild`. |
 | `502` from the API, both containers healthy | Typesense answered with an error; `docker compose logs search-api` names it. |
+| An alias is missing (`GET /v1/admin/aliases/<name>` answers `null`; reads of that collection 502) | Run `cli:hosted sync:typesense`: the drain points it at the version with the most documents and opens a `worker.search.alias_repaired` ticket. The versions it didn't pick stay until the next `--rebuild`. |
 | The API won't start | It refuses an empty key or token, or two identical tokens, and says which. |
 | The index is empty after a redeploy | A re-cloned repo replaced the `./data` bind mount. Set `TYPESENSE_DATA_DIR` outside the clone, then `--rebuild`. |
 | The VPS is down | Nothing breaks: every read falls back to Postgres. Rebuild when it's back. |
