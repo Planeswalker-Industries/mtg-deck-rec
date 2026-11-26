@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -158,6 +159,165 @@ func TestSelectAllRefusesACompoundFilter(t *testing.T) {
 	}
 	if len(f.paths) != 0 {
 		t.Fatalf("nothing should have been requested: %v", f.paths)
+	}
+}
+
+// retryTestWait stands in for the production waits so the retry tests run in milliseconds.
+const retryTestWait = time.Millisecond
+
+// newScripted serves answer for each request in turn, counting them; the tests read the count to see how often the
+// client tried.
+func newScripted(t *testing.T, answer func(n int, w http.ResponseWriter)) (*Client, *int) {
+	t.Helper()
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		answer(calls, w)
+	}))
+	t.Cleanup(server.Close)
+	c := New(server.URL, "service-key", 5*time.Second)
+	c.waits = []time.Duration{retryTestWait, retryTestWait, retryTestWait}
+	return c, &calls
+}
+
+// resetConnection drops the TCP connection with a reset, as a peer does when it goes away mid-request (run 63's
+// "connection reset by peer").
+func resetConnection(t *testing.T, w http.ResponseWriter) {
+	conn, _, err := w.(http.Hijacker).Hijack()
+	if err != nil {
+		t.Errorf("hijack: %v", err)
+		return
+	}
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetLinger(0)
+	}
+	_ = conn.Close()
+}
+
+func answerOK(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, `{"n":1}`)
+}
+
+func TestRPCRetriesADroppedConnection(t *testing.T) {
+	c, calls := newScripted(t, func(n int, w http.ResponseWriter) {
+		if n == 1 {
+			resetConnection(t, w)
+			return
+		}
+		answerOK(w)
+	})
+	var out struct {
+		N int `json:"n"`
+	}
+	if err := c.RPCInto(context.Background(), "crawl_deck_versions", nil, &out); err != nil {
+		t.Fatalf("a dropped connection should be retried: %v", err)
+	}
+	if *calls != 2 || out.N != 1 {
+		t.Fatalf("got %d calls and %+v, want 2 calls and the second answer", *calls, out)
+	}
+}
+
+func TestRPCRetriesAGatewayError(t *testing.T) {
+	c, calls := newScripted(t, func(n int, w http.ResponseWriter) {
+		if n == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		answerOK(w)
+	})
+	if _, err := c.RPC(context.Background(), "crawl_finish_commander", nil); err != nil {
+		t.Fatalf("a 503 should be retried: %v", err)
+	}
+	if *calls != 2 {
+		t.Fatalf("got %d calls, want 2", *calls)
+	}
+}
+
+// A 4xx is PostgREST refusing the call itself: the same call would be refused again.
+func TestRPCNeverRetriesAClientError(t *testing.T) {
+	c, calls := newScripted(t, func(_ int, w http.ResponseWriter) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"message":"bad arguments"}`)
+	})
+	_, err := c.RPC(context.Background(), "crawl_finish_commander", nil)
+	var restErr *Error
+	if !errors.As(err, &restErr) || restErr.Status != http.StatusBadRequest {
+		t.Fatalf("want the 400, got %v", err)
+	}
+	if *calls != 1 {
+		t.Fatalf("got %d calls, want 1", *calls)
+	}
+}
+
+// A database that stays unreachable fails after the last retry, with the status the caller can report.
+func TestRPCGivesUpAfterTheLastRetry(t *testing.T) {
+	c, calls := newScripted(t, func(_ int, w http.ResponseWriter) {
+		w.WriteHeader(http.StatusBadGateway)
+	})
+	_, err := c.RPC(context.Background(), "crawl_upsert_decks", nil)
+	var restErr *Error
+	if !errors.As(err, &restErr) || restErr.Status != http.StatusBadGateway {
+		t.Fatalf("want the 502, got %v", err)
+	}
+	if want := len(c.waits) + 1; *calls != want {
+		t.Fatalf("got %d calls, want %d (one try and every retry)", *calls, want)
+	}
+}
+
+// crawl_create_run and log_error_event insert a row each call: a reply lost after the insert must not insert again.
+func TestRPCOnceNeverRetries(t *testing.T) {
+	c, calls := newScripted(t, func(n int, w http.ResponseWriter) {
+		if n == 1 {
+			resetConnection(t, w)
+			return
+		}
+		answerOK(w)
+	})
+	var id int64
+	if err := c.RPCOnceInto(context.Background(), "crawl_create_run", nil, &id); err == nil {
+		t.Fatal("a dropped connection should fail a call that must not repeat")
+	}
+	if _, err := c.RPCOnce(context.Background(), "log_error_event", nil); err != nil {
+		t.Fatalf("the next call is a new call: %v", err)
+	}
+	if *calls != 2 {
+		t.Fatalf("got %d calls, want 2 (one per call, no retry)", *calls)
+	}
+}
+
+// A run that is stopping must not sit out the retry waits.
+func TestRPCStopsRetryingWhenTheContextEnds(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	c, calls := newScripted(t, func(_ int, w http.ResponseWriter) {
+		cancel()
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	c.waits = []time.Duration{time.Hour}
+	_, err := c.RPC(ctx, "crawl_run_progress", nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context.Canceled, got %v", err)
+	}
+	if *calls != 1 {
+		t.Fatalf("got %d calls, want 1", *calls)
+	}
+}
+
+func TestTransientStatuses(t *testing.T) {
+	for status, want := range map[int]bool{
+		http.StatusBadGateway:          true,
+		http.StatusServiceUnavailable:  true,
+		http.StatusGatewayTimeout:      true,
+		cloudflareFirstOriginStatus:    true,
+		cloudflareLastOriginStatus:     true,
+		http.StatusInternalServerError: false, // the function itself raised: running it again raises again
+		http.StatusTooManyRequests:     false,
+		http.StatusNotFound:            false,
+		cloudflareLastOriginStatus + 1: false,
+	} {
+		if got := transientStatus(status); got != want {
+			t.Errorf("transientStatus(%d) = %v, want %v", status, got, want)
+		}
 	}
 }
 

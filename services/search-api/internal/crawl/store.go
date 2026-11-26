@@ -2,8 +2,11 @@ package crawl
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/supabase"
@@ -17,11 +20,12 @@ type Store interface {
 	Policy(ctx context.Context) (Policy, error)
 	// CrawlState is the source's cursor, claim, kill switch, deck count and queue progress.
 	CrawlState(ctx context.Context) (CrawlState, error)
-	// SeedCommanders adds the commanders the seed list (EDHREC) knows to the queue and refreshes their order; it
-	// writes only what changed and returns how many rows that was.
+	// SeedCommanders adds every commander the catalog says is legal to the queue and refreshes the counts that order
+	// it (EDHREC's deck count, the decks held); it writes only what changed and returns how many rows that was.
 	SeedCommanders(ctx context.Context) (int, error)
-	// NextCommanders returns up to limit commanders to visit, in queue order, leaving out those this run already
-	// tried and those the source has no decks for.
+	// NextCommanders returns up to limit commanders to visit, in queue order (requested, partial, never visited, under
+	// the target, then stalest first), leaving out those this run already tried, an exhausted commander visited within
+	// the retry wait, a not_found commander between retries, and cards no longer eligible unless a lookup asks for them.
 	NextCommanders(ctx context.Context, runID int64, limit int) ([]Commander, error)
 	// FinishCommander records one commander's visit.
 	FinishCommander(ctx context.Context, runID int64, cardID int, result CommanderResult) error
@@ -32,6 +36,9 @@ type Store interface {
 	// It stores decks raw, in the source's own schema, as the source sent them; only a deck with an id that is not an
 	// oracle id at all is refused, and comes back as unresolved.
 	UpsertDecks(ctx context.Context, rows []DeckRow) ([]UnresolvedDeck, error)
+	// UsedToday is how long the source has crawled today (UTC), the open run included: the part of the day's
+	// allowance (Policy.RunDuration) already spent.
+	UsedToday(ctx context.Context) (time.Duration, error)
 	// CreateRun makes a crawl.runs row for the source and returns its id, so the claim can point at it.
 	CreateRun(ctx context.Context) (int64, error)
 	// FinishRun closes a run with what it saw and did.
@@ -44,7 +51,8 @@ type Store interface {
 	CloseStaleRuns(ctx context.Context, staleAfter time.Duration) (int, error)
 	// Claim atomically marks the source as owned by this run, taking over a claim left behind by a crawl that died
 	// without releasing it. It reports whether the claim landed: when another live run holds it, it is false and no
-	// second crawl may start.
+	// second crawl may start. A retried call whose first try landed answers not claimed and HeldBy runID; the run reads
+	// that as its own claim.
 	Claim(ctx context.Context, runID int64, clientID string, staleAfter time.Duration) (Claim, error)
 	// ReleaseClaim lets the next run go. It releases only a claim runID still holds.
 	ReleaseClaim(ctx context.Context, runID int64) error
@@ -54,6 +62,30 @@ type Store interface {
 	SetProbeOK(ctx context.Context) error
 	// Disable flips the source's kill switch. Only a human re-enables it (a manual update on the row).
 	Disable(ctx context.Context, reason string) error
+	// LogError adds a failure to its error ticket on /admin/errors (public.log_error_event), opening one for a new
+	// fingerprint. The caller logs a failed write and carries on: a ticket must never stop a crawl.
+	LogError(ctx context.Context, entry LogEntry) error
+}
+
+// LogEntry is one failure for /admin/errors. Detail holds plain facts (ids, names, counts, URLs), never anything a
+// player typed.
+type LogEntry struct {
+	// Fingerprint groups repeats into one ticket: sha256 hex of a string that is stable for the same failure.
+	Fingerprint string
+	Level       string // "error" or "warning"
+	Area        string // dotted, under crawl.<source>.
+	Code        string
+	Message     string
+	Detail      map[string]any
+}
+
+// errorSource is what log_error_event records as the ticket's origin: the crawl runs on the server.
+const errorSource = "server"
+
+// Fingerprint is the sha256 hex of parts joined with ":", the shape log_error_event requires.
+func Fingerprint(parts ...string) string {
+	sum := sha256.Sum256([]byte(strings.Join(parts, ":")))
+	return hex.EncodeToString(sum[:])
 }
 
 // CrawlState mirrors the source's crawl.state row, plus how many decks its raw table holds.
@@ -78,14 +110,25 @@ type Commander struct {
 	CardID   int    `json:"cardId"`
 	OracleID string `json:"oracleId"`
 	Name     string `json:"name"`
-	// HeldDecks is how many decks the corpus already holds that this commander leads. The queue orders by it, so a
-	// commander with three decks is served before one with five hundred; it is read here only for the log.
+	// HeldDecks is how many decks the corpus already holds that this commander leads. The queue serves commanders under
+	// the target before those at it; it is read here only for the log.
 	HeldDecks int `json:"heldDecks"`
 	// QueryName is the name that found decks on an earlier visit (the front face of a two-faced card, say); empty
 	// until a visit found listings.
 	QueryName string `json:"queryName"`
 	// Visited is false until the commander's first complete visit, which reads only Policy.FirstVisitPages.
 	Visited bool `json:"visited"`
+	// Requested says a deck lookup (commander_requests) asked for this commander; the queue serves those first.
+	Requested bool `json:"requested"`
+	// FailedBefore says the commander's last visit failed. Failing again is about this commander, not the source, so
+	// it does not count toward Policy.MaxFailedCommandersInRow: a few commanders whose pages always fail, queued side
+	// by side, must not end every run in its first visits.
+	FailedBefore bool `json:"failedBefore"`
+	// NotFoundSince is when the source began listing no decks for this commander; nil unless its last complete visit
+	// was not_found. Such a commander comes back on the queue's retry schedule until the queue gives it up.
+	NotFoundSince *time.Time `json:"notFoundSince"`
+	// NotFoundLastTry says that a not_found outcome now is final: the queue's next retry would fall past its give-up.
+	NotFoundLastTry bool `json:"notFoundLastTry"`
 }
 
 // Commander visit outcomes, as crawl.queue.outcome stores them.
@@ -96,7 +139,7 @@ const (
 	OutcomePartial    = "partial"      // the run's time ran out mid-visit; the commander comes back first
 	OutcomeNotFound   = "not_found"    // no listings under its name or front face: the verification log
 	OutcomeNoLedDecks = "no_led_decks" // a first visit found listings, but none were decks it leads
-	OutcomeFailed     = "failed"       // the visit hit an error that ended the run
+	OutcomeFailed     = "failed"       // the visit hit an error: a list page that failed or changed shape, or one that ended the run
 	OutcomeFetchCap   = "fetch_cap"    // the visit stopped at Policy.MaxFetchesPerCommander
 )
 
@@ -167,6 +210,9 @@ type RunSummary struct {
 	// Decks fetched but not stored because an id in them is not an oracle id. Apart from the others because it is
 	// worth a look whenever it is above zero: the source sent something its own format does not allow.
 	SkippedUnresolved int `json:"skipped_unresolved"`
+	// Decks whose page no longer parsed (a ShapeError): skipped one by one, and the run fails once they pass the same
+	// floor and share as missing decks.
+	SkippedMalformed  int `json:"skipped_malformed"`
 	CommandersVisited int `json:"commanders_visited"`
 	// How many times the source answered 429, and where the crawl was the last time it did. The pace widens itself in
 	// response (see Fetcher), so these are the record of a run that was slowed down - without them, a crawl that spent
@@ -279,9 +325,18 @@ func (s *SupabaseStore) UpsertDecks(ctx context.Context, rows []DeckRow) ([]Unre
 	return unresolved, nil
 }
 
+func (s *SupabaseStore) UsedToday(ctx context.Context) (time.Duration, error) {
+	var seconds int
+	if err := s.client.RPCInto(ctx, "crawl_used_today", map[string]any{"p_source": s.source}, &seconds); err != nil {
+		return 0, err
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
 func (s *SupabaseStore) CreateRun(ctx context.Context) (int64, error) {
 	var id int64
-	if err := s.client.RPCInto(ctx, "crawl_create_run", map[string]any{"p_source": s.source}, &id); err != nil {
+	// Not retried: each call inserts a run, so a retry after a lost reply would leave an orphan run row behind.
+	if err := s.client.RPCOnceInto(ctx, "crawl_create_run", map[string]any{"p_source": s.source}, &id); err != nil {
 		return 0, err
 	}
 	if id == 0 {
@@ -357,6 +412,25 @@ func (s *SupabaseStore) SetProbeOK(ctx context.Context) error {
 
 func (s *SupabaseStore) Disable(ctx context.Context, reason string) error {
 	_, err := s.client.RPC(ctx, "crawl_disable", map[string]any{"p_source": s.source, "p_reason": reason})
+	return err
+}
+
+func (s *SupabaseStore) LogError(ctx context.Context, entry LogEntry) error {
+	detail := entry.Detail
+	if detail == nil {
+		detail = map[string]any{}
+	}
+	// Not retried: each call counts one more occurrence on the ticket, so a retry after a lost reply would count the
+	// failure twice. A ticket that does not land is logged by the caller instead.
+	_, err := s.client.RPCOnce(ctx, "log_error_event", map[string]any{
+		"p_fingerprint": entry.Fingerprint,
+		"p_level":       entry.Level,
+		"p_source":      errorSource,
+		"p_area":        entry.Area,
+		"p_message":     entry.Message,
+		"p_code":        entry.Code,
+		"p_detail":      detail,
+	})
 	return err
 }
 

@@ -15,7 +15,7 @@ import (
 
 // A deck page's shape is a Slice 3a concern: the exact script tag Moxfield embeds the deck JSON in was unreachable
 // when this was written (Cloudflare blocked honest-UA fetches from the dev network), so the parser hunts for the
-// data rather than a fixed path, and a page that yields neither cards nor a timestamp quarantines (ShapeError). When
+// data rather than a fixed path, and a page that yields neither cards nor a timestamp is a ShapeError. When
 // a live fixture pins the real embed, whatever needs to move lives in findDeckJSON / deckFromJSON, not in the run.
 type Deck struct {
 	Slug           string

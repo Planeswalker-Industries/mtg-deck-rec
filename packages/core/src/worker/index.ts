@@ -3,6 +3,8 @@
  * each duty runs next, and the duties an admin may ask it to run now (`public.worker_requests`).
  */
 
+import { DEFAULT_CRAWL_RESUME_MINUTES, DEFAULT_CRAWL_RESUMES_PER_DAY } from '../crawl/schedule';
+
 /** app_config.worker; every value has a default, so a missing key never stops the worker. */
 export interface WorkerSchedule {
   pollSeconds: number;
@@ -13,6 +15,10 @@ export interface WorkerSchedule {
   edhrecEveryDays: number;
   globalPairsEveryDays: number;
   retryHours: number;
+  /** After a failed crawl run, wait this long before starting another with what is left of the day. */
+  crawlResumeMinutes: number;
+  /** Follow a failed crawl run with another at most this many times a day. */
+  crawlResumesPerDay: number;
 }
 
 export const DEFAULT_WORKER_SCHEDULE: WorkerSchedule = {
@@ -25,6 +31,8 @@ export const DEFAULT_WORKER_SCHEDULE: WorkerSchedule = {
   edhrecEveryDays: 7,
   globalPairsEveryDays: 7,
   retryHours: 6,
+  crawlResumeMinutes: DEFAULT_CRAWL_RESUME_MINUTES,
+  crawlResumesPerDay: DEFAULT_CRAWL_RESUMES_PER_DAY,
 };
 
 /** The worker's own duties an admin can ask for; a crawl source's run is `crawl:<source>` (crawlDuty). */

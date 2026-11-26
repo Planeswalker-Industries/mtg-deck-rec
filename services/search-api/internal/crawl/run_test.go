@@ -21,7 +21,8 @@ func newFakeRunner(store Store, getter Getter, src Source) *Runner {
 
 // fakeSource's wire format is trivial so the run loop is what is tested. A list body is one deck per line, either
 // "id" or "id@<RFC 3339 listed update time>", and a line "+more" says another page follows. A deck body is JSON with
-// commanders, cards and updatedAt. An id starting with "bad-" is a deck that does not qualify.
+// commanders, cards and updatedAt. An id starting with "bad-" is a deck that does not qualify; one starting with
+// "odd-" is a deck page that no longer parses.
 type fakeSource struct {
 	name   string
 	domain string
@@ -65,6 +66,9 @@ func (s fakeSource) ParseList(body []byte) (ListPage, error) {
 func (s fakeSource) ParseDeck(body []byte, id string) (Deck, error) {
 	if strings.HasPrefix(id, "bad-") {
 		return Deck{}, &NotQualified{ID: id, Reason: "not a 100-card deck"}
+	}
+	if strings.HasPrefix(id, "odd-") {
+		return Deck{}, &ShapeError{What: "deck", Detail: "a card entry has no oracle id"}
 	}
 	var d struct {
 		Commanders []string       `json:"commanders"`
@@ -151,12 +155,19 @@ type fakeStore struct {
 	claimed        int64 // the run holding the claim, 0 when free
 	claimStale     bool  // the store reports the previous claim as stale and hands it over
 	claimLoses     bool
+	claimRetried   bool // the claim's first try landed but its reply was lost, so the retry finds this run holding it
 	probeOK        bool
 	cursor         string
 	disabledReason string
 	progress       []RunSummary    // every progress report, in order
 	sweeps         []time.Duration // the stale window each sweep was asked for
 	calls          []string        // the run-level calls in order, so a test can check what came first
+	tickets        []LogEntry      // every error ticket written, in order
+	ticketsFail    bool            // log_error_event fails, as when the database is briefly unreachable
+	versionsErr    error           // crawl_deck_versions fails, as when the database drops the connection
+	usedToday      time.Duration   // what crawl_used_today answers: the day's allowance already spent
+	usedTodayErr   error
+	claimErr       error // crawl_claim fails after the client's retries
 }
 
 func newStore(commanders ...Commander) *fakeStore {
@@ -189,6 +200,9 @@ func (s *fakeStore) FinishCommander(_ context.Context, runID int64, cardID int, 
 	return nil
 }
 func (s *fakeStore) DeckVersions(_ context.Context, ids []string) (map[string]HeldDeck, error) {
+	if s.versionsErr != nil {
+		return nil, s.versionsErr
+	}
 	out := map[string]HeldDeck{}
 	for _, id := range ids {
 		if held, ok := s.held[id]; ok {
@@ -223,6 +237,9 @@ func (s *fakeStore) UpsertDecks(_ context.Context, rows []DeckRow) ([]Unresolved
 	}
 	return unresolved, nil
 }
+func (s *fakeStore) UsedToday(context.Context) (time.Duration, error) {
+	return s.usedToday, s.usedTodayErr
+}
 func (s *fakeStore) CreateRun(context.Context) (int64, error) {
 	s.calls = append(s.calls, "create")
 	s.created++
@@ -246,8 +263,16 @@ func (s *fakeStore) CloseStaleRuns(_ context.Context, staleAfter time.Duration) 
 }
 func (s *fakeStore) Claim(_ context.Context, runID int64, _ string, _ time.Duration) (Claim, error) {
 	s.calls = append(s.calls, "claim")
+	if s.claimErr != nil {
+		return Claim{}, s.claimErr
+	}
 	if s.claimLoses {
 		return Claim{Claimed: false, HeldBy: 42}, nil
+	}
+	if s.claimRetried {
+		// What crawl_claim answers when the claim is fresh and held: not claimed, held by the holder (this run).
+		s.claimed = runID
+		return Claim{Claimed: false, HeldBy: runID}, nil
 	}
 	tookOver := s.claimStale
 	s.claimed = runID
@@ -263,6 +288,13 @@ func (s *fakeStore) SetCursor(_ context.Context, id string) error { s.cursor = i
 func (s *fakeStore) SetProbeOK(context.Context) error             { s.probeOK = true; return nil }
 func (s *fakeStore) Disable(_ context.Context, reason string) error {
 	s.disabledReason = reason
+	return nil
+}
+func (s *fakeStore) LogError(_ context.Context, entry LogEntry) error {
+	if s.ticketsFail {
+		return fmt.Errorf("log_error_event: connection refused")
+	}
+	s.tickets = append(s.tickets, entry)
 	return nil
 }
 
@@ -302,6 +334,27 @@ func TestRunLosesTheClaimIsBusy(t *testing.T) {
 	}
 }
 
+// The store retries a claim whose reply was lost. When the first try had landed, crawl_claim answers the retry with
+// "held by" this run: that is this run's claim, and it crawls.
+func TestRunKeepsAClaimItsOwnRetryFindsHeld(t *testing.T) {
+	store := newStore(liesa)
+	store.claimRetried = true
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	res := run(t, store, getter)
+	if res.AlreadyBusy {
+		t.Fatal("a claim held by this run is not someone else's")
+	}
+	if res.Summary.State != "succeeded" || res.Summary.DecksWritten != 1 {
+		t.Fatalf("the run should crawl under its own claim: %+v", res.Summary)
+	}
+	if store.claimed != 0 {
+		t.Fatalf("the run should release its claim at the end: held by %d", store.claimed)
+	}
+}
+
 // A crawl whose container died leaves its claim behind. The store hands it over, and the run says so rather than
 // waiting for a human to clear the row.
 func TestRunTakesOverAStaleClaim(t *testing.T) {
@@ -327,7 +380,7 @@ func TestRunDisabledIsANoop(t *testing.T) {
 }
 
 // The first visit reads page 1 only and writes what it found, and the run records the visit, the probe and where it
-// started. The queue is seeded first so a new EDHREC import reaches it.
+// started. The queue is seeded first so a new catalog commander reaches it.
 func TestFirstVisitReadsTheFirstPageOnly(t *testing.T) {
 	store := newStore(liesa)
 	getter := &fakeGetter{pages: map[string][]byte{
@@ -449,6 +502,86 @@ func TestNotFoundIsLoggedAndTheRunMovesOn(t *testing.T) {
 	}
 	if res.Summary.State != "succeeded" || store.visits[liesa.CardID].Counted != 1 {
 		t.Fatalf("the run should carry on past a commander with no decks: %+v", res.Summary)
+	}
+}
+
+// A not_found visit opens one ticket for that commander, keyed so its retries join the same ticket, with the plain
+// facts an admin needs to look it up.
+func TestNotFoundOpensOneTicketPerCommander(t *testing.T) {
+	ghost := Commander{CardID: 4, OracleID: "oc-ghost", Name: "Nobody Plays Me"}
+	store := newStore(ghost, liesa)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(ghost.Name, 1): []byte(""),
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	run(t, store, getter)
+	if len(store.tickets) != 1 {
+		t.Fatalf("want one ticket, got %+v", store.tickets)
+	}
+	ticket := store.tickets[0]
+	if ticket.Area != "crawl.src.not_found" || ticket.Code != OutcomeNotFound || ticket.Level != "error" {
+		t.Fatalf("ticket: %+v", ticket)
+	}
+	if ticket.Fingerprint != Fingerprint("crawl.src.not_found", "4") || len(ticket.Fingerprint) != 64 {
+		t.Fatalf("fingerprint should key on the area and card id: %s", ticket.Fingerprint)
+	}
+	if ticket.Message != "Src lists no decks for Nobody Plays Me" {
+		t.Fatalf("message: %s", ticket.Message)
+	}
+	d := ticket.Detail
+	if d["cardId"] != 4 || d["oracleId"] != "oc-ghost" || d["nameTried"] != ghost.Name ||
+		d["listUrl"] != src.ListURL(ghost.Name, 1) || d["triedFrontFace"] != false || d["givenUp"] != false {
+		t.Fatalf("detail: %+v", d)
+	}
+	if d["notFoundSince"] == "" || d["notFoundSince"] != d["latestNotFound"] {
+		t.Fatalf("a first miss starts its streak now: %+v", d)
+	}
+}
+
+// A retry that misses again reports when the streak began; the last one says the queue gave the commander up.
+func TestTheLastNotFoundTrySaysItGaveUp(t *testing.T) {
+	since := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	ghost := Commander{CardID: 4, OracleID: "oc-ghost", Name: "Esika // Bridge", Visited: true,
+		NotFoundSince: &since, NotFoundLastTry: true}
+	store := newStore(ghost)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(ghost.Name, 1): []byte(""),
+		src.ListURL("Esika", 1):    []byte(""),
+	}}
+	runner := newFakeRunner(store, getter, src)
+	runner.now = func() time.Time { return since.Add(300 * 24 * time.Hour) }
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.tickets) != 1 {
+		t.Fatalf("want one ticket, got %+v", store.tickets)
+	}
+	ticket := store.tickets[0]
+	if ticket.Message != "Src lists no decks for Esika // Bridge; given up after 300 days" {
+		t.Fatalf("message: %s", ticket.Message)
+	}
+	d := ticket.Detail
+	if d["notFoundSince"] != "2026-01-01T00:00:00Z" || d["givenUp"] != true || d["triedFrontFace"] != true ||
+		d["nameTried"] != "Esika" {
+		t.Fatalf("detail: %+v", d)
+	}
+}
+
+// A ticket that cannot be written costs the crawl nothing: the commander is still recorded and the run goes on.
+func TestAFailedTicketWriteDoesNotStopTheRun(t *testing.T) {
+	ghost := Commander{CardID: 4, OracleID: "oc-ghost", Name: "Nobody Plays Me"}
+	store := newStore(ghost, liesa)
+	store.ticketsFail = true
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(ghost.Name, 1): []byte(""),
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}}
+	res := run(t, store, getter)
+	if store.visits[ghost.CardID].Outcome != OutcomeNotFound || store.visits[liesa.CardID].Counted != 1 ||
+		res.Summary.State != "succeeded" {
+		t.Fatalf("the run should carry on: %+v %+v", store.visits, res.Summary)
 	}
 }
 
@@ -662,6 +795,132 @@ func TestRunOutOfTimeLeavesTheCommanderPartial(t *testing.T) {
 	}
 }
 
+// The allowance is the day's: a run that follows one that crawled five hours today gets the hour that is left.
+func TestARunGetsWhatIsLeftOfTheDay(t *testing.T) {
+	store := newStore(liesa)
+	store.usedToday = store.policy.RunDuration - time.Hour
+	runner := newFakeRunner(store, &fakeGetter{}, src)
+	// The deadline is read at the clock's start; every later reading is an hour on, the end of what was left.
+	start, readings := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), 0
+	runner.now = func() time.Time {
+		readings++
+		if readings > 1 {
+			return start.Add(time.Hour)
+		}
+		return start
+	}
+	res, err := runner.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(store.visitOrder) != 0 || res.Summary.State != "succeeded" {
+		t.Fatalf("an hour on, the day's time is spent: visits %v, summary %+v", store.visitOrder, res.Summary)
+	}
+}
+
+// Past the day's allowance, a run started for a deck lookup visits the requested commanders (the queue puts them
+// first) and stops at the first one nobody asked for.
+func TestPastTheBudgetOnlyRequestedCommandersAreVisited(t *testing.T) {
+	asked := liesa
+	asked.Requested = true
+	edgar := Commander{CardID: 2, OracleID: "oc-edgar", Name: "Edgar Markov"}
+	store := newStore(asked, edgar)
+	store.usedToday = store.policy.RunDuration + time.Minute
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n222\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+		src.ListURL(edgar.Name, 1): []byte("333\n"),
+	}}
+	res := run(t, store, getter)
+	if len(store.visitOrder) != 1 || store.visitOrder[0] != liesa.CardID {
+		t.Fatalf("only the requested commander should be visited: %v", store.visitOrder)
+	}
+	if visit := store.visits[liesa.CardID]; visit.Outcome == OutcomePartial || res.Summary.DecksWritten != 2 {
+		t.Fatalf("the requested visit is bounded by its caps, not the spent budget: %+v, summary %+v", visit, res.Summary)
+	}
+	if getter.requests[src.ListURL(edgar.Name, 1)] != 0 || res.Summary.State != "succeeded" {
+		t.Fatalf("the run should end before the unrequested commander: %+v", res.Summary)
+	}
+}
+
+// A requested visit that starts just before the deadline is not cut short by it: the lookup gets its decks.
+func TestARequestedVisitOutlastsTheDeadline(t *testing.T) {
+	asked := liesa
+	asked.Requested = true
+	store := newStore(asked)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n222\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+		src.DeckURL("222"):         ledBy(liesa.OracleID, "bbb"),
+	}}
+	// An hour of the day is left, and the clock reaches its end after the first fetch.
+	store.usedToday = store.policy.RunDuration - time.Hour
+	runner := newFakeRunner(store, getter, src)
+	start, readings := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), 0
+	runner.now = func() time.Time {
+		readings++
+		if readings > 3 {
+			return start.Add(time.Hour)
+		}
+		return start
+	}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if visit := store.visits[liesa.CardID]; visit.Outcome == OutcomePartial || getter.requests[src.DeckURL("222")] != 1 {
+		t.Fatalf("the requested visit should finish its page: %+v", visit)
+	}
+}
+
+// A run that cannot read how much of the day is spent does not crawl: it cannot keep to the allowance.
+func TestUnreadableBudgetFailsTheRun(t *testing.T) {
+	store := newStore(liesa)
+	store.usedTodayErr = fmt.Errorf("read tcp: connection reset by peer")
+	res := run(t, store, &fakeGetter{})
+	if res.Summary.State != "failed" || len(store.visitOrder) != 0 {
+		t.Fatalf("summary %+v, visits %v", res.Summary, store.visitOrder)
+	}
+	assertRunTicket(t, store, causeDatabase)
+}
+
+// A 429 the fetcher could not wait out ends the run: the source is saying no, and the next commander would only ask
+// again. Its error starts with the prefix the worker reads to skip that day's resume.
+func TestAThrottleEndsTheRun(t *testing.T) {
+	edgar := Commander{CardID: 2, OracleID: "oc-edgar", Name: "Edgar Markov"}
+	store := newStore(liesa, edgar)
+	getter := &fakeGetter{
+		statuses: map[string]int{src.ListURL(liesa.Name, 1): http.StatusTooManyRequests},
+		pages:    map[string][]byte{src.ListURL(edgar.Name, 1): []byte("111\n")},
+	}
+	res := run(t, store, getter)
+	if res.Summary.State != "failed" || !strings.HasPrefix(res.Summary.Error, throttledErrorPrefix) {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if getter.requests[src.ListURL(edgar.Name, 1)] != 0 {
+		t.Fatalf("the run should stop at the throttle, not move on: %v", getter.requests)
+	}
+	if store.disabledReason != "" {
+		t.Fatalf("a throttle is not a block: the source stays on (%q)", store.disabledReason)
+	}
+	assertRunTicket(t, store, causeThrottled)
+}
+
+// A claim that fails after the client's retries closes the run row it was made for, so no open row reads as a live
+// run or eats the day's allowance, and opens the run's ticket.
+func TestAFailedClaimClosesItsRun(t *testing.T) {
+	store := newStore(liesa)
+	store.claimErr = fmt.Errorf("read tcp: connection reset by peer")
+	_, err := newFakeRunner(store, &fakeGetter{}, src).Run(context.Background())
+	if err == nil {
+		t.Fatal("a failed claim is an error")
+	}
+	if len(store.finished) != 1 || store.finished[0].State != "failed" || len(store.visitOrder) != 0 {
+		t.Fatalf("finished %+v, visits %v", store.finished, store.visitOrder)
+	}
+	assertRunTicket(t, store, causeDatabase)
+}
+
 // An empty queue is a finished crawl, not a failed one.
 func TestRunWithAnEmptyQueueSucceeds(t *testing.T) {
 	res := run(t, newStore(), &fakeGetter{})
@@ -721,19 +980,227 @@ func TestProbeBlockDisablesTheSource(t *testing.T) {
 	if store.visits[liesa.CardID].Outcome != OutcomeFailed {
 		t.Fatalf("the commander being visited records the failure: %+v", store.visits[liesa.CardID])
 	}
+	assertRunTicket(t, store, causeBlocked)
 }
 
-func TestRunQuarantinesOnMalformedListPage(t *testing.T) {
-	store := newStore(liesa)
+// assertRunTicket checks that the run opened exactly one failed-run ticket, with the given cause as its code.
+func assertRunTicket(t *testing.T, store *fakeStore, cause string) {
+	t.Helper()
+	var runTickets []LogEntry
+	for _, ticket := range store.tickets {
+		if ticket.Area == "crawl.src.run" {
+			runTickets = append(runTickets, ticket)
+		}
+	}
+	if len(runTickets) != 1 {
+		t.Fatalf("want one failed-run ticket, got %+v", runTickets)
+	}
+	got := runTickets[0]
+	if got.Code != cause || got.Level != "error" || got.Fingerprint != Fingerprint("crawl.src.run", cause) {
+		t.Fatalf("ticket: %+v", got)
+	}
+	for _, key := range []string{"runId", "commandersVisited", "decksWritten", "position"} {
+		if _, ok := got.Detail[key]; !ok {
+			t.Fatalf("ticket detail lacks %s: %+v", key, got.Detail)
+		}
+	}
+}
+
+// A list page that no longer parses fails its commander, and the queue moves on to the next.
+func TestAMalformedListFailsOnlyItsCommander(t *testing.T) {
+	edgar := Commander{CardID: 2, OracleID: "oc-edgar", Name: "Edgar Markov"}
+	store := newStore(liesa, edgar)
 	getter := &fakeGetter{pages: map[string][]byte{
 		src.ListURL(liesa.Name, 1): []byte("<html><body>Cloudflare error page</body></html>"),
+		src.ListURL(edgar.Name, 1): []byte("222\n"),
+		src.DeckURL("222"):         ledBy(edgar.OracleID, "bbb"),
 	}}
 	res := run(t, store, getter)
-	if res.Summary.State != "failed" || len(store.upserts) != 0 {
-		t.Fatalf("a malformed list should fail the run: %+v", res.Summary)
+	if res.Summary.State != "succeeded" || res.Summary.DecksWritten != 1 {
+		t.Fatalf("one malformed list costs one commander, not the run: %+v", res.Summary)
 	}
 	if visit := store.visits[liesa.CardID]; visit.Outcome != OutcomeFailed || visit.Error == "" {
-		t.Fatalf("visit: %+v", visit)
+		t.Fatalf("the failed commander records why: %+v", visit)
+	}
+	if visit := store.visits[edgar.CardID]; visit.Outcome == OutcomeFailed {
+		t.Fatalf("the next commander is crawled as usual: %+v", visit)
+	}
+	if len(store.tickets) != 0 {
+		t.Fatalf("a run that succeeded opens no ticket: %+v", store.tickets)
+	}
+}
+
+// A list page that errors after the fetcher's retries (a 5xx, a dropped connection) is the same: one commander.
+func TestAFailedListThenASuccessCarriesOn(t *testing.T) {
+	edgar := Commander{CardID: 2, OracleID: "oc-edgar", Name: "Edgar Markov"}
+	store := newStore(liesa, edgar)
+	getter := &fakeGetter{
+		pages: map[string][]byte{
+			src.ListURL(edgar.Name, 1): []byte("222\n"),
+			src.DeckURL("222"):         ledBy(edgar.OracleID, "bbb"),
+		},
+		statuses: map[string]int{src.ListURL(liesa.Name, 1): http.StatusBadGateway},
+	}
+	res := run(t, store, getter)
+	if res.Summary.State != "succeeded" || res.Summary.DecksWritten != 1 || res.Summary.CommandersVisited != 2 {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if store.visits[liesa.CardID].Outcome != OutcomeFailed {
+		t.Fatalf("visit: %+v", store.visits[liesa.CardID])
+	}
+}
+
+// queueOf makes n queue entries named "Commander <id>", card ids from first.
+func queueOf(first, n int) []Commander {
+	out := make([]Commander, n)
+	for i := range out {
+		id := first + i
+		out[i] = Commander{CardID: id, OracleID: fmt.Sprintf("oc-%d", id), Name: fmt.Sprintf("Commander %d", id)}
+	}
+	return out
+}
+
+// A streak of failed commanders is the source or the adapter, not the commanders: the run stops at the policy's
+// count instead of failing every commander left in the queue.
+func TestFailedCommandersInARowEndTheRun(t *testing.T) {
+	queue := queueOf(10, 8)
+	store := newStore(queue...)
+	statuses := map[string]int{}
+	for _, c := range queue {
+		statuses[src.ListURL(c.Name, 1)] = http.StatusInternalServerError
+	}
+	res := run(t, store, &fakeGetter{statuses: statuses})
+	if res.Summary.State != "failed" || !strings.Contains(res.Summary.Error, "in a row") {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if want := store.policy.MaxFailedCommandersInRow; len(store.visitOrder) != want {
+		t.Fatalf("want the run to stop after %d failed visits, made %d", want, len(store.visitOrder))
+	}
+	assertRunTicket(t, store, causeAdapter)
+}
+
+// Only failures in a row count: a visit that works in between starts the streak again.
+func TestASuccessfulVisitResetsTheFailedStreak(t *testing.T) {
+	queue := queueOf(10, 9)
+	store := newStore(queue...)
+	statuses := map[string]int{}
+	pages := map[string][]byte{}
+	for i, c := range queue {
+		if i == 4 {
+			pages[src.ListURL(c.Name, 1)] = []byte("444\n")
+			pages[src.DeckURL("444")] = ledBy(c.OracleID, "ddd")
+			continue
+		}
+		statuses[src.ListURL(c.Name, 1)] = http.StatusInternalServerError
+	}
+	res := run(t, store, &fakeGetter{pages: pages, statuses: statuses})
+	if res.Summary.State != "succeeded" || res.Summary.CommandersVisited != len(queue) {
+		t.Fatalf("four failures, a success, four failures is no streak of five: %+v", res.Summary)
+	}
+}
+
+// Commanders that failed on their last visit too do not count toward the streak: five of them queued side by side
+// must not end the run, while fresh failures around them still count.
+func TestCommandersThatFailedBeforeDoNotCountTowardTheStreak(t *testing.T) {
+	queue := queueOf(10, 9)
+	statuses := map[string]int{}
+	for i := range queue {
+		statuses[src.ListURL(queue[i].Name, 1)] = http.StatusInternalServerError
+		// Six known-bad commanders between two fresh failures, then three more fresh ones: no five fresh in a row.
+		queue[i].FailedBefore = i >= 1 && i <= 6
+	}
+	store := newStore(queue...)
+	res := run(t, store, &fakeGetter{statuses: statuses})
+	if res.Summary.State != "succeeded" || len(store.visitOrder) != len(queue) {
+		t.Fatalf("known-bad commanders ended the run: %+v after %d visits", res.Summary, len(store.visitOrder))
+	}
+
+	// The same nine with only the first known-bad: the five fresh failures after it end the run.
+	for i := range queue {
+		queue[i].FailedBefore = i == 0
+	}
+	store = newStore(queue...)
+	res = run(t, store, &fakeGetter{statuses: statuses})
+	if res.Summary.State != "failed" || len(store.visitOrder) != 1+store.policy.MaxFailedCommandersInRow {
+		t.Fatalf("fresh failures should still end the run: %+v after %d visits", res.Summary, len(store.visitOrder))
+	}
+}
+
+// A failed database call still ends the run: a crawl that cannot read what it holds would only spend requests.
+func TestADatabaseErrorEndsTheRun(t *testing.T) {
+	edgar := Commander{CardID: 2, OracleID: "oc-edgar", Name: "Edgar Markov"}
+	store := newStore(liesa, edgar)
+	store.versionsErr = fmt.Errorf("read tcp: connection reset by peer")
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.ListURL(edgar.Name, 1): []byte("222\n"),
+	}}
+	res := run(t, store, getter)
+	if res.Summary.State != "failed" || !strings.Contains(res.Summary.Error, "reading held decks") {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if len(store.visitOrder) != 1 {
+		t.Fatalf("the run should stop at the first database error: %v", store.visitOrder)
+	}
+	assertRunTicket(t, store, causeDatabase)
+}
+
+// One deck page that no longer parses costs that deck: it is skipped and counted, and the decks around it are crawled.
+func TestAMalformedDeckIsSkipped(t *testing.T) {
+	store := newStore(liesa)
+	getter := &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\nodd-1\n333\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+		src.DeckURL("odd-1"):       []byte("{}"),
+		src.DeckURL("333"):         ledBy(liesa.OracleID, "ccc"),
+	}}
+	res := run(t, store, getter)
+	if res.Summary.State != "succeeded" || res.Summary.SkippedMalformed != 1 || res.Summary.DecksWritten != 2 {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if res.Summary.DecksFetched != 2 {
+		t.Fatalf("a malformed deck is not a fetched one: %+v", res.Summary)
+	}
+}
+
+// Malformed decks past the floor and share are the deck page changing: the run stops as soon as it is sure.
+func TestMalformedDecksPastTheFloorFailTheRun(t *testing.T) {
+	store := newStore(liesa)
+	pages := map[string][]byte{}
+	var ids []string
+	for i := range 60 {
+		id := fmt.Sprintf("odd-%d", i)
+		ids = append(ids, id)
+		pages[src.DeckURL(id)] = []byte("{}")
+	}
+	pages[src.ListURL(liesa.Name, 1)] = []byte(strings.Join(ids, "\n") + "\n")
+	res := run(t, store, &fakeGetter{pages: pages})
+	if res.Summary.State != "failed" || !strings.Contains(res.Summary.Error, "malformed") {
+		t.Fatalf("summary: %+v", res.Summary)
+	}
+	if res.Summary.SkippedMalformed != brokenAdapterFloor {
+		t.Fatalf("should stop at the floor, after %d", res.Summary.SkippedMalformed)
+	}
+	assertRunTicket(t, store, causeAdapter)
+}
+
+// Runs that end without failing, or never crawl, open no failed-run ticket.
+func TestOnlyAFailedRunOpensARunTicket(t *testing.T) {
+	ok := newStore(liesa)
+	run(t, ok, &fakeGetter{pages: map[string][]byte{
+		src.ListURL(liesa.Name, 1): []byte("111\n"),
+		src.DeckURL("111"):         ledBy(liesa.OracleID, "aaa"),
+	}})
+	busy := newStore(liesa)
+	busy.claimLoses = true
+	run(t, busy, &fakeGetter{})
+	disabled := newStore(liesa)
+	disabled.state.Disabled = true
+	run(t, disabled, &fakeGetter{})
+	for name, store := range map[string]*fakeStore{"succeeded": ok, "busy": busy, "disabled": disabled} {
+		if len(store.tickets) != 0 {
+			t.Fatalf("%s run opened a ticket: %+v", name, store.tickets)
+		}
 	}
 }
 
@@ -761,6 +1228,7 @@ func TestRunFinishesEvenWhenItsContextIsCancelled(t *testing.T) {
 	if store.claimed != 0 {
 		t.Fatalf("a cancelled run still releases its claim: %d", store.claimed)
 	}
+	assertRunTicket(t, store, causeCancelled)
 }
 
 func TestRunWritesThePolicyToTheGetter(t *testing.T) {
@@ -768,9 +1236,10 @@ func TestRunWritesThePolicyToTheGetter(t *testing.T) {
 	getter := &fakeGetter{}
 	store.policy.RequestInterval = 1500 * time.Millisecond
 	store.policy.MaxFetchesPerCommander = 90
-	res := run(t, store, getter)
-	if res.Summary.State != "failed" { // no fixtures, so the run fails at the first list; the policy still had to land first
-		t.Fatalf("summary %+v", res.Summary)
+	run(t, store, getter)
+	// No fixtures, so the visit fails at its first list; the policy still had to land first.
+	if store.visits[liesa.CardID].Outcome != OutcomeFailed {
+		t.Fatalf("visit %+v", store.visits[liesa.CardID])
 	}
 	if getter.policy.RequestInterval != 1500*time.Millisecond || getter.policy.MaxFetchesPerCommander != 90 {
 		t.Fatalf("policy not handed over: %+v", getter.policy)
@@ -858,7 +1327,7 @@ func TestRunFailsWhenTheWholeListIsMissing(t *testing.T) {
 		t.Fatalf("the run should say why it stopped: %q", res.Summary.Error)
 	}
 	// It stops as soon as it is sure, rather than walking the whole list proving it.
-	if res.Summary.SkippedMissing > missingDeckFloor+1 {
+	if res.Summary.SkippedMissing > brokenAdapterFloor+1 {
 		t.Fatalf("stopped too late, after %d misses", res.Summary.SkippedMissing)
 	}
 }
@@ -940,6 +1409,7 @@ func TestRunClosesPanickedRunAsFailed(t *testing.T) {
 	if store.claimed != 0 {
 		t.Fatalf("a crashed run still releases its claim: %d", store.claimed)
 	}
+	assertRunTicket(t, store, causeCrashed)
 }
 
 // The sweep runs first, so a run left open by a process that died is closed before the next one starts, with the same

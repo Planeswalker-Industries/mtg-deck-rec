@@ -2185,6 +2185,7 @@ export type Database = {
           last_run_finished_at: string
           last_run_id: number
           last_run_progress_at: string
+          last_run_skipped_malformed: number
           last_run_started_at: string
           last_run_state: string
           last_run_throttles: number
@@ -2571,6 +2572,7 @@ export type Database = {
         Args: { p_rows: Json; p_source: string }
         Returns: Json
       }
+      crawl_used_today: { Args: { p_source: string }; Returns: number }
       delete_my_account: { Args: never; Returns: undefined }
       duplicate_deck: {
         Args: { p_deck_id: string; p_name?: string }

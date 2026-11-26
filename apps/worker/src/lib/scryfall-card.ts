@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { normalizeName, slugify } from '@mtg/core/parse';
+import { canBeCommander as meetsCommanderRules } from '@mtg/core/commander';
 import { landSearch } from '@mtg/core/journey';
 
 export interface ScryfallImageUris {
@@ -54,6 +55,7 @@ export interface ScryfallCard {
   flavor_name?: string;
   artist?: string;
   keywords?: string[];
+  all_parts?: { name: string; component: string }[];
 }
 
 // A type alias, not an interface: postgres.js only accepts JSON-compatible values, and interfaces
@@ -313,10 +315,16 @@ export function toCardRows(card: ScryfallCard, pricesAsOf: string): { card: Card
   const text = card.oracle_text ?? faces.map((f) => f.oracle_text ?? '').join('\n');
   const isBasicLand = /\bBasic\b/.test(frontType) && /\bLand\b/.test(frontType);
   const partner = partnerOf(text, frontType);
+  // A meld result (Brisela) is the back half of two melded cards: it never starts in a deck, so it can't lead one.
+  const isMeldResult = card.all_parts?.some((part) => part.name === card.name && part.component === 'meld_result') ?? false;
   const canBeCommander =
-    (/\bLegendary\b/.test(frontType) && /\bCreature\b/.test(frontType)) ||
-    /can be your commander/i.test(text) ||
-    partner.kind === 'background';
+    !isMeldResult &&
+    meetsCommanderRules({
+      frontTypeLine: frontType,
+      oracleText: text,
+      frontPower: faces[0]?.power ?? card.power ?? null,
+      frontToughness: faces[0]?.toughness ?? card.toughness ?? null,
+    });
 
   const front = toImageSet(card.image_uris ?? faces[0]?.image_uris);
   const back = card.image_uris ? null : toImageSet(faces[1]?.image_uris);

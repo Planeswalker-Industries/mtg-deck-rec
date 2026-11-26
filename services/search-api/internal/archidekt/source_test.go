@@ -299,3 +299,26 @@ func TestParseDeckKeepsQuantities(t *testing.T) {
 		t.Fatalf("size: %d", deck.Size)
 	}
 }
+
+// Archidekt indexes commanders without accents, so the list is asked for the folded name: the accented one finds
+// nothing (Éowyn, Shieldmaiden had no decks on 2026-11-25; Eowyn, Shieldmaiden had a thousand).
+func TestListURLFoldsAccents(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{
+		{"Éowyn, Shieldmaiden", "Eowyn, Shieldmaiden"},
+		{"Lord of the Nazgûl", "Lord of the Nazgul"},
+		{"Lim-Dûl the Necromancer", "Lim-Dul the Necromancer"},
+		{"Æther Snap", "Aether Snap"},
+		{"Bøgga Ølson", "Bogga Olson"},
+		{"Ratonhnhaké꞉ton", "Ratonhnhake꞉ton"}, // U+A789 is a letter of its own, not a mark: it stays
+		{"Liesa, Forgotten Archangel", "Liesa, Forgotten Archangel"},
+	} {
+		if got := foldName(tc.name); got != tc.want {
+			t.Errorf("foldName(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	want := "https://archidekt.com/api/decks/v3/?deckFormat=3&size=100&orderBy=-viewCount" +
+		"&commanderName=Eowyn%2C+Shieldmaiden&page=1"
+	if got := listURL("Éowyn, Shieldmaiden", 1); got != want {
+		t.Fatalf("listURL: %s\nwant      %s", got, want)
+	}
+}

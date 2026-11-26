@@ -1,4 +1,11 @@
 import { setTimeout as sleep } from 'node:timers/promises';
+import {
+  DEFAULT_CRAWL_RUN_MINUTES,
+  DEFAULT_CRAWL_STALE_CLAIM_SECONDS,
+  shouldStartCrawl,
+  type CrawlDay,
+  type CrawlRunState,
+} from '@mtg/core/crawl';
 import { crawlDutySource, DEFAULT_WORKER_SCHEDULE, WORKER_DUTIES, type WorkerDuty, type WorkerSchedule as Schedule } from '@mtg/core/worker';
 import { connect, type Sql } from '../lib/db';
 import { abandonOpenRuns } from '../lib/sync-runs';
@@ -12,6 +19,7 @@ import { precomputeCombos, precomputeRoles } from './precompute-tables';
 import { syncEdhrec } from './sync-edhrec';
 
 const MS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
 const MS_PER_MINUTE = 60_000;
 /** The deck tool calls the collector offline after 30 s without a heartbeat; this keeps well inside that. */
 const HEARTBEAT_MS = 10_000;
@@ -92,18 +100,69 @@ async function takeRunRequests(sql: Sql): Promise<RunRequests> {
   }
 }
 
-/** Starts each source's daily crawl once its hour has come, unless a run already started that day (UTC). */
+/** Starts each source's daily crawl once its hour has come, and resumes a failed one with what is left of the day. */
 async function dailyCrawls(sql: Sql, schedule: Schedule): Promise<void> {
   if (new Date().getUTCHours() < schedule.crawlHourUtc) return;
   for (const source of schedule.crawlSources) {
-    const [today] = await sql<{ started: boolean; disabled: boolean }[]>`
-      select exists (
-               select 1 from crawl.runs
-               where source = ${source} and started_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'
-             ) as started,
-             coalesce((select disabled from crawl.state where source = ${source}), true) as disabled
+    // Today's runs (UTC) that held the claim, as crawl_used_today counts them: an 'already running' row crawled nothing.
+    const [row] = await sql<
+      {
+        disabled: boolean;
+        claim_held: boolean;
+        used_seconds: number;
+        budget_seconds: number;
+        newest_state: CrawlRunState | null;
+        newest_finished_at: Date | null;
+        newest_throttled: boolean | null;
+        failed_today: number;
+      }[]
+    >`
+      with policy as (
+        select coalesce((value ->> 'runMinutes')::int, ${DEFAULT_CRAWL_RUN_MINUTES}) * ${SECONDS_PER_MINUTE} as budget_seconds,
+               coalesce((value ->> 'staleClaimSeconds')::int, ${DEFAULT_CRAWL_STALE_CLAIM_SECONDS}) as stale_seconds
+        from (select (select value from public.app_config where key = ${source}) as value) v
+      ),
+      today as (
+        select id, state, started_at, finished_at, error from crawl.runs
+        where source = ${source}
+          and started_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'
+          and error is distinct from 'already running'
+      )
+      select coalesce((select disabled from crawl.state where source = ${source}), true) as disabled,
+             exists (
+               select 1 from crawl.state s, policy p
+               where s.source = ${source} and s.running_run_id is not null
+                 and s.claimed_at > now() - make_interval(secs => p.stale_seconds)
+             ) as claim_held,
+             public.crawl_used_today(${source}) as used_seconds,
+             (select budget_seconds from policy) as budget_seconds,
+             (select state from today order by started_at desc, id desc limit 1) as newest_state,
+             (select finished_at from today order by started_at desc, id desc limit 1) as newest_finished_at,
+             (select error like 'throttled: %' from today order by started_at desc, id desc limit 1) as newest_throttled,
+             (select count(*)::int from today where state = 'failed') as failed_today
     `;
-    if (today && !today.started && !today.disabled) await triggerCrawl(source, CRAWL_RETRY_MINUTES);
+    if (!row) continue;
+    const day: CrawlDay = {
+      disabled: row.disabled,
+      claimHeld: row.claim_held,
+      usedSeconds: row.used_seconds,
+      newest:
+        row.newest_state === null
+          ? null
+          : { state: row.newest_state, finishedAt: row.newest_finished_at, throttled: row.newest_throttled ?? false },
+      failedToday: row.failed_today,
+    };
+    const start = shouldStartCrawl(
+      day,
+      {
+        crawlHourUtc: schedule.crawlHourUtc,
+        budgetSeconds: row.budget_seconds,
+        resumeAfterMinutes: schedule.crawlResumeMinutes,
+        resumesPerDay: schedule.crawlResumesPerDay,
+      },
+      new Date(),
+    );
+    if (start) await triggerCrawl(source, CRAWL_RETRY_MINUTES);
   }
 }
 
@@ -222,7 +281,9 @@ export async function serve({ once = false }: { once?: boolean } = {}): Promise<
     // A duty that outlasts the deadline is cut off, but its runs are closed first, so the next worker need not wait
     // out the stale-heartbeat window before it can start those jobs again.
     setTimeout(() => {
-      console.warn(`worker: the duty in hand is still running after ${SHUTDOWN_DEADLINE_MS / MS_PER_SECOND} s; closing its runs and exiting`);
+      console.warn(
+        `worker: the duty in hand is still running after ${SHUTDOWN_DEADLINE_MS / MS_PER_SECOND} s; closing its runs and exiting`,
+      );
       abandonAndExit(sql, SHUTDOWN_REASON);
     }, SHUTDOWN_DEADLINE_MS).unref();
   };
