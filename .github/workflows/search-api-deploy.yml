@@ -1,0 +1,80 @@
+name: Deploy the search API
+
+# Redeploys the VPS search API (services/search-api: search and the deck crawl) when a push to main changes what its
+# image is built from. It calls the Dokploy `Search API` app's deploy webhook, which takes a GitHub-style push for the app's own branch (Dokploy v0.31.4 checks the
+# `X-GitHub-Event` header and `ref`), so the webhook token can only redeploy main.
+#
+# Setup, once: on the Dokploy `Search API` app turn Auto Deploy on, copy the Webhook URL from its Deployments tab, and
+# save it as the DOKPLOY_SEARCH_API_WEBHOOK_URL repository secret. Leave the app's Watch Paths empty: the paths below decide.
+#
+# The crawl calls the hosted schema's crawl_* functions, so it waits for the migrations: when main holds a migration
+# hosted still lacks after ten minutes, the run fails and names it. Run db-push.yml, then re-run this one.
+#
+# A deploy stops a crawl that is running: it closes its run as failed and releases the claim, and the worker resumes it
+# within the day's budget about ten minutes later (app_config.worker crawlResumeMinutes). Typesense is its own app and
+# is not touched.
+on:
+  push:
+    branches: [main]
+    paths:
+      - services/search-api/**
+      - deploy/dokploy/search-api.yml
+  workflow_dispatch:
+
+concurrency:
+  group: search-api-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WEBHOOK_URL: ${{ secrets.DOKPLOY_SEARCH_API_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Without the secrets the run logs what is missing and passes, so pushes to main stay green until they're set.
+      - name: Check the secrets
+        id: secrets
+        run: |
+          ready=true
+          [ -n "$DATABASE_URL" ] || { echo "::warning::DATABASE_URL isn't set, so the search API wasn't redeployed (see this workflow's header)."; ready=false; }
+          [ -n "$WEBHOOK_URL" ] || { echo "::warning::DOKPLOY_SEARCH_API_WEBHOOK_URL isn't set, so the search API wasn't redeployed: click Deploy on the Dokploy Search API app (see this workflow's header)."; ready=false; }
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+      # The Supabase integration applies main's migrations a minute or so after the push that starts this run, so the
+      # check waits for hosted to catch up before it gives up.
+      - name: Hosted has every migration
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          # The integration took about a minute on 2026-11-26; ten leaves room for a slow one.
+          WAIT_SECONDS: 600
+          POLL_SECONDS: 20
+        run: |
+          newest=$(ls supabase/migrations | sed -n 's/^\([0-9]\{14\}\)_.*\.sql$/\1/p' | sort | tail -n 1)
+          deadline=$(( $(date +%s) + WAIT_SECONDS ))
+          while :; do
+            applied=$(psql "$DATABASE_URL" -XAtc "select coalesce(max(version), '') from supabase_migrations.schema_migrations")
+            echo "newest in main: $newest; newest on hosted: $applied"
+            [ "$applied" \< "$newest" ] || break
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Hosted still lacks migration $newest after $WAIT_SECONDS s. Run db-push.yml, then re-run this workflow."
+              exit 1
+            fi
+            sleep "$POLL_SECONDS"
+          done
+
+      - name: Deploy
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          body=$(jq -nc --arg sha "$GITHUB_SHA" --arg msg "$(git log -1 --format=%s)" \
+            '{ref: "refs/heads/main", head_commit: {id: $sha, message: $msg}, commits: []}')
+          status=$(curl -sS -o response.txt -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' --data "$body" "$WEBHOOK_URL")
+          echo "Dokploy answered $status: $(head -c 300 response.txt)"
+          [ "$status" -ge 200 ] && [ "$status" -lt 300 ]

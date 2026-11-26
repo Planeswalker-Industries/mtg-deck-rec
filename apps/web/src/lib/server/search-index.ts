@@ -1,4 +1,4 @@
-import { SearchClient, type TagDocument } from "@mtg/core/search";
+import { SearchClient, SearchError, type TagDocument } from "@mtg/core/search";
 import { logError } from "./error-log";
 
 /**
@@ -46,7 +46,10 @@ export async function fromIndex<T>(label: string, run: (index: SearchClient) => 
     return { value: await run(index) };
   } catch (err) {
     // A warning: the visitor still gets an answer, from the database. One ticket gathers every miss while the index is down.
-    logError({ area: `searchIndex.${label}`, error: err, level: "warning" });
+    // The timing says which hop ran out: no headers is a slow engine or a lost connection, headers without a body is
+    // the download, and Server-Timing (when it got here) is the engine's and the encoder's share.
+    const timing = err instanceof SearchError ? err.timing : undefined;
+    logError({ area: `searchIndex.${label}`, error: err, level: "warning", ...(timing ? { context: { ...timing } } : {}) });
     return null;
   }
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/compress"
 
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/config"
 	"github.com/Planeswalker-Industries/mtg-deck-rec/services/search-api/internal/crawl"
@@ -72,6 +73,11 @@ func New(cfg config.Config, ts *typesense.Client, log *slog.Logger, crawls map[s
 
 	// Before the routes, so it sees every request including the ones that match nothing.
 	app.Use(s.requestLog())
+	// A 500-card answer was about 850 KB of JSON, and it compresses about five to one. Size is round trips here: the
+	// kernel restarts TCP slow start on a connection that sat idle (tcp_slow_start_after_idle), so every large answer
+	// to Vercel begins at a 14 KB window. Best speed: this box's CPU is the scarcer resource.
+	app.Use(compress.New(compress.Config{Level: compress.LevelBestSpeed}))
+	app.Use(handlerTimer)
 
 	app.Get("/v1/health", s.health)
 	app.Get("/v1/health/live", s.live)
@@ -188,11 +194,24 @@ func (s *Server) requestLog() fiber.Handler {
 
 		// A handler that returned an error has not reached the error handler yet, so the response still carries its
 		// pre-error status. Report the error itself rather than a misleading 200.
-		attrs := []any{"method", c.Method(), "path", c.Path(), "ms", time.Since(start).Milliseconds()}
+		total := time.Since(start)
+		attrs := []any{"method", c.Method(), "path", c.Path(), "ms", total.Milliseconds()}
 		if err != nil {
 			attrs = append(attrs, "err", err.Error())
 		} else {
 			attrs = append(attrs, "status", c.Response().StatusCode())
+		}
+		// The hops, on the reads that record them (see timing.go). wire_bytes is after compression.
+		if t, ok := c.Locals(timingKey).(*timing); ok && t.chunks > 0 {
+			attrs = append(attrs,
+				"typesense_ms", t.typesense.Milliseconds(),
+				"search_ms", t.searchMS,
+				"chunks", t.chunks,
+				"encode_ms", t.encode.Milliseconds(),
+				"compress_ms", (total - t.handler).Milliseconds(),
+				"bytes", t.bytes,
+				"wire_bytes", len(c.Response().Body()),
+			)
 		}
 		s.log.Info("request", attrs...)
 		return err

@@ -3,7 +3,7 @@ import { maskToIdentity } from "@mtg/core/commander";
 import type { CardId, CardImages, CardSummary, Finish, OracleId } from "@mtg/core/contract";
 import type { RankCard } from "@mtg/core/scoring";
 import { manaLetters } from "@mtg/core/journey";
-import { cardRowFromDocument } from "@mtg/core/search";
+import { CARD_ROW_DOCUMENT_FIELDS, cardRowFromDocument } from "@mtg/core/search";
 import { fromIndex } from "./search-index";
 import type { PublicClient } from "./supabase";
 
@@ -147,7 +147,7 @@ export async function fetchCardsById(db: PublicClient, ids: readonly number[]): 
 
   // Started first either way: it is a separate cheap value, cached per instance, and both paths need it.
   const checkedAtPromise = pricesCheckedAt(db);
-  const indexed = await fromIndex("Cards by id", (index) => index.cardsByID(unique));
+  const indexed = await fromIndex("Cards by id", (index) => index.cardsByID(unique, CARD_ROW_DOCUMENT_FIELDS));
   if (indexed) {
     const checkedAt = await checkedAtPromise;
     return new Map(indexed.value.map((doc) => [doc.card_id, withPriceCheck(cardRowFromDocument(doc), checkedAt)]));

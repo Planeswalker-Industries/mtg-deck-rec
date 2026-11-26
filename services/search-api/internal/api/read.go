@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -78,11 +79,20 @@ func identityFilter(colors string) string {
 const (
 	maxIDsPerRequest  = 2000
 	maxKeysPerRequest = 32
-	maxSearchLimit    = 50
+	// CardDocument has about 45 fields; a caller naming more than this is not choosing.
+	maxFieldsPerRequest = 64
+	maxSearchLimit      = 50
 	// The deckbuilder's "More cards" walks forward a page at a time. Far past this nobody is reading results, and
 	// deep paging is where an engine starts doing real work per request.
 	maxSearchOffset = 1000
 )
+
+// A document field name as packages/core/src/search/documents.ts spells them. Checked because it reaches the
+// include_fields parameter.
+var fieldName = regexp.MustCompile(fmt.Sprintf(`^[a-z_]{1,%d}$`, maxFieldNameLength))
+
+// The longest document field name is under 30 characters; this is a ceiling on nonsense, not a schema rule.
+const maxFieldNameLength = 64
 
 func decodeBody(c fiber.Ctx, out any) error {
 	if err := json.Unmarshal(c.Body(), out); err != nil {
@@ -121,10 +131,15 @@ func documents(results []typesense.SearchResult) []json.RawMessage {
 }
 
 // cardsByID is the hottest endpoint: a swap pool is 220 cards, an add pool 400, a commander page 500. In Postgres
-// each of those is a heap visit in a 92 MB table; here it is one request whose chunking happens on this side.
+// each of those is a heap visit in a 92 MB table; here it is one request whose chunking happens on this side, and
+// whose chunks run in parallel.
 func (s *Server) cardsByID(c fiber.Ctx) error {
 	var body struct {
 		IDs []int `json:"ids"`
+		// The document fields the caller reads. Optional: without it the whole document comes back. Each caller
+		// reads a fraction of a document, and Typesense's time for a chunk grows with what it has to serialise
+		// (measured 2026-11-26: the 27 fields a card row needs halve it and cut the bytes by 39%).
+		Fields *[]string `json:"fields"`
 	}
 	if err := decodeBody(c, &body); err != nil {
 		return err
@@ -135,21 +150,39 @@ func (s *Server) cardsByID(c fiber.Ctx) error {
 	if len(body.IDs) > maxIDsPerRequest {
 		return badRequest(fmt.Sprintf("at most %d ids per request", maxIDsPerRequest))
 	}
+	var fields []string
+	if body.Fields != nil {
+		fields = *body.Fields
+		// An empty list would mean include_fields="", which Typesense reads as every field: the opposite of what a
+		// caller naming nothing could have meant.
+		if len(fields) == 0 {
+			return badRequest("fields, when sent, names at least one field")
+		}
+	}
+	if len(fields) > maxFieldsPerRequest {
+		return badRequest(fmt.Sprintf("at most %d fields per request", maxFieldsPerRequest))
+	}
+	for _, field := range fields {
+		if !fieldName.MatchString(field) {
+			return badRequest("a field name is lower-case letters and underscores")
+		}
+	}
 
 	searches := make([]typesense.SearchParams, 0)
 	for _, page := range chunk(body.IDs, typesense.MaxPerPage) {
 		searches = append(searches, typesense.SearchParams{
-			Collection: cardsCollection,
-			Q:          "*",
-			FilterBy:   "card_id:[" + joinInts(page) + "]",
-			PerPage:    typesense.MaxPerPage,
+			Collection:    cardsCollection,
+			Q:             "*",
+			FilterBy:      "card_id:[" + joinInts(page) + "]",
+			PerPage:       typesense.MaxPerPage,
+			IncludeFields: strings.Join(fields, ","),
 		})
 	}
-	results, err := s.ts.MultiSearch(c.Context(), searches)
+	results, err := s.searchAll(c, searches)
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"cards": documents(results)})
+	return sendJSON(c, fiber.Map{"cards": documents(results)})
 }
 
 // cardsSearch serves both card searches the app makes.
@@ -218,11 +251,11 @@ func (s *Server) cardsSearch(c fiber.Ctx) error {
 		params.SortBy = sortBy
 	}
 
-	result, err := s.ts.Search(c.Context(), params)
+	result, err := s.search(c, params)
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"cards": documents([]typesense.SearchResult{result})})
+	return sendJSON(c, fiber.Map{"cards": documents([]typesense.SearchResult{result})})
 }
 
 // builderFilters reads the deckbuilder's narrowing parameters. Each is optional and each is validated, because these
@@ -322,7 +355,7 @@ func (s *Server) pageExists(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"exists": false})
 	}
 
-	result, err := s.ts.Search(c.Context(), typesense.SearchParams{
+	result, err := s.search(c, typesense.SearchParams{
 		Collection:    collection,
 		Q:             "*",
 		FilterBy:      "slug:=" + slug,
@@ -332,7 +365,7 @@ func (s *Server) pageExists(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"exists": result.Found > 0})
+	return sendJSON(c, fiber.Map{"exists": result.Found > 0})
 }
 
 // allTags returns every Tagger tag. It is ~4,500 small documents, the app keeps them in memory, and this is where
@@ -340,7 +373,7 @@ func (s *Server) pageExists(c fiber.Ctx) error {
 func (s *Server) allTags(c fiber.Ctx) error {
 	all := make([]json.RawMessage, 0, 4608)
 	for page := 1; ; page++ {
-		result, err := s.ts.Search(c.Context(), typesense.SearchParams{
+		result, err := s.search(c, typesense.SearchParams{
 			Collection: tagsCollection,
 			Q:          "*",
 			PerPage:    typesense.MaxPerPage,
@@ -356,7 +389,7 @@ func (s *Server) allTags(c fiber.Ctx) error {
 			break
 		}
 	}
-	return c.JSON(fiber.Map{"tags": all})
+	return sendJSON(c, fiber.Map{"tags": all})
 }
 
 // commanderCardsTop is what a commander page ranks: the cards its decks play most, by shrunk inclusion. Only the ids
@@ -389,7 +422,7 @@ func (s *Server) commanderCardsTop(c fiber.Ctx) error {
 			Page:          page,
 		})
 	}
-	results, err := s.ts.MultiSearch(c.Context(), searches)
+	results, err := s.searchAll(c, searches)
 	if err != nil {
 		return err
 	}
@@ -411,7 +444,7 @@ func (s *Server) commanderCardsTop(c fiber.Ctx) error {
 		seen[parsed.CardID] = struct{}{}
 		cardIDs = append(cardIDs, parsed.CardID)
 	}
-	return c.JSON(fiber.Map{"cardIds": cardIDs})
+	return sendJSON(c, fiber.Map{"cardIds": cardIDs})
 }
 
 func parseIDList(raw string) ([]int, error) {

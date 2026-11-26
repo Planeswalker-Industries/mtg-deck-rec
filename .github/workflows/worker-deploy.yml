@@ -7,8 +7,8 @@ name: Deploy the worker
 # Setup, once: on the Dokploy `worker` app turn Auto Deploy on, copy the Webhook URL from its Deployments tab, and save
 # it as the DOKPLOY_WORKER_WEBHOOK_URL repository secret. Leave the app's Watch Paths empty: the paths below decide.
 #
-# The worker reads the hosted schema, so it waits for the migrations: when main holds a migration hosted lacks, the run
-# fails and names it. Run db-push.yml, then re-run this one.
+# The worker reads the hosted schema, so it waits for the migrations: when main holds a migration hosted still lacks
+# after ten minutes, the run fails and names it. Run db-push.yml, then re-run this one.
 #
 # A deploy stops the worker: the duty in hand gets 45 s, then its runs close as `abandoned` and the next worker picks the
 # work up. The crawl runs on the search API's server and is not touched.
@@ -35,7 +35,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WEBHOOK_URL: ${{ secrets.DOKPLOY_WORKER_WEBHOOK_URL }}
@@ -51,16 +51,27 @@ jobs:
           [ -n "$WEBHOOK_URL" ] || { echo "::warning::DOKPLOY_WORKER_WEBHOOK_URL isn't set, so the worker wasn't redeployed: click Deploy on the Dokploy worker app (see this workflow's header)."; ready=false; }
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
 
+      # The Supabase integration applies main's migrations a minute or so after the push that starts this run, so the
+      # check waits for hosted to catch up before it gives up.
       - name: Hosted has every migration
         if: steps.secrets.outputs.ready == 'true'
+        env:
+          # The integration took about a minute on 2026-11-26; ten leaves room for a slow one.
+          WAIT_SECONDS: 600
+          POLL_SECONDS: 20
         run: |
           newest=$(ls supabase/migrations | sed -n 's/^\([0-9]\{14\}\)_.*\.sql$/\1/p' | sort | tail -n 1)
-          applied=$(psql "$DATABASE_URL" -XAtc "select coalesce(max(version), '') from supabase_migrations.schema_migrations")
-          echo "newest in main: $newest; newest on hosted: $applied"
-          if [ "$applied" \< "$newest" ]; then
-            echo "::error::Hosted lacks migration $newest. Run db-push.yml, then re-run this workflow."
-            exit 1
-          fi
+          deadline=$(( $(date +%s) + WAIT_SECONDS ))
+          while :; do
+            applied=$(psql "$DATABASE_URL" -XAtc "select coalesce(max(version), '') from supabase_migrations.schema_migrations")
+            echo "newest in main: $newest; newest on hosted: $applied"
+            [ "$applied" \< "$newest" ] || break
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Hosted still lacks migration $newest after $WAIT_SECONDS s. Run db-push.yml, then re-run this workflow."
+              exit 1
+            fi
+            sleep "$POLL_SECONDS"
+          done
 
       - name: Deploy
         if: steps.secrets.outputs.ready == 'true'
