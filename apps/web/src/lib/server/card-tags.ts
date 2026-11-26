@@ -4,6 +4,9 @@ import { retryOnTimeout } from "./retry-timeout";
 import { fromIndex, loadTagDocuments } from "./search-index";
 import type { PublicClient } from "./supabase";
 
+/** All this reads of a card document; a whole one is about 1.7 KB, these three about a fifth of it. */
+const CARD_TAG_FIELDS = ["card_id", "tag_ids", "tag_depths"] as const;
+
 /**
  * Functional tags for a set of cards, batched. The single-card `card_functional_tags` would mean one round trip per
  * card, and a Commander deck has a hundred of them.
@@ -24,7 +27,7 @@ export async function fetchCardTags(
   if (unique.length === 0) return [];
 
   const tags = await loadTagDocuments();
-  const indexed = tags ? await fromIndex("Card tags", (index) => index.cardsByID(unique)) : null;
+  const indexed = tags ? await fromIndex("Card tags", (index) => index.cardsByID(unique, CARD_TAG_FIELDS)) : null;
   if (indexed && tags) {
     return indexed.value.flatMap((doc) => {
       const refs = tagRefsFromDocument(doc, tags).map((t): TagRef => ({ id: t.id as TagId, slug: t.slug, label: t.label, depth: t.depth }));

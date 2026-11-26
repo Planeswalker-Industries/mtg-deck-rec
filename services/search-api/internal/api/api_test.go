@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +11,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,7 +36,9 @@ const (
 // fakeTypesense stands in for the real thing and records what it was asked, so the tests can assert on the requests
 // this service builds - the chunking, the filters and the ranking are the parts worth pinning down.
 type fakeTypesense struct {
-	server   *httptest.Server
+	server *httptest.Server
+	// mu guards the two records below: the batched reads send their chunks concurrently.
+	mu       sync.Mutex
 	searches []typesense.SearchParams
 	requests []string
 	respond  func(searches []typesense.SearchParams) []typesense.SearchResult
@@ -42,7 +48,9 @@ func newFakeTypesense(t *testing.T) *fakeTypesense {
 	t.Helper()
 	f := &fakeTypesense{}
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
 		f.requests = append(f.requests, r.Method+" "+r.URL.Path)
+		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 
 		switch {
@@ -54,7 +62,9 @@ func newFakeTypesense(t *testing.T) *fakeTypesense {
 			}
 			payload, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(payload, &body)
+			f.mu.Lock()
 			f.searches = append(f.searches, body.Searches...)
+			f.mu.Unlock()
 			results := []typesense.SearchResult{}
 			if f.respond != nil {
 				results = f.respond(body.Searches)
@@ -74,6 +84,23 @@ func newFakeTypesense(t *testing.T) *fakeTypesense {
 	}))
 	t.Cleanup(f.server.Close)
 	return f
+}
+
+// recorded returns copies of what the fake was asked, taken under its lock.
+func (f *fakeTypesense) recorded() ([]typesense.SearchParams, []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.searches), slices.Clone(f.requests)
+}
+
+func (f *fakeTypesense) recordedSearches() []typesense.SearchParams {
+	searches, _ := f.recorded()
+	return searches
+}
+
+func (f *fakeTypesense) recordedRequests() []string {
+	_, requests := f.recorded()
+	return requests
 }
 
 func newApp(t *testing.T, fake *fakeTypesense) *fiber.App {
@@ -162,25 +189,188 @@ func TestCardsByIDChunksToTypesensePageLimit(t *testing.T) {
 	fake := newFakeTypesense(t)
 	app := newApp(t, fake)
 
-	ids := make([]int, 600)
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, idsBody(600))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("got %d", res.StatusCode)
+	}
+	// 600 ids over a 250-document page ceiling is three searches, each its own request: Typesense runs the searches
+	// of one multi_search one after another, so separate requests are what lets them run at the same time.
+	if len(fake.recordedSearches()) != 3 {
+		t.Fatalf("got %d searches, want 3", len(fake.recordedSearches()))
+	}
+	if got := countRequests(fake.recordedRequests(), "POST /multi_search"); got != 3 {
+		t.Fatalf("got %d round trips to Typesense, want 3", got)
+	}
+	if !slices.ContainsFunc(fake.recordedSearches(), func(s typesense.SearchParams) bool {
+		return strings.HasPrefix(s.FilterBy, "card_id:[1,2,3,")
+	}) {
+		t.Fatalf("no chunk starts at the first id: %v", fake.recordedSearches())
+	}
+}
+
+// The chunks answer in whatever order Typesense finishes them; the cards come back in the order they were asked for.
+func TestCardsByIDKeepsChunkOrder(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = firstIDPerChunk(func(first int) {
+		if first == 1 {
+			time.Sleep(50 * time.Millisecond) // The first chunk finishes last.
+		}
+	})
+	app := newApp(t, fake)
+
+	_, decoded := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, idsBody(600))
+	cards, _ := decoded["cards"].([]any)
+	got := make([]float64, 0, len(cards))
+	for _, card := range cards {
+		got = append(got, card.(map[string]any)["card_id"].(float64))
+	}
+	if !slices.Equal(got, []float64{1, 251, 501}) {
+		t.Fatalf("got %v, want [1 251 501]", got)
+	}
+}
+
+// A caller names the fields it reads, and only those come back from Typesense.
+func TestCardsByIDPassesTheFieldsAsked(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1,2],"fields":["card_id","tag_ids"]}`)
+	if len(fake.recordedSearches()) != 1 || fake.recordedSearches()[0].IncludeFields != "card_id,tag_ids" {
+		t.Fatalf("got %+v", fake.recordedSearches())
+	}
+
+	fake.mu.Lock()
+	fake.searches = nil
+	fake.mu.Unlock()
+	do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1,2]}`)
+	if len(fake.recordedSearches()) != 1 || fake.recordedSearches()[0].IncludeFields != "" {
+		t.Fatalf("no fields asked means the whole document: %+v", fake.recordedSearches())
+	}
+}
+
+func TestCardsByIDRefusesAFieldThatIsNotAName(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1],"fields":["card_id","name&filter_by=x"]}`)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("got %d, want 400", res.StatusCode)
+	}
+	if len(fake.recordedSearches()) != 0 {
+		t.Fatal("nothing should have reached Typesense")
+	}
+}
+
+// An empty list would reach Typesense as include_fields="", which means every field.
+func TestCardsByIDRefusesAnEmptyFieldList(t *testing.T) {
+	fake := newFakeTypesense(t)
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1],"fields":[]}`)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("got %d, want 400", res.StatusCode)
+	}
+}
+
+// A 200 with fewer results than searches is a partial pool; it has to fail so the app falls back.
+func TestCardsByIDFailsOnAShortAnswer(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult { return nil }
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, idsBody(10))
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("got %d, want 502", res.StatusCode)
+	}
+}
+
+// The hops travel with the answer, so the app can tell a slow engine from a slow network.
+func TestReadsSendServerTiming(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult {
+		return []typesense.SearchResult{{Found: 1, SearchTimeMS: 7, Hits: []typesense.Hit{hit(`{"card_id":1}`)}}}
+	}
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, `{"ids":[1]}`)
+	got := res.Header.Get("Server-Timing")
+	if !strings.Contains(got, "typesense;dur=") || !strings.Contains(got, "search;dur=7") || !strings.Contains(got, "encode;dur=") {
+		t.Fatalf("Server-Timing %q", got)
+	}
+}
+
+// One failed chunk fails the whole answer: half a pool is worse than the app's Postgres fallback.
+func TestCardsByIDFailsWhenOneChunkFails(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult {
+		if strings.HasPrefix(searches[0].FilterBy, "card_id:[251,") {
+			return []typesense.SearchResult{{Code: http.StatusServiceUnavailable, Error: "not ready"}}
+		}
+		return []typesense.SearchResult{{Found: 1, Hits: []typesense.Hit{hit(`{"card_id":1}`)}}}
+	}
+	app := newApp(t, fake)
+
+	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, idsBody(600))
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("got %d, want 502", res.StatusCode)
+	}
+}
+
+// A 500-card answer is most of a megabyte of JSON that compresses about six to one.
+func TestResponsesAreCompressed(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult {
+		hits := make([]typesense.Hit, 0, typesense.MaxPerPage)
+		for i := range typesense.MaxPerPage {
+			hits = append(hits, hit(fmt.Sprintf(`{"card_id":%d,"image":"https://cards.scryfall.io/normal/front/7/0/70b2cdc5.jpg"}`, i)))
+		}
+		return []typesense.SearchResult{{Found: len(hits), Hits: hits}}
+	}
+	app := newApp(t, fake)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/cards/by-id", strings.NewReader(idsBody(250)))
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enc := res.Header.Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding %q, want gzip", enc)
+	}
+	reader, err := gzip.NewReader(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Cards []json.RawMessage `json:"cards"`
+	}
+	if err := json.NewDecoder(reader).Decode(&decoded); err != nil || len(decoded.Cards) != typesense.MaxPerPage {
+		t.Fatalf("decoded %d cards, err %v", len(decoded.Cards), err)
+	}
+}
+
+func idsBody(n int) string {
+	ids := make([]int, n)
 	for i := range ids {
 		ids[i] = i + 1
 	}
 	body, _ := json.Marshal(map[string]any{"ids": ids})
+	return string(body)
+}
 
-	res, _ := do(t, app, http.MethodPost, "/v1/cards/by-id", readToken, string(body))
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("got %d", res.StatusCode)
-	}
-	// 600 ids over a 250-document page ceiling is three searches - and one request, which is the point.
-	if len(fake.searches) != 3 {
-		t.Fatalf("got %d searches, want 3", len(fake.searches))
-	}
-	if got := countRequests(fake.requests, "POST /multi_search"); got != 1 {
-		t.Fatalf("got %d round trips to Typesense, want 1", got)
-	}
-	if !strings.HasPrefix(fake.searches[0].FilterBy, "card_id:[1,2,3,") {
-		t.Fatalf("unexpected filter: %s", fake.searches[0].FilterBy)
+// firstIDPerChunk answers each by-id chunk with one card: the chunk's first id. wait runs before answering.
+func firstIDPerChunk(wait func(first int)) func([]typesense.SearchParams) []typesense.SearchResult {
+	return func(searches []typesense.SearchParams) []typesense.SearchResult {
+		results := make([]typesense.SearchResult, 0, len(searches))
+		for _, search := range searches {
+			first, _, _ := strings.Cut(strings.TrimPrefix(search.FilterBy, "card_id:["), ",")
+			id, _ := strconv.Atoi(first)
+			wait(id)
+			results = append(results, typesense.SearchResult{Found: 1, Hits: []typesense.Hit{hit(fmt.Sprintf(`{"card_id":%d}`, id))}})
+		}
+		return results
 	}
 }
 
@@ -197,7 +387,7 @@ func TestCardsByIDRejectsAnAbsurdRequest(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(decoded["error"]), "2000") {
 		t.Fatalf("the error should say the limit: %v", decoded["error"])
 	}
-	if len(fake.searches) != 0 {
+	if len(fake.recordedSearches()) != 0 {
 		t.Fatal("nothing should have reached Typesense")
 	}
 }
@@ -207,10 +397,10 @@ func TestCardsSearchRanking(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=smothering&limit=5", readToken, "")
-	if len(fake.searches) != 1 {
-		t.Fatalf("got %d searches", len(fake.searches))
+	if len(fake.recordedSearches()) != 1 {
+		t.Fatalf("got %d searches", len(fake.recordedSearches()))
 	}
-	got := fake.searches[0]
+	got := fake.recordedSearches()[0]
 	// name_head above name above names is the "starts with beats contains" tier; without it Typesense scores by
 	// token and not by position, and Rug of Smothering ties with Smothering Abomination.
 	if got.QueryBy != "name_head,name,names" || got.QueryByWeights != "5,3,1" {
@@ -234,8 +424,8 @@ func TestCardsSearchCommanderOnly(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=atraxa&commanderOnly=1", readToken, "")
-	if fake.searches[0].FilterBy != "can_be_commander:=true && legal_commander:=legal" {
-		t.Fatalf("got %q", fake.searches[0].FilterBy)
+	if fake.recordedSearches()[0].FilterBy != "can_be_commander:=true && legal_commander:=legal" {
+		t.Fatalf("got %q", fake.recordedSearches()[0].FilterBy)
 	}
 }
 
@@ -266,12 +456,12 @@ func TestPageExists(t *testing.T) {
 		"sol%20ring",               // a space
 		"sol-ring%20%26%26%20true", // an attempt at a second filter clause
 	} {
-		before := len(fake.searches)
+		before := len(fake.recordedSearches())
 		_, decoded := do(t, app, http.MethodGet, "/v1/pages/card/"+odd, readToken, "")
 		if decoded["exists"] != false {
 			t.Fatalf("%q: expected a miss, got %v", odd, decoded)
 		}
-		if len(fake.searches) != before {
+		if len(fake.recordedSearches()) != before {
 			t.Fatalf("%q reached Typesense", odd)
 		}
 	}
@@ -320,13 +510,39 @@ func TestCommanderCardsTopIsOrderedAndDeduplicated(t *testing.T) {
 	if len(ids) != 2 || ids[0].(float64) != 7 || ids[1].(float64) != 3 {
 		t.Fatalf("got %v, want [7 3]", ids)
 	}
-	if fake.searches[0].SortBy != "inclusion_shrunk:desc" {
-		t.Fatalf("got %q", fake.searches[0].SortBy)
+	if fake.recordedSearches()[0].SortBy != "inclusion_shrunk:desc" {
+		t.Fatalf("got %q", fake.recordedSearches()[0].SortBy)
 	}
-	if fake.searches[0].IncludeFields != "card_id" {
-		t.Fatalf("only the id is needed: %q", fake.searches[0].IncludeFields)
+	if fake.recordedSearches()[0].IncludeFields != "card_id" {
+		t.Fatalf("only the id is needed: %q", fake.recordedSearches()[0].IncludeFields)
 	}
 }
+
+// A 500-card list is two pages; they run at the same time and still come back page 1 first.
+func TestCommanderCardsTopKeepsPageOrder(t *testing.T) {
+	fake := newFakeTypesense(t)
+	fake.respond = func(searches []typesense.SearchParams) []typesense.SearchResult {
+		results := make([]typesense.SearchResult, 0, len(searches))
+		for _, search := range searches {
+			if search.Page == 1 {
+				time.Sleep(50 * time.Millisecond) // Page 1 finishes last.
+			}
+			results = append(results, typesense.SearchResult{Found: 2, Hits: []typesense.Hit{hit(fmt.Sprintf(`{"card_id":%d}`, search.Page*100))}})
+		}
+		return results
+	}
+	app := newApp(t, fake)
+
+	_, decoded := do(t, app, http.MethodGet, "/v1/commander-cards/top?keyIds=1&limit=500", readToken, "")
+	ids, _ := decoded["cardIds"].([]any)
+	if len(ids) != 2 || ids[0].(float64) != 100 || ids[1].(float64) != 200 {
+		t.Fatalf("got %v, want [100 200]", ids)
+	}
+	if got := countRequests(fake.recordedRequests(), "POST /multi_search"); got != 2 {
+		t.Fatalf("got %d round trips to Typesense, want 2", got)
+	}
+}
+
 func TestImportReportsRejectedDocuments(t *testing.T) {
 	fake := newFakeTypesense(t)
 	app := newApp(t, fake)
@@ -365,8 +581,8 @@ func TestDeleteDocumentAcceptsAnEscapedCommanderCardKey(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status %d, want 200", res.StatusCode)
 	}
-	if countRequests(fake.requests, "DELETE /collections/commander_cards/documents/22:11555") != 1 {
-		t.Fatalf("Typesense saw %v", fake.requests)
+	if countRequests(fake.recordedRequests(), "DELETE /collections/commander_cards/documents/22:11555") != 1 {
+		t.Fatalf("Typesense saw %v", fake.recordedRequests())
 	}
 }
 
@@ -398,9 +614,22 @@ func TestRequestsAreLogged(t *testing.T) {
 		t.Fatalf("a served request should be logged: %s", logged)
 	}
 
+	// A read records its hops in the same line.
+	buf.Reset()
+	req := httptest.NewRequest(http.MethodPost, "/v1/cards/by-id", strings.NewReader(idsBody(600)))
+	req.Header.Set("Authorization", "Bearer "+readToken)
+	if res, err := app.Test(req); err == nil {
+		_ = res.Body.Close()
+	}
+	for _, field := range []string{`"typesense_ms":`, `"search_ms":`, `"chunks":3`, `"encode_ms":`, `"compress_ms":`, `"bytes":`, `"wire_bytes":`} {
+		if !strings.Contains(buf.String(), field) {
+			t.Fatalf("the request line should carry %s: %s", field, buf.String())
+		}
+	}
+
 	// A search term is the person's words and must not be in the log.
 	buf.Reset()
-	req := httptest.NewRequest(http.MethodGet, "/v1/cards/search?q=sol+ring", nil)
+	req = httptest.NewRequest(http.MethodGet, "/v1/cards/search?q=sol+ring", nil)
 	req.Header.Set("Authorization", "Bearer "+readToken)
 	if res, err := app.Test(req); err == nil {
 		_ = res.Body.Close()
@@ -427,7 +656,7 @@ func TestCardsSearchBuilderColours(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=angel&colors=WB&builder=1", readToken, "")
-	got := fake.searches[0]
+	got := fake.recordedSearches()[0]
 	// Typesense has no bitwise operators, so the Postgres condition `(color_identity & ~mask) = 0` is written as the
 	// colours a card may not carry. Green, blue and red are out; colourless cards pass because their array is empty.
 	if !strings.Contains(got.FilterBy, "colors:!=[U,R,G]") {
@@ -448,8 +677,8 @@ func TestCardsSearchColourlessIsNotAbsent(t *testing.T) {
 
 	// A colourless deck sends an empty `colors`, which a query string cannot tell from an absent one - hence the flag.
 	do(t, app, http.MethodGet, "/v1/cards/search?q=sol&colors=&colorless=1", readToken, "")
-	if !strings.Contains(fake.searches[0].FilterBy, "colors:!=[W,U,B,R,G]") {
-		t.Fatalf("a colourless deck must exclude every colour: %q", fake.searches[0].FilterBy)
+	if !strings.Contains(fake.recordedSearches()[0].FilterBy, "colors:!=[W,U,B,R,G]") {
+		t.Fatalf("a colourless deck must exclude every colour: %q", fake.recordedSearches()[0].FilterBy)
 	}
 }
 
@@ -458,8 +687,8 @@ func TestCardsSearchFiveColoursFilterNothing(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=sol&colors=WUBRG", readToken, "")
-	if strings.Contains(fake.searches[0].FilterBy, "colors:") {
-		t.Fatalf("a five-colour deck excludes nothing: %q", fake.searches[0].FilterBy)
+	if strings.Contains(fake.recordedSearches()[0].FilterBy, "colors:") {
+		t.Fatalf("a five-colour deck excludes nothing: %q", fake.recordedSearches()[0].FilterBy)
 	}
 }
 
@@ -468,7 +697,7 @@ func TestCardsSearchCategoryAndManaValue(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&type=creature&mv=3", readToken, "")
-	got := fake.searches[0].FilterBy
+	got := fake.recordedSearches()[0].FilterBy
 	if !strings.Contains(got, "card_types:=creature") {
 		t.Fatalf("type filter missing: %q", got)
 	}
@@ -483,7 +712,7 @@ func TestCardsSearchNameSortReplacesRanking(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&type=legendary,creature&sort=name_desc", readToken, "")
-	got := fake.searches[0]
+	got := fake.recordedSearches()[0]
 	if got.SortBy != "name:desc" {
 		t.Fatalf("Z-A must replace the browse order: %q", got.SortBy)
 	}
@@ -492,8 +721,8 @@ func TestCardsSearchNameSortReplacesRanking(t *testing.T) {
 	}
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=angel&colors=WB&builder=1&sort=name_asc", readToken, "")
-	if fake.searches[1].SortBy != "name:asc" {
-		t.Fatalf("A-Z must replace the best-match order: %q", fake.searches[1].SortBy)
+	if fake.recordedSearches()[1].SortBy != "name:asc" {
+		t.Fatalf("A-Z must replace the best-match order: %q", fake.recordedSearches()[1].SortBy)
 	}
 }
 
@@ -502,7 +731,7 @@ func TestCardsSearchTypesNarrowManaValuesWiden(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&type=creature,artifact&mv=2,4,7", readToken, "")
-	got := fake.searches[0].FilterBy
+	got := fake.recordedSearches()[0].FilterBy
 	// Every type named must be on the card: two clauses joined by the outer &&.
 	if !strings.Contains(got, "card_types:=creature && card_types:=artifact") {
 		t.Fatalf("types must all apply: %q", got)
@@ -519,11 +748,11 @@ func TestCardsSearchManaValueTopIsOrMore(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&mv=7", readToken, "")
-	if !strings.Contains(fake.searches[0].FilterBy, "mana_value:>=7") {
-		t.Fatalf("the last bar of the curve means 7 or more: %q", fake.searches[0].FilterBy)
+	if !strings.Contains(fake.recordedSearches()[0].FilterBy, "mana_value:>=7") {
+		t.Fatalf("the last bar of the curve means 7 or more: %q", fake.recordedSearches()[0].FilterBy)
 	}
-	if strings.Contains(fake.searches[0].FilterBy, "mana_value:<") {
-		t.Fatalf("7+ has no upper bound: %q", fake.searches[0].FilterBy)
+	if strings.Contains(fake.recordedSearches()[0].FilterBy, "mana_value:<") {
+		t.Fatalf("7+ has no upper bound: %q", fake.recordedSearches()[0].FilterBy)
 	}
 }
 
@@ -532,7 +761,7 @@ func TestCardsSearchBrowseHasNoQueryToScore(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&limit=20", readToken, "")
-	got := fake.searches[0]
+	got := fake.recordedSearches()[0]
 	if got.Q != "*" {
 		t.Fatalf("a browse asks for every document: %q", got.Q)
 	}
@@ -550,8 +779,8 @@ func TestCardsSearchPages(t *testing.T) {
 	app := newApp(t, fake)
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB&limit=20&offset=40", readToken, "")
-	if fake.searches[0].Offset != 40 || fake.searches[0].Limit != 20 {
-		t.Fatalf("paging not passed through: offset %d limit %d", fake.searches[0].Offset, fake.searches[0].Limit)
+	if fake.recordedSearches()[0].Offset != 40 || fake.recordedSearches()[0].Limit != 20 {
+		t.Fatalf("paging not passed through: offset %d limit %d", fake.recordedSearches()[0].Offset, fake.recordedSearches()[0].Limit)
 	}
 }
 
@@ -565,7 +794,7 @@ func TestCardsSearchRejectsBadFilters(t *testing.T) {
 			t.Fatalf("%s: got %d, want 400", query, res.StatusCode)
 		}
 	}
-	if len(fake.searches) != 0 {
+	if len(fake.recordedSearches()) != 0 {
 		t.Fatal("a bad filter must never reach Typesense as a silently dropped condition")
 	}
 }
@@ -576,7 +805,7 @@ func TestCardsSearchNoNameAndNoFiltersIsEmpty(t *testing.T) {
 
 	// Otherwise this is "the whole catalog by play rate", which nothing asks for and the engine should not prove.
 	do(t, app, http.MethodGet, "/v1/cards/search?q=", readToken, "")
-	if len(fake.searches) != 0 {
+	if len(fake.recordedSearches()) != 0 {
 		t.Fatal("nothing should have reached Typesense")
 	}
 }
@@ -588,8 +817,8 @@ func TestCardsSearchMatchesMidWord(t *testing.T) {
 	do(t, app, http.MethodGet, "/v1/cards/search?q=bolt", readToken, "")
 	// Without this, "bolt" finds Guiding Bolt and stops: Typesense matches whole tokens, so General Thunderbolt Ross
 	// is invisible. Postgres matched `%bolt%` and found it, and the deckbuilder's search moved off Postgres.
-	if fake.searches[0].Infix != "off,always,always" {
-		t.Fatalf("mid-word matching lost: %q", fake.searches[0].Infix)
+	if fake.recordedSearches()[0].Infix != "off,always,always" {
+		t.Fatalf("mid-word matching lost: %q", fake.recordedSearches()[0].Infix)
 	}
 }
 
@@ -599,8 +828,8 @@ func TestCardsBrowseHasNoInfix(t *testing.T) {
 
 	do(t, app, http.MethodGet, "/v1/cards/search?q=&colors=WB", readToken, "")
 	// A browse has no query_by at all, and an infix value without one is a request Typesense rejects.
-	if fake.searches[0].Infix != "" {
-		t.Fatalf("a browse has nothing to match inside: %q", fake.searches[0].Infix)
+	if fake.recordedSearches()[0].Infix != "" {
+		t.Fatalf("a browse has nothing to match inside: %q", fake.recordedSearches()[0].Infix)
 	}
 }
 

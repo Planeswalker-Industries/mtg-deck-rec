@@ -183,8 +183,44 @@ export function toCardDocument(row: CardIndexRow, updatedAt = Date.now()): CardD
   };
 }
 
+/**
+ * The document fields `cardRowFromDocument` reads, which is what `fetchCardsById` asks the index for. Kept beside the
+ * function so the two change together: the parameter type below makes a field read there but missing here a type error.
+ */
+export const CARD_ROW_DOCUMENT_FIELDS = [
+  "card_id",
+  "oracle_id",
+  "name",
+  "slug",
+  "mana_value",
+  "mana_cost",
+  "type_line",
+  "color_identity",
+  "colors",
+  "images_json",
+  "game_changer",
+  "released_at",
+  "reference_price_usd",
+  "reference_price_finish",
+  "prices_as_of",
+  "legal_commander",
+  "can_be_commander",
+  "partner_kind",
+  "partner_qualifier",
+  "copy_limit",
+  "is_basic_land",
+  "artist",
+  "keywords",
+  "produced_mana",
+  "fetchable_mana",
+  "fetchable_basic_only",
+  "layout",
+] as const satisfies readonly (keyof CardDocument)[];
+
+export type CardRowDocument = Pick<CardDocument, (typeof CARD_ROW_DOCUMENT_FIELDS)[number]>;
+
 /** The inverse: what `fetchCardsById` hands the rest of the app. */
-export function cardRowFromDocument(doc: CardDocument): CardRowShape {
+export function cardRowFromDocument(doc: CardRowDocument): CardRowShape {
   return {
     id: doc.card_id,
     oracle_id: doc.oracle_id,
