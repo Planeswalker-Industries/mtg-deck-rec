@@ -35,6 +35,11 @@ export const BUILD_DECK_HREF = `/deck?${DECK_START_PARAM}=${DECK_START_BUILD}`;
 export const BUILD_COMMANDER_PARAM = "commander";
 export const buildCommanderHref = (slug: string) => `${BUILD_DECK_HREF}&${BUILD_COMMANDER_PARAM}=${encodeURIComponent(slug)}` as Route;
 
+/** The homepage's Popular Commanders count visitors over this window: long enough for a quiet week, short enough to follow a new set. */
+export const HOME_SHOWCASE_DAYS = 30;
+/** Plates per column in Commanders & Decks: three fill a desktop column and a phone strip without scrolling. */
+export const HOME_SHOWCASE_SIZE = 3;
+
 /**
  * The bracket the start form (T091) and a build aim for until the player picks another: 3, Upgraded, where most decks at
  * a casual table sit.

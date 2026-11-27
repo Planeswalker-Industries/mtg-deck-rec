@@ -64,7 +64,8 @@ export default function PrivacyPage() {
             When the deck tool shows you cards to add, cut or swap, we record which cards it showed and in what order, and
             which ones you took or passed on, with the deck&apos;s commander and bracket. It tells us how good our
             suggestions are. It is kept like votes: with your account if you are signed in, otherwise with the salted hash
-            below, and there is no setting to turn it off.
+            below, and there is no setting to turn it off. The homepage shows how many visitors built or tuned a deck with
+            each popular commander, as a count only.
           </Item>
           <Item term="How often you use the deck tool">
             Each time you start a round from a pasted deck or a commander&apos;s build, we add one to a count: a site-wide
