@@ -25,6 +25,8 @@ const THEME_COLOR = "#131111";
 
 export const viewport: Viewport = {
   themeColor: THEME_COLOR,
+  // One light theme: keeps phone browsers' auto dark mode off the page from the first byte (globals.css says so too).
+  colorScheme: "only light",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

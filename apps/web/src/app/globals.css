@@ -287,7 +287,10 @@
   }
   html {
     @apply font-sans;
-    color-scheme: light;
+    /* "only": the one light theme is the design, so phone browsers' auto dark mode (Brave night mode, Chrome's dark
+       web pages) must not repaint it. Plain "light" doesn't stop them: they lighten the ink but leave the paper
+       textures, and the text vanishes into the sheets. */
+    color-scheme: only light;
     /* Both html and body: 100vw counts the scrollbar, so a full-bleed section overflows by its width
        unless the root clips too. clip, not hidden — hidden makes a scroll container and breaks the
        deck tool's sticky bar. overflow-y stays visible. */
