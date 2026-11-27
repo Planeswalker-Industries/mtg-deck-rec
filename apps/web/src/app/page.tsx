@@ -130,7 +130,7 @@ export default function Home() {
     <div className="flex flex-col gap-5 pt-2 md:gap-8 md:pt-4">
       <Hero />
       <HowItWorks />
-      <SheetSection aria-label="Commanders & Decks" className="px-5 py-8 sm:px-8 md:py-10">
+      <SheetSection aria-label="Commanders & Decks" className="px-4 py-8 max-sm:-mx-4 sm:px-8 md:py-10">
         <Suspense fallback={<CommandersAndDecksSkeleton />}>
           <CommandersAndDecksSection />
         </Suspense>

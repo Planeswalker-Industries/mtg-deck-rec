@@ -30,3 +30,42 @@ test("the Commander starting point opens the commander picker", async ({ page })
   const commander = page.getByRole("link", { name: /^Choose a Commander/ }).first();
   await expect(commander).toHaveAttribute("href", "/deck?start=build");
 });
+
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("the Latest tab and a swipe move between the two lists", async ({ page }) => {
+    await page.goto("/");
+    const region = page.getByRole("region", { name: "Commanders & Decks" });
+    const popularTab = region.getByRole("tab", { name: "Popular", exact: true });
+    const latestTab = region.getByRole("tab", { name: "Latest", exact: true });
+    const popularPane = region.getByRole("tabpanel", { name: "Popular", exact: true });
+    const latestPane = region.getByRole("tabpanel", { name: "Latest", exact: true });
+    await expect(popularTab).toHaveAttribute("aria-selected", "true", { timeout: 10_000 });
+    await expect(latestPane).not.toBeInViewport();
+
+    await region.scrollIntoViewIfNeeded();
+    await latestTab.click();
+
+    await expect(latestTab).toHaveAttribute("aria-selected", "true");
+    await expect(latestPane).toBeInViewport();
+    await expect(popularPane).not.toBeInViewport();
+
+    // A swipe back, once the tap's scroll has landed: the strip scrolled by hand moves the tab with it.
+    const strip = popularPane.locator("..");
+    await expect.poll(() => strip.evaluate((el) => el.scrollLeft === el.scrollWidth - el.clientWidth)).toBe(true);
+    await strip.evaluate((el) => el.scrollTo({ left: 0 }));
+
+    await expect(popularTab).toHaveAttribute("aria-selected", "true");
+    await expect(popularPane).toBeInViewport();
+  });
+
+  test("the page never scrolls sideways", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("region", { name: "Commanders & Decks" }).getByRole("tab", { name: "Popular", exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBe(0);
+  });
+});

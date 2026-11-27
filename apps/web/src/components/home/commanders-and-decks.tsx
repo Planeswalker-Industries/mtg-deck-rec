@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ComponentPropsWithoutRef,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, ChartNoAxesColumnIncreasing, History, Layers } from "lucide-react";
@@ -26,14 +36,38 @@ const THUMB_ART_SIZES = "112px";
 const PREVIOUS_KEYS = new Set(["ArrowUp", "ArrowLeft"]);
 const NEXT_KEYS = new Set(["ArrowDown", "ArrowRight"]);
 
+/** Tailwind's `lg`, from which the lists are columns beside the Highlight instead of tabs under it. */
+const COLUMNS_QUERY = "(min-width: 64rem)";
+
+const onColumnsChange = (change: () => void) => {
+  const query = window.matchMedia(COLUMNS_QUERY);
+  query.addEventListener("change", change);
+  return () => query.removeEventListener("change", change);
+};
+/** Whether the lists are columns; false on the server and before hydration, so the first render has the tabs' roles. */
+const useColumns = () =>
+  useSyncExternalStore(
+    onColumnsChange,
+    () => window.matchMedia(COLUMNS_QUERY).matches,
+    () => false,
+  );
+
+/** The focus ring; inset below `lg`, where the swipe strip's scroll box would clip it at a pane's edge. */
+const FOCUS_RING =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary max-lg:focus-visible:-outline-offset-2";
 /** A row's pressable area: ink text, the espresso wash on hover, the focus ring. */
-const ROW_PRESS =
-  "flex min-h-11 min-w-0 flex-1 items-center gap-3 p-2 text-left transition-colors hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+const ROW_PRESS = `flex min-h-11 min-w-0 flex-1 items-center gap-3 p-2 text-left transition-colors hover:bg-primary/10 ${FOCUS_RING}`;
 /** The row in the Highlight: `TOGGLE_ON`'s thick espresso edge, without its espresso text (the name stays ink). */
 const ROW_SELECTED = "ring-3 ring-inset ring-primary";
 
 /** Nothing to subscribe to: `useSyncExternalStore` only tells the server render from the client one here. */
 const subscribeNothing = () => () => {};
+
+/** The two lists, in the order of their tabs and of the panes on the swipe strip. */
+const LISTS = [
+  { key: "popular", tab: "Popular", title: "Popular Commanders", icon: ChartNoAxesColumnIncreasing },
+  { key: "latest", tab: "Latest", title: "Latest Decks", icon: History },
+] as const;
 
 /**
  * The homepage's Commanders & Decks: the Highlight (a Popular commander's art, stats and the seal that builds with it)
@@ -42,14 +76,27 @@ const subscribeNothing = () => () => {};
  * A Popular row loads its commander into the Highlight (the arrow keys move between them); its Build link goes
  * straight to the build page. A Latest row opens its deck's page. The Highlight cycles through the Popular commanders
  * every 7 s, paused on hover and focus and off with reduced motion; the first row chosen stops it for the visit.
+ *
+ * Below `lg` the two lists sit side by side on a scroll-snap strip under "Popular" and "Latest" tabs: a swipe moves the
+ * selected tab, a tab scrolls its pane in. From `lg` the strip and its wrapper are `display: contents`, so the same two
+ * columns are the grid's own items and nothing renders twice.
  */
 export function CommandersAndDecks({ popular, latest }: { popular: ShowcaseCommander[]; latest: ShowcaseDeck[] }) {
   const [index, setIndex] = useState(0);
   const [stopped, setStopped] = useState(false);
   const reduceMotion = useReducedMotion();
   const pausedRef = useRef(false);
-  const popularHeadingId = useId();
-  const latestHeadingId = useId();
+  const [tab, setTab] = useState(0);
+  const stripRef = useRef<HTMLDivElement>(null);
+  // The pane a tab tap is scrolling to: the strip's scroll events don't move the tab until it arrives.
+  const targetRef = useRef<number | null>(null);
+  const columns = useColumns();
+  const idBase = useId();
+  const ids = LISTS.map((list) => ({
+    heading: `${idBase}-${list.key}-heading`,
+    tab: `${idBase}-${list.key}-tab`,
+    panel: `${idBase}-${list.key}-panel`,
+  }));
   // Ages read the clock, which the server render can't: they appear once hydrated.
   const mounted = useSyncExternalStore(
     subscribeNothing,
@@ -74,8 +121,43 @@ export function CommandersAndDecks({ popular, latest }: { popular: ShowcaseComma
     setStopped(true);
   }, []);
 
+  const showTab = (next: number) => {
+    setTab(next);
+    const strip = stripRef.current;
+    if (!strip) return;
+    targetRef.current = next;
+    strip.scrollTo({ left: next * strip.clientWidth, behavior: reduceMotion ? "auto" : "smooth" });
+  };
+
+  const releaseTarget = () => {
+    targetRef.current = null;
+  };
+
+  const onStripScroll = () => {
+    const strip = stripRef.current;
+    if (!strip || strip.clientWidth === 0) return;
+    const at = Math.round(strip.scrollLeft / strip.clientWidth);
+    if (targetRef.current !== null) {
+      if (at === targetRef.current) targetRef.current = null;
+      return;
+    }
+    setTab(at);
+  };
+
+  const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const next = (tab + step + LISTS.length) % LISTS.length;
+    document.getElementById(ids[next]!.tab)?.focus();
+    showTab(next);
+  };
+
   const shown = popular[index];
   if (!shown) return null;
+
+  // Tab panels only while there are tabs: from `lg` the columns are plain columns under their own headings.
+  const panelProps = (i: number) => (columns ? {} : { id: ids[i]!.panel, role: "tabpanel", "aria-labelledby": ids[i]!.tab });
 
   return (
     <div
@@ -95,30 +177,72 @@ export function CommandersAndDecks({ popular, latest }: { popular: ShowcaseComma
     >
       <Highlight commander={shown} live={!running} />
 
-      <Column headingId={popularHeadingId} title="Popular Commanders" icon={ChartNoAxesColumnIncreasing} className="lg:px-6">
-        <PopularRows popular={popular} selected={index} onChoose={choose} headingId={popularHeadingId} />
-      </Column>
+      <div className="flex min-w-0 flex-col gap-3 lg:contents">
+        <div
+          role="tablist"
+          aria-label="Commanders & Decks"
+          onKeyDown={onTabKeyDown}
+          className="grid grid-cols-2 border-b border-seam lg:hidden"
+        >
+          {LISTS.map((list, i) => {
+            const on = i === tab;
+            return (
+              <button
+                key={list.key}
+                id={ids[i]!.tab}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                aria-controls={ids[i]!.panel}
+                tabIndex={on ? 0 : -1}
+                onClick={() => showTab(i)}
+                className={cn(
+                  "relative flex min-h-11 items-center justify-center px-2 text-base text-primary transition-colors hover:bg-primary/10",
+                  "focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-primary",
+                  // The selected tab: a thick espresso bar along its foot, as on How it works.
+                  on && "font-semibold after:absolute after:inset-x-0 after:-bottom-px after:h-1 after:bg-primary",
+                )}
+              >
+                {list.tab}
+              </button>
+            );
+          })}
+        </div>
 
-      <Column headingId={latestHeadingId} title="Latest Decks" icon={History} className="lg:pl-6">
-        {latest.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No decks saved yet.</p>
-        ) : (
-          <ul aria-labelledby={latestHeadingId} className="flex flex-col divide-y divide-seam border-y border-seam">
-            {latest.map((deck) => (
-              <li key={deck.code} className="flex py-1">
-                <Link href={deck.href} aria-label={`Open the ${deck.name} deck`} className={ROW_PRESS}>
-                  <RowBody
-                    name={deck.name}
-                    card={deck.card}
-                    identity={deck.colorIdentity}
-                    detail={mounted ? formatAge(new Date(deck.createdAt)) : null}
-                  />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Column>
+        <div
+          ref={stripRef}
+          onScroll={onStripScroll}
+          // A finger or a wheel on the strip takes over from a tap's scroll still running.
+          onPointerDown={releaseTarget}
+          onWheel={releaseTarget}
+          className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] lg:contents"
+        >
+          <Column {...panelProps(0)} headingId={ids[0]!.heading} title={LISTS[0].title} icon={LISTS[0].icon} className="lg:px-6">
+            <PopularRows popular={popular} selected={index} onChoose={choose} headingId={ids[0]!.heading} />
+          </Column>
+
+          <Column {...panelProps(1)} headingId={ids[1]!.heading} title={LISTS[1].title} icon={LISTS[1].icon} className="lg:pl-6">
+            {latest.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No decks saved yet.</p>
+            ) : (
+              <ul aria-labelledby={ids[1]!.heading} className="flex flex-col divide-y divide-seam border-y border-seam">
+                {latest.map((deck) => (
+                  <li key={deck.code} className="flex py-1">
+                    <Link href={deck.href} aria-label={`Open the ${deck.name} deck`} className={ROW_PRESS}>
+                      <RowBody
+                        name={deck.name}
+                        card={deck.card}
+                        identity={deck.colorIdentity}
+                        detail={mounted ? formatAge(new Date(deck.createdAt)) : null}
+                      />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Column>
+        </div>
+      </div>
     </div>
   );
 }
@@ -189,23 +313,27 @@ function Builders({ count }: { count: number }) {
   );
 }
 
-/** A column's heading over its rows. */
+/**
+ * A column's heading over its rows. Below `lg` it is one full-width pane of the swipe strip, and its heading is left
+ * to the tab above (kept for screen readers, which name the list by it).
+ */
 function Column({
   headingId,
   title,
   icon: Icon,
   className,
   children,
+  ...panel
 }: {
   headingId: string;
   title: string;
   icon: typeof History;
   className?: string;
   children: ReactNode;
-}) {
+} & ComponentPropsWithoutRef<"div">) {
   return (
-    <div className={cn("flex min-w-0 flex-col gap-3", className)}>
-      <h2 id={headingId} className="flex min-h-11 items-center gap-2 font-heading text-xl font-semibold">
+    <div {...panel} className={cn("flex w-full min-w-0 shrink-0 snap-start flex-col gap-3", className)}>
+      <h2 id={headingId} className="flex min-h-11 items-center gap-2 font-heading text-xl font-semibold max-lg:sr-only">
         <Icon aria-hidden className="size-5 shrink-0 text-brass" strokeWidth={1.75} />
         {title}
       </h2>
@@ -267,7 +395,10 @@ function PopularRows({
             <Link
               href={commander.href}
               aria-label={`Build with ${commander.name}`}
-              className="flex min-h-11 shrink-0 items-center rounded-md border border-primary px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className={cn(
+                "flex min-h-11 shrink-0 items-center rounded-md border border-primary px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/10",
+                FOCUS_RING,
+              )}
             >
               Build
             </Link>
