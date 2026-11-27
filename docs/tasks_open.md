@@ -16,7 +16,7 @@ Popular Decks becomes Commanders & Decks: a Highlight (art, stats, a seal to bui
 
 - [x] `home_showcase()` SQL function and its SQL test
 - [x] Cached loader with the fixture fallback, and the `/privacy` line
-- [ ] The three columns on desktop
+- [x] The three columns on desktop
 - [ ] Tabs and swipe on phones and tablets
 - [ ] Review, mock build, e2e, PR
 

@@ -5,12 +5,11 @@ import { ArrowRight, Compass, ScrollText } from "lucide-react";
 import { cn } from "cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HeroPile } from "@/components/home/hero-pile";
+import { CommandersAndDecks } from "@/components/home/commanders-and-decks";
 import { HowItWorks } from "@/components/home/how-it-works";
-import { OrnateHeading } from "@/components/ui/ornate-heading";
 import { SheetSection } from "@/components/ui/sheet-section";
 import { getHomeShowcase } from "@/lib/server/recs-cache";
-import { BUILD_DECK_HREF, HOME_SHOWCASE_SIZE, TEXT_LINK } from "@/lib/constants";
-import { formatDeckCount } from "@/lib/labels";
+import { BUILD_DECK_HREF, HOME_SHOWCASE_SIZE } from "@/lib/constants";
 
 /*
  * The homepage (2026-11-20): sheets of cream paper on a walnut table, in dark ink, espresso and muted brass.
@@ -86,49 +85,31 @@ function Hero() {
   );
 }
 
-/** Placeholder render of Commanders & Decks' data until its own component lands (T109 Task 3). */
+/** Commanders & Decks: the Highlight, Popular Commanders and Latest Decks. */
 async function CommandersAndDecksSection() {
   const { popular, latest } = await getHomeShowcase();
-  return (
-    <div>
-      <OrnateHeading id="commanders-and-decks">Commanders &amp; Decks</OrnateHeading>
-      <div className="mt-6 grid gap-6 md:grid-cols-2">
-        <ul aria-label="Popular Commanders" className="flex flex-col gap-2">
-          {popular.map((entry) => (
-            <li key={entry.slug}>
-              <Link href={entry.href} className={TEXT_LINK}>
-                {entry.name}
-              </Link>
-              {entry.deckCount !== null && <span className="ml-2 font-mono text-xs">{formatDeckCount(entry.deckCount)}</span>}
-            </li>
-          ))}
-        </ul>
-        <ul aria-label="Latest Decks" className="flex flex-col gap-2">
-          {latest.map((entry) => (
-            <li key={entry.code}>
-              <Link href={entry.href} className={TEXT_LINK}>
-                {entry.name}
-              </Link>
-              {/* The age ("2 h ago") comes with the client component: a server render can't read the clock here. */}
-              <span className="ml-2 font-mono text-xs">{entry.createdAt.slice(0, "yyyy-mm-dd".length)}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
+  return <CommandersAndDecks popular={popular} latest={latest} />;
 }
 
-/** Commanders & Decks while it loads: the heading and one row per plate. */
+/** Commanders & Decks while it loads: the same three columns, the Highlight's plate and the rows. */
 function CommandersAndDecksSkeleton() {
+  const column = (
+    <div className="flex flex-col gap-3">
+      <Skeleton className="h-8 w-2/3" />
+      {Array.from({ length: HOME_SHOWCASE_SIZE }, (_, i) => (
+        <Skeleton key={i} className="h-24" />
+      ))}
+    </div>
+  );
   return (
-    <div aria-busy="true" aria-label="Commanders & Decks">
-      <OrnateHeading id="commanders-and-decks">Commanders &amp; Decks</OrnateHeading>
-      <div className="mt-6 grid gap-2 md:grid-cols-2">
-        {Array.from({ length: HOME_SHOWCASE_SIZE }, (_, i) => (
-          <Skeleton key={i} className="h-16 rounded-lg" />
-        ))}
+    <div aria-busy="true" className="grid gap-8 lg:grid-cols-[4fr_3fr_3fr] lg:gap-6">
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-8 w-1/2" />
+        <Skeleton className="aspect-[16/9]" />
+        <Skeleton className="h-11" />
       </div>
+      {column}
+      {column}
     </div>
   );
 }
@@ -149,7 +130,7 @@ export default function Home() {
     <div className="flex flex-col gap-5 pt-2 md:gap-8 md:pt-4">
       <Hero />
       <HowItWorks />
-      <SheetSection aria-labelledby="commanders-and-decks" className="px-5 py-8 sm:px-8 md:py-10">
+      <SheetSection aria-label="Commanders & Decks" className="px-5 py-8 sm:px-8 md:py-10">
         <Suspense fallback={<CommandersAndDecksSkeleton />}>
           <CommandersAndDecksSection />
         </Suspense>

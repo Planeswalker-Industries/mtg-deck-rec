@@ -1,40 +1,27 @@
 import { expect, test } from "./fixtures";
 
-test("ring aria-label names every category", async ({ page }) => {
+test("Commanders & Decks shows three Popular Commanders and the Highlight's seal", async ({ page }) => {
   await page.goto("/");
-  const ring = page.locator("svg[role='img'][aria-label]");
-  await expect(ring).toBeVisible({ timeout: 10_000 });
-  const label = await ring.getAttribute("aria-label");
-  expect(label).toContain("Creatures");
-  expect(label).toContain("Instants");
-  expect(label).toContain("Sorceries");
-  expect(label).toContain("Artifacts");
-  expect(label).toContain("Enchantments");
-  expect(label).toContain("Planeswalkers");
-  expect(label).toContain("Battles");
-  expect(label).toContain("Lands");
+  const region = page.getByRole("region", { name: "Commanders & Decks" });
+  const plates = region.getByRole("list", { name: "Popular Commanders" }).getByRole("button");
+  await expect(plates).toHaveCount(3, { timeout: 10_000 });
+  await expect(plates.first()).toHaveAttribute("aria-current", "true");
+  await expect(region.getByRole("link", { name: /^Build with this Commander/ })).toHaveAttribute("href", /\/deck\?.*commander=/);
 });
 
-test("deck overview shows its mana-symbol split", async ({ page }) => {
+test("tapping a Popular plate moves the Highlight and its seal", async ({ page }) => {
   await page.goto("/");
-  const region = page.getByRole("region", { name: "Popular Decks" });
-  // The Ur-Dragon is five-color, so every pip including colorless renders.
-  await expect(region.getByAltText("Colorless")).toBeVisible({ timeout: 10_000 });
-  await expect(region.getByAltText("White")).toBeVisible();
-  await expect(region.getByAltText("Red")).toBeVisible();
-});
+  const region = page.getByRole("region", { name: "Commanders & Decks" });
+  const plates = region.getByRole("list", { name: "Popular Commanders" }).getByRole("button");
+  const seal = region.getByRole("link", { name: /^Build with this Commander/ });
+  await expect(plates.first()).toHaveAttribute("aria-current", "true", { timeout: 10_000 });
+  const firstHref = await seal.getAttribute("href");
 
-test("clicking a tile selects that commander", async ({ page }) => {
-  await page.goto("/");
-  const region = page.getByRole("region", { name: "Popular Decks" });
-  const tiles = region.getByRole("group", { name: "Featured commanders" }).getByRole("button");
-  await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
-  await expect(tiles.first()).toHaveAttribute("aria-current", "true");
+  await plates.nth(1).click();
 
-  await tiles.nth(1).click();
-
-  await expect(tiles.nth(1)).toHaveAttribute("aria-current", "true");
-  await expect(tiles.first()).toHaveAttribute("aria-current", "false");
+  await expect(plates.nth(1)).toHaveAttribute("aria-current", "true");
+  await expect(plates.first()).toHaveAttribute("aria-current", "false");
+  await expect(seal).not.toHaveAttribute("href", firstHref ?? "");
 });
 
 test("the Commander starting point opens the commander picker", async ({ page }) => {
