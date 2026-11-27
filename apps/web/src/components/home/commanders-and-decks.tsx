@@ -104,8 +104,7 @@ export function CommandersAndDecks({ popular, latest }: { popular: ShowcaseComma
     () => false,
   );
 
-  // Only once hydrated: the server can't know the visitor's reduced-motion setting, and the Highlight's `aria-live`
-  // follows this, so reading it during hydration would mismatch the server's HTML.
+  // Only once hydrated: the server can't know the visitor's reduced-motion setting.
   const running = mounted && !stopped && !reduceMotion && popular.length > 1;
 
   useEffect(() => {
@@ -125,6 +124,8 @@ export function CommandersAndDecks({ popular, latest }: { popular: ShowcaseComma
     setTab(next);
     const strip = stripRef.current;
     if (!strip) return;
+    // Already on that pane: no scroll event would come to release the hold, so don't take one.
+    if (strip.clientWidth === 0 || Math.round(strip.scrollLeft / strip.clientWidth) === next) return;
     targetRef.current = next;
     strip.scrollTo({ left: next * strip.clientWidth, behavior: reduceMotion ? "auto" : "smooth" });
   };
@@ -175,7 +176,11 @@ export function CommandersAndDecks({ popular, latest }: { popular: ShowcaseComma
         pausedRef.current = false;
       }}
     >
-      <Highlight commander={shown} live={!running} />
+      <Highlight commander={shown} />
+      {/* Present from the first render and filled only by a choice, so the cycle stays quiet and the first tap speaks. */}
+      <p aria-live="polite" className="sr-only">
+        {stopped ? `${shown.name} highlighted` : ""}
+      </p>
 
       <div className="flex min-w-0 flex-col gap-3 lg:contents">
         <div
@@ -247,16 +252,13 @@ export function CommandersAndDecks({ popular, latest }: { popular: ShowcaseComma
   );
 }
 
-/**
- * The Popular commander in focus: its name, its art framed with the artist's credit, its stats and the seal that builds
- * with it. Announced when it changes, except while it cycles on its own.
- */
-function Highlight({ commander, live }: { commander: ShowcaseCommander; live: boolean }) {
+/** The Popular commander in focus: its name, its art framed with the artist's credit, its stats and the seal that builds with it. */
+function Highlight({ commander }: { commander: ShowcaseCommander }) {
   const { card } = commander;
   const art = card?.images?.front.artCrop;
   const artist = card?.artist;
   return (
-    <div aria-live={live ? "polite" : "off"} className="flex min-w-0 flex-col gap-3 lg:pr-6">
+    <div className="flex min-w-0 flex-col gap-3 lg:pr-6">
       <h2 className="flex min-h-11 items-center font-heading text-xl font-semibold text-balance sm:text-2xl lg:text-xl xl:text-2xl">
         {commander.name}
       </h2>

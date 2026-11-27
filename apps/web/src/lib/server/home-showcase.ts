@@ -117,6 +117,27 @@ function fixtureCommander(deck: FeaturedDeck): ShowcaseCommander {
 /** The fallback: the checked-in featured commanders, no counts, no Latest. */
 const fixtureShowcase = (): HomeShowcase => ({ popular: FEATURED_DECKS.slice(0, HOME_SHOWCASE_SIZE).map(fixtureCommander), latest: [] });
 
+/**
+ * The fallback with the fixture commanders' cards, when the database answers but `home_showcase()` didn't (a preview
+ * against an older schema): their art and identity by slug, best effort, still no counts.
+ */
+async function fixtureShowcaseWithCards(db: PublicClient): Promise<HomeShowcase> {
+  const fallback = fixtureShowcase();
+  try {
+    const slugs = fallback.popular.map((entry) => entry.slug);
+    const { data, error } = await db.from("cards").select(CARD_COLUMNS).in("slug", slugs).is("deleted_at", null);
+    if (error) return fallback;
+    const bySlug = new Map(((data ?? []) as CardRow[]).map((row) => [row.slug, toCardSummary(row)]));
+    const popular = fallback.popular.map((entry) => {
+      const card = bySlug.get(entry.slug);
+      return card ? { ...entry, card, name: card.name, colorIdentity: card.colorIdentity } : entry;
+    });
+    return { ...fallback, popular };
+  } catch {
+    return fallback;
+  }
+}
+
 /** Fills Popular up to the column size from the fixture, skipping slugs already shown. */
 function toppedUp(popular: ShowcaseCommander[]): ShowcaseCommander[] {
   const shown = new Set(popular.map((entry) => entry.slug));
@@ -143,7 +164,8 @@ function entryCards(cards: Map<number, CardSummary>, commander1: number, command
  * `cards` read brings every commander's art and identity.
  *
  * Never throws: the homepage renders with the database down and CI has no catalog. A null client (no configuration)
- * or a failed read returns the fixture commanders and an empty Latest; a failed read is logged as a warning. An entry
+ * or a failed read returns the fixture commanders (with their cards when the catalog still answers) and an empty
+ * Latest; a failed read is logged as a warning. An entry
  * whose card the catalog didn't return is dropped, and Popular tops up from the fixture so it still shows three.
  */
 export async function loadHomeShowcase(db: PublicClient | null): Promise<HomeShowcase> {
@@ -153,7 +175,7 @@ export async function loadHomeShowcase(db: PublicClient | null): Promise<HomeSho
     const { data, error } = await db.rpc("home_showcase", { p_days: HOME_SHOWCASE_DAYS });
     if (error) {
       logError({ area: "home.showcase", error, code: error.code, level: "warning", context: { step: "rpc" } });
-      return fixtureShowcase();
+      return fixtureShowcaseWithCards(db);
     }
     const value = isRecord(data) ? data : {};
     const popular = popularRows(value.popular);
