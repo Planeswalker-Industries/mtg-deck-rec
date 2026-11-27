@@ -1,5 +1,13 @@
 import type { Bracket, CardCategory, CommanderKeyRef, CorpusConfidence, CutReason, SwapResult } from "@mtg/core/contract";
 
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+/** Under a minute old reads as "just now": a clock that ticks in seconds on a cached page would only look wrong. */
+const JUST_NOW_MS = MINUTE_MS;
+/** Past a week, a count of days reads worse than the date. */
+const AGE_AS_DATE_MS = 7 * DAY_MS;
+
 export const cardCategoryLabel: Record<CardCategory, string> = {
   creature: "Creatures",
   instant: "Instants",
@@ -78,6 +86,19 @@ export const bracketLabel: Record<Bracket, string> = {
 type DeckCounts = Pick<CommanderKeyRef, "commanders" | "deckCount" | "borrowedDeckCount">;
 
 export const formatDeckCount = (count: number) => `${count.toLocaleString("en-US")} deck${count === 1 ? "" : "s"}`;
+
+/** "just now", "5 min ago", "2 h ago", "3 days ago", then the date ("Nov 3, 2026"). A date in the future reads as now. */
+export function formatAge(date: Date, now: Date = new Date()): string {
+  const age = now.getTime() - date.getTime();
+  if (age < JUST_NOW_MS) return "just now";
+  if (age < HOUR_MS) return `${Math.floor(age / MINUTE_MS)} min ago`;
+  if (age < DAY_MS) return `${Math.floor(age / HOUR_MS)} h ago`;
+  if (age < AGE_AS_DATE_MS) {
+    const days = Math.floor(age / DAY_MS);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
 
 const withCommanders = (key: DeckCounts) => (key.commanders.length > 1 ? "these commanders" : "this commander");
 

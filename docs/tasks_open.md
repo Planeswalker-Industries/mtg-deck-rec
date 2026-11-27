@@ -15,7 +15,7 @@ State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `
 Popular Decks becomes Commanders & Decks: a Highlight (art, stats, a seal to build with the commander or open the deck), Popular Commanders (most visitors building with them over 30 days, filled from the corpus) and Latest Decks (newest complete public decks, one per commander). Phones get the Highlight over swipeable Popular and Latest tabs. No deck or player names on the homepage. Plan `docs/plan_files/2026-11-27-home-showcase.md` (local).
 
 - [x] `home_showcase()` SQL function and its SQL test
-- [ ] Cached loader with the fixture fallback, and the `/privacy` line
+- [x] Cached loader with the fixture fallback, and the `/privacy` line
 - [ ] The three columns on desktop
 - [ ] Tabs and swipe on phones and tablets
 - [ ] Review, mock build, e2e, PR

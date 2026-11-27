@@ -4,7 +4,7 @@ import { bracketExclusions, mainDeckIds, ownedOnly, rankSwaps, type SwapPool } f
 import { cacheLife, cacheTag } from "next/cache";
 import { loadCardPage, type CardPageData } from "./card-page";
 import { loadCommanderPage, type CommanderPage } from "./commander-page";
-import { type FeaturedCommander, loadFeaturedCommanders } from "./featured";
+import { type HomeShowcase, loadHomeShowcase } from "./home-showcase";
 import { sharedCollection } from "./account-collection";
 import { loadBracketBasics } from "./brackets";
 import { availabilityFor, loadStandIns } from "./collection-availability";
@@ -95,21 +95,21 @@ export async function getCachedSwapSuggestions(
 }
 
 /**
- * Featured commanders for the landing page carousel. The fixture always returns; the database only adds art,
- * color identity and deck counts. Creating the client is itself guarded so a missing or unreachable
- * configuration still renders the section (CI has no catalog).
+ * The homepage's Commanders & Decks. Minutes, not days: a new or hidden deck should show or drop off soon, and the
+ * visitor counts move through the day. Creating the client is itself guarded so a missing configuration still renders
+ * the section from the fixture (CI has no catalog).
  */
-export async function getFeaturedCommanders(): Promise<FeaturedCommander[]> {
+export async function getHomeShowcase(): Promise<HomeShowcase> {
   "use cache";
-  cacheLife("days");
-  cacheTag("catalog", "corpus");
+  cacheLife("minutes");
+  cacheTag("home-showcase");
   let db: PublicClient | null = null;
   try {
     db = createPublicClient();
   } catch {
     db = null;
   }
-  return loadFeaturedCommanders(db);
+  return loadHomeShowcase(db);
 }
 
 /**
