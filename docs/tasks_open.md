@@ -1,12 +1,24 @@
 # Open tasks
 
-Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T109.
+Open work in priority order, most important first. Each ticket holds what it takes to finish it; history is in git, and closed tickets are one line each in [`tasks_closed.md`](tasks_closed.md). Ids are never reused. The next new id is T110.
 
 Everything above T033 comes before the soft launch to a playgroup (owner, 2026-10-23); the rest comes after.
 
 State on **2026-10-23**: `main` at PR #164, contract v29, hosted migrations at `20261022000100` (current). Hosted `corpus.decks` 212,606, last collated and precomputed by hand 2026-10-21.
 
 ---
+
+## T109: Commanders & Decks on the homepage
+
+**MEDIUM** · Web · Owner asked 2026-11-27 (concept image `X:\mtg_proj\screens\concepts\2026-11-27-commanders-and-decks.png`)
+
+Popular Decks becomes Commanders & Decks: a Highlight (art, stats, a seal to build with the commander or open the deck), Popular Commanders (most visitors building with them over 30 days, filled from the corpus) and Latest Decks (newest complete public decks, one per commander). Phones get the Highlight over swipeable Popular and Latest tabs. No deck or player names on the homepage. Plan `docs/plan_files/2026-11-27-home-showcase.md` (local).
+
+- [x] `home_showcase()` SQL function and its SQL test
+- [ ] Cached loader with the fixture fallback, and the `/privacy` line
+- [ ] The three columns on desktop
+- [ ] Tabs and swipe on phones and tablets
+- [ ] Review, mock build, e2e, PR
 
 ## T068: Recommendation latency (PR #139 review)
 
