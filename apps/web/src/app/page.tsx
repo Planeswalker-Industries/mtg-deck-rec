@@ -4,14 +4,12 @@ import { Suspense } from "react";
 import { ArrowRight, Compass, ScrollText } from "lucide-react";
 import { cn } from "cn";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FEATURED_DECKS } from "@/lib/featured-decks";
-import { FeaturedCommanders } from "@/components/home/featured-commanders";
 import { HeroPile } from "@/components/home/hero-pile";
+import { CommandersAndDecks } from "@/components/home/commanders-and-decks";
 import { HowItWorks } from "@/components/home/how-it-works";
-import { OrnateHeading } from "@/components/ui/ornate-heading";
 import { SheetSection } from "@/components/ui/sheet-section";
-import { getFeaturedCommanders } from "@/lib/server/recs-cache";
-import { BUILD_DECK_HREF } from "@/lib/constants";
+import { getHomeShowcase } from "@/lib/server/recs-cache";
+import { BUILD_DECK_HREF, HOME_SHOWCASE_SIZE } from "@/lib/constants";
 
 /*
  * The homepage (2026-11-20): sheets of cream paper on a walnut table, in dark ink, espresso and muted brass.
@@ -87,24 +85,31 @@ function Hero() {
   );
 }
 
-async function FeaturedCommandersSection() {
-  const commanders = await getFeaturedCommanders();
-  return <FeaturedCommanders commanders={commanders} intro={<OrnateHeading id="popular-decks">Popular Decks</OrnateHeading>} />;
+/** Commanders & Decks: the Highlight, Popular Commanders and Latest Decks. */
+async function CommandersAndDecksSection() {
+  const { popular, latest } = await getHomeShowcase();
+  return <CommandersAndDecks popular={popular} latest={latest} />;
 }
 
-/** Popular Decks while it loads: the heading, the ring and one tile per featured deck, in the same grid. */
-function FeaturedCommandersSkeleton() {
+/** Commanders & Decks while it loads: the same three columns, the Highlight's plate and the rows. */
+function CommandersAndDecksSkeleton() {
+  const column = (
+    <div className="flex flex-col gap-3">
+      <Skeleton className="h-8 w-2/3" />
+      {Array.from({ length: HOME_SHOWCASE_SIZE }, (_, i) => (
+        <Skeleton key={i} className="h-24" />
+      ))}
+    </div>
+  );
   return (
-    <div aria-busy="true" aria-label="Popular Decks">
-      <OrnateHeading id="popular-decks">Popular Decks</OrnateHeading>
-      <div className="mt-6 grid grid-cols-[9rem_minmax(0,1fr)] items-center gap-4 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-8">
-        <Skeleton className="aspect-square rounded-full" />
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-3">
-          {FEATURED_DECKS.map((deck) => (
-            <Skeleton key={deck.slug} className="h-16 rounded-lg md:aspect-[4/5] md:h-auto" />
-          ))}
-        </div>
+    <div aria-busy="true" className="grid gap-8 lg:grid-cols-[4fr_3fr_3fr] lg:gap-6">
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-8 w-1/2" />
+        <Skeleton className="aspect-[16/9]" />
+        <Skeleton className="h-11" />
       </div>
+      {column}
+      {column}
     </div>
   );
 }
@@ -125,9 +130,9 @@ export default function Home() {
     <div className="flex flex-col gap-5 pt-2 md:gap-8 md:pt-4">
       <Hero />
       <HowItWorks />
-      <SheetSection aria-labelledby="popular-decks" className="px-5 py-8 sm:px-8 md:py-10">
-        <Suspense fallback={<FeaturedCommandersSkeleton />}>
-          <FeaturedCommandersSection />
+      <SheetSection aria-label="Commanders & Decks" className="px-4 py-8 max-sm:-mx-4 sm:px-8 md:py-10">
+        <Suspense fallback={<CommandersAndDecksSkeleton />}>
+          <CommandersAndDecksSection />
         </Suspense>
       </SheetSection>
       <Closing />

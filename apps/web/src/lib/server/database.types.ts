@@ -2595,6 +2595,7 @@ export type Database = {
         Args: { p_bucket: string; p_visitor: string }
         Returns: number
       }
+      home_showcase: { Args: { p_days?: number }; Returns: Json }
       is_platform_admin: { Args: { p_user?: string }; Returns: boolean }
       log_error_event: {
         Args: {
