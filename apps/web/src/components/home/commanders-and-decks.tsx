@@ -19,8 +19,7 @@ import type { CardSummary } from "@mtg/core/contract";
 import { cn } from "cn";
 import { ColorIdentity } from "@/components/deck/color-identity";
 import { ArtPlate } from "@/components/ui/art-plate";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { HINT_TEXT, HOME_SHOWCASE_DAYS, SEAL_BUTTON } from "@/lib/constants";
+import { SEAL_BUTTON } from "@/lib/constants";
 import { formatAge, formatDeckCount } from "@/lib/labels";
 import type { ShowcaseCommander, ShowcaseDeck } from "@/lib/server/home-showcase";
 
@@ -297,21 +296,12 @@ function Highlight({ commander }: { commander: ShowcaseCommander }) {
   );
 }
 
-/** "5 builders", underlined dotted: tapped, it says what a builder is. */
+/** "5 builders". */
 function Builders({ count }: { count: number }) {
-  const label = `${count.toLocaleString("en-US")} builder${count === 1 ? "" : "s"}`;
   return (
-    <Dialog>
-      <DialogTrigger className={cn("min-h-11 cursor-pointer text-sm font-semibold", HINT_TEXT)}>{label}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{label}</DialogTitle>
-          <DialogDescription>
-            Visitors who built or tuned a deck with this commander here in the last {HOME_SHOWCASE_DAYS} days. A count only: no names.
-          </DialogDescription>
-        </DialogHeader>
-      </DialogContent>
-    </Dialog>
+    <span className="text-sm font-semibold">
+      {count.toLocaleString("en-US")} builder{count === 1 ? "" : "s"}
+    </span>
   );
 }
 
